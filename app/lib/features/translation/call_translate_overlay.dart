@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -306,19 +308,17 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   String _outOfTokensCopy(String suffix) {
     final c = _controller;
     if (c != null && c.needsPaidTopUp) {
-      return 'Live translation is paid only — your remaining ${c.nonPaidTokens} '
-          'Tokens are free/bonus Tokens, which it cannot use. Top up to '
-          'continue.$suffix';
+      return uiCopy(UiMessage.m_live_translation_is_paid_only_ea8562ce19, {'value1': (c.nonPaidTokens).toString(), 'suffix': (suffix).toString()});
     }
-    return 'You do not have enough Tokens for live translation.$suffix';
+    return uiCopy(UiMessage.m_you_do_not_have_enough_09e50bd129, {'suffix': (suffix).toString()});
   }
 
   Future<void> _showFundsDialog() async {
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Translation stopped'),
+      title: const UiText(UiMessage.m_translation_stopped_515e74cc90),
       content: Text(_outOfTokensCopy(' Your call is still connected.')),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(d), child: const Text('Not now')),
+        TextButton(onPressed: () => Navigator.pop(d), child: const UiText(UiMessage.m_not_now_a0e63d7c71)),
         TextButton(onPressed: () async {
           Navigator.pop(d);
           final topup = await MoneyApi.topup(500);
@@ -326,20 +326,20 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
           if (url != null && url.isNotEmpty) {
             try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); } catch (_) {}
           }
-        }, child: const Text('Top up Tokens')),
+        }, child: const UiText(UiMessage.m_top_up_tokens_a18b5e88bc)),
       ],
     ));
   }
 
   Future<void> _showProviderStoppedDialog(bool terminalForCall) async {
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
-      title: Text(terminalForCall ? 'Translation unavailable' : 'Translation stopped'),
+      title: Text(terminalForCall ? uiCopy(UiMessage.m_translation_unavailable_81cb3cf414) : uiCopy(UiMessage.m_translation_stopped_515e74cc90)),
       content: Text(terminalForCall
           // Circuit breaker tripped: 3 provider failures in one call. Saying
           // "try again" here would be a lie — start() refuses from now on.
-          ? 'Translation is unavailable for this call. Original call audio has been restored and your call is still connected.'
-          : 'Live translation became unavailable. Original call audio has been restored and your call is still connected.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
+          ? uiCopy(UiMessage.m_translation_is_unavailable_for_this_77890481c1)
+          : uiCopy(UiMessage.m_live_translation_became_unavailable_original_e81915ed99)),
+      actions: [TextButton(onPressed: () => Navigator.pop(d), child: const UiText(UiMessage.m_ok_565339bc4d))],
     ));
   }
 
@@ -450,10 +450,10 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
                 ? 'Translation is unavailable for this call. Your call is unchanged.'
                 : 'Live translation could not start. Your call is unchanged.';
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Translate unavailable'),
+      title: const UiText(UiMessage.m_translate_unavailable_61819b4fd0),
       content: Text(message),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(d), child: const Text('NOT NOW')),
+        TextButton(onPressed: () => Navigator.pop(d), child: const UiText(UiMessage.m_not_now_095c9dd474)),
         if (error == 'insufficient_tokens')
           TextButton(onPressed: () async {
             Navigator.pop(d);
@@ -462,7 +462,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
             if (url != null && url.isNotEmpty) {
               try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); } catch (_) {}
             }
-          }, child: const Text('Top up Tokens')),
+          }, child: const UiText(UiMessage.m_top_up_tokens_a18b5e88bc)),
       ],
     ));
   }
@@ -491,7 +491,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     return Semantics(
       button: true,
       enabled: false,
-      label: 'Translate, unavailable on this call',
+      label: uiCopy(UiMessage.m_translate_unavailable_on_this_call_625e688dc5),
       child: Tooltip(
         message: 'Live translation is not available on this call',
         child: Opacity(
@@ -507,8 +507,8 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
                   }));
                   final messenger = ScaffoldMessenger.maybeOf(context);
                   messenger?.showSnackBar(const SnackBar(
-                    content: Text(
-                        'Live translation is not available on this call.'),
+                    content: UiText(
+                        UiMessage.m_live_translation_is_not_available_1b8110ac04),
                   ));
                 },
                 color: AD.cardHover,
@@ -530,7 +530,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
                 ),
               ),
               const SizedBox(height: Msg.s1),
-              Text('Translate',
+              UiText(UiMessage.m_translate_8fe147696f,
                   maxLines: 1,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
@@ -561,7 +561,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     return Semantics(
       button: true,
       enabled: false,
-      label: 'Translate, preparing',
+      label: uiCopy(UiMessage.m_translate_preparing_4ba45827d8),
       child: Tooltip(
         message: 'Preparing translation…',
         child: Opacity(
@@ -592,7 +592,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
                 ),
               ),
               const SizedBox(height: Msg.s1),
-              Text('Translate',
+              UiText(UiMessage.m_translate_8fe147696f,
                   maxLines: 1,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
@@ -605,6 +605,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   }
 
   @override Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [CALL-TRANSLATE-OBS-1 / F1] Every hide path used to be a bare
     // `SizedBox.shrink()` — no log, no event, no dialog — so "I don't see the
     // Translate pill" was un-diagnosable without a device in hand. Each cause now
@@ -742,7 +743,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         children: [
           button,
           const SizedBox(height: Msg.s1),
-          Text('Translate',
+          UiText(UiMessage.m_translate_8fe147696f,
               maxLines: 1,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
@@ -799,8 +800,8 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
           valueListenable: controller.billedTokens,
           builder: (_, tokens, __) => ValueListenableBuilder<int>(
             valueListenable: controller.elapsedSeconds,
-            builder: (_, elapsed, __) => Text(
-              '5/min · $tokens · ${elapsed ~/ 60}:${(elapsed % 60).toString().padLeft(2, '0')}',
+            builder: (_, elapsed, __) => UiText(
+              UiMessage.m_5_min_tokens_value2_value3_edbf4ab957, params: {'tokens': (tokens).toString(), 'value2': (elapsed ~/ 60).toString(), 'value3': ((elapsed % 60).toString().padLeft(2, '0')).toString()},
               style: ADText.timestamp(),
             ),
           ),
@@ -812,7 +813,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         if (stalled)
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 190),
-            child: Text('Catching up — you are hearing the original voice',
+            child: UiText(UiMessage.m_catching_up_you_are_hearing_e6d40c8846,
                 textAlign: TextAlign.center, style: ADText.timestamp()),
           ),
         ValueListenableBuilder<bool>(
@@ -825,7 +826,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
           builder: (_, degraded, __) => degraded && !stalled
               ? ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 190),
-                  child: Text('Translation quality is unstable',
+                  child: UiText(UiMessage.m_translation_quality_is_unstable_1fe6cbdaaf,
                       textAlign: TextAlign.center, style: ADText.timestamp()),
                 )
               : const SizedBox.shrink(),
@@ -860,6 +861,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final q = _query.trim().toLowerCase();
     final languages = q.isEmpty
         ? kTranslationLangs
@@ -892,14 +894,14 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s1, Msg.s5, Msg.s3),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
-              widget.currentCode == null ? 'Translate incoming voice' : 'Change language',
+              widget.currentCode == null ? uiCopy(UiMessage.m_translate_incoming_voice_39ebc58359) : uiCopy(UiMessage.m_change_language_009ed110ba),
               style: ADText.appTitle().copyWith(fontSize: 18),
             ),
             const SizedBox(height: Msg.s1),
             Text(
               widget.currentCode == null
-                  ? 'Choose your language · 5 Tokens per started minute'
-                  : 'Switching is free — the same session keeps running',
+                  ? uiCopy(UiMessage.m_choose_your_language_5_tokens_6c13693627)
+                  : uiCopy(UiMessage.m_switching_is_free_the_same_f57059a282),
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s3),
@@ -929,7 +931,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                           setState(() => _query = '');
                         },
                       ),
-                hintText: 'Search languages',
+                hintText: uiCopy(UiMessage.m_search_languages_98cdcf4f24),
                 hintStyle: ADText.preview(),
                 contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                 enabledBorder: OutlineInputBorder(
@@ -950,7 +952,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
           child: languages.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Text('No matching language', style: ADText.preview()),
+                  child: UiText(UiMessage.m_no_matching_language_d70f0de460, style: ADText.preview()),
                 )
               : ListView.builder(
                   shrinkWrap: true,
@@ -965,7 +967,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                           style: ADText.rowName().copyWith(
                               color: isCurrent ? AD.primaryBadge : AD.textPrimary)),
                       subtitle: Text(
-                        isCurrent ? '${item.code} · translating now' : item.code,
+                        isCurrent ? uiCopy(UiMessage.m_value1_translating_now_9c1cd3a542, {'value1': (item.code).toString()}) : item.code,
                         style: ADText.preview(),
                       ),
                       trailing: isCurrent

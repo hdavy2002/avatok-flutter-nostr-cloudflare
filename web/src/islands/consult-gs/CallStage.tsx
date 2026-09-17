@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * CallStage — the in-call GetStream view for the 1:1 consult
  * (SPEC-2026-09-01 §4.4). Wraps a joined `Call` in `<StreamCall>` so the
@@ -63,6 +65,8 @@ const HUD: Record<string, { label: string; cls: string } | null> = {
 };
 
 function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, onEndsAtChange, onLeave, chat, onSendChat }: CallStageProps) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const { useLocalParticipant, useRemoteParticipants, useCameraState, useMicrophoneState, useCallCallingState } =
     useCallStateHooks();
   const local = useLocalParticipant();
@@ -120,10 +124,10 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
             disabled={retrying}
             className="rounded-zineBadge border-zine border-ink bg-blue px-3 py-1.5 font-display font-semibold text-[13px] text-ink disabled:opacity-60"
           >
-            {retrying ? 'Retrying…' : 'Retry'}
+            {retrying ? uiT("web-consult-gs.a16c8b1c95956fba","Retrying…") : uiT("web-consult-gs.942087cc2d41e013","Retry")}
           </button>
         )}
-        <Countdown target={endsAt} label="Ends in" onZero={() => onLeave('Time is up.')} />
+        <Countdown target={endsAt} label={uiT("web-consult-gs.87d0485a90e5ebb0","Ends in")} onZero={() => onLeave('Time is up.')} />
       </div>
 
       {/* stage */}
@@ -133,7 +137,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-paper2 text-center">
             <Spinner size={28} />
-            <p className="font-body font-bold text-[15px] text-inkSoft">Connecting you to {peerName}…</p>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.b6da650a6f31f571" source="Connecting you to" />{" "}{peerName}…</p>
           </div>
         )}
 
@@ -168,7 +172,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         <button
           type="button"
           aria-pressed={mic.isMute}
-          aria-label={mic.isMute ? 'Unmute microphone' : 'Mute microphone'}
+          aria-label={mic.isMute ? uiT("web-consult-gs.a22cb32b07345be1","Unmute microphone") : uiT("web-consult-gs.2d1be6900bbed8f9","Mute microphone")}
           onClick={() => void mic.microphone.toggle()}
           className={[
             'inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm',
@@ -182,7 +186,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         <button
           type="button"
           aria-pressed={cam.isMute}
-          aria-label={cam.isMute ? 'Turn camera on' : 'Turn camera off'}
+          aria-label={cam.isMute ? uiT("web-consult-gs.95e9fb569c93eb7b","Turn camera on") : uiT("web-consult-gs.2050f56db225c04a","Turn camera off")}
           onClick={() => void cam.camera.toggle()}
           className={[
             'inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm',
@@ -196,28 +200,24 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         <button
           type="button"
           onClick={() => setShowExtend(true)}
-          title="Extend the session"
+          title={uiT("web-consult-gs.16171aed73024d69","Extend the session")}
           className={
             'inline-flex h-12 items-center gap-2 rounded-full border-zine border-ink bg-blue px-5 ' +
             'font-display font-semibold text-[15px] text-ink shadow-zine-sm transition-transform duration-zine ease-out ' +
             'active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed'
           }
-        >
-          Extend
-        </button>
+        ><UiText id="web-consult-gs.496a37e3a10b9755" source="Extend" />{" "}</button>
 
         <button
           type="button"
-          aria-label="Leave the call"
+          aria-label={uiT("web-consult-gs.665cdc6c7748b142","Leave the call")}
           onClick={() => onLeave('You left the session.')}
           className={
             'inline-flex h-12 items-center gap-2 rounded-full border-zine border-ink bg-coral px-6 ' +
             'font-display font-semibold text-[16px] text-white shadow-zine-sm transition-transform duration-zine ease-out ' +
             'active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed'
           }
-        >
-          Leave
-        </button>
+        ><UiText id="web-consult-gs.fc6e4a408d56be96" source="Leave" />{" "}</button>
       </div>
       </div>
 

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -103,6 +106,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final name = _contact?.name;
     final initial = (name != null && name.isNotEmpty) ? name.characters.first.toUpperCase() : null;
     // Known contact = mint, unknown = blue — same convention as PstnCallScreen.
@@ -132,7 +136,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
                   : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
             ),
             const SizedBox(height: Msg.s4),
-            Text('Calling', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
+            UiText(UiMessage.m_calling_74028104c2, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
             const SizedBox(height: Msg.s1),
             Text(name ?? widget.number,
                 textAlign: TextAlign.center, style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text)),
@@ -144,7 +148,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
             Text(_statusLine, style: AvaDialTheme.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             AdButton(
-              label: 'End',
+              label: uiCopy(UiMessage.m_end_f4db1e4847),
               variant: AdButtonVariant.danger,
               fullWidth: true,
               icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),

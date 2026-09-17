@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // MarketplaceGrid — the AvaVision discovery island for /vision.
 //
 // Mirrors the Phase-A ExploreGrid shape (search box + responsive ListingTile
@@ -21,6 +23,8 @@ export interface MarketplaceGridProps {
 }
 
 export function MarketplaceGrid({ initialQuery = '' }: MarketplaceGridProps) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   const [q, setQ] = useState(initialQuery);
   const [items, setItems] = useState<VisionAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,13 +89,11 @@ export function MarketplaceGrid({ initialQuery = '' }: MarketplaceGridProps) {
     <div className="flex flex-col gap-6">
       {/* search */}
       <label className="block">
-        <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-          Search vision agents
-        </span>
+        <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.db65bcdab715b57c" source="Search vision agents" />{" "}</span>
         <input
           type="search"
           inputMode="search"
-          placeholder="form coach, guitar, yoga, cooking…"
+          placeholder={uiT("web-vision.16fbcbb1b33a622b","form coach, guitar, yoga, cooking…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="w-full rounded-zineField border-zine border-ink bg-card px-4 py-3.5 font-body font-extrabold text-[17px] text-ink shadow-zine-sm outline-none placeholder:font-bold placeholder:text-placeholder focus:-translate-x-[1px] focus:-translate-y-[1px] focus:shadow-zine-focus transition-transform duration-zine"
@@ -101,24 +103,18 @@ export function MarketplaceGrid({ initialQuery = '' }: MarketplaceGridProps) {
       {error && (
         <div className="rounded-zine border-zine border-coral bg-card p-4 font-body font-bold text-[15px] text-ink shadow-zine-error">
           {error}{' '}
-          <button type="button" className="underline text-blueInk" onClick={() => void fetchAgents(q)}>
-            Retry
-          </button>
+          <button type="button" className="underline text-blueInk" onClick={() => void fetchAgents(q)}><UiText id="web-vision.942087cc2d41e013" source="Retry" />{" "}</button>
         </div>
       )}
 
       {empty && (
         <div className="rounded-zine border-zine border-ink bg-paper2 p-8 text-center">
-          <p className="font-display font-semibold text-[20px] text-ink">No vision agents yet</p>
-          <p className="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            Try a different search — or build the first one in the studio.
-          </p>
+          <p className="font-display font-semibold text-[20px] text-ink"><UiText id="web-vision.7cbc8441ff2c9814" source="No vision agents yet" /></p>
+          <p className="mt-1 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-vision.ae88f04fdcee7bfe" source="Try a different search — or build the first one in the studio." />{" "}</p>
           <a
             href="/vision/studio"
             className="mt-4 inline-flex items-center justify-center rounded-full border-zine border-ink bg-lime px-5 py-3 font-display font-semibold text-[17px] text-ink shadow-zine-sm no-underline transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-          >
-            Create a vision agent
-          </a>
+          ><UiText id="web-vision.638aa54ba5d46d8a" source="Create a vision agent" />{" "}</a>
         </div>
       )}
 
@@ -130,7 +126,7 @@ export function MarketplaceGrid({ initialQuery = '' }: MarketplaceGridProps) {
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-6 text-inkSoft">
-          <Spinner size={20} /> <span className="font-body font-bold text-[14px]">Loading…</span>
+          <Spinner size={20} /> <span className="font-body font-bold text-[14px]"><UiText id="web-vision.ba3bbbe10d8bef66" source="Loading…" /></span>
         </div>
       )}
     </div>

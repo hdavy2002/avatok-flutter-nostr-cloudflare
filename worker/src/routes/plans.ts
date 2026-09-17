@@ -231,6 +231,7 @@ export async function setSub(
 export async function getPlans(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   const plans = await readPlans(env);
   const sub = await getSub(env, ctx.uid);
   return json(

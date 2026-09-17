@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -15,13 +17,14 @@ class MessengerCallReceiptDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.bg,
         foregroundColor: AD.textPrimary,
         elevation: 0,
-        title: const Text('Call receipt'),
+        title: const UiText(UiMessage.m_call_receipt_07609f16f2),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -49,15 +52,15 @@ class MessengerCallReceiptDetailsScreen extends StatelessWidget {
                 _row('Price version', '${receipt.priceVersion}'),
               ]),
               const SizedBox(height: Msg.s3),
-              Text(
-                'You paid for the connected time of both participants. Ringing, setup and reconnect gaps are not included.',
+              UiText(
+                UiMessage.m_you_paid_for_the_connected_b036dcf4ea,
                 style: ADText.preview(),
               ),
               const SizedBox(height: Msg.s5),
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Done'),
+                  child: const UiText(UiMessage.m_done_11a6767d56),
                 ),
               ),
             ],
@@ -87,7 +90,7 @@ class MessengerCallReceiptDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: Msg.s2),
           Text(
-            free ? 'No tokens charged' : '${receipt.tokensCharged} tokens charged',
+            free ? uiCopy(UiMessage.m_no_tokens_charged_6bd17db24b) : uiCopy(UiMessage.m_value1_tokens_charged_ae723bc391, {'value1': (receipt.tokensCharged).toString()}),
             style: ADText.appTitle(),
           ),
           const SizedBox(height: Msg.s1),

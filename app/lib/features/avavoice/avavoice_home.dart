@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -86,10 +89,11 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!RemoteConfig.avavoiceEnabled) {
       return Scaffold(
         backgroundColor: AD.bg,
-        appBar: const ZineAppBar(title: 'AvaVoice', markWord: 'Voice'),
+        appBar:  ZineAppBar(title: uiCopy(UiMessage.m_avavoice_b124c81fa9), markWord: 'Voice'),
         body: ZinePaper(
           child: Center(
             child: Padding(
@@ -105,7 +109,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'AvaVoice',
+        title: uiCopy(UiMessage.m_avavoice_b124c81fa9),
         markWord: 'Voice',
         tag: 'ai voice agents',
         actions: [
@@ -133,14 +137,14 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
             child: Row(children: [
               Expanded(
                 child: ZineChip(
-                    label: 'Marketplace',
+                    label: uiCopy(UiMessage.m_marketplace_c608981d8d),
                     active: _tabs.index == 0,
                     onTap: () => _tabs.animateTo(0)),
               ),
               const SizedBox(width: Msg.s2),
               Expanded(
                 child: ZineChip(
-                    label: 'My bookings',
+                    label: uiCopy(UiMessage.m_my_bookings_be1b53baca),
                     active: _tabs.index == 1,
                     onTap: () => _tabs.animateTo(1)),
               ),
@@ -166,7 +170,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
         children: [
           ZineField(
             leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-            hint: 'Search voice agents…',
+            hint: uiCopy(UiMessage.m_search_voice_agents_0e775acc18),
             onSubmitted: (v) {
               _q = v;
               Analytics.capture('avavoice_search', {'q_len': v.trim().length});
@@ -188,8 +192,8 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                   size: 28, color: AD.tabCalls),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'Talk to AI voice agents built by creators — interview practice, tech help, tutoring & more. Pay per minute, max 1 hour.',
+                child: UiText(
+                  UiMessage.m_talk_to_ai_voice_agents_7ce4b9bab3,
                   style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
                 ),
               ),
@@ -200,7 +204,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
           Align(
             alignment: Alignment.centerLeft,
             child: ZineButton(
-              label: 'New AI agent',
+              label: uiCopy(UiMessage.m_new_ai_agent_5c5db0cfe6),
               variant: ZineButtonVariant.blue,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               trailingIcon: false,
@@ -340,9 +344,8 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                   Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                   const SizedBox(height: Msg.s1),
-                  Text(
-                    '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-                    '${b.escrowTokens > 0 ? ' · ${fmtTokens(b.escrowTokens)} held' : ''} · ${b.status}',
+                  UiText(
+                    UiMessage.m_value1_value2_min_value3_value4_00b7eee2bf, params: {'value1': (fmtWhenMs(b.scheduledAt)).toString(), 'value2': (b.bookedMinutes).toString(), 'value3': (b.escrowTokens > 0 ? ' · ${fmtTokens(b.escrowTokens)} held' : '').toString(), 'value4': (b.status).toString()},
                     maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4),
                   ),
@@ -358,7 +361,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                   radius: BorderRadius.circular(Msg.rPill),
                   boxShadow: Msg.none,
                   padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
-                  child: Text('Join', style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
+                  child: UiText(UiMessage.m_join_fd30fe681b, style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
                 ),
               ],
             ]),

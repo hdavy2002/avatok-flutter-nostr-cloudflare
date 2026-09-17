@@ -61,10 +61,10 @@ const linkClass =
 
 <header class="sticky top-0 z-40 border-b-zine border-ink bg-paper2/95 backdrop-blur">
   <div class="mx-auto flex max-w-6xl items-center gap-5 px-4 py-3">
-    <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+    <a data-india-i18n-attr="aria-label:web-common.cb2388cd9265d98f" href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
       <img src={publicImage('/app-logo2.png', { width: 72, fit: 'scale-down' })} alt="" width="36" height="36" class="h-[36px] w-[36px] rounded-full object-cover" />
       <span class="font-display font-semibold text-[22px] leading-none tracking-[0.03em] text-ink">
-        ava<span class="text-blueInk">tok</span>
+        ava<span data-i18n="web-common.1a7674eb4ee78df7" class="text-blueInk">tok</span>
       </span>
     </a>
 
@@ -77,8 +77,8 @@ const linkClass =
     <div class="ml-auto hidden items-center gap-2 sm:flex">
       {hideCtas ? null : staticCtas ? (
         <>
-          <a href="/sign-in" class={ghostCta}>Log in</a>
-          <a href="/sign-up" class={primaryCta}>Sign up</a>
+          <a data-i18n="web-common.c189840cf7e2d6f6" href="/sign-in" class={ghostCta}>Log in</a>
+          <a data-i18n="web-common.5e2b8e96503d722e" href="/sign-up" class={primaryCta}>Sign up</a>
         </>
       ) : (
         <HeaderCtas client:load />
@@ -86,7 +86,7 @@ const linkClass =
     </div>
 
     <!-- Mobile hamburger -->
-    <button
+    <button data-india-i18n-attr="aria-label:web-common.b40b3713b43dc702"
       id="nav-burger"
       type="button"
       aria-label="Open menu"
@@ -107,8 +107,8 @@ const linkClass =
       ))}
       {!hideCtas && (
         <div class="mt-2 flex gap-2 border-t-zine border-ink pt-3">
-          <a href="/sign-in" class="flex-1 rounded-full border-zine border-ink bg-card px-3 py-2.5 text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Log in</a>
-          <a href="/sign-up" class="flex-1 rounded-full border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Sign up</a>
+          <a data-i18n="web-common.c189840cf7e2d6f6" href="/sign-in" class="flex-1 rounded-full border-zine border-ink bg-card px-3 py-2.5 text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Log in</a>
+          <a data-i18n="web-common.5e2b8e96503d722e" href="/sign-up" class="flex-1 rounded-full border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Sign up</a>
         </div>
       )}
     </div>

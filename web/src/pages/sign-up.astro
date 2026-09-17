@@ -1,5 +1,4 @@
 ---
-import { publicImage as optimizePublicArtwork } from '../lib/config';
 // avatok.ai — Create account.
 //
 // [WEB-AUTH-DESIGN-1 2026-08-26] Rebuilt from design/login/README.md, replacing
@@ -11,9 +10,10 @@ import { publicImage as optimizePublicArtwork } from '../lib/config';
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import IndiaLanguageSelector from '../components/IndiaLanguageSelector.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SignUpIsland from '../islands/auth/SignUpIsland.tsx';
-import { clerkFapiHost } from '../lib/config';
+import { clerkFapiHost, publicImage } from '../lib/config';
 import '../styles/auth.css';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -27,6 +27,12 @@ const clerkHost = clerkFapiHost();
   chrome={false}
 >
   <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@800&family=Kalam&display=swap"
+    />
     {clerkHost && (
       <Fragment>
         <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
@@ -35,35 +41,36 @@ const clerkHost = clerkFapiHost();
     )}
   </Fragment>
 
-  <SiteHeader authMobileOnly />
+  <SiteHeader authMobileOnly indiaLandingLanguage />
 
   <div class="auth">
     <div class="auth-shell">
       <aside class="auth-panel auth-panel--ink" aria-hidden="true">
-        <span class="auth-rail">Creator Marketplace</span>
-        <img src={optimizePublicArtwork('/auth/pawri-poster.png', { width: 1126, fit: 'scale-down' })} alt="" width="563" height="751" />
-        <span class="auth-stamp">Desi · Dil Se · Global</span>
+        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
+        <img src={publicImage('/auth/pawri-poster.png', { width: 563, fit: 'scale-down' })} alt="" width="563" height="751" />
+        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Desi · Dil Se · Global</span>
       </aside>
 
       <main class="auth-main auth-main--signup">
         <!-- See sign-in.astro: ornaments for the 768–1279 card layout, hidden
              at >=1280 where the decorative panel carries its own. -->
-        <span class="auth-rail">Creator Marketplace</span>
+        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
         <div class="auth-card">
+          <div class="auth-language"><IndiaLanguageSelector id="auth-language" /></div>
           <header class="auth-head">
-            <a class="auth-wordmark" href="/" aria-label="avaTOK home">
+            <a data-india-i18n-attr="aria-label:web-auth.394186beed5b531d" class="auth-wordmark" href="/" aria-label="avaTOK home">
               <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
             </a>
             <!-- The graphic carries the welcome line on sign-up, so there is no
                  separate Hindi text row here (README §2). -->
             <img
-              src={optimizePublicArtwork('/auth/suswagatam.png', { width: 1996, fit: 'scale-down' })} alt="" width="998" height="668"
+              src={publicImage('/auth/suswagatam.png', { width: 998, fit: 'scale-down' })} alt="" width="998" height="668"
               fetchpriority="high" style="height:130px;width:auto;"
             />
           </header>
           <SignUpIsland client:load />
         </div>
-        <span class="auth-stamp">Desi · Dil Se · Global</span>
+        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Desi · Dil Se · Global</span>
       </main>
     </div>
   </div>

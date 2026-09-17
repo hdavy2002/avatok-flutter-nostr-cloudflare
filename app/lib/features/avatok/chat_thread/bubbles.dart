@@ -329,7 +329,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                             size: 11, color: t.ink),
                         const SizedBox(width: 4),
                         Text(
-                            m.special == 'ava_private' ? 'AVA · PRIVATE' : 'AVA',
+                            m.special == 'ava_private' ? uiCopy(UiMessage.m_ava_private_e40d3410d7) : uiCopy(UiMessage.m_ava_7b7ca8a439),
                             style: ADText.bubbleMeta(c: t.ink)),
                       ]),
                     ),
@@ -342,7 +342,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                         PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
                             size: 11, color: t.meta),
                         const SizedBox(width: 3),
-                        Text('FORWARDED', style: ADText.bubbleMeta(c: t.meta)),
+                        UiText(UiMessage.m_forwarded_8b881e5a5d, style: ADText.bubbleMeta(c: t.meta)),
                       ]),
                     ),
                   // [AVAGRP-BUBBLE-1] Sender name header uses the same saturated
@@ -412,7 +412,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                         const SizedBox(width: 3),
                       ],
                       if (m.edited) ...[
-                        Text('EDITED ', style: ADText.bubbleMeta(c: t.meta)),
+                        UiText(UiMessage.m_edited_cc7f7ea511, style: ADText.bubbleMeta(c: t.meta)),
                       ],
                       // Mono timestamp (10px) — Phase 5: live relative age for
                       // recent messages ("now"/"2m"/"1h"), fixed HH:MM for older.
@@ -1368,7 +1368,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
       if (!mounted) return;
       if (bytes == null) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Couldn't load $name")));
+            .showSnackBar(SnackBar(content: UiText(UiMessage.m_couldn_t_load_name_44bb98f7de, params: {'name': (name).toString()})));
         return;
       }
       _msgsRev++; // m.localBytes assigned directly below (no setState needed here — the finally block's _mutMsgs repaints)
@@ -1382,14 +1382,14 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
         final ok = await openFileWithOs(bytes, name, mime);
         if (!ok && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text("No app on this device can open $name — tap share to send it elsewhere.")));
+              content: UiText(UiMessage.m_no_app_on_this_device_6835a82228, params: {'name': (name).toString()})));
         }
       }
     } catch (e) {
       AvaLog.I.log('media', 'open file failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Couldn't open $name")));
+            .showSnackBar(SnackBar(content: UiText(UiMessage.m_couldn_t_open_name_edab1ea4c2, params: {'name': (name).toString()})));
       }
     } finally {
       if (mounted) _mutMsgs(() => m.fileOpening = false);

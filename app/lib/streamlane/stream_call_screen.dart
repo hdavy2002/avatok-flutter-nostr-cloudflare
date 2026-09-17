@@ -14,6 +14,8 @@
 // screen with a Retry button; it never leaves the user staring at the previous
 // screen wondering whether the tap registered.
 library;
+import '../core/localization/ui_text.dart';
+
 
 import 'dart:async';
 
@@ -274,7 +276,7 @@ class _StreamOutgoingPreparationScreenState
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _cancel();
@@ -331,8 +333,8 @@ class _StreamOutgoingPreparationScreenState
                           children: [
                             TextButton(
                               onPressed: _cancelling ? null : _cancel,
-                              child: const Text(
-                                'Close',
+                              child: const UiText(
+                                UiMessage.m_close_7d9eb7acb1,
                                 style: TextStyle(color: AD.textSecondary),
                               ),
                             ),
@@ -340,8 +342,8 @@ class _StreamOutgoingPreparationScreenState
                             if (widget.retry != null)
                               TextButton(
                                 onPressed: _cancelling ? null : _retry,
-                                child: const Text(
-                                  'Try again',
+                                child: const UiText(
+                                  UiMessage.m_try_again_d8b8392e2c,
                                   style: TextStyle(color: AD.textPrimary),
                                 ),
                               ),
@@ -388,7 +390,7 @@ class _StreamOutgoingPreparationScreenState
             ),
           ),
         ),
-      );
+      ); }
 }
 
 class StreamCallScreen extends StatefulWidget {
@@ -1219,6 +1221,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final isVideo = _isVideo;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -1473,16 +1476,16 @@ class _StreamCallScreenState extends State<StreamCallScreen>
             children: [
               TextButton(
                 onPressed: _closeAfterFailure,
-                child: const Text(
-                  'Close',
+                child: const UiText(
+                  UiMessage.m_close_7d9eb7acb1,
                   style: TextStyle(color: AD.textSecondary),
                 ),
               ),
               const SizedBox(width: Msg.s4),
               TextButton(
                 onPressed: _retry,
-                child: const Text(
-                  'Try again',
+                child: const UiText(
+                  UiMessage.m_try_again_d8b8392e2c,
                   style: TextStyle(color: AD.textPrimary),
                 ),
               ),

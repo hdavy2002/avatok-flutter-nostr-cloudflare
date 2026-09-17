@@ -29,8 +29,8 @@ const avg = total > 0 && hist
 {(items.length > 0 || total === 0) && (
   <section data-section="reviews">
     <div class="ld-section-head">
-      <h2 class="ld-section-title">Public ki <span class="ld-accent">Rai.</span></h2>
-      <span class="ld-section-note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
+      <h2 class="ld-section-title"><ui-copy style="display:contents" data-i18n="web-common.970aedbbe6b1e180">Public ki</ui-copy> <span data-i18n="web-common.00e2d45ff7f2662c" class="ld-accent">Rai.</span></h2>
+      <span data-i18n="web-common.4742c883453d6588" class="ld-section-note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
     </div>
     <div class="ld-strip-frame"><TruckBorder kind="chai" count={40} /></div>
 
@@ -41,7 +41,7 @@ const avg = total > 0 && hist
         <div class="ld-rating-col">
           <div class="ld-card ld-rating-card">
             {showRating && avg != null && <div class="ld-big-rating">{avg.toFixed(1)}</div>}
-            <div class="ld-rating-sub">{total} review{total === 1 ? '' : 's'}</div>
+            <div class="ld-rating-sub">{total} <ui-copy style="display:contents" data-i18n="web-common.c97ace4c8fef2cee">review</ui-copy>{total === 1 ? '' : 's'}</div>
             {hist && (
               <div>
                 {(['5', '4', '3', '2', '1'] as const).map((star) => {
@@ -68,7 +68,7 @@ const avg = total > 0 && hist
                 <span class="ld-review-author">{r.author_name ?? 'Guest'}</span>
                 {(r.verified_attendee === 1) && <span class="ld-verified-tag">{reviewsCopy.verifiedTag}</span>}
                 <span class="ld-review-stars">★ {r.rating.toFixed(1)}</span>
-                <span class="ld-review-meta">VERIFIED</span>
+                <span data-i18n="web-common.8766e017df3d4497" class="ld-review-meta">VERIFIED</span>
               </div>
               {r.body && <p class="ld-review-body">{r.body}</p>}
               {(r.creator_reply || r.reply) && (

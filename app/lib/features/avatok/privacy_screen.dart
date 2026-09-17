@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -92,6 +94,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final p = _p;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -99,7 +102,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
       body: p == null
           ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
-              Text('HOW PEOPLE CAN FIND YOU', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_how_people_can_find_you_036cc1ea01, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               // AvaTOK number — always on, locked.
               _card(
@@ -107,8 +110,8 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                   _iconBadge(PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
                   const SizedBox(width: Msg.s2),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_me?.hasNumber == true ? 'Your AvaTOK number' : 'AvaTOK number', style: ADText.rowName()),
-                    Text(_me?.hasNumber == true ? (_me!.display ?? '') : 'Always discoverable', style: ADText.preview(c: AD.textSecondary)),
+                    Text(_me?.hasNumber == true ? uiCopy(UiMessage.m_your_avatok_number_729bcb7270) : uiCopy(UiMessage.m_avatok_number_aff0836a28), style: ADText.rowName()),
+                    Text(_me?.hasNumber == true ? (_me!.display ?? '') : uiCopy(UiMessage.m_always_discoverable_8602ce0993), style: ADText.preview(c: AD.textSecondary)),
                   ])),
                   PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
                 ]),
@@ -124,14 +127,14 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
               _toggleRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), 'Find me by my email',
                   'People who know your email can add you', p.emailDiscoverable, (v) => _save(email: v)),
               const SizedBox(height: Msg.s5),
-              Text('WHO CAN ADD ME', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_who_can_add_me_372ec860c1, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               _whoOption('everyone', 'Everyone', 'Anyone who searches your AvaTOK number or email'),
               _whoOption('number_only', 'Only with my AvaTOK number', 'People must know your exact number'),
               _whoOption('nobody', 'Nobody', 'You won’t appear in search or QR adds'),
               const SizedBox(height: Msg.s5),
               // [LASTSEEN-PRIVACY-1] WhatsApp-style last-seen visibility.
-              Text('WHO CAN SEE MY LAST SEEN', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_who_can_see_my_last_20fa7bff9f, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               _lastSeenOption('everyone', 'Everyone', 'Anyone you chat with sees when you were last online'),
               _lastSeenOption('contacts', 'My contacts', 'Only people in your contact list'),
@@ -306,6 +309,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: _pickerHeader(context, 'Last seen'),
@@ -314,12 +318,12 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('ONLY THESE PEOPLE SEE YOUR LAST SEEN', style: ADText.sectionLabel()),
+            child: UiText(UiMessage.m_only_these_people_see_your_024ea650dd, style: ADText.sectionLabel()),
           ),
         ),
         Expanded(
           child: widget.contacts.isEmpty
-              ? Center(child: Text('No contacts yet', style: ADText.preview(c: AD.textSecondary)))
+              ? Center(child: UiText(UiMessage.m_no_contacts_yet_20e708a4bf, style: ADText.preview(c: AD.textSecondary)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   itemCount: widget.contacts.length,
@@ -356,7 +360,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
                   borderRadius: Msg.brMd,
                 ),
                 alignment: Alignment.center,
-                child: Text('Save (${_picked.length})',
+                child: UiText(UiMessage.m_save_value1_4ff011c543, params: {'value1': (_picked.length).toString()},
                     style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: Colors.white)),
               ),
             ),

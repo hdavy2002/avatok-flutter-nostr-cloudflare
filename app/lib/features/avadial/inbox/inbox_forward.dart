@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -33,13 +35,13 @@ Future<void> forwardVoicemail(
   if (!context.mounted) return;
 
   final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(const SnackBar(content: Text('Forwarding voicemail…')));
+  messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_forwarding_voicemail_3d712627b7)));
 
   try {
     final bytes = await fetchBytes();
     if (bytes == null) {
       Analytics.capture('inbox_voicemail_forward', {'ok': false, 'stage': 'fetch'});
-      messenger.showSnackBar(const SnackBar(content: Text('Couldn’t load the recording to forward.')));
+      messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_load_the_recording_9cd54fae5a)));
       return;
     }
     final name = 'Voicemail from $callerName.wav'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
@@ -68,15 +70,15 @@ Future<void> forwardVoicemail(
     if (context.mounted) {
       messenger.showSnackBar(SnackBar(
         content: Text(ok
-            ? 'Forwarded to ${targets.length} ${targets.length == 1 ? 'chat' : 'chats'}'
-            : 'Couldn’t forward the recording.'),
+            ? uiCopy(UiMessage.m_forwarded_to_value1_value2_b8609d9420, {'value1': (targets.length).toString(), 'value2': (targets.length == 1 ? 'chat' : 'chats').toString()})
+            : uiCopy(UiMessage.m_couldn_t_forward_the_recording_95e2efd0a0)),
       ));
     }
   } catch (e) {
     AvaLog.I.log('avadial', 'inbox forward failed: $e');
     Analytics.capture('inbox_voicemail_forward', {'ok': false, 'stage': 'send'});
     if (context.mounted) {
-      messenger.showSnackBar(const SnackBar(content: Text('Couldn’t forward the recording.')));
+      messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_forward_the_recording_95e2efd0a0)));
     }
   }
 }

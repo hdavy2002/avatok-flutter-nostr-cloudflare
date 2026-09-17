@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "मुख्यविषयवस्तुं प्रति गच्छतु"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "भारतीयनिर्मातृभ्यः क्रीडापत्रद्वारम्"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "भक्तसमुदायः अस्ति किम्? स्वकीयां प्रस्तुति आरभत।"
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "भवतः कौशलम्, कथा, समयश्च — भक्तान् आमन्त्रयत, स्वनियमैः आरक्षणानि गृह्णीत।"
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "निःशुल्कं सृजनम् आरभत"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "आयविधीन् पश्यत"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "भवतः पृष्ठम्। भवतः मूल्यं। भवतः जनाः।"
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · प्रत्यक्षम्"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "स्वकीयां livestream-प्रस्तुतिं कार्यक्रमं कुरुत।"
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "प्रत्यक्षकक्षा, watch party, अभ्यासः वा पूजा — क्रीडापत्रं योजयित्वा कक्षं उद्घाटयत, भक्तान् च मिलत।"
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "प्रत्यक्षकार्यक्रमं योजयत"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "क्रीडापत्रयुक्तम् · अन्तर्जाले सञ्चालितम्"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "एकैकस्य भक्तस्य कृते स्वकीयः समयः।"
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "अन्तर्जाल-चलच्चित्रमेलनाय समयखण्डान् उद्घाटयत। परामर्शं, अभ्यासं, कथाः वा एकाग्रं सम्भाषणं ददातु।"
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 सत्रं ददातु"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "गोपनीयम् · चलच्चित्रमेलनम्"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "THE BIG SCREEN"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "पटले यत् भवति तत् सम्बन्धरूपेण परिणतुं शक्नोति।"
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "सङ्गीतम्, मुखसज्जा, क्रीडा, पाककला, नृत्यं, भक्तिश्च — भक्ताः पूर्वमेव पश्यन्ति। अधुना तेभ्यः कक्षं ददातु।"
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "प्रत्यक्षकक्षः / शनिवासरे रात्रौ ८:००"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "विपणिस्थलं पश्यत"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "भवतः पञ्चाङ्गम्, भवतः नियमाः"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "भवतः 1:1 कोणः।"
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "उपलब्धसमयं निर्धारयत, पद्धतिं विवृणुत, प्रत्येकस्य आरक्षणस्य पूर्वं अपेक्षाः स्पष्टाः स्थापयत। सदा केवलम् अन्तर्जाले।"
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "स्पष्टसीमाभिः सह अन्तर्जाल-चलच्चित्रमेलनानि।"
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "विषयवस्तुतः प्रस्तावपर्यन्तम्"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "भवान् किं सञ्चालयिष्यति?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "नृत्यसभा"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "नृत्यरचना, अभिप्रायः, अभ्यासकक्षश्च।"
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "गृहस्वादः"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "पाकविधिः, प्रादेशिकभोजनम्, पाकशालाकौशलानि च।"
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "अध्ययनसखा"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "पुनरावृत्तिः, भाषाभ्यासः, परीक्षाप्रेरणा च।"
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "शैलीपटलम्"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "रूपविवरणम्, साड़ीधारणम्, मितव्ययीक्रीडाः च।"
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "एतत् कथं कार्यं करोति"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "चित्रपत्रात् आरक्षणपर्यन्तम् — चत्वारि सरलपदानि।"
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "सृजत"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "स्वकीयां निर्मातृपृष्ठिकां प्रस्तावं च लिखत।"
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "मूल्यं निर्धारयत"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "क्रीडापत्रस्य वा सत्रस्य मूल्यं चिनुत।"
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "वितरत"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "सम्बन्धं स्वसमुदायाय प्रेषयत।"
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "सञ्चालयत"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "कक्षं उद्घाटयत, समयं ददातु, स्वकीयां प्रस्तुतिं सञ्चालयत।"
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "भवतां भक्तेभ्यः"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "भक्तस्य कृते आरक्षणं कथं दृश्यते?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "एकं स्पष्टं पृष्ठम्। एका तिथिः। एका आसन्दी। भुगतानानन्तरं कक्षं प्रति मार्गः तेभ्यः प्राप्यते।"
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "वास्तविकसूचीः पश्यत"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "आरक्षणपत्रम्"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "प्रत्यक्षकार्यक्रमः"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "एका आसन्दी सुरक्षितः"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "अन्तर्जाले · भारतम्"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "गणना स्पष्टतया"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "स्वकीयम् सकलानुमानं पश्यत।"
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "मूल्यप्रवेशान् परिवर्त्य प्रत्यक्षकार्यक्रमेभ्यः 1:1 आरक्षणेभ्यश्च कियत् सकलं भवेत् इति पश्यत।"
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "प्रत्यक्षक्रीडापत्रमूल्यम्"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "प्रत्येककार्यक्रमस्य दर्शकाः"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "मासिककार्यक्रमाः"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 मूल्यम्"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "मासिकआरक्षणानि"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "प्रत्यक्षकार्यक्रमस्य सकलम्"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 सकलम्"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "संयुक्तसकलानुमानम्"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "मञ्चशुल्कं, कराः, धनप्रतिदानानि, अन्यव्ययाश्च पूर्वं प्रदर्शितम् उदाहरणसकलम्। आयस्य प्रतिज्ञा नास्ति।"
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR-मुद्रायां योजनायाः उदाहरणम्; वास्तविकसूचीमूल्यं checkout-मूल्यनिर्धारणं च वर्तमानमूल्यमार्गदर्शिकाम् अनुसरति।"
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "ज्ञातव्यं शुभम्"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "स्पष्टाः सीमाः श्रेष्ठान् कक्षान् निर्मान्ति।"
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "महान् भक्तसमुदायः आवश्यकः किम्?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "न आवश्यकः। एकेन उपयोगिना प्रस्तावेन आरभ्य स्वकार्यं ये पूर्वमेव इच्छन्ति तैः सह तत् वितरत।"
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "किम् एतत् प्रत्यक्षभेटी-आरक्षणम्?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "न। प्रत्यक्षकार्यक्रमाः 1:1 सत्राणि च अन्तर्जाले भवन्ति। स्वकीयां सूचीम् अपेक्षाश्च स्पष्टाः स्थापयत।"
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "कदा भुगतानं प्राप्स्यामि?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "भुगतानसमयः योग्यविधयश्च निर्मातृ-पटलस्य तथा प्रवर्तमानेषु नियमेषु दृश्यन्ते।"
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "स्वसीमाः अहं निर्धारयितुं शक्नोमि किम्?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "आम्। प्रकाशनात् पूर्वं पद्धतिं, उपलब्धतां, मूल्यं, सत्रे समाविष्टानि च चिनुत।"
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "भवतः अवसरः"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "स्वकीयायै वाचे क्रीडापत्रं ददातु।"
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "अद्यैव एकं प्रस्तावं लिखत। श्वः प्रथमं कक्षं उद्घाटयत।"
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "स्वकीयां निःशुल्कसूचीं सृजत"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "अलंकारचित्रम्"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "सकलायानुमानगणकम्"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "बहुधा पृष्टाः प्रश्नाः"
+    }
+  }
+}

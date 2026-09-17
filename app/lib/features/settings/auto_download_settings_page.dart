@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -58,6 +61,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mode = _mode;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -75,7 +79,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
               child: Row(children: [
                 AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
-                Expanded(child: Text('Auto-download', style: ADText.appTitle(c: AD.onBand(AD.headerFooter)), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: UiText(UiMessage.m_auto_download_7034e9d971, style: ADText.appTitle(c: AD.onBand(AD.headerFooter)), maxLines: 1, overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ),
@@ -90,9 +94,8 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
-                Text(
-                  'When should AvaTOK download the photos, videos, files and voice '
-                  'notes people send you?',
+                UiText(
+                  UiMessage.m_when_should_avatok_download_the_1fb2eb6e23,
                   style: ADText.preview(),
                 ),
                 const SizedBox(height: 16),
@@ -101,24 +104,24 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   value: AutoDownloadMode.always,
                   icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill),
                   color: AD.online,
-                  title: 'Download media automatically',
-                  subtitle: 'Media is ready to view the moment it arrives.',
+                  title: uiCopy(UiMessage.m_download_media_automatically_b3c40fa34b),
+                  subtitle: uiCopy(UiMessage.m_media_is_ready_to_view_9ef181219d),
                 ),
                 _option(
                   mode: mode,
                   value: AutoDownloadMode.wifiOnly,
                   icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.fill),
                   color: AD.iconSearch,
-                  title: 'Download on Wi-Fi only',
-                  subtitle: 'Save mobile data — download over Wi-Fi, tap to fetch on cellular.',
+                  title: uiCopy(UiMessage.m_download_on_wi_fi_only_ad0e211a50),
+                  subtitle: uiCopy(UiMessage.m_save_mobile_data_download_over_271a36c04e),
                 ),
                 _option(
                   mode: mode,
                   value: AutoDownloadMode.never,
                   icon: PhosphorIcons.handPalm(PhosphorIconsStyle.fill),
                   color: AD.danger,
-                  title: 'Do not download automatically',
-                  subtitle: 'Nothing downloads until you tap it — you stay fully in control.',
+                  title: uiCopy(UiMessage.m_do_not_download_automatically_f3a4e53a44),
+                  subtitle: uiCopy(UiMessage.m_nothing_downloads_until_you_tap_adae3083cf),
                 ),
                 const SizedBox(height: Msg.s4),
                 Container(
@@ -133,9 +136,8 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                         size: 18, color: AD.textSecondary),
                     const SizedBox(width: Msg.s2),
                     Expanded(
-                      child: Text(
-                        'You can always tap any attachment to download it, whatever '
-                        'you choose here. Once downloaded, it is kept on this phone.',
+                      child: UiText(
+                        UiMessage.m_you_can_always_tap_any_05bcf762d0,
                         style: ADText.preview(),
                       ),
                     ),

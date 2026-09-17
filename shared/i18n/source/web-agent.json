@@ -1,0 +1,20 @@
+{
+  "web-agent.024ee1c3fd2574d8": "All lines are busy right now — try again shortly",
+  "web-agent.9eaa259335df9363": "Talk in",
+  "web-agent.d4a006e38abbfe21": "Time is almost up — the agent will wrap up. Start another call to keep going.",
+  "web-agent.ac49f138b6fa2128": "You talked with",
+  "web-agent.10c22bcf4c768b51": "for",
+  "web-agent.438e3083daedfaa6": "Talk now",
+  "web-agent.478b14cb44002258": "Free to call — the creator covers it. Mic access required.",
+  "web-agent.e81c9174b7807a75": "Billed per minute from your AvaWallet. Mic access required.",
+  "web-agent.8073bb0cbbb0838e": "verifying…",
+  "web-agent.3ac5c5dbc21c58a4": "starting call…",
+  "web-agent.4b6394535d80d9a6": "connecting…",
+  "web-agent.0d50d8a9e4b15571": "● speaking",
+  "web-agent.efdbdf81cb451d9c": "wrapping up",
+  "web-agent.8560878b8782af43": "listening",
+  "web-agent.8630b4dd33f22d2f": "Could not connect",
+  "web-agent.00ff74289a121c75": "Call ended",
+  "web-agent.b124ccbacf574ce2": " This call was free.",
+  "web-agent.1cdf1182ad2c34a9": " Billed ~{value0} min; unused escrow is refunded."
+}

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // [ADDCALL-1-UI 2026-08-06] The Add-to-call contact picker.
 //
 // Spec: `Specs/SPEC-ADD-TO-CALL-2026-08-06.md` (§8 caps, §9 Phase 1).
@@ -134,9 +137,8 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
     if (_atLimit) {
       // Refuse the tap and SAY why. Silently ignoring it reads as a broken row.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'A call can have at most $kAddToCallMaxParticipants people, so '
-              'you can add ${_allowance == 1 ? '1 person' : '$_allowance people'}.')));
+          content: UiText(
+              UiMessage.m_a_call_can_have_at_0af577a0f0, params: {'kAddToCallMaxParticipants': (kAddToCallMaxParticipants).toString(), 'value2': (_allowance == 1 ? '1 person' : '$_allowance people').toString()})));
       Analytics.capture('addcall_picker_cap_hit', {
         'max_members': kAddToCallMaxParticipants,
         'allowance': _allowance,
@@ -156,6 +158,7 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final contacts = _filtered;
     final n = _selected.length;
     final remaining = _allowance - n;
@@ -172,14 +175,14 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(children: [
-            Text('Add to call', style: ADText.threadName()),
+            UiText(UiMessage.m_add_to_call_ff03800824, style: ADText.threadName()),
             const Spacer(),
             Text(
               // The allowance is always on screen, before AND after a selection,
               // so the cap is never a surprise at the moment of confirming.
               remaining <= 0
-                  ? 'Limit reached'
-                  : 'You can add $remaining more',
+                  ? uiCopy(UiMessage.m_limit_reached_6a1ca519b7)
+                  : uiCopy(UiMessage.m_you_can_add_remaining_more_dceef92c35, {'remaining': (remaining).toString()}),
               style: ADText.preview(c: AD.textTertiary),
             ),
           ]),
@@ -205,7 +208,7 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
-                    hintText: 'Search contacts',
+                    hintText: uiCopy(UiMessage.m_search_contacts_f863aac249),
                     hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                   ),
                 ),
@@ -224,8 +227,8 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
                       padding: const EdgeInsets.symmetric(vertical: Msg.s6),
                       child: Text(
                           _query.isEmpty
-                              ? 'No AvaTOK contacts to add'
-                              : 'No matches',
+                              ? uiCopy(UiMessage.m_no_avatok_contacts_to_add_29d0f18daa)
+                              : uiCopy(UiMessage.m_no_matches_2df01a03ff),
                           style: ADText.preview(c: AD.textSecondary)))
                   : ListView(
                       shrinkWrap: true,
@@ -247,8 +250,8 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
                   // should know that before they press it (spec §9 — the gap is
                   // expected in Phase 1, so it must not be a surprise).
                   n == 0
-                      ? 'Select who to add'
-                      : 'Start a group call with ${_names(n)}',
+                      ? uiCopy(UiMessage.m_select_who_to_add_62a714e659)
+                      : uiCopy(UiMessage.m_start_a_group_call_with_c38dc36629, {'value1': (_names(n)).toString()}),
                   style: ADText.preview(c: AD.textTertiary),
                 ),
               ),
@@ -342,6 +345,7 @@ class _ConfirmButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: AnimatedOpacity(
@@ -355,7 +359,7 @@ class _ConfirmButton extends StatelessWidget {
             borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Add', style: ADText.rowName(c: AD.textOnInput)),
+            UiText(UiMessage.m_add_9fd728c66c, style: ADText.rowName(c: AD.textOnInput)),
             const SizedBox(width: Msg.s1),
             PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill),
                 size: 17, color: AD.textOnInput),

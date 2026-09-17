@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -66,15 +69,15 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('New community', style: _dialogTitle),
+        title: UiText(UiMessage.m_new_community_3d86379bef, style: _dialogTitle),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineField(controller: nameCtrl, autofocus: true, hint: 'Community name'),
+          ZineField(controller: nameCtrl, autofocus: true, hint: uiCopy(UiMessage.m_community_name_0565934ab9)),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: aboutCtrl, hint: 'What is it about? (optional)'),
+          ZineField(controller: aboutCtrl, hint: uiCopy(UiMessage.m_what_is_it_about_optional_538b069754)),
         ]),
         actions: [
-          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx, false)),
-          ZineButton(label: 'Create', fontSize: 15, onPressed: () => Navigator.pop(ctx, true)),
+          ZineButton(label: uiCopy(UiMessage.m_cancel_19766ed6cc), variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx, false)),
+          ZineButton(label: uiCopy(UiMessage.m_create_4759498ac2), fontSize: 15, onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
     );
@@ -86,7 +89,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     if (ann == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not create the community — try again')));
+            const SnackBar(content: UiText(UiMessage.m_could_not_create_the_community_67aadcec2a)));
       }
       return;
     }
@@ -120,11 +123,11 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('Join a community', style: _dialogTitle),
-        content: ZineField(controller: ctrl, autofocus: true, hint: 'Community code'),
+        title: UiText(UiMessage.m_join_a_community_540dc95d72, style: _dialogTitle),
+        content: ZineField(controller: ctrl, autofocus: true, hint: uiCopy(UiMessage.m_community_code_6bbb6359f2)),
         actions: [
-          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
-          ZineButton(label: 'Join', variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
+          ZineButton(label: uiCopy(UiMessage.m_cancel_19766ed6cc), variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+          ZineButton(label: uiCopy(UiMessage.m_join_fd30fe681b), variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
         ],
       ),
     );
@@ -134,7 +137,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
       await _store.upsert(joined);
       if (mounted) setState(() => _communities = [joined, ..._communities.where((c) => c.id != joined.id)]);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Community not found')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_community_not_found_56c80558de)));
     }
   }
 
@@ -146,10 +149,11 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Communities',
+        title: uiCopy(UiMessage.m_communities_c864f329f5),
         markWord: 'Communities',
         tag: 'groups that belong together',
         showBack: Navigator.of(context).canPop(),
@@ -161,7 +165,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         ],
       ),
       floatingActionButton: ZineButton(
-        label: 'New community',
+        label: uiCopy(UiMessage.m_new_community_3d86379bef),
         fontSize: 17,
         icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
         trailingIcon: false,
@@ -196,16 +200,16 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
                           Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: ADText.rowName().copyWith(fontSize: 17)),
                           const SizedBox(height: Msg.rowTextGap),
-                          Text(c.about.isNotEmpty ? c.about : 'A place for your people',
+                          Text(c.about.isNotEmpty ? c.about : uiCopy(UiMessage.m_a_place_for_your_people_571ae2d80a),
                               maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: ADText.preview().copyWith(fontSize: 13)),
                         ])),
                         const SizedBox(width: Msg.s3),
                         Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                          Text('${c.members.length} members',
+                          UiText(UiMessage.m_value1_members_32b7fac4dc, params: {'value1': (c.members.length).toString()},
                               style: ADText.statCaption(c: AD.textSecondary)),
                           const SizedBox(height: Msg.rowTextGap),
-                          Text('${c.groups.length} channels',
+                          UiText(UiMessage.m_value1_channels_ec90d888c8, params: {'value1': (c.groups.length).toString()},
                               style: ADText.statCaption()),
                         ]),
                       ]),
@@ -225,7 +229,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
             ),
             const SizedBox(height: Msg.s5),
             ZineButton(
-              label: 'Start a community',
+              label: uiCopy(UiMessage.m_start_a_community_2d211bb916),
               variant: ZineButtonVariant.blue,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               trailingIcon: false,

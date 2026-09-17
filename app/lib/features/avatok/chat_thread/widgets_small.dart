@@ -29,6 +29,7 @@ class _SwipeToReplyState extends State<_SwipeToReply> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final onReply = widget.onReply;
     if (onReply == null) return widget.child;
     final progress = (_dx.abs() / _threshold).clamp(0.0, 1.0);
@@ -119,6 +120,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final h = MediaQuery.of(context).size.height;
     final progress = (_dy.abs() / (h * 0.4)).clamp(0.0, 1.0);
     // [UI-NOMOTION-1 2026-08-06] `fit: contain` + `gaplessPlayback`.
@@ -138,7 +140,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
         widget.onDecodeError?.call();
         return const Padding(
           padding: EdgeInsets.all(24),
-          child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
+          child: UiText(UiMessage.m_couldn_t_load_image_35d2909261, style: TextStyle(color: Colors.white)),
         );
       },
     );
@@ -212,6 +214,7 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
@@ -269,6 +272,7 @@ class _RecordingDotState extends State<_RecordingDot>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!widget.active) {
       return const _Dot(opacity: 0.45);
     }
@@ -284,12 +288,12 @@ class _Dot extends StatelessWidget {
   final double opacity;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         width: 10,
         height: 10,
         decoration: BoxDecoration(
           color: AD.danger.withValues(alpha: opacity),
           shape: BoxShape.circle,
         ),
-      );
+      ); }
 }

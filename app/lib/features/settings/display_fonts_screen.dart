@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -30,6 +33,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: PreferredSize(
@@ -46,36 +50,35 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
               child: Row(children: [
                 AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
-                Expanded(child: Text('Display & fonts', style: ADText.appTitle(c: AD.onBand(AD.headerFooter)), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: UiText(UiMessage.m_display_fonts_a315ff227d, style: ADText.appTitle(c: AD.onBand(AD.headerFooter)), maxLines: 1, overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ),
         ),
       ),
       body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
-        Text('Make message, chat, contacts and menu text bigger or smaller. '
-            'Big titles and icons stay the same size.', style: ADText.preview()),
+        UiText(UiMessage.m_make_message_chat_contacts_and_4aa2e8cdbf, style: ADText.preview()),
         const SizedBox(height: Msg.s4),
         // Live preview card — text inside scales with the chosen value.
         AdCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Preview', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_preview_324b134f57, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_v)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Amy Williams', style: ADText.threadName()),
+                UiText(UiMessage.m_amy_williams_87ef06e684, style: ADText.threadName()),
                 const SizedBox(height: 4),
-                Text('Hey! Did you get my message? 👋', style: ADText.rowName()),
+                UiText(UiMessage.m_hey_did_you_get_my_f0f1d9e553, style: ADText.rowName()),
                 const SizedBox(height: 2),
-                Text('Delivered · 19:59', style: ADText.preview()),
+                UiText(UiMessage.m_delivered_19_59_01e68c10db, style: ADText.preview()),
               ]),
             ),
           ]),
         ),
         const SizedBox(height: Msg.s4),
         Row(children: [
-          Text('Text size', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_text_size_d68761cc1e, style: ADText.sectionLabel()),
           const Spacer(),
           Text(FontScale.labelFor(_v), style: ADText.statCaption(c: AD.iconSearch)),
         ]),
@@ -110,7 +113,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
         ]),
         const SizedBox(height: Msg.s4),
         Center(child: AdButton(
-          label: 'Reset to default', variant: AdButtonVariant.ghost, fontSize: 14,
+          label: uiCopy(UiMessage.m_reset_to_default_bc5b45ae7b), variant: AdButtonVariant.ghost, fontSize: 14,
           icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
           onPressed: () => _apply(1.0))),
       ]),

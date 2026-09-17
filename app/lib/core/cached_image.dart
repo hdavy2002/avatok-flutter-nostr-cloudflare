@@ -5,41 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'analytics.dart';
+import '../identity/identity.dart';
 import 'avatar_cache.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// [PUBLIC-IMG-PEEK-1] THE PUBLIC-IMAGE TIER.
-//
-// Everything in this file serves PUBLIC http(s) images: og:image link-preview
-// heroes, site favicons, YouTube posters, AI-generated artifacts, public post
-// and listing media.
-//
-// PUBLIC vs DM MEDIA — deliberately DIFFERENT subsystems, and the choice is not
-// an accident:
-//   * DM attachments are per-account ENCRYPTED media and live under
-//     `media/<AccountScope.id>/` via `MediaService`. A parent and a child share
-//     one phone and must never be served each other's files.
-//   * Everything here carries no per-user secret and is content-addressed, so it
-//     lives in the SHARED `avatars/` pool and is correctly NOT account-scoped —
-//     the same og:image fetched by two accounts on one device IS the same bytes,
-//     and duplicating it per account would just double the disk and the
-//     downloads. `AvatarCache` still drops its in-memory index on an account
-//     switch, so nothing stale stays resident across a switch.
-//
-// Therefore an og:image must never be routed through `MediaService`, and a DM
-// attachment must never be routed through `AvatarCache`.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// [PUBLIC-IMG-PEEK-1] FIRE-AND-FORGET cache signal for the PUBLIC image tier.
-///
-/// Deliberately the SAME `cache_event` shape the chat-media tier uses
-/// (`MediaService.noteCacheEvent`), so ONE PostHog query covers every media tier
-/// and `store` is the only discriminator. `account_scoped: false` is the honest
-/// answer: this pool is content-addressed and shared by every account on the
-/// device (see the [CachedImage] class doc for why that is correct).
+// Native images use the account-scoped AvatarCache, including signed artifacts.
+// Private DM attachments continue to use MediaService's decrypted media cache.
+// No URLs or signed query values enter image telemetry.
 void notePublicImageCache(String result, String source, {int? ms}) {
   unawaited(Analytics.cacheEvent('public_image', result,
-      renderMs: ms, accountScoped: false, extra: {'source': source}));
+      renderMs: ms, accountScoped: true, extra: {'source': source}));
 }
 
 /// [PUBLIC-IMG-PEEK-1] Shared resolution for a public image: synchronous
@@ -111,18 +85,33 @@ class CachedThumb extends StatefulWidget {
 }
 
 class _CachedThumbState extends State<CachedThumb> {
+  bool _accountInvalidated = false;
+  bool _cacheAttemptFinished = false;
   File? _file;
 
   @override
   void initState() {
     super.initState();
+    AccountScope.changes.addListener(_accountChanged);
     _resolve();
+  }
+
+  void _accountChanged() {
+    if (!mounted) return;
+    setState(() { _file = null; _accountInvalidated = true; });
+  }
+  @override
+  void dispose() {
+    AccountScope.changes.removeListener(_accountChanged);
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(CachedThumb old) {
     super.didUpdateWidget(old);
-    if (old.url != widget.url || old.px != widget.px) {
+    if (_accountInvalidated || old.url != widget.url || old.px != widget.px) {
+      _accountInvalidated = false;
+      _cacheAttemptFinished = false;
       _file = null;
       _resolve();
     }
@@ -130,20 +119,24 @@ class _CachedThumbState extends State<CachedThumb> {
 
   void _resolve() {
     final src = widget.url;
+    final scope = AccountScope.id;
     resolvePublicImage(src, widget.px, (f, sync) {
-      if (f == null) return;
+      if (!mounted || widget.url != src || AccountScope.id != scope) return;
       if (sync) {
         _file = f;
+        _cacheAttemptFinished = true;
         return;
       }
-      if (!mounted || widget.url != src) return;
-      setState(() => _file = f);
+      setState(() {
+        _file = f;
+        _cacheAttemptFinished = true;
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.url.isEmpty) return widget.fallback;
+    if (_accountInvalidated || widget.url.isEmpty) return widget.fallback;
     final f = _file;
     if (f != null) {
       return Image.file(f,
@@ -155,6 +148,9 @@ class _CachedThumbState extends State<CachedThumb> {
           // A poisoned cache entry degrades to a live network load.
           errorBuilder: (_, __, ___) => _net());
     }
+    if (!_cacheAttemptFinished) {
+      return SizedBox(width: widget.width, height: widget.height, child: widget.fallback);
+    }
     return _net();
   }
 
@@ -162,6 +158,7 @@ class _CachedThumbState extends State<CachedThumb> {
         // Ask Cloudflare for a small variant when the host is ours; a no-op on
         // every third-party host (see [AvatarCache.sizedUrl]).
         AvatarCache.sizedUrl(widget.url, widget.px),
+        headers: const {'Accept': AvatarCache.accept},
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -251,6 +248,7 @@ class CachedImage extends StatefulWidget {
 }
 
 class _CachedImageState extends State<CachedImage> {
+  bool _accountInvalidated = false;
   /// Resolved on-disk file. Set SYNCHRONOUSLY in [initState] on a warm cache, so
   /// the very first frame paints the real image with no spinner.
   File? _file;
@@ -273,17 +271,29 @@ class _CachedImageState extends State<CachedImage> {
   @override
   void initState() {
     super.initState();
+    AccountScope.changes.addListener(_accountChanged);
     _resolve();
+  }
+
+  void _accountChanged() {
+    if (!mounted) return;
+    setState(() { _file = null; _missed = false; _reported = false; _accountInvalidated = true; });
+  }
+  @override
+  void dispose() {
+    AccountScope.changes.removeListener(_accountChanged);
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(CachedImage old) {
     super.didUpdateWidget(old);
-    if (old.url != widget.url ||
+    if (_accountInvalidated || old.url != widget.url ||
         old.cacheKey != widget.cacheKey ||
         old.transformUrl != widget.transformUrl ||
         old.cachePx != widget.cachePx ||
         old.width != widget.width) {
+      _accountInvalidated = false;
       _file = null;
       _missed = false;
       _reported = false;
@@ -310,8 +320,10 @@ class _CachedImageState extends State<CachedImage> {
       return;
     }
     final px = _px;
+    final scope = AccountScope.id;
+    final src = widget.url;
     // 1. SYNCHRONOUS in-memory index — no I/O, no await, no spinner.
-    final hit = AvatarCache.peek(widget.url, px, cacheKey: widget.cacheKey);
+    final hit = AvatarCache.peek(widget.url, px, cacheKey: widget.cacheKey, transform: widget.transformUrl);
     if (hit != null) {
       _file = hit;
       _note('hit', 'memory');
@@ -328,7 +340,7 @@ class _CachedImageState extends State<CachedImage> {
       } catch (_) {
         f = null;
       }
-      if (!mounted) return;
+      if (!mounted || widget.url != src || AccountScope.id != scope) return;
       _note(f != null ? 'miss' : 'stale', 'network',
           ms: DateTime.now().millisecondsSinceEpoch - t0);
       setState(() {
@@ -344,7 +356,7 @@ class _CachedImageState extends State<CachedImage> {
   /// `account_scoped: false` is the honest answer here — see the class doc.
   void _note(String result, String source, {int? ms}) {
     unawaited(Analytics.cacheEvent('public_image', result,
-        renderMs: ms, accountScoped: false, extra: {'source': source}));
+        renderMs: ms, accountScoped: true, extra: {'source': source}));
   }
 
   Widget _wrap(Widget child) => widget.radius != null
@@ -374,6 +386,7 @@ class _CachedImageState extends State<CachedImage> {
         // Ask Cloudflare for a SMALL variant when the host is ours; a no-op on
         // every other host (see [AvatarCache.sizedUrl]).
         widget.transformUrl ? AvatarCache.sizedUrl(widget.url, _px) : widget.url,
+        headers: const {'Accept': AvatarCache.accept},
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -390,6 +403,7 @@ class _CachedImageState extends State<CachedImage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_accountInvalidated) return _wrap(_spinner());
     if (widget.url.isEmpty) return _wrap(_broken());
     final f = _file;
     if (f != null) {

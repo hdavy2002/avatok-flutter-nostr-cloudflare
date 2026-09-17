@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -56,17 +58,18 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
     try {
       await PlatformApi.inboxAction(item['id'] as String, action);
       await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Done: $action')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_done_action_9bc1927cf2, params: {'action': (action).toString()})));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That didn\'t go through. Please try again.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_that_didn_t_go_through_d07b92301b)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       appBar: ZineAppBar(
-        title: 'Agent Inbox',
+        title: uiCopy(UiMessage.m_agent_inbox_8b01a83d97),
         markWord: 'Inbox',
         tag: 'AvaBrain · agentic layer',
         showBack: Navigator.of(context).canPop(),
@@ -109,13 +112,13 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
 class _Empty extends StatelessWidget {
   const _Empty();
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.all(Msg.s6),
         child: ZineEmptyState(
           icon: PhosphorIcons.robot(PhosphorIconsStyle.regular),
           text: 'Your agent is on it.\nMatches and suggestions show up here.',
         ),
-      );
+      ); }
 }
 
 class _InboxCard extends StatelessWidget {
@@ -126,6 +129,7 @@ class _InboxCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final status = (item['status'] ?? 'pending') as String;
     final autoApproved = status == 'auto_approved';
     final undoUntil = (item['undo_until'] as num?)?.toInt();
@@ -193,6 +197,7 @@ class _Pill extends StatelessWidget {
   final String text; final Color color;
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
@@ -225,15 +230,15 @@ class _ListenButton extends StatefulWidget {
 class _ListenButtonState extends State<_ListenButton> {
   bool _busy = false;
   @override
-  Widget build(BuildContext context) => ZineButton(
-        label: 'Listen',
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return ZineButton(
+        label: uiCopy(UiMessage.m_listen_225d29f620),
         variant: ZineButtonVariant.ghost,
         fontSize: 14,
         trailingIcon: false,
         loading: _busy,
         icon: PhosphorIcons.play(PhosphorIconsStyle.fill),
         onPressed: _busy ? null : _listen,
-      );
+      ); }
 
   Future<void> _listen() async {
     setState(() => _busy = true);
@@ -242,10 +247,10 @@ class _ListenButtonState extends State<_ListenButton> {
       // r['audio_path'] → GET via PlatformApi.agentAudioUrl(...) with an audio player.
       // (Wire to just_audio / audioplayers with the NIP-98 header; omitted here.)
       if (mounted && r['ready'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Audio ready — tap to play in the player.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_audio_ready_tap_to_play_6010538226)));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Couldn\'t create the audio just now. Please try again.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_create_the_audio_d071290405)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

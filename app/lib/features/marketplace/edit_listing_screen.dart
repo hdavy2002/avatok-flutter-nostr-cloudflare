@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -142,7 +144,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
     if (!mounted) return;
     Analytics.capture('listing_edited', {'listing_id': widget.listingId, 'expiry_changed': _expiryDays != null});
     if (ok) {
-      showAdToast(context, message: 'Listing updated.');
+      showAdToast(context, message: uiCopy(UiMessage.m_listing_updated_41164e12c5));
       Navigator.of(context).pop(true);
     } else {
       setState(() { _busy = false; _error = 'Could not save your changes. Try again.'; });
@@ -151,10 +153,11 @@ class _EditListingScreenState extends State<EditListingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
-        title: Text('Edit listing', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_edit_listing_eb1d952e8e, style: ADText.appTitle()),
         backgroundColor: AD.headerFooter,
         foregroundColor: AD.textPrimary,
         elevation: 0,
@@ -162,9 +165,9 @@ class _EditListingScreenState extends State<EditListingScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s6), children: [
-              _field('Title', TextField(controller: _title, decoration: _box(hint: 'What are you listing?'))),
+              _field('Title', TextField(controller: _title, decoration: _box(hint: uiCopy(UiMessage.m_what_are_you_listing_02b62320b6)))),
               const SizedBox(height: Msg.s4),
-              _field('Description', TextField(controller: _desc, maxLines: 4, decoration: _box(hint: 'Add the details buyers need'))),
+              _field('Description', TextField(controller: _desc, maxLines: 4, decoration: _box(hint: uiCopy(UiMessage.m_add_the_details_buyers_need_4befd82439)))),
               const SizedBox(height: Msg.s4),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(child: _field('Price', TextField(
@@ -189,9 +192,9 @@ class _EditListingScreenState extends State<EditListingScreen> {
                 onChanged: (v) => setState(() => _country = v ?? _country),
               )),
               const SizedBox(height: Msg.s4),
-              _field('Location', TextField(controller: _location, decoration: _box(hint: 'City or area'))),
+              _field('Location', TextField(controller: _location, decoration: _box(hint: uiCopy(UiMessage.m_city_or_area_3d4dee46f8)))),
               const SizedBox(height: Msg.s4),
-              Text('Photos — max 5', style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
+              UiText(UiMessage.m_photos_max_5_0da04518f3, style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
@@ -221,12 +224,12 @@ class _EditListingScreenState extends State<EditListingScreen> {
                   ),
               ]),
               const SizedBox(height: Msg.s4),
-              Text('Renew expiry (optional)', style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
+              UiText(UiMessage.m_renew_expiry_optional_5bc541db06, style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final dch in const [1, 5, 10, 20, 30])
                   ChoiceChip(
-                    label: Text('$dch day${dch == 1 ? '' : 's'}'),
+                    label: UiText(UiMessage.m_dch_day_value2_c532cd172f, params: {'dch': (dch).toString(), 'value2': (dch == 1 ? '' : uiCopy(UiMessage.m_s_043a718774)).toString()}),
                     labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         color: _expiryDays == dch ? Colors.white : AD.textSecondary),
                     selected: _expiryDays == dch,
@@ -248,7 +251,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
         child: SafeArea(
           minimum: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: AdButton(
-            label: _busy ? 'Saving…' : 'Save changes',
+            label: _busy ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_changes_dd0ae7a5cb),
             onPressed: _busy ? null : _save,
             loading: _busy,
             fullWidth: true,

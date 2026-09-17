@@ -1,3 +1,6 @@
+import { useTranslation as useUiTranslation } from "./i18n/react";
+import { UiText } from "./i18n/react";
+import { setLocaleAccount } from './i18n/localeStore';
 /* Clerk provider + the shared GuestGate — the auth foundation every other
  * phase (B/C/D/E) depends on. See MASTER-PROMPT §4b.
  *
@@ -45,7 +48,6 @@ import type { ReactNode } from 'react';
 import { CLERK_PUBLISHABLE_KEY } from './config';
 import { request, ApiError } from './apiClient';
 import { capture, identify, reset as resetAnalytics } from './analytics';
-import { markReady } from './performance';
 import type { GuestCreated } from './types';
 import { Modal } from '../components/Modal';
 import { EmailCodeSignIn } from '../islands/auth/EmailCodeSignIn';
@@ -67,34 +69,6 @@ const DEVICE_ID_KEY = 'avatok_device_id';
 // new one, and it is what the 401 retry in the admin workbench uses.
 let _clerkGetToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
-export interface AuthState { ready: boolean; accountId: string | null }
-let authState: AuthState = { ready: false, accountId: null };
-const authListeners = new Set<(state: AuthState) => void>();
-export function getAuthState(): AuthState { return { ...authState }; }
-export function subscribeAuthState(listener: (state: AuthState) => void): () => void {
-  authListeners.add(listener);
-  listener(getAuthState());
-  return () => { authListeners.delete(listener); };
-}
-function publishAuthState(state: AuthState): void {
-  if (authState.ready === state.ready && authState.accountId === state.accountId) return;
-  authState = state;
-  for (const listener of authListeners) {
-    try { listener(getAuthState()); } catch { /* one consumer cannot break auth */ }
-  }
-}
-function waitForAuth(timeoutMs: number, signedIn = false): Promise<void> {
-  if (authState.ready && (!signedIn || authState.accountId)) return Promise.resolve();
-  return new Promise((resolve) => {
-    const done = () => { clearTimeout(timer); authListeners.delete(listener); resolve(); };
-    const listener = (state: AuthState) => {
-      if (state.ready && (!signedIn || state.accountId)) done();
-    };
-    const timer = setTimeout(done, Math.max(0, timeoutMs));
-    authListeners.add(listener);
-  });
-}
-
 let _openGate: ((resolve: (jwt: string) => void, reject: (e: unknown) => void) => void) | null = null;
 
 /* [LIST-EMBED-1 2026-09-05] The app's WebView has no Clerk session — the app
@@ -188,21 +162,24 @@ export async function getActiveToken(
   return lsGet(GUEST_JWT_KEY);
 }
 
-/** Wait for Clerk's supported isLoaded lifecycle, not repeated token mints.
- * Signed-out readiness resolves immediately; a missing provider remains bounded. */
+/**
+ * Like getActiveToken, but tolerant of the cross-island race on dashboard pages:
+ * the body panels mount alongside <SidebarUser/> (the page's single ClerkProvider),
+ * whose ClerkBridge populates the module-level token getter a beat later. We poll
+ * briefly so a Clerk-only session (no guest token yet) resolves instead of reading
+ * null on first paint. Returns null only if nothing resolves within `timeoutMs`.
+ */
 export async function getActiveTokenWaited(
   timeoutMs = 5000,
   opts?: { skipCache?: boolean },
 ): Promise<string | null> {
-  // Embedded host tokens have their own response/deadline lifecycle.
-  if (!_hostToken) {
-    try { _hostToken = installEmbedBridge(); } catch { /* ordinary browser */ }
+  const start = Date.now();
+  for (;;) {
+    const t = await getActiveToken(opts);
+    if (t) return t;
+    if (Date.now() - start >= timeoutMs) return null;
+    await new Promise((r) => setTimeout(r, 150));
   }
-  if (!_hostToken) {
-    await waitForAuth(timeoutMs);
-    if (authState.ready && !authState.accountId) return null;
-  }
-  return getActiveToken(opts);
 }
 
 /**
@@ -277,12 +254,12 @@ export function ClerkIsland({ children }: { children: ReactNode }) {
 
 /** Keeps the module-level Clerk bridges in sync with the live session. */
 function ClerkBridge() {
-  const { isLoaded, isSignedIn, userId, getToken } = useAuth();
-  const { user } = useUser();
+  const { isSignedIn, getToken } = useAuth();
+  const { user, isLoaded: localeUserLoaded } = useUser();
+  useEffect(() => { if (localeUserLoaded) setLocaleAccount(user?.id ?? null); }, [localeUserLoaded, user?.id]);
   useEffect(() => {
     _clerkSignedIn = !!isSignedIn;
     _clerkGetToken = (opts) => getToken(opts);
-    publishAuthState({ ready: isLoaded, accountId: isLoaded ? userId ?? null : null });
     // [FAV-WIRE-1 2026-09-05] A token getter for the page's INLINE scripts.
     //
     // ListingDetailsComp.astro renders a non-module inline script by design, so
@@ -292,15 +269,12 @@ function ClerkBridge() {
     // `window` for a script on the page to read, and every call goes through
     // the same waited/cached path every island uses.
     (window as any).__avatokToken = () => getActiveTokenWaited(5000);
-  }, [isLoaded, isSignedIn, userId, getToken]);
-  useEffect(() => {
     return () => {
       _clerkGetToken = null;
       _clerkSignedIn = false;
-      publishAuthState({ ready: false, accountId: null });
       try { delete (window as any).__avatokToken; } catch { /* ignore */ }
     };
-  }, []);
+  }, [isSignedIn, getToken]);
 
   // §1.3 person identity — identify once we know who is signed in; reset on
   // sign-out so the next visitor doesn't inherit the previous person's id.
@@ -314,13 +288,6 @@ function ClerkBridge() {
       resetAnalytics();
     }
   }, [isSignedIn, user]);
-  const measuredAuth = useRef(false);
-  useEffect(() => {
-    if (!isLoaded || (isSignedIn && !user) || measuredAuth.current) return;
-    measuredAuth.current = true;
-    markReady('auth_ready', { signed_in: !!isSignedIn });
-  }, [isLoaded, isSignedIn, user]);
-
 
   return null;
 }
@@ -386,6 +353,8 @@ type Step = 'email' | 'code';
  * next cleanup pass, delete it.
  */
 export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -464,36 +433,33 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
         reset();
         onCancel?.();
       }}
-      title={step === 'email' ? 'Just your email' : 'Enter the code'}
+      title={step === 'email' ? uiT("web-common.98e9e7366f2ff657","Just your email") : uiT("web-common.b0ed70c457e2eeee","Enter the code")}
       dismissable={!busy}
     >
       {step === 'email' ? (
         <div className="space-y-4">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            We use it to send your booking and reminders. No password, no app needed.
-          </p>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-common.2f43d8ef1a67945a" source="We use it to send your booking and reminders. No password, no app needed." />{" "}</p>
           <Field
-            label="Email"
+            label={uiT("web-common.969ccbd3cf6300ec","Email")}
             lead="@"
             type="email"
             inputMode="email"
             autoComplete="email"
             autoFocus
-            placeholder="you@email.com"
+            placeholder={uiT("web-common.8d12b7f58c0d3fc8","you@email.com")}
             value={email}
             error={error}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submitEmail()}
           />
-          <Button fullWidth loading={busy} disabled={!emailValid} label="Send code" onClick={submitEmail} />
+          <Button fullWidth loading={busy} disabled={!emailValid} label={uiT("web-common.66a5b4090d14cb41","Send code")} onClick={submitEmail} />
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            We sent a 6-digit code to <span className="text-ink">{email}</span>.
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-common.e1bb527efffc74b7" source="We sent a 6-digit code to" />{" "}<span className="text-ink">{email}</span>.
           </p>
           <Field
-            label="Code"
+            label={uiT("web-common.340f463033e0fd5d","Code")}
             inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
@@ -504,15 +470,13 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             onKeyDown={(e) => e.key === 'Enter' && submitCode()}
           />
-          <Button fullWidth loading={busy} disabled={code.trim().length < 4} label="Verify" onClick={submitCode} />
+          <Button fullWidth loading={busy} disabled={code.trim().length < 4} label={uiT("web-common.eea2745e2867a677","Verify")} onClick={submitCode} />
           <button
             type="button"
             className="w-full font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
             disabled={busy}
             onClick={resend}
-          >
-            Resend code
-          </button>
+          ><UiText id="web-common.b97457409ab5b375" source="Resend code" />{" "}</button>
         </div>
       )}
     </Modal>
@@ -543,9 +507,8 @@ function GuestGateHost() {
 
   async function settle() {
     // The Clerk session is active by the time onAuthed fires, but getToken() can lag a
-    // tick behind setActive(), so wait for the signed-in lifecycle transition.
-    await waitForAuth(4000, true);
-    const jwt = await getActiveToken();
+    // tick behind setActive(), so use the polling reader rather than a bare read.
+    const jwt = await getActiveTokenWaited(4000);
     setOpen(false);
     if (jwt) cbRef.current?.resolve(jwt);
     else cbRef.current?.reject(new Error('no session after sign-in'));

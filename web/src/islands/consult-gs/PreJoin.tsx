@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * PreJoin — the green-room, ported for the GetStream consult lane
  * [WEB-GS-CONSULT-1 2026-09-01].
@@ -69,6 +71,8 @@ export function preflightFallbackFor(errorName: string | undefined): 'audio_only
 }
 
 export function PreJoin({ title, peerName, joining = false, error, onReady }: PreJoinProps) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
@@ -218,13 +222,12 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-5">
       <div>
-        <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Get ready</span>
+        <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk"><UiText id="web-consult-gs.0b5f4af0f352bfd9" source="Get ready" /></span>
         <h1 className="mt-2 font-display font-semibold text-[26px] leading-tight text-ink">
-          {title ?? 'Your 1:1 session'}
+          {title ?? uiT("web-consult-gs.2403c08f4b76ce33","Your 1:1 session")}
         </h1>
         {peerName && (
-          <p className="mt-1 font-body font-bold text-[15px] text-inkSoft">
-            with <span className="text-ink">{peerName}</span>
+          <p className="mt-1 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.0695b563acde461f" source="with" />{" "}<span className="text-ink">{peerName}</span>
           </p>
         )}
       </div>
@@ -236,21 +239,21 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             {perm === 'asking' ? (
               <>
                 <Spinner size={26} />
-                <p className="font-body font-bold text-[14px] text-inkSoft">Starting camera & mic…</p>
+                <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-consult-gs.6db860d780b1addc" source="Starting camera & mic…" /></p>
               </>
             ) : (
               <>
                 <p className="px-6 font-body font-bold text-[14px] text-inkSoft">
-                  {permErr ?? 'Allow camera & microphone to join.'}
+                  {permErr ?? uiT("web-consult-gs.c9dfe7237e764653","Allow camera & microphone to join.")}
                 </p>
-                <Button variant="blue" label="Allow & retry" onClick={() => void acquire()} />
+                <Button variant="blue" label={uiT("web-consult-gs.d85928b810be02e2","Allow & retry")} onClick={() => void acquire()} />
               </>
             )}
           </div>
         )}
         {perm === 'granted' && !camOn && (
           <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display font-semibold text-[16px] text-paper">
-            {camAvailable ? 'Camera off' : 'No camera — audio only'}
+            {camAvailable ? uiT("web-consult-gs.ce3ef7450f8e26f1","Camera off") : uiT("web-consult-gs.cdd907b920690158","No camera — audio only")}
           </div>
         )}
       </div>
@@ -261,13 +264,13 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
       <div className="flex flex-col gap-2.5">
         <div className="flex gap-2">
           <select
-            aria-label="Microphone"
+            aria-label={uiT("web-consult-gs.186352a881d0550e","Microphone")}
             className={`${selectClass} min-w-0 flex-1`}
             value={micId}
             onChange={(e) => setMicId(e.target.value)}
             disabled={perm !== 'granted'}
           >
-            {mics.length === 0 && <option value="">Default microphone</option>}
+            {mics.length === 0 && <option value=""><UiText id="web-consult-gs.253149635a430448" source="Default microphone" /></option>}
             {mics.map((d) => (
               <option key={d.deviceId} value={d.deviceId}>
                 🎙️ {d.label}
@@ -283,19 +286,19 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
               micOn ? 'bg-card text-ink' : 'bg-coral text-white',
             ].join(' ')}
           >
-            {micOn ? 'On' : 'Off'}
+            {micOn ? uiT("web-consult-gs.130011756125313c","On") : uiT("web-consult-gs.ca7981b46ecf2c17","Off")}
           </button>
         </div>
 
         <div className="flex gap-2">
           <select
-            aria-label="Camera"
+            aria-label={uiT("web-consult-gs.03494b0d1f803522","Camera")}
             className={`${selectClass} min-w-0 flex-1`}
             value={camId}
             onChange={(e) => setCamId(e.target.value)}
             disabled={perm !== 'granted' || !camAvailable}
           >
-            {cams.length === 0 && <option value="">{camAvailable ? 'Default camera' : 'No camera found'}</option>}
+            {cams.length === 0 && <option value="">{camAvailable ? uiT("web-consult-gs.a7608b45be4e7f3e","Default camera") : uiT("web-consult-gs.36abc25bd7c8b116","No camera found")}</option>}
             {cams.map((d) => (
               <option key={d.deviceId} value={d.deviceId}>
                 📷 {d.label}
@@ -313,7 +316,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
               camAvailable ? '' : 'opacity-60',
             ].join(' ')}
           >
-            {camOn ? 'On' : 'Off'}
+            {camOn ? uiT("web-consult-gs.130011756125313c","On") : uiT("web-consult-gs.ca7981b46ecf2c17","Off")}
           </button>
         </div>
       </div>
@@ -324,9 +327,8 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         * abandon a slot they have already paid for.
         */}
       {perm === 'granted' && !camAvailable && (
-        <p role="status" className="rounded-zine border-zine border-ink bg-paper2 p-3 font-body font-bold text-[14px] text-inkSoft">
-          No camera found — you&rsquo;ll join with audio only; you&rsquo;ll still see{' '}
-          {peerName ?? 'the creator'}.
+        <p role="status" className="rounded-zine border-zine border-ink bg-paper2 p-3 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-consult-gs.146936cb5546ebdb" source="No camera found — you’ll join with audio only; you’ll still see" />{' '}
+          {peerName ?? uiT("web-consult-gs.590aff5ff5318373","the creator")}.
         </p>
       )}
 
@@ -341,12 +343,10 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         fullWidth
         loading={joining}
         disabled={perm !== 'granted' || joining}
-        label={joining ? 'Joining…' : 'Join session'}
+        label={joining ? uiT("web-consult-gs.6bbb89ee5d48b326","Joining…") : uiT("web-consult-gs.760a7b2e2eae46f4","Join session")}
         onClick={join}
       />
-      <p className="text-center font-body font-bold text-[12px] text-inkMute">
-        You can mute or turn off your camera any time once you're in.
-      </p>
+      <p className="text-center font-body font-bold text-[12px] text-inkMute"><UiText id="web-consult-gs.1e7a7230fe9dfc02" source="You can mute or turn off your camera any time once you're in." />{" "}</p>
     </div>
   );
 }

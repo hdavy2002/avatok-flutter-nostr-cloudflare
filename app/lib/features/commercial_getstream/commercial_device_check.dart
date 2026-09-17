@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // Local commercial media check. This file deliberately has no gateway or room
 // dependency: capture is private until the caller explicitly joins.
 import 'dart:async';
@@ -341,12 +343,12 @@ class _CommercialDeviceCheckPanelState extends State<CommercialDeviceCheckPanel>
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return LayoutBuilder(builder: (context, constraints) {
         final wide = constraints.maxWidth >= 600;
         final preview = _preview(context);
         final controls = _controls(context);
         return wide ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: preview), const SizedBox(width: Msg.s3), Flexible(child: controls)]) : Column(children: [preview, controls]);
-      });
+      }); }
 
   Widget _preview(BuildContext context) {
     final track = widget.controller.cameraTrack;
@@ -364,7 +366,7 @@ class _CommercialDeviceCheckPanelState extends State<CommercialDeviceCheckPanel>
                     Icon(_cameraMissing ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold), color: Colors.white, size: 48),
                     if (_cameraMissing) ...[
                       const SizedBox(height: Msg.s2),
-                      Text('Audio only', style: ADText.preview(c: Colors.white)),
+                      UiText(UiMessage.m_audio_only_224b45b631, style: ADText.preview(c: Colors.white)),
                     ],
                   ])),
           ),
@@ -374,21 +376,21 @@ class _CommercialDeviceCheckPanelState extends State<CommercialDeviceCheckPanel>
   }
 
   Widget _controls(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Camera on when I join'), subtitle: _cameraMissing ? const Text('No camera found on this device') : null, value: widget.cameraEnabled && !_cameraMissing, onChanged: widget.captureEnabled && !_cameraMissing ? widget.onCameraChanged : null),
-        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Microphone on when I join'), value: widget.microphoneEnabled, onChanged: widget.captureEnabled ? widget.onMicrophoneChanged : null),
-        ListTile(contentPadding: EdgeInsets.zero, leading: Icon(widget.microphoneEnabled ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)), title: const Text('Microphone check'), subtitle: Text(_level == null ? (widget.microphoneEnabled ? 'Waiting for microphone input…' : 'Microphone off') : 'Input level'), trailing: SizedBox(width: 110, child: LinearProgressIndicator(value: widget.microphoneEnabled ? (_level ?? 0) : 0)),),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const UiText(UiMessage.m_camera_on_when_i_join_9268cee5e2), subtitle: _cameraMissing ? const UiText(UiMessage.m_no_camera_found_on_this_707adadc12) : null, value: widget.cameraEnabled && !_cameraMissing, onChanged: widget.captureEnabled && !_cameraMissing ? widget.onCameraChanged : null),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const UiText(UiMessage.m_microphone_on_when_i_join_8238694663), value: widget.microphoneEnabled, onChanged: widget.captureEnabled ? widget.onMicrophoneChanged : null),
+        ListTile(contentPadding: EdgeInsets.zero, leading: Icon(widget.microphoneEnabled ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)), title: const UiText(UiMessage.m_microphone_check_129fb4d331), subtitle: Text(_level == null ? (widget.microphoneEnabled ? uiCopy(UiMessage.m_waiting_for_microphone_input_909751d37b) : uiCopy(UiMessage.m_microphone_off_1bcbbc15e7)) : uiCopy(UiMessage.m_input_level_17b694d7ad)), trailing: SizedBox(width: 110, child: LinearProgressIndicator(value: widget.microphoneEnabled ? (_level ?? 0) : 0)),),
         // [AV-AUDIO-ONLY-1] Says what happened AND that the session still
         // works — a bare "no camera" reads as a failure and makes people
         // abandon a slot they have already paid for.
         if (_cameraMissing)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Msg.s2),
-            child: Text(
-              "No camera found — you'll join with audio only; you'll still see the other person.",
+            child: UiText(
+              UiMessage.m_no_camera_found_you_ll_ab81094916,
               style: ADText.preview(),
             ),
           ),
         if (widget.speakerControl != null) widget.speakerControl!,
-        if (_error != null) ...[Text(_error!, style: ADText.preview(c: AD.danger)), TextButton(onPressed: widget.captureEnabled ? () { widget.controller.clearCameraUnavailable(); unawaited(_syncTracks()); } : null, child: const Text('Retry device check'))],
+        if (_error != null) ...[Text(_error!, style: ADText.preview(c: AD.danger)), TextButton(onPressed: widget.captureEnabled ? () { widget.controller.clearCameraUnavailable(); unawaited(_syncTracks()); } : null, child: const UiText(UiMessage.m_retry_device_check_84833af0ec))],
       ]);
 }

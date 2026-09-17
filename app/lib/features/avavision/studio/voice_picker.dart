@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -55,7 +57,7 @@ class _VoicePickerState extends State<VoicePicker> {
     final url = v.previewUrl;
     if (url == null || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Preview sample coming soon for this voice.')));
+          const SnackBar(content: UiText(UiMessage.m_preview_sample_coming_soon_for_5a6315e507)));
       return;
     }
     setState(() => _playing = v.name);
@@ -69,6 +71,7 @@ class _VoicePickerState extends State<VoicePicker> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(children: _voices.map((v) {
       final sel = v.name == widget.selected;
       final playing = _playing == v.name;

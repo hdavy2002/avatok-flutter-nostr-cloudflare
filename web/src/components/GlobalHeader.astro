@@ -2,15 +2,18 @@
 import { publicImage } from '../lib/config';
 import GlobalLocaleControls from './GlobalLocaleControls.astro';
 import '../styles/global-home.css';
-interface Props { sticky?: boolean; }
-const { sticky = true } = Astro.props;
+interface Props { sticky?: boolean; design?: 'original' | 'disco'; homePath?: string; }
+const { sticky = true, design = 'original', homePath = '/' } = Astro.props;
 const links = [
   { href: '/marketplace', label: 'Explore' },
-  { href: '/#formats', label: 'For creators' },
-  { href: '/#how-it-works', label: 'How it works' },
-  { href: '/#payouts', label: 'Payouts' },
+  { href: `${homePath}#formats`, label: 'For creators' },
+  { href: `${homePath}#how-it-works`, label: 'How it works' },
+  { href: `${homePath}#payouts`, label: 'Payouts' },
 ];
 ---
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@144,800,100;144,900,100&family=Instrument+Sans:wght@400;500;600;700&family=Kalam:wght@400;700&display=swap" />
 <script is:inline>
   try {
     var match = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
@@ -19,28 +22,28 @@ const links = [
     document.documentElement.setAttribute('data-avatok-auth', signedIn ? 'in' : 'out');
   } catch (_) { document.documentElement.setAttribute('data-avatok-auth', 'out'); }
 </script>
-<header class:list={['avh', 'global-header', sticky && 'global-header--sticky']}>
-  <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>
+<header class:list={['avh', 'global-header', design === 'disco' && 'disco-header', sticky && 'global-header--sticky']}>
+  {design === 'original' && <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>}
   <div class="global-header__bar">
-    <a class="global-wordmark" href="/" aria-label="avaTOK global home"><img src={publicImage('/assets/global-original/ideas-header-logo.png', { width: 336, fit: 'scale-down' })} alt="avaTOK" width="168" height="57" /></a>
-    <nav class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
+    <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href={homePath} aria-label="avaTOK global home">{design === 'disco' ? <><span>ava</span><span>TOK</span></> : <img src={publicImage('/assets/global-original/ideas-header-logo.png', { width: 336, fit: 'scale-down' })} alt="avaTOK" width="168" height="57" />}</a>
+    <nav data-india-i18n-attr="aria-label:web-common.eb814be3ca3b78c0" class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
     <div class="global-header__actions">
       <GlobalLocaleControls />
-      <a class="global-header__login avh-auth-out" href="/sign-in">Log in</a>
-      <a class="global-button global-button--red avh-auth-out" href="/sign-up?role=creator&country=global">Start earning <span aria-hidden="true">↗</span></a>
-      <a class="global-button global-button--red avh-auth-in" href="/dashboard">Dashboard</a>
-      <a class="global-header__login avh-auth-in" href="/sign-out">Sign out</a>
+      <a data-i18n="web-common.c189840cf7e2d6f6" class="global-header__login avh-auth-out" href="/sign-in">Log in</a>
+      <a class="global-button global-button--red avh-auth-out" href="/sign-up?role=creator&country=global"><ui-copy style="display:contents" data-i18n="web-common.440370b25617c61e">Start earning</ui-copy> <span aria-hidden="true">↗</span></a>
+      <a data-i18n="web-common.67b696468610b879" class="global-button global-button--red avh-auth-in" href="/dashboard">Dashboard</a>
+      <a data-i18n="web-common.48f0d3d397d49f13" class="global-header__login avh-auth-in" href="/sign-out">Sign out</a>
     </div>
     <details class="global-mobile-menu">
-      <summary aria-label="Open navigation"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></summary>
-      <nav aria-label="Main mobile">
+      <summary data-india-i18n-attr="aria-label:web-common.0ed77fd2619ba8ab" aria-label="Open navigation"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></summary>
+      <nav data-india-i18n-attr="aria-label:web-common.bea9798b93e32430" aria-label="Main mobile">
         {links.map(link => <a href={link.href}>{link.label}</a>)}
-        <a href="/global-ideas">Creator ideas</a>
-        <a class="avh-auth-out" href="/sign-in">Log in</a>
-        <a class="avh-auth-out" href="/sign-up?role=creator&country=global">Start earning →</a>
-        <a class="avh-auth-in" href="/dashboard">Dashboard</a>
-        <a class="avh-auth-in" href="/sign-out">Sign out</a>
-        <a href="/india">🇮🇳 Switch to India</a>
+        <a data-i18n="web-common.2e7f5b094272808b" href="/global-ideas">Creator ideas</a>
+        <a data-i18n="web-common.c189840cf7e2d6f6" class="avh-auth-out" href="/sign-in">Log in</a>
+        <a data-i18n="web-common.e0f3079e4c1c376f" class="avh-auth-out" href="/sign-up?role=creator&country=global">Start earning →</a>
+        <a data-i18n="web-common.67b696468610b879" class="avh-auth-in" href="/dashboard">Dashboard</a>
+        <a data-i18n="web-common.48f0d3d397d49f13" class="avh-auth-in" href="/sign-out">Sign out</a>
+        <a data-i18n="web-common.6c25dad14a9749e2" href="/india">🇮🇳 Switch to India</a>
       </nav>
     </details>
   </div>

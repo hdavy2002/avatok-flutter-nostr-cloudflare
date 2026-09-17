@@ -47,22 +47,19 @@ import { txDetailFor, labelFor } from "./wallet_statement";
 // published price against a real charge fails you for exactly that, and it was
 // also simply untrue. Both halves now speak rupees.
 //
-// TOKENS_PER_USD survives ONLY for the two rails genuinely denominated in US
-// dollars upstream, which cannot be re-priced from this file:
-//   * Google Play (PLAY_TOPUP_PRODUCTS) - fixed USD-defined SKUs; Play converts
-//     to the buyer's local currency at its own rate.
-//   * the legacy `{ usd_cents }` body on /topup/intent, kept working for app
-//     builds shipped before this change.
-// It is NOT a price anyone is quoted. Do NOT reintroduce it as one.
+// Historical provider payload fields remain parseable for old records and
+// webhook/schema compatibility. They are unreachable from active money-in
+// routes, which are permanently disabled below.
 //
 // NOTE: "coins" is the legacy wire/DB name for a token at the SAME value, so no
 // stored balance changed. Internal D1 columns (amount_coins), Stripe
 // `metadata[coins]`, and analytics prop keys keep their legacy names to protect
 // live balances / in-flight payments / dashboards; the user-facing term is "Tokens".
-const TOKENS_PER_USD = 100;
-const usdCentsForTokens = (tokens: number) => Math.round((tokens * 100) / TOKENS_PER_USD); // tokens → USD cents (== tokens)
 /** Tokens → paise. The whole rail, exactly: 1 token = \u20b91 = 100 paise. */
 const paiseForTokens = (tokens: number) => tokens * 100;
+// Legacy conversion retained only for historical record parsing below. No live
+// endpoint reaches that provider code after the permanent disablement guards.
+const LEGACY_TOKEN_SCALE = 100;
 /** Default money-in currency. India is the only market (see the PRODUCT PIVOT). */
 const TOPUP_CURRENCY = "inr";
 // [TOKENS-FX-1] Min lowered 500→100 tokens so the region-aware quote presets
@@ -343,10 +340,9 @@ export async function walletReleaseReservation(
 }
 
 function topupEnabled(env: Env): boolean {
-  // Fail closed: also require the webhook signing secret. Without it, a forged
-  // webhook would be the only thing between an attacker and free coins, so
-  // top-ups must NOT be enableable until STRIPE_WEBHOOK_SECRET is configured.
-  return env.WALLET_TOPUP_ENABLED === "1" && !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
+  // Money-in was retired. Keep the old env/secret checks out of the decision so
+  // staging vars or a later secret cannot re-enable a provider by accident.
+  return false;
 }
 
 // POST /api/wallet/topup { tokens } (legacy { amountUsdCents } / { amount } also
@@ -361,6 +357,7 @@ function topupEnabled(env: Env): boolean {
 export async function walletTopup(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
   if (limited) return limited;
   return withIdempotency(req, env, ctx.uid, () => topupCore(req, env, ctx.uid));
@@ -375,8 +372,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} tokens` }, 400);
 
   if (!topupEnabled(env)) {
-    // Infra is built; real money-in is held pending legal (§10.1). Honest 503.
-    return json({ error: "top-up unavailable", reason: "pending_legal_approval", flag: "WALLET_TOPUP_ENABLED" }, 503);
+    return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   }
 
   const id = crypto.randomUUID();
@@ -438,6 +434,7 @@ async function stripeApi(
 export async function walletTopupIntent(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
   if (limited) return limited;
 
@@ -459,16 +456,16 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   if (!(cents > 0)) return json({ error: "amount_minor required (amount in minor units)" }, 400);
   const coins = currency === "inr"
     ? Math.round(cents / 100)                       // paise → whole rupees → tokens (1 Token = Rs 1, fixed)
-    : Math.round((cents * TOKENS_PER_USD) / 100);   // legacy USD cents → tokens (1 token == 1 cent)
+    : Math.round((cents * LEGACY_TOKEN_SCALE) / 100); // historical legacy-unit parsing
   if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) {
     return json({
       error: currency === "inr"
         ? `amount must be ₹${MIN_TOPUP}..₹${MAX_TOPUP}`
-        : `amount must be $${MIN_TOPUP / TOKENS_PER_USD}..$${MAX_TOPUP / TOKENS_PER_USD}`,
+        : `amount must be ${MIN_TOPUP}..${MAX_TOPUP} tokens`,
     }, 400);
   }
   if (!topupEnabled(env)) {
-    return json({ error: "top-up unavailable", reason: "pending_legal_approval", flag: "WALLET_TOPUP_ENABLED" }, 503);
+    return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   }
 
   const id = crypto.randomUUID();
@@ -504,13 +501,9 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
 // Play Developer API, and credits — idempotent on Google's orderId. This is the
 // Android money-in rail; Stripe stays the web rail. Keep in lock-step with the
 // active `avatok_topup_*` products in the Play Console.
-const PLAY_TOPUP_PRODUCTS: Record<string, number> = {
-  avatok_topup_5: 500,      // $5   → 500 Tokens
-  avatok_topup_10: 1_000,   // $10  → 1,000
-  avatok_topup_25: 2_500,   // $25  → 2,500
-  avatok_topup_50: 5_000,   // $50  → 5,000
-  avatok_topup_100: 10_000, // $100 → 10,000
-};
+// Retained as an empty lookup for old request parsing/schema compatibility;
+// retired Play products must never yield a token amount.
+const PLAY_TOPUP_PRODUCTS: Record<string, number> = Object.freeze({});
 
 // POST /api/wallet/topup/play/verify { productId, purchaseToken }
 // Money route: rate-limited 5/h (A3). Fails CLOSED until the Play service account
@@ -518,6 +511,8 @@ const PLAY_TOPUP_PRODUCTS: Record<string, number> = {
 export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+
+  return json({ ok: false, error: "top-up unavailable", reason: "payments_disabled" }, 503);
 
   // Killable master switch (KV): independent of subscription billing.
   try {
@@ -577,10 +572,10 @@ async function creditPlayTopup(
   }
 
   const id = existing?.id || crypto.randomUUID();
-  const priceCurrency = String(play.priceCurrencyCode || "usd").toLowerCase();
+  const priceCurrency = String(play.priceCurrencyCode || "inr").toLowerCase();
   const priceMinor = Number.isFinite(Number(play.priceAmountMicros))
     ? Math.max(0, Math.round(Number(play.priceAmountMicros) / 10_000))
-    : usdCentsForTokens(coins);
+    : 0;
   try {
     await env.DB_WALLET.prepare(
       `INSERT INTO topup_records
@@ -687,6 +682,7 @@ export async function runPlayVoidedPurchaseSweep(env: Env): Promise<{ scanned: n
 // PaymentSheet (payment_intent.succeeded). Either way the credit funnels through
 // `creditTopup`, which is idempotent on the topup record + a deterministic op_id.
 export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
+  return json({ received: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   const payload = await req.text();
   const sig = req.headers.get("stripe-signature");
   // Fail closed: a missing signing secret means we cannot trust this webhook, so

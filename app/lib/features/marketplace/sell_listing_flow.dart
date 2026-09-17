@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -219,10 +221,10 @@ class _SellListingFlowState extends State<SellListingFlow> {
 
   String _stepHint(int step) {
     switch (step) {
-      case 1: return 'Fill in title, description and location to continue.';
-      case 2: return 'Enter a price to continue.';
-      case 3: return 'Tell your agent how to negotiate to continue.';
-      case 4: return 'Add at least one photo to continue.';
+      case 1: return uiCopy(UiMessage.m_fill_in_title_description_and_d8bbdd9d41);
+      case 2: return uiCopy(UiMessage.m_enter_a_price_to_continue_8ac7258ef3);
+      case 3: return uiCopy(UiMessage.m_tell_your_agent_how_to_9ff4c12881);
+      case 4: return uiCopy(UiMessage.m_add_at_least_one_photo_84b6e02b51);
       default: return '';
     }
   }
@@ -269,19 +271,19 @@ class _SellListingFlowState extends State<SellListingFlow> {
 
   String _successFeeText(Map<String, dynamic> res) {
     final fee = _feeFromResponse(res) ?? _feeQuote;
-    if (fee == null || fee.isFree) return 'Listing submitted for review.';
-    final balance = fee.balance == null ? '' : ' Balance: ${fee.balance} Tokens.';
-    return 'Listing submitted for review — ${fee.amount} Tokens deducted.$balance';
+    if (fee == null || fee.isFree) return uiCopy(UiMessage.m_listing_submitted_for_review_eb65e75dfa);
+    final balance = fee.balance == null ? '' : uiCopy(UiMessage.m_balance_value1_tokens_70adc45d3f, {'value1': (fee.balance).toString()});
+    return uiCopy(UiMessage.m_listing_submitted_for_review_value1_dc102a7148, {'value1': (fee.amount).toString(), 'balance': (balance).toString()});
   }
 
   Widget _feePanel() {
     final quote = _feeQuote;
     final insufficient = _needsTopUp || quote?.insufficient == true;
     final copy = quote == null
-        ? 'Live publishing fee is unavailable. Pricing is confirmed by the server before any Tokens are taken.'
+        ? uiCopy(UiMessage.m_live_publishing_fee_is_unavailable_541aa73aaa)
         : quote.isFree
-            ? 'Free 30-day entitlement available${quote.freeRemaining == null ? '' : ' · ${quote.freeRemaining} free slot(s) remaining'}.'
-            : 'Publishing fee: ${quote.amount} Tokens${quote.balance == null ? '' : ' · balance ${quote.balance}'}.';
+            ? uiCopy(UiMessage.m_free_30_day_entitlement_available_814878506b, {'value1': (quote.freeRemaining == null ? '' : uiCopy(UiMessage.m_count_free_slot_s_remaining_d986900f87, {'count': (quote.freeRemaining).toString()})).toString()})
+            : uiCopy(UiMessage.m_publishing_fee_value1_tokens_value2_8603314523, {'value1': (quote.amount).toString(), 'value2': (quote.balance == null ? '' : uiCopy(UiMessage.m_balance_amount_22c9553235, {'amount': (quote.balance).toString()})).toString()});
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: Msg.s3),
@@ -302,10 +304,10 @@ class _SellListingFlowState extends State<SellListingFlow> {
         ]),
         if (insufficient) ...[
           const SizedBox(height: Msg.s2),
-          Text('Your balance is too low to publish this listing.',
+          UiText(UiMessage.m_your_balance_is_too_low_dc445ea630,
               style: ADText.preview(c: AD.danger)),
           const SizedBox(height: Msg.s2),
-          TextButton(onPressed: _openWallet, child: const Text('Open wallet')),
+          TextButton(onPressed: _openWallet, child: const UiText(UiMessage.m_open_wallet_762a16c9c7)),
         ],
       ]),
     );
@@ -390,13 +392,14 @@ class _SellListingFlowState extends State<SellListingFlow> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         foregroundColor: AD.textPrimary,
         elevation: 0,
-        title: Text('Create listing', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_create_listing_815d30caa6, style: ADText.appTitle()),
       ),
       body: Theme(
         data: Theme.of(context).copyWith(
@@ -421,13 +424,13 @@ class _SellListingFlowState extends State<SellListingFlow> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 AdButton(
-                  label: _step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing'),
+                  label: _step < 5 ? uiCopy(UiMessage.m_continue_31fbef1625) : (_busy ? uiCopy(UiMessage.m_submitting_49195f559e) : uiCopy(UiMessage.m_submit_listing_525f0ca85f)),
                   loading: _busy && _step >= 5,
                   onPressed: (_busy || !complete) ? null : details.onStepContinue,
                 ),
                 const SizedBox(width: Msg.s2),
                 if (_step > 0) TextButton(onPressed: details.onStepCancel,
-                    child: Text('Back', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
+                    child: UiText(UiMessage.m_back_76900f1bfd, style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
               ]),
               if (!complete && _stepHint(_step).isNotEmpty)
                 Padding(
@@ -439,7 +442,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
         },
         steps: [
           Step(
-            title: Text('Type', style: ADText.rowName()),
+            title: UiText(UiMessage.m_type_baaddf70fb, style: ADText.rowName()),
             isActive: _step >= 0,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SegmentedButton<String>(
@@ -452,9 +455,9 @@ class _SellListingFlowState extends State<SellListingFlow> {
                   textStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600),
                 ),
                 segments: const [
-                  ButtonSegment(value: 'sell', label: Text('Selling')),
-                  ButtonSegment(value: 'buy', label: Text('Buying')),
-                  ButtonSegment(value: 'social', label: Text('Social')),
+                  ButtonSegment(value: 'sell', label: UiText(UiMessage.m_selling_05e9f7818f)),
+                  ButtonSegment(value: 'buy', label: UiText(UiMessage.m_buying_e87c8e7d44)),
+                  ButtonSegment(value: 'social', label: UiText(UiMessage.m_social_f1b7505afa)),
                 ],
                 selected: {_type},
                 onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -466,10 +469,10 @@ class _SellListingFlowState extends State<SellListingFlow> {
                   isExpanded: true,
                   decoration: _box(),
                   items: const [
-                    DropdownMenuItem(value: 'dating', child: Text('Dating')),
-                    DropdownMenuItem(value: 'matrimony', child: Text('Matrimony')),
-                    DropdownMenuItem(value: 'roommate', child: Text('Roommate')),
-                    DropdownMenuItem(value: 'events', child: Text('Community events')),
+                    DropdownMenuItem(value: 'dating', child: UiText(UiMessage.m_dating_21a6b5a12e)),
+                    DropdownMenuItem(value: 'matrimony', child: UiText(UiMessage.m_matrimony_d09d4ff7fc)),
+                    DropdownMenuItem(value: 'roommate', child: UiText(UiMessage.m_roommate_b0bcae2bd0)),
+                    DropdownMenuItem(value: 'events', child: UiText(UiMessage.m_community_events_f8dbf4962b)),
                   ],
                   onChanged: (v) => setState(() => _socialSub = v ?? 'roommate'),
                 )),
@@ -477,12 +480,12 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: Text('Details', style: ADText.rowName()),
+            title: UiText(UiMessage.m_details_45989de49f, style: ADText.rowName()),
             isActive: _step >= 1,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _field('Title', TextField(controller: _title, onChanged: (_) => setState(() {}), decoration: _box(hint: 'What are you listing?'))),
+              _field('Title', TextField(controller: _title, onChanged: (_) => setState(() {}), decoration: _box(hint: uiCopy(UiMessage.m_what_are_you_listing_02b62320b6)))),
               const SizedBox(height: Msg.s4),
-              _field('Description', TextField(controller: _desc, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: 'Add the details buyers need'))),
+              _field('Description', TextField(controller: _desc, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: uiCopy(UiMessage.m_add_the_details_buyers_need_4befd82439)))),
               const SizedBox(height: Msg.s4),
               _field('Category', DropdownButtonFormField<String>(
                 value: _category,
@@ -503,11 +506,11 @@ class _SellListingFlowState extends State<SellListingFlow> {
                 onChanged: (v) => setState(() => _country = v ?? _country),
               )),
               const SizedBox(height: Msg.s4),
-              _field('Location', TextField(controller: _location, onChanged: (_) => setState(() {}), decoration: _box(hint: 'City or area'))),
+              _field('Location', TextField(controller: _location, onChanged: (_) => setState(() {}), decoration: _box(hint: uiCopy(UiMessage.m_city_or_area_3d4dee46f8)))),
             ]),
           ),
           Step(
-            title: Text('Price', style: ADText.rowName()),
+            title: UiText(UiMessage.m_price_93c91c851e, style: ADText.rowName()),
             isActive: _step >= 2,
             content: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
@@ -532,24 +535,24 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: Text('Your agent', style: ADText.rowName()),
+            title: UiText(UiMessage.m_your_agent_1ffbc15d64, style: ADText.rowName()),
             isActive: _step >= 3,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _label('Tell your agent how to negotiate for you'),
-              TextField(controller: _agentInstr, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: 'Your price stance, key facts, tone…')),
+              TextField(controller: _agentInstr, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: uiCopy(UiMessage.m_your_price_stance_key_facts_56bc4d7ba8))),
               const SizedBox(height: Msg.s1),
               Row(children: [
                 TextButton.icon(
                   onPressed: _aiBusy ? null : () => _helpMeWrite('instructions', _agentInstr),
                   icon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), size: 18, color: AD.iconAccent),
-                  label: Text(_aiBusy ? 'Writing…' : 'Help me write',
+                  label: Text(_aiBusy ? uiCopy(UiMessage.m_writing_e52fe93bbb) : uiCopy(UiMessage.m_help_me_write_c5c57a17c8),
                       style: TextStyle(color: AD.iconVideo, fontFamily: ADText.family, fontWeight: FontWeight.w600)),
                 ),
               ]),
               Container(
                 padding: const EdgeInsets.all(Msg.s2),
                 decoration: BoxDecoration(color: AD.card, borderRadius: BorderRadius.circular(AD.rStatCard)),
-                child: Text('Example: $_exampleInstruction', style: TextStyle(fontFamily: ADText.family, fontSize: 12, color: AD.textSecondary)),
+                child: UiText(UiMessage.m_example_exampleinstruction_552c6b5c28, params: {'exampleInstruction': (_exampleInstruction).toString()}, style: TextStyle(fontFamily: ADText.family, fontSize: 12, color: AD.textSecondary)),
               ),
               const SizedBox(height: Msg.s4),
               _field('Agent language', DropdownButtonFormField<String>(
@@ -561,17 +564,17 @@ class _SellListingFlowState extends State<SellListingFlow> {
               )),
               const SizedBox(height: Msg.s4),
               _field('Accent / persona (optional)', TextField(controller: _accent,
-                  decoration: _box(hint: 'e.g. warm, Punjabi accent'))),
+                  decoration: _box(hint: uiCopy(UiMessage.m_e_g_warm_punjabi_accent_37b7afea92)))),
               const SizedBox(height: Msg.s1),
-              Text('If the other agent doesn’t speak your language, both fall back to English with your accent.',
+              UiText(UiMessage.m_if_the_other_agent_doesn_20723f7b9f,
                   style: TextStyle(fontFamily: ADText.family, fontSize: 11, color: AD.textTertiary)),
             ]),
           ),
           Step(
-            title: Text('Photos', style: ADText.rowName()),
+            title: UiText(UiMessage.m_photos_5e3147ab51, style: ADText.rowName()),
             isActive: _step >= 4,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Add photos — max 5', style: TextStyle(fontFamily: ADText.family, fontSize: 14, fontWeight: FontWeight.w600, color: AD.textPrimary)),
+              UiText(UiMessage.m_add_photos_max_5_55d924e1a1, style: TextStyle(fontFamily: ADText.family, fontSize: 14, fontWeight: FontWeight.w600, color: AD.textPrimary)),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
@@ -606,15 +609,15 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: Text('Review', style: ADText.rowName()),
+            title: UiText(UiMessage.m_review_aff0766a52, style: ADText.rowName()),
             isActive: _step >= 5,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Listing expires in:', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, color: AD.textPrimary)),
+              UiText(UiMessage.m_listing_expires_in_0c976ca62c, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, color: AD.textPrimary)),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final d in const [1, 5, 10, 20, 30])
                   ChoiceChip(
-                    label: Text('$d day${d == 1 ? '' : 's'}'),
+                    label: UiText(UiMessage.m_d_day_value2_bf55c33dbc, params: {'d': (d).toString(), 'value2': (d == 1 ? '' : uiCopy(UiMessage.m_s_043a718774)).toString()}),
                     labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         color: _expiryDays == d ? Colors.white : AD.textSecondary),
                     selected: _expiryDays == d,

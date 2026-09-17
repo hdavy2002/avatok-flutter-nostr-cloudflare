@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -98,7 +100,7 @@ Widget _campaignHeader() => Padding(
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.megaphone(PhosphorIconsStyle.fill), size: 13, color: _kAccent),
         const SizedBox(width: Msg.s1),
-        Text('Campaign', style: ADText.statCaption(c: _kAccent)),
+        UiText(UiMessage.m_campaign_268286d2ef, style: ADText.statCaption(c: _kAccent)),
       ]),
     );
 
@@ -247,8 +249,8 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
       await AudioPlaybackService.I.play(
         track: AudioTrack(
           trackId: _trackId,
-          title: _contactName ?? _contactPhone ?? 'Campaign call',
-          subtitle: 'Campaign call',
+          title: _contactName ?? _contactPhone ?? uiCopy(UiMessage.m_campaign_call_4ecc6c63c8),
+          subtitle: uiCopy(UiMessage.m_campaign_call_4ecc6c63c8),
           originRoute: null,
         ),
         bytes: bytes,
@@ -275,6 +277,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return _cardShell(
       Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
@@ -283,7 +286,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
             const SizedBox(width: Msg.s2),
           ],
           Expanded(
-            child: Text(_contactName ?? _contactPhone ?? 'Unknown contact',
+            child: Text(_contactName ?? _contactPhone ?? uiCopy(UiMessage.m_unknown_contact_017191377c),
                 style: ADText.threadName(c: _kInk)),
           ),
           if (_durationSec > 0) ...[
@@ -327,7 +330,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
                         ),
                   const SizedBox(width: Msg.s2),
                   Text(
-                    _durationLabel(dur).isNotEmpty ? 'Recording · ${_durationLabel(dur)}' : 'Play recording',
+                    _durationLabel(dur).isNotEmpty ? uiCopy(UiMessage.m_recording_value1_c074702c94, {'value1': (_durationLabel(dur)).toString()}) : uiCopy(UiMessage.m_play_recording_67e0ddff71),
                     style: ADText.rowName(c: AD.bubbleOutPlay),
                   ),
                 ]),
@@ -341,7 +344,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
           const SizedBox(height: Msg.s2),
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
+            child: Text(_expanded ? uiCopy(UiMessage.m_hide_transcript_7050dca018) : uiCopy(UiMessage.m_show_transcript_81d7502b49),
                 style: ADText.statCaption(c: _kSubInk)),
           ),
           if (_expanded)
@@ -364,7 +367,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
         // ---- Token-cost line ----
         if (_tokens != null) ...[
           const SizedBox(height: Msg.s2),
-          Text('$_tokens tokens', style: ADText.statCaption(c: _kSubInk)),
+          UiText(UiMessage.m_tokens_tokens_507a17952d, params: {'tokens': (_tokens).toString()}, style: ADText.statCaption(c: _kSubInk)),
         ],
       ]),
     );
@@ -416,6 +419,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final unreached = _unreached;
     // Collapsed = first 3 names, matching the "collapsed list" spec — tap the
     // header to see the rest, same show/hide idiom used elsewhere in this file.
@@ -426,7 +430,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
           Icon(PhosphorIcons.phoneX(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
           const SizedBox(width: Msg.s2),
           Expanded(
-            child: Text("Today's unreachable ($_count)", style: ADText.threadName(c: _kInk)),
+            child: UiText(UiMessage.m_today_s_unreachable_count_6f5a2f72d3, params: {'count': (_count).toString()}, style: ADText.threadName(c: _kInk)),
           ),
         ]),
         if (_date != null) ...[
@@ -446,7 +450,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
               child: Padding(
                 padding: const EdgeInsets.only(top: Msg.s1),
                 child: Text(
-                  _expanded ? 'Show less ▲' : 'Show ${unreached.length - 3} more ▼',
+                  _expanded ? uiCopy(UiMessage.m_show_less_3361d66c11) : uiCopy(UiMessage.m_show_value1_more_daf8575b54, {'value1': (unreached.length - 3).toString()}),
                   style: ADText.statCaption(c: _kSubInk),
                 ),
               ),
@@ -460,7 +464,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleOutPlay),
                 const SizedBox(width: Msg.s1),
-                Text('Retry', style: ADText.rowName(c: AD.bubbleOutPlay)),
+                UiText(UiMessage.m_retry_942087cc2d, style: ADText.rowName(c: AD.bubbleOutPlay)),
               ]),
             ),
           if (widget.onRetry != null && widget.onOpenDashboard != null) const SizedBox(width: Msg.s4),
@@ -470,7 +474,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 15, color: AD.iconVideo),
                 const SizedBox(width: Msg.s1),
-                Text('Open dashboard', style: ADText.rowName(c: AD.iconVideo)),
+                UiText(UiMessage.m_open_dashboard_803f2313cd, style: ADText.rowName(c: AD.iconVideo)),
               ]),
             ),
         ]),
@@ -551,6 +555,7 @@ class CampaignStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final stats = _stats;
     return _cardShell(
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -559,7 +564,7 @@ class CampaignStatusCard extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(
-              _text ?? (_event != null ? 'Campaign $_event' : 'Campaign update'),
+              _text ?? (_event != null ? uiCopy(UiMessage.m_campaign_event_c100a24eec, {'event': (_event).toString()}) : uiCopy(UiMessage.m_campaign_update_7f6379dfd9)),
               style: ADText.rowName(c: _kInk),
             ),
             if (stats.isNotEmpty) ...[

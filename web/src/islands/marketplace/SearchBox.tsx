@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 import { useEffect, useRef, useState } from 'react';
 
 export interface SearchBoxProps {
@@ -55,9 +56,7 @@ export function SearchBox({
       }}
       className="flex flex-1 items-center gap-2.5 rounded-full border-zine border-ink bg-paper py-1.5 pl-5 pr-1.5 shadow-zine-sm focus-within:shadow-zine-focus"
     >
-      <label htmlFor="bazaar-search" className="sr-only">
-        Search the marketplace
-      </label>
+      <label htmlFor="bazaar-search" className="sr-only"><UiText id="web-marketplace.0a6ea1b070583a80" source="Search the marketplace" />{" "}</label>
       <input
         id="bazaar-search"
         type="search"
@@ -71,9 +70,7 @@ export function SearchBox({
       <button
         type="submit"
         className="flex-none rounded-full border-zine border-ink bg-coral px-6 py-2.5 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-      >
-        Khojo
-      </button>
+      ><UiText id="web-marketplace.1207f81e54d27b74" source="Khojo" />{" "}</button>
     </form>
   );
 }

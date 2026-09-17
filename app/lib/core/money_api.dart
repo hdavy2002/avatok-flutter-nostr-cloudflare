@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'analytics.dart';
 import 'api_auth.dart';
 import 'config.dart';
+import 'topup_quote.dart';
 
 /// [WALLET-GET-STATE-1] Coarse classification of a GET result, independent of
 /// the raw HTTP status — this is what callers should branch on, not the number.
@@ -62,6 +63,7 @@ class MoneyApi {
   /// error-class logic without a live network. Throw from the override to
   /// simulate a transport failure. Tests MUST reset this to null afterward.
   static Future<http.Response> Function(String url)? debugGetOverride;
+  static Future<TopupQuote> Function()? debugTopupQuoteOverride;
 
   /// POST with idempotency key + one safe retry on timeout/network error.
   static Future<Map<String, dynamic>> _post(String url, Map<String, dynamic> body) async {
@@ -154,15 +156,16 @@ class MoneyApi {
   static Future<Map<String, dynamic>> topup(int amountUsdCents) =>
       _post('$kWalletBase/topup', {'amountUsdCents': amountUsdCents});
 
-  /// [TOKENS-FX-1] Region-aware top-up quote (server decides from edge geo;
-  /// [country] is a testing override): {country, currency: 'INR'|'USD',
-  /// tokens_per_unit, min_amount, presets: [{amount, tokens}], fx_usd_rate,
-  /// note}. India → INR fixed 1 Token = ₹1 (min ₹100); everywhere else → USD
-  /// (1 USD = 100 Tokens, min $1).
-  static Future<Map<String, dynamic>> topupQuote({String? country}) async =>
-      (await _get(
-              '$kWalletBase/topup-quote${country == null ? '' : '?country=${Uri.encodeQueryComponent(country)}'}'))
-          .data;
+  /// Fetches an immutable, server-owned FX/payment quote. A malformed or
+  /// failed quote is an error: checkout must not fall back to client pricing.
+  static Future<TopupQuote> topupQuote({String? country}) async {
+    if (debugTopupQuoteOverride != null) return debugTopupQuoteOverride!();
+    final result = await _get(
+      '$kWalletBase/topup-quote${country == null ? '' : '?country=${Uri.encodeQueryComponent(country)}'}',
+    );
+    if (!result.ok) throw TopupQuoteException('Top-up quote unavailable (${result.status}).');
+    return TopupQuote.fromJson(result.data);
+  }
 
   /// Create a Stripe PaymentIntent for the NATIVE in-app PaymentSheet (no browser
   /// redirect). [amountMinor] is the real money amount in MINOR units of
@@ -171,13 +174,16 @@ class MoneyApi {
   /// Returns {payment_intent_client_secret, publishable_key, coins, cents,
   /// currency} on success, or {error, reason:'pending_legal_approval'} while the
   /// legal flag is off.
-  static Future<Map<String, dynamic>> topupIntent(int amountMinor, {String currency = 'usd'}) =>
+  static Future<Map<String, dynamic>> topupIntent(
+    int amountMinor, {required String currency, required String quoteId}
+  ) =>
       _post('$kWalletBase/topup/intent', {
         'amount_minor': amountMinor,
-        'currency': currency,
+        'currency': currency.toUpperCase(),
+        'quote_id': quoteId,
         // Legacy field for an older server — USD only, so an old server can
         // never misread INR paise as USD cents.
-        if (currency == 'usd') 'usd_cents': amountMinor,
+        if (currency.toLowerCase() == 'usd') 'usd_cents': amountMinor,
       });
 
   /// Verify a Google Play top-up purchase server-side and credit Tokens. The

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -48,6 +50,7 @@ class CoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final r = radius ?? BorderRadius.circular(AD.rListCard);
     final accent = _adAccents[seed.abs() % _adAccents.length];
     Widget frame(Widget? child, {Color? fill}) => Container(
@@ -89,6 +92,7 @@ class RatingStars extends StatelessWidget {
   const RatingStars({super.key, required this.rating, this.count = 0, this.size = 14});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (rating == null || count == 0) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: AD.iconStar, size: size + 1),
@@ -109,6 +113,7 @@ class ListingCardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final live = card.status == 'live';
     return AdPress(
       onTap: onTap,
@@ -139,7 +144,7 @@ class ListingCardTile extends StatelessWidget {
                     const SizedBox(width: 4),
                   ],
                   // [LIST-LABEL-1 2026-09-14] The LABEL, never the raw id.
-                  Text(live ? 'Live' : listingCategoryLabel(card.category),
+                  Text(live ? uiCopy(UiMessage.m_live_b64ac05f17) : listingCategoryLabel(card.category),
                       style: ADText.statCaption(c: live ? Colors.white : AD.textPrimary)),
                 ]),
               )),
@@ -194,7 +199,7 @@ class ListingCardTile extends StatelessWidget {
                     PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
                         size: 12, color: AD.textSecondary),
                     const SizedBox(width: Msg.s1),
-                    Text('${card.joinedCount} joined', style: ADText.statCaption(c: AD.textSecondary)),
+                    UiText(UiMessage.m_value1_joined_a14013d788, params: {'value1': (card.joinedCount).toString()}, style: ADText.statCaption(c: AD.textSecondary)),
                   ]),
               ]),
             ]),

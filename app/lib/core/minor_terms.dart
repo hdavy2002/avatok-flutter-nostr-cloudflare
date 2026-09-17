@@ -1,3 +1,6 @@
+
+import 'localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -61,10 +64,9 @@ class MinorTerms {
         builder: (ctx, scroll) => Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Terms for users under 18', style: ADText.threadName()),
+            UiText(UiMessage.m_terms_for_users_under_18_f5fb22101a, style: ADText.threadName()),
             const SizedBox(height: Msg.s2),
-            Text('Because your birth year says you are under 18, please read and '
-                'accept these terms before continuing.', style: ADText.preview()),
+            UiText(UiMessage.m_because_your_birth_year_says_5c56861d10, style: ADText.preview()),
             const SizedBox(height: Msg.s3),
             Expanded(
               child: SingleChildScrollView(
@@ -74,7 +76,7 @@ class MinorTerms {
             ),
             const SizedBox(height: Msg.s3),
             ZineButton(
-              label: 'I have read and accept these terms',
+              label: uiCopy(UiMessage.m_i_have_read_and_accept_6cb0b8e2bc),
               variant: ZineButtonVariant.blue,
               fullWidth: true, fontSize: 15, trailingIcon: false,
               onPressed: () => Navigator.pop(ctx, true),
@@ -82,7 +84,7 @@ class MinorTerms {
             const SizedBox(height: Msg.s2),
             Center(child: TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Not now',
+              child: UiText(UiMessage.m_not_now_a0e63d7c71,
                   style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
             )),
           ]),

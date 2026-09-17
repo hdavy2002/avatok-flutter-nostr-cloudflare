@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -58,6 +60,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = _ctrl;
     final ready = c != null && c.value.isInitialized;
     // Video is content — ink letterbox; chrome = flat ink-alpha bands + zine
@@ -94,7 +97,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: Row(children: [
                   const AdBackButton(),
                   const Spacer(),
-                  Text('VIDEO', style: ADText.sectionLabel(c: AD.textPrimary)),
+                  UiText(UiMessage.m_video_65b2f9ec33, style: ADText.sectionLabel(c: AD.textPrimary)),
                 ]),
               ),
             ),

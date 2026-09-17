@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -75,7 +77,7 @@ class AvaDocActions {
             PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                 size: 13, color: Msg.accent),
           ]),
-          subtitle: Text('Only you will see this',
+          subtitle: UiText(UiMessage.m_only_you_will_see_this_49eebc6112,
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
           onTap: () {
             Navigator.pop(sheetContext);
@@ -106,7 +108,7 @@ class AvaDocActions {
       convId: conv,
       kind: AiMediaJobKind.docSummarize,
       sourceMediaId: readableRef,
-      label: 'Preparing summary…',
+      label: uiCopy(UiMessage.m_preparing_summary_b27f6e4d0f),
     );
     onOutcome(outcome);
   }
@@ -214,7 +216,7 @@ class AvaDocActions {
               PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.regular),
                   size: 20, color: AD.textPrimary),
               const SizedBox(width: Msg.s2),
-              Text('Translate into…',
+              UiText(UiMessage.m_translate_into_2929768abe,
                   style: ADText.threadName().copyWith(fontSize: 18)),
             ]),
           ),
@@ -250,7 +252,7 @@ class AvaDocActions {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close')),
+              child: const UiText(UiMessage.m_close_7d9eb7acb1)),
         ],
       ),
     );

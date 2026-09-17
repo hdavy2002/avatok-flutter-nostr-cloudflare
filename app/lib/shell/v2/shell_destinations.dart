@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -138,8 +140,8 @@ void openShellDestination(BuildContext context, String dest) {
         return;
       }
       push(ComingSoon(
-        title: 'Coming soon',
-        subtitle: 'Not available right now',
+        title: uiCopy(UiMessage.m_coming_soon_4f7d640176),
+        subtitle: uiCopy(UiMessage.m_not_available_right_now_64833438f3),
         icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
         color: AD.primaryBadge,
       ));

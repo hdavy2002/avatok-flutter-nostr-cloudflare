@@ -1,0 +1,14 @@
+{
+  "web-guide-shared.advice.private.daily": "One booking reserves time for one person. Price the preparation and follow-up as well as the call. Start with a clearly described appointment you can deliver reliably.",
+  "web-guide-shared.duration.private.daily": "30–45 minutes",
+  "web-guide-shared.advice.private.other": "One booking reserves time for one person. Price the preparation and follow-up as well as the call. Start with a clearly described appointment you can deliver reliably.",
+  "web-guide-shared.duration.private.other": "30–45 minutes",
+  "web-guide-shared.advice.group.daily": "Offer a limited number of places that leaves everyone time to participate. Choose the group size from the activity and the time you can give each person, not just the number of people interested.",
+  "web-guide-shared.duration.group.daily": "A planned live window",
+  "web-guide-shared.advice.group.other": "Offer a limited number of places that leaves everyone time to participate. Choose the group size from the activity and the time you can give each person, not just the number of people interested.",
+  "web-guide-shared.duration.group.other": "45–60 minutes",
+  "web-guide-shared.advice.live.daily": "Describe the viewing window and what people will see. A drop-in diary needs a clear start, occasional context for newcomers and an honest description of how access is charged in the listing.",
+  "web-guide-shared.duration.live.daily": "A planned live window",
+  "web-guide-shared.advice.live.other": "Sell access to a planned live event with a named theme, start time and duration. Build the experience around what viewers can see, hear or ask during that session.",
+  "web-guide-shared.duration.live.other": "45–60 minutes"
+}

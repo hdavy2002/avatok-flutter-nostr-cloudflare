@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Phase B — Confirmation (the "confirm" step).
  *
  * Shows the confirmed booking and a deep link to the RIGHT viewer (owned by
@@ -41,6 +43,8 @@ export interface ConfirmationProps {
 }
 
 export function Confirmation({ listing, selection, result }: ConfirmationProps) {
+ const {t:uiT}=useUiTranslation("web-checkout");
+
   const [showUpgrade, setShowUpgrade] = useState(true);
   const kind = (listing.kind ?? '') as string;
   const bookingId = result.booking_id;
@@ -109,30 +113,27 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
                 <path d="M4 12.5l5 5L20 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink">Confirmed</span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink"><UiText id="web-checkout.fe00b67b6dd1143f" source="Confirmed" /></span>
           </div>
-          <h2 className="font-display font-semibold text-[24px] leading-tight text-ink">
-            You’re booked: {selection.title}
+          <h2 className="font-display font-semibold text-[24px] leading-tight text-ink"><UiText id="web-checkout.962586aa47dcf0ee" source="You’re booked:" />{" "}{selection.title}
           </h2>
           {when && (
             <p className="font-body font-bold text-[15px] text-ink/80">
               {when}
-              {selection.type === 'agent' ? ` · ${selection.minutes} min` : ''}
+              {selection.type === 'agent' ? uiT("web-checkout.fd947eb747e1e9ae"," · {value0} min",{value0:String(selection.minutes)}) : ''}
             </p>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <Pill kind="plain">Booking {bookingId.slice(0, 8)}</Pill>
-            {isFreeEntry ? <Pill kind="ok">Free</Pill> : null}
-            {!isFreeEntry && result.paid ? <Pill kind="ok">Paid</Pill> : null}
-            {!isFreeEntry && result.escrow_coins ? <Pill kind="ok">{result.escrow_coins} Tokens held</Pill> : null}
+            <Pill kind="plain"><UiText id="web-checkout.948e03e7054b919e" source="Booking" />{" "}{bookingId.slice(0, 8)}</Pill>
+            {isFreeEntry ? <Pill kind="ok"><UiText id="web-checkout.f411a1fb62758b4c" source="Free" /></Pill> : null}
+            {!isFreeEntry && result.paid ? <Pill kind="ok"><UiText id="web-checkout.fb81b961af456e5e" source="Paid" /></Pill> : null}
+            {!isFreeEntry && result.escrow_coins ? <Pill kind="ok">{result.escrow_coins}{" "}<UiText id="web-checkout.247537bc6e5c4a69" source="Tokens held" /></Pill> : null}
             {isFreeEntry && spotsLeft != null ? <Pill kind="hint">{freeBox.spotsLeft(spotsLeft)}</Pill> : null}
           </div>
           {isFreeEntry ? (
             <p className="mt-1 font-body font-bold text-[14px] text-ink/70">{freeBox.hostPays}</p>
           ) : (
-            <p className="mt-1 font-body font-bold text-[14px] text-ink/70">
-              Your booking is saved. You can find it anytime in All my bookings.
-            </p>
+            <p className="mt-1 font-body font-bold text-[14px] text-ink/70"><UiText id="web-checkout.ae659f66f290467b" source="Your booking is saved. You can find it anytime in All my bookings." />{" "}</p>
           )}
         </div>
       </Card>
@@ -143,9 +144,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
       <a
         href="/dashboard"
         className="text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
-      >
-        All my bookings
-      </a>
+      ><UiText id="web-checkout.b742efbc45082d6a" source="All my bookings" />{" "}</a>
 
       {/* Web-first: the viewer link above works in-browser now. The app is the
           upgrade — renders only once a store listing is live (else nothing). */}

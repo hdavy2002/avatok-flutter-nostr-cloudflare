@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -209,7 +212,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     try {
       final r = await AppsService.I.connectSlug(slug);
       if (r.premium) {
-        _toast('Top up to connect $label.');
+        _toast(uiCopy(UiMessage.m_top_up_to_connect_label_5641b1b458, {'label': (label).toString()}));
         return;
       }
       if (r.url.isEmpty) {
@@ -228,14 +231,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         } catch (_) {/* surfaced via snackbar below */}
       }
       if (opened) {
-        _toast('Authorize $label — you’ll come right back here.');
+        _toast(uiCopy(UiMessage.m_authorize_label_you_ll_come_7ed71015be, {'label': (label).toString()}));
         // ignore: unawaited_futures
         _pollConnector(slug);
       } else {
-        _toast('Couldn’t open the $label sign-in. Please try again.');
+        _toast(uiCopy(UiMessage.m_couldn_t_open_the_label_3256b4696b, {'label': (label).toString()}));
       }
     } catch (_) {
-      _toast('Couldn’t start the $label connect flow.');
+      _toast(uiCopy(UiMessage.m_couldn_t_start_the_label_edf4436e57, {'label': (label).toString()}));
     }
   }
 
@@ -389,17 +392,17 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       await CampaignsApi.launchCampaign(campaign.id);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Campaign launched.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_campaign_launched_8f27b5c6ec)));
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() { _launching = false; _error = e.message; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t launch: ${e.message}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_couldn_t_launch_value1_778b0c4e81, params: {'value1': (e.message).toString()})));
     } catch (_) {
       if (!mounted) return;
       setState(() { _launching = false; _error = 'Something went wrong.'; });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Couldn’t launch — check your connection and try again.')),
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_launch_check_your_72225fbe27)),
       );
     }
   }
@@ -413,6 +416,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: _header(),
@@ -437,13 +441,13 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
                 child: Row(children: [
                   if (!isLast)
                     Expanded(
-                      child: AdButton(label: 'Continue', fullWidth: true, onPressed: details.onStepContinue),
+                      child: AdButton(label: uiCopy(UiMessage.m_continue_31fbef1625), fullWidth: true, onPressed: details.onStepContinue),
                     ),
                   if (!isLast && _step > 0) const SizedBox(width: Msg.s3),
                   if (_step > 0)
                     Expanded(
                       child: AdButton(
-                        label: 'Back',
+                        label: uiCopy(UiMessage.m_back_76900f1bfd),
                         variant: AdButtonVariant.ghost,
                         fullWidth: true,
                         onPressed: _launching ? null : details.onStepCancel,
@@ -454,37 +458,37 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             },
             steps: [
               Step(
-                title: Text('Goal', style: ADText.rowName()),
+                title: UiText(UiMessage.m_goal_cdbf6975e8, style: ADText.rowName()),
                 isActive: _step >= 0,
                 state: _step > 0 ? StepState.complete : StepState.indexed,
                 content: _goalStep(),
               ),
               Step(
-                title: Text('Contacts', style: ADText.rowName()),
+                title: UiText(UiMessage.m_contacts_b450645deb, style: ADText.rowName()),
                 isActive: _step >= 1,
                 state: _step > 1 ? StepState.complete : StepState.indexed,
                 content: _contactsStep(),
               ),
               Step(
-                title: Text('Number', style: ADText.rowName()),
+                title: UiText(UiMessage.m_number_bd82cf1669, style: ADText.rowName()),
                 isActive: _step >= 2,
                 state: _step > 2 ? StepState.complete : StepState.indexed,
                 content: _numberStep(),
               ),
               Step(
-                title: Text('Schedule & channels', style: ADText.rowName()),
+                title: UiText(UiMessage.m_schedule_channels_062b16394d, style: ADText.rowName()),
                 isActive: _step >= 3,
                 state: _step > 3 ? StepState.complete : StepState.indexed,
                 content: _scheduleStep(),
               ),
               Step(
-                title: Text('Booking & handover', style: ADText.rowName()),
+                title: UiText(UiMessage.m_booking_handover_77fc24fbc5, style: ADText.rowName()),
                 isActive: _step >= 4,
                 state: _step > 4 ? StepState.complete : StepState.indexed,
                 content: _bookingStep(),
               ),
               Step(
-                title: Text('Review & launch', style: ADText.rowName()),
+                title: UiText(UiMessage.m_review_launch_69f2e5ad07, style: ADText.rowName()),
                 isActive: _step >= 5,
                 state: StepState.indexed,
                 content: _reviewStep(),
@@ -512,7 +516,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
               const AdBackButton(),
               const SizedBox(width: Msg.s2),
               Expanded(
-                child: Text('New campaign', style: ADText.appTitle(),
+                child: UiText(UiMessage.m_new_campaign_23448cb6d1, style: ADText.appTitle(),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ]),
@@ -528,22 +532,22 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       AdField(
         controller: _name,
-        label: 'Campaign name',
-        hint: 'e.g. Diwali Sale Outreach',
+        label: uiCopy(UiMessage.m_campaign_name_e092a1f873),
+        hint: uiCopy(UiMessage.m_e_g_diwali_sale_outreach_0444665ad1),
         textCapitalization: TextCapitalization.sentences,
       ),
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _agentName,
-        label: 'AI agent name',
-        hint: 'e.g. Ava, Riya, Priya',
+        label: uiCopy(UiMessage.m_ai_agent_name_1fd464e974),
+        hint: uiCopy(UiMessage.m_e_g_ava_riya_priya_1c0c12c9b0),
         textCapitalization: TextCapitalization.words,
       ),
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _businessName,
-        label: 'Business name (used in the greeting)',
-        hint: 'e.g. Sharma Electronics',
+        label: uiCopy(UiMessage.m_business_name_used_in_the_92b9aa6d8b),
+        hint: uiCopy(UiMessage.m_e_g_sharma_electronics_234625d842),
         textCapitalization: TextCapitalization.words,
         onChanged: (_) => setState(() {}),
       ),
@@ -552,33 +556,33 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _goal,
-        label: 'What should the agent do on this call?',
-        hint: 'e.g. Tell customers about our Diwali sale and invite them to visit the store this weekend.',
+        label: uiCopy(UiMessage.m_what_should_the_agent_do_171c933aed),
+        hint: uiCopy(UiMessage.m_e_g_tell_customers_about_c4c11fe849),
         minLines: 3,
         maxLines: null,
         textCapitalization: TextCapitalization.sentences,
       ),
       const SizedBox(height: Msg.s4),
-      Text('MORE DETAIL (OPTIONAL)', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_more_detail_optional_5a26a91d15, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
-      AdField(controller: _offer, label: 'Offer', hint: 'e.g. 20% off all appliances',
+      AdField(controller: _offer, label: uiCopy(UiMessage.m_offer_0cf57c63eb), hint: uiCopy(UiMessage.m_e_g_20_off_all_fef00cc590),
           textCapitalization: TextCapitalization.sentences),
       const SizedBox(height: Msg.s3),
-      AdField(controller: _keyFacts, label: 'Key facts', hint: 'e.g. Sale runs Fri–Sun, store opens 10am',
+      AdField(controller: _keyFacts, label: uiCopy(UiMessage.m_key_facts_e4717f888f), hint: uiCopy(UiMessage.m_e_g_sale_runs_fri_bed500968d),
           minLines: 2, maxLines: null, textCapitalization: TextCapitalization.sentences),
       const SizedBox(height: Msg.s3),
-      AdField(controller: _objections, label: 'Objection answers',
-          hint: 'e.g. If they ask about delivery, say we deliver free within the city',
+      AdField(controller: _objections, label: uiCopy(UiMessage.m_objection_answers_3ff353aadc),
+          hint: uiCopy(UiMessage.m_e_g_if_they_ask_16465859b0),
           minLines: 2, maxLines: null, textCapitalization: TextCapitalization.sentences),
       const SizedBox(height: Msg.s4),
-      Text('Language', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_language_a4fe65264e, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (label, code) in _languages)
           AdChip(label: label, active: _languageHint == code, onTap: () => setState(() => _languageHint = code)),
       ]),
       const SizedBox(height: Msg.s4),
-      Text('Voice', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_voice_87bf2bc085, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       CampaignVoicePicker(
         voices: _voices,
@@ -588,19 +592,19 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _persona,
-        label: 'Persona notes (optional)',
-        hint: 'e.g. Friendly, upbeat, keeps calls under 2 minutes',
+        label: uiCopy(UiMessage.m_persona_notes_optional_19152cce8e),
+        hint: uiCopy(UiMessage.m_e_g_friendly_upbeat_keeps_e9d776e264),
         textCapitalization: TextCapitalization.sentences,
       ),
       const SizedBox(height: Msg.s4),
-      Text('Knowledge files', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_knowledge_files_b99cd7c6ce, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       _kbFilesList(),
       const SizedBox(height: Msg.s2),
-      AdChip(label: 'Upload files (PDF, DOC, TXT, MD)', onTap: _pickKbFiles),
+      AdChip(label: uiCopy(UiMessage.m_upload_files_pdf_doc_txt_82ab0c2a2f), onTap: _pickKbFiles),
       Padding(
         padding: const EdgeInsets.only(top: Msg.s2),
-        child: Text('Files upload once the campaign is created.', style: ADText.preview(c: AD.textTertiary)),
+        child: UiText(UiMessage.m_files_upload_once_the_campaign_563c68f5cf, style: ADText.preview(c: AD.textTertiary)),
       ),
       if (_error != null) AdErrorMsg(_error!),
     ]);
@@ -619,7 +623,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.regular), size: 16, color: AD.textSecondary),
         const SizedBox(width: Msg.s2),
         Expanded(
-          child: Text('“Hello, this is Ava calling on behalf of $biz…”',
+          child: UiText(UiMessage.m_hello_this_is_ava_calling_37501bc744, params: {'biz': (biz).toString()},
               style: ADText.preview(c: AD.textSecondary)),
         ),
       ]),
@@ -628,7 +632,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _kbFilesList() {
     if (_kbFiles.isEmpty) {
-      return Text('No files yet.', style: ADText.preview(c: AD.textTertiary));
+      return UiText(UiMessage.m_no_files_yet_390ddbd1e4, style: ADText.preview(c: AD.textTertiary));
     }
     return Column(children: [
       for (var i = 0; i < _kbFiles.length; i++)
@@ -676,7 +680,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
           AdSticker('Connected', kind: AdStickerKind.ok, icon: PhosphorIcons.check(PhosphorIconsStyle.bold))
         else
           AdChip(
-            label: _connectorsChecked ? 'Connect' : 'Checking…',
+            label: _connectorsChecked ? uiCopy(UiMessage.m_connect_1a2303ede0) : uiCopy(UiMessage.m_checking_ec963ffc91),
             onTap: _connectorsChecked ? () => _connectConnector(slug, label) : null,
           ),
       ]),
@@ -687,7 +691,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _contactsStep() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Upload a spreadsheet of names/numbers to call, or link a Google Sheet.', style: ADText.preview()),
+      UiText(UiMessage.m_upload_a_spreadsheet_of_names_25d74a1a04, style: ADText.preview()),
       const SizedBox(height: Msg.s3),
       if (_contactsFile != null)
         Padding(
@@ -704,20 +708,19 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             ),
           ]),
         ),
-      AdChip(label: _contactsFile == null ? 'Upload Excel/CSV' : 'Change file', onTap: _pickContactsFile),
+      AdChip(label: _contactsFile == null ? uiCopy(UiMessage.m_upload_excel_csv_6c9fe6d5e8) : uiCopy(UiMessage.m_change_file_1a675bfd38), onTap: _pickContactsFile),
       const SizedBox(height: Msg.s4),
-      Text('OR', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_or_829e5b28af, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       AdField(
         controller: _sheetLink,
-        label: 'Google Sheet link',
+        label: uiCopy(UiMessage.m_google_sheet_link_cbdbecf56f),
         hint: 'https://docs.google.com/spreadsheets/…',
         keyboardType: TextInputType.url,
       ),
       const SizedBox(height: Msg.s3),
-      Text(
-        'Parsing and validation happen once the campaign is created — you’ll see '
-        'a contact count on the campaign dashboard after upload.',
+      UiText(
+        UiMessage.m_parsing_and_validation_happen_once_f7d3eb97b7,
         style: ADText.preview(c: AD.textTertiary),
       ),
       if (_contactsNote != null) ...[
@@ -725,19 +728,18 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         AdErrorMsg(_contactsNote!),
       ],
       const SizedBox(height: Msg.s4),
-      Text('Or connect Google Sheets', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_or_connect_google_sheets_e88e20bb16, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       _connectorRow(
         icon: PhosphorIcons.gridFour(PhosphorIconsStyle.regular),
         color: const Color(0xFF0F9D58), // matches kAvaApps' googlesheets tile
-        label: 'Google Sheets',
+        label: uiCopy(UiMessage.m_google_sheets_f109802a74),
         connected: _sheetsConnected,
         slug: 'googlesheets',
       ),
       const SizedBox(height: Msg.s2),
-      Text(
-        'Connecting lets Ava pull contacts straight from a sheet — coming soon; '
-        'the link above keeps working in the meantime.',
+      UiText(
+        UiMessage.m_connecting_lets_ava_pull_contacts_336c8b9cc3,
         style: ADText.preview(c: AD.textTertiary),
       ),
     ]);
@@ -749,14 +751,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _numberChoiceTile(
         choice: _NumberChoice.existing,
-        title: 'Use existing number',
+        title: uiCopy(UiMessage.m_use_existing_number_1957099929),
         subtitle: _didSearchLoading
-            ? 'Loading numbers…'
+            ? uiCopy(UiMessage.m_loading_numbers_1b230bf748)
             : !_didSearchAvailable
-                ? 'Number provisioning is coming soon.'
+                ? uiCopy(UiMessage.m_number_provisioning_is_coming_soon_864e8f8d81)
                 : _didOffers.isEmpty
-                    ? 'No numbers available yet.'
-                    : '${_didOffers.length} number(s) available',
+                    ? uiCopy(UiMessage.m_no_numbers_available_yet_2c1a3b9f5d)
+                    : uiCopy(UiMessage.m_value1_number_s_available_3af1c40819, {'value1': (_didOffers.length).toString()}),
       ),
       if (_numberChoice == _NumberChoice.existing && _didSearchAvailable && _didOffers.isNotEmpty) ...[
         const SizedBox(height: Msg.s3),
@@ -768,8 +770,8 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s3),
       _numberChoiceTile(
         choice: _NumberChoice.fresh,
-        title: 'Get a new number',
-        subtitle: '700 tokens/month',
+        title: uiCopy(UiMessage.m_get_a_new_number_fecb37af0d),
+        subtitle: uiCopy(UiMessage.m_700_tokens_month_e471fac1e0),
       ),
       if (_error != null) AdErrorMsg(_error!),
     ]);
@@ -820,7 +822,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _scheduleStep() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Window', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_window_19734a1b58, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       Container(
         padding: const EdgeInsets.all(Msg.s3),
@@ -832,11 +834,11 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.regular), size: 16, color: AD.textSecondary),
           const SizedBox(width: Msg.s2),
-          Text('10:00–19:00 IST', style: ADText.rowName()),
+          UiText(UiMessage.m_10_00_19_00_ist_217e850857, style: ADText.rowName()),
         ]),
       ),
       const SizedBox(height: Msg.s4),
-      Text('Concurrency', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_concurrency_8708492f3e, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       Row(children: [
         _stepperButton(icon: PhosphorIcons.minus(PhosphorIconsStyle.bold), onTap: _concurrency > 1 ? () => setState(() => _concurrency -= 1) : null),
@@ -846,7 +848,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _estContacts,
-        label: 'Estimated contacts (for the cost estimate)',
+        label: uiCopy(UiMessage.m_estimated_contacts_for_the_cost_033309816a),
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (_) => setState(() {}),
@@ -854,12 +856,12 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s4),
       AdField(
         controller: _spendCap,
-        label: 'Spend cap (tokens) — required',
+        label: uiCopy(UiMessage.m_spend_cap_tokens_required_6f1a0ffcda),
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       ),
       const SizedBox(height: Msg.s2),
-      Text('The campaign auto-pauses once this many tokens are spent.', style: ADText.preview(c: AD.textTertiary)),
+      UiText(UiMessage.m_the_campaign_auto_pauses_once_17eeb34c6e, style: ADText.preview(c: AD.textTertiary)),
       if (_error != null) AdErrorMsg(_error!),
     ]);
   }
@@ -888,12 +890,12 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Appointment booking', style: ADText.rowName()),
+            UiText(UiMessage.m_appointment_booking_bd80edd3fa, style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(
               _calendarConnected
-                  ? 'Ava can offer and book a slot on your Google Calendar.'
-                  : 'Connect Google Calendar to let Ava book appointments.',
+                  ? uiCopy(UiMessage.m_ava_can_offer_and_book_24c1266560)
+                  : uiCopy(UiMessage.m_connect_google_calendar_to_let_79042720d3),
               style: ADText.preview(),
             ),
           ]),
@@ -909,7 +911,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         _connectorRow(
           icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular),
           color: const Color(0xFF4285F4), // matches kAvaApps' googlecalendar tile
-          label: 'Google Calendar',
+          label: uiCopy(UiMessage.m_google_calendar_b074310e91),
           connected: _calendarConnected,
           slug: 'googlecalendar',
         ),
@@ -920,9 +922,9 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Human handover', style: ADText.rowName()),
+            UiText(UiMessage.m_human_handover_643b43481c, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text('Transfer the call to a real person when the caller asks.', style: ADText.preview()),
+            UiText(UiMessage.m_transfer_the_call_to_a_d9640024a4, style: ADText.preview()),
           ]),
         ),
         const SizedBox(width: Msg.s2),
@@ -932,7 +934,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         const SizedBox(height: Msg.s3),
         AdField(
           controller: _handoverNumber,
-          label: 'Handover number',
+          label: uiCopy(UiMessage.m_handover_number_ee08660ddd),
           hint: '+91…',
           keyboardType: TextInputType.phone,
         ),
@@ -981,12 +983,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
           border: Border.all(color: AD.primaryBadge.withValues(alpha: 0.40), width: 1),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Estimated cost', style: ADText.sectionLabel(c: AD.primaryBadge)),
+          UiText(UiMessage.m_estimated_cost_9ccba222f8, style: ADText.sectionLabel(c: AD.primaryBadge)),
           const SizedBox(height: Msg.s2),
-          Text(
-            '~$_estimatedCostTokens tokens ($contacts contacts × ~$_estMinutesPerCall min × '
-            '$_ratePerMinTokens tokens/min'
-            '${_numberChoice == _NumberChoice.fresh ? ' + $_newDidTokens for the new number' : ''})',
+          UiText(
+            UiMessage.m_estimatedcosttokens_tokens_contacts_contacts_est_0ef0163f6a, params: {'estimatedCostTokens': (_estimatedCostTokens).toString(), 'contacts': (contacts).toString(), 'estMinutesPerCall': (_estMinutesPerCall).toString(), 'ratePerMinTokens': (_ratePerMinTokens).toString(), 'value5': (_numberChoice == _NumberChoice.fresh ? ' + $_newDidTokens for the new number' : '').toString()},
             style: ADText.preview(c: AD.textSecondary),
           ),
         ]),
@@ -994,7 +994,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       const SizedBox(height: Msg.s4),
       if (_error != null) ...[AdErrorMsg(_error!), const SizedBox(height: Msg.s3)],
       AdButton(
-        label: _launching ? 'Launching…' : 'Launch campaign',
+        label: _launching ? uiCopy(UiMessage.m_launching_a6f90e03c4) : uiCopy(UiMessage.m_launch_campaign_72c83f4577),
         fullWidth: true,
         fontSize: 16,
         loading: _launching,
@@ -1031,6 +1031,7 @@ class _WizToggle extends StatelessWidget {
   const _WizToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(

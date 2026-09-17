@@ -10,26 +10,26 @@ const steps = [
 ---
 <section class="booking-express booking-illustrated rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
   <span id="formats" aria-hidden="true"></span>
-  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> <ui-copy style="display:contents" data-i18n="web-landing.e38ba82f0a13cc39">Ek platform. Teen tareeke.</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
       <div class="rail-format-grid">
-        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/live-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/one-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>1:1 sessions</h3><p>Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>Group sessions</h3><p>Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="express-format-sticker" aria-hidden="true"><img src="/assets/landing-steps-preview/live-original.png" alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.b7a9f5518da78e1f">Live events</h3><p data-i18n="web-landing.982acdf78125b594">Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="express-format-sticker" aria-hidden="true"><img src="/assets/landing-steps-preview/one-original.png" alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.f34fb6b7a6f51b9d">1:1 sessions</h3><p data-i18n="web-landing.7480d0ba273e2df7">Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="express-format-sticker" aria-hidden="true"><img src="/assets/landing-steps-preview/group-original.png" alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.84d0be67f5ca32a2">Group sessions</h3><p data-i18n="web-landing.bf94bce3c2953bed">Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
       </div>
 
   <div class="express-ticket" id="how-avatok-works">
     <span id="how-it-works" aria-hidden="true"></span>
     <div class="express-heading">
-      <div class="express-booking-art" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/booking-original.png', { width: 400, fit: 'scale-down' })} alt="" width="140" height="140" loading="lazy" decoding="async" /></div>
+      <div class="express-booking-art" aria-hidden="true"><img src="/assets/landing-steps-preview/booking-original.png" alt="" width="140" height="140" loading="lazy" decoding="async" /></div>
       <div class="express-title">
-        <p class="express-label">Your first booking express</p>
+        <p data-i18n="web-landing.2bf54f09cc27116b" class="express-label">Your first booking express</p>
         <h3><span data-india-i18n="journeyTitle">{copy.journeyTitle}</span></h3>
       </div>
-      <div class="express-stamp" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/opportunities-original.png', { width: 400, fit: 'scale-down' })} alt="" width="112" height="112" loading="lazy" decoding="async" /></div>
+      <div class="express-stamp" aria-hidden="true"><img src="/assets/landing-steps-preview/opportunities-original.png" alt="" width="112" height="112" loading="lazy" decoding="async" /></div>
     </div>
     <ol class="express-steps">
       {steps.map(([title, body, image, alt], index) => <li>
-        <div class="express-step-art"><img src={publicImage(`/assets/landing-steps-preview/${image}.png`, { width: 900, fit: 'scale-down' })} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
+        <div class="express-step-art"><img src={`/assets/landing-steps-preview/${image}.png`} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
         <div class="express-step-copy">
         <h4 data-india-i18n={title}>{copy[title]}</h4>
         <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Start your show on your app." : copy[body]}</p>
@@ -37,8 +37,8 @@ const steps = [
       </li>)}
     </ol>
     <div class="express-bottom">
-      <a class="rail-button rail-button--ink" href="/sign-up" data-home-cta="booking-express-create">Create your free listing <span aria-hidden="true">↗</span></a>
-      <p class="rail-script">Chhoti shuruaat<br />badi kahaniyan banati hai.</p>
+      <a class="rail-button rail-button--ink" href="/sign-up" data-home-cta="booking-express-create"><ui-copy style="display:contents" data-i18n="web-landing.60be9273c8e3a386">Create your free listing</ui-copy> <span aria-hidden="true">↗</span></a>
+      <p class="rail-script"><ui-copy style="display:contents" data-i18n="web-landing.4222c5d83d78fcf9">Chhoti shuruaat</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-landing.07ed97e71da22c72">badi kahaniyan banati hai.</ui-copy></p>
     </div>
   </div>
 </section>

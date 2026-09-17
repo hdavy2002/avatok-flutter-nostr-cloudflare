@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 // vision_preview_pane.dart
 //
 // Two public widgets:
@@ -32,6 +34,7 @@ class VisionCameraView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (defaultTargetPlatform == TargetPlatform.android) {
       return AndroidView(
         viewType: PoseChannel.cameraViewType,
@@ -43,7 +46,7 @@ class VisionCameraView extends StatelessWidget {
     return Container(
       color: AD.bg,
       alignment: Alignment.center,
-      child: Text('Camera preview is Android-only for now',
+      child: UiText(UiMessage.m_camera_preview_is_android_only_cc7a894e93,
           style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 13, height: 1.42)),
     );
   }
@@ -98,6 +101,7 @@ class _VisionPreviewPaneState extends State<VisionPreviewPane> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final painter = overlayPainterFor(widget.overlayStyle, _frame);
     return ClipRRect(
       borderRadius: BorderRadius.circular(Msg.rLg),

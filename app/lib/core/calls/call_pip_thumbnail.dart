@@ -1,3 +1,5 @@
+
+import '../localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -111,6 +113,7 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mq = MediaQuery.of(context);
     final screen = mq.size;
     final insets = mq.padding;
@@ -182,8 +185,8 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
                   color: AD.scrim,
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
-                  child: Text(
-                    'Reconnecting…',
+                  child: UiText(
+                    UiMessage.m_reconnecting_27b80374e1,
                     textAlign: TextAlign.center,
                     style: ADText.sectionLabel(c: AD.textPrimary),
                   ),

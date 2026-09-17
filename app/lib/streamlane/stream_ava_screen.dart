@@ -18,6 +18,8 @@
 // Visual language deliberately mirrors stream_call_screen.dart (AD.* tokens,
 // PhosphorIcons control row) rather than the old lane's `_ReceptionistDuo`.
 library;
+import '../core/localization/ui_text.dart';
+
 
 import 'dart:async';
 
@@ -453,6 +455,7 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final peerName = _peerDisplayName;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -461,7 +464,7 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
           children: [
             const SizedBox(height: Msg.s5),
             Text(
-              peerName.isEmpty ? 'Ava' : "$peerName's Ava",
+              peerName.isEmpty ? uiCopy(UiMessage.m_ava_149f7514de) : uiCopy(UiMessage.m_peername_s_ava_c4211decd3, {'peerName': (peerName).toString()}),
               style: const TextStyle(
                 color: AD.textPrimary,
                 fontSize: 20,
@@ -595,6 +598,7 @@ class _AvaDuo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final r = recept;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -602,7 +606,7 @@ class _AvaDuo extends StatelessWidget {
       children: [
         _Pulse(
           level: r?.micLevel,
-          label: 'You',
+          label: uiCopy(UiMessage.m_you_08b0419357),
           size: _avatarSize,
           child: Avatar(
             seed: 'me',
@@ -656,6 +660,7 @@ class _Pulse extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final listenable = level;
     final face = SizedBox(width: size, height: size, child: child);
     return Column(
@@ -747,6 +752,7 @@ class _LinkFlowState extends State<_LinkFlow>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mic = widget.mic;
     final ava = widget.ava;
     return SizedBox(

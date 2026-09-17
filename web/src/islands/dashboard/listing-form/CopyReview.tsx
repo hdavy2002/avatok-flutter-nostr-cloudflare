@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 /* [CARD-AI-REVIEW-1 2026-09-03, owner decision] The AI copy assist.
  *
  * Owner's ask: every card is reviewed by AI while the form is being filled —
@@ -192,15 +194,15 @@ export function CopyFieldAssist({
    *  and carries the text that was settled. */
   onSettled: (how: 'applied' | 'kept', text: string) => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   // The ONLY slice this component ever reads or acts on.
   const slice = state.fields[field];
   const { result: f, busy, error } = slice;
 
   if (assisted) {
     return (
-      <p className="mb-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkMute">
-        ✓ AI checked
-      </p>
+      <p className="mb-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkMute"><UiText id="web-dashboard.1e4db026e9d86099" source="✓ AI checked" />{" "}</p>
     );
   }
 
@@ -209,10 +211,10 @@ export function CopyFieldAssist({
   if (!f) {
     return (
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
-        <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Use AI</span>
+        <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.39f48685587a2d76" source="Use AI" /></span>
         <button type="button" disabled={busy} onClick={() => void state.run(field)}
           className={[chipBase, busy ? 'bg-paper2 text-inkMute' : 'bg-blue text-ink'].join(' ')}>
-          {busy ? 'Asking Ava…' : `✦ Write my ${label.toLowerCase()} for me`}
+          {busy ? uiT("web-dashboard.3e86f63c0dfb4192","Asking Ava…") : uiT("web-dashboard.b236f12d229d3a66","✦ Write my {value0} for me",{value0:String(label.toLowerCase())})}
         </button>
         {error && <span className="font-body font-bold text-[12px] text-coral">⚠ {error}</span>}
       </div>
@@ -232,14 +234,14 @@ export function CopyFieldAssist({
         <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
           {eyebrowLine(label, slice)}
         </span>
-        <span className="font-mono text-[11px] text-inkSoft">{f.suggested.length} chars</span>
+        <span className="font-mono text-[11px] text-inkSoft">{f.suggested.length}{" "}<UiText id="web-dashboard.1ce93dacbcf499b5" source="chars" /></span>
       </div>
       {f.note && <p className="mt-1 font-body text-[12px] text-inkSoft">{f.note}</p>}
       {hasSuggestion
         ? <p className="mt-1.5 font-body font-bold text-[13px] text-ink">{f.suggested}</p>
         : wasEmpty
-          ? <p className="mt-1.5 font-body text-[13px] text-inkSoft">Nothing came back for this one — write it in your own words.</p>
-          : <p className="mt-1.5 font-body text-[13px] text-inkSoft">Nothing to change — this one already fits.</p>}
+          ? <p className="mt-1.5 font-body text-[13px] text-inkSoft"><UiText id="web-dashboard.030cccaace126f65" source="Nothing came back for this one — write it in your own words." /></p>
+          : <p className="mt-1.5 font-body text-[13px] text-inkSoft"><UiText id="web-dashboard.a599a601f37ab014" source="Nothing to change — this one already fits." /></p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {hasSuggestion && (
           <button type="button"
@@ -248,9 +250,7 @@ export function CopyFieldAssist({
               onSettled('applied', f.suggested);
               capture('listing_copy_review_apply', { field, source: slice.source ?? 'rules' });
             }}
-            className={`${chipBase} bg-lime text-ink`}>
-            Use this
-          </button>
+            className={`${chipBase} bg-lime text-ink`}><UiText id="web-dashboard.b29199652039e749" source="Use this" />{" "}</button>
         )}
         <button type="button"
           onClick={() => {
@@ -258,7 +258,7 @@ export function CopyFieldAssist({
             capture('listing_copy_review_keep', { field, source: slice.source ?? 'rules' });
           }}
           className={`${chipBase} bg-card text-inkSoft`}>
-          {hasSuggestion ? (wasEmpty ? 'Not this one' : 'Keep mine') : 'Got it'}
+          {hasSuggestion ? (wasEmpty ? uiT("web-dashboard.ac4d85fda656fcd0","Not this one") : uiT("web-dashboard.0335c833251799ba","Keep mine")) : uiT("web-dashboard.5ad3dbd1242a4cea","Got it")}
         </button>
       </div>
     </div>

@@ -91,8 +91,8 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
     final status = (res['status'] as num?)?.toInt() ?? 0;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(status == 404 || status == 405
-          ? 'Seller approval is not available on this server yet.'
-          : 'That decision could not be saved. Try again.'),
+          ? uiCopy(UiMessage.m_seller_approval_is_not_available_beb4157c35)
+          : uiCopy(UiMessage.m_that_decision_could_not_be_31d0ef61f8)),
     ));
   }
 
@@ -132,6 +132,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final bg = _isDeal ? const Color(0xFFD7F5DD) : const Color(0xFFFFF6CC); // green / pale yellow
     final transcript = (_e['transcript'] as List?) ?? const [];
     final text = (_e['text'] ?? (_isDeal ? 'Your agents reached a deal.' : 'Your agents finished negotiating.')).toString();
@@ -146,7 +147,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text(_isDeal ? '🤝 Deal' : '💬 No deal',
+          Text(_isDeal ? uiCopy(UiMessage.m_deal_1fba69ff37) : uiCopy(UiMessage.m_no_deal_fe03cdb497),
               style: ADText.bubbleMeta(c: AD.bubbleInInk)),
         ]),
         const SizedBox(height: 4),
@@ -165,7 +166,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
                 Icon(_loading ? PhosphorIcons.hourglass(PhosphorIconsStyle.bold) : _playing ? PhosphorIcons.stop(PhosphorIconsStyle.fill) : PhosphorIcons.play(PhosphorIconsStyle.fill),
                     color: Colors.white, size: 18),
                 const SizedBox(width: 6),
-                Text(_audioKey.isEmpty ? 'No audio' : _playing ? 'Stop' : 'Play conversation',
+                Text(_audioKey.isEmpty ? uiCopy(UiMessage.m_no_audio_907f6de68f) : _playing ? uiCopy(UiMessage.m_stop_cae7d57bc0) : uiCopy(UiMessage.m_play_conversation_dd32a2d9a4),
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
               ]),
             ),
@@ -184,7 +185,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(_sharing ? PhosphorIcons.hourglass(PhosphorIconsStyle.bold) : PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: AD.bubbleInInk, size: 16),
                   const SizedBox(width: 5),
-                  const Text('Share', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w600)),
+                  const UiText(UiMessage.m_share_29887a5ff9, style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w600)),
                 ]),
               ),
             ),
@@ -193,7 +194,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
           if (transcript.isNotEmpty)
             GestureDetector(
               onTap: () => setState(() => _expanded = !_expanded),
-              child: Text(_expanded ? 'Hide' : 'Transcript',
+              child: Text(_expanded ? uiCopy(UiMessage.m_hide_ac20a57bfd) : uiCopy(UiMessage.m_transcript_721164f0dc),
                   style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
             ),
         ]),
@@ -207,7 +208,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
         ],
         if (_pendingApproval && _isSeller && decision != 'approved' && decision != 'rejected') ...[
           const SizedBox(height: 10),
-          Text('This deal is waiting for your approval.',
+          UiText(UiMessage.m_this_deal_is_waiting_for_605f2a7ec3,
               style: ADText.bubbleMeta(c: AD.bubbleInInk)),
           const SizedBox(height: 6),
           Wrap(spacing: 8, children: [
@@ -225,7 +226,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
         ],
         if (decision == 'approved' || decision == 'rejected') ...[
           const SizedBox(height: 8),
-          Text(decision == 'approved' ? 'Approved' : 'Rejected',
+          Text(decision == 'approved' ? uiCopy(UiMessage.m_approved_87b42e40c2) : uiCopy(UiMessage.m_rejected_aea4a04a80),
               style: ADText.bubbleMeta(
                   c: decision == 'approved' ? AD.online : AD.danger)),
         ],
@@ -341,7 +342,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       if (bytes == null || bytes.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Couldn’t load the recording to share.')));
+              const SnackBar(content: UiText(UiMessage.m_couldn_t_load_the_recording_4ec86fa426)));
         }
         return;
       }
@@ -357,7 +358,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       Analytics.capture('ava_recept_share', {'session_id': widget.sessionId, 'ok': false});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t share the recording.')));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_share_the_recording_cd18328c20)));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
@@ -457,9 +458,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     if (!_hadConversation) {
       // Says what happened instead of implying a message exists. `turns: 0` with
       // no recording means the caller rang off before Ava could take anything.
-      return 'They hung up before leaving a message.';
+      return uiCopy(UiMessage.m_they_hung_up_before_leaving_c5bd2aeb73);
     }
-    return _hasRec ? 'Left a message.' : 'Ava answered.';
+    return _hasRec ? uiCopy(UiMessage.m_left_a_message_b4a09e6e0e) : uiCopy(UiMessage.m_ava_answered_1448e4af8d);
   }
 
   /// A recording actually exists. The envelope carries `has_recording`;
@@ -532,6 +533,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final transcript = (_e['transcript'] ?? '').toString().trim();
     final hasRec = _hasRec;
     final dur = _durationLabel;
@@ -539,7 +541,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill), size: 18, color: AD.bubbleInBg),
         const SizedBox(width: 6),
-        Flexible(child: Text('$_caller called', style: ADText.rowName(c: AD.bubbleInInk))),
+        Flexible(child: UiText(UiMessage.m_caller_called_ff6b9b7837, params: {'caller': (_caller).toString()}, style: ADText.rowName(c: AD.bubbleInInk))),
       ]),
       const SizedBox(height: 2),
       // [RECEPT-EMPTY-CARD-1] Was 'Ava took a message', hardcoded. It is a claim
@@ -573,7 +575,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleInInk),
               const SizedBox(width: 5),
-              Text('Save contact', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+              UiText(UiMessage.m_save_contact_d24f121f4a, style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
             ]),
           ),
         ),
@@ -595,7 +597,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : Icon(_playing ? PhosphorIcons.stop(PhosphorIconsStyle.fill) : PhosphorIcons.play(PhosphorIconsStyle.fill), size: 16, color: AD.bubbleInInk),
                 const SizedBox(width: 5),
-                Text(_playing ? 'Stop' : 'Play recording', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                Text(_playing ? uiCopy(UiMessage.m_stop_cae7d57bc0) : uiCopy(UiMessage.m_play_recording_67e0ddff71), style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),
             ),
           ),
@@ -622,7 +624,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleInInk),
                 const SizedBox(width: 4),
-                Text('Share', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+                UiText(UiMessage.m_share_29887a5ff9, style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),
             ),
           ),
@@ -632,7 +634,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         const SizedBox(height: 8),
         GestureDetector(
           onTap: () => setState(() => _expanded = !_expanded),
-          child: Text(_expanded ? 'Hide transcript' : 'Show transcript',
+          child: Text(_expanded ? uiCopy(UiMessage.m_hide_transcript_ed34c34016) : uiCopy(UiMessage.m_show_transcript_4654dfe79c),
               style: ADText.bubbleMeta(c: AD.iconSearch)),
         ),
         if (_expanded) ...[

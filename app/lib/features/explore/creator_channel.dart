@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -84,26 +87,26 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
         leading: PhosphorIcon(
             c.notify ? PhosphorIcons.bellSlash(PhosphorIconsStyle.bold) : PhosphorIcons.bellRinging(PhosphorIconsStyle.bold),
             color: AD.textPrimary),
-        title: Text(c.notify ? 'Mute notifications from this creator' : 'Unmute notifications',
+        title: Text(c.notify ? uiCopy(UiMessage.m_mute_notifications_from_this_creator_7d16f7d063) : uiCopy(UiMessage.m_unmute_notifications_217ae6a72b),
             style: ADText.rowName(c: AD.textPrimary)),
         onTap: () { Navigator.pop(s); _toggleMute(); },
       ),
       ListTile(
         leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: AD.textPrimary),
-        title: Text('Report creator', style: ADText.rowName(c: AD.textPrimary)),
+        title: UiText(UiMessage.m_report_creator_9ce51a8050, style: ADText.rowName(c: AD.textPrimary)),
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
-          if (mounted && ok) showAdToast(context, message: 'Report submitted — thank you');
+          if (mounted && ok) showAdToast(context, message: uiCopy(UiMessage.m_report_submitted_thank_you_88593684e3));
         },
       ),
       ListTile(
         leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
-        title: Text('Block creator', style: ADText.rowName(c: AD.danger)),
+        title: UiText(UiMessage.m_block_creator_24fdb02d92, style: ADText.rowName(c: AD.danger)),
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.blockCreator(c.uid);
-          if (mounted && ok) { showAdToast(context, message: 'Creator blocked'); Navigator.pop(context); }
+          if (mounted && ok) { showAdToast(context, message: uiCopy(UiMessage.m_creator_blocked_1cf7d88adb)); Navigator.pop(context); }
         },
       ),
     ])));
@@ -121,6 +124,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = _c;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -143,10 +147,10 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(c?.name ?? 'Channel',
+                      Text(c?.name ?? uiCopy(UiMessage.m_channel_ce4683e701),
                           style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
-                      Text('CREATOR CHANNEL', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_creator_channel_50a9478437, style: ADText.sectionLabel()),
                     ],
                   ),
                 ),
@@ -191,7 +195,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Flexible(child: Text(c.name ?? 'Creator', maxLines: 1, overflow: TextOverflow.ellipsis,
+                Flexible(child: Text(c.name ?? uiCopy(UiMessage.m_creator_88447b8309), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.appTitle())),
                 if (c.kycVerified) ...[
                   const SizedBox(width: Msg.s1),
@@ -231,7 +235,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             const SizedBox(height: 16),
             Row(children: [
               Expanded(child: AdButton(
-                label: c.following ? 'Following' : 'Follow',
+                label: c.following ? uiCopy(UiMessage.m_following_344b4271ca) : uiCopy(UiMessage.m_follow_641d1ef657),
                 variant: c.following ? AdButtonVariant.ghost : AdButtonVariant.primary,
                 icon: c.following
                     ? PhosphorIcons.check(PhosphorIconsStyle.bold)
@@ -242,7 +246,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
               )),
               const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
-                label: 'Message',
+                label: uiCopy(UiMessage.m_message_2f77668a9d),
                 variant: AdButtonVariant.teal,
                 icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
                 trailingIcon: false,
@@ -257,7 +261,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
               PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
                   size: 12, color: AD.textTertiary),
               const SizedBox(width: 4),
-              Text('Pinned', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_pinned_f20c879465, style: ADText.sectionLabel()),
             ]),
             const SizedBox(height: Msg.s2),
             SizedBox(height: 250, child: Padding(
@@ -266,11 +270,11 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             )),
             const SizedBox(height: Msg.s4),
           ],
-          Text('Listings', style: ADText.appTitle()),
+          UiText(UiMessage.m_listings_5009238dba, style: ADText.appTitle()),
           const SizedBox(height: Msg.s2),
           if (rest.isEmpty && pinned == null)
             Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
-                child: Text('No listings yet — check back soon.', style: ADText.preview())),
+                child: UiText(UiMessage.m_no_listings_yet_check_back_278d484a3d, style: ADText.preview())),
           GridView.builder(
             shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -279,10 +283,10 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             itemBuilder: (_, i) => ListingCardTile(card: rest[i], onTap: () => _open(rest[i].id)),
           ),
           const SizedBox(height: Msg.s5),
-          Text('Reviews', style: ADText.appTitle()),
+          UiText(UiMessage.m_reviews_84cb7871b7, style: ADText.appTitle()),
           if (c.reviews.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
-                child: Text('No reviews yet.', style: ADText.preview())),
+                child: UiText(UiMessage.m_no_reviews_yet_1e1bb23a19, style: ADText.preview())),
           for (final r in c.reviews) ReviewTile(review: r),
         ]),
       ),
@@ -339,7 +343,7 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         decoration: BoxDecoration(
           color: AD.overlaySheet,
           borderRadius: Msg.brSheetTop,
@@ -347,20 +351,20 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
         ),
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('My channel', style: ADText.appTitle()),
+          UiText(UiMessage.m_my_channel_5727951b26, style: ADText.appTitle()),
           const SizedBox(height: Msg.s3),
-          AdField(controller: _bio, maxLines: 3, label: 'Bio', hint: 'Tell people what you do'),
+          AdField(controller: _bio, maxLines: 3, label: uiCopy(UiMessage.m_bio_3933b18021), hint: uiCopy(UiMessage.m_tell_people_what_you_do_86e3212f89)),
           const SizedBox(height: Msg.s3),
           AdField(controller: _links, maxLines: 4,
               label: 'Links (one per line: Label|https://…)', hint: 'My site|https://…'),
           if (_error != null) AdErrorMsg(_error!),
           const SizedBox(height: 16),
           AdButton(
-            label: 'Save',
+            label: uiCopy(UiMessage.m_save_1509f561f2),
             fullWidth: true,
             loading: _busy,
             onPressed: _busy ? null : _save,
           ),
         ]),
-      );
+      ); }
 }

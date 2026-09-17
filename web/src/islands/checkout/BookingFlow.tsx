@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* Phase B — BookingFlow: the guest-checkout state machine.
  *
  *   pick → identify → pay → confirm
@@ -196,9 +197,7 @@ function FlowInner({ listing }: { listing: Listing }) {
   return (
     <div className="mx-auto w-full max-w-md">
       {draft && draft.step !== 'pick' && (
-        <div className="mb-4 rounded-zine border-zine border-ink bg-lime px-4 py-3 font-body text-[14px] font-bold text-ink" role="status">
-          Your unfinished booking is saved. Picking up where you left off.
-        </div>
+        <div className="mb-4 rounded-zine border-zine border-ink bg-lime px-4 py-3 font-body text-[14px] font-bold text-ink" role="status"><UiText id="web-checkout.fb2009404d599391" source="Your unfinished booking is saved. Picking up where you left off." />{" "}</div>
       )}
       <StepDots step={step} />
 
@@ -211,7 +210,7 @@ function FlowInner({ listing }: { listing: Listing }) {
           {working ? (
             <div className="flex items-center gap-3">
               <Spinner size={22} />
-              <span className="font-body font-bold text-[15px] text-inkSoft">One moment…</span>
+              <span className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.7ce83d453683ff27" source="One moment…" /></span>
             </div>
           ) : (
             <EmailCodeSignIn

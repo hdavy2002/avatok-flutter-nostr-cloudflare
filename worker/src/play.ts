@@ -16,6 +16,7 @@ import type { Env } from "./types";
 const TOKEN_URI = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/androidpublisher";
 const AT_CACHE_KEY = "play_access_token"; // KV (TOKENS); ~55-min TTL
+const PLAY_PAYMENTS_DISABLED = "payments_disabled";
 
 interface ServiceAccount {
   client_email: string;
@@ -113,6 +114,7 @@ export async function verifyPlaySubscription(
   env: Env,
   purchaseToken: string,
 ): Promise<PlaySubResult> {
+  return { ok: false, entitled: false, reason: PLAY_PAYMENTS_DISABLED };
   let accessToken: string;
   try { accessToken = await getAccessToken(env); }
   catch (e) { return { ok: false, entitled: false, reason: (e as Error).message }; }
@@ -171,6 +173,7 @@ export async function verifyPlayProduct(
   productId: string,
   purchaseToken: string,
 ): Promise<PlayProductResult> {
+  return { ok: false, purchased: false, reason: PLAY_PAYMENTS_DISABLED };
   let accessToken: string;
   try { accessToken = await getAccessToken(env); }
   catch (e) { return { ok: false, purchased: false, reason: (e as Error).message }; }
@@ -214,6 +217,7 @@ export async function listVoidedPlayPurchases(
   startTimeMillis: number,
   pageToken?: string,
 ): Promise<{ ok: boolean; purchases: PlayVoidedPurchase[]; nextPageToken?: string; reason?: string }> {
+  return { ok: false, purchases: [], reason: PLAY_PAYMENTS_DISABLED };
   let accessToken: string;
   try { accessToken = await getAccessToken(env); }
   catch (e) { return { ok: false, purchases: [], reason: (e as Error).message }; }

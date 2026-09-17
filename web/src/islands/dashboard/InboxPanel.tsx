@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* InboxPanel — the notification feed. GET /api/notifications?limit=30 →
  * { items:[{id,type,title,body,read,created_at}] }; POST /api/notifications/read.
  */
@@ -10,6 +12,8 @@ type Note = { id: string; type?: string; title?: string; body?: string; read?: b
 const dt = (ms?: number) => (ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [items, setItems] = useState<Note[] | null>(null);
@@ -38,20 +42,20 @@ function Inner() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => setTab('all')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'all' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}>All</button>
-        <button type="button" onClick={() => setTab('unread')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'unread' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}>Unread{unread ? ` (${unread})` : ''}</button>
-        {unread > 0 && <button type="button" onClick={markAll} className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Mark all read</button>}
+        <button type="button" onClick={() => setTab('all')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'all' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}><UiText id="web-dashboard.a52ace420f2175d0" source="All" /></button>
+        <button type="button" onClick={() => setTab('unread')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'unread' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}><UiText id="web-dashboard.1b9f384c1436f607" source="Unread" />{unread ? ` (${unread})` : ''}</button>
+        {unread > 0 && <button type="button" onClick={markAll} className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.3bc62a9e6a39484a" source="Mark all read" /></button>}
       </div>
 
       {shown.length === 0 ? (
-        <div className="rounded-zine border-zine border-ink bg-paper2 p-8 font-body font-bold text-[15px] text-inkSoft shadow-zine-sm">{tab === 'unread' ? "You're all caught up." : 'No notifications yet.'}</div>
+        <div className="rounded-zine border-zine border-ink bg-paper2 p-8 font-body font-bold text-[15px] text-inkSoft shadow-zine-sm">{tab === 'unread' ? uiT("web-dashboard.aebca55641976f4b","You're all caught up.") : uiT("web-dashboard.ca02c722b0986174","No notifications yet.")}</div>
       ) : (
         <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
           {shown.map((n, i) => (
             <div key={n.id} className={`flex items-start gap-3 p-4 ${i ? 'border-t-zine border-ink' : ''} ${n.read ? '' : 'bg-paper2'}`}>
               <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full border-zine border-ink ${n.read ? 'bg-paper' : 'bg-coral'}`} />
               <div className="min-w-0 flex-1">
-                <div className="font-display font-semibold text-[15px] text-ink">{n.title ?? n.type ?? 'Notification'}</div>
+                <div className="font-display font-semibold text-[15px] text-ink">{n.title ?? n.type ?? uiT("web-dashboard.7d31b83313991d4c","Notification")}</div>
                 {n.body && <p className="font-body font-bold text-[13px] text-inkSoft">{n.body}</p>}
               </div>
               <span className="shrink-0 font-mono text-[13px] text-inkMute font-bold">{dt(n.created_at)}</span>

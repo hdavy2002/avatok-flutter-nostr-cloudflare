@@ -1,3 +1,5 @@
+
+import '../../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -22,6 +24,7 @@ class Step1Type extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final kind = '${listingDraftValue(draft, 'kind', 'kind', 'live_event')}';
     final schedule = '${listingDraftValue(draft, 'scheduleMode', 'schedule_mode', 'fixed_date')}';
     final showFree = !freeEntryLocked || listingDraftValue(draft, 'freeEntry', 'free_entry', false) == true;
@@ -87,9 +90,9 @@ class Step1Type extends StatelessWidget {
             onChanged: freeEntryLocked ? (value) {
               if (!value) patch({'free_entry': false});
             } : (value) => patch({'free_entry': value}),
-            title: Text('This is a free show', style: ADText.preview(c: AD.textPrimary)),
+            title: UiText(UiMessage.m_this_is_a_free_show_6a3d36b0cc, style: ADText.preview(c: AD.textPrimary)),
             subtitle: freeEntryLocked
-                ? Text('Turn this off to continue as a paid listing.', style: ADText.preview(c: AD.textSecondary))
+                ? UiText(UiMessage.m_turn_this_off_to_continue_bb267acae0, style: ADText.preview(c: AD.textSecondary))
                 : null,
           ),
         ),

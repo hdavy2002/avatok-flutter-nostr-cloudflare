@@ -155,13 +155,13 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission needed')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_location_permission_needed_7a7d669630)));
         return;
       }
       final pos = await Geolocator.getCurrentPosition();
       _sendSpecial('loc', {'lat': pos.latitude, 'lng': pos.longitude}, '📍 Location');
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't get location")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_get_location_9f071569a4)));
     }
   }
 
@@ -178,9 +178,9 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Share live location', style: ADText.threadName()),
+            UiText(UiMessage.m_share_live_location_fe6fea9af9, style: ADText.threadName()),
             const SizedBox(height: 4),
-            Text('Your real-time position updates as you move, until the time runs out or you tap Stop.',
+            UiText(UiMessage.m_your_real_time_position_updates_83086f19d3,
                 style: ADText.preview(c: AD.textSecondary)),
             const SizedBox(height: 12),
             for (final opt in const [
@@ -204,7 +204,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission needed')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_location_permission_needed_7a7d669630)));
         Analytics.error(domain: 'location', code: 'perm_denied', screen: 'chat_thread', action: 'live_share');
         return;
       }
@@ -276,7 +276,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
       AvaLog.I.log('location', 'live share started id=${id.substring(0, 8)} dur=${minutes}m');
       if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't start live location")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_start_live_location_15a5fb578e)));
       Analytics.error(domain: 'location', code: 'live_start_failed', message: '$e', screen: 'chat_thread', action: 'live_share');
     }
   }
@@ -317,7 +317,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                           color: AD.danger,
                           borderRadius: Msg.brPill,
                           border: Border.all(color: AD.bubbleInInk, width: 2)),
-                      child: Text('Live', style: ADText.bubbleMeta(c: Colors.white)),
+                      child: UiText(UiMessage.m_live_b64ac05f17, style: ADText.bubbleMeta(c: Colors.white)),
                     ),
                   ),
               ]),
@@ -337,7 +337,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                   padding: const EdgeInsets.only(top: 4),
                   child: GestureDetector(
                     onTap: () => _stopLiveShare(s.id),
-                    child: Text('STOP SHARING', style: ADText.bubbleMeta(c: AD.danger)),
+                    child: UiText(UiMessage.m_stop_sharing_73d0812adc, style: ADText.bubbleMeta(c: AD.danger)),
                   ),
                 ),
             ],
@@ -352,7 +352,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => LiveMapScreen(
         session: s,
-        title: s.mine ? 'Your live location' : '${s.name} · live',
+        title: s.mine ? uiCopy(UiMessage.m_your_live_location_b2d46a6597) : uiCopy(UiMessage.m_value1_live_839d9e6ea9, {'value1': (s.name).toString()}),
         onStop: s.mine ? () => _stopLiveShare(s.id) : null,
         onTelemetry: (ev) => Analytics.capture(ev, {'share_id': s.id, 'is_sender': s.mine}),
       ),
@@ -366,7 +366,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Share a contact', style: ADText.threadName()),
+          UiText(UiMessage.m_share_a_contact_c100683690, style: ADText.threadName()),
           const SizedBox(height: 8),
           ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
             for (final c in contacts)
@@ -397,12 +397,12 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
             Row(children: [
               Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
               const SizedBox(width: 8),
-              Text('Create poll', style: ADText.rowName()),
+              UiText(UiMessage.m_create_poll_92f4f3f221, style: ADText.rowName()),
             ]),
             const SizedBox(height: 14),
             TextField(controller: q, autofocus: true, textCapitalization: TextCapitalization.sentences,
               style: ADText.rowName(),
-              decoration: InputDecoration(hintText: 'Ask a question…',
+              decoration: InputDecoration(hintText: uiCopy(UiMessage.m_ask_a_question_d6a2035c73),
                 hintStyle: ADText.preview(c: AD.textSecondary),
                 filled: true, fillColor: AD.card,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: BorderSide(color: AD.borderControl, width: 2)),
@@ -414,7 +414,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                 Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
                   Expanded(child: TextField(controller: opts[i], textCapitalization: TextCapitalization.sentences,
                     style: ADText.rowName(),
-                    decoration: InputDecoration(hintText: 'Option ${i + 1}',
+                    decoration: InputDecoration(hintText: uiCopy(UiMessage.m_option_value1_1b2b9f50ec, {'value1': (i + 1).toString()}),
                       hintStyle: ADText.preview(c: AD.textSecondary),
                       isDense: true, filled: true, fillColor: AD.card,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rSm), borderSide: BorderSide(color: AD.borderControl, width: 2)),
@@ -431,7 +431,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
               TextButton.icon(
                 onPressed: () => setSheet(() => opts.add(TextEditingController())),
                 icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
-                label: Text('Add option', style: ADText.statCaption(c: AD.textPrimary)),
+                label: UiText(UiMessage.m_add_option_ffbcabd155, style: ADText.statCaption(c: AD.textPrimary)),
               ),
             const SizedBox(height: 4),
             InkWell(
@@ -442,7 +442,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                   Icon(multi ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.bold),
                       size: 22, color: multi ? AD.primaryBadge : AD.textSecondary),
                   const SizedBox(width: 10),
-                  Expanded(child: Text('Allow multiple answers', style: ADText.rowName())),
+                  Expanded(child: UiText(UiMessage.m_allow_multiple_answers_2f68e65b4d, style: ADText.rowName())),
                 ])),
             ),
             const SizedBox(height: 12),
@@ -450,7 +450,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
               style: FilledButton.styleFrom(backgroundColor: AD.textPrimary, foregroundColor: AD.overlaySheet,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Msg.rMd))),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('Create poll', style: ADText.statCaption(c: AD.overlaySheet))),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: UiText(UiMessage.m_create_poll_92f4f3f221, style: ADText.statCaption(c: AD.overlaySheet))),
             )),
           ]),
         )),
@@ -459,7 +459,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
     if (ok != true) return;
     final options = opts.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
     if (q.text.trim().isEmpty || options.length < 2) {
-      if (mounted) _toast('A poll needs a question and at least 2 options.');
+      if (mounted) _toast(uiCopy(UiMessage.m_a_poll_needs_a_question_8d129e6963));
       return;
     }
     Analytics.capture('poll_create', {'options': options.length, 'multi': multi, 'group': _isGroup});
@@ -495,7 +495,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill), color: AD.danger, size: 20),
             const SizedBox(width: 6),
-            Text('Location · open in Maps', style: ADText.rowName(c: AD.iconSearch)),
+            UiText(UiMessage.m_location_open_in_maps_1a1ea3d6c5, style: ADText.rowName(c: AD.iconSearch)),
           ]),
         );
       case 'live':
@@ -526,9 +526,9 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['name'] ?? 'Contact').toString(), style: ADText.rowName(c: fg)),
+            Text((e['name'] ?? uiCopy(UiMessage.m_contact_2b5c3d2672)).toString(), style: ADText.rowName(c: fg)),
             GestureDetector(onTap: () => _addSharedContact(e),
-                child: Text('ADD CONTACT', style: ADText.bubbleMeta(c: t.play))),
+                child: UiText(UiMessage.m_add_contact_cd99025b4e, style: ADText.bubbleMeta(c: t.play))),
           ]),
         ]);
       case 'gcall':
@@ -544,7 +544,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                     : PhosphorIcons.videoCamera(PhosphorIconsStyle.fill),
                 size: 17, color: AD.online),
             const SizedBox(width: 6),
-            Text(audio ? 'Audio call' : 'Video call', style: ADText.rowName(c: fg)),
+            Text(audio ? uiCopy(UiMessage.m_audio_call_3501f9a7a9) : uiCopy(UiMessage.m_video_call_7b79b4f672), style: ADText.rowName(c: fg)),
             if (_confLive) ...[
               const SizedBox(width: 8),
               Container(
@@ -553,7 +553,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
                     color: AD.online,
                     borderRadius: Msg.brPill,
                     border: Border.all(color: t.border, width: 2)),
-                child: Text('Join', style: ADText.bubbleMeta(c: t.meta)),
+                child: UiText(UiMessage.m_join_fd30fe681b, style: ADText.bubbleMeta(c: t.meta)),
               ),
             ],
           ]),
@@ -570,9 +570,9 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
         return ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 200),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((e['q'] ?? 'Poll').toString(), style: ADText.rowName(c: fg)),
+            Text((e['q'] ?? uiCopy(UiMessage.m_poll_d54f7d124c)).toString(), style: ADText.rowName(c: fg)),
             if (multi) Padding(padding: const EdgeInsets.only(top: 2),
-              child: Text('Select one or more', style: ADText.bubbleMeta(c: t.meta))),
+              child: UiText(UiMessage.m_select_one_or_more_0b206091a8, style: ADText.bubbleMeta(c: t.meta))),
             const SizedBox(height: 8),
             for (var i = 0; i < options.length; i++)
               Builder(builder: (_) {
@@ -613,7 +613,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
               }),
             Padding(padding: const EdgeInsets.only(top: 2),
               child: Text(
-                totalVoters == 0 ? 'Tap to vote' : '$totalVoters ${totalVoters == 1 ? 'vote' : 'votes'}'
+                totalVoters == 0 ? uiCopy(UiMessage.m_tap_to_vote_8842d64c67) : '$totalVoters ${totalVoters == 1 ? 'vote' : 'votes'}'
                     '${m.pollMine.isNotEmpty ? ' · tap again to change' : ''}',
                 style: ADText.bubbleMeta(c: t.meta))),
           ]),
@@ -795,7 +795,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
               size: 14, color: AD.bubbleInInk),
           const SizedBox(width: 7),
           Flexible(
-            child: Text(label.isEmpty ? 'Ava is working…' : label,
+            child: Text(label.isEmpty ? uiCopy(UiMessage.m_ava_is_working_e793784297) : label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: ADText.bubbleBody(c: AD.bubbleInInk)
@@ -978,6 +978,7 @@ class _AvaImageBubbleImageState extends State<_AvaImageBubbleImage> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Stack(children: [
       GestureDetector(
         onTap: () async => widget.onOpen(await _resolveForAction()),
@@ -995,7 +996,7 @@ class _AvaImageBubbleImageState extends State<_AvaImageBubbleImage> {
         child: DecoratedBox(
           decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
           child: PopupMenuButton<String>(
-            tooltip: 'Image options',
+            tooltip: uiCopy(UiMessage.m_image_options_96aa7e714b),
             icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
             padding: EdgeInsets.zero,
             onSelected: (v) async {
@@ -1005,15 +1006,15 @@ class _AvaImageBubbleImageState extends State<_AvaImageBubbleImage> {
               if (v == 'share') widget.onShare(await _resolveForAction());
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'open', child: Text('Open')),
-              const PopupMenuItem(value: 'download', child: Text('Download full-res')),
+              const PopupMenuItem(value: 'open', child: UiText(UiMessage.m_open_ed077f3d81)),
+              const PopupMenuItem(value: 'download', child: UiText(UiMessage.m_download_full_res_b41bdc33d3)),
               // [AVA-IMG-SELFHEAL-1] Only offered when this message actually
               // carries a job_id — an old message has no durable job to
               // re-fetch from, so there is nothing "fresh" to offer beyond
               // the plain Download above.
               if (widget.jobId.isNotEmpty)
-                const PopupMenuItem(value: 'download_fresh', child: Text('Download full quality')),
-              const PopupMenuItem(value: 'share', child: Text('Share')),
+                const PopupMenuItem(value: 'download_fresh', child: UiText(UiMessage.m_download_full_quality_4afa5c396b)),
+              const PopupMenuItem(value: 'share', child: UiText(UiMessage.m_share_29887a5ff9)),
             ],
           ),
         ),

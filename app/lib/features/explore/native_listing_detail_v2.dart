@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -47,7 +49,7 @@ List<int> _agentSlotMinutes(ListingCard l) {
 /// zone the phone is set to — the old `toLocal()` showed a traveller a different
 /// time from the website. Other zones fall back to the phone's local time.
 String _when(int? epochMs, [String? timezone]) {
-  if (epochMs == null || epochMs <= 0) return 'ON REQUEST';
+  if (epochMs == null || epochMs <= 0) return uiCopy(UiMessage.m_on_request_3ffca9ca59);
   final ms = epochMs < 100000000000 ? epochMs * 1000 : epochMs;
   final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
   final zone = timezone;
@@ -91,19 +93,19 @@ const Map<String, String> kJoinRequirementLabels = {
   'mic': 'MIC NEEDED',
   'cam': 'CAMERA NEEDED',
   'listen_only': 'LISTENING ONLY',
-  'recording': 'THIS SESSION IS RECORDED',
+  'recording': uiCopy(UiMessage.m_this_session_is_recorded_8fa5887b9d),
 };
 
 /// [LISTING-EXPIRY-1] The one line a closed listing shows instead of a CTA.
 String _closedLabel(ListingCard l) {
   switch (l.scheduleState) {
     case 'cancelled':
-      return 'SHOW CANCELLED';
+      return uiCopy(UiMessage.m_show_cancelled_8823dcbc7f);
     case 'ended':
     case 'expired':
-      return 'SHOW ENDED';
+      return uiCopy(UiMessage.m_show_ended_dcd96e63c0);
     default:
-      return 'BOOKING CLOSED';
+      return uiCopy(UiMessage.m_booking_closed_bb33314574);
   }
 }
 
@@ -212,11 +214,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       Analytics.capture('listing_booking_blocked_closed', {
         'listing_id': d.listing.id,
         'schedule_state': d.listing.scheduleState,
-        'reason': d.listing.bookingClosedReason ?? 'none',
+        'reason': d.listing.bookingClosedReason ?? uiCopy(UiMessage.m_none_140bedbf9c),
       });
       showAdToast(context, message: _closedLabel(d.listing) == 'SHOW CANCELLED'
-          ? 'This show was cancelled.'
-          : 'This show is no longer taking bookings.');
+          ? uiCopy(UiMessage.m_this_show_was_cancelled_fa0e32f868)
+          : uiCopy(UiMessage.m_this_show_is_no_longer_8399fdeace));
       return;
     }
     Navigator.push(
@@ -245,12 +247,13 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         extra: {'listing_id': l.id, 'agent_id': l.id, 'opened': opened});
     if (!opened && mounted) {
       showAdToast(context,
-          message: 'Could not open the browser. Copy the link and try again.');
+          message: uiCopy(UiMessage.m_could_not_open_the_browser_e13458cbf7));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (loading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (error != null || detail == null) {
@@ -258,7 +261,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           appBar: AppBar(),
           body: Center(
               child:
-                  FilledButton(onPressed: _load, child: const Text('Retry'))));
+                  FilledButton(onPressed: _load, child: const UiText(UiMessage.m_retry_942087cc2d))));
     }
     final d = detail!;
     // [AGENT-LIVE-1 §2/§7] Fail closed while the flag is off, including for a
@@ -270,7 +273,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           appBar: AppBar(
               backgroundColor: AD.bg,
               foregroundColor: AD.textPrimary,
-              title: Text('BAZAAR', style: ADText.rowName())),
+              title: UiText(UiMessage.m_bazaar_12dfddb2d5, style: ADText.rowName())),
           body: Center(
               child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -280,10 +283,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                         PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.regular),
                             size: 40, color: AD.textTertiary),
                         const SizedBox(height: 12),
-                        Text('This AI voice agent isn’t available yet.',
+                        UiText(UiMessage.m_this_ai_voice_agent_isn_e62d49925c,
                             textAlign: TextAlign.center, style: ADText.appTitle()),
                         const SizedBox(height: 8),
-                        Text('Check back soon.',
+                        UiText(UiMessage.m_check_back_soon_d3bbb78857,
                             textAlign: TextAlign.center,
                             style: ADText.preview(c: AD.textTertiary)),
                       ]))));
@@ -293,7 +296,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       appBar: AppBar(
         backgroundColor: AD.bg,
         foregroundColor: AD.textPrimary,
-        title: Text('BAZAAR', style: ADText.rowName()),
+        title: UiText(UiMessage.m_bazaar_12dfddb2d5, style: ADText.rowName()),
         actions: [
           IconButton(
               onPressed: () => Share.share(
@@ -325,21 +328,21 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   ? FilledButton.icon(
                       onPressed: () => _talkOnWeb(d.listing),
                       icon: PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.regular)),
-                      label: const Text('TALK ON THE WEB'))
+                      label: const UiText(UiMessage.m_talk_on_the_web_3bc28c38e2))
                   : FilledButton.icon(
                       onPressed: d.booked || d.listing.canBook ? _openBooking : null,
                       icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
                       label: Text(d.booked
-                          ? 'OPEN BOOKING'
+                          ? uiCopy(UiMessage.m_open_booking_58fc42ee5b)
                           : (d.listing.canBook ? _cta(d.listing) : _closedLabel(d.listing)))))),
     );
   }
 
   String _cta(ListingCard l) => l.status == 'live'
-      ? 'BOOK & JOIN NOW'
+      ? uiCopy(UiMessage.m_book_join_now_19a439e3fe)
       : (l.freeEntry || l.effectivePrice == 0
-          ? 'RESERVE YOUR SEAT'
-          : 'BOOK A SEAT · ${l.priceLabel}');
+          ? uiCopy(UiMessage.m_reserve_your_seat_e1b12c7929)
+          : uiCopy(UiMessage.m_book_a_seat_value1_5b2a3b915f, {'value1': (l.priceLabel).toString()}));
 
   Widget _content(ListingDetail d, bool wide, double width) {
     final l = d.listing;
@@ -395,23 +398,23 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    const Text('SHARE THIS SHOW',
+                    const UiText(UiMessage.m_share_this_show_c8d4f289ce,
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    const Text('Copy the link or scan it on another phone.',
+                    const UiText(UiMessage.m_copy_the_link_or_scan_c7128b7983,
                         style: TextStyle(color: AD.card)),
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, children: [
                       OutlinedButton(
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: link));
-                            showAdToast(context, message: 'Listing link copied');
+                            showAdToast(context, message: uiCopy(UiMessage.m_listing_link_copied_45b46a26fb));
                           },
-                          child: const Text('COPY LINK')),
+                          child: const UiText(UiMessage.m_copy_link_7473b9adb7)),
                       OutlinedButton(
                           onPressed: () => Share.share('$link\n${l.title}'),
-                          child: const Text('SHARE'))
+                          child: const UiText(UiMessage.m_share_0b060acf4d))
                     ])
                   ]))
             ])));
@@ -421,19 +424,19 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     final state = l.scheduleState;
     final closed = l.isEnded || !l.canBook;
     final lead = l.status == 'live'
-        ? 'LIVE NOW · ${l.title.toUpperCase()}'
+        ? uiCopy(UiMessage.m_live_now_value1_b5ea45acfc, {'value1': (l.title.toUpperCase()).toString()})
         : state == 'cancelled'
-            ? 'THIS SHOW WAS CANCELLED'
+            ? uiCopy(UiMessage.m_this_show_was_cancelled_a7f06c1ed6)
             : (state == 'ended' || state == 'expired')
-                ? 'THIS SHOW HAS ENDED · ${_when(l.startsAt, l.timezone)}'
+                ? uiCopy(UiMessage.m_this_show_has_ended_value1_e969918337, {'value1': (_when(l.startsAt, l.timezone)).toString()})
                 : state == 'starting'
-                    ? 'STARTING NOW · HOST IS GETTING READY'
-                    : 'NEXT SHOW · ${_when(l.startsAt, l.timezone)}';
+                    ? uiCopy(UiMessage.m_starting_now_host_is_getting_61e656daac)
+                    : uiCopy(UiMessage.m_next_show_value1_18ada5d7f8, {'value1': (_when(l.startsAt, l.timezone)).toString()});
     final tail = l.status == 'live'
-        ? 'JOIN NOW'
+        ? uiCopy(UiMessage.m_join_now_d10d1ddc37)
         : closed
-            ? 'CLOSED'
-            : 'BOOK AHEAD';
+            ? uiCopy(UiMessage.m_closed_f6deab2b12)
+            : uiCopy(UiMessage.m_book_ahead_ae26436941);
     return _tickerBar(l, lead, tail);
   }
 
@@ -501,8 +504,8 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     final heroTagline = letterOverPoster ? l.posterTagline : '';
     return Stack(fit: StackFit.expand, children: [
       if (url != null)
-        Image.network(url,
-            fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox())
+        CachedThumb(url: url, px: 1024,
+            fit: BoxFit.cover, fallback: const SizedBox())
       else
         Center(
             child: Text(l.title.toUpperCase(),
@@ -542,10 +545,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           left: 12,
           child: _pill(
               l.status == 'live'
-                  ? '● LIVE'
+                  ? uiCopy(UiMessage.m_live_bdf810a849)
                   : l.isEnded
                       ? _closedLabel(l)
-                      : (l.scheduleState == 'starting' ? 'STARTING NOW' : 'NEXT SHOW'),
+                      : (l.scheduleState == 'starting' ? uiCopy(UiMessage.m_starting_now_fee6eff1e3) : uiCopy(UiMessage.m_next_show_a7702ddcc2)),
               AD.danger)),
     ]);
   }
@@ -638,12 +641,12 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               onTap: () => _openGallery(l, urls, i),
               child: ClipRRect(
                   borderRadius: BorderRadius.circular(AD.rImage),
-                  child: Image.network(urls[i],
+                  child: CachedThumb(url: urls[i], px: 256,
                       width: 110,
                       fit: BoxFit.cover,
                       // A dead url degrades to a marked tile, never to a blank
                       // one that reads as a broken layout.
-                      errorBuilder: (_, __, ___) => Container(
+                      fallback: Container(
                           width: 110,
                           alignment: Alignment.center,
                           color: AD.cardHover,
@@ -703,19 +706,19 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                         fontSize: 16, height: 1.45, color: AD.textPrimary))),
           const SizedBox(height: 12),
           Row(children: [
-            Image.network('https://avatok.ai/assets/desi-swag.png',
+            CachedThumb(url: 'https://avatok.ai/assets/desi-swag.png', px: 128,fit: BoxFit.contain,
                 width: 62,
                 height: 62,
-                errorBuilder: (_, __, ___) => const SizedBox()),
+                fallback: const SizedBox()),
             const Expanded(
-                child: Text('“Jo jeeta wahi asli scene.” — a regular',
+                child: UiText(UiMessage.m_jo_jeeta_wahi_asli_scene_2a06a8c2b2,
                     style: TextStyle(
                         fontStyle: FontStyle.italic,
                         color: AD.textTertiary))),
-            Image.network('https://avatok.ai/assets/luv-it-sticker.png',
+            CachedThumb(url: 'https://avatok.ai/assets/luv-it-sticker.png', px: 128,fit: BoxFit.contain,
                 width: 58,
                 height: 58,
-                errorBuilder: (_, __, ___) => const SizedBox()),
+                fallback: const SizedBox()),
           ]),
           const SizedBox(height: 16),
           _stats(d)
@@ -767,36 +770,36 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           padding: const EdgeInsets.all(18),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('BOOK A SEAT', style: ADText.appTitle()),
+            UiText(UiMessage.m_book_a_seat_886ff338a6, style: ADText.appTitle()),
             const SizedBox(height: 4),
             Text(
                 l.freeEntry || l.effectivePrice == 0
-                    ? 'FREE'
-                    : '${l.priceLabel} / SEAT',
+                    ? uiCopy(UiMessage.m_free_19f1fa5ec9)
+                    : uiCopy(UiMessage.m_value1_seat_8d3e232b1a, {'value1': (l.priceLabel).toString()}),
                 style:
                     const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
             Text(
                 !l.canBook
                     ? (l.scheduleState == 'cancelled'
-                        ? 'This show was cancelled. Everyone who booked is refunded automatically.'
+                        ? uiCopy(UiMessage.m_this_show_was_cancelled_everyone_fc57ead691)
                         : (l.isEnded
-                            ? 'This show has ended. If the host did not go live, everyone who booked is refunded automatically.'
-                            : 'The show has already started, so new seats are no longer sold.'))
+                            ? uiCopy(UiMessage.m_this_show_has_ended_if_bdebfc5186)
+                            : uiCopy(UiMessage.m_the_show_has_already_started_e1619d65cc)))
                     : l.status == 'live'
-                        ? 'Book and join instantly.'
-                        : 'Choose your slot and confirm the exact price before payment.',
+                        ? uiCopy(UiMessage.m_book_and_join_instantly_163ef13a5e)
+                        : uiCopy(UiMessage.m_choose_your_slot_and_confirm_c41741b1a7),
                 style: ADText.preview()),
             const SizedBox(height: 16),
             FilledButton(
                 onPressed: l.canBook || (detail?.booked ?? false) ? _openBooking : null,
                 child: Text(!l.canBook
-                    ? ((detail?.booked ?? false) ? 'OPEN BOOKING' : _closedLabel(l))
+                    ? ((detail?.booked ?? false) ? uiCopy(UiMessage.m_open_booking_58fc42ee5b) : _closedLabel(l))
                     : l.status == 'live'
-                        ? 'BOOK & JOIN NOW'
-                        : 'CHOOSE DATE & TIME')),
+                        ? uiCopy(UiMessage.m_book_join_now_19a439e3fe)
+                        : uiCopy(UiMessage.m_choose_date_time_8a744aaa5a))),
             const SizedBox(height: 8),
-            Text('No hidden fees · policy shown before payment',
+            UiText(UiMessage.m_no_hidden_fees_policy_shown_147e999f68,
                 textAlign: TextAlign.center,
                 style: ADText.sectionLabel(c: AD.textTertiary))
           ])));
@@ -815,13 +818,13 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           padding: const EdgeInsets.all(18),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('TALK TO THE AGENT', style: ADText.appTitle()),
+            UiText(UiMessage.m_talk_to_the_agent_d3c574a7fa, style: ADText.appTitle()),
             const SizedBox(height: 4),
-            Text('from ${l.money(l.price)}/min',
+            UiText(UiMessage.m_from_value1_min_23e7e8e5b5, params: {'value1': (l.money(l.price)).toString()},
                 style: const TextStyle(
                     fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
-            Text('AVAILABLE SESSION LENGTHS', style: ADText.sectionLabel(c: AD.textTertiary)),
+            UiText(UiMessage.m_available_session_lengths_28dc2ef2aa, style: ADText.sectionLabel(c: AD.textTertiary)),
             const SizedBox(height: 8),
             Wrap(
                 spacing: 7,
@@ -833,9 +836,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
             FilledButton.icon(
                 onPressed: () => _talkOnWeb(l),
                 icon: PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.regular)),
-                label: const Text('TALK ON THE WEB')),
+                label: const UiText(UiMessage.m_talk_on_the_web_3bc28c38e2)),
             const SizedBox(height: 8),
-            Text('Booking, payment and the call itself all happen on avatok.ai.',
+            UiText(UiMessage.m_booking_payment_and_the_call_2f6e21ec46,
                 textAlign: TextAlign.center,
                 style: ADText.sectionLabel(c: AD.textTertiary))
           ])));
@@ -977,7 +980,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   Widget _host(ListingDetail d) {
     final c = creator;
     final l = d.listing;
-    final name = c?.name ?? l.creator.name ?? l.creator.handle ?? 'Host';
+    final name = c?.name ?? l.creator.name ?? l.creator.handle ?? uiCopy(UiMessage.m_host_4a823118b9);
     return _section(
         'MEET THE HOST.',
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -997,11 +1000,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   Text(name,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 18)),
-                  Text(
-                      '${d.creatorRating?.toStringAsFixed(1) ?? '—'} host rating · ${d.followerCount} followers',
+                  UiText(
+                      UiMessage.m_value1_host_rating_value2_followers_ee50b3fc84, params: {'value1': (d.creatorRating?.toStringAsFixed(1) ?? '—').toString(), 'value2': (d.followerCount).toString()},
                       style: ADText.preview()),
                   if (l.creator.kycVerified)
-                    const Text('✓ ID VERIFIED',
+                    const UiText(UiMessage.m_id_verified_1d7a10662e,
                         style: TextStyle(
                             color: AD.headerFooter,
                             fontWeight: FontWeight.w700))
@@ -1018,11 +1021,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                       builder: (_) =>
                           CreatorChannelScreen(creatorUid: l.creator.uid))),
               icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)),
-              label: Text('Message ${name.split(' ').first}')),
+              label: UiText(UiMessage.m_message_value1_66a662c4f0, params: {'value1': (name.split(' ').first).toString()})),
           if (c != null && c.listings.isNotEmpty)
             Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Text('ALSO LISTED BY ${name.toUpperCase()}',
+                child: UiText(UiMessage.m_also_listed_by_value1_f3d4d0d087, params: {'value1': (name.toUpperCase()).toString()},
                     style: ADText.sectionLabel()))
         ]));
   }
@@ -1093,9 +1096,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(r.body.isEmpty ? 'Verified booking' : r.body,
+          Text(r.body.isEmpty ? uiCopy(UiMessage.m_verified_booking_11377bc800) : r.body,
               style: ADText.preview()),
-          Text(r.authorName ?? 'AvaTOK member',
+          Text(r.authorName ?? uiCopy(UiMessage.m_avatok_member_765f09f39c),
               style: ADText.sectionLabel(c: AD.textTertiary))
         ]))
       ]));
@@ -1129,7 +1132,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                                 ? ColoredBox(color: AD.headerFooter)
                                 : ClipRRect(
                                     borderRadius: BorderRadius.circular(AD.rImage),
-                                    child: Image.network(l.coverUrl!,
+                                    child: CachedThumb(url: l.coverUrl!, px: 256,fallback: const SizedBox(),
                                         width: double.infinity, fit: BoxFit.cover),
                                   ),
                           ),
@@ -1174,7 +1177,7 @@ class _FullScreenGalleryState extends State<_FullScreenGallery> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
           backgroundColor: Colors.black,
@@ -1189,12 +1192,12 @@ class _FullScreenGalleryState extends State<_FullScreenGallery> {
               minScale: 1,
               maxScale: 4,
               child: Center(
-                  child: Image.network(widget.urls[i],
+                  child: CachedThumb(url: widget.urls[i], px: 1600,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => PhosphorIcon(
+                      fallback: PhosphorIcon(
                           PhosphorIcons.imageBroken(PhosphorIconsStyle.regular),
                           color: Colors.white,
-                          size: 48))))));
+                          size: 48)))))); }
 }
 
 class _TrustTile extends StatelessWidget {
@@ -1203,7 +1206,7 @@ class _TrustTile extends StatelessWidget {
   final String body;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
           color: AD.cardHover,
@@ -1214,7 +1217,7 @@ class _TrustTile extends StatelessWidget {
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(body, style: const TextStyle(fontSize: 11, height: 1.2))
-      ]));
+      ])); }
 }
 
 /// Kept as a small, native preview adapter for the listing editor. It is not
@@ -1223,7 +1226,7 @@ class NativeListingPreview extends StatelessWidget {
   const NativeListingPreview({super.key, required this.card});
   final ListingCard card;
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Card(
       child: ListTile(
           leading: SizedBox(
               width: 64,
@@ -1231,7 +1234,7 @@ class NativeListingPreview extends StatelessWidget {
                   ? ColoredBox(color: AD.headerFooter)
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(AD.rImage),
-                      child: Image.network(card.coverUrl!, fit: BoxFit.cover))),
+                      child: CachedThumb(url: card.coverUrl!, px: 256,fallback: const SizedBox(), fit: BoxFit.cover))),
           title: Text(card.title),
-          subtitle: Text(card.displayPrice)));
+          subtitle: Text(card.displayPrice))); }
 }

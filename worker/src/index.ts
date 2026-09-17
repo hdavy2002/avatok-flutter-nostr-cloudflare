@@ -1,3 +1,4 @@
+import { uiLocalization } from './routes/ui_localization';
 import {gcalExportSweep} from "./cal/gcal";
 // AvaTok API Worker — route-based dispatch (one Worker, not one-per-app).
 //
@@ -517,6 +518,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (req.method === "OPTIONS") return preflight();
     const url = new URL(req.url);
     const p = url.pathname;
+
+    if (p.startsWith("/i18n/")) return uiLocalization(req, env, ctx);
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
 
@@ -1231,7 +1234,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaWallet (Phase 2; balance authority = WalletDO) ---
       // --- Subscribe (Phase 1 tiers: Free/Plus/Pro/Max) — gated by billingEnabled.
       // Stripe subscription events land on the shared /webhooks/stripe endpoint.
-      if (p === "/api/subscribe/plans" && req.method === "GET") return await getPlans(req, env);
+      if (p === "/api/subscribe/plans" && req.method === "GET") {
+        return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
+      }
       if (p === "/api/subscribe/checkout" && req.method === "POST") return await subscribeCheckout(req, env);
       if (p === "/api/subscribe/android/verify" && req.method === "POST") return await subscribeAndroidVerify(req, env);
       if (p === "/api/subscribe/cancel" && req.method === "POST") return await subscribeCancel(req, env);

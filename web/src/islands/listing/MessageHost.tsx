@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // [WEB-MSG-HANDOFF-1 2026-09-05] The web does NOT send messages. It hands the
 // visitor the creator's AvaTOK number and sends them to the app.
 //
@@ -37,6 +39,8 @@ export interface MessageHostProps {
 }
 
 export default function MessageHost({ listingId, hostName, hostNumber }: MessageHostProps) {
+  const {t:uiT}=useUiTranslation("web-listing");
+
   const [copied, setCopied] = useState(false);
   const first = hostName.split(' ')[0] || hostName;
   // [UI-MOTION-1 2026-09-10] "card-tilt" (transitions.dev, `.t-tilt*` in
@@ -107,26 +111,22 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
     // that leads to an empty Add Contact screen.
     return (
       <div style={wrap} data-section="message_host">
-        <p style={caption}>MESSAGE {first.toUpperCase()}</p>
+        <p style={caption}><UiText id="web-listing.b194d92018d60742" source="MESSAGE" />{" "}{first.toUpperCase()}</p>
         <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34' }}>
-          {first} has not set up their AvaTOK number yet. Book a seat and you will be able to
-          reach them from the app.
-        </p>
+          {first}{" "}<UiText id="web-listing.33f64ad76fb76bf5" source="has not set up their AvaTOK number yet. Book a seat and you will be able to reach them from the app." />{" "}</p>
         <a href={PLAY_STORE} target="_blank" rel="noreferrer" data-cta="get_app"
           style={{
             alignSelf: 'flex-start', textDecoration: 'none', fontWeight: 900, fontSize: '0.75rem',
             letterSpacing: '.06em', padding: '10px 18px', borderRadius: 100,
             border: '2px solid #161614', background: '#fdf1d3', color: '#161614',
-          }}>
-          GET THE APP
-        </a>
+          }}><UiText id="web-listing.a7daefb01a1d0c2b" source="GET THE APP" />{" "}</a>
       </div>
     );
   }
 
   return (
     <div style={wrap} data-section="message_host">
-      <p style={caption}>MESSAGE {first.toUpperCase()} ON AVATOK</p>
+      <p style={caption}><UiText id="web-listing.b194d92018d60742" source="MESSAGE" />{" "}{first.toUpperCase()}{" "}<UiText id="web-listing.8dabef32222158db" source="ON AVATOK" /></p>
 
       <div
         className="t-tilt"
@@ -136,7 +136,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
         onPointerLeave={onTiltLeave}
       >
         <button ref={tiltCardRef} type="button" onClick={() => void copy()}
-          title="Copy this number"
+          title={uiT("web-listing.1db477e02f982e71","Copy this number")}
           className="t-tilt-card"
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
@@ -146,7 +146,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
           }}>
           {hostNumber}
           <span style={{ fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem', letterSpacing: '.06em', color: '#5a5a54' }}>
-            {copied ? 'COPIED' : 'TAP TO COPY'}
+            {copied ? uiT("web-listing.2c9f6d96316f1c1a","COPIED") : uiT("web-listing.5c1256eb87cb4134","TAP TO COPY")}
           </span>
           <span className="t-tilt-glare" aria-hidden="true" />
         </button>
@@ -166,15 +166,10 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
             padding: '6px 12px', borderRadius: 100, border: '2px solid #161614',
             background: '#161614', color: '#fdf1d3',
           }}
-        >
-          Number copied
-        </span>
+        ><UiText id="web-listing.4bf3f054bc40b282" source="Number copied" />{" "}</span>
       </div>
 
-      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34', lineHeight: 1.5 }}>
-        Messages happen in the AvaTOK app. Open it and send {first} a message on this number —
-        neither of you ever sees the other's real phone number.
-      </p>
+      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34', lineHeight: 1.5 }}><UiText id="web-listing.958118278d44c163" source="Messages happen in the AvaTOK app. Open it and send" />{" "}{first}{" "}<UiText id="web-listing.58c67ea31bcc77e8" source="a message on this number — neither of you ever sees the other's real phone number." />{" "}</p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <a
@@ -186,9 +181,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
             padding: '11px 20px', borderRadius: 100, border: '2px solid #161614',
             background: '#161614', color: '#fdf1d3',
           }}
-        >
-          OPEN IN AVATOK
-        </a>
+        ><UiText id="web-listing.539d6a4198b6e1c7" source="OPEN IN AVATOK" />{" "}</a>
         <a
           href={PLAY_STORE}
           target="_blank"
@@ -200,9 +193,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
             padding: '11px 20px', borderRadius: 100, border: '2px solid #161614',
             background: '#fdf1d3', color: '#161614',
           }}
-        >
-          GET THE APP
-        </a>
+        ><UiText id="web-listing.a7daefb01a1d0c2b" source="GET THE APP" />{" "}</a>
       </div>
     </div>
   );

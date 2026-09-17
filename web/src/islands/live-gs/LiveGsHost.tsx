@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * ⚠️ RETIRED AND UNMOUNTED — DO NOT RE-MOUNT. [APP-ONLY-TX-1 2026-09-12]
  *
@@ -108,6 +110,8 @@ function HostPreview({
   error: string | null;
   onReady: (stream: MediaStream, prefs: JoinPrefs) => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
@@ -205,11 +209,9 @@ function HostPreview({
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-8">
       <div className="max-w-2xl">
-        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">Creator green room</span>
-        <h1 className="mt-2 font-display text-[30px] font-semibold leading-tight text-ink">Test your setup before you go live.</h1>
-        <p className="mt-2 font-body text-[15px] font-bold leading-relaxed text-inkSoft">
-          This preview is private. Ticket holders cannot see or hear you until you confirm Start live.
-        </p>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk"><UiText id="web-live-gs.9a68486eaf91555f" source="Creator green room" /></span>
+        <h1 className="mt-2 font-display text-[30px] font-semibold leading-tight text-ink"><UiText id="web-live-gs.fcdf38927d1d4067" source="Test your setup before you go live." /></h1>
+        <p className="mt-2 font-body text-[15px] font-bold leading-relaxed text-inkSoft"><UiText id="web-live-gs.95b715eaa827f048" source="This preview is private. Ticket holders cannot see or hear you until you confirm Start live." />{" "}</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
@@ -217,40 +219,40 @@ function HostPreview({
           <video ref={videoRef} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
           {permission !== 'granted' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper2 px-6 text-center">
-              {permission === 'asking' ? <><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft">Requesting camera and microphone…</p></> : <>
-                <p className="font-body font-bold text-[14px] text-inkSoft">{permissionError ?? 'Allow camera and microphone to continue.'}</p>
-                <Button variant="blue" label="Allow & retry" onClick={() => void acquire()} />
+              {permission === 'asking' ? <><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-live-gs.ca274b5c1a7764a6" source="Requesting camera and microphone…" /></p></> : <>
+                <p className="font-body font-bold text-[14px] text-inkSoft">{permissionError ?? uiT("web-live-gs.073485d0973476fb","Allow camera and microphone to continue.")}</p>
+                <Button variant="blue" label={uiT("web-live-gs.d85928b810be02e2","Allow & retry")} onClick={() => void acquire()} />
               </>}
             </div>
           )}
-          {permission === 'granted' && !camOn && <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display text-[17px] font-semibold text-paper">Camera off</div>}
+          {permission === 'granted' && !camOn && <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display text-[17px] font-semibold text-paper"><UiText id="web-live-gs.ce3ef7450f8e26f1" source="Camera off" /></div>}
         </div>
 
         <div className="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
-          <h2 className="font-display text-[19px] font-semibold text-ink">Devices</h2>
+          <h2 className="font-display text-[19px] font-semibold text-ink"><UiText id="web-live-gs.4ba5121d4d1be174" source="Devices" /></h2>
           <DeviceChecks stream={previewStream} micOn={micOn} />
-          <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-mic">Microphone</label>
+          <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-mic"><UiText id="web-live-gs.186352a881d0550e" source="Microphone" /></label>
           <div className="flex gap-2">
-            <select id="host-mic" aria-label="Microphone" className={selectClass} value={micId} onChange={(e) => setMicId(e.target.value)} disabled={permission !== 'granted'}>
-              {mics.length === 0 && <option value="">Default microphone</option>}
+            <select id="host-mic" aria-label={uiT("web-live-gs.186352a881d0550e","Microphone")} className={selectClass} value={micId} onChange={(e) => setMicId(e.target.value)} disabled={permission !== 'granted'}>
+              {mics.length === 0 && <option value=""><UiText id="web-live-gs.253149635a430448" source="Default microphone" /></option>}
               {mics.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{deviceLabel(device, 'Microphone', index)}</option>)}
             </select>
-            <button type="button" onClick={() => toggle('mic')} aria-pressed={micOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${micOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{micOn ? 'On' : 'Off'}</button>
+            <button type="button" onClick={() => toggle('mic')} aria-pressed={micOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${micOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{micOn ? uiT("web-live-gs.130011756125313c","On") : uiT("web-live-gs.ca7981b46ecf2c17","Off")}</button>
           </div>
-          <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-cam">Camera</label>
+          <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-cam"><UiText id="web-live-gs.03494b0d1f803522" source="Camera" /></label>
           <div className="flex gap-2">
-            <select id="host-cam" aria-label="Camera" className={selectClass} value={camId} onChange={(e) => setCamId(e.target.value)} disabled={permission !== 'granted'}>
-              {cams.length === 0 && <option value="">Default camera</option>}
+            <select id="host-cam" aria-label={uiT("web-live-gs.03494b0d1f803522","Camera")} className={selectClass} value={camId} onChange={(e) => setCamId(e.target.value)} disabled={permission !== 'granted'}>
+              {cams.length === 0 && <option value=""><UiText id="web-live-gs.a7608b45be4e7f3e" source="Default camera" /></option>}
               {cams.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{deviceLabel(device, 'Camera', index)}</option>)}
             </select>
-            <button type="button" onClick={() => toggle('cam')} aria-pressed={camOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${camOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{camOn ? 'On' : 'Off'}</button>
+            <button type="button" onClick={() => toggle('cam')} aria-pressed={camOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${camOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{camOn ? uiT("web-live-gs.130011756125313c","On") : uiT("web-live-gs.ca7981b46ecf2c17","Off")}</button>
           </div>
           {error && <div className="rounded-zine border-zine border-coral bg-paper2 p-3 font-body text-[13px] font-bold text-ink shadow-zine-error">{error}</div>}
-          <Button variant="lime" fullWidth loading={busy} disabled={permission !== 'granted' || busy} label={busy ? 'Opening backstage…' : 'Enter private backstage'} onClick={() => {
+          <Button variant="lime" fullWidth loading={busy} disabled={permission !== 'granted' || busy} label={busy ? uiT("web-live-gs.31daf18e80f73e77","Opening backstage…") : uiT("web-live-gs.712c055a1ecc6b21","Enter private backstage")} onClick={() => {
             const stream = streamRef.current;
             if (stream) onReady(stream, { micOn, camOn, micId, camId });
           }} />
-          <p className="font-body text-[12px] font-bold leading-relaxed text-inkMute">Starting the preview never starts the broadcast. You choose Start live after the private room opens.</p>
+          <p className="font-body text-[12px] font-bold leading-relaxed text-inkMute"><UiText id="web-live-gs.083904e9ebf017c5" source="Starting the preview never starts the broadcast. You choose Start live after the private room opens." /></p>
         </div>
       </div>
     </div>
@@ -274,6 +276,8 @@ function HostStage({
   onEnd: () => void;
   onRetry: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const { useLocalParticipant, useCallCallingState, useCameraState, useMicrophoneState, useParticipantCount } = useCallStateHooks();
   const local = useLocalParticipant();
   const callingState = useCallCallingState();
@@ -291,46 +295,52 @@ function HostStage({
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-6xl flex-col gap-3 px-3 py-5">
       <div className="flex flex-wrap items-center gap-2.5">
-        <div className="mr-auto"><span className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-blueInk">Creator broadcast</span><h1 className="font-display text-[23px] font-semibold text-ink">{title}</h1></div>
-        <span className={`rounded-zineBadge border-zine px-3 py-1.5 font-mono text-[12px] font-bold uppercase ${phase === 'live' ? 'border-coral bg-coral text-white' : 'border-ink bg-card text-ink'}`}>{phase === 'live' ? 'Live' : phase === 'starting' ? 'Starting' : phase === 'ending' ? 'Ending' : 'Private backstage'}</span>
-        <span className="rounded-zineBadge border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold text-inkSoft">{participantCount} connected</span>
+        <div className="mr-auto"><span className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-blueInk"><UiText id="web-live-gs.52a15887ed73d82f" source="Creator broadcast" /></span><h1 className="font-display text-[23px] font-semibold text-ink">{title}</h1></div>
+        <span className={`rounded-zineBadge border-zine px-3 py-1.5 font-mono text-[12px] font-bold uppercase ${phase === 'live' ? 'border-coral bg-coral text-white' : 'border-ink bg-card text-ink'}`}>{phase === 'live' ? uiT("web-live-gs.b64ac05f17e64d03","Live") : phase === 'starting' ? uiT("web-live-gs.aeed4d26bb5f0c31","Starting") : phase === 'ending' ? uiT("web-live-gs.a17bfde3804f38f8","Ending") : uiT("web-live-gs.156f63318d87744a","Private backstage")}</span>
+        <span className="rounded-zineBadge border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold text-inkSoft">{participantCount}{" "}<UiText id="web-live-gs.12a7bd86e0a43032" source="connected" /></span>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-zine border-zine border-ink bg-ink shadow-zine">
         <div className="relative aspect-video w-full bg-ink">
-          {local ? <ParticipantView participant={local} trackType="videoTrack" className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain" /> : <div className="flex h-full items-center justify-center text-center font-body font-bold text-white">Camera is initializing…</div>}
-          {phase === 'backstage' && <div className="absolute left-3 top-3 rounded-zineBadge border-zine border-ink bg-lime px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs">Private · viewers waiting</div>}
-          {reconnecting && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/65 text-center text-white"><Spinner size={28} color="#fff" /><p className="font-display text-[18px] font-semibold">Reconnecting…</p></div>}
-          {connectionLost && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/80 px-6 text-center text-white"><p className="font-display text-[19px] font-semibold">Connection lost</p><p className="font-body text-[14px] font-bold text-white/80">The broadcast is still governed by the server. Rejoin when your connection is ready.</p><button type="button" onClick={onRetry} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-display text-[15px] font-semibold text-ink">Reconnect</button></div>}
+          {local ? <ParticipantView participant={local} trackType="videoTrack" className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain" /> : <div className="flex h-full items-center justify-center text-center font-body font-bold text-white"><UiText id="web-live-gs.31b69f36c12d1c44" source="Camera is initializing…" /></div>}
+          {phase === 'backstage' && <div className="absolute left-3 top-3 rounded-zineBadge border-zine border-ink bg-lime px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs"><UiText id="web-live-gs.6d6842864eeee6e6" source="Private · viewers waiting" /></div>}
+          {reconnecting && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/65 text-center text-white"><Spinner size={28} color="#fff" /><p className="font-display text-[18px] font-semibold"><UiText id="web-live-gs.27b80374e1151af6" source="Reconnecting…" /></p></div>}
+          {connectionLost && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/80 px-6 text-center text-white"><p className="font-display text-[19px] font-semibold"><UiText id="web-live-gs.6c44751e62681094" source="Connection lost" /></p><p className="font-body text-[14px] font-bold text-white/80"><UiText id="web-live-gs.78f79f871791e6fd" source="The broadcast is still governed by the server. Rejoin when your connection is ready." /></p><button type="button" onClick={onRetry} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-display text-[15px] font-semibold text-ink"><UiText id="web-live-gs.bf8a9eab9e7e141b" source="Reconnect" /></button></div>}
         </div>
         {error && <div className="border-t-zine border-coral bg-paper2 px-4 py-3 text-center font-body text-[13px] font-bold text-ink">{error}</div>}
         <div className="flex flex-wrap items-center justify-center gap-3 border-t-zine border-ink bg-paper px-3 py-3">
-          <button type="button" aria-label={microphone.isMute ? 'Turn microphone on' : 'Mute microphone'} aria-pressed={!microphone.isMute} disabled={controlsDisabled} onClick={() => void microphone.microphone.toggle()} className={`inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm ${microphone.isMute ? 'bg-coral text-white' : 'bg-card text-ink'}`}>{microphone.isMute ? '🔇' : '🎙️'}</button>
-          <button type="button" aria-label={camera.isMute ? 'Turn camera on' : 'Turn camera off'} aria-pressed={!camera.isMute} disabled={controlsDisabled} onClick={() => void camera.camera.toggle()} className={`inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm ${camera.isMute ? 'bg-coral text-white' : 'bg-card text-ink'}`}>{camera.isMute ? '🚫' : '📷'}</button>
-          {phase === 'backstage' && <Button variant="lime" label="Start live" onClick={onStart} />}
-          {phase === 'starting' && <span className="rounded-full border-zine border-ink bg-blue px-5 py-3 font-display text-[16px] font-semibold text-ink">Waiting for server confirmation…</span>}
-          {phase === 'live' && <span className="font-body text-[13px] font-bold text-inkSoft">{serverState === 'live' ? 'Ticket holders can watch now.' : 'Updating live status…'}</span>}
-          <Button variant="coral" label={phase === 'ending' ? 'Ending…' : 'End event'} disabled={phase === 'ending'} onClick={onEnd} />
+          <button type="button" aria-label={microphone.isMute ? uiT("web-live-gs.7f9de1d3a2e7f486","Turn microphone on") : uiT("web-live-gs.2d1be6900bbed8f9","Mute microphone")} aria-pressed={!microphone.isMute} disabled={controlsDisabled} onClick={() => void microphone.microphone.toggle()} className={`inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm ${microphone.isMute ? 'bg-coral text-white' : 'bg-card text-ink'}`}>{microphone.isMute ? '🔇' : '🎙️'}</button>
+          <button type="button" aria-label={camera.isMute ? uiT("web-live-gs.95e9fb569c93eb7b","Turn camera on") : uiT("web-live-gs.2050f56db225c04a","Turn camera off")} aria-pressed={!camera.isMute} disabled={controlsDisabled} onClick={() => void camera.camera.toggle()} className={`inline-flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink shadow-zine-sm ${camera.isMute ? 'bg-coral text-white' : 'bg-card text-ink'}`}>{camera.isMute ? '🚫' : '📷'}</button>
+          {phase === 'backstage' && <Button variant="lime" label={uiT("web-live-gs.d2cfdf716a507690","Start live")} onClick={onStart} />}
+          {phase === 'starting' && <span className="rounded-full border-zine border-ink bg-blue px-5 py-3 font-display text-[16px] font-semibold text-ink"><UiText id="web-live-gs.8ab2db0e3c8cd924" source="Waiting for server confirmation…" /></span>}
+          {phase === 'live' && <span className="font-body text-[13px] font-bold text-inkSoft">{serverState === 'live' ? uiT("web-live-gs.4992d9b5397e40b7","Ticket holders can watch now.") : uiT("web-live-gs.da825d7f99f0d2bd","Updating live status…")}</span>}
+          <Button variant="coral" label={phase === 'ending' ? uiT("web-live-gs.3677a36e467e8259","Ending…") : uiT("web-live-gs.14c18fa6ec3d2919","End event")} disabled={phase === 'ending'} onClick={onEnd} />
         </div>
       </div>
-      <p className="text-center font-body text-[12px] font-bold text-inkMute">Keep this tab open while you host. If your connection drops, the Reconnect control rejoins the same server-issued room.</p>
+      <p className="text-center font-body text-[12px] font-bold text-inkMute"><UiText id="web-live-gs.9a8c65bed62be314" source="Keep this tab open while you host. If your connection drops, the Reconnect control rejoins the same server-issued room." /></p>
     </div>
   );
 }
 
 function Authorizing() {
-  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex flex-col items-center gap-3 text-center"><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft">Checking host access…</p></div></div>;
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex flex-col items-center gap-3 text-center"><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-live-gs.a7baa5292acb659f" source="Checking host access…" /></p></div></div>;
 }
 
 function NotFound({ listingId: _listingId }: { listingId: string }) {
-  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Event not found.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">We could not find a live event for this listing. It may have been removed or the link is wrong.</p><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div>;
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral"><UiText id="web-live-gs.8ff16ae9a20f8ddf" source="Host access unavailable" /></span><h1 className="font-display text-[27px] font-semibold text-ink"><UiText id="web-live-gs.a05a7a2841f145ff" source="Event not found." /></h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft"><UiText id="web-live-gs.7e07925264855114" source="We could not find a live event for this listing. It may have been removed or the link is wrong." /></p><a href="/dashboard" className="no-underline"><Button variant="lime" label={uiT("web-live-gs.67b696468610b879","Dashboard")} /></a></div></div>;
 }
 
 function NotCreator({ listingId }: { listingId: string }) {
-  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Not your event.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">This backstage room belongs to a different creator account. Sign in as the creator who scheduled it.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral"><UiText id="web-live-gs.8ff16ae9a20f8ddf" source="Host access unavailable" /></span><h1 className="font-display text-[27px] font-semibold text-ink"><UiText id="web-live-gs.078db7cdb55b86b2" source="Not your event." /></h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft"><UiText id="web-live-gs.a7c8bdb2e9a959c3" source="This backstage room belongs to a different creator account. Sign in as the creator who scheduled it." /></p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label={uiT("web-live-gs.691f700a56d13397","View event")} /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label={uiT("web-live-gs.67b696468610b879","Dashboard")} /></a></div></div></div>;
 }
 
 function RejoinLive({ title, deadlineMs, onRejoin }: { title: string; deadlineMs?: number; onRejoin: () => void }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000);
@@ -341,26 +351,31 @@ function RejoinLive({ title, deadlineMs, onRejoin }: { title: string; deadlineMs
   return (
     <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10">
       <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-        <span className="rounded-zineBadge border-zine border-coral bg-coral px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-white">Reconnecting</span>
-        <h1 className="font-display text-[27px] font-semibold text-ink">{title} is waiting for you.</h1>
-        <p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">
-          Your stream dropped. Ticket holders are still in their seats{mmss ? ` — you have ${mmss} to rejoin before the event ends for everyone` : ''}.
+        <span className="rounded-zineBadge border-zine border-coral bg-coral px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-white"><UiText id="web-live-gs.afb118fcb16c3727" source="Reconnecting" /></span>
+        <h1 className="font-display text-[27px] font-semibold text-ink">{title}{" "}<UiText id="web-live-gs.849b881bc456c7cc" source="is waiting for you." /></h1>
+        <p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft"><UiText id="web-live-gs.0a77a002115f737e" source="Your stream dropped. Ticket holders are still in their seats" />{mmss ? uiT("web-live-gs.8bac2226bc23fefe"," — you have {value0} to rejoin before the event ends for everyone",{value0:String(mmss)}) : ''}.
         </p>
-        <Button variant="lime" label="Rejoin your live" onClick={onRejoin} />
+        <Button variant="lime" label={uiT("web-live-gs.cf771c1daa44dc83","Rejoin your live")} onClick={onRejoin} />
       </div>
     </div>
   );
 }
 
 function Ended({ title, listingId }: { title: string; listingId: string }) {
-  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-blueInk">Broadcast complete</span><h1 className="font-display text-[28px] font-semibold text-ink">{title} has ended.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">The server confirmed the event is over. Your ticket holders can find their receipt from their account.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-blueInk"><UiText id="web-live-gs.14502279021d842a" source="Broadcast complete" /></span><h1 className="font-display text-[28px] font-semibold text-ink">{title}{" "}<UiText id="web-live-gs.0b790ab017a4ad5f" source="has ended." /></h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft"><UiText id="web-live-gs.ec4421a083f6b804" source="The server confirmed the event is over. Your ticket holders can find their receipt from their account." /></p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label={uiT("web-live-gs.691f700a56d13397","View event")} /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label={uiT("web-live-gs.67b696468610b879","Dashboard")} /></a></div></div></div>;
 }
 
 function Refused({ listingId, detail, retry }: { listingId: string; detail: string; retry: () => void }) {
-  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">We could not open backstage.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">{detail}</p><div className="flex gap-3"><Button variant="lime" label="Try again" onClick={retry} /><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a></div></div></div>;
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral"><UiText id="web-live-gs.8ff16ae9a20f8ddf" source="Host access unavailable" /></span><h1 className="font-display text-[27px] font-semibold text-ink"><UiText id="web-live-gs.870fa807b86091ae" source="We could not open backstage." /></h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">{detail}</p><div className="flex gap-3"><Button variant="lime" label={uiT("web-live-gs.d8b8392e2c542950","Try again")} onClick={retry} /><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label={uiT("web-live-gs.691f700a56d13397","View event")} /></a></div></div></div>;
 }
 
 function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const [phase, setPhase] = useState<Phase>('authorizing');
   const [error, setError] = useState<string | null>(null);
   const [serverState, setServerState] = useState<HostServerState | null>(null);
@@ -671,12 +686,12 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
     );
   }
   if (phase === 'ended') return <Ended title={title} listingId={listingId} />;
-  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? 'Host access is unavailable.'} retry={() => void authorize()} />;
+  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? uiT("web-live-gs.c18cc85cde1c3f62","Host access is unavailable.")} retry={() => void authorize()} />;
   if (call && creds && jwt && streamClient && ['backstage', 'starting', 'live', 'ending'].includes(phase)) {
     const stagePhase = phase as 'backstage' | 'starting' | 'live' | 'ending';
-    return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? 'backstage'} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;
+    return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? uiT("web-live-gs.c28ad2ec11288e23","backstage")} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;
   }
-  return <HostPreview key={error ? 'preview-error' : 'preview'} title={title} busy={phase === 'preparing'} error={error} onReady={(stream, prefs) => void prepare(stream, prefs)} />;
+  return <HostPreview key={error ? uiT("web-live-gs.e4fac9eb7dacb242","preview-error") : uiT("web-live-gs.5975cf1bba432391","preview")} title={title} busy={phase === 'preparing'} error={error} onReady={(stream, prefs) => void prepare(stream, prefs)} />;
 }
 
 export function LiveGsHost(props: LiveGsHostProps) {

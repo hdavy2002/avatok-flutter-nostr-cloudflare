@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 import { useEffect } from 'react';
 import { GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups';
 
@@ -101,6 +103,10 @@ export function activeFilterCount(value: RailState): number {
  * group is reachable, so the old "Soon" / unreachable-section row is gone.
  */
 export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed, open, onClose }: FilterRailProps) {
+ const {source:uiSource}=useUiTranslation("web-marketplace");
+
+  const {t:uiT}=useUiTranslation("web-marketplace");
+
   const set = (patch: Partial<RailState>) => onChange({ ...value, ...patch });
 
   const label = 'font-label text-[0.75rem] font-extrabold uppercase tracking-[0.14em] text-inkMute';
@@ -132,7 +138,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Filters"
+      aria-label={uiT("web-marketplace.546ebb8eb993ea56","Filters")}
     >
       <aside
         // pt-24: the site header is FIXED, and it paints over the top of this
@@ -157,21 +163,19 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
 
         <div className="flex items-baseline justify-between gap-2.5 px-5 pb-1.5 pt-4">
-          <h2 className="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Filters</h2>
+          <h2 className="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink"><UiText id="web-marketplace.546ebb8eb993ea56" source="Filters" /></h2>
           <div className="flex items-center gap-3">
             {narrowed && (
               <button
                 type="button"
                 onClick={onClear}
                 className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-              >
-                Sab hatao
-              </button>
+              ><UiText id="web-marketplace.178eae80f69580f8" source="Sab hatao" />{" "}</button>
             )}
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close filters"
+              aria-label={uiT("web-marketplace.ba87570b99da9071","Close filters")}
               className="grid h-7 w-7 flex-none place-items-center self-center rounded-full border-2 border-ink bg-card font-label text-[0.875rem] font-extrabold leading-none text-ink"
             >
               ✕
@@ -180,10 +184,10 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
 
         <div className="px-5 pb-4 pt-2">
-          <p className={`${label} mb-2.5`}>Category</p>
+          <p className={`${label} mb-2.5`}><UiText id="web-marketplace.292c06f0045a45d0" source="Category" /></p>
           <ul className="m-0 flex list-none flex-col p-0">
             <RailRadio
-              label="Everything"
+              label={uiT("web-marketplace.75304cf77db08b6e","Everything")}
               count={countsKnown ? total : null}
               selected={!value.group}
               onSelect={() => set({ group: undefined })}
@@ -205,9 +209,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
 
         <div className="border-t-2 border-dashed border-ink/35 px-5 pb-4 pt-3.5">
-          <label htmlFor="rail-date" className={`${label} mb-2.5 block`}>
-            Available on
-          </label>
+          <label htmlFor="rail-date" className={`${label} mb-2.5 block`}><UiText id="web-marketplace.b867a3288d1f6d0d" source="Available on" />{" "}</label>
           {/* The comp draws a bespoke calendar popover. A native date input is
               used instead: it is keyboard- and screen-reader-complete, it opens
               the platform picker people already know, and it cannot disagree
@@ -224,14 +226,12 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
               type="button"
               onClick={() => set({ date: undefined })}
               className="mt-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-            >
-              Koi bhi din
-            </button>
+            ><UiText id="web-marketplace.44389908474085f2" source="Koi bhi din" />{" "}</button>
           )}
         </div>
 
         <div className="border-t-2 border-dashed border-ink/35 px-5 pb-5 pt-4">
-          <p className={`${label} mb-3`}>Price</p>
+          <p className={`${label} mb-3`}><UiText id="web-marketplace.93c91c851e7acc17" source="Price" /></p>
           <div className="flex flex-wrap gap-2">
             {PRICE_BANDS.map((p) => {
               const on = (value.price || 'all') === p.id;
@@ -245,7 +245,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                     on ? 'bg-coral text-card' : 'bg-card text-ink'
                   }`}
                 >
-                  {p.label}
+                  {uiSource(p.label)}
                 </button>
               );
             })}
@@ -253,13 +253,13 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
 
         <div className="border-t-2 border-dashed border-ink/35 px-5 pb-5 pt-4">
-          <p className={`${label} mb-3`}>Sort</p>
+          <p className={`${label} mb-3`}><UiText id="web-marketplace.bec69036aa27e7fa" source="Sort" /></p>
           <div className="flex flex-wrap gap-2">
             {SORTS.map((o) => {
               const on = (value.sort ?? '') === o.id;
               return (
                 <button
-                  key={o.id || 'default'}
+                  key={o.id || uiT("web-marketplace.37a8eec1ce19687d","default")}
                   type="button"
                   aria-pressed={on}
                   onClick={() => set({ sort: o.id })}
@@ -267,7 +267,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                     on ? 'bg-lime text-ink' : 'bg-card text-ink'
                   }`}
                 >
-                  {o.label}
+                  {uiSource(o.label)}
                 </button>
               );
             })}
@@ -282,14 +282,9 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
       >
         {/* No count on this button: `total` is the CATALOGUE total, not the
             filtered result count, so printing it here would promise a number
-            the grid is about to contradict. */}
-        Dikhao
-      </button>
+            the grid is about to contradict. */}<UiText id="web-marketplace.32bd23ba198a8a0b" source="Dikhao" />{" "}</button>
 
-      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral">
-        Jo dhoondoge, wahi milega.
-        <br />— Bazaar rule #1
-      </p>
+      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral"><UiText id="web-marketplace.9815199a23c38cbe" source="Jo dhoondoge, wahi milega." />{" "}<br /><UiText id="web-marketplace.96be40e233fa62a0" source="— Bazaar rule #1" />{" "}</p>
       </aside>
     </div>
   );

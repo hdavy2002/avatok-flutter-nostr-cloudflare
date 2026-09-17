@@ -1,0 +1,23 @@
+{
+  "web-content-0d79ef9997d8.239787f9a3b2c1da": "Picking a slot",
+  "web-content-0d79ef9997d8.d09fc114294424f4": "On a one-on-one listing, opening \"Book\" takes you into checkout on the same page — you do not leave to a separate site. The available slots come from the creator's own calendar: their working hours, how long each session runs, and how much notice they need before a booking. Only slots that are actually open show up; a time they have already blocked out, or one too close to now, will not appear.",
+  "web-content-0d79ef9997d8.422bda9e9fd6f308": "Paying",
+  "web-content-0d79ef9997d8.b2776291d78af5eb": "Checkout asks for your email and a one-time code — no password to set. Once you confirm, the listing price plus GST is paid from your token balance or through the payment option you pick, and held in ",
+  "web-content-0d79ef9997d8.a8437843cad2ee17": "escrow",
+  "web-content-0d79ef9997d8.8b0e7ff52b6dcce2": " for that booking. See ",
+  "web-content-0d79ef9997d8.edd59a02a4291a69": "Tokens, explained",
+  "web-content-0d79ef9997d8.b420ccdec528918d": " for what a token is worth. Nothing is charged twice, and nothing is deducted per minute while the session runs — the whole price is settled one way or the other only after the session is over.",
+  "web-content-0d79ef9997d8.78d4314a2c93380c": "Right after payment you land on a confirmation screen with a link straight into your session room, and the booking is always visible afterwards from \"All my bookings\" in your dashboard.",
+  "web-content-0d79ef9997d8.ad8e6328fe5e9403": "Where the session runs",
+  "web-content-0d79ef9997d8.4431c31335134847": "A booked 1:1 session runs in your browser at its own web address (no app required to attend). Before you're let into the call, avaTOK runs a quick preflight check of your camera, microphone and speaker so a broken device doesn't surprise you mid-session. Once that passes, you're placed in the session and see a waiting screen until the creator joins too — you are never billed extra for the time spent waiting.",
+  "web-content-0d79ef9997d8.259b6abe5349107d": "What decides whether the creator gets paid",
+  "web-content-0d79ef9997d8.e3a13096a570d59d": "avaTOK does not charge by the minute. Once the session's time window has passed, the system looks at whether both of you were actually present together for a meaningful stretch of the call:",
+  "web-content-0d79ef9997d8.f3b85400149ec516": "If you and the creator were both present, the creator is paid and the tokens leave escrow.",
+  "web-content-0d79ef9997d8.c3b7990054c02733": "If the creator never showed up in any meaningful way, you are refunded in full.",
+  "web-content-0d79ef9997d8.094699496615f791": "If the creator was there and you didn't join, the session counts as delivered and the creator is paid.",
+  "web-content-0d79ef9997d8.6a3a5f009c442c96": "There is currently no partial/pro-rata charge for a session that ran short — it is one of those two outcomes. For the exact refund rules by situation (creator no-show, buyer no-show, cancellation), see ",
+  "web-content-0d79ef9997d8.7f529853635b4f28": "Refunds & Cancellations",
+  "web-content-0d79ef9997d8.641c51cde2fdea8b": "A note on where we are today",
+  "web-content-0d79ef9997d8.5c0cfb9c52ba43c8": "avaTOK's payments are still in a testing phase with a small number of invited users (see ",
+  "web-content-0d79ef9997d8.e32ee7314113be17": ") — if anything is charged in error, support will refund it in full."
+}

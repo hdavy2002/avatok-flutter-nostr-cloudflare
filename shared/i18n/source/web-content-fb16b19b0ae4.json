@@ -1,0 +1,23 @@
+{
+  "web-content-fb16b19b0ae4.e3b5093454a70731": "Every live show and 1:1 session on avaTOK is priced ",
+  "web-content-fb16b19b0ae4.ad36d5cacbaba8d3": "per hour, per person",
+  "web-content-fb16b19b0ae4.a87735d60214c6be": ", in whole tokens. avaTOK uses 100 Tokens = $1 as an internal accounting anchor. Buyers see a server-owned local-currency quote at checkout, with the quote and payment snapshot recorded immutably.",
+  "web-content-fb16b19b0ae4.cc0edb717ccd0d2c": "Setting your price",
+  "web-content-fb16b19b0ae4.ec3114ff3bbd8514": "When you create or edit a listing, you enter a whole-number token price for one hour with one participant. The buyer pays that listing price for each booking or ticket, plus GST, at checkout.",
+  "web-content-fb16b19b0ae4.4c3068bb408b7982": "There's a floor: avaTOK won't accept a price below ",
+  "web-content-fb16b19b0ae4.cfc2fc5477c65ed1": "49 tokens per hour",
+  "web-content-fb16b19b0ae4.ad6755a60d527e8b": " for a paid live show or 1:1 session. The wizard and the server both refuse anything lower.",
+  "web-content-fb16b19b0ae4.d77acc9a97355e94": "Marketplace listings (buy, sell, social items) don't carry this per-hour structure or floor — you set a plain price for the item or offer.",
+  "web-content-fb16b19b0ae4.7f50d93a166499cc": "Free listings",
+  "web-content-fb16b19b0ae4.5a37f32bc67133d2": "There's a \"this is a free show\" option in the listing wizard, but as things stand it's restricted to test accounts. On a regular creator account, turning it on and trying to publish will be refused — you'll need to set a price to go live.",
+  "web-content-fb16b19b0ae4.5174aacd9c800bd2": "How buyers see it",
+  "web-content-fb16b19b0ae4.483825a086e92a71": "Your listing price is shown in tokens. At checkout, the server supplies the local-currency quote and records the immutable quote/payment snapshot. Do not describe the internal anchor as a fixed local-currency conversion.",
+  "web-content-fb16b19b0ae4.d18a206c71edc6a3": "The fee",
+  "web-content-fb16b19b0ae4.29e372cea92f4eaa": "avaTOK keeps a fee out of what a buyer pays; you don't see it as a separate deduction when setting your price, but it does affect what you actually receive. See ",
+  "web-content-fb16b19b0ae4.bc04e87769fac2b7": "How the platform fee works",
+  "web-content-fb16b19b0ae4.411d87de38b0e498": " for the details.",
+  "web-content-fb16b19b0ae4.5ceea895bd947ea7": "Changing your price later",
+  "web-content-fb16b19b0ae4.6f124894575da43f": "You can edit a listing's price after it's published, the same way you'd edit any other detail from ",
+  "web-content-fb16b19b0ae4.db849f91bd40acd5": "My listings",
+  "web-content-fb16b19b0ae4.324551df81803db9": ". Enter a whole number of tokens — the server always rounds down to the nearest whole token, so there's no such thing as a fractional price."
+}

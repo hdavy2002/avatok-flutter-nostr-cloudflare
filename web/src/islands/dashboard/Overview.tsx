@@ -1,15 +1,15 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Overview — the /dashboard cockpit. Aggregates the creator's whole world into
  * one live view: identity status, wallet + earnings, listing performance (bars +
  * table over /api/listings/mine), upcoming bookings, top inbox messages, and an
  * affiliate snapshot. Everything is real data from the worker (listing engagement
  * is server-tracked via PostHog); it auto-refreshes every 45s so it reads live.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { getActiveToken, getAuthState, subscribeAuthState } from '../../lib/clerk';
+import { useCallback, useEffect, useState } from 'react';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
-import { withDeadline } from '../../lib/requestDeadline';
-import { markReady } from '../../lib/performance';
 import { inr } from '../../lib/money';
 
 // [TOKENS-INR-RAIL-1] Token counts, 1 token = ₹1. Was $((c)/100).
@@ -53,82 +53,55 @@ function Bars({ data, fmt }: { data: { label: string; value: number; tone: strin
   );
 }
 
-type ReadState<T> = { data: T | null; pending: boolean; error: boolean; retry: () => void; updated: number };
-const CARD_NAMES = ['identity', 'balance', 'earnings', 'listings', 'bookings', 'notifications', 'unread', 'affiliate'];
-function useCardRead<T>(accountId: string | null, name: string, path: string, query?: Record<string, string | number>): ReadState<T> {
-  const [state, setState] = useState({ data: null as T | null, pending: true, error: false, updated: 0 });
-  const [attempt, setAttempt] = useState(0);
-  const queryKey = JSON.stringify(query ?? {});
+function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
+  const [token, setToken] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [last, setLast] = useState<number>(0);
+  const [ident, setIdent] = useState<any>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [earn, setEarn] = useState<any>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [aff, setAff] = useState<any>(null);
+
+  useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
+
+  const load = useCallback(async (t: string) => {
+    const pull = async <T,>(p: string, q?: Record<string, any>) => { try { return await request<T>(p, { auth: t, query: q }); } catch { return null as any; } };
+    const [id, bal, er, mine, bk, nt, un, af] = await Promise.all([
+      pull<any>('/api/identity/level'),
+      pull<any>('/api/wallet/balance'),
+      pull<any>('/api/wallet/earnings'),
+      pull<{ listings: Row[] }>('/api/listings/mine'),
+      pull<{ bookings?: Booking[] }>('/api/booking/list', { role: 'creator', when: 'upcoming' }),
+      pull<{ items?: Note[] }>('/api/notifications', { limit: 6 }),
+      pull<{ unread?: number }>('/api/notifications/unread'),
+      pull<any>('/api/affiliate/me'),
+    ]);
+    if (id) setIdent(id);
+    if (bal) setBalance(Number(bal.balance ?? 0));
+    if (er) setEarn(er);
+    if (mine) setRows(mine.listings ?? []);
+    if (bk) setBookings((bk.bookings ?? (Array.isArray(bk) ? bk : [])) as Booking[]);
+    if (nt) setNotes(nt.items ?? []);
+    if (un) setUnread(Number(un.unread ?? 0));
+    if (af) setAff(af);
+    setLast(Date.now()); setLoading(false);
+  }, []);
+
   useEffect(() => {
-    if (!accountId) return;
-    let active = true;
-    let controller: AbortController | undefined;
-    const load = async () => {
-      controller?.abort();
-      const mine = new AbortController();
-      controller = mine;
-      setState((previous) => ({ ...previous, pending: true, error: false }));
-      const started = performance.now();
-      try {
-        const data = await withDeadline(async (signal) => {
-          const token = await getActiveToken();
-          if (!token || getAuthState().accountId !== accountId || signal.aborted) throw new Error('Session changed');
-          return request<T>(path, { auth: token, query: JSON.parse(queryKey), signal });
-        }, 10000, mine.signal);
-        if (!active || mine.signal.aborted || getAuthState().accountId !== accountId) return;
-        setState({ data, pending: false, error: false, updated: Date.now() });
-        markReady('dashboard_card_ready', { card: name }, started);
-      } catch {
-        if (!active || mine.signal.aborted || getAuthState().accountId !== accountId) return;
-        setState((previous) => ({ ...previous, pending: false, error: true }));
-      }
-    };
-    void load();
-    const timer = setInterval(() => { if (!document.hidden) void load(); }, 45000);
-    return () => { active = false; controller?.abort(); clearInterval(timer); };
-  }, [accountId, name, path, queryKey, attempt]);
-  const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  return { ...state, retry };
-}
-function CardRead({ state, label, children }: { state: ReadState<unknown>; label: string; children: ReactNode }) {
-  return <div className="min-w-0" aria-busy={state.pending}>
-    {state.error && <div role="alert" className="mb-2 rounded-zine border-zine border-coral bg-card p-3 font-body text-sm">Could not update {label}. <button type="button" className="underline" onClick={state.retry}>Retry</button></div>}
-    {state.data == null
-      ? <div role="status" className="min-h-24 rounded-zine border-zine border-ink bg-paper2 p-4 font-body font-bold text-inkSoft">{state.pending ? <><Spinner size={16} /> Loading {label}…</> : `${label} unavailable`}</div>
-      : children}
-  </div>;
-}
-function Inner({ accountId }: { accountId: string | null }) {
-  const identity = useCardRead<any>(accountId, 'identity', '/api/identity/level');
-  const wallet = useCardRead<any>(accountId, 'balance', '/api/wallet/balance');
-  const earnings = useCardRead<any>(accountId, 'earnings', '/api/wallet/earnings');
-  const listings = useCardRead<{ listings: Row[] }>(accountId, 'listings', '/api/listings/mine');
-  const upcoming = useCardRead<{ bookings?: Booking[] }>(accountId, 'bookings', '/api/booking/list', { role: 'creator', when: 'upcoming' });
-  const notifications = useCardRead<{ items?: Note[] }>(accountId, 'notifications', '/api/notifications', { limit: 6 });
-  const unreadCard = useCardRead<{ unread?: number }>(accountId, 'unread', '/api/notifications/unread');
-  const affiliate = useCardRead<any>(accountId, 'affiliate', '/api/affiliate/me');
-  const cards = [identity, wallet, earnings, listings, upcoming, notifications, unreadCard, affiliate];
-  const firstReady = useRef(false);
-  const allReady = useRef(false);
-  useEffect(() => {
-    if (!firstReady.current && cards.some((card) => card.data != null)) {
-      firstReady.current = true;
-      markReady('dashboard_first_card_ready');
-    }
-    if (!allReady.current && cards.every((card) => card.data != null)) {
-      allReady.current = true;
-      markReady('dashboard_ready', { cards: CARD_NAMES.length });
-    }
-  });
-  const ident = identity.data;
-  const balance = wallet.data?.balance ?? null;
-  const earn = earnings.data;
-  const rows = listings.data?.listings ?? [];
-  const bookings = (Array.isArray(upcoming.data) ? upcoming.data : upcoming.data?.bookings ?? []) as Booking[];
-  const notes = notifications.data?.items ?? [];
-  const unread = Number(unreadCard.data?.unread ?? 0);
-  const aff = affiliate.data;
-  const last = Math.max(...cards.map((card) => card.updated));
+    if (!checked || !token) { if (checked) setLoading(false); return; }
+    void load(token);
+    const iv = setInterval(() => { if (!document.hidden) void load(token); }, 45000);
+    return () => clearInterval(iv);
+  }, [checked, token, load]);
+
+  if (!checked || (token && loading)) return <div className="flex items-center gap-3 p-10"><Spinner size={24} /> <span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.b7591dbae332d58b" source="Building your cockpit…" /></span></div>;
 
   const published = rows.filter((r) => (r.status ?? 'draft') === 'published' || r.status === 'live');
   const drafts = rows.filter((r) => (r.status ?? 'draft') === 'draft');
@@ -144,67 +117,61 @@ function Inner({ accountId }: { accountId: string | null }) {
   return (
     <div className="flex flex-col gap-6">
       {/* Identity / status banner */}
-      <CardRead state={identity} label="identity">
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
         <div className="flex items-center gap-3">
-          <span className={`flex h-10 w-10 items-center justify-center rounded-zine border-zine border-ink ${verified ? 'bg-mint' : 'bg-card'} font-display text-[16px] font-semibold text-ink shadow-zine-xs`}>L{level}</span>
+          <span className={`flex h-10 w-10 items-center justify-center rounded-zine border-zine border-ink ${verified ? 'bg-mint' : 'bg-card'} font-display text-[16px] font-semibold text-ink shadow-zine-xs`}><UiText id="web-dashboard.72dfcfb0c470ac25" source="L" />{level}</span>
           <div>
             <div className="flex items-center gap-2 font-display font-semibold text-[17px] text-ink">
-              {ident?.handle ? `@${ident.handle}` : 'Your studio'}
+              {ident?.handle ? `@${ident.handle}` : uiT("web-dashboard.90e7dc84cf4852a2","Your studio")}
               {verified
-                ? <span className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-mint px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs">● Verified</span>
-                : <a href="/dashboard/identity" className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink no-underline shadow-zine-xs">Verify →</a>}
+                ? <span className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-mint px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs"><UiText id="web-dashboard.71ebea29aec1464a" source="● Verified" /></span>
+                : <a href="/dashboard/identity" className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink no-underline shadow-zine-xs"><UiText id="web-dashboard.4cc7ee1d06031129" source="Verify →" /></a>}
             </div>
-            <div className="font-body font-bold text-[12px] text-inkSoft">{verified ? 'Identity verified — payouts unlocked.' : 'Verify your identity to unlock creator payouts.'}</div>
+            <div className="font-body font-bold text-[12px] text-inkSoft">{verified ? uiT("web-dashboard.dd4f2fdee94bf8db","Identity verified — payouts unlocked.") : uiT("web-dashboard.6b6eb304c12169ad","Verify your identity to unlock creator payouts.")}</div>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-inkSoft shadow-zine-xs"><span className="h-2 w-2 animate-pulse rounded-full bg-coral"></span>Live · {last ? ago(last) : '—'}</span>
-          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New listing</a>
+          <span className="flex items-center gap-1.5 rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-inkSoft shadow-zine-xs"><span className="h-2 w-2 animate-pulse rounded-full bg-coral"></span><UiText id="web-dashboard.5a125d520e02b00e" source="Live ·" />{" "}{last ? ago(last) : '—'}</span>
+          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.34ba96e4dc658560" source="+ New listing" /></a>
         </div>
       </div>
 
-      </CardRead>
-
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <CardRead state={wallet} label="wallet"><Stat label="Wallet" value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" /></CardRead>
-        <CardRead state={earnings} label="available"><Stat label="Available" value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" /></CardRead>
-        <CardRead state={earnings} label="clearing"><Stat label="Clearing" value={usd(earn?.held)} sub="7-day hold" tone="bg-card" /></CardRead>
-        <CardRead state={listings} label="listings"><Stat label="Listings" value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" /></CardRead>
-        <CardRead state={listings} label="bookings"><Stat label="Bookings" value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" /></CardRead>
-        <CardRead state={unreadCard} label="inbox"><Stat label="Inbox" value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" /></CardRead>
+        <Stat label={uiT("web-dashboard.d1c9a01d57e90086","Wallet")} value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" />
+        <Stat label={uiT("web-dashboard.e674447337e83c13","Available")} value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" />
+        <Stat label={uiT("web-dashboard.06648760a765043c","Clearing")} value={usd(earn?.held)} sub="7-day hold" tone="bg-card" />
+        <Stat label={uiT("web-dashboard.5009238dba6b31d6","Listings")} value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" />
+        <Stat label={uiT("web-dashboard.4e5f81ada70c344e","Bookings")} value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" />
+        <Stat label={uiT("web-dashboard.94835ea2fcf775cd","Inbox")} value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" />
       </div>
 
       {/* Main grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-4">
-          <CardRead state={listings} label="listing performance">
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
             <div className="mb-4 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[18px] text-ink">Listing performance</h2>
-              <span className="ml-auto font-mono text-[13px] text-inkSoft font-bold">{usd(grossEst)} est. gross · {avgRating ? `★ ${avgRating.toFixed(1)}` : 'no ratings yet'}</span>
+              <h2 className="font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.d3e010de1597ac44" source="Listing performance" /></h2>
+              <span className="ml-auto font-mono text-[13px] text-inkSoft font-bold">{usd(grossEst)}{" "}<UiText id="web-dashboard.4960298c76bb1def" source="est. gross ·" />{" "}{avgRating ? `★ ${avgRating.toFixed(1)}` : uiT("web-dashboard.812e79880892e523","no ratings yet")}</span>
             </div>
             {topListings.length === 0 ? (
-              <div className="rounded-zineField bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft">No listings yet. <a href="/dashboard/listings/new" className="text-blueInk underline">Create your first →</a></div>
+              <div className="rounded-zineField bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-dashboard.1b2c6db069a2f111" source="No listings yet." />{" "}<a href="/dashboard/listings/new" className="text-blueInk underline"><UiText id="web-dashboard.2ab638cd9a29fbca" source="Create your first →" /></a></div>
             ) : (
               <Bars data={topListings.map((l, i) => ({ label: l.title || 'Untitled', value: l.joined_count ?? 0, tone: TONES[i % TONES.length] }))} />
             )}
           </div>
 
-          </CardRead>
-
           {rows.length > 0 && (
             <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
               <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b-zine border-ink bg-paper2 px-4 py-2.5 font-mono text-[12px] font-bold uppercase tracking-[0.06em] text-inkSoft">
-                <span>Listing</span><span className="text-right">Joins</span><span className="text-right">Rating</span><span className="text-right">Gross</span>
+                <span><UiText id="web-dashboard.fc7f1aa2054c2283" source="Listing" /></span><span className="text-right"><UiText id="web-dashboard.49da3b2728bcb9ba" source="Joins" /></span><span className="text-right"><UiText id="web-dashboard.9f29530464f730bd" source="Rating" /></span><span className="text-right"><UiText id="web-dashboard.0589b626717ccca8" source="Gross" /></span>
               </div>
               {/* [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] /dashboard/l/:id
                   301s to /l/:id now — link straight to the real (public,
                   chrome-free) page instead of round-tripping a redirect. */}
               {rows.slice(0, 8).map((l) => (
                 <a key={l.id} href={`/l/${encodeURIComponent(l.id)}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 border-t-zine border-ink px-4 py-2.5 no-underline first:border-t-0 hover:bg-paper2">
-                  <span className="min-w-0 truncate font-body font-extrabold text-[14px] text-ink">{l.title || 'Untitled'} <span className="ml-1 font-mono text-[12px] uppercase text-inkMute font-bold">{l.status ?? 'draft'}</span></span>
+                  <span className="min-w-0 truncate font-body font-extrabold text-[14px] text-ink">{l.title || uiT("web-dashboard.f59ab8d1331b7b16","Untitled")} <span className="ml-1 font-mono text-[12px] uppercase text-inkMute font-bold">{l.status ?? uiT("web-dashboard.7743ce348d9284d6","draft")}</span></span>
                   <span className="text-right font-display font-semibold text-[14px] text-ink">{l.joined_count ?? 0}</span>
                   <span className="text-right font-mono text-[14px] text-inkSoft font-bold">{l.rating ? `★${Number(l.rating).toFixed(1)}` : '—'}</span>
                   <span className="text-right font-display font-semibold text-[13px] text-blueInk">{usd((l.joined_count ?? 0) * (l.price ?? 0))}</span>
@@ -213,33 +180,30 @@ function Inner({ accountId }: { accountId: string | null }) {
             </div>
           )}
 
-          <CardRead state={earnings} label="earnings">
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-            <h2 className="mb-4 font-display font-semibold text-[18px] text-ink">Earnings</h2>
+            <h2 className="mb-4 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.81920761dd55a077" source="Earnings" /></h2>
             <Bars fmt={usd} data={[
               { label: 'Available', value: Number(earn?.released_total ?? 0), tone: 'bg-mint' },
               { label: 'Clearing', value: Number(earn?.held ?? 0), tone: 'bg-blue' },
               { label: 'Upcoming 7d', value: Number(earn?.upcoming ?? 0), tone: 'bg-lilac' },
-              ...(aff ? [{ label: 'Affiliate', value: Number(aff.totals?.lifetime_coins ?? 0), tone: 'bg-coral' }] : []),
+              { label: 'Affiliate', value: Number(aff?.totals?.lifetime_coins ?? 0), tone: 'bg-coral' },
             ]} />
           </div>
-          </CardRead>
         </div>
 
         <div className="flex flex-col gap-4">
-          <CardRead state={notifications} label="inbox">
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Inbox</h2>
-              <a href="/dashboard/inbox" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">All →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.94835ea2fcf775cd" source="Inbox" /></h2>
+              <a href="/dashboard/inbox" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.c846622a20b9c16e" source="All →" /></a>
             </div>
-            {notes.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft">No messages yet.</p> : (
+            {notes.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.f0d5968f615ed7ab" source="No messages yet." /></p> : (
               <div className="flex flex-col gap-2">
                 {notes.slice(0, 5).map((n) => (
                   <div key={n.id} className="flex items-start gap-2">
                     <span className={`mt-1 h-2 w-2 shrink-0 rounded-full border border-ink ${n.read ? 'bg-paper' : 'bg-coral'}`} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-body font-extrabold text-[13px] text-ink">{n.title ?? n.type ?? 'Notification'}</div>
+                      <div className="truncate font-body font-extrabold text-[13px] text-ink">{n.title ?? n.type ?? uiT("web-dashboard.7d31b83313991d4c","Notification")}</div>
                       {n.body && <div className="truncate font-body font-bold text-[12px] text-inkSoft">{n.body}</div>}
                     </div>
                     <span className="shrink-0 font-mono text-[12px] text-inkMute font-bold">{ago(n.created_at)}</span>
@@ -249,19 +213,17 @@ function Inner({ accountId }: { accountId: string | null }) {
             )}
           </div>
 
-          </CardRead>
-          <CardRead state={upcoming} label="upcoming bookings">
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Upcoming</h2>
-              <a href="/dashboard/calendar" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">Calendar →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.5f1a2542e4e4ca5e" source="Upcoming" /></h2>
+              <a href="/dashboard/calendar" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.b93a2d1a5851386a" source="Calendar →" /></a>
             </div>
-            {bookings.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft">Nothing booked yet.</p> : (
+            {bookings.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.29e6fa748a1a1446" source="Nothing booked yet." /></p> : (
               <div className="flex flex-col gap-2.5">
                 {bookings.slice(0, 5).map((b) => (
                   <div key={b.id} className="flex items-center gap-2">
-                    <span className="rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink">{b.kind ?? 'event'}</span>
-                    <span className="min-w-0 flex-1 truncate font-body font-extrabold text-[13px] text-ink">{b.title || 'Session'}</span>
+                    <span className="rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink">{b.kind ?? uiT("web-dashboard.b8e1f80bd70ae078","event")}</span>
+                    <span className="min-w-0 flex-1 truncate font-body font-extrabold text-[13px] text-ink">{b.title || uiT("web-dashboard.6959b4159575d8dd","Session")}</span>
                     <span className="shrink-0 font-mono text-[12px] text-inkMute font-bold">{dt(b.starts_at)}</span>
                   </div>
                 ))}
@@ -269,44 +231,25 @@ function Inner({ accountId }: { accountId: string | null }) {
             )}
           </div>
 
-          </CardRead>
-          <CardRead state={affiliate} label="affiliate">
           <div className="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
             <div className="mb-1 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Affiliate</h2>
-              <a href="/dashboard/affiliate" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">Open →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.c58cc9af3a3107c7" source="Affiliate" /></h2>
+              <a href="/dashboard/affiliate" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.1d2902ca81b6d2db" source="Open →" /></a>
             </div>
             {aff?.registered ? (
               <div className="flex items-baseline gap-3">
                 <span className="font-display font-semibold text-[24px] text-ink">{usd(aff?.totals?.lifetime_coins)}</span>
-                <span className="font-body font-bold text-[12px] text-inkSoft">{aff?.totals?.referred_users ?? 0} referred</span>
+                <span className="font-body font-bold text-[12px] text-inkSoft">{aff?.totals?.referred_users ?? 0}{" "}<UiText id="web-dashboard.424f14bc9c9ca707" source="referred" /></span>
               </div>
             ) : (
-              <p className="font-body font-bold text-[13px] text-inkSoft">Earn 10% for life — <a href="/dashboard/affiliate" className="text-blueInk underline">become an affiliate →</a></p>
+              <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.50c154978234ce58" source="Earn 10% for life —" />{" "}<a href="/dashboard/affiliate" className="text-blueInk underline"><UiText id="web-dashboard.f0e2893916938322" source="become an affiliate →" /></a></p>
             )}
           </div>
-          </CardRead>
         </div>
       </div>
     </div>
   );
 }
 
-export function Overview() {
-  const [auth, setAuth] = useState<{ ready: boolean; accountId: string | null }>({ ready: false, accountId: null });
-  const [authSlow, setAuthSlow] = useState(false);
-  useEffect(() => subscribeAuthState(setAuth), []);
-  useEffect(() => {
-    setAuthSlow(false);
-    if (auth.ready) return;
-    const timer = setTimeout(() => setAuthSlow(true), 10000);
-    return () => clearTimeout(timer);
-  }, [auth.ready]);
-  if (auth.ready && !auth.accountId) return <p className="p-6 font-body">Sign in to view your studio. <a href="/sign-in?next=%2Fdashboard" className="underline">Sign in</a></p>;
-  // Account-keyed remount discards every old card synchronously; there is no persisted personal cache.
-  return <>
-    {authSlow && <div role="alert" className="mb-4 rounded-zine border-zine border-coral bg-card p-4 font-body">Sign-in is taking longer than expected. <button type="button" className="underline" onClick={() => window.location.reload()}>Retry</button></div>}
-    <Inner key={(auth.ready && auth.accountId) || 'pending'} accountId={auth.ready ? auth.accountId : null} />
-  </>;
-}
+export function Overview() { return <Inner />; }
 export default Overview;

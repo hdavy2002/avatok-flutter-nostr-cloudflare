@@ -1,3 +1,5 @@
+import '../../core/localization/ui_text.dart';
+import '../../../../../../../../tmp/avatok-i18n-implementation-20260916/app/app/lib/core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -1207,6 +1209,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = widget.chat;
     return Scaffold(
       // [AVA-GRP-UI] Near-black Scaffold backdrop — the thread canvas is dark
@@ -1298,9 +1301,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       // without leaving the band's foreground rule.
                       AdSwitchText(
                           (_peerTyping
-                              ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'Typing…')
-                              : (c.group ? '${c.members} members · tap to manage'
-                                  : (_peerOnline ? 'Online' : _relLastSeen()))),
+                              ? (c.group ? uiCopy(UiMessage.m_value1_is_typing_3b18bb6adf, {'value1': (_typingWho ?? "Someone").toString()}) : uiCopy(UiMessage.m_typing_d7fee5b783))
+                              : (c.group ? uiCopy(UiMessage.m_value1_members_tap_to_manage_81cee344af, {'value1': (c.members).toString()})
+                                  : (_peerOnline ? uiCopy(UiMessage.m_online_0d21bd5202) : _relLastSeen()))),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ADText.statCaption(
                               c: (_peerTyping || _peerOnline)

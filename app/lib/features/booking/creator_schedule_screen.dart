@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -19,9 +21,9 @@ class CreatorLiveEventsScreen extends StatelessWidget {
   const CreatorLiveEventsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => const CreatorScheduleScreen(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return const CreatorScheduleScreen(
         kind: CreatorScheduleKind.liveEvents,
-      );
+      ); }
 }
 
 class CreatorAppointmentsScreen extends StatelessWidget {
@@ -30,10 +32,10 @@ class CreatorAppointmentsScreen extends StatelessWidget {
   final String? focusListingId;
 
   @override
-  Widget build(BuildContext context) => CreatorScheduleScreen(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return CreatorScheduleScreen(
         kind: CreatorScheduleKind.appointments,
         focusListingId: focusListingId,
-      );
+      ); }
 }
 
 /// Creator-owned commercial sessions. The server projection includes live
@@ -122,6 +124,7 @@ class _CreatorScheduleScreenState extends State<CreatorScheduleScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final title = _isLiveEvents ? 'My Live Events' : 'Customer Appointments';
     return Scaffold(
       backgroundColor: AD.bg,
@@ -256,7 +259,7 @@ class _CreatorScheduleScreenState extends State<CreatorScheduleScreen>
             style: ADText.preview()),
         if (session.counterpartyName?.isNotEmpty == true) ...[
           const SizedBox(height: Msg.s1),
-          Text('Customer: ${session.counterpartyName}',
+          UiText(UiMessage.m_customer_value1_5a14b0e903, params: {'value1': (session.counterpartyName).toString()},
               style: ADText.preview(c: AD.textSecondary)),
         ],
         const SizedBox(height: Msg.s3),
@@ -265,10 +268,10 @@ class _CreatorScheduleScreenState extends State<CreatorScheduleScreen>
               child: Text(
                   cancelled
                       ? session.isRefunded
-                          ? 'Refunded'
-                          : 'Cancelled'
+                          ? uiCopy(UiMessage.m_refunded_117f6a7cf0)
+                          : uiCopy(UiMessage.m_cancelled_d353a99eb4)
                       : completed
-                          ? 'Completed'
+                          ? uiCopy(UiMessage.m_completed_22a970d2e5)
                           : session.joinLabel,
                   style: ADText.sectionLabel(
                       c: cancelled ? AD.danger : AD.textSecondary))),
@@ -327,7 +330,7 @@ class _CreatorScheduleScreenState extends State<CreatorScheduleScreen>
 
   Widget _focusNotice() => Padding(
         padding: const EdgeInsets.only(bottom: Msg.s3),
-        child: Text('Showing appointments for the selected listing.',
+        child: UiText(UiMessage.m_showing_appointments_for_the_selected_b459ba3256,
             style: ADText.preview(c: AD.textSecondary)),
       );
 

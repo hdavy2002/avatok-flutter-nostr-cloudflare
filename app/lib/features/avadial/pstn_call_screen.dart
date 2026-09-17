@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -202,6 +204,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       // Dedicated dark PSTN screen (owner request 2026-07-12) — separate from,
       // and never replaced by, the AvaTalk/messenger call UI. Color-coded by
@@ -273,9 +276,8 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           Expanded(
             child: Text(
               widget.spamScore != null
-                  ? 'Reported by the community (score ${widget.spamScore}). '
-                      'We recommend declining.'
-                  : 'This number has been reported as spam. We recommend declining.',
+                  ? uiCopy(UiMessage.m_reported_by_the_community_score_c67a84f9bc, {'value1': (widget.spamScore).toString()})
+                  : uiCopy(UiMessage.m_this_number_has_been_reported_46146b081d),
               style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.text),
             ),
           ),
@@ -288,7 +290,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         // Default action = Decline (prominent). Answer-anyway is secondary.
         return Column(children: [
           AdButton(
-            label: 'Decline',
+            label: uiCopy(UiMessage.m_decline_a2d285b352),
             variant: AdButtonVariant.danger,
             fullWidth: true,
             icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
@@ -299,7 +301,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           Row(children: [
             Expanded(
               child: AdButton(
-                label: 'Block',
+                label: uiCopy(UiMessage.m_block_211d0bb8cf),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _block,
@@ -309,7 +311,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             Expanded(
               child: AdButton(
                 // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
-                label: _answering ? 'Answering…' : 'Answer anyway',
+                label: _answering ? uiCopy(UiMessage.m_answering_12c7c2675c) : uiCopy(UiMessage.m_answer_anyway_c70887e7cd),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _answering ? null : _answer,
@@ -321,7 +323,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         return Row(children: [
           Expanded(
             child: AdButton(
-              label: 'Decline',
+              label: uiCopy(UiMessage.m_decline_a2d285b352),
               variant: AdButtonVariant.danger,
               fullWidth: true,
               onPressed: _decline,
@@ -331,7 +333,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           Expanded(
             child: AdButton(
               // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
-              label: _answering ? 'Answering…' : 'Answer',
+              label: _answering ? uiCopy(UiMessage.m_answering_12c7c2675c) : uiCopy(UiMessage.m_answer_b2a3aa6027),
               variant: AdButtonVariant.primary,
               fullWidth: true,
               onPressed: _answering ? null : _answer,
@@ -343,7 +345,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           Row(children: [
             Expanded(
               child: AdButton(
-                label: 'Decline',
+                label: uiCopy(UiMessage.m_decline_a2d285b352),
                 variant: AdButtonVariant.danger,
                 fullWidth: true,
                 onPressed: _decline,
@@ -353,7 +355,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             Expanded(
               child: AdButton(
                 // [AVADIAL-HARDEN-1] Disabled + relabeled while waiting on native 'active'.
-                label: _answering ? 'Answering…' : 'Answer',
+                label: _answering ? uiCopy(UiMessage.m_answering_12c7c2675c) : uiCopy(UiMessage.m_answer_b2a3aa6027),
                 variant: AdButtonVariant.primary,
                 fullWidth: true,
                 onPressed: _answering ? null : _answer,
@@ -364,7 +366,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           Row(children: [
             Expanded(
               child: AdButton(
-                label: 'Block',
+                label: uiCopy(UiMessage.m_block_211d0bb8cf),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _block,
@@ -373,7 +375,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: AdButton(
-                label: 'Report spam',
+                label: uiCopy(UiMessage.m_report_spam_147b4a0af8),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _reportSpam,

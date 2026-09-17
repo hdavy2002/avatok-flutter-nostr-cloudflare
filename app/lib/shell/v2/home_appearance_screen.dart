@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,6 +27,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -31,22 +35,22 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: Msg.hairline),
-        title: Text('Appearance', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_appearance_3907fa7f80, style: ADText.appTitle()),
       ),
       body: ValueListenableBuilder<int>(
         valueListenable: HomePersonalisation.revision,
         builder: (context, _, __) => ListView(
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
           children: [
-            Text('Font size', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_font_size_6d784d95c6, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             _fontRow(),
             const SizedBox(height: Msg.s5),
-            Text('Accent', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_accent_a5c6fb18c9, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             _accentRow(),
             const SizedBox(height: Msg.s5),
-            Text('Wallpaper', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_wallpaper_a7f173cdaa, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             _wallpaperCard(),
           ],
@@ -150,13 +154,13 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
               borderRadius: Msg.brMd,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text('No wallpaper', style: ADText.preview()),
+            child: UiText(UiMessage.m_no_wallpaper_f705e7c50b, style: ADText.preview()),
           ),
         const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(
             child: ZineButton(
-              label: 'Choose image',
+              label: uiCopy(UiMessage.m_choose_image_f7e6f67fb7),
               variant: ZineButtonVariant.blue,
               fontSize: 14,
               trailingIcon: false,
@@ -166,7 +170,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
           if (path != null) ...[
             const SizedBox(width: Msg.s3),
             ZineButton(
-              label: 'Remove',
+              label: uiCopy(UiMessage.m_remove_c3812fc4ac),
               variant: ZineButtonVariant.ghost,
               fontSize: 14,
               trailingIcon: false,

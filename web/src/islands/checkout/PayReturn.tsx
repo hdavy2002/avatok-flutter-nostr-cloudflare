@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [WEB-PAY-RETURN-1] PayReturn — the browser-return landing page for a gateway that
  * redirects the buyer AWAY from avatok.ai to pay (Paytm's Show Payment Page today;
  * any future redirect-based gateway lands here too).
@@ -127,6 +129,8 @@ export interface PayReturnProps {
 }
 
 export function PayReturn({ gateway, orderId }: PayReturnProps) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const stash = useRef<StashedReturn>(readStash());
   const [phase, setPhase] = useState<Phase>(gateway && orderId ? 'confirming' : 'unmatched');
   const [status, setStatus] = useState<PayStatusResponse | null>(null);
@@ -235,15 +239,10 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
     return (
       <Card fillClassName="bg-paper2" shadow="sm">
         <div className="flex flex-col gap-3">
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Payment return</span>
-          <p className="font-body font-bold text-[15px] text-ink">
-            We couldn’t match this payment to a booking. If money left your account, it will still show up on your
-            account shortly — check My Bookings. If you’re not sure, that’s the safest place to look first.
-          </p>
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.0084424e81a3d4b6" source="Payment return" /></span>
+          <p className="font-body font-bold text-[15px] text-ink"><UiText id="web-checkout.d212a2947b2019b5" source="We couldn’t match this payment to a booking. If money left your account, it will still show up on your account shortly — check My Bookings. If you’re not sure, that’s the safest place to look first." />{" "}</p>
           <div className="mt-1">
-            <a href="/dashboard/bookings" className={ctaClass('blue')}>
-              Go to My Bookings
-            </a>
+            <a href="/dashboard/bookings" className={ctaClass('blue')}><UiText id="web-checkout.e3f3ad4365620730" source="Go to My Bookings" />{" "}</a>
           </div>
         </div>
       </Card>
@@ -256,7 +255,7 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
       <Card fillClassName="bg-paper2" shadow="sm">
         <div className="flex items-center gap-3 p-2">
           <Spinner size={22} />
-          <span className="font-body font-bold text-[15px] text-inkSoft">Confirming your payment…</span>
+          <span className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.a29081aa8c17604d" source="Confirming your payment…" /></span>
         </div>
       </Card>
     );
@@ -270,15 +269,13 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
     return (
       <Card fillClassName="bg-mint" shadow="lg">
         <div className="flex flex-col gap-3">
-          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink">Confirmed</span>
-          <h2 className="font-display font-semibold text-[24px] leading-tight text-ink">You’re booked: {title}</h2>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink"><UiText id="web-checkout.fe00b67b6dd1143f" source="Confirmed" /></span>
+          <h2 className="font-display font-semibold text-[24px] leading-tight text-ink"><UiText id="web-checkout.962586aa47dcf0ee" source="You’re booked:" />{" "}{title}</h2>
           {when && <p className="font-body font-bold text-[15px] text-ink/80">{when}</p>}
           {status?.total_amount != null && (
-            <p className="font-body font-bold text-[14px] text-ink/70">Paid {inr(status.total_amount)}.</p>
+            <p className="font-body font-bold text-[14px] text-ink/70"><UiText id="web-checkout.fb81b961af456e5e" source="Paid" />{" "}{inr(status.total_amount)}.</p>
           )}
-          <p className="font-body font-bold text-[14px] text-ink/70">
-            We emailed your confirmation and reminders.
-          </p>
+          <p className="font-body font-bold text-[14px] text-ink/70"><UiText id="web-checkout.cf5fc1fcd4bad8d8" source="We emailed your confirmation and reminders." />{" "}</p>
           <div className="mt-1 flex flex-col gap-2">
             <a href={viewer.href} className={`${ctaClass('lime')} w-full`}>
               {viewer.label} →
@@ -286,9 +283,7 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
             <a
               href="/dashboard/bookings"
               className="text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
-            >
-              All my bookings
-            </a>
+            ><UiText id="web-checkout.b742efbc45082d6a" source="All my bookings" />{" "}</a>
           </div>
         </div>
       </Card>
@@ -301,15 +296,10 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
     return (
       <Card fillClassName="bg-paper2" shadow="sm">
         <div className="flex flex-col gap-3">
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-coral">Payment didn’t go through</span>
-          <p className="font-body font-bold text-[15px] text-ink">
-            That payment did not go through. You have not been charged — no money left your account for this
-            attempt.
-          </p>
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-coral"><UiText id="web-checkout.82e192b8f254c089" source="Payment didn’t go through" /></span>
+          <p className="font-body font-bold text-[15px] text-ink"><UiText id="web-checkout.30078dbe878c27bc" source="That payment did not go through. You have not been charged — no money left your account for this attempt." />{" "}</p>
           <div className="mt-1">
-            <a href={retryHref} className={ctaClass('lime')}>
-              Try again
-            </a>
+            <a href={retryHref} className={ctaClass('lime')}><UiText id="web-checkout.d8b8392e2c542950" source="Try again" />{" "}</a>
           </div>
         </div>
       </Card>
@@ -321,22 +311,15 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
   return (
     <Card fillClassName="bg-paper2" shadow="sm">
       <div className="flex flex-col gap-3">
-        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Still confirming</span>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.e2140fd6abd5bfc0" source="Still confirming" /></span>
         <p className="font-body font-bold text-[14px] text-ink">
           {authError
-            ? 'We couldn’t confirm your session in this browser, so we can’t check this payment’s status here. '
-            : 'This is taking longer than usual. '}
-          If the money left your account, your booking will confirm shortly — check My Bookings. If nothing was
-          charged, it’s safe to try again — please don’t pay twice for the same booking.
-        </p>
+            ? uiT("web-checkout.da2a328c3fc89041","We couldn’t confirm your session in this browser, so we can’t check this payment’s status here. ")
+            : uiT("web-checkout.0a8345bcfb6a138f","This is taking longer than usual. ")}<UiText id="web-checkout.b27f0b475747bc49" source="If the money left your account, your booking will confirm shortly — check My Bookings. If nothing was charged, it’s safe to try again — please don’t pay twice for the same booking." />{" "}</p>
         <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-          <a href="/dashboard/bookings" className={ctaClass('blue')}>
-            Check My Bookings
-          </a>
+          <a href="/dashboard/bookings" className={ctaClass('blue')}><UiText id="web-checkout.0a410ed9ac3763b8" source="Check My Bookings" />{" "}</a>
           {timeoutRetryListingId && (
-            <a href={`/book/${encodeURIComponent(timeoutRetryListingId)}`} className={ctaClass('lime')}>
-              Try again
-            </a>
+            <a href={`/book/${encodeURIComponent(timeoutRetryListingId)}`} className={ctaClass('lime')}><UiText id="web-checkout.d8b8392e2c542950" source="Try again" />{" "}</a>
           )}
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * ConsultRoomGS — the buyer/creator's side of a paid 1:1 consult on the
  * GetStream commercial lane, at `/session/<booking>` (SPEC-2026-09-01 §4.4,
@@ -105,6 +107,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> 
 }
 
 function ConsultRoomGSInner({ booking }: { booking: string }) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const { user } = useUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? null;
 
@@ -919,7 +923,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     return (
       <StartInApp
         kind="consult_1to1"
-        title={counterpartyName ? `1:1 with ${counterpartyName}` : 'Your 1:1 session'}
+        title={counterpartyName ? `1:1 with ${counterpartyName}` : uiT("web-consult-gs.2403c08f4b76ce33","Your 1:1 session")}
         bookingId={booking}
         startsAt={prejoin?.starts_at ?? null}
         endsAt={prejoin?.ends_at ?? null}
@@ -935,14 +939,14 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <h1 className="font-display font-semibold text-[26px] text-ink">Call ended</h1>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.00ff74289a121c75" source="Call ended" /></h1>
           <p className="font-body font-bold text-[15px] text-inkSoft">{endReason}</p>
           <div className="flex gap-3">
             <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="My bookings" />
+              <Button variant="lime" label={uiT("web-consult-gs.be1b53baca18d782","My bookings")} />
             </a>
             <a href="/explore" className="no-underline">
-              <Button variant="ghost" label="Explore" />
+              <Button variant="ghost" label={uiT("web-consult-gs.3b73900b8d29f963","Explore")} />
             </a>
           </div>
         </div>
@@ -959,8 +963,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         bookingId={booking}
         jwt={jwt}
         role={role}
-        peerName={counterpartyName ?? 'the other participant'}
-        title="Your 1:1 session"
+        peerName={counterpartyName ?? uiT("web-consult-gs.2c4b14415a4cf885","the other participant")}
+        title={uiT("web-consult-gs.2403c08f4b76ce33","Your 1:1 session")}
         endsAt={endsAt}
         onEndsAtChange={setEndsAt}
         onLeave={leaveLive}
@@ -1004,7 +1008,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       <Centered>
         <div className="flex flex-col items-center gap-3">
           <Spinner size={28} />
-          <p className="font-body font-bold text-[14px] text-inkSoft">Checking your booking…</p>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-consult-gs.183211d87e0b8944" source="Checking your booking…" /></p>
         </div>
       </Centered>
     );
@@ -1022,17 +1026,16 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         {prejoin && (
           <p className="text-center font-body font-bold text-[13px] text-inkMute">
             {counterpartyName ? (
-              <>
-                Meeting <span className="text-ink">{counterpartyName}</span> · runs until{' '}
+              <><UiText id="web-consult-gs.8b8b8871bbfba744" source="Meeting" />{" "}<span className="text-ink">{counterpartyName}</span>{" "}<UiText id="web-consult-gs.9c692f01d219b97e" source="· runs until" />{' '}
                 {fmtTime(prejoin.ends_at)}
               </>
             ) : (
-              <>Runs until {fmtTime(prejoin.ends_at)}</>
+              <><UiText id="web-consult-gs.32d62581302df262" source="Runs until" />{" "}{fmtTime(prejoin.ends_at)}</>
             )}
           </p>
         )}
         <PreJoin
-          title="Your 1:1 session"
+          title={uiT("web-consult-gs.2403c08f4b76ce33","Your 1:1 session")}
           peerName={counterpartyName ?? undefined}
           joining={phase === 'joining'}
           error={joinErr}
@@ -1056,36 +1059,36 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
  * Confirmation already links to the room it just created.
  */
 function PayAndJoin({ listingId, kind }: { listingId: string; kind: 'needs_ticket' | 'not_yours' }) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   useEffect(() => {
     try { capture('pay_and_join_shown', { listing_id: listingId, kind: 'consult', refusal: kind }); } catch { /* best-effort */ }
   }, [listingId, kind]);
   return (
     <a href={payAndJoinPath(listingId)} className="no-underline">
-      <Button variant="lime" label="Pay and join" />
+      <Button variant="lime" label={uiT("web-consult-gs.653ea51587362f90","Pay and join")} />
     </a>
   );
 }
 
 function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: () => void }) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const payListing = refusal.listing_id ?? null;
   switch (refusal.reason) {
     case 'too_early':
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Not open yet</span>
-            <h1 className="font-display font-semibold text-[26px] text-ink">You're early</h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft">
-              The room opens shortly before your slot. We'll let you in automatically.
-            </p>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk"><UiText id="web-consult-gs.a52b97a613669bf9" source="Not open yet" /></span>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.2287a8df49fbafdb" source="You're early" /></h1>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.e9188086f58660ca" source="The room opens shortly before your slot. We'll let you in automatically." />{" "}</p>
             {refusal.opens_at ? (
-              <Countdown target={refusal.opens_at} label="Opens in" onZero={onRetry} />
+              <Countdown target={refusal.opens_at} label={uiT("web-consult-gs.127b12967e16df24","Opens in")} onZero={onRetry} />
             ) : (
               <Spinner size={24} />
             )}
-            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
-              Back to my bookings
-            </a>
+            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold"><UiText id="web-consult-gs.014e87d4bef7ad34" source="Back to my bookings" />{" "}</a>
           </div>
         </Centered>
       );
@@ -1093,12 +1096,10 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">This session has ended</h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft">
-              The booking window has closed. Your receipt is in My bookings.
-            </p>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.e5ff4964c447ad8c" source="This session has ended" /></h1>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.b94a14d4ceb98e77" source="The booking window has closed. Your receipt is in My bookings." />{" "}</p>
             <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="My bookings" />
+              <Button variant="lime" label={uiT("web-consult-gs.be1b53baca18d782","My bookings")} />
             </a>
           </div>
         </Centered>
@@ -1107,16 +1108,14 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">This isn't your booking</h1>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.f7b8108e2fefa851" source="This isn't your booking" /></h1>
             <p className="font-body font-bold text-[15px] text-inkSoft">
               {payListing
-                ? 'This slot belongs to someone else \u2014 but you can book your own session with the same host now.'
-                : 'This consultation is booked for someone else. Signed in with the wrong account?'}
+                ? uiT("web-consult-gs.bd796e2a79be6712","This slot belongs to someone else — but you can book your own session with the same host now.")
+                : uiT("web-consult-gs.016a776e51dbfcbb","This consultation is booked for someone else. Signed in with the wrong account?")}
             </p>
             {payListing && <PayAndJoin listingId={payListing} kind="not_yours" />}
-            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
-              My bookings
-            </a>
+            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold"><UiText id="web-consult-gs.be1b53baca18d782" source="My bookings" />{" "}</a>
           </div>
         </Centered>
       );
@@ -1124,16 +1123,14 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">You'll need to book this first</h1>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.ea3df5d55ea6909e" source="You'll need to book this first" /></h1>
             <p className="font-body font-bold text-[15px] text-inkSoft">
               {payListing
-                ? "This session isn't in your bookings yet. Book a slot and we'll take you straight in."
-                : "This session isn't in your bookings yet."}
+                ? uiT("web-consult-gs.c4fd7762c2d01ed0","This session isn't in your bookings yet. Book a slot and we'll take you straight in.")
+                : uiT("web-consult-gs.fc467178018640d3","This session isn't in your bookings yet.")}
             </p>
             {payListing && <PayAndJoin listingId={payListing} kind="needs_ticket" />}
-            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
-              Go to my bookings
-            </a>
+            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold"><UiText id="web-consult-gs.7757a65bce3fb205" source="Go to my bookings" />{" "}</a>
           </div>
         </Centered>
       );
@@ -1141,12 +1138,10 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">Booking not found</h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft">
-              We couldn't find this booking. It may have been cancelled, or the link may be wrong.
-            </p>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.587914bb98ddecc1" source="Booking not found" /></h1>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.2018716ee9898210" source="We couldn't find this booking. It may have been cancelled, or the link may be wrong." />{" "}</p>
             <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="My bookings" />
+              <Button variant="lime" label={uiT("web-consult-gs.be1b53baca18d782","My bookings")} />
             </a>
           </div>
         </Centered>
@@ -1155,12 +1150,10 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">Not open yet</h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft">
-              Paid 1:1 sessions aren't live on avaTOK yet. Check back soon.
-            </p>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.a52b97a613669bf9" source="Not open yet" /></h1>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.10dffb4cde0f93a3" source="Paid 1:1 sessions aren't live on avaTOK yet. Check back soon." />{" "}</p>
             <a href="/explore" className="no-underline">
-              <Button variant="ghost" label="Explore" />
+              <Button variant="ghost" label={uiT("web-consult-gs.3b73900b8d29f963","Explore")} />
             </a>
           </div>
         </Centered>
@@ -1169,11 +1162,9 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink">Couldn't reach avaTOK</h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft">
-              Something went wrong on our end. Please try again.
-            </p>
-            <Button variant="lime" label="Try again" onClick={onRetry} />
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.b1cac7b807bbb517" source="Couldn't reach avaTOK" /></h1>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.a3dcdf028063c109" source="Something went wrong on our end. Please try again." />{" "}</p>
+            <Button variant="lime" label={uiT("web-consult-gs.d8b8392e2c542950","Try again")} onClick={onRetry} />
           </div>
         </Centered>
       );

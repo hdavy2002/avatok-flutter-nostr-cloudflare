@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* CreatorListings — the creator's listing pipeline for the web dashboard.
  *
  * One reusable surface for "My listings", AvaConsult and AvaLive: a filter bar
@@ -72,8 +74,10 @@ function coins(n?: number | null) {
 /** [LISTING-POSTER-PENDING-1] Explain the temporary state without pretending
  * that a generated poster already exists. */
 function PendingPosterPlaceholder() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-lilac px-4 text-center text-inkSoft" role="img" aria-label="Poster will be generated after listing approval">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-lilac px-4 text-center text-inkSoft" role="img" aria-label={uiT("web-dashboard.3cb3809bc5acb508","Poster will be generated after listing approval")}>
       <svg width="96" height="82" viewBox="0 0 96 82" fill="none" aria-hidden="true">
         <rect x="18" y="8" width="60" height="66" rx="5" fill="#FFF3D6" stroke="#171717" strokeWidth="3" />
         <path d="M27 57 40 43l9 8 9-12 11 18" stroke="#FFB800" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
@@ -81,7 +85,7 @@ function PendingPosterPlaceholder() {
         <path d="M80 18v12M74 24h12" stroke="#FF6B5F" strokeWidth="3" strokeLinecap="round" />
         <path d="M84 48v10M79 53h10" stroke="#5AC8FA" strokeWidth="3" strokeLinecap="round" />
       </svg>
-      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em]">Poster after approval</span>
+      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em]"><UiText id="web-dashboard.1256ebc4b70b3895" source="Poster after approval" /></span>
     </div>
   );
 }
@@ -89,6 +93,8 @@ function PendingPosterPlaceholder() {
 function Inner({ kind, createHref, emptyTitle, emptyBody }: {
   kind?: string; createHref: string; emptyTitle: string; emptyBody: string;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -211,7 +217,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
   }
 
   if (!checked || rows === null) {
-    return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading your listings…</span></div>;
+    return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.f110fe3c35cc4677" source="Loading your listings…" /></span></div>;
   }
 
   return (
@@ -221,43 +227,43 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
           <div className="flex-1">
             {banner === 'submitted' ? (
               <>
-                <p className="font-body font-bold text-[15px] text-ink">Submitted for review.</p>
-                <p className="mt-1 font-body font-bold text-[13px] leading-relaxed text-inkSoft">The team is checking your listing and will generate your poster after they approve it. This usually takes about an hour, but can take up to 48 hours if we need to resolve an issue or date conflict. We’ll email you when it’s approved.</p>
+                <p className="font-body font-bold text-[15px] text-ink"><UiText id="web-dashboard.6aa3421fe466f9b3" source="Submitted for review." /></p>
+                <p className="mt-1 font-body font-bold text-[13px] leading-relaxed text-inkSoft"><UiText id="web-dashboard.3ba8471da49d52c4" source="The team is checking your listing and will generate your poster after they approve it. This usually takes about an hour, but can take up to 48 hours if we need to resolve an issue or date conflict. We’ll email you when it’s approved." /></p>
               </>
             ) : (
-              <p className="font-body font-bold text-[15px] text-ink">Published.</p>
+              <p className="font-body font-bold text-[15px] text-ink"><UiText id="web-dashboard.d17777228ed2d1b7" source="Published." /></p>
             )}
           </div>
-          <button type="button" onClick={() => setBanner(null)} aria-label="Dismiss" className="font-mono font-bold text-[13px] text-inkSoft hover:text-ink">✕</button>
+          <button type="button" onClick={() => setBanner(null)} aria-label={uiT("web-dashboard.48845bff334a50a5","Dismiss")} className="font-mono font-bold text-[13px] text-inkSoft hover:text-ink">✕</button>
         </div>
       )}
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2.5 rounded-zine border-zine border-ink bg-card p-2.5 shadow-zine-sm">
         <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-full border-zine border-ink bg-paper px-3 py-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-inkMute"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" strokeLinecap="round" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your listings…" className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={uiT("web-dashboard.17c2f9c1c431832e","Search your listings…")} className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
-          <option value="all">All (except archived)</option>
-          <option value="draft">Draft</option>
-          <option value="pending_review">Pending review</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Changes requested</option>
-          <option value="published">Published</option>
-          <option value="live">Live</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Archived</option>
+          <option value="all"><UiText id="web-dashboard.5bd0845a68e019b6" source="All (except archived)" /></option>
+          <option value="draft"><UiText id="web-dashboard.ebf12ef47cf575b3" source="Draft" /></option>
+          <option value="pending_review"><UiText id="web-dashboard.f1c45f3f1314dadd" source="Pending review" /></option>
+          <option value="approved"><UiText id="web-dashboard.87b42e40c2a290e0" source="Approved" /></option>
+          <option value="rejected"><UiText id="web-dashboard.10a92a8ad3ee5891" source="Changes requested" /></option>
+          <option value="published"><UiText id="web-dashboard.2ef42ec21d9300dd" source="Published" /></option>
+          <option value="live"><UiText id="web-dashboard.b64ac05f17e64d03" source="Live" /></option>
+          <option value="completed"><UiText id="web-dashboard.22a970d2e5b1cc23" source="Completed" /></option>
+          <option value="cancelled"><UiText id="web-dashboard.bdb86505f8062d15" source="Archived" /></option>
         </select>
-        <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
+        <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.4fcce04d80ee7a1a" source="+ Create" /></a>
       </div>
 
       {/* Grid */}
       {filtered.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-zine border-zine border-ink bg-paper2 p-8 shadow-zine-sm">
-          <h2 className="font-display font-semibold text-[20px] text-ink">{rows.length === 0 ? emptyTitle : 'Nothing matches that filter'}</h2>
-          <p className="max-w-md font-body font-bold text-[15px] text-inkSoft">{rows.length === 0 ? emptyBody : 'Try a different search or status.'}</p>
+          <h2 className="font-display font-semibold text-[20px] text-ink">{rows.length === 0 ? emptyTitle : uiT("web-dashboard.e879d073e44621af","Nothing matches that filter")}</h2>
+          <p className="max-w-md font-body font-bold text-[15px] text-inkSoft">{rows.length === 0 ? emptyBody : uiT("web-dashboard.1ee306ebe9e95a1a","Try a different search or status.")}</p>
           {rows.length === 0 && (
-            <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>
+            <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.69fc1fd220c0cbb0" source="Create your first one" /></a>
           )}
         </div>
       ) : (
@@ -278,13 +284,13 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                   {view.poster ? (
                     <img src={cfImage(view.poster, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (st === 'pending_review' || st === 'approved') ? <PendingPosterPlaceholder /> : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No cover photo</div>
+                    <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold"><UiText id="web-dashboard.babe62bf3ae589f8" source="No cover photo" /></div>
                   )}
                   <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${STATUS_TONE[st] ?? 'bg-paper2 text-inkSoft'}`}>{STATUS_LABEL[st] ?? st}</span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1 p-3">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full border-zine border-ink bg-paper px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-inkSoft">{KIND_LABEL[l.kind ?? ''] ?? l.kind ?? 'Listing'}</span>
+                    <span className="rounded-full border-zine border-ink bg-paper px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-inkSoft">{KIND_LABEL[l.kind ?? ''] ?? l.kind ?? uiT("web-dashboard.fc7f1aa2054c2283","Listing")}</span>
                     <span className="ml-auto font-display font-semibold text-[14px] text-blueInk">{coins(l.price)}</span>
                   </div>
                   <h3 className="line-clamp-2 font-display font-semibold text-[16px] leading-tight text-ink">{l.title}</h3>
@@ -293,16 +299,16 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                         are otherwise unreachable — Edit was the only action, and editing a
                         draft that can never be published is not a way out of one. */}
                     {st === 'draft' && (
-                      <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Finish</a>
+                      <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.a6c7a84baa6750fc" source="Finish" /></a>
                     )}
                     {ended && l.status === 'completed' && (
-                      <button type="button" disabled={busy === l.id} onClick={() => runAgain(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Run again</button>
+                      <button type="button" disabled={busy === l.id} onClick={() => runAgain(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50"><UiText id="web-dashboard.3e310b75051c78a3" source="Run again" /></button>
                     )}
-                    <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
+                    <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.464c4ffd019e1e96" source="Edit" /></a>
                     {st !== 'cancelled' && !ended && (
-                      <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Archive</button>
+                      <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50"><UiText id="web-dashboard.66f4804ee23ddc09" source="Archive" /></button>
                     )}
-                    <button type="button" disabled={busy === l.id} onClick={() => remove(l.id)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
+                    <button type="button" disabled={busy === l.id} onClick={() => remove(l.id)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label={uiT("web-dashboard.e2d0a54968ead24e","Delete")}>✕</button>
                   </div>
                 </div>
               </div>
@@ -315,13 +321,15 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
 }
 
 export function CreatorListings(props: { kind?: string; createHref?: string; emptyTitle?: string; emptyBody?: string }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   return (
     
       <Inner
         kind={props.kind}
-        createHref={props.createHref ?? '/dashboard/listings/new'}
-        emptyTitle={props.emptyTitle ?? 'No listings yet'}
-        emptyBody={props.emptyBody ?? 'Publish a live event, a 1:1 consult or a class — fans book and pay right from the web.'}
+        createHref={props.createHref ?? uiT("web-dashboard.23ce2a627a9f8853","/dashboard/listings/new")}
+        emptyTitle={props.emptyTitle ?? uiT("web-dashboard.38975ad4e8356135","No listings yet")}
+        emptyBody={props.emptyBody ?? uiT("web-dashboard.de1e7a64d6287cc1","Publish a live event, a 1:1 consult or a class — fans book and pay right from the web.")}
       />
     
   );

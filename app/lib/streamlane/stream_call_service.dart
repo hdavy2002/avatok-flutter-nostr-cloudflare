@@ -3,6 +3,8 @@
 // app/pubspec.yaml and stream_lane.dart's library comment). SDK imports will
 // not resolve until those two lines are uncommented.
 library;
+import '../core/localization/ui_text.dart';
+
 
 import 'dart:async';
 import 'dart:convert';
@@ -496,7 +498,7 @@ class StreamCallService {
         (billingAuthorization?.attemptId ?? '').isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This call could not be authorized. Please try again.'),
+          content: UiText(UiMessage.m_this_call_could_not_be_a364d6d8ae),
         ));
       }
       return;
@@ -597,7 +599,7 @@ class StreamCallService {
           content: Text(perms.message),
           action: perms.needsSettings
               ? SnackBarAction(
-                  label: 'Settings',
+                  label: uiCopy(UiMessage.m_settings_74a883a037),
                   onPressed: () => CallMediaPermissions.openSettings(),
                 )
               : null,
@@ -734,7 +736,7 @@ class StreamCallService {
         (billingAuthorization?.attemptId ?? '').isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This call could not be authorized. Please try again.'),
+          content: UiText(UiMessage.m_this_call_could_not_be_a364d6d8ae),
         ));
       }
       return;
@@ -1071,7 +1073,7 @@ class StreamCallService {
           content: Text(perms.message),
           action: perms.needsSettings
               ? SnackBarAction(
-                  label: 'Settings',
+                  label: uiCopy(UiMessage.m_settings_74a883a037),
                   onPressed: () => CallMediaPermissions.openSettings(),
                 )
               : null,

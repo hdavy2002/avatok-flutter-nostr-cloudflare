@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../../lib/i18n/authoredKey';
 // [WEB-HELP-2 2026-09-11] "On this page" anchor list for a help article —
 // the right-hand column at >=1200px, and the collapsed <details> above the
 // article at 1024-1199px (Help.astro renders this component in both spots
@@ -16,8 +17,8 @@ const items = headings.filter((h) => h.depth === 2);
 ---
 
 {items.length >= 2 && (
-  <nav class="help-otp" aria-label="On this page">
-    <span class="help-otp-label">On this page</span>
+  <nav data-india-i18n-attr="aria-label:web-common.b5658fc8edda24f9" class="help-otp" aria-label="On this page">
+    <span data-i18n="web-common.b5658fc8edda24f9" class="help-otp-label">On this page</span>
     <ul>
       {items.map((h) => (
         <li>
@@ -29,7 +30,7 @@ const items = headings.filter((h) => h.depth === 2);
               page, not the page itself. */}
           <a href={`#${h.slug}`} data-help-otp-link data-slug={h.slug}>
             <span class="help-otp-dot" aria-hidden="true"></span>
-            {h.text}
+            <ui-copy style="display:contents" data-i18n={authoredKey(h.text)}>{h.text}</ui-copy>
           </a>
         </li>
       ))}

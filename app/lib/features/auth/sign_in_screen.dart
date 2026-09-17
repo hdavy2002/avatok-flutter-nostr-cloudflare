@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -304,26 +307,23 @@ class _SignInScreenState extends State<SignInScreen> {
           borderRadius: Msg.brLg,
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('This account is scheduled for deletion',
+        title: UiText(UiMessage.m_this_account_is_scheduled_for_ef6b32fc0a,
             style: ADText.threadName()),
         content: Text(
           whenStr != null
-              ? 'Your account is set to be permanently deleted on $whenStr. Logging back in '
-                  'will cancel the deletion and reactivate your account.\n\n'
-                  'Reactivate it and continue?'
-              : 'Your account is scheduled for deletion. Logging back in will cancel the '
-                  'deletion and reactivate your account.\n\nReactivate it and continue?',
+              ? uiCopy(UiMessage.m_your_account_is_set_to_8f2719403f, {'whenStr': (whenStr).toString()})
+              : uiCopy(UiMessage.m_your_account_is_scheduled_for_48778ddf03),
           style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Not now',
+            child: UiText(UiMessage.m_not_now_a0e63d7c71,
                 style:
                     ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
           ),
           ZineButton(
-            label: 'Reactivate & continue',
+            label: uiCopy(UiMessage.m_reactivate_continue_3ae4f83cee),
             variant: ZineButtonVariant.coral,
             fontSize: 15,
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -361,6 +361,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_done) {
       return Scaffold(
         body: ZineSuccessOverlay(
@@ -377,10 +378,9 @@ class _SignInScreenState extends State<SignInScreen> {
     // "welcome back". Both then do exactly the same thing.
     final joining = widget.initialMode == SignInMode.signUp;
     final emailSub = widget.gateReason != null
-        ? '${joining ? 'Create your account' : 'Sign in'} to ${widget.gateReason}. '
-            'We’ll email you a 6-digit code — no password.'
-        : 'Enter your email and we’ll send a 6-digit code. '
-            'New here or not, this is the way in — no password.';
+        ? uiCopy(UiMessage.m_sign_in_or_create_your_b06c9f3695,
+            {'reason': widget.gateReason!})
+        : uiCopy(UiMessage.m_enter_your_email_and_we_c6bd3123df);
     final (titlePre, titleMark, sub, cta, tag) = switch (_mode) {
       _Mode.email => (
           joining ? 'Join ' : 'Sign in ',
@@ -477,14 +477,14 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       const SizedBox(height: Msg.s3),
                       ZineMarkTitle(
-                          pre: titlePre,
-                          mark: titleMark,
+                          pre: authoredUiCopy(titlePre),
+                          mark: authoredUiCopy(titleMark),
                           fontSize: ZineBreakpoints.heroTextSize(context)),
                       const SizedBox(height: 12),
                       Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 280),
-                          child: Text(sub,
+                          child: Text(authoredUiCopy(sub),
                               style: ADText.preview(),
                               textAlign: TextAlign.center),
                         ),
@@ -493,11 +493,11 @@ class _SignInScreenState extends State<SignInScreen> {
                       ..._fields(),
                       if (_error != null) ...[
                         const SizedBox(height: 16),
-                        ZineErrorMsg(_error!),
+                        ZineErrorMsg(authoredUiCopy(_error!)),
                       ],
                       const SizedBox(height: Msg.s4),
                       ZineButton(
-                        label: cta,
+                        label: authoredUiCopy(cta),
                         icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                         fullWidth: true,
                         fontSize: 20,
@@ -509,7 +509,7 @@ class _SignInScreenState extends State<SignInScreen> {
                         _orDivider(),
                         const SizedBox(height: 16),
                         ZineButton(
-                          label: 'Continue with Google',
+                          label: uiCopy(UiMessage.m_continue_with_google_cce937e891),
                           variant: ZineButtonVariant.ghost,
                           icon:
                               PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
@@ -530,8 +530,8 @@ class _SignInScreenState extends State<SignInScreen> {
                                 color: Msg.accent),
                             const SizedBox(width: 8),
                             Flexible(
-                              child: Text(
-                                  'Secured by Clerk · one account for everything Ava',
+                              child: UiText(
+                                  UiMessage.m_secured_by_clerk_one_account_7a64425657,
                                   style: ADText.sectionLabel(),
                                   textAlign: TextAlign.center),
                             ),
@@ -568,7 +568,7 @@ class _SignInScreenState extends State<SignInScreen> {
         const Spacer(),
         if (showTag)
           Flexible(
-            child: Text(tag,
+            child: Text(authoredUiCopy(tag),
                 style: ADText.sectionLabel(c: onBand),
                 overflow: TextOverflow.ellipsis),
           ),
@@ -580,7 +580,7 @@ class _SignInScreenState extends State<SignInScreen> {
         const Expanded(child: Divider(color: AD.borderHairline, thickness: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or', style: ADText.sectionLabel()),
+          child: UiText(UiMessage.m_or_7175517a37, style: ADText.sectionLabel()),
         ),
         const Expanded(child: Divider(color: AD.borderHairline, thickness: 1)),
       ]);
@@ -594,7 +594,7 @@ class _SignInScreenState extends State<SignInScreen> {
       if (_mode == _Mode.verify) ...[
         ZineField(
           controller: _code,
-          label: 'code',
+          label: uiCopy(UiMessage.m_code_5694d08a2e),
           labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
           leadIcon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
           hint: '123456',
@@ -611,7 +611,7 @@ class _SignInScreenState extends State<SignInScreen> {
       if (_mode == _Mode.email) ...[
         ZineField(
           controller: _email,
-          label: 'email',
+          label: uiCopy(UiMessage.m_email_82244417f9),
           labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
           leadText: '@',
           hint: 'you@example.com',
@@ -638,7 +638,7 @@ class _SignInScreenState extends State<SignInScreen> {
       // people to answer a question ("do I have an account?") that they often
       // could not, and that we never needed them to answer.
       case _Mode.email:
-        return Text('New or returning — same box.',
+        return UiText(UiMessage.m_new_or_returning_same_box_f54ac52d46,
             style: ADText.preview().copyWith(fontSize: 14),
             textAlign: TextAlign.center);
       case _Mode.verify:

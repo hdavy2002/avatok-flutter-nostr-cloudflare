@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -41,6 +43,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final s = _stats;
     return Scaffold(
       appBar: ZineAppBar(title: a.name, tag: 'Dashboard · earnings', showBack: Navigator.of(context).canPop()),
@@ -63,13 +66,13 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       ])),
                     ]),
                     const SizedBox(height: Msg.s5),
-                    Text('Last 24 hours', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+                    UiText(UiMessage.m_last_24_hours_5c37cf8f01, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                     const SizedBox(height: Msg.s2),
                     if (s == null)
                       Padding(
                           padding: const EdgeInsets.all(24),
                           child: Center(
-                              child: Text('No stats yet — they appear after your first booking or session.',
+                              child: UiText(UiMessage.m_no_stats_yet_they_appear_0cd3173a24,
                                   textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 13, height: 1.42))))
                     else ...[
                       Row(children: [
@@ -90,20 +93,20 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         padding: const EdgeInsets.all(Msg.s5),
                         boxShadow: Msg.lift,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+                          UiText(UiMessage.m_you_earned_1e5c08f2a2, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                           const SizedBox(height: Msg.s1),
                           Text(fmtTokens(s.netTokens), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: 0.76)),
                           const SizedBox(height: Msg.s1),
                           Text(
                               a.isFreeForCallers
-                                  ? 'Sponsored agent — users train free; usage billed to your AvaWallet.'
-                                  : 'Gross ${fmtTokens(s.grossTokens)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
+                                  ? uiCopy(UiMessage.m_sponsored_agent_users_train_free_63636a7600)
+                                  : uiCopy(UiMessage.m_gross_value1_your_50_share_4e1d4a35f0, {'value1': (fmtTokens(s.grossTokens)).toString()}),
                               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
                         ]),
                       ),
                       // ── Vision performance (scores + snapshot usage) ──
                       const SizedBox(height: Msg.s5),
-                      Text('Vision performance', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+                      UiText(UiMessage.m_vision_performance_67b07cd471, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                       const SizedBox(height: Msg.s2),
                       Row(children: [
                         _stat(
@@ -123,7 +126,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       ]),
                       // ── Audience (last 30 days) ──
                       const SizedBox(height: Msg.s5),
-                      Text('Audience — last 30 days', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+                      UiText(UiMessage.m_audience_last_30_days_3a40820cdf, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                       const SizedBox(height: Msg.s2),
                       Row(children: [
                         _stat('Page views', '${s.views30d}', PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.tabGroups),
@@ -132,19 +135,19 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       ]),
                       if (s.viewsByCountry.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Text('Top countries', style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
+                        UiText(UiMessage.m_top_countries_6a4cb0dbf7, style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
                         const SizedBox(height: 8),
                         for (final c in s.viewsByCountry) _rank(c.key, c.value, s.viewsByCountry.first.value),
                       ],
                       if (s.viewsByAgeGroup.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Text('Age groups', style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
+                        UiText(UiMessage.m_age_groups_9d6bb169e6, style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
                         const SizedBox(height: 8),
                         for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
                       ],
                     ],
                     const SizedBox(height: Msg.s4),
-                    Text("📬 You'll also get a morning digest with these numbers for all your agents.",
+                    UiText(UiMessage.m_you_ll_also_get_a_61e94c6e5b,
                         style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
                   ],
                 ),

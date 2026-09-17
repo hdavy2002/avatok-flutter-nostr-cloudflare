@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -238,6 +241,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final steps = _steps;
     // The single task we're prompting for right now.
     String? activeId;
@@ -266,18 +270,16 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                 ),
               ),
               const SizedBox(height: Msg.s4),
-              const Text(
-                'Set AvaTOK up for calls',
+              const UiText(
+                UiMessage.m_set_avatok_up_for_calls_8f83bc12bf,
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: Msg.s1),
-              const Text(
-                'A couple of Android switches let AvaTOK ring you full-screen '
-                'and use your phone book. Work through the tasks below — we '
-                'highlight one at a time.',
+              const UiText(
+                UiMessage.m_a_couple_of_android_switches_a78baef3b2,
                 style:
                     TextStyle(color: Colors.white70, fontSize: 14, height: 1.35),
               ),
@@ -291,11 +293,8 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                   borderRadius: BorderRadius.circular(Msg.rSm),
                   border: Border.all(color: _teal.withValues(alpha: 0.35)),
                 ),
-                child: const Text(
-                  'Beta testing period: Android may ask you to turn on some '
-                  'settings manually — we\'ll take you to the right page and '
-                  'tick the task off when you\'re back. Once we\'re live, '
-                  'these are set automatically.',
+                child: const UiText(
+                  UiMessage.m_beta_testing_period_android_may_c1fbd0ba22,
                   style:
                       TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
                 ),
@@ -322,10 +321,9 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                   _StepRow(
                     done: false,
                     active: false,
-                    title: 'Stop ${r['label'] ?? 'another app'} overlaying calls',
+                    title: uiCopy(UiMessage.m_stop_value1_overlaying_calls_0423b4a551, {'value1': (r['label'] ?? uiCopy(UiMessage.m_another_app_341b43ed68)).toString()}),
                     subtitle:
-                        'It draws its own call pop-up that no app can block. Open '
-                        'it and turn off "appear on top", or disable it.',
+                        uiCopy(UiMessage.m_it_draws_its_own_call_45ee88b75c),
                     actionLabel: 'Open',
                     onTap: () => _openRival('${r['package']}'),
                   ),
@@ -335,8 +333,8 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Text(
-                    'Done',
+                  child: const UiText(
+                    UiMessage.m_done_11a6767d56,
                     style: TextStyle(
                         color: _teal, fontSize: 16, fontWeight: FontWeight.w600),
                   ),
@@ -378,6 +376,7 @@ class _StepRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     const teal = AD.newGroup;
     final row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,8 +416,8 @@ class _StepRow extends StatelessWidget {
                       color: teal.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(Msg.rSm),
                     ),
-                    child: const Text(
-                      'NEXT',
+                    child: const UiText(
+                      UiMessage.m_next_7a66eabf63,
                       style: TextStyle(
                           color: teal,
                           fontSize: 10,
@@ -445,13 +444,13 @@ class _StepRow extends StatelessWidget {
               foregroundColor: teal,
               padding: const EdgeInsets.symmetric(horizontal: Msg.s3),
             ),
-            child: Text(actionLabel ?? 'Enable'),
+            child: Text(actionLabel ?? uiCopy(UiMessage.m_enable_5342e09f27)),
           )
         else
           const Padding(
             padding: EdgeInsets.only(right: Msg.s3),
-            child: Text(
-              'On',
+            child: UiText(
+              UiMessage.m_on_1300117561,
               style: TextStyle(
                   color: teal, fontSize: 13, fontWeight: FontWeight.w600),
             ),

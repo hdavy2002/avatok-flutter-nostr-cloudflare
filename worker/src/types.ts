@@ -32,6 +32,7 @@ export interface Env {
   DB_WALLET: D1Database; // AvaWallet audit trail (balance authority is WalletDO)
 
   // R2 — writes only; reads go to blossom.avatok.ai (public bucket)
+  // Public UI catalogs also use reserved ui-catalogs/{ENVIRONMENT_NAME}/v1/ keys.
   BLOBS: R2Bucket;
   VERIFICATION: R2Bucket;
   DIGITAL: R2Bucket;     // avatok-digital — PRIVATE; OLX digital goods (signed reads)

@@ -38,7 +38,7 @@ const faqs: Array<{ q: string; a: string }> = [
   },
   {
     q: 'Is avaTOK free?',
-    a: `Creating an account and publishing a listing is free. Buyers pay in tokens (1 token = ₹1) when they book or join a paid session; avaTOK keeps a platform fee and the creator withdraws the rest. Prices are indicative during the testing period.`,
+    a: `Creating an account and publishing a listing is free. Buyers pay in tokens when they book or join a paid session. avaTOK uses 100 Tokens = $1 as an internal accounting anchor; local-currency checkout uses a server-owned FX quote, and withdrawal semantics are not yet available.`,
   },
 ];
 
@@ -56,11 +56,11 @@ const faqLd = {
 ---
 
 <section class="entity-faq" id="what-is-avatok" aria-labelledby="entity-faq-title">
-  <h2 id="entity-faq-title">What is avaTOK?</h2>
+  <h2 data-i18n="web-common.473772a990bd7a3f" id="entity-faq-title">What is avaTOK?</h2>
   <p>
-    <strong>avaTOK</strong> is the name of this platform — spelled with a lower-case <em>ava</em> and an
-    upper-case <em>TOK</em>, at <a href="https://avatok.ai/">avatok.ai</a>. Because a few unrelated
-    products share the name, here is the short, plain version.
+    <strong>avaTOK</strong> <ui-copy style="display:contents" data-i18n="web-common.31f26dfed8446e8b">is the name of this platform — spelled with a lower-case</ui-copy> <em>ava</em> <ui-copy style="display:contents" data-i18n="web-common.599ac66e3421bd49">and an
+    upper-case</ui-copy> <em>TOK</em><ui-copy style="display:contents" data-i18n="web-common.ccbbc58c94d9d473">, at</ui-copy> <a data-i18n="web-common.6c268582050557ce" href="https://avatok.ai/">avatok.ai</a><ui-copy style="display:contents" data-i18n="web-common.85825b05eca58690">. Because a few unrelated
+    products share the name, here is the short, plain version.</ui-copy>
   </p>
   <dl>
     {faqs.map((f) => (

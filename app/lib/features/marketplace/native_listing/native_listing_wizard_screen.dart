@@ -1,3 +1,6 @@
+import '../../../core/localization/known_ui_copy.dart';
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -626,16 +629,16 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AD.card,
-        title: const Text('Reload availability?'),
-        content: const Text(
-            'This discards the availability edits on this step and reloads the latest saved hours for this listing.'),
+        title: const UiText(UiMessage.m_reload_availability_164341acff),
+        content: const UiText(
+            UiMessage.m_this_discards_the_availability_edits_78b44f9cff),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Keep editing')),
+              child: const UiText(UiMessage.m_keep_editing_e76fd2add0)),
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Discard and reload')),
+              child: const UiText(UiMessage.m_discard_and_reload_56a15293fd)),
         ],
       ),
     );
@@ -942,11 +945,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   String _availabilityModeLabel() {
     switch (_availabilityMode) {
       case AvailabilityMode.shared:
-        return 'My usual hours';
+        return uiCopy(UiMessage.m_my_usual_hours_ea4616d73d);
       case AvailabilityMode.custom:
-        return 'Custom hours for this listing';
+        return uiCopy(UiMessage.m_custom_hours_for_this_listing_c93d69025e);
       case AvailabilityMode.exclusive:
-        return 'Reserved time for this listing';
+        return uiCopy(UiMessage.m_reserved_time_for_this_listing_fc09f66871);
     }
   }
 
@@ -969,9 +972,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       case NativeListingGcalState.ready:
         return 'Ready';
       case NativeListingGcalState.unknown:
-        return 'Not confirmed — refresh before publishing';
+        return uiCopy(UiMessage.m_not_confirmed_refresh_before_publishing_c4b4563a89);
       default:
-        return value.headline;
+        return knownUiCopy(value.headline);
     }
   }
 
@@ -1834,7 +1837,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       if (result['ok'] != true) throw StateError(_serverMessage(result));
       Analytics.capture('listing_native_wizard_submitted', {'listing_id': _id!, 'source': widget.source});
       if (!mounted) return;
-      showAdToast(context, message: 'Listing submitted for review.');
+      showAdToast(context, message: uiCopy(UiMessage.m_listing_submitted_for_review_eb65e75dfa));
       Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Bad state: ', ''));
@@ -1895,21 +1898,21 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final failure = _aiErrorByField[key];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text(_kCopyFieldLabels[key]!.toUpperCase(), style: ADText.sectionLabel(c: AD.textTertiary))),
+        Expanded(child: Text(authoredUiCopy(_kCopyFieldLabels[key]!).toUpperCase(), style: ADText.sectionLabel(c: AD.textTertiary))),
         TextButton.icon(
           onPressed: busy || fresh ? null : () => _runCopyReview(key),
           icon: busy
               ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
               : Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), size: 16),
           label: Text(busy
-              ? 'Checking…'
+              ? uiCopy(UiMessage.m_checking_ec963ffc91)
               : fresh
-                  ? 'AI checked'
+                  ? uiCopy(UiMessage.m_ai_checked_85bd6787f9)
                   : reviewed
-                      ? 'Check again'
+                      ? uiCopy(UiMessage.m_check_again_fb7099ad8e)
                       : failure != null
-                          ? 'Try again'
-                          : 'Use AI'),
+                          ? uiCopy(UiMessage.m_try_again_d8b8392e2c)
+                          : uiCopy(UiMessage.m_use_ai_39f4868558)),
         ),
       ]),
       if (failure != null)
@@ -1931,19 +1934,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final source = _aiSourceByField[key];
     switch (_aiStatusByField[key]) {
       case 'ok':
-        return 'AI SUGGESTION';
+        return uiCopy(UiMessage.m_ai_suggestion_edab847a84);
       case 'moderation_blocked':
-        return 'LENGTH CHECK ONLY · AI WOULD NOT REWRITE THIS TEXT';
+        return uiCopy(UiMessage.m_length_check_only_ai_would_cd8689e86b);
       case 'provider_error':
-        return 'LENGTH CHECK ONLY · AI DID NOT ANSWER';
+        return uiCopy(UiMessage.m_length_check_only_ai_did_9d9e13a294);
       case 'bad_json':
-        return 'LENGTH CHECK ONLY · AI ANSWER COULD NOT BE READ';
+        return uiCopy(UiMessage.m_length_check_only_ai_answer_8d306c119f);
       case 'disabled':
-        return 'LENGTH CHECK ONLY · AI ASSIST IS SWITCHED OFF';
+        return uiCopy(UiMessage.m_length_check_only_ai_assist_c506d96965);
     }
     // Never claim an AI review that did not happen — `source` says which
     // half of the route answered (listing_copy_review.ts rule 2).
-    return source == 'ai' ? 'AI SUGGESTION' : 'LENGTH CHECK · AI MODEL UNAVAILABLE';
+    return source == 'ai' ? uiCopy(UiMessage.m_ai_suggestion_edab847a84) : uiCopy(UiMessage.m_length_check_ai_model_unavailable_5da002e7b2);
   }
 
   Widget _aiSuggestionCard(String key, CopyReviewField suggestion) {
@@ -1966,8 +1969,8 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             applyable
                 ? suggestion.suggested
                 : emptyStill
-                    ? 'The AI check could not write this one from the rest of your listing yet — fill in a little more and run it again.'
-                    : 'This reads well as it is — nothing to change.',
+                    ? uiCopy(UiMessage.m_the_ai_check_could_not_fe3b405573)
+                    : uiCopy(UiMessage.m_this_reads_well_as_it_6bd21b4d3a),
             style: ADText.preview(c: AD.textPrimary)),
         if (suggestion.note != null) ...[
           const SizedBox(height: Msg.s1),
@@ -1976,15 +1979,15 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         if (applyable)
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(onPressed: () => _applySuggestion(key), child: const Text('Apply')),
+            child: TextButton(onPressed: () => _applySuggestion(key), child: const UiText(UiMessage.m_apply_31e392d1c0)),
           ),
       ]),
     );
   }
 
   Widget _languagePicker() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Languages you will speak', style: ADText.rowName()),
-        Text('Shown on your listing. The whole list is limited to $_kSpokenLangMax characters.',
+        UiText(UiMessage.m_languages_you_will_speak_af99059649, style: ADText.rowName()),
+        UiText(UiMessage.m_shown_on_your_listing_the_b32a3f2dea, params: {'kSpokenLangMax': (_kSpokenLangMax).toString()},
             style: ADText.preview()),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
@@ -2015,8 +2018,8 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       final split = _feeSplit(pays);
       return Padding(
         padding: const EdgeInsets.only(top: Msg.s1),
-        child: Text(
-            '$label — customer pays ₹$pays per hour · you keep ₹${split.creator} after the ₹${split.fee} platform fee',
+        child: UiText(
+            UiMessage.m_label_customer_pays_pays_per_6266983dab, params: {'label': (label).toString(), 'pays': (pays).toString(), 'value3': (split.creator).toString(), 'value4': (split.fee).toString()},
             style: ADText.preview(c: AD.textPrimary)),
       );
     }
@@ -2026,13 +2029,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(color: AD.cardHover, borderRadius: BorderRadius.circular(AD.rListCard)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('WHAT THIS EARNS', style: ADText.sectionLabel(c: AD.textTertiary)),
+        UiText(UiMessage.m_what_this_earns_f5b9a0cec1, style: ADText.sectionLabel(c: AD.textTertiary)),
         line('Full price', 0),
         if (early > 0) line('Early bird $early% off', early),
         if (promo > 0) line('Promo code ${_promoCode.text.trim().toUpperCase()} $promo% off', promo),
         const SizedBox(height: Msg.s1),
-        Text(
-            'The platform fee is ₹$_kFlatTokensPerHour plus $_kCommissionPct% of everything above it, per participant per hour. The server recomputes every amount at checkout.',
+        UiText(
+            UiMessage.m_the_platform_fee_is_kflattokensperhour_be093f075b, params: {'kFlatTokensPerHour': (_kFlatTokensPerHour).toString(), 'kCommissionPct': (_kCommissionPct).toString()},
             style: ADText.preview(c: AD.textTertiary)),
       ]),
     );
@@ -2048,10 +2051,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// build-time mirror can know — a humanised slug. Never the raw id.
   String _categoryLabel() {
     for (final c in _categories) {
-      if (c.id == _category) return '${c.emoji} ${c.label}'.trim();
+      if (c.id == _category) return '${c.emoji} ${authoredUiCopy(c.label)}'.trim();
     }
     final known = listingSubCategoryById(_category);
-    if (known != null) return '${known.emoji} ${known.label}'.trim();
+    if (known != null) return '${known.emoji} ${authoredUiCopy(known.label)}'.trim();
     return listingCategoryLabel(_category);
   }
 
@@ -2084,9 +2087,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         .map((e) => _kJoinRequirementLabels[e.key] ?? e.key)
         .join(', ');
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Check your listing', style: ADText.appTitle()),
+      UiText(UiMessage.m_check_your_listing_cf15dd14c1, style: ADText.appTitle()),
       const SizedBox(height: Msg.s1),
-      Text('Nothing on this step can be edited — step back to change anything.', style: ADText.preview()),
+      UiText(UiMessage.m_nothing_on_this_step_can_06c33fcc7c, style: ADText.preview()),
       const SizedBox(height: Msg.s3),
       AdCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2150,30 +2153,30 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       ],
       if (consult && _gcal != null && !_gcal!.ready) ...[
         AdCard(
-            child: Text(
-                'Google Calendar: ${_gcal!.headline}. ${_gcal!.body}',
+            child: UiText(
+                UiMessage.m_google_calendar_value1_value2_d916e5a494, params: {'value1': (_gcal!.headline).toString(), 'value2': (_gcal!.body).toString()},
                 style: ADText.preview(c: AD.textPrimary))),
         const SizedBox(height: Msg.s3),
       ],
-      Text('Photos', style: ADText.rowName()),
+      UiText(UiMessage.m_photos_5e3147ab51, style: ADText.rowName()),
       const SizedBox(height: Msg.s2),
       if (_coverUrls.isEmpty)
-        Text('No cover photos added.', style: ADText.preview())
+        UiText(UiMessage.m_no_cover_photos_added_0e3e2f4338, style: ADText.preview())
       else
         Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
           for (final url in _coverUrls) CachedImage(url, width: 84, height: 84, radius: Msg.brMd),
         ]),
       if (_faceUrl != null) ...[
         const SizedBox(height: Msg.s3),
-        Text('Private face photo — never shown publicly', style: ADText.preview()),
+        UiText(UiMessage.m_private_face_photo_never_shown_e082678f4d, style: ADText.preview()),
         Padding(
             padding: const EdgeInsets.only(top: Msg.s2),
             child: CachedImage(_faceUrl!, width: 84, height: 84, radius: Msg.brMd)),
       ],
       const SizedBox(height: Msg.s4),
       AdCard(
-          child: Text(
-              'Submitting sends this listing for review. The team usually checks it within an hour, but it can take up to 48 hours if there are calendar conflicts or other issues. You will get an email when it is published or if changes are needed.',
+          child: UiText(
+              UiMessage.m_submitting_sends_this_listing_for_fd278a813f,
               style: ADText.preview(c: AD.textPrimary))),
     ]);
   }
@@ -2182,7 +2185,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     switch (_step) {
       case 0:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('What are you offering?', style: ADText.appTitle()),
+          UiText(UiMessage.m_what_are_you_offering_840e6992d1, style: ADText.appTitle()),
           const SizedBox(height: Msg.s3),
           for (final option in const {'consult': '1:1 consultation', 'live_event': 'Live event'}.entries)
             RadioListTile<String>(title: Text(option.value), value: option.key, groupValue: _kind, onChanged: (v) => setState(() {
@@ -2219,7 +2222,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // whose allowlisting was revoked would be left with a listing it can
           // never save again.
           if (_freeEntryAllowed || _freeEntry)
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('This is a free show'), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: const UiText(UiMessage.m_this_is_a_free_show_6a3d36b0cc), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
         ]);
       case 1:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2228,23 +2231,23 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // a new category (e.g. "Puja") appears here with no client change.
           for (final key in _kCopyFields) ...[
             _aiBlip(key),
-            _field(_kCopyFieldLabels[key]!, _copyController(key),
+            _field(authoredUiCopy(_kCopyFieldLabels[key]!), _copyController(key),
                 maxLines: key == 'description' ? 6 : 1, hint: _kCopyFieldHints[key]),
           ],
           if (_aiUnavailable)
             Padding(
                 padding: const EdgeInsets.only(bottom: Msg.s3),
-                child: Text(
-                    'The AI check has failed at least once, so it is no longer holding up this step. You can still run it on any field.',
+                child: UiText(
+                    UiMessage.m_the_ai_check_has_failed_0eef85545c,
                     style: ADText.preview(c: AD.textTertiary))),
-          DropdownButtonFormField<String>(value: _category.isEmpty ? null : _category, decoration: const InputDecoration(labelText: 'Category'), items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text('${c.emoji} ${c.label}'))).toList(), onChanged: (v) => setState(() { _category = v ?? ''; _dirty = true; })),
+          DropdownButtonFormField<String>(value: _category.isEmpty ? null : _category, decoration:  InputDecoration(labelText: uiCopy(UiMessage.m_category_292c06f004)), items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text('${c.emoji} ${authoredUiCopy(c.label)}'))).toList(), onChanged: (v) => setState(() { _category = v ?? ''; _dirty = true; })),
           const SizedBox(height: Msg.s4),
           _languagePicker(),
         ]);
       case 2:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (!_freeEntry) _field('Price per hour (Tokens = ₹)', _price, hint: 'At least $_minPricePerHour tokens per hour', live: true),
-          DropdownButtonFormField<String>(value: _mediaMode, decoration: const InputDecoration(labelText: 'Media mode'), items: const [DropdownMenuItem(value: 'audio_video', child: Text('Audio + video')), DropdownMenuItem(value: 'audio_only', child: Text('Audio only'))], onChanged: (v) => setState(() { _mediaMode = v ?? 'audio_video'; _dirty = true; })),
+          if (!_freeEntry) _field('Price per hour (Tokens = ₹)', _price, hint: uiCopy(UiMessage.m_at_least_minpriceperhour_tokens_per_dd9c5ce1a6, {'minPricePerHour': (_minPricePerHour).toString()}), live: true),
+          DropdownButtonFormField<String>(value: _mediaMode, decoration:  InputDecoration(labelText: uiCopy(UiMessage.m_media_mode_424aa26bdc)), items: const [DropdownMenuItem(value: 'audio_video', child: UiText(UiMessage.m_audio_video_7be545a1db)), DropdownMenuItem(value: 'audio_only', child: UiText(UiMessage.m_audio_only_224b45b631))], onChanged: (v) => setState(() { _mediaMode = v ?? 'audio_video'; _dirty = true; })),
           // [LIST-APP-PARITY-1] Discounts. Free entry has nothing to discount.
           // [LIST-PROMO-OFF-1] Shelved behind the kill switch. The fee
           // breakdown below it is the PLATFORM fee (the flat-per-hour charge
@@ -2252,13 +2255,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // keeps rendering whenever there is a price.
           if (!_freeEntry && RemoteConfig.listingPromotionsEnabled) ...[
             const SizedBox(height: Msg.s4),
-            Text('Discounts', style: ADText.rowName()),
-            Text('Optional. An early-bird cut applies to everyone; a promo code applies only to customers who type it at checkout.',
+            UiText(UiMessage.m_discounts_bbf45efe4f, style: ADText.rowName()),
+            UiText(UiMessage.m_optional_an_early_bird_cut_8427080d69,
                 style: ADText.preview()),
             const SizedBox(height: Msg.s3),
-            _field('Early-bird discount %', _earlyBirdPct, hint: '1 to 100 — leave empty for none', live: true),
-            _field('Promo code', _promoCode, hint: 'MONSOON20', live: true),
-            _field('Promo code discount %', _promoPct, hint: '1 to 100', live: true),
+            _field('Early-bird discount %', _earlyBirdPct, hint: uiCopy(UiMessage.m_1_to_100_leave_empty_927f59c199), live: true),
+            _field('Promo code', _promoCode, hint: uiCopy(UiMessage.m_monsoon20_dca9a1e1b5), live: true),
+            _field('Promo code discount %', _promoPct, hint: uiCopy(UiMessage.m_1_to_100_040d4e8dad), live: true),
           ],
           if (!_freeEntry) _moneyBreakdown(),
         ]);
@@ -2268,7 +2271,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // (listings.ts:386). A list cannot be mistyped.
           DropdownButtonFormField<String>(
             value: _zoneOptions.contains(_zone) ? _zone : _kZones.first,
-            decoration: const InputDecoration(labelText: 'Time zone'),
+            decoration:  InputDecoration(labelText: uiCopy(UiMessage.m_time_zone_b9fe146478)),
             items: [for (final z in _zoneOptions) DropdownMenuItem(value: z, child: Text(z))],
             onChanged: (v) => setState(() {
               _timezone.text = v ?? _kZones.first;
@@ -2281,9 +2284,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // KIND, whatever schedule_mode says, so offering "on request" here
           // only produced an unsaveable draft.
           if (_kind == 'live_event') ...[
-            Text('When does it happen?', style: ADText.rowName()),
+            UiText(UiMessage.m_when_does_it_happen_acecd7815a, style: ADText.rowName()),
             const SizedBox(height: Msg.s1),
-            Text('A live event starts at one fixed time. The event itself protects that slot once it is published.',
+            UiText(UiMessage.m_a_live_event_starts_at_14f14aa136,
                 style: ADText.preview(c: AD.textSecondary)),
             const SizedBox(height: Msg.s3),
           ],
@@ -2321,13 +2324,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             // The stored value is still the same wall clock in the listing's
             // zone, so the Worker's `starts_at` contract does not change.
             NativeListingDateTimeField(
-              label: _kind == 'consult' ? 'Date and time to reserve' : 'Starts',
+              label: _kind == 'consult' ? uiCopy(UiMessage.m_date_and_time_to_reserve_d20e6baea1) : uiCopy(UiMessage.m_starts_96dbedeca7),
               value: _startsAt.text,
               timezone: _zone,
               enabled: _timeStepEditingEnabled,
               help: _kind == 'consult'
-                  ? 'Publishing reserves this exact window for this listing — drafts do not.'
-                  : 'Shown to customers in $_zone.',
+                  ? uiCopy(UiMessage.m_publishing_reserves_this_exact_window_a9f296c1e8)
+                  : uiCopy(UiMessage.m_shown_to_customers_in_zone_3cc77e3cba, {'zone': (_zone).toString()}),
               onChanged: (value) {
                 setState(() {
                   _startsAt.text = value;
@@ -2339,7 +2342,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             const SizedBox(height: Msg.s3),
           ],
           _field('Duration (minutes)', _duration,
-              hint: '5 to 480',
+              hint: uiCopy(UiMessage.m_5_to_480_dcfc45ebd5),
               enabled: _timeStepEditingEnabled,
               onChanged: (_) => _onTimeInputChanged()),
           if (_showsStartPicker) ...[
@@ -2383,8 +2386,8 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
                             ? null
                             : () => unawaited(_retryHydrateSchedule()),
                         child: Text(_scheduleDirty
-                            ? 'Discard edits and reload'
-                            : 'Retry loading availability')),
+                            ? uiCopy(UiMessage.m_discard_edits_and_reload_b20b6982f9)
+                            : uiCopy(UiMessage.m_retry_loading_availability_c4134c0476))),
                   ]),
                 ])),
           ],
@@ -2395,27 +2398,27 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           _field('Location / meeting note', _location),
           if (_kind == 'consult') ...[
             const SizedBox(height: Msg.s2),
-            Text(
-                'A 1:1 consultation cannot be published until your availability and Google busy times are both ready — that is what customers book against.',
+            UiText(
+                UiMessage.m_a_1_1_consultation_cannot_d9821586df,
                 style: ADText.preview(c: AD.textSecondary)),
           ],
         ]);
       case 4:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('One step per line, written as "Label: what happens". Up to 5.', style: ADText.preview()),
+          UiText(UiMessage.m_one_step_per_line_written_2729ec83c8, style: ADText.preview()),
           const SizedBox(height: Msg.s2),
-          _field('How it works', _how, maxLines: 8, hint: 'Warm up: five minutes of breathing'),
+          _field('How it works', _how, maxLines: 8, hint: uiCopy(UiMessage.m_warm_up_five_minutes_of_f47f11a318)),
         ]);
       case 5:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('One rule per line, written as "Heading: the rule". Up to 8.', style: ADText.preview()),
+          UiText(UiMessage.m_one_rule_per_line_written_209a4573ef, style: ADText.preview()),
           const SizedBox(height: Msg.s2),
-          _field('House rules', _rules, maxLines: 8, hint: 'Be on time: the room locks 5 minutes in'),
+          _field('House rules', _rules, maxLines: 8, hint: uiCopy(UiMessage.m_be_on_time_the_room_d313eab343)),
           _field('What customers get (3 to 5 lines, or leave empty)', _whatGet, maxLines: 5),
           _field('Who this is for (up to 3 lines)', _whoFor, maxLines: 4),
           _field('Who this is not for (up to 3 lines)', _notFor, maxLines: 4),
           const SizedBox(height: Msg.s2),
-          Text('What customers need to join', style: ADText.rowName()),
+          UiText(UiMessage.m_what_customers_need_to_join_1a255505e5, style: ADText.rowName()),
           // Was a free-text "Join requirements JSON" box. The server accepts only
           // these keys and 422s anything else (listings.ts:534), so prose in that
           // box made the listing unsaveable. Checkboxes can only produce a legal
@@ -2432,11 +2435,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           const SizedBox(height: Msg.s2),
           // [LIST-APP-PARITY-1] Moved off step 8, which is now read-only. Same
           // 3-to-6 rule (contentAttrsError:515), now checked on this step.
-          _field('FAQ (3 to 6 lines, or leave empty)', _faq, maxLines: 6, hint: 'Do I need a mic? Yes, any headset works'),
+          _field('FAQ (3 to 6 lines, or leave empty)', _faq, maxLines: 6, hint: uiCopy(UiMessage.m_do_i_need_a_mic_a2419fc45f)),
         ]);
       case 6:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Cover photos (${_coverUrls.length}/5)', style: ADText.rowName()),
+          UiText(UiMessage.m_cover_photos_value1_5_bdb2999e89, params: {'value1': (_coverUrls.length).toString()}, style: ADText.rowName()),
           const SizedBox(height: Msg.s2),
           Wrap(
             spacing: Msg.s2,
@@ -2450,12 +2453,12 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             ],
           ),
           const SizedBox(height: Msg.s3),
-          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(), icon: Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)), label: const Text('Add photos')),
+          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(), icon: Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)), label: const UiText(UiMessage.m_add_photos_7b0a3d7449)),
           const SizedBox(height: Msg.s3),
-          Text('Private face photo', style: ADText.rowName()),
-          Text('Used for identity-safe poster generation and never shown publicly.', style: ADText.preview()),
+          UiText(UiMessage.m_private_face_photo_0b43766e2e, style: ADText.rowName()),
+          UiText(UiMessage.m_used_for_identity_safe_poster_984bb58369, style: ADText.preview()),
           if (_faceUrl != null) Padding(padding: const EdgeInsets.only(top: 8), child: CachedImage(_faceUrl!, width: 84, height: 84, radius: Msg.brMd)),
-          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(face: true), icon: Icon(PhosphorIcons.smiley(PhosphorIconsStyle.regular)), label: const Text('Choose face photo')),
+          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(face: true), icon: Icon(PhosphorIcons.smiley(PhosphorIconsStyle.regular)), label: const UiText(UiMessage.m_choose_face_photo_b302df080c)),
           _field('Video URL', _videoUrl),
         ]);
       default:
@@ -2465,34 +2468,35 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return WillPopScope(
       onWillPop: () async {
         if (!_dirty || _publishing) return true;
         return await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-          title: const Text('Leave listing?'),
-          content: const Text('Your last saved draft will remain available in My listings.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Leave'))],
+          title: const UiText(UiMessage.m_leave_listing_f2adba7b70),
+          content: const UiText(UiMessage.m_your_last_saved_draft_will_7d604fe6da),
+          actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const UiText(UiMessage.m_stay_08fd1de4b0)), FilledButton(onPressed: () => Navigator.pop(context, true), child: const UiText(UiMessage.m_leave_fc6e4a408d))],
         )) ?? false;
       },
       child: Scaffold(
       backgroundColor: AD.bg,
-      appBar: ZineAppBar(title: _id == null ? 'Create listing' : 'Edit listing', showBack: true),
+      appBar: ZineAppBar(title: _id == null ? uiCopy(UiMessage.m_create_listing_815d30caa6) : uiCopy(UiMessage.m_edit_listing_eb1d952e8e), showBack: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(child: LayoutBuilder(builder: (context, constraints) {
               final width = constraints.maxWidth > 720 ? 640.0 : constraints.maxWidth;
               return Center(child: SizedBox(width: width, child: ListView(padding: const EdgeInsets.all(Msg.s4), children: [
-                Text('Step ${_step + 1} of ${_steps.length} · ${_steps[_step]}', style: ADText.preview(c: AD.textSecondary)),
+                UiText(UiMessage.m_step_value1_of_value2_value3_1a85d9f77f, params: {'value1': (_step + 1).toString(), 'value2': (_steps.length).toString(), 'value3': (_steps[_step]).toString()}, style: ADText.preview(c: AD.textSecondary)),
                 const SizedBox(height: Msg.s2),
                 LinearProgressIndicator(value: (_step + 1) / _steps.length),
                 const SizedBox(height: Msg.s4),
-                if (_error != null) AdCard(child: Text(_error!, style: ADText.preview(c: AD.danger))),
+                if (_error != null) AdCard(child: Text(knownUiCopy(_error!), style: ADText.preview(c: AD.danger))),
                 _stepBody(),
                 const SizedBox(height: Msg.s4),
                 Row(children: [
-                  if (_step > 0) TextButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : _goBack, child: const Text('Back')),
+                  if (_step > 0) TextButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : _goBack, child: const UiText(UiMessage.m_back_76900f1bfd)),
                   const Spacer(),
-                  FilledButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? 'Submitting…' : 'Submit for review') : (_saving || _scheduleBusy || _scheduleHydrating ? 'Saving…' : 'Save and continue'))),
+                  FilledButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? uiCopy(UiMessage.m_submitting_49195f559e) : uiCopy(UiMessage.m_submit_for_review_40447e4493)) : (_saving || _scheduleBusy || _scheduleHydrating ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_and_continue_6880daf172)))),
                 ]),
               ])));
             })),

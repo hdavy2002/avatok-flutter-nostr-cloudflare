@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* WalletPanel — Tokens balance + ledger (app: Wallet).
  *   • GET /api/wallet/balance       → { balance }
  *   • GET /api/wallet/statement     → { entries } — human-labelled rows
@@ -111,38 +113,42 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
 
 /** The slide-out under a row. Fetched on first open, then kept. */
 function ActivityDetail({ row, detail, failed }: { row: Tx; detail: Activity | null; failed: boolean }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   if (!detail && !failed) {
-    return <div className="flex items-center gap-2 px-4 py-3"><Spinner size={16} /><span className="font-body font-bold text-[13px] text-inkSoft">Loading details…</span></div>;
+    return <div className="flex items-center gap-2 px-4 py-3"><Spinner size={16} /><span className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.b1905aae7f24ef9c" source="Loading details…" /></span></div>;
   }
   const tokens = Number(detail?.tokens ?? row.tokens ?? row.amount ?? 0);
   return (
     <div className="px-4 pb-3 pt-1">
       {detail?.reason && <p className="mb-2 font-body font-bold text-[14px] text-inkSoft">{detail.reason}</p>}
-      <DetailRow label="Activity">{detail?.activity ?? row.type_label ?? row.label ?? row.type}</DetailRow>
+      <DetailRow label={uiT("web-dashboard.38da1505ca837328","Activity")}>{detail?.activity ?? row.type_label ?? row.label ?? row.type}</DetailRow>
       {detail?.listing && (
-        <DetailRow label={detail.listing.kind === 'live_event' ? 'Show' : 'Listing'}>
-          {detail.listing.url ? <a className="underline" href={detail.listing.url}>{detail.listing.title ?? 'View listing'}</a> : (detail.listing.title ?? '—')}
+        <DetailRow label={detail.listing.kind === 'live_event' ? uiT("web-dashboard.0df6f1cad36c49da","Show") : uiT("web-dashboard.fc7f1aa2054c2283","Listing")}>
+          {detail.listing.url ? <a className="underline" href={detail.listing.url}>{detail.listing.title ?? uiT("web-dashboard.9d24337a347258d0","View listing")}</a> : (detail.listing.title ?? '—')}
         </DetailRow>
       )}
-      {detail?.listing?.starts_at && <DetailRow label="Scheduled for">{fmtFull(detail.listing.starts_at, detail.listing.timezone)}</DetailRow>}
+      {detail?.listing?.starts_at && <DetailRow label={uiT("web-dashboard.75ba69e3a8b74760","Scheduled for")}>{fmtFull(detail.listing.starts_at, detail.listing.timezone)}</DetailRow>}
       {detail?.counterparty?.name && (
-        <DetailRow label={detail.counterparty.role === 'creator' ? 'Creator' : 'Buyer'}>
+        <DetailRow label={detail.counterparty.role === 'creator' ? uiT("web-dashboard.88447b83090cded5","Creator") : uiT("web-dashboard.a2a54d668c45a20d","Buyer")}>
           {detail.counterparty.url ? <a className="underline" href={detail.counterparty.url}>{detail.counterparty.name}</a> : detail.counterparty.name}
           {detail.counterparty.handle ? <span className="text-inkMute"> @{detail.counterparty.handle}</span> : null}
         </DetailRow>
       )}
-      <DetailRow label="Date & time">{fmtFull(detail?.ts ?? row.ts ?? row.created_at)}</DetailRow>
-      <DetailRow label="Amount">{tokens >= 0 ? '+' : ''}{tokens.toLocaleString()} tokens (₹{Math.abs(tokens).toLocaleString('en-IN')})</DetailRow>
-      {detail?.refunded_to && <DetailRow label="Refunded to">{detail.refunded_to}</DetailRow>}
-      {detail?.status && <DetailRow label="Status">{detail.status[0].toUpperCase() + detail.status.slice(1)}</DetailRow>}
-      {detail?.balance_after != null && <DetailRow label="Balance after">{detail.balance_after.toLocaleString()} tokens</DetailRow>}
-      {(detail?.order_id || detail?.reference) && <DetailRow label="Reference"><span className="font-mono text-[12px]">{detail?.order_id ?? detail?.reference}</span></DetailRow>}
-      {failed && <p className="pt-2 font-body font-bold text-[13px] text-coral">Couldn’t load the full details. Try again in a moment.</p>}
+      <DetailRow label={uiT("web-dashboard.2459ea42894c5c5b","Date & time")}>{fmtFull(detail?.ts ?? row.ts ?? row.created_at)}</DetailRow>
+      <DetailRow label={uiT("web-dashboard.49e96d7cdf58069c","Amount")}>{tokens >= 0 ? '+' : ''}{tokens.toLocaleString()}{" "}<UiText id="web-dashboard.83966405d815c409" source="tokens (internal anchor: $" />{(Math.abs(tokens) / 100).toFixed(2)})</DetailRow>
+      {detail?.refunded_to && <DetailRow label={uiT("web-dashboard.6ca12b6cff66a095","Refunded to")}>{detail.refunded_to}</DetailRow>}
+      {detail?.status && <DetailRow label={uiT("web-dashboard.920e413c7d411b61","Status")}>{detail.status[0].toUpperCase() + detail.status.slice(1)}</DetailRow>}
+      {detail?.balance_after != null && <DetailRow label={uiT("web-dashboard.148dac4dcdde1fa0","Balance after")}>{detail.balance_after.toLocaleString()}{" "}<UiText id="web-dashboard.c51e455b41df6c01" source="tokens" /></DetailRow>}
+      {(detail?.order_id || detail?.reference) && <DetailRow label={uiT("web-dashboard.71bf90935fc231d2","Reference")}><span className="font-mono text-[12px]">{detail?.order_id ?? detail?.reference}</span></DetailRow>}
+      {failed && <p className="pt-2 font-body font-bold text-[13px] text-coral"><UiText id="web-dashboard.8e0b3eeadcdf6f41" source="Couldn’t load the full details. Try again in a moment." /></p>}
     </div>
   );
 }
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
@@ -225,24 +231,24 @@ function Inner() {
       <Card fillClassName="bg-mint" shadow="sm">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink">Balance</span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink"><UiText id="web-dashboard.d05e07b7c14e596a" source="Balance" /></span>
             <div className="font-mono font-bold text-[26px] text-ink">
               <AnimatedBalance text={balance != null ? balance.toLocaleString() : '—'} />{' '}
-              <span className="text-[14px]">Tokens</span>
+              <span className="text-[14px]"><UiText id="web-dashboard.a039dfb9628b53dd" source="Tokens" /></span>
             </div>
           </div>
           {/* [REVIEWER-ONBOARD-1] Reviewer accounts are browse-only: no money
               affordance. Server-side, money-in is off for EVERYONE right now
               (billingEnabled=false, Stripe test keys) — this only removes the
               button, it is not the guarantee. */}
-          {!reviewer && <Button variant="lime" label="Top up" loading={busy} onClick={topUp} />}
+          {!reviewer && <Button variant="lime" label={uiT("web-dashboard.79f52e0ce6192218","Top up")} loading={busy} onClick={topUp} />}
         </div>
       </Card>
 
       {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
 
       <section>
-        <h2 className="mb-3 font-display font-semibold text-[20px] text-ink">Recent activity</h2>
+        <h2 className="mb-3 font-display font-semibold text-[20px] text-ink"><UiText id="web-dashboard.6cb44b56336af70b" source="Recent activity" /></h2>
         {!txs ? (
           <div className="flex items-center gap-3 p-4"><Spinner size={20} /></div>
         ) : txs.length ? (
@@ -262,7 +268,7 @@ function Inner() {
                     className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-body font-extrabold text-[14px] text-ink">{t.label || t.type_label || t.type || 'Transaction'}</div>
+                      <div className="truncate font-body font-extrabold text-[14px] text-ink">{t.label || t.type_label || t.type || uiT("web-dashboard.eec26ddd9a408449","Transaction")}</div>
                       <div className="font-mono text-[13px] text-inkMute font-bold">{fmtWhen(t.ts ?? t.created_at)}</div>
                     </div>
                     <span className="flex items-center gap-2">
@@ -288,7 +294,7 @@ function Inner() {
           </div>
         ) : (
           <Card fillClassName="bg-paper2">
-            <p className="font-body font-bold text-[15px] text-inkSoft">No transactions yet.</p>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-dashboard.16a6661a6ecf2ff3" source="No transactions yet." /></p>
           </Card>
         )}
       </section>

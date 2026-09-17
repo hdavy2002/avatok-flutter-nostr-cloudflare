@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // AgentForm — step 2 of the studio: the prefilled create/edit form.
 //
 // The chosen template seeds every vision field (capability, overlay + style,
@@ -88,6 +90,8 @@ function seedFromTemplate(t: VisionTemplate): AgentDraftInput {
 }
 
 function AgentFormInner({ category, template, onBack }: AgentFormProps) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   const [d, setD] = useState<AgentDraftInput>(() => seedFromTemplate(template));
   // [TOKENS-INR-RAIL-1] The creator now types RUPEES, and 1 token = ₹1, so the
   // field value IS the token count. It used to be dollars at 100 tokens/$, which
@@ -236,23 +240,18 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
   if (done) {
     return (
       <div className="mx-auto max-w-md rounded-zine border-zine border-ink bg-card p-6 text-center shadow-zine">
-        <p className="font-display font-semibold text-[24px] text-ink">Published! 🎉</p>
+        <p className="font-display font-semibold text-[24px] text-ink"><UiText id="web-vision.79b891637a255592" source="Published! 🎉" /></p>
         <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">
-          “{d.name}” is live in the AvaVision marketplace.
-        </p>
+          “{d.name}<UiText id="web-vision.dc414f63fa03c74a" source="” is live in the AvaVision marketplace." />{" "}</p>
         <div className="mt-5 flex flex-col gap-2.5">
           <a
             href={`/vision/agent/${encodeURIComponent(done.id)}`}
             className="inline-flex items-center justify-center rounded-full border-zine border-ink bg-lime px-5 py-3 font-display font-semibold text-[17px] text-ink shadow-zine-sm no-underline transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-          >
-            View agent page
-          </a>
+          ><UiText id="web-vision.45d9e7b933e3f4b5" source="View agent page" />{" "}</a>
           <a
             href="/vision"
             className="inline-flex items-center justify-center rounded-full border-zine border-ink bg-card px-5 py-3 font-display font-semibold text-[17px] text-inkSoft shadow-zine-xs no-underline"
-          >
-            Back to marketplace
-          </a>
+          ><UiText id="web-vision.a17e57883bc7246d" source="Back to marketplace" />{" "}</a>
         </div>
       </div>
     );
@@ -267,9 +266,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
             type="button"
             onClick={onBack}
             className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
-          >
-            ← Change template
-          </button>
+          ><UiText id="web-vision.3d3589876879748b" source="← Change template" />{" "}</button>
           <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkMute">
             {category.name}
           </span>
@@ -278,40 +275,34 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
         {/* basics */}
         <section className="flex flex-col gap-4">
           <Field
-            label="Agent name"
+            label={uiT("web-vision.1cfb21871a035769","Agent name")}
             value={d.name}
             maxLength={60}
             onChange={(e) => set('name', e.target.value)}
           />
           <Field
-            label="Role / headline"
-            placeholder="e.g. Friendly grassroots football coach"
+            label={uiT("web-vision.82b7c3db606dd1fe","Role / headline")}
+            placeholder={uiT("web-vision.1c14250fd1da0577","e.g. Friendly grassroots football coach")}
             value={d.role}
             maxLength={80}
             onChange={(e) => set('role', e.target.value)}
           />
           <label className="block">
-            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-              Coaching prompt (creator layer)
-            </span>
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.1a1eee5a1831dfb1" source="Coaching prompt (creator layer)" />{" "}</span>
             <textarea
               value={d.systemProfile}
               onChange={(e) => set('systemProfile', e.target.value)}
               rows={5}
               className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-3 font-body font-bold text-[15px] leading-snug text-ink shadow-zine-sm outline-none focus:-translate-x-[1px] focus:-translate-y-[1px] focus:shadow-zine-focus transition-transform duration-zine"
             />
-            <span className="mt-1 block font-body text-[12px] text-inkMute">
-              The platform safety + vision-context layer is added automatically at session start.
-            </span>
+            <span className="mt-1 block font-body text-[12px] text-inkMute"><UiText id="web-vision.e2662197c36d08e8" source="The platform safety + vision-context layer is added automatically at session start." />{" "}</span>
           </label>
         </section>
 
         {/* voice / payer / rate / length */}
         <section className="flex flex-col gap-4">
           <label className="block">
-            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-              Voice
-            </span>
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.87bf2bc08589f0bd" source="Voice" />{" "}</span>
             <select
               value={d.voiceName}
               onChange={(e) => set('voiceName', e.target.value)}
@@ -326,9 +317,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           </label>
 
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-              Who pays?
-            </span>
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.1bcba51889b88aef" source="Who pays?" />{" "}</span>
             <div className="flex gap-2">
               {(['user_pays', 'creator_pays'] as PayerMode[]).map((m) => (
                 <button
@@ -341,7 +330,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
                     d.payerMode === m ? 'bg-blue text-ink' : 'bg-card text-inkSoft',
                   ].join(' ')}
                 >
-                  {m === 'user_pays' ? 'User pays' : 'Free (creator pays)'}
+                  {m === 'user_pays' ? uiT("web-vision.5908b0878f7bdb83","User pays") : uiT("web-vision.a9d13c1b50948275","Free (creator pays)")}
                 </button>
               ))}
             </div>
@@ -349,7 +338,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {!creatorPays ? (
             <Field
-              label="Rate per hour (₹)"
+              label={uiT("web-vision.35766c206fd46873","Rate per hour (₹)")}
               lead="₹"
               inputMode="numeric"
               value={rateRupees}
@@ -361,16 +350,11 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
               }
             />
           ) : (
-            <p className="rounded-zineField border-zine border-inkMute bg-paper2 px-3.5 py-3 font-body font-bold text-[14px] text-inkSoft">
-              Free for users — you fund it at {inr(CREATOR_PAYS_RATE_PER_HOUR)}/hr flat from your
-              AvaWallet. Vision + snapshots are bundled.
-            </p>
+            <p className="rounded-zineField border-zine border-inkMute bg-paper2 px-3.5 py-3 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-vision.cc96a5fc98265d8c" source="Free for users — you fund it at" />{" "}{inr(CREATOR_PAYS_RATE_PER_HOUR)}<UiText id="web-vision.bb664932e013c966" source="/hr flat from your AvaWallet. Vision + snapshots are bundled." />{" "}</p>
           )}
 
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-              Session length
-            </span>
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.c0c996d9022f9064" source="Session length" />{" "}</span>
             <div className="flex gap-2">
               {SESSION_LIMITS.map((m) => (
                 <button
@@ -382,8 +366,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
                     d.sessionLimitMin === m ? 'bg-lime text-ink' : 'bg-card text-inkSoft',
                   ].join(' ')}
                 >
-                  {m}m
-                </button>
+                  {m}<UiText id="web-vision.62c66a7a5dd70c31" source="m" />{" "}</button>
               ))}
             </div>
           </div>
@@ -391,18 +374,17 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
         {/* vision options */}
         <section className="flex flex-col gap-4 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
-          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">Vision options</p>
+          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk"><UiText id="web-vision.2a3c0daa41589734" source="Vision options" /></p>
 
           <div className="flex flex-wrap items-center gap-2">
             <Pill kind="plain">{d.capability}</Pill>
-            <span className="font-body font-bold text-[13px] text-inkSoft">
-              tracks {d.trackedSubject || 'the subject'}
+            <span className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-vision.387668e22f8946c1" source="tracks" />{" "}{d.trackedSubject || uiT("web-vision.cc0ca551b4069661","the subject")}
             </span>
           </div>
 
           {/* overlay */}
           <label className="flex items-center justify-between gap-3">
-            <span className="font-body font-bold text-[15px] text-ink">On-screen overlay</span>
+            <span className="font-body font-bold text-[15px] text-ink"><UiText id="web-vision.e543aab5c4c80472" source="On-screen overlay" /></span>
             <input
               type="checkbox"
               checked={d.overlayEnabled}
@@ -427,22 +409,22 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {/* scoring */}
           <div className="flex items-center justify-between gap-3">
-            <span className="font-body font-bold text-[15px] text-ink">Scoring</span>
+            <span className="font-body font-bold text-[15px] text-ink"><UiText id="web-vision.9ea9bd2122aab52a" source="Scoring" /></span>
             <select
               value={d.scoringMode}
               onChange={(e) => set('scoringMode', e.target.value as AgentDraftInput['scoringMode'])}
               className="rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink shadow-zine-xs outline-none"
             >
-              <option value="geometry">geometry</option>
-              <option value="gemini_qualitative">gemini_qualitative</option>
-              <option value="hybrid">hybrid</option>
-              <option value="none">none</option>
+              <option value="geometry"><UiText id="web-vision.8148b7fefaf89ebf" source="geometry" /></option>
+              <option value="gemini_qualitative"><UiText id="web-vision.45d48991d3d11166" source="gemini_qualitative" /></option>
+              <option value="hybrid"><UiText id="web-vision.0deac0a26c0d846d" source="hybrid" /></option>
+              <option value="none"><UiText id="web-vision.140bedbf9c3f6d56" source="none" /></option>
             </select>
           </div>
           {d.scoringMode !== 'none' && (
             <Field
-              label="Score label"
-              placeholder="FormScore"
+              label={uiT("web-vision.2c24540f8c7f92bf","Score label")}
+              placeholder={uiT("web-vision.0011e8f56c69cbd2","FormScore")}
               value={d.scoreLabel ?? ''}
               maxLength={20}
               onChange={(e) => set('scoreLabel', e.target.value || null)}
@@ -451,7 +433,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {/* snapshot */}
           <label className="flex items-center justify-between gap-3">
-            <span className="font-body font-bold text-[15px] text-ink">“Analyze my form” snapshots</span>
+            <span className="font-body font-bold text-[15px] text-ink"><UiText id="web-vision.eabf826ae2e7a722" source="“Analyze my form” snapshots" /></span>
             <input
               type="checkbox"
               checked={d.agenticSnapshotEnabled}
@@ -461,7 +443,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           </label>
           {d.agenticSnapshotEnabled && (
             <Field
-              label="Free snapshots per session"
+              label={uiT("web-vision.ca119fbcee41ed93","Free snapshots per session")}
               inputMode="numeric"
               value={String(d.freeSnapshotsPerSession)}
               onChange={(e) =>
@@ -470,9 +452,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
             />
           )}
           <label className="flex items-center justify-between gap-3">
-            <span className="font-body font-bold text-[14px] text-inkSoft">
-              Save snapshots to my library
-              <span className="block font-body text-[12px] text-inkMute">Off by default (privacy).</span>
+            <span className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-vision.46ca9dbb8f4013ef" source="Save snapshots to my library" />{" "}<span className="block font-body text-[12px] text-inkMute"><UiText id="web-vision.2372277ad320a3e1" source="Off by default (privacy)." /></span>
             </span>
             <input
               type="checkbox"
@@ -484,9 +464,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {/* platforms */}
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-              Platforms
-            </span>
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.ab9bd7584a6270cd" source="Platforms" />{" "}</span>
             <div className="flex gap-2">
               {(['android', 'ios', 'web'] as Platform[]).map((p) => {
                 const supported = template.platforms[p];
@@ -512,18 +490,14 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
               })}
             </div>
             {!template.platforms.ios && (
-              <p className="mt-1.5 font-body text-[12px] text-inkMute">
-                iOS unavailable for this capability (no free on-device engine yet).
-              </p>
+              <p className="mt-1.5 font-body text-[12px] text-inkMute"><UiText id="web-vision.e263c700ac615ffe" source="iOS unavailable for this capability (no free on-device engine yet)." />{" "}</p>
             )}
           </div>
 
           {/* enforced safety */}
           {template.safetyNotes.length > 0 && (
             <div className="rounded-zineField border-zine border-ink bg-card p-3">
-              <p className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-coral">
-                Platform-enforced
-              </p>
+              <p className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-coral"><UiText id="web-vision.efa9804e7af1d54b" source="Platform-enforced" />{" "}</p>
               <ul className="mt-1 space-y-0.5">
                 {template.safetyNotes.map((s) => (
                   <li key={s} className="font-body font-bold text-[13px] text-inkSoft">
@@ -546,7 +520,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           fullWidth
           loading={publishing}
           disabled={validation.length > 0}
-          label={publishing ? 'Publishing…' : 'Publish agent'}
+          label={publishing ? uiT("web-vision.582e0f1abad43e9e","Publishing…") : uiT("web-vision.d7d406e151f3ff97","Publish agent")}
           onClick={() => void publish()}
         />
         {validation.length > 0 && (
@@ -557,7 +531,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
       {/* ── live preview pane ───────────────────────────────────────────── */}
       <aside className="lg:sticky lg:top-20 lg:self-start">
         <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine">
-          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">Live preview</p>
+          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk"><UiText id="web-vision.f65ddc1ff37bb18e" source="Live preview" /></p>
 
           {/* PHASE5-PREVIEW-HOOK: surfaces consumed by Phase 5's VisionEngineWeb
               (camera into <video>, overlay drawn onto <canvas>). Lazy-imported on
@@ -584,24 +558,19 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
             {preview !== 'live' && (
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center">
-                <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkMute">
-                  Camera preview
-                </span>
+                <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkMute"><UiText id="web-vision.6893f4b6607614a7" source="Camera preview" />{" "}</span>
                 {d.overlayEnabled && (
                   <span className="rounded-full border-zine border-ink bg-lilac px-3 py-1 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs">
-                    {d.overlayStyle} overlay
-                  </span>
+                    {d.overlayStyle}{" "}<UiText id="web-vision.b4b33d2441645d4d" source="overlay" />{" "}</span>
                 )}
                 {preview === 'starting' && (
-                  <span className="font-body font-bold text-[13px] text-inkSoft">Starting camera…</span>
+                  <span className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-vision.3cbe341e3ff8f136" source="Starting camera…" /></span>
                 )}
                 {preview === 'error' && previewMsg && (
                   <span className="font-body font-bold text-[12px] text-coral">{previewMsg}</span>
                 )}
                 {preview === 'idle' && (
-                  <span className="font-body text-[12px] text-inkMute">
-                    Try the on-device overlay + score live, right here.
-                  </span>
+                  <span className="font-body text-[12px] text-inkMute"><UiText id="web-vision.2834f6928c41d11d" source="Try the on-device overlay + score live, right here." />{" "}</span>
                 )}
               </div>
             )}
@@ -613,9 +582,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
                 type="button"
                 onClick={stopPreview}
                 className="w-full rounded-full border-zine border-ink bg-coral px-4 py-2 font-display font-semibold text-[15px] text-white shadow-zine-xs"
-              >
-                Stop preview
-              </button>
+              ><UiText id="web-vision.178940d0698c7eed" source="Stop preview" />{" "}</button>
             ) : (
               <button
                 type="button"
@@ -623,19 +590,16 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
                 onClick={() => void startPreview()}
                 className="w-full rounded-full border-zine border-ink bg-blue px-4 py-2 font-display font-semibold text-[15px] text-ink shadow-zine-xs disabled:opacity-60"
               >
-                {preview === 'error' ? 'Retry preview' : 'Start camera preview'}
+                {preview === 'error' ? uiT("web-vision.ceba352728693758","Retry preview") : uiT("web-vision.d5cca50b099d8be2","Start camera preview")}
               </button>
             )}
-            <p className="mt-1.5 text-center font-body text-[11px] text-inkMute">
-              On-device only — nothing is uploaded.
-            </p>
+            <p className="mt-1.5 text-center font-body text-[11px] text-inkMute"><UiText id="web-vision.cd44b25b7ff3fc7f" source="On-device only — nothing is uploaded." />{" "}</p>
           </div>
 
-          <p className="mt-3 font-body font-bold text-[14px] text-inkSoft">{d.name || 'Your agent'}</p>
+          <p className="mt-3 font-body font-bold text-[14px] text-inkSoft">{d.name || uiT("web-vision.1ffbc15d64cea6fc","Your agent")}</p>
           <p className="font-body text-[13px] text-inkMute">
-            {creatorPays ? 'Free to users' : `${inr(effectiveRateCoins)}/hr`} ·{' '}
-            {d.sessionLimitMin}m max
-          </p>
+            {creatorPays ? uiT("web-vision.07f02e53e9092a20","Free to users") : uiT("web-vision.1c6dc6d1522d4b39","{value0}/hr",{value0:String(inr(effectiveRateCoins))})} ·{' '}
+            {d.sessionLimitMin}<UiText id="web-vision.4a18f547ad0853eb" source="m max" />{" "}</p>
         </div>
       </aside>
     </div>

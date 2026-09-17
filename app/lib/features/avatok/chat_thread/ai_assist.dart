@@ -90,7 +90,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
     final conv = _serverConvId;
     if (conv == null) return;
     if (!await BrainConsent.isOn('messaging')) {
-      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to use catch-up.');
+      if (mounted) _toast(uiCopy(UiMessage.m_turn_on_avabrain_for_your_f113fbb32c));
       return;
     }
     setState(() { _catchupLoading = true; _catchupDismissed = false; });
@@ -103,7 +103,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
       _catchupBullets = bullets;
       _catchupCount = _unreadIncoming;
     });
-    if (bullets.isEmpty) _toast('Nothing to catch up on.');
+    if (bullets.isEmpty) _toast(uiCopy(UiMessage.m_nothing_to_catch_up_on_25660dacfa));
   }
 
   void _dismissCatchup() => setState(() { _catchupDismissed = true; _catchupBullets = const []; });
@@ -149,7 +149,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
           'decision_id': d.decisionId, 'capability': d.capability, 'scope': d.scope,
         });
       } else if (mounted) {
-        _toast('Could not approve — please try again.');
+        _toast(uiCopy(UiMessage.m_could_not_approve_please_try_d0ed8f401a));
       }
     } catch (e, st) {
       Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
@@ -170,7 +170,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
           'decision_id': d.decisionId, 'capability': d.capability, 'scope': d.scope,
         });
       } else if (mounted) {
-        _toast('Could not dismiss — please try again.');
+        _toast(uiCopy(UiMessage.m_could_not_dismiss_please_try_2fd5f80936));
       }
     } catch (e, st) {
       Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
@@ -201,14 +201,13 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconVideo),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              'AVA SUGGESTS · ${d.capability.isEmpty ? "message" : d.capability}'
-                  '${d.scope == "private" ? " · only you see this" : ""}',
+            child: UiText(
+              UiMessage.m_ava_suggests_value1_value2_52e790e5ec, params: {'value1': (d.capability.isEmpty ? "message" : d.capability).toString(), 'value2': (d.scope == "private" ? " · only you see this" : "").toString()},
               style: ADText.statCaption(c: AD.textSecondary),
             ),
           ),
           if (more > 0)
-            Text('+$more more', style: ADText.statCaption(c: AD.textTertiary)),
+            UiText(UiMessage.m_more_more_e6e7f546d6, params: {'more': (more).toString()}, style: ADText.statCaption(c: AD.textTertiary)),
         ]),
         const SizedBox(height: 8),
         Text(d.draftText, style: ADText.preview(c: AD.textPrimary)),
@@ -216,7 +215,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
         Row(children: [
           Expanded(
             child: AdButton(
-              label: 'Dismiss',
+              label: uiCopy(UiMessage.m_dismiss_48845bff33),
               variant: AdButtonVariant.ghost,
               fullWidth: true,
               trailingIcon: false,
@@ -226,7 +225,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
           const SizedBox(width: 8),
           Expanded(
             child: AdButton(
-              label: d.canDecide ? 'Approve' : 'Needs admin',
+              label: d.canDecide ? uiCopy(UiMessage.m_approve_6007acbe30) : uiCopy(UiMessage.m_needs_admin_abd17a0a84),
               variant: AdButtonVariant.teal,
               fullWidth: true,
               trailingIcon: false,
@@ -279,7 +278,7 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
   // ---- STREAM G [GROUP-AI-5] inline translate one bubble ----
   Future<void> _inlineTranslate(_Msg m) async {
     if (!await BrainConsent.isOn('messaging')) {
-      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to translate.');
+      if (mounted) _toast(uiCopy(UiMessage.m_turn_on_avabrain_for_your_5b6ee659c9));
       return;
     }
     final text = m.text.trim();
@@ -291,10 +290,10 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
       if (mounted) _showInlineTranslation(m, cached, to);
       return;
     }
-    _toast('Translating…');
+    _toast(uiCopy(UiMessage.m_translating_e72799b809));
     final out = await AiChatApi.translate(text, to);
     if (!mounted) return;
-    if (out == null) { _toast('Could not translate.'); return; }
+    if (out == null) { _toast(uiCopy(UiMessage.m_could_not_translate_d36b19d47d)); return; }
     Analytics.capture('inline_translate_used', {'lang': to});
     try { await _msgStore.writeTranslation(m.evId ?? '${m.id}', to, out); } catch (_) {}
     _showInlineTranslation(m, out, to);

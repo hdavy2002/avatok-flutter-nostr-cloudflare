@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -205,13 +207,14 @@ class _VoicemailCardState extends State<VoicemailCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 220),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Icon(PhosphorIcons.voicemail(PhosphorIconsStyle.fill), size: 18, color: AD.danger),
           const SizedBox(width: Msg.s1),
-          Expanded(child: Text('$_callerName left a voicemail', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_callername_left_a_voicemail_471c0fcfa4, params: {'callerName': (_callerName).toString()}, style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
           Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ADText.preview())),
@@ -225,7 +228,7 @@ class _VoicemailCardState extends State<VoicemailCard> {
                     ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
                     : PhosphorIcons.playCircle(PhosphorIconsStyle.fill), size: 26, color: AD.iconSearch),
             const SizedBox(width: 8),
-            Text(_durationSec > 0 ? '${_durationSec}s voicemail' : 'Play voicemail',
+            Text(_durationSec > 0 ? uiCopy(UiMessage.m_durationsec_s_voicemail_d23fa73c0a, {'durationSec': (_durationSec).toString()}) : uiCopy(UiMessage.m_play_voicemail_0fc3b5dfc5),
                 style: ADText.rowName(c: AD.iconSearch)),
           ]),
         ),
@@ -233,7 +236,7 @@ class _VoicemailCardState extends State<VoicemailCard> {
           const SizedBox(height: Msg.s1),
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
+            child: Text(_expanded ? uiCopy(UiMessage.m_hide_transcript_7050dca018) : uiCopy(UiMessage.m_show_transcript_81d7502b49),
                 style: ADText.statCaption(c: AD.textTertiary)),
           ),
           if (_expanded)
@@ -245,9 +248,9 @@ class _VoicemailCardState extends State<VoicemailCard> {
         if (!_handled) ...[
           const SizedBox(height: Msg.s2),
           Wrap(spacing: 8, runSpacing: Msg.s1, children: [
-            AdChip(label: 'Accept', onTap: _accept),
-            AdChip(label: 'Block', onTap: _block),
-            AdChip(label: 'Save contact', onTap: _saveContact),
+            AdChip(label: uiCopy(UiMessage.m_accept_89713b9c9c), onTap: _accept),
+            AdChip(label: uiCopy(UiMessage.m_block_211d0bb8cf), onTap: _block),
+            AdChip(label: uiCopy(UiMessage.m_save_contact_d24f121f4a), onTap: _saveContact),
           ]),
         ],
       ]),
@@ -299,13 +302,14 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 220),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Icon(PhosphorIcons.robot(PhosphorIconsStyle.fill), size: 18, color: AD.iconVideo),
           const SizedBox(width: Msg.s1),
-          Expanded(child: Text('Ava AI Agent talked to $_callerName', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_ava_ai_agent_talked_to_235a0e2dab, params: {'callerName': (_callerName).toString()}, style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
           Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ADText.preview())),
@@ -327,7 +331,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
               setState(() => _expanded = !_expanded);
               if (_expanded) Analytics.capture('agent_transcript_expanded', {'call_id': _callId});
             },
-            child: Text(_expanded ? 'Hide transcript ▲' : 'Show full transcript ▼',
+            child: Text(_expanded ? uiCopy(UiMessage.m_hide_transcript_7050dca018) : uiCopy(UiMessage.m_show_full_transcript_9567be7a23),
                 style: ADText.statCaption(c: AD.textTertiary)),
           ),
           if (_expanded)
@@ -348,7 +352,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
         if (widget.onReply != null) ...[
           const SizedBox(height: Msg.s2),
           AdChip(
-            label: 'Reply',
+            label: uiCopy(UiMessage.m_reply_c253f451bd),
             onTap: () {
               Analytics.capture('agent_transcript_reply_tapped', {'call_id': _callId});
               widget.onReply!(_callerNumber, _callerName);

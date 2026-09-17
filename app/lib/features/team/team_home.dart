@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -58,12 +61,12 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   }
 
   Future<void> _createTeam() async {
-    final name = await _promptText('Name your team', hint: 'e.g. Hilton');
+    final name = await _promptText('Name your team', hint: uiCopy(UiMessage.m_e_g_hilton_2a583a98ee));
     if (name == null || name.trim().isEmpty) return;
     final t = await TeamApi.create(name.trim());
     if (!mounted) return;
     if (t == null) {
-      _toast('Could not create the team');
+      _toast(uiCopy(UiMessage.m_could_not_create_the_team_a13a66a780));
     } else {
       setState(() { _team = t; _role = 'owner'; });
     }
@@ -81,8 +84,8 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         title: Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
         content: ZineField(controller: c, hint: hint, autofocus: true, textCapitalization: TextCapitalization.words),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ADText.threadName(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text('Save', style: ADText.threadName(c: Msg.accent))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.threadName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, c.text), child: UiText(UiMessage.m_save_1509f561f2, style: ADText.threadName(c: Msg.accent))),
         ],
       ),
     );
@@ -96,10 +99,11 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Team', markWord: 'Team', tag: 'AI receptionist',
+        title: uiCopy(UiMessage.m_team_5985039f10), markWord: 'Team', tag: 'AI receptionist',
         actions: [
           if (_team != null)
             ZineBackButton(
@@ -129,7 +133,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
                 text: 'Create a team to set up an AI receptionist that greets callers and routes them to your staff.'),
             const SizedBox(height: Msg.s5),
             ZineButton(
-                label: 'Create team', icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                label: uiCopy(UiMessage.m_create_team_284ff194f8), icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
                 variant: ZineButtonVariant.blue, onPressed: _createTeam),
           ]),
         ),
@@ -158,7 +162,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
             if (t.teamNumber != null && t.teamNumber!.isNotEmpty) ...[
               const SizedBox(height: Msg.s3),
               ZineButton(
-                label: 'Preview caller menu', icon: PhosphorIcons.playCircle(PhosphorIconsStyle.regular),
+                label: uiCopy(UiMessage.m_preview_caller_menu_9dcb06fa3b), icon: PhosphorIcons.playCircle(PhosphorIconsStyle.regular),
                 variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 14,
                 onPressed: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => TeamIvrScreen(teamNumber: t.teamNumber!, preview: true))),
@@ -170,7 +174,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         // Monthly pools
         ZineCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('This month', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_this_month_fd787ef3d4, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s3),
             _pool('Calls', 'Unlimited', 1, AD.online, unlimited: true),
             const SizedBox(height: Msg.s3),
@@ -182,7 +186,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         const SizedBox(height: Msg.s4),
         // Staff / menu
         Row(children: [
-          Text('Menu · ${t.members.length}/${t.seatLimit}', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_menu_value1_value2_b9ad198e05, params: {'value1': (t.members.length).toString(), 'value2': (t.seatLimit).toString()}, style: ADText.sectionLabel()),
           const Spacer(),
           if (isOwner) _addStaffAction(),
         ]),
@@ -308,7 +312,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 20, color: Msg.accent),
           const SizedBox(width: Msg.s1),
-          Text('Add staff', style: ADText.rowName(c: Msg.accent).copyWith(fontSize: 14)),
+          UiText(UiMessage.m_add_staff_6314b811b6, style: ADText.rowName(c: Msg.accent).copyWith(fontSize: 14)),
         ]),
       );
     }
@@ -321,7 +325,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
       child: Row(children: [
         PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.regular), size: 18, color: AD.textTertiary),
         const SizedBox(width: Msg.s1),
-        Text('Add staff', style: ADText.rowName(c: AD.textTertiary).copyWith(fontSize: 14)),
+        UiText(UiMessage.m_add_staff_6314b811b6, style: ADText.rowName(c: AD.textTertiary).copyWith(fontSize: 14)),
       ]),
     );
   }
@@ -334,12 +338,10 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _SheetShell(
-        title: 'Add staff is a Team plan feature',
+        title: uiCopy(UiMessage.m_add_staff_is_a_team_0af9c9bbbb),
         children: [
-          Text(
-            'Your team’s AI receptionist greets every caller and routes them to the '
-            'right person — “press 1 for Sales, press 2 for Support”. Adding staff '
-            'builds that menu.',
+          UiText(
+            UiMessage.m_your_team_s_ai_receptionist_b2223cd03d,
             style: ADText.preview(),
           ),
           const SizedBox(height: Msg.s4),
@@ -353,14 +355,14 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
               'Higher monthly pools', 'Generous receptionist-minute and AI-message allowances, billed to one team wallet.'),
           const SizedBox(height: Msg.s4),
           ZineButton(
-            label: 'See Team plans', fullWidth: true, variant: ZineButtonVariant.blue,
+            label: uiCopy(UiMessage.m_see_team_plans_68ffe0f5bd), fullWidth: true, variant: ZineButtonVariant.blue,
             icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () => Navigator.pop(context, true),
           ),
           const SizedBox(height: Msg.s2),
           Center(child: TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Maybe later', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)))),
+            child: UiText(UiMessage.m_maybe_later_2ac741e620, style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)))),
         ],
       ),
     );
@@ -387,7 +389,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   Future<void> _addMember() async {
     if (!_paidPlan) { _showTeamPlanSheet(); return; }
     final t = _team!;
-    if (t.members.length >= t.seatLimit) { _toast('Seat limit reached (${t.seatLimit})'); return; }
+    if (t.members.length >= t.seatLimit) { _toast(uiCopy(UiMessage.m_seat_limit_reached_value1_d0d186bcd2, {'value1': (t.seatLimit).toString()})); return; }
     final added = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -425,24 +427,25 @@ class _EditTeamSheetState extends State<_EditTeamSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return _SheetShell(
-      title: 'Edit team',
+      title: uiCopy(UiMessage.m_edit_team_ced8519d92),
       children: [
-        ZineField(controller: _name, label: 'Team name', textCapitalization: TextCapitalization.words),
+        ZineField(controller: _name, label: uiCopy(UiMessage.m_team_name_0952fcc6fe), textCapitalization: TextCapitalization.words),
         const SizedBox(height: Msg.s4),
-        ZineField(controller: _greeting, label: 'Greeting', hint: "You've reached Hilton", maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
+        ZineField(controller: _greeting, label: uiCopy(UiMessage.m_greeting_2f35055d7f), hint: uiCopy(UiMessage.m_you_ve_reached_hilton_69b8a8ae79), maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
         const SizedBox(height: Msg.s4),
-        ZineField(controller: _number, label: 'Team AvaTOK number', leadText: '+', keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly]),
+        ZineField(controller: _number, label: uiCopy(UiMessage.m_team_avatok_number_1e57f296a2), leadText: '+', keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly]),
         const SizedBox(height: Msg.s4),
         ZineButton(
-          label: 'Save', fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue,
+          label: uiCopy(UiMessage.m_save_1509f561f2), fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue,
           onPressed: _saving ? null : () async {
             setState(() => _saving = true);
             final t = await TeamApi.update(name: _name.text.trim(), greetingText: _greeting.text.trim(), teamNumber: _number.text.trim());
             if (!mounted) return;
             setState(() => _saving = false);
             if (t != null) { widget.onSaved(t); Navigator.pop(context); }
-            else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save'))); }
+            else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_save_16efcd21d7))); }
           },
         ),
       ],
@@ -472,10 +475,10 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
   List<DropdownMenuItem<String>> get _voiceItems {
     final items = <DropdownMenuItem<String>>[];
     for (final v in GoogleVoiceCatalog.female) {
-      items.add(DropdownMenuItem(value: v.name, child: Text('${v.name} · woman · ${v.style}', overflow: TextOverflow.ellipsis)));
+      items.add(DropdownMenuItem(value: v.name, child: UiText(UiMessage.m_value1_woman_value2_5ed108eaed, params: {'value1': (v.name).toString(), 'value2': (v.style).toString()}, overflow: TextOverflow.ellipsis)));
     }
     for (final v in GoogleVoiceCatalog.male) {
-      items.add(DropdownMenuItem(value: v.name, child: Text('${v.name} · man · ${v.style}', overflow: TextOverflow.ellipsis)));
+      items.add(DropdownMenuItem(value: v.name, child: UiText(UiMessage.m_value1_man_value2_506a2b194c, params: {'value1': (v.name).toString(), 'value2': (v.style).toString()}, overflow: TextOverflow.ellipsis)));
     }
     return items;
   }
@@ -515,29 +518,30 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return _SheetShell(
-      title: _editing ? 'Edit staff' : 'Add staff',
+      title: _editing ? uiCopy(UiMessage.m_edit_staff_4065d98af4) : uiCopy(UiMessage.m_add_staff_6314b811b6),
       children: [
-        ZineField(controller: _name, label: 'Staff name', hint: 'e.g. Julie', textCapitalization: TextCapitalization.words),
+        ZineField(controller: _name, label: uiCopy(UiMessage.m_staff_name_14f081272c), hint: uiCopy(UiMessage.m_e_g_julie_a59d470e2b), textCapitalization: TextCapitalization.words),
         const SizedBox(height: Msg.s4),
-        ZineField(controller: _role, label: 'Role / department', hint: 'e.g. Housekeeping', textCapitalization: TextCapitalization.words),
+        ZineField(controller: _role, label: uiCopy(UiMessage.m_role_department_eb9e676032), hint: uiCopy(UiMessage.m_e_g_housekeeping_e0111b4e72), textCapitalization: TextCapitalization.words),
         const SizedBox(height: Msg.s4),
         ZineField(
-          controller: _number, label: 'Their AvaTOK number', leadText: '+',
+          controller: _number, label: uiCopy(UiMessage.m_their_avatok_number_62bb410aee), leadText: '+',
           enabled: !_editing, // number is the identity key; not editable after add
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
         const SizedBox(height: Msg.s4),
-        ZineDropdown<String>(label: 'Ava voice', value: _voice, items: _voiceItems, onChanged: (v) => setState(() => _voice = v ?? _voice)),
+        ZineDropdown<String>(label: uiCopy(UiMessage.m_ava_voice_045fa5c089), value: _voice, items: _voiceItems, onChanged: (v) => setState(() => _voice = v ?? _voice)),
         const SizedBox(height: Msg.s4),
-        ZineField(controller: _greeting, label: 'Greeting (optional)', hint: "Hi, you've reached Housekeeping", maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
+        ZineField(controller: _greeting, label: uiCopy(UiMessage.m_greeting_optional_afa5ef0b99), hint: uiCopy(UiMessage.m_hi_you_ve_reached_housekeeping_b7c00a7b99), maxLines: 2, maxLength: 200, textCapitalization: TextCapitalization.sentences),
         if (_error != null) ...[const SizedBox(height: Msg.s3), ZineErrorMsg(_error!)],
         const SizedBox(height: Msg.s4),
-        ZineButton(label: _editing ? 'Save' : 'Add to menu', fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue, onPressed: _saving ? null : _save),
+        ZineButton(label: _editing ? uiCopy(UiMessage.m_save_1509f561f2) : uiCopy(UiMessage.m_add_to_menu_14e1a58ec6), fullWidth: true, loading: _saving, variant: ZineButtonVariant.blue, onPressed: _saving ? null : _save),
         if (_editing) ...[
           const SizedBox(height: Msg.s3),
-          ZineButton(label: 'Remove from team', fullWidth: true, variant: ZineButtonVariant.coral, onPressed: _saving ? null : () async {
+          ZineButton(label: uiCopy(UiMessage.m_remove_from_team_5f389604d3), fullWidth: true, variant: ZineButtonVariant.coral, onPressed: _saving ? null : () async {
             final ok = await TeamApi.removeMember(widget.existing!.id);
             if (mounted && ok) Navigator.pop(context, true);
           }),
@@ -554,6 +558,7 @@ class _SheetShell extends StatelessWidget {
   const _SheetShell({required this.title, required this.children});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(

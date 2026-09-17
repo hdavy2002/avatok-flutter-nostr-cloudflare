@@ -1,3 +1,4 @@
+import '../../../core/localization/ui_text.dart';
 // [CAL-CONFLICT-1 2026-09-15] The live conflict feedback behind the native
 // wizard's Time step (AUDIT-2026-09-15 §11: "date selection is not a clear live
 // calendar preview"). The web only checks conflicts after saving the draft; the
@@ -151,30 +152,29 @@ String nativeListingReservedCopy({
   required bool liveEvent,
 }) {
   if (!published) {
-    return 'Draft: this time is not reserved yet. It is reserved when the listing is published.';
+    return uiCopy(UiMessage.m_draft_this_time_is_not_3163ead944);
   }
-  if (liveEvent) return 'Published: this event is protected on your calendar.';
+  if (liveEvent) return uiCopy(UiMessage.m_published_this_event_is_protected_f226b7649a);
   switch (mode) {
     case AvailabilityMode.exclusive:
-      return 'Published: this time is reserved for this listing.';
+      return uiCopy(UiMessage.m_published_this_time_is_reserved_8b10aa631b);
     case AvailabilityMode.custom:
     case AvailabilityMode.shared:
-      return 'Published: customers can book inside your opening hours.';
+      return uiCopy(UiMessage.m_published_customers_can_book_inside_f92ded4340);
   }
 }
 
 /// One-line description of a conflicting commitment.
 String nativeListingConflictMessage(AvailabilityConflict conflict, String timezone) {
-  final title = conflict.title.trim().isEmpty ? 'another commitment' : conflict.title.trim();
-  return 'This time overlaps $title '
-      '(${nativeListingHumanRange(conflict.startAt.millisecondsSinceEpoch, conflict.endAt.millisecondsSinceEpoch, timezone)}).';
+  final title = conflict.title.trim().isEmpty ? uiCopy(UiMessage.m_another_commitment_88efa99d50) : conflict.title.trim();
+  return uiCopy(UiMessage.m_this_time_overlaps_title_value2_69195ed2c3, {'title': (title).toString(), 'value2': (nativeListingHumanRange(conflict.startAt.millisecondsSinceEpoch, conflict.endAt.millisecondsSinceEpoch, timezone)).toString()});
 }
 
 /// The banner text used when the creator tries to leave the Time step while the
 /// server has already confirmed a conflict.
 String nativeListingConflictSaveError(AvailabilityConflict? conflict, String timezone) {
-  if (conflict == null) return 'This time conflicts with something on your calendar. Pick another time.';
-  return '${nativeListingConflictMessage(conflict, timezone)} Pick another time before continuing.';
+  if (conflict == null) return uiCopy(UiMessage.m_this_time_conflicts_with_something_8f7972faa9);
+  return uiCopy(UiMessage.m_value1_pick_another_time_before_def4cf27eb, {'value1': (nativeListingConflictMessage(conflict, timezone)).toString()});
 }
 
 /// Copy for an alternative the preview offered.

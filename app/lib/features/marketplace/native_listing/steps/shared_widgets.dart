@@ -1,3 +1,5 @@
+
+import '../../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -102,7 +104,7 @@ class ListingSection extends StatelessWidget {
       this.hint,
       this.action});
   @override
-  Widget build(BuildContext context) =>
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -119,7 +121,7 @@ class ListingSection extends StatelessWidget {
         ]),
         const SizedBox(height: Msg.s3),
         child,
-      ]);
+      ]); }
 }
 
 class ListingField extends StatelessWidget {
@@ -140,7 +142,7 @@ class ListingField extends StatelessWidget {
       this.maxLength,
       this.keyboardType});
   @override
-  Widget build(BuildContext context) =>
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
         const SizedBox(height: Msg.s1),
@@ -160,7 +162,7 @@ class ListingField extends StatelessWidget {
                   borderRadius: BorderRadius.circular(Msg.rMd),
                   borderSide: BorderSide(color: AD.borderControl, width: 1))),
         ),
-      ]);
+      ]); }
 }
 
 class ListingCard extends StatelessWidget {
@@ -168,14 +170,14 @@ class ListingCard extends StatelessWidget {
   final Color? color;
   const ListingCard({super.key, required this.child, this.color});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(
           color: color ?? AD.card,
           border: Border.all(color: AD.borderControl),
           borderRadius: BorderRadius.circular(Msg.rMd)),
-      child: child);
+      child: child); }
 }
 
 class StringListEditor extends StatelessWidget {
@@ -192,7 +194,7 @@ class StringListEditor extends StatelessWidget {
       required this.onChanged,
       this.placeholder = 'Add an item'});
   @override
-  Widget build(BuildContext context) =>
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: ADText.sectionLabel(c: AD.textSecondary)),
         const SizedBox(height: Msg.s2),
@@ -227,10 +229,10 @@ class StringListEditor extends StatelessWidget {
           TextButton.icon(
               onPressed: () => onChanged([...values.map(textValue), '']),
               icon: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold)),
-              label: Text('Add item', style: ADText.rowName())),
+              label: UiText(UiMessage.m_add_item_d1a0b329a7, style: ADText.rowName())),
         Text('${values.length}/$max',
             style: ADText.statCaption(c: AD.textTertiary)),
-      ]);
+      ]); }
 }
 
 class PairListEditor extends StatelessWidget {
@@ -253,7 +255,7 @@ class PairListEditor extends StatelessWidget {
       required this.secondLabel,
       required this.onChanged});
   @override
-  Widget build(BuildContext context) =>
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: ADText.sectionLabel(c: AD.textSecondary)),
         const SizedBox(height: Msg.s2),
@@ -303,10 +305,10 @@ class PairListEditor extends StatelessWidget {
                     {firstKey: '', secondKey: ''}
                   ]),
               icon: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold)),
-              label: Text('Add', style: ADText.rowName())),
+              label: UiText(UiMessage.m_add_9fd728c66c, style: ADText.rowName())),
         Text('${values.length}/$max',
             style: ADText.statCaption(c: AD.textTertiary)),
-      ]);
+      ]); }
 }
 
 Widget fullWidthButton(

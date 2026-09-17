@@ -1,3 +1,7 @@
+
+import '../../core/localization/ui_text.dart';
+
+import '../../core/localization/ui_language_picker.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -105,25 +109,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('Disconnect Ava AI?', style: ADText.threadName()),
-        content: Text(
-            'This removes your Gemini API key and the linked Google account from '
-            'this device. AvaTOK goes back to plain messaging. You can connect a '
-            'different account anytime.',
+        title: UiText(UiMessage.m_disconnect_ava_ai_4a12230376, style: ADText.threadName()),
+        content: UiText(
+            UiMessage.m_this_removes_your_gemini_api_ed70656916,
             style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel', style: ADText.rowName())),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName())),
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
               await _aiStore.clear();
               await _refreshAi();
               if (mounted) {
-                await showAdToast(context, message: 'Ava AI disconnected');
+                await showAdToast(context, message: uiCopy(UiMessage.m_ava_ai_disconnected_99839c721d));
               }
             },
-            child: Text('Disconnect', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_disconnect_acfc5be785, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -139,17 +141,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderRadius: BorderRadius.circular(AD.rDialog),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Back up my account', style: ADText.threadName()),
-        content: Text(
-          'We will export your AvaTOK account data (your posts and messages) and '
-          'give you a download link. Media files (images, videos, voice) are not '
-          'included in backups.',
+        title: UiText(UiMessage.m_back_up_my_account_4f47758434, style: ADText.threadName()),
+        content: UiText(
+          UiMessage.m_we_will_export_your_avatok_f437952f54,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text('Not now', style: ADText.preview(c: AD.textSecondary))),
-          AdButton(label: 'Back up', variant: AdButtonVariant.teal, fontSize: 15,
+              child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary))),
+          AdButton(label: uiCopy(UiMessage.m_back_up_0054e707d5), variant: AdButtonVariant.teal, fontSize: 15,
               onPressed: () { Navigator.pop(ctx); _runBackup(); }),
         ],
       ),
@@ -161,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _backupToDrive() async {
     if (widget.identity == null || _backingUp) return;
     setState(() => _backingUp = true);
-    showAdToast(context, message: 'Backing up to your Google Drive…');
+    showAdToast(context, message: uiCopy(UiMessage.m_backing_up_to_your_google_4a5b6a9dcb));
     try {
       final res = await ApiAuth.postJson(kBackupUrl, const {}, timeout: const Duration(seconds: 30));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
@@ -175,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? 'Backed up to your AvaTOK Drive (Backups) ✓'
           : 'Export done, but Drive isn\'t connected — connect it in AvaStorage.');
     } catch (_) {
-      if (mounted) showAdToast(context, message: 'Backup to Drive failed — check your connection.');
+      if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_backup_to_drive_failed_check_cc4707c7ee));
     } finally {
       if (mounted) setState(() => _backingUp = false);
     }
@@ -185,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final id = widget.identity;
     if (id == null || _backingUp) return;
     setState(() => _backingUp = true);
-    showAdToast(context, message: 'Exporting your account…');
+    showAdToast(context, message: uiCopy(UiMessage.m_exporting_your_account_ad6189e83a));
     try {
       // pubkey derived server-side from the NIP-98 signature.
       final res = await ApiAuth.postJson(kBackupUrl, const {},
@@ -195,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _backingUp = false);
       if (url == null) {
-        showAdToast(context, message: 'Backup failed — please try again');
+        showAdToast(context, message: uiCopy(UiMessage.m_backup_failed_please_try_again_b12ebca43d));
         return;
       }
       showDialog(
@@ -206,9 +206,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text('Backup ready', style: ADText.threadName()),
+          title: UiText(UiMessage.m_backup_ready_8d810ccb6f, style: ADText.threadName()),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${j['size'] ?? 0} bytes exported (media excluded).', style: ADText.preview()),
+            UiText(UiMessage.m_value1_bytes_exported_media_excluded_a8963cf3e9, params: {'value1': (j['size'] ?? 0).toString()}, style: ADText.preview()),
             const SizedBox(height: Msg.s2),
             SelectableText(url, style: ADText.preview(c: AD.iconSearch)),
           ]),
@@ -217,11 +217,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: url));
                 Navigator.pop(ctx);
-                showAdToast(context, message: 'Download link copied');
+                showAdToast(context, message: uiCopy(UiMessage.m_download_link_copied_1d27c71a6b));
               },
-              child: Text('Copy link', style: ADText.preview(c: AD.iconSearch)),
+              child: UiText(UiMessage.m_copy_link_dbf362d4f2, style: ADText.preview(c: AD.iconSearch)),
             ),
-            AdButton(label: 'Done', variant: AdButtonVariant.teal, fontSize: 15,
+            AdButton(label: uiCopy(UiMessage.m_done_11a6767d56), variant: AdButtonVariant.teal, fontSize: 15,
                 onPressed: () => Navigator.pop(ctx)),
           ],
         ),
@@ -229,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _backingUp = false);
-      showAdToast(context, message: 'Backup failed — check your connection');
+      showAdToast(context, message: uiCopy(UiMessage.m_backup_failed_check_your_connection_08d2bc7186));
     }
   }
 
@@ -242,19 +242,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderRadius: BorderRadius.circular(AD.rDialog),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Delete account?', style: ADText.threadName()),
-        content: Text(
-          'This schedules your AvaTOK account for deletion. You have a 30-day grace '
-          'period — sign back in any time before it ends to cancel the deletion and '
-          'reactivate your account. After 30 days, your profile, settings, and data '
-          'are permanently removed.',
+        title: UiText(UiMessage.m_delete_account_1617c15bde, style: ADText.threadName()),
+        content: UiText(
+          UiMessage.m_this_schedules_your_avatok_account_a12f111cb7,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text('Keep my account', style: ADText.preview(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_keep_my_account_d62ce03448, style: ADText.preview(c: AD.textSecondary))),
           AdButton(
-            label: 'Delete',
+            label: uiCopy(UiMessage.m_delete_e2d0a54968),
             variant: AdButtonVariant.danger,
             fontSize: 15,
             onPressed: () async {
@@ -272,7 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (ok) {
                 widget.onSignOut();
               } else {
-                showAdToast(context, message: 'Could not schedule deletion — please try again.');
+                showAdToast(context, message: uiCopy(UiMessage.m_could_not_schedule_deletion_please_00b13f3421));
               }
             },
           ),
@@ -283,6 +280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // RESPUI: SafeArea + resizeToAvoidBottomInset keep this consistent with the
     // rest of the app (this screen has no text fields of its own, but nested
     // sub-pages/dialogs can open the keyboard). Body was already a scrollable
@@ -302,9 +300,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
       drawer: shellScope == null ? null : const AvaSidebarForShell(),
-      appBar: _adHeader(context, 'Settings', showBack: shellScope == null),
+      appBar: _adHeader(context, authoredUiCopy('Settings'), showBack: shellScope == null),
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: [
+        const UiLanguageTile(),
         // Soft nudge to verify phone for users who skipped it at onboarding.
         // [AVA-IDGATE-1] The PhoneNudgeCard is GONE, not merely hidden. All phone
         // verification was removed 2026-07-10; the widget and its Firebase SMS
@@ -374,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         */
         _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), AD.danger, 'Danger zone',
             'Permanently delete your account', () => _push(_SettingsDetail(
-                  title: 'Danger zone',
+                  title: uiCopy(UiMessage.m_danger_zone_fd8b8dae44),
                   markWord: 'Danger',
                   children: [
                     _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), AD.danger, 'Delete account',
@@ -383,7 +382,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 )), danger: true),
         const SizedBox(height: Msg.s3),
         AdButton(
-          label: 'Log out',
+          label: uiCopy(UiMessage.m_log_out_4961614551),
           variant: AdButtonVariant.ghost,
           fullWidth: true,
           fontSize: 17,
@@ -398,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
         const SizedBox(height: Msg.s4),
-        Center(child: Text('AVATOK · YOU OWN IT ALL', style: ADText.sectionLabel(c: AD.textTertiary))),
+        Center(child: UiText(UiMessage.m_avatok_you_own_it_all_c87a3805ec, style: ADText.sectionLabel(c: AD.textTertiary))),
         ]),
       ),
     );
@@ -415,12 +414,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: AD.iconVideo, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            AdSwitchText(_aiConnected ? 'Connected to Gemini' : 'Connect Google AI Studio',
+            AdSwitchText(_aiConnected ? uiCopy(UiMessage.m_connected_to_gemini_3bfb1238b1) : uiCopy(UiMessage.m_connect_google_ai_studio_dbd1a6a6f1),
                 style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(_aiConnected
-                    ? 'Ava runs on your own free Gemini key.'
-                    : 'Power Ava with your own free Google Gemini key.',
+                    ? uiCopy(UiMessage.m_ava_runs_on_your_own_ae679d6ee8)
+                    : uiCopy(UiMessage.m_power_ava_with_your_own_671b5c1d13),
                 style: ADText.preview()),
           ])),
           if (_aiConnected)
@@ -431,7 +430,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // ONE button: Connect when off, Disconnect when on. Disconnecting clears
         // the key + linked account and the label flips back to Connect.
         AdButton(
-          label: _aiConnected ? 'Disconnect' : 'Connect',
+          label: _aiConnected ? uiCopy(UiMessage.m_disconnect_acfc5be785) : uiCopy(UiMessage.m_connect_1a2303ede0),
           onPressed: _aiConnected ? _removeAi : _setupAi,
           fullWidth: true,
           fontSize: 16,
@@ -450,8 +449,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: Msg.s2),
             Expanded(child: Text(
                 _aiEmail?.isNotEmpty == true
-                    ? 'Connected as ${_aiEmail!}'
-                    : 'Connected with your Gemini key',
+                    ? uiCopy(UiMessage.m_connected_as_value1_8858228d66, {'value1': (_aiEmail!).toString()})
+                    : uiCopy(UiMessage.m_connected_with_your_gemini_key_9c26482bb9),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview())),
           ]),
@@ -480,9 +479,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
+              Text(authoredUiCopy(title), style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
               const SizedBox(height: 2),
-              Text(sub, style: ADText.preview()),
+              Text(authoredUiCopy(sub), style: ADText.preview()),
             ])),
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
           ]),
@@ -561,6 +560,7 @@ class _SettingsDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // RESPUI: this generic sub-page hosts arbitrary section bodies (some of
     // which contain text fields, e.g. phone verify / auto-responder), so it
     // gets the same SafeArea + resizeToAvoidBottomInset + ZineBreakpoints

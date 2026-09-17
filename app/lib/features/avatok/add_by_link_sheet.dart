@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -99,6 +102,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mq = MediaQuery.of(context);
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
     return Padding(
@@ -109,9 +113,9 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
           Center(child: Container(
             width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill))),
-          Text('Add by QR link', style: ADText.appTitle()),
+          UiText(UiMessage.m_add_by_qr_link_948234665b, style: ADText.appTitle()),
           const SizedBox(height: 4),
-          Text('Paste an AvaTOK add link, or scan a code that opens it.', style: ADText.preview()),
+          UiText(UiMessage.m_paste_an_avatok_add_link_44e4672e20, style: ADText.preview()),
           const SizedBox(height: Msg.s3),
           if (_card == null) ...[
             // White dark-v2 link field with a Paste action.
@@ -135,7 +139,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
                     decoration: InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
-                      hintText: 'avatok.ai/add?t=…',
+                      hintText: uiCopy(UiMessage.m_avatok_ai_add_t_fe7c5764bd),
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                       contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
@@ -146,14 +150,14 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
                     final data = await Clipboard.getData('text/plain');
                     if (data?.text != null) { _linkCtrl.text = data!.text!; setState(() {}); }
                   },
-                  child: Text('Paste', style: ADText.rowName(c: AD.iconClipOnWhite)),
+                  child: UiText(UiMessage.m_paste_f3380f7b44, style: ADText.rowName(c: AD.iconClipOnWhite)),
                 ),
               ]),
             ),
             if (_error != null) Padding(padding: const EdgeInsets.only(top: Msg.s2), child: Text(_error!, style: ADText.preview(c: AD.danger))),
             const SizedBox(height: Msg.s3),
             _PrimaryButton(
-              label: _resolving ? 'Looking up…' : 'Continue',
+              label: _resolving ? uiCopy(UiMessage.m_looking_up_a84f1079ee) : uiCopy(UiMessage.m_continue_31fbef1625),
               loading: _resolving,
               onTap: _resolving ? null : _resolve,
             ),
@@ -182,8 +186,8 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name.isNotEmpty ? name : 'AvaTOK member', style: ADText.threadName()),
-              Text(c.sharesRealNumber ? 'Shared a private number' : 'AvaTOK member', style: ADText.preview()),
+              Text(name.isNotEmpty ? name : uiCopy(UiMessage.m_avatok_member_765f09f39c), style: ADText.threadName()),
+              Text(c.sharesRealNumber ? uiCopy(UiMessage.m_shared_a_private_number_0d9d8efe52) : uiCopy(UiMessage.m_avatok_member_765f09f39c), style: ADText.preview()),
             ])),
           ]),
           const SizedBox(height: Msg.s3),
@@ -195,17 +199,17 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
               decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
-              child: Text('No AvaTOK number yet — this contact shares a real phone number.', style: ADText.preview()),
+              child: UiText(UiMessage.m_no_avatok_number_yet_this_235b432434, style: ADText.preview()),
             ),
           ],
         ]),
       ),
       const SizedBox(height: Msg.s3),
       Row(children: [
-        Expanded(child: _GhostButton(label: 'Cancel', onTap: () => Navigator.pop(context))),
+        Expanded(child: _GhostButton(label: uiCopy(UiMessage.m_cancel_19766ed6cc), onTap: () => Navigator.pop(context))),
         const SizedBox(width: Msg.s2),
         Expanded(child: _PrimaryButton(
-            label: 'Add contact',
+            label: uiCopy(UiMessage.m_add_contact_a02ce0df21),
             icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
             onTap: _add)),
       ]),
@@ -234,6 +238,7 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       child: Opacity(
@@ -269,6 +274,7 @@ class _GhostButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(

@@ -1,3 +1,7 @@
+import '../../core/localization/known_ui_copy.dart';
+
+import '../../core/localization/ui_text.dart';
+
 // Availability settings: working hours, booking policy and the Google
 // connection (audit findings 5, 6, 8, 10 and A3/A6).
 //
@@ -137,11 +141,12 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final schedule = _schedule;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(
-          title: 'Availability settings',
+      appBar:  ZineAppBar(
+          title: uiCopy(UiMessage.m_availability_settings_7cacfbde93),
           markWord: 'settings',
           tag: 'Calendar & availability'),
       body: LayoutBuilder(builder: (context, constraints) {
@@ -153,8 +158,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                            'Set the hours buyers can request. AvaTOK remains the authority for conflicts, holds and confirmed bookings.',
+                        UiText(
+                            UiMessage.m_set_the_hours_buyers_can_24a94a334c,
                             style: calSub(14)),
                         if (_error != null) ...[
                           const SizedBox(height: Msg.s3),
@@ -179,8 +184,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                           _policyCard(schedule)
                         ],
                         const SizedBox(height: Msg.s4),
-                        Text(
-                            'Listings can keep their own policy. Where a listing overrides the calendar, the listing’s value applies to that listing only.',
+                        UiText(
+                            UiMessage.m_listings_can_keep_their_own_7cbe6fb6a9,
                             style: calSub(12)),
                       ])))
         ]);
@@ -205,20 +210,20 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text('Google Calendar', style: calTitle(16)),
+                UiText(UiMessage.m_google_calendar_b074310e91, style: calTitle(16)),
                 const SizedBox(height: 2),
-                Text('Busy times that must block your bookable time',
+                UiText(UiMessage.m_busy_times_that_must_block_3a2efd1f25,
                     style: calSub(13)),
               ])),
           if (readiness != null) calendarReadinessSticker(readiness),
         ]),
         const SizedBox(height: Msg.s3),
-        Text(readiness?.detail ?? 'Reading Google Calendar status…',
+        Text(readiness?.detail ?? uiCopy(UiMessage.m_reading_google_calendar_status_08b179b620),
             style: calSub(13)),
         if (readiness?.lastSuccessAt != null) ...[
           const SizedBox(height: Msg.s2),
-          Text(
-              'Last successful sync ${_lastSync(readiness!.lastSuccessAt)} (oldest selected calendar).',
+          UiText(
+              UiMessage.m_last_successful_sync_value1_oldest_8276b790f6, params: {'value1': (_lastSync(readiness!.lastSuccessAt)).toString()},
               style: calSub(12)),
         ],
         if (readiness != null && readiness.pausesBookings) ...[
@@ -236,7 +241,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
           if (readiness?.state == GcalState.notConnected || readiness == null)
             ZineButton(
-                label: 'Connect Google Calendar',
+                label: uiCopy(UiMessage.m_connect_google_calendar_c04f9d6a93),
                 variant: ZineButtonVariant.blue,
                 fontSize: 14,
                 icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
@@ -244,7 +249,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 onPressed: _connectGcal)
           else ...[
             ZineButton(
-                label: 'Sync busy times now',
+                label: uiCopy(UiMessage.m_sync_busy_times_now_b3b0dc53fc),
                 variant: ZineButtonVariant.blue,
                 fontSize: 14,
                 loading: _gcalBusy,
@@ -252,14 +257,14 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 trailingIcon: false,
                 onPressed: _gcalBusy ? null : _syncNow),
             ZineButton(
-                label: 'Refresh calendar list',
+                label: uiCopy(UiMessage.m_refresh_calendar_list_98071fc014),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 14,
                 icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular),
                 trailingIcon: false,
                 onPressed: _gcalBusy ? null : _refreshCalendarList),
             ZineButton(
-                label: 'Choose calendars',
+                label: uiCopy(UiMessage.m_choose_calendars_f6083c5f41),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 14,
                 icon: PhosphorIcons.listChecks(PhosphorIconsStyle.regular),
@@ -268,7 +273,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                     ? null
                     : () => _chooseCalendars(calendars)),
             ZineButton(
-                label: 'Disconnect',
+                label: uiCopy(UiMessage.m_disconnect_acfc5be785),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 14,
                 icon: PhosphorIcons.xCircle(PhosphorIconsStyle.regular),
@@ -278,13 +283,13 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         ]),
         if (calendars.isNotEmpty) ...[
           const SizedBox(height: Msg.s3),
-          Text('Calendars', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_calendars_e0b2b00cf3, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
           ...calendars.map(_calendarRow),
         ] else if (readiness?.state != GcalState.notConnected &&
             readiness != null) ...[
           const SizedBox(height: Msg.s2),
-          Text('No Google calendar list has been loaded yet.',
+          UiText(UiMessage.m_no_google_calendar_list_has_fb03f415a6,
               style: calSub(12)),
         ],
       ]),
@@ -322,8 +327,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                     kind: ZineStickerKind.hint),
             ]),
             const SizedBox(height: 2),
-            Text(
-                '${calendar.timezone} · ${calendar.selected ? 'blocks your time' : 'not blocking time'} · last synced ${_lastSync(calendar.lastSuccessAt)}',
+            UiText(
+                UiMessage.m_value1_value2_last_synced_value3_b3636cf7a5, params: {'value1': (calendar.timezone).toString(), 'value2': (calendar.selected ? 'blocks your time' : 'not blocking time').toString(), 'value3': (_lastSync(calendar.lastSuccessAt)).toString()},
                 style: ADText.statCaption(c: AD.textSecondary)),
             if (calendar.failed) ...[
               const SizedBox(height: 2),
@@ -411,7 +416,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         _gcalBusy = false;
         _gcal = GcalReadiness(
           state: previous?.state ?? GcalState.unknown,
-          label: previous?.label ?? 'Status unavailable',
+          label: previous?.label ?? uiCopy(UiMessage.m_status_unavailable_7eb5af92e4),
           detail: previous?.detail ??
               'Readiness could not be verified from the calendar list.',
           lastSuccessAt: previous?.lastSuccessAt,
@@ -458,14 +463,14 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             shape: RoundedRectangleBorder(
                 borderRadius: Msg.brLg,
                 side: const BorderSide(color: AD.borderControl)),
-            title: Text('Which calendars count?', style: calTitle(17)),
+            title: UiText(UiMessage.m_which_calendars_count_df8c9c739f, style: calTitle(17)),
             content: SingleChildScrollView(
               child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        'Selected calendars block your bookable time. The destination calendar receives AvaTOK bookings.',
+                    UiText(
+                        UiMessage.m_selected_calendars_block_your_bookable_501678f538,
                         style: calSub(13)),
                     const SizedBox(height: Msg.s3),
                     ...calendars.map((calendar) => CheckboxListTile(
@@ -484,12 +489,12 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                           title: Text(calendar.summary, style: calValue(14)),
                           subtitle: Text(
                               calendar.destination
-                                  ? 'Receives bookings'
+                                  ? uiCopy(UiMessage.m_receives_bookings_eda07abfcc)
                                   : calendar.timezone,
                               style: ADText.statCaption(c: AD.textSecondary)),
                         )),
                     const SizedBox(height: Msg.s2),
-                    Text('Send AvaTOK bookings to', style: ADText.sectionLabel()),
+                    UiText(UiMessage.m_send_avatok_bookings_to_76858457be, style: ADText.sectionLabel()),
                     const SizedBox(height: Msg.s2),
                     ...calendars
                         .where((calendar) => selected.contains(calendar.id))
@@ -504,8 +509,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                             )),
                     if (!valid) ...[
                       const SizedBox(height: Msg.s2),
-                      Text(
-                          'Choose at least one calendar to block time, and send bookings to one of the selected calendars.',
+                      UiText(
+                          UiMessage.m_choose_at_least_one_calendar_188ac2447c,
                           style: calSub(12, c: AD.danger)),
                     ],
                   ]),
@@ -513,9 +518,9 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text('Cancel', style: calLinkStyle)),
+                  child: UiText(UiMessage.m_cancel_19766ed6cc, style: calLinkStyle)),
               ZineButton(
-                  label: 'Save',
+                  label: uiCopy(UiMessage.m_save_1509f561f2),
                   variant: ZineButtonVariant.blue,
                   fontSize: 14,
                   onPressed: valid
@@ -562,13 +567,13 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text('Working hours', style: calTitle(17)),
+                UiText(UiMessage.m_working_hours_b9c635214e, style: calTitle(17)),
                 const SizedBox(height: 2),
                 Text('${schedule.timezone} · ${_modeLabel(schedule.mode)}',
                     style: calSub(13))
               ])),
           ZineButton(
-              label: 'Add hours',
+              label: uiCopy(UiMessage.m_add_hours_260f780d01),
               variant: ZineButtonVariant.ghost,
               fontSize: 13,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
@@ -579,8 +584,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             deviceNote: 'your device is ${DateTime.now().timeZoneName}'),
         const SizedBox(height: Msg.s3),
         if (schedule.rules.isEmpty)
-          Text(
-              'No working hours yet. Add a weekday range to make the schedule bookable.',
+          UiText(
+              UiMessage.m_no_working_hours_yet_add_43e33fd147,
               style: calSub(13))
         else
           ...schedule.rules
@@ -597,7 +602,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             '${schedule.durationMin} min',
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Slot duration',
+                  title: uiCopy(UiMessage.m_slot_duration_0d1d349a22),
                   helper: 'How long one appointment lasts, in minutes.',
                   initialValue: schedule.durationMin,
                   min: 5,
@@ -611,7 +616,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             '${schedule.slotIntervalMin} min',
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Slot interval',
+                  title: uiCopy(UiMessage.m_slot_interval_3feb4eb462),
                   helper: 'How far apart the offered start times are.',
                   initialValue: schedule.slotIntervalMin,
                   min: 5,
@@ -627,9 +632,9 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       radius: Msg.rLg,
       padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Booking policy', style: calTitle(17)),
+        UiText(UiMessage.m_booking_policy_58e3fced1c, style: calTitle(17)),
         const SizedBox(height: Msg.s2),
-        Text('These limits are shared by every listing owned by this creator.',
+        UiText(UiMessage.m_these_limits_are_shared_by_744855223b,
             style: calSub(13)),
         const SizedBox(height: Msg.s3),
         _settingLine(
@@ -637,7 +642,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             '${schedule.bufferMin} min',
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Buffer between sessions',
+                  title: uiCopy(UiMessage.m_buffer_between_sessions_a0096bfae3),
                   helper:
                       'Applied BEFORE and AFTER every session, so a 30 min buffer reserves an extra 30 min on both sides.',
                   initialValue: schedule.bufferMin,
@@ -651,7 +656,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             '${schedule.minNoticeMin} min',
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Minimum notice',
+                  title: uiCopy(UiMessage.m_minimum_notice_693743416b),
                   helper:
                       'How far ahead a booking must be made. A listing can require longer notice; the larger value applies.',
                   initialValue: schedule.minNoticeMin,
@@ -663,10 +668,10 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 )),
         _settingLine(
             'Maximum per day',
-            maxPerDayLabel(schedule.maxPerDay),
+            knownUiCopy(maxPerDayLabel(schedule.maxPerDay)),
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Maximum per day',
+                  title: uiCopy(UiMessage.m_maximum_per_day_bb4368ed90),
                   helper:
                       'How many appointments each day can hold. The supported range is 1–100; unlimited (0) is not accepted by the server.',
                   initialValue: schedule.maxPerDay >= 1 && schedule.maxPerDay <= 100
@@ -684,7 +689,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 : '${schedule.horizonDays} days',
             () => showCalendarNumberDialog(
                   context,
-                  title: 'Booking horizon',
+                  title: uiCopy(UiMessage.m_booking_horizon_5dff10d16b),
                   helper:
                       'How far ahead customers can book. Up to $kMaxHorizonDays days; the value you choose is kept.',
                   initialValue: storedHorizonDays(schedule),
@@ -702,7 +707,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
               AD.haldi),
         ],
         const SizedBox(height: Msg.s3),
-        Text('Schedule mode', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_schedule_mode_04a4052829, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: Msg.s2, children: [
           for (final mode in AvailabilityMode.values)
@@ -759,7 +764,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             calendarIconAction(
                 icon: PhosphorIcons.trash(PhosphorIconsStyle.regular),
                 color: AD.danger,
-                tooltip: 'Remove these hours',
+                tooltip: uiCopy(UiMessage.m_remove_these_hours_36179fff38),
                 onTap: () {
                   final next = [...?_schedule?.rules]..removeAt(index);
                   _save(_schedule!.copyWith(rules: next));
@@ -810,8 +815,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       final omitted = horizonPersistenceNotice(saved);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(omitted == null
-              ? 'Availability updated'
-              : 'Availability updated. $omitted')));
+              ? uiCopy(UiMessage.m_availability_updated_a407f6f24e)
+              : uiCopy(UiMessage.m_availability_updated_omitted_54e0d45c8b, {'omitted': (omitted).toString()}))));
     } catch (e) {
       if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
@@ -843,7 +848,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     final value = await _editText('Timezone', schedule.timezone,
         helper: 'An IANA name such as Asia/Kolkata. Every listing shares it.');
     if (value == null) return;
-    final error = validateTimezone(value);
+    final error = knownUiError(validateTimezone(value));
     if (error != null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
@@ -872,9 +877,9 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: Text('Cancel', style: calLinkStyle)),
+                      child: UiText(UiMessage.m_cancel_19766ed6cc, style: calLinkStyle)),
                   ZineButton(
-                      label: 'Save',
+                      label: uiCopy(UiMessage.m_save_1509f561f2),
                       variant: ZineButtonVariant.blue,
                       fontSize: 14,
                       onPressed: () =>
@@ -915,7 +920,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
             await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
         if (opened && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Finish in Google, then tap Sync busy times now.')));
+              content: UiText(UiMessage.m_finish_in_google_then_tap_e371c83e06)));
         }
       } catch (_) {}
     } catch (error) {
@@ -977,15 +982,15 @@ class _RuleDialogState extends State<CalendarRuleDialog> {
   String? _error;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return AlertDialog(
         backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl)),
-        title: Text('Add working hours', style: calTitle(17)),
+        title: UiText(UiMessage.m_add_working_hours_7161b39ef9, style: calTitle(17)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineDropdown<int>(
-              label: 'Day',
+              label: uiCopy(UiMessage.m_day_8f2364e11b),
               value: _weekday,
               items: List.generate(
                   7,
@@ -1024,7 +1029,7 @@ class _RuleDialogState extends State<CalendarRuleDialog> {
           ]),
           const SizedBox(height: Msg.s2),
           ZineButton(
-              label: _endOfDay ? 'Ends at midnight: on' : 'Ends at midnight',
+              label: _endOfDay ? uiCopy(UiMessage.m_ends_at_midnight_on_76ffdd7a2d) : uiCopy(UiMessage.m_ends_at_midnight_ee44c9711d),
               variant: _endOfDay
                   ? ZineButtonVariant.blue
                   : ZineButtonVariant.ghost,
@@ -1045,9 +1050,9 @@ class _RuleDialogState extends State<CalendarRuleDialog> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: calLinkStyle)),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: calLinkStyle)),
           ZineButton(
-              label: 'Add hours',
+              label: uiCopy(UiMessage.m_add_hours_260f780d01),
               variant: ZineButtonVariant.blue,
               fontSize: 14,
               onPressed: () {
@@ -1068,7 +1073,7 @@ class _RuleDialogState extends State<CalendarRuleDialog> {
                         endMin: endMin));
               })
         ],
-      );
+      ); }
 
   Widget _readOnlyTile(String label, String text) => ZineCard(
       radius: Msg.rMd,

@@ -1,0 +1,142 @@
+[
+  {
+    "path": "content/help/account-and-safety/delete-your-account.md",
+    "namespace": "web-content-43a911a5f8c6",
+    "messages": 63,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/account-and-safety/recording-and-consent.md",
+    "namespace": "web-content-2bfdb6547ffd",
+    "messages": 28,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/account-and-safety/report-a-problem.md",
+    "namespace": "web-content-316ef9f30757",
+    "messages": 50,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/account-and-safety/verification-and-kyc.md",
+    "namespace": "web-content-0df93a4e0f46",
+    "messages": 36,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/billing/gst-and-tax.md",
+    "namespace": "web-content-b24c3952cbe6",
+    "messages": 23,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/billing/platform-fee.md",
+    "namespace": "web-content-372f7d9f81e0",
+    "messages": 20,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/billing/refunds.md",
+    "namespace": "web-content-89ba676ad0a2",
+    "messages": 28,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/billing/withdrawing-your-earnings.md",
+    "namespace": "web-content-f99663f48df5",
+    "messages": 37,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/booking-and-paying/book-a-1-1-session.md",
+    "namespace": "web-content-0d79ef9997d8",
+    "messages": 21,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/booking-and-paying/find-a-creator-or-show.md",
+    "namespace": "web-content-58a7f11bffa5",
+    "messages": 29,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/booking-and-paying/how-to-contact-a-creator.md",
+    "namespace": "web-content-4bba5a02ab26",
+    "messages": 14,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/booking-and-paying/join-a-live-show.md",
+    "namespace": "web-content-27f806dfa45e",
+    "messages": 26,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/booking-and-paying/tokens-explained.md",
+    "namespace": "web-content-aab91ac9aa0e",
+    "messages": 18,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/creators/create-a-listing.md",
+    "namespace": "web-content-4a1b04cb9de2",
+    "messages": 49,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/creators/going-live-and-running-a-session.md",
+    "namespace": "web-content-a7eb34ea13d6",
+    "messages": 26,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/creators/listing-review-and-approval.md",
+    "namespace": "web-content-0a5f9bbe6df0",
+    "messages": 25,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/creators/pricing-your-listing.md",
+    "namespace": "web-content-fb16b19b0ae4",
+    "messages": 21,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/getting-started/create-your-account.md",
+    "namespace": "web-content-3328de7a2f28",
+    "messages": 39,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/getting-started/web-vs-app.md",
+    "namespace": "web-content-674f3e2c614c",
+    "messages": 41,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  },
+  {
+    "path": "content/help/getting-started/what-is-avatok.md",
+    "namespace": "web-content-1109e302f501",
+    "messages": 33,
+    "status": "authored-markdown-extracted-native-review-pending",
+    "excluded": "Code blocks and authored raw HTML (explicit source migration required)"
+  }
+]

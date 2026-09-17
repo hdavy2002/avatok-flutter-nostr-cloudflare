@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // AgentCta — the action island on the PUBLIC vision agent page.
 //
 // Ownership boundary (PHASE-4 §3): the live session is Phase 5. So this island
@@ -45,6 +47,8 @@ export interface AgentCtaProps {
 }
 
 export function AgentCta({ agentId, free = false, initialBusy = false }: AgentCtaProps) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   const [language, setLanguage] = useState('en-US');
   const [busy, setBusy] = useState(initialBusy);
   // Guard the navigation against double-tap (idempotency on the client, §Idempotency).
@@ -82,9 +86,7 @@ export function AgentCta({ agentId, free = false, initialBusy = false }: AgentCt
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <label className="flex w-full max-w-xs flex-col gap-1.5">
-        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-          Coach me in
-        </span>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.be5a5a0f2e414962" source="Coach me in" />{" "}</span>
         <select
           className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-2.5 font-body font-bold text-[15px] text-ink shadow-zine-xs outline-none"
           value={language}
@@ -103,16 +105,14 @@ export function AgentCta({ agentId, free = false, initialBusy = false }: AgentCt
           variant="lime"
           fullWidth
           disabled={busy}
-          label={busy ? 'Agent busy — try soon' : 'Talk now'}
+          label={busy ? uiT("web-vision.d51a7fbc00b56b58","Agent busy — try soon") : uiT("web-vision.438e3083daedfaa6","Talk now")}
           onClick={() => go('now')}
         />
-        <Button variant="blue" fullWidth label="Book a time" onClick={() => go('book')} />
+        <Button variant="blue" fullWidth label={uiT("web-vision.f8d5b30d2f035606","Book a time")} onClick={() => go('book')} />
       </div>
 
-      <p className="max-w-xs text-center font-body text-[12px] text-inkMute">
-        Camera + mic access required. You'll grant camera consent on the next screen.
-        {' '}
-        {free ? 'Free to use — the creator covers it.' : 'Billed per minute from your AvaWallet.'}
+      <p className="max-w-xs text-center font-body text-[12px] text-inkMute"><UiText id="web-vision.f5b1ad67d17fd9f8" source="Camera + mic access required. You'll grant camera consent on the next screen." />{" "}{' '}
+        {free ? uiT("web-vision.aa6d92e32aa9b3a0","Free to use — the creator covers it.") : uiT("web-vision.94e76be55f7f0f05","Billed per minute from your AvaWallet.")}
       </p>
     </div>
   );

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -79,7 +81,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           foregroundColor: AD.textPrimary,
-          title: Text('Campaign analytics', style: ADText.appTitle()),
+          title: UiText(UiMessage.m_campaign_analytics_59ea3779a7, style: ADText.appTitle()),
         ),
         body: SafeArea(
           child: SingleChildScrollView(
@@ -93,9 +95,10 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _header(title: 'Campaigns'),
+      appBar: _header(title: uiCopy(UiMessage.m_campaigns_30e9a08939)),
       body: SafeArea(
         child: FutureBuilder<List<Campaign>>(
           future: _future,
@@ -191,7 +194,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
                 PhosphorIcon(PhosphorIcons.megaphone(PhosphorIconsStyle.duotone),
                     size: 48, color: AD.textTertiary),
                 const SizedBox(height: Msg.s4),
-                Text('No campaigns yet — tap + to create one',
+                UiText(UiMessage.m_no_campaigns_yet_tap_to_6fe3e3a43f,
                     textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
               ]),
             ),
@@ -239,7 +242,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
           const SizedBox(width: Msg.s2),
-          Text('Retry', style: ADText.rowName()),
+          UiText(UiMessage.m_retry_942087cc2d, style: ADText.rowName()),
         ]),
       ),
     );
@@ -261,7 +264,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: Text(c.name.isEmpty ? 'Untitled campaign' : c.name,
+              child: Text(c.name.isEmpty ? uiCopy(UiMessage.m_untitled_campaign_ed0fd179f1) : c.name,
                   style: ADText.rowName().copyWith(fontSize: 16),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -273,17 +276,17 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
           const SizedBox(height: Msg.s2),
           Row(children: [
             Expanded(
-              child: Text('${c.nDone} of ${c.nTotal} called',
+              child: UiText(UiMessage.m_value1_of_value2_called_046dd09985, params: {'value1': (c.nDone).toString(), 'value2': (c.nTotal).toString()},
                   style: ADText.preview(c: AD.textSecondary)),
             ),
-            Text('${c.nAnswered} answered',
+            UiText(UiMessage.m_value1_answered_64884815de, params: {'value1': (c.nAnswered).toString()},
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
           const SizedBox(height: Msg.s1),
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
             const SizedBox(width: Msg.s1),
-            Text('${c.tokensSpent} tokens spent', style: ADText.statCaption(c: AD.textTertiary)),
+            UiText(UiMessage.m_value1_tokens_spent_a733552531, params: {'value1': (c.tokensSpent).toString()}, style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ]),
       ),

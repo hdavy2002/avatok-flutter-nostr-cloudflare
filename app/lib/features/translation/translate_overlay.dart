@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // TranslateOverlay — the on-call "Translate" menu (sits on top of the video).
 // Drop into the call screen's Stack:
 //
@@ -78,7 +81,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
 
   Future<void> _openMenu() async {
     if (RemoteConfig.translationEnabled == false) {
-      _snack('Live translation is currently unavailable.');
+      _snack(uiCopy(UiMessage.m_live_translation_is_currently_unavailable_6313117ab6));
       return;
     }
     final lang = await showModalBottomSheet<String>(
@@ -102,9 +105,9 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         retryLang: lang,
       );
     } else if (err == 'disabled') {
-      _snack('Live translation is currently unavailable.');
+      _snack(uiCopy(UiMessage.m_live_translation_is_currently_unavailable_6313117ab6));
     } else if (err != null) {
-      _snack('Could not start translation — try again.');
+      _snack(uiCopy(UiMessage.m_could_not_start_translation_try_5943169ddd));
     }
   }
 
@@ -131,18 +134,18 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
               color: _coinAccent),
           const SizedBox(width: Msg.s3),
           Expanded(
-              child: Text('Tokens needed',
+              child: UiText(UiMessage.m_tokens_needed_0b0990e8fb,
                   style: ADText.threadName().copyWith(fontSize: 17))),
         ]),
         content: Text(message,
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx),
-              child: Text('Not now',
+              child: UiText(UiMessage.m_not_now_a0e63d7c71,
                   style: ADText.tabLabel(c: AD.textSecondary)
                       .copyWith(fontSize: 13))),
           ZineButton(
-            label: 'Top up wallet',
+            label: uiCopy(UiMessage.m_top_up_wallet_43fa526d42),
             fontSize: 16,
             onPressed: () async {
               Navigator.pop(dCtx);
@@ -150,7 +153,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
               if (!mounted || !done) return;
               if (resume) {
                 final ok = await _engine.resume();
-                if (!ok && mounted) _snack('Top-up not confirmed yet — tap Translate again once your Tokens arrive.');
+                if (!ok && mounted) _snack(uiCopy(UiMessage.m_top_up_not_confirmed_yet_9fe8a37150));
               } else if (retryLang != null) {
                 await _start(retryLang);
               }
@@ -174,7 +177,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         ),
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Top up Tokens',
+          UiText(UiMessage.m_top_up_tokens_a18b5e88bc,
               style: ADText.appTitle().copyWith(fontSize: 19)),
           const SizedBox(height: Msg.s1),
           const ZineSticker('\u20b9300 per hour · 5 tokens / min',
@@ -195,7 +198,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     final t = await MoneyApi.topup(cents);
     final url = t['checkout_url']?.toString();
     if (url == null || url.isEmpty) {
-      _snack('Top-up is currently unavailable.');
+      _snack(uiCopy(UiMessage.m_top_up_is_currently_unavailable_665b20222e));
       return false;
     }
     try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); } catch (_) {}
@@ -208,16 +211,16 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('Finish the top-up',
+        title: UiText(UiMessage.m_finish_the_top_up_24cfa81d22,
             style: ADText.threadName().copyWith(fontSize: 17)),
-        content: Text('Complete the payment in your browser, then come back and tap Done.',
+        content: UiText(UiMessage.m_complete_the_payment_in_your_1d6fe00535,
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, false),
-              child: Text('Cancel',
+              child: UiText(UiMessage.m_cancel_19766ed6cc,
                   style: ADText.tabLabel(c: AD.textSecondary)
                       .copyWith(fontSize: 13))),
-          ZineButton(label: 'Done', fontSize: 16, onPressed: () => Navigator.pop(dCtx, true)),
+          ZineButton(label: uiCopy(UiMessage.m_done_11a6767d56), fontSize: 16, onPressed: () => Navigator.pop(dCtx, true)),
         ],
       ),
     );
@@ -232,6 +235,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final s = _engine.state.value;
     final active = s == TranslationState.active;
     final lang = _engine.targetLang.value;
@@ -269,7 +273,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
                         color: AD.textPrimary, size: 17),
                 const SizedBox(width: Msg.s1),
                 Text(
-                  active ? '${translationLangLabel(lang ?? '')} · tap to stop' : 'Translate',
+                  active ? uiCopy(UiMessage.m_value1_tap_to_stop_dbcca9b88e, {'value1': (translationLangLabel(lang ?? '')).toString()}) : uiCopy(UiMessage.m_translate_8fe147696f),
                   style: ADText.rowName(c: AD.textPrimary).copyWith(fontSize: 13),
                 ),
               ]),
@@ -290,8 +294,8 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
                     border: Border.all(color: AD.borderControl, width: 1),
                     boxShadow: Msg.lift,
                   ),
-                  child: Text(
-                    '$min min · ${TranslationApi.quoteTokens(min)} tokens (\u20b9300/h)',
+                  child: UiText(
+                    UiMessage.m_min_min_value2_tokens_300_10bbd57147, params: {'min': (min).toString(), 'value2': (TranslationApi.quoteTokens(min)).toString()},
                     style: ADText.statCaption(c: AD.textSecondary),
                   ),
                 ),
@@ -320,6 +324,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final list = kTranslationLangs
         .where((l) => _q.isEmpty || l.label.toLowerCase().contains(_q) || l.code.toLowerCase().contains(_q))
         .toList();
@@ -345,16 +350,16 @@ class _LanguageSheetState extends State<_LanguageSheet> {
               color: _aiAccent),
           const SizedBox(width: Msg.s3),
           Expanded(
-              child: Text('Select language',
+              child: UiText(UiMessage.m_select_language_71a202e247,
                   style: ADText.appTitle().copyWith(fontSize: 19))),
         ]),
         const SizedBox(height: Msg.s1),
-        Text('Incoming voice translated live · \u20b9300 per hour in Tokens',
+        UiText(UiMessage.m_incoming_voice_translated_live_300_10141650cb,
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
         const SizedBox(height: Msg.s3),
         ZineField(
           controller: _search,
-          hint: 'Search 70+ languages',
+          hint: uiCopy(UiMessage.m_search_70_languages_302c0a66b3),
           leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
           onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
         ),

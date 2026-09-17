@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 // WhatsApp-parity chat input bar + emoji/GIF/sticker panel (STREAM E).
 //
 // Layout — [AVA-COMPOSER-MODES-1] 2026-08-15. Secondary controls live on a
@@ -179,6 +182,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [UI-CHAT-2026] Was `AD.headerFooter` — indigo, under a toolbar whose
     // every glyph is an ON-WHITE ink token (`AD.iconClipOnWhite` and friends
     // all alias near-black `AD.iconNeutral`). Warm paper is the surface those
@@ -203,14 +207,14 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                     ? PhosphorIcons.keyboard(PhosphorIconsStyle.regular)
                     : PhosphorIcons.smiley(PhosphorIconsStyle.regular),
                 color: AD.iconEmoji,
-                tooltip: 'Emoji, GIFs & stickers',
+                tooltip: uiCopy(UiMessage.m_emoji_gifs_stickers_6c291453cf),
                 onTap: _toggleEmoji,
               ),
               if (widget.onMention != null)
                 _barIcon(
                   icon: PhosphorIcons.at(PhosphorIconsStyle.regular),
                   color: MentionTextController.mentionBlue,
-                  tooltip: 'Mention a chat member',
+                  tooltip: uiCopy(UiMessage.m_mention_a_chat_member_e633502832),
                   onTap: widget.onMention!,
                 ),
               _barIcon(
@@ -222,19 +226,19 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                 // the same Indian palette as the rest of the thread.
                 color: AD.textOnInput,
                 backgroundColor: AD.haldi,
-                tooltip: 'Paste',
+                tooltip: uiCopy(UiMessage.m_paste_f3380f7b44),
                 onTap: widget.onPaste,
               ),
               _barIcon(
                 icon: PhosphorIcons.paperclip(PhosphorIconsStyle.regular),
                 color: AD.iconClipOnWhite,
-                tooltip: 'Attach a file',
+                tooltip: uiCopy(UiMessage.m_attach_a_file_21298c62c8),
                 onTap: widget.onAttach,
               ),
               _barIcon(
                 icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
                 color: AD.iconCameraOnWhite,
-                tooltip: 'Take a photo',
+                tooltip: uiCopy(UiMessage.m_take_a_photo_996e6a73ea),
                 onTap: widget.onCamera,
               ),
             ]),
@@ -270,7 +274,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                               .map((item) => item.type == ContextMenuButtonType.paste
                                   ? ContextMenuButtonItem(
                                       type: ContextMenuButtonType.paste,
-                                      label: 'Paste',
+                                      label: uiCopy(UiMessage.m_paste_f3380f7b44),
                                       onPressed: () {
                                         editableState.hideToolbar();
                                         widget.onPaste();

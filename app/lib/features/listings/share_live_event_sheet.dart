@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -52,7 +55,7 @@ class ShareLiveEventSheet extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: _url));
     Analytics.capture('commercial_live_link_copied', {'listing_id': listingId});
     if (context.mounted) {
-      showAdToast(context, message: 'Event link copied');
+      showAdToast(context, message: uiCopy(UiMessage.m_event_link_copied_4b1ef043ae));
     }
   }
 
@@ -82,7 +85,7 @@ class ShareLiveEventSheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -115,7 +118,7 @@ class ShareLiveEventSheet extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Your live event is published', style: ADText.rowName()),
+                    UiText(UiMessage.m_your_live_event_is_published_6bc0eb21b7, style: ADText.rowName()),
                     Text(title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -142,13 +145,13 @@ class ShareLiveEventSheet extends StatelessWidget {
                     Text(fmtWhen(startsAt), style: ADText.rowName()),
                   ],
                   const SizedBox(height: Msg.s2),
-                  Text(
-                    'Anyone can view this event page. Only customers with an account-bound ticket can enter the stream.',
+                  UiText(
+                    UiMessage.m_anyone_can_view_this_event_1ea2e372c0,
                     style: ADText.preview(c: AD.textPrimary),
                   ),
                   if (ticketCount > 0) ...[
                     const SizedBox(height: Msg.s2),
-                    Text('$ticketCount ticket${ticketCount == 1 ? '' : 's'} reserved',
+                    UiText(UiMessage.m_ticketcount_ticket_value2_reserved_2d226ba30f, params: {'ticketCount': (ticketCount).toString(), 'value2': (ticketCount == 1 ? '' : 's').toString()},
                         style: ADText.rowName()),
                   ],
                 ],
@@ -159,7 +162,7 @@ class ShareLiveEventSheet extends StatelessWidget {
               Expanded(
                 child: _ShareAction(
                   icon: PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                  label: 'Copy',
+                  label: uiCopy(UiMessage.m_copy_e21f935f11),
                   onTap: () => _copy(context),
                 ),
               ),
@@ -167,7 +170,7 @@ class ShareLiveEventSheet extends StatelessWidget {
               Expanded(
                 child: _ShareAction(
                   icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
-                  label: 'Share',
+                  label: uiCopy(UiMessage.m_share_29887a5ff9),
                   onTap: _share,
                 ),
               ),
@@ -175,7 +178,7 @@ class ShareLiveEventSheet extends StatelessWidget {
               Expanded(
                 child: _ShareAction(
                   icon: PhosphorIcons.whatsappLogo(PhosphorIconsStyle.bold),
-                  label: 'WhatsApp',
+                  label: uiCopy(UiMessage.m_whatsapp_6a40edf1fc),
                   onTap: () => _openChannel('whatsapp'),
                 ),
               ),
@@ -183,14 +186,14 @@ class ShareLiveEventSheet extends StatelessWidget {
               Expanded(
                 child: _ShareAction(
                   icon: PhosphorIcons.envelope(PhosphorIconsStyle.bold),
-                  label: 'Email',
+                  label: uiCopy(UiMessage.m_email_969ccbd3cf),
                   onTap: () => _openChannel('email'),
                 ),
               ),
             ]),
           ]),
         ),
-      );
+      ); }
 }
 
 class _ShareAction extends StatelessWidget {
@@ -201,7 +204,7 @@ class _ShareAction extends StatelessWidget {
   const _ShareAction({required this.icon, required this.label, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Material(
         color: AD.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Msg.rMd),
@@ -222,5 +225,5 @@ class _ShareAction extends StatelessWidget {
             ]),
           ),
         ),
-      );
+      ); }
 }

@@ -2649,8 +2649,24 @@ export const PERMANENT_FREE_COMMUNICATION = Object.freeze({
   conferenceVideoTokensPerHour: 0,
 });
 
+// [PAYMENTS-DISABLED-1] India is the only supported market and Tokens remain
+// 1 token = ₹1, but every money-in provider is retired. Keep these keys in the
+// public shape for installed clients and historical config blobs; force them
+// off after overrides so a secret or KV edit can never resurrect a rail.
+export const PERMANENTLY_DISABLED_PAYMENT_FLAGS = Object.freeze({
+  walletRealMoney: false,
+  billingEnabled: false,
+  playTopupEnabled: false,
+  cashfreeEnabled: false,
+  guestCheckoutEnabled: false,
+  razorpayEnabled: false,
+  paytmEnabled: false,
+  stripeIntlEnabled: false,
+  payGatewayPickerEnabled: false,
+});
+
 export function enforcePermanentFreeCommunication(config: PlatformConfig): PlatformConfig {
-  return { ...config, ...PERMANENT_FREE_COMMUNICATION };
+  return { ...config, ...PERMANENT_FREE_COMMUNICATION, ...PERMANENTLY_DISABLED_PAYMENT_FLAGS };
 }
 
 // ---------------------------------------------------------------------------

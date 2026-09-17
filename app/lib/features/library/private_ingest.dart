@@ -1,3 +1,4 @@
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import '../../core/brain_api.dart';
@@ -16,15 +17,15 @@ import '../avatok/media.dart';
 class PrivateIngest {
   /// Returns a human-readable result string, or throws on hard failure.
   static Future<String> ingest(LibraryItem item) async {
-    if (!item.isPrivate) return 'This file is public — AvaBrain already knows it.';
+    if (!item.isPrivate) return uiCopy(UiMessage.m_this_file_is_public_avabrain_21c62795ce);
     final id = ApiAuth.identity;
     if (id == null || item.encBlob == null || item.encBlob!.isEmpty) {
-      return "Can't read this file on this device.";
+      return uiCopy(UiMessage.m_can_t_read_this_file_0398ec0ca4);
     }
     // Unwrap the decryption material (encrypted to me) → reconstruct the handle.
     final keyMat = await AccountKey.I.ensureHex();
     final clear = keyMat == null ? null : await Vault.decrypt(item.encBlob!, keyMat);
-    if (clear == null) return "Couldn't unlock this file's key on this device.";
+    if (clear == null) return uiCopy(UiMessage.m_couldn_t_unlock_this_file_cd96dd05da);
     final mat = jsonDecode(clear) as Map<String, dynamic>;
     final media = ChatMedia(
       kind: _kindFor(item.category),
@@ -44,7 +45,7 @@ class PrivateIngest {
       final bytes = await MediaService.downloadAndDecrypt(media);
       String text;
       try { text = utf8.decode(bytes); } catch (_) { text = ''; }
-      if (text.trim().isEmpty) return 'No readable text found in this file.';
+      if (text.trim().isEmpty) return uiCopy(UiMessage.m_no_readable_text_found_in_c1c3227fd8);
       summary = text.replaceAll(RegExp(r'\s+'), ' ').trim();
       summary = summary.length > 600 ? summary.substring(0, 600) : summary;
     } else {
@@ -55,12 +56,12 @@ class PrivateIngest {
 
     final stored = await BrainApi.remember(facts: [
       {
-        'fact_type': 'file',
-        'content': 'Private file "${item.name}" (${item.category}): $summary',
+        'fact_type': uiCopy(UiMessage.m_file_3b9c358f36),
+        'content': uiCopy(UiMessage.m_private_file_value1_value2_summary_44cec0c4e7, {'value1': (item.name).toString(), 'value2': (item.category).toString(), 'summary': (summary).toString()}),
         'confidence': 0.6,
       }
     ]);
-    return stored > 0 ? 'AvaBrain learned this file (on-device).' : 'Nothing new to learn.';
+    return stored > 0 ? uiCopy(UiMessage.m_avabrain_learned_this_file_on_7207079c44) : uiCopy(UiMessage.m_nothing_new_to_learn_4659c6fab7);
   }
 
   static MediaKind _kindFor(String category) {

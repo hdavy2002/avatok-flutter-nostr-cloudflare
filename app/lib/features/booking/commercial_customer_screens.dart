@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -38,11 +41,12 @@ class BookingSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final consult = result.kind == 'consult_1to1';
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-          title: 'Booking confirmed',
+          title: uiCopy(UiMessage.m_booking_confirmed_32629c7e26),
           markWord: 'confirmed',
           tag: 'account bound'),
       body: ListView(
@@ -56,13 +60,13 @@ class BookingSuccessScreen extends StatelessWidget {
           const SizedBox(height: Msg.s4),
           Text(
               consult
-                  ? 'Your consultation is booked.'
-                  : 'Your ticket is reserved.',
+                  ? uiCopy(UiMessage.m_your_consultation_is_booked_ecfde252b7)
+                  : uiCopy(UiMessage.m_your_ticket_is_reserved_5c227f7e8d),
               textAlign: TextAlign.center,
               style: ADText.appTitle()),
           const SizedBox(height: Msg.s2),
-          Text(
-            'The server tied this ${consult ? 'booking' : 'ticket'} to your AvaTOK account. Public links do not transfer access.',
+          UiText(
+            UiMessage.m_the_server_tied_this_value1_02374c0e5a, params: {'value1': (consult ? 'booking' : 'ticket').toString()},
             textAlign: TextAlign.center,
             style: ADText.preview(),
           ),
@@ -83,8 +87,8 @@ class BookingSuccessScreen extends StatelessWidget {
                 _row('Receipt reference',
                     result.policySnapshotId ?? result.orderId!),
               const SizedBox(height: Msg.s2),
-              Text(
-                  'Your receipt appears after server settlement. Refund status follows the accepted policy and provider evidence.',
+              UiText(
+                  UiMessage.m_your_receipt_appears_after_server_f9ccace586,
                   style: ADText.sectionLabel(c: AD.textSecondary)),
             ]),
           ),
@@ -100,7 +104,7 @@ class BookingSuccessScreen extends StatelessWidget {
                 }
               },
               icon: Icon(PhosphorIcons.calendarPlus(PhosphorIconsStyle.bold)),
-              label: const Text('Add to calendar'),
+              label: const UiText(UiMessage.m_add_to_calendar_d0efffa65e),
             ),
             const SizedBox(height: Msg.s2),
           ],
@@ -111,12 +115,12 @@ class BookingSuccessScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const MySessionsScreen()),
             ),
             icon: Icon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-            label: const Text('View tickets & appointments'),
+            label: const UiText(UiMessage.m_view_tickets_appointments_b896386f55),
           ),
           const SizedBox(height: Msg.s2),
           OutlinedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: const UiText(UiMessage.m_done_11a6767d56),
           ),
         ],
       ),
@@ -142,7 +146,7 @@ class BookingSuccessScreen extends StatelessWidget {
     final entitlement = result.entitlementId;
     if (entitlement == null || entitlement.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Calendar entry is waiting for the server entitlement.'),
+        content: UiText(UiMessage.m_calendar_entry_is_waiting_for_18cb623cef),
       ));
       return;
     }
@@ -164,7 +168,7 @@ class BookingSuccessScreen extends StatelessWidget {
       content: Text(message),
       action: added.ok || added.alreadyAdded
           ? SnackBarAction(
-              label: 'Open',
+              label: uiCopy(UiMessage.m_open_ed077f3d81),
               onPressed: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const AvaCalendarScreen())),
             )
@@ -283,10 +287,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'My Tickets & Appointments',
+        title: uiCopy(UiMessage.m_my_tickets_appointments_5f4dcd2f3f),
         markWord: 'tickets',
         tag: 'account bound',
         actions: [
@@ -413,11 +418,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           Expanded(
             child: Text(
             session.isRefunded
-                ? 'Refunded'
+                ? uiCopy(UiMessage.m_refunded_117f6a7cf0)
                 : session.isCancelled
-                    ? 'Cancelled'
+                    ? uiCopy(UiMessage.m_cancelled_d353a99eb4)
                     : session.isCompleted
-                        ? 'Completed'
+                        ? uiCopy(UiMessage.m_completed_22a970d2e5)
                         : session.joinLabel,
             style: ADText.sectionLabel(
                 c: session.isRefunded ? AD.danger : AD.textSecondary),
@@ -440,7 +445,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     builder: (_) =>
                         ListingDetailScreen(listingId: session.listingId))),
             icon: Icon(PhosphorIcons.eye(PhosphorIconsStyle.bold), size: 16),
-            label: Text(session.isConsultation ? 'View appointment' : 'View event'),
+            label: Text(session.isConsultation ? uiCopy(UiMessage.m_view_appointment_36fe7ad8b8) : uiCopy(UiMessage.m_view_event_691f700a56)),
           ),
           if (session.sessionId != null && session.sessionId!.isNotEmpty)
             TextButton.icon(
@@ -451,27 +456,27 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           CommercialReceiptScreen(session: session))),
               icon: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.bold),
                   size: 16),
-              label: const Text('View receipt'),
+              label: const UiText(UiMessage.m_view_receipt_3e6385652e),
             ),
           if (session.isRefunded)
             TextButton.icon(
               onPressed: () => _refundDetails(session),
               icon: Icon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 16),
-              label: const Text('Refund details'),
+              label: const UiText(UiMessage.m_refund_details_f828ab9ffd),
             ),
           if (session.orderId?.isNotEmpty == true && !session.isRefunded && !session.isCancelled)
             TextButton.icon(
               onPressed: _resendingOrders.contains(session.orderId)
                   ? null : () => _resendConfirmation(session),
               icon: Icon(PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold), size: 16),
-              label: Text(_resendingOrders.contains(session.orderId) ? 'Requesting…' : 'Resend email'),
+              label: Text(_resendingOrders.contains(session.orderId) ? uiCopy(UiMessage.m_requesting_1db9285ae3) : uiCopy(UiMessage.m_resend_email_4f44603ef6)),
             ),
           if (!session.isRefunded && !session.isCancelled && !session.isCompleted)
             TextButton.icon(
               onPressed: () => _addToCalendar(session),
               icon: Icon(PhosphorIcons.calendarPlus(PhosphorIconsStyle.bold),
                   size: 16),
-              label: const Text('Add to calendar'),
+              label: const UiText(UiMessage.m_add_to_calendar_d0efffa65e),
             ),
         ]),
       ]),
@@ -611,7 +616,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       content: Text(message),
       action: result.ok || result.alreadyAdded
           ? SnackBarAction(
-              label: 'Open',
+              label: uiCopy(UiMessage.m_open_ed077f3d81),
               onPressed: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const AvaCalendarScreen())),
             )
@@ -844,6 +849,7 @@ class _JoinLinkResolverScreenState extends State<JoinLinkResolverScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -871,12 +877,12 @@ class _JoinLinkResolverScreenState extends State<JoinLinkResolverScreen> {
                           onPressed: () => _goto(const MySessionsScreen()),
                           icon: Icon(
                               PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-                          label: const Text('View tickets & appointments'),
+                          label: const UiText(UiMessage.m_view_tickets_appointments_b896386f55),
                         )
                       else
                         OutlinedButton(
                           onPressed: () => Navigator.of(context).maybePop(),
-                          child: const Text('Close'),
+                          child: const UiText(UiMessage.m_close_7d9eb7acb1),
                         ),
                     ],
                   ),
@@ -946,33 +952,33 @@ class _CommercialSupportDiagnosticsScreenState
     await Clipboard.setData(ClipboardData(text: _exportText()));
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Safe session diagnostics copied.')));
+          const SnackBar(content: UiText(UiMessage.m_safe_session_diagnostics_copied_aafd679359)));
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
         backgroundColor: AD.bg,
         appBar: ZineAppBar(
-            title: 'Session support', markWord: 'support', tag: 'safe export'),
+            title: uiCopy(UiMessage.m_session_support_e01d69cf41), markWord: 'support', tag: 'safe export'),
         body: _loading
             ? const Center(
                 child: CircularProgressIndicator(color: AD.primaryBadge))
             : ListView(
                 padding: const EdgeInsets.all(Msg.s5),
                 children: [
-                  Text(
-                      'Share these IDs and states with AvaTOK support. Provider credentials are never included.',
+                  UiText(
+                      UiMessage.m_share_these_ids_and_states_66a8c79046,
                       style: ADText.preview(c: AD.textSecondary)),
                   const SizedBox(height: Msg.s4),
                   Semantics(
                     button: true,
-                    label: 'Copy safe session diagnostics',
+                    label: uiCopy(UiMessage.m_copy_safe_session_diagnostics_d2c23ec39c),
                     child: SizedBox(
                       height: 48,
                       child: FilledButton.icon(
                         onPressed: _copy,
                         icon: Icon(PhosphorIcons.copy(PhosphorIconsStyle.bold)),
-                        label: const Text('Copy diagnostics'),
+                        label: const UiText(UiMessage.m_copy_diagnostics_46fa69e51b),
                       ),
                     ),
                   ),
@@ -989,7 +995,7 @@ class _CommercialSupportDiagnosticsScreenState
                           setState(() => _loading = true);
                           _load();
                         },
-                        child: const Text('Retry'),
+                        child: const UiText(UiMessage.m_retry_942087cc2d),
                       ),
                     ),
                   ] else if (_response!.sessions.isEmpty)
@@ -1003,7 +1009,7 @@ class _CommercialSupportDiagnosticsScreenState
                               '${session.kind} · ${session.bucket.name} · ${session.entitlementId}'),
                 ],
               ),
-      );
+      ); }
 }
 
 class _SupportLine extends StatelessWidget {
@@ -1011,10 +1017,10 @@ class _SupportLine extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: Text(text, style: ADText.preview(c: AD.textSecondary)),
-      );
+      ); }
 }
 
 class CommercialReceiptScreen extends StatefulWidget {
@@ -1052,13 +1058,14 @@ class _CommercialReceiptScreenState extends State<CommercialReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final receipt = _response?.receipts.isNotEmpty == true
         ? _response!.receipts.first
         : null;
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-          title: 'Session receipt',
+          title: uiCopy(UiMessage.m_session_receipt_0b38bef2c8),
           markWord: 'receipt',
           tag: widget.session.title),
       body: _loading
@@ -1091,8 +1098,8 @@ class _CommercialReceiptScreenState extends State<CommercialReceiptScreen> {
                       ]),
                     ),
                   const SizedBox(height: Msg.s4),
-                  Text(
-                      'This receipt is read-only. Refunds and settlement are determined by server policy and signed session evidence.',
+                  UiText(
+                      UiMessage.m_this_receipt_is_read_only_1ad1fc3b1f,
                       style: ADText.preview()),
                 ],
               ),

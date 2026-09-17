@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -111,6 +113,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: PreferredSize(
@@ -129,9 +132,9 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                 const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Text.rich(
-                    const TextSpan(children: [
-                      TextSpan(text: 'Crop', style: TextStyle(color: AD.primaryBadge)),
-                      TextSpan(text: ' photo'),
+                     TextSpan(children: [
+                      TextSpan(text: uiCopy(UiMessage.m_crop_98caf7c43c), style: TextStyle(color: AD.primaryBadge)),
+                      TextSpan(text: uiCopy(UiMessage.m_photo_c6d30c8447)),
                     ]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -177,7 +180,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: AdButton(
-              label: 'Use this photo',
+              label: uiCopy(UiMessage.m_use_this_photo_6347465d2a),
               fullWidth: true,
               fontSize: 18,
               loading: _busy,

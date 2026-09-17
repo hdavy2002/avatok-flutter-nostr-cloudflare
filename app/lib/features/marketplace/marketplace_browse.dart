@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -177,6 +179,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [UI-MARKET-2026] Embedded (Services root already drew the shared header)
     // vs standalone (pushed route → this screen owns the header). See the
     // `embedded` doc on the widget.
@@ -247,8 +250,8 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             },
             decoration: InputDecoration(
               hintText: commercialDiscovery
-                  ? 'Search Marketplace and creator services…'
-                  : 'Search the marketplace…',
+                  ? uiCopy(UiMessage.m_search_marketplace_and_creator_services_8598564245)
+                  : uiCopy(UiMessage.m_search_the_marketplace_bdc6ca1b73),
               hintStyle: TextStyle(color: AD.placeholderOnWhite),
               prefixIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular), color: AD.placeholderOnWhite),
               filled: true,
@@ -326,12 +329,12 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                           size: 44,
                           color: AD.textTertiary),
                       const SizedBox(height: Msg.s3),
-                      Text('Nothing listed here yet',
+                      UiText(UiMessage.m_nothing_listed_here_yet_efaa35f893,
                           textAlign: TextAlign.center,
                           style: ADText.rowName()),
                       const SizedBox(height: Msg.s1),
-                      Text(
-                          'Try “All countries”, clear the category filter, or pull down to refresh.',
+                      UiText(
+                          UiMessage.m_try_all_countries_clear_the_1eaedcfe53,
                           textAlign: TextAlign.center,
                           style: ADText.preview()),
                     ]),
@@ -397,6 +400,7 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Scale with the screen so a 320dp phone does not wrap every headline, but
     // hold a floor and a ceiling — this is a headline, not a fluid unit.
     final display = (MediaQuery.sizeOf(context).width * 0.093).clamp(30.0, 44.0);
@@ -503,6 +507,7 @@ class _BlipRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SizedBox(
       height: 40,
       child: ListView.separated(
@@ -513,7 +518,7 @@ class _BlipRow extends StatelessWidget {
         itemBuilder: (_, i) {
           final blip = blips[i];
           return AdChip(
-            label: '${blip.emoji} ${blip.label}',
+            label: '${blip.emoji} ${authoredUiCopy(blip.label)}',
             active: blip.id == selected,
             onTap: () => onSelect(blip.id),
           );
@@ -749,6 +754,7 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final metrics = CommercialCardMetrics.of(context);
     // [UI-MKT-VERT-1] No fixed height. This block sizes to its rows, and the
     // page it sits in is a scroll view — that is the whole fix for the "BOTTOM
@@ -782,7 +788,7 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                 height: 140,
                 child: _CommercialShelfMessage(
                   icon: PhosphorIcons.cloudSlash(PhosphorIconsStyle.regular),
-                  title: 'Creator services are unavailable',
+                  title: uiCopy(UiMessage.m_creator_services_are_unavailable_41099d95a2),
                   action: 'Try again',
                   onAction: () => setState(_reload),
                 ),
@@ -795,8 +801,8 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                 child: _CommercialShelfMessage(
                   icon: PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
                   title: widget.query.isEmpty
-                      ? 'No creator sessions listed yet'
-                      : 'No creator sessions match this search',
+                      ? uiCopy(UiMessage.m_no_creator_sessions_listed_yet_dfef22b7de)
+                      : uiCopy(UiMessage.m_no_creator_sessions_match_this_863152a54b),
                 ),
               );
             }
@@ -820,7 +826,7 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                   index++;
                   sections.add(_SectionHeading(
                     index: index,
-                    title: group.heading,
+                    title: authoredUiCopy(group.heading),
                     count: filtered.length,
                   ));
                   final blips = _blipsFor(categories, group.id);
@@ -838,7 +844,7 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                     // nothing, which reads as a bug.
                     sections.add(Padding(
                       padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
-                      child: Text('Nothing listed in this category yet',
+                      child: UiText(UiMessage.m_nothing_listed_in_this_category_535b1dd6b6,
                           style: ADText.preview()),
                     ));
                   } else {
@@ -872,8 +878,8 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                     child: _CommercialShelfMessage(
                       icon: PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
                       title: widget.query.isEmpty
-                          ? 'No creator sessions listed yet'
-                          : 'No creator sessions match this search',
+                          ? uiCopy(UiMessage.m_no_creator_sessions_listed_yet_dfef22b7de)
+                          : uiCopy(UiMessage.m_no_creator_sessions_match_this_863152a54b),
                     ),
                   );
                 }
@@ -905,7 +911,7 @@ class _CommercialShelfMessage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 32, color: AD.textTertiary),
           const SizedBox(height: Msg.s2),
@@ -913,7 +919,7 @@ class _CommercialShelfMessage extends StatelessWidget {
           if (action != null && onAction != null)
             TextButton(onPressed: onAction, child: Text(action!)),
         ]),
-      );
+      ); }
 }
 
 /// [UI-MKT-1 · M-D6] Browse grid cell — a thin stateful wrapper that owns the
@@ -949,6 +955,7 @@ class _CardState extends State<_Card> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Fire the impression once this card is built into the tree.
     WidgetsBinding.instance.addPostFrameCallback((_) => _fireImpression(card.id));
     return MarketplaceCard(

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -141,6 +143,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final groups = _filteredGroups;
     final contacts = _filteredContacts;
     final n = _selected.length;
@@ -159,10 +162,10 @@ class _ForwardSheetState extends State<_ForwardSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(children: [
-            Text('Forward to', style: ADText.threadName()),
+            UiText(UiMessage.m_forward_to_1850b44d87, style: ADText.threadName()),
             const Spacer(),
             if (n > 0)
-              Text('$n selected',
+              UiText(UiMessage.m_n_selected_4e80dbeaca, params: {'n': (n).toString()},
                   style: ADText.preview(c: AD.textTertiary)),
           ]),
         ),
@@ -188,7 +191,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
-                    hintText: 'Search groups and contacts',
+                    hintText: uiCopy(UiMessage.m_search_groups_and_contacts_35ecf570ee),
                     hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                   ),
                 ),
@@ -207,8 +210,8 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                       padding: const EdgeInsets.symmetric(vertical: Msg.s6),
                       child: Text(
                           _query.isEmpty
-                              ? 'No groups or contacts yet'
-                              : 'No matches',
+                              ? uiCopy(UiMessage.m_no_groups_or_contacts_yet_6fb24bf1a0)
+                              : uiCopy(UiMessage.m_no_matches_2df01a03ff),
                           style: ADText.preview(c: AD.textSecondary)))
                   : ListView(
                       shrinkWrap: true,
@@ -220,7 +223,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                             target: ForwardTarget.group(g),
                             title: g.name,
                             subtitle:
-                                '${g.members.length} member${g.members.length == 1 ? '' : 's'}',
+                                uiCopy(UiMessage.m_value1_member_value2_5aa441ac19, {'value1': (g.members.length).toString(), 'value2': (g.members.length == 1 ? '' : uiCopy(UiMessage.m_s_043a718774)).toString()}),
                             leading: Avatar(seed: g.id, name: g.name, size: 42),
                           ),
                         if (contacts.isNotEmpty) _sectionHeader('Contacts'),
@@ -248,8 +251,8 @@ class _ForwardSheetState extends State<_ForwardSheet> {
               Expanded(
                 child: Text(
                   n == 0
-                      ? 'Select recipients'
-                      : 'Forwarding to $n recipient${n == 1 ? '' : 's'}',
+                      ? uiCopy(UiMessage.m_select_recipients_d713866cf7)
+                      : uiCopy(UiMessage.m_forwarding_to_n_recipient_value2_67c0ef56b5, {'n': (n).toString(), 'value2': (n == 1 ? '' : 's').toString()}),
                   style: ADText.preview(c: AD.textTertiary),
                 ),
               ),
@@ -330,6 +333,7 @@ class _SendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: AnimatedOpacity(
@@ -343,7 +347,7 @@ class _SendButton extends StatelessWidget {
             borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Send',
+            UiText(UiMessage.m_send_f6f4688ff2,
                 style: ADText.rowName(c: Colors.white)),
             const SizedBox(width: Msg.s1),
             Icon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),

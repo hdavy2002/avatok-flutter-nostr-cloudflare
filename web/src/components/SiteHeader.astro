@@ -1,5 +1,5 @@
 ---
-import { publicImage as optimizePublicArtwork } from '../lib/config';
+import { publicImage } from '../lib/config';
 /*
  * SiteHeader — the standard avaTOK header, site-wide.
  *
@@ -29,6 +29,7 @@ import { publicImage as optimizePublicArtwork } from '../lib/config';
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 import GlobalHeader from './GlobalHeader.astro';
+import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
@@ -65,7 +66,6 @@ interface Props {
   variant?: 'india' | 'global';
   /** Opt-in translation chrome for the India landing experience. */
   indiaLandingLanguage?: boolean;
-  /** Auth pages keep the shared header on phones and hide it at tablet width. */
   authMobileOnly?: boolean;
 }
 
@@ -84,7 +84,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = false, authMobileOnly = false } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -96,6 +96,16 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 ---
 
 {variant === 'global' ? <GlobalHeader sticky={sticky} /> : <>
+{/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
+    the layout because the HOME
+    page does not use Base.astro at all — it emits its own raw document — so a
+    layout-level font link would miss the one page the header matters most on.
+    A stylesheet <link> in the body is honoured by every browser. */}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
+{indiaLandingLanguage && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" />}
+
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
     outside would scroll the band away and pin the bar on its own. */}
@@ -124,7 +134,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    <img src={optimizePublicArtwork('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="avaTOK" width="231" height="90" />
+    <img src={publicImage('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="avaTOK" width="231" height="90" />
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -132,6 +142,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   </nav>
 
   <div class="avh-right">
+    {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-desktop" />}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
@@ -148,10 +159,11 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
       <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
       <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
-    {variant === 'global' && <span class="avh-locale" aria-label="Current country">🌍 Global</span>}
-    {variant === 'global' && <a class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
+    {variant === 'global' && <span data-india-i18n-attr="aria-label:web-common.c8b7fff1b82d47c8" data-i18n="web-common.a723fec7087f1226" class="avh-locale" aria-label="Current country">🌍 Global</span>}
+    {variant === 'global' && <a data-india-i18n-attr="aria-label:web-common.268947545b973f7d" data-i18n="web-common.e632a1efa068f672" class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
+    {variant === 'global' && <a data-india-i18n-attr="aria-label:web-common.bba5b40bdd28c66e" data-i18n="web-common.69374b09b1681162" class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
     </Fragment>
-    <img class="avh-orn" src={optimizePublicArtwork('/ornament-flower.png', { width: 170, fit: 'scale-down' })} alt="" width="85" height="80" aria-hidden="true" />
+    <img class="avh-orn" src={publicImage('/ornament-flower.png', { width: 170, fit: 'scale-down' })} alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
   <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-drawer" aria-haspopup="dialog" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
@@ -164,12 +176,13 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </header>
 
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
-<dialog class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
+<dialog data-india-i18n-attr="aria-label:web-common.3f9abc8733ba366a" class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    <img src={optimizePublicArtwork('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="avaTOK" width="154" height="60" />
-    <button class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
+    <img src={publicImage('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="avaTOK" width="154" height="60" />
+    <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
+  {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
   {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
@@ -183,7 +196,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-mobile-auth avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
   </Fragment>
-  {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
+  {variant === 'global' && <a data-i18n="web-common.a9744a11b7d55a26" class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
 </dialog>
 
@@ -192,6 +205,9 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </>}
 
 <script>
+  if (document.querySelector('[data-india-language-select]')) {
+    import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
+  }
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
   const drawer = document.querySelector<HTMLDialogElement>('#avh-drawer');
   const panel = document.getElementById('avh-mobile');

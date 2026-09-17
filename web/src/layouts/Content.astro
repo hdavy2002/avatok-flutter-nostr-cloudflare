@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../lib/i18n/authoredKey';
 import Base from './Base.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import SiteHeader from '../components/SiteHeader.astro';
@@ -80,15 +81,15 @@ const routeTone = tone ?? (
     <SiteHeader />
 
     <main class={`content ${width === 'wide' ? 'is-wide' : ''}`}>
-      <span class="vertical-issue">avaTOK · THE HUMAN SIDE OF AI · 2026</span>
+      <span data-i18n="web-common.4ae9a3761da9abd3" class="vertical-issue">avaTOK · THE HUMAN SIDE OF AI · 2026</span>
       <header class="content-head">
-        {kicker && <p class="kick">{kicker}</p>}
-        <h1>{title}</h1>
-        {lead && <p class="lead">{lead}</p>}
-        {updatedLabel && <p class="updated">Last updated {updatedLabel}</p>}
+        {kicker && <p data-i18n={authoredKey(kicker)} class="kick">{kicker}</p>}
+        <h1 data-i18n={authoredKey(title)}>{title}</h1>
+        {lead && <p data-i18n={authoredKey(lead)} class="lead">{lead}</p>}
+        {updatedLabel && <p class="updated"><ui-copy style="display:contents" data-i18n="web-common.382ac5f308f76c24">Last updated</ui-copy> {updatedLabel}</p>}
         {helpHref && (
           <p class="help-crosslink">
-            Looking for the plain-English version?{' '}
+            <ui-copy style="display:contents" data-i18n="web-common.f1e3df8857d0448c">Looking for the plain-English version?</ui-copy>{' '}
             <a href={helpHref}>{helpLabel ?? 'Read the help centre'} →</a>
           </p>
         )}

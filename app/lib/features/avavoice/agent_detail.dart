@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -65,7 +68,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
       action: topUp
-          ? SnackBarAction(label: 'Top up', onPressed: () => Navigator.push(
+          ? SnackBarAction(label: uiCopy(UiMessage.m_top_up_79f52e0ce6), onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const WalletScreen())))
           : null,
     ));
@@ -93,13 +96,12 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
       case 402:
         final needed = (r['needed'] as num?)?.toInt();
         Analytics.capture('avavoice_topup_prompted', {'agent': a.id, 'where': 'call_now'});
-        _snack('Not enough Tokens in your wallet'
-            '${needed != null ? ' — you need ${fmtTokens(needed)}' : ''}.', topUp: true);
+        _snack(uiCopy(UiMessage.m_not_enough_tokens_in_your_6a5127983f, {'value1': (needed != null ? uiCopy(UiMessage.m_you_need_value1_44b53241a7, {'value1': (fmtTokens(needed)).toString()}) : '').toString()}), topUp: true);
       case 409:
-        _snack('${a.name} is busy on all lines right now — try again in a moment.');
+        _snack(uiCopy(UiMessage.m_value1_is_busy_on_all_872e29358d, {'value1': (a.name).toString()}));
         _refreshAvailability();
       default:
-        _snack(r['detail']?.toString() ?? r['error']?.toString() ?? 'Could not start the call.');
+        _snack(r['detail']?.toString() ?? r['error']?.toString() ?? uiCopy(UiMessage.m_could_not_start_the_call_cd9eac1b12));
     }
   }
 
@@ -109,7 +111,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     Analytics.capture('avavoice_book_tapped', {'agent': a.id, 'payer_mode': a.payerMode});
     final booked = await showBookingSheet(context, a);
     if (booked == true && mounted) {
-      _snack('Booked! Find it under "My bookings".');
+      _snack(uiCopy(UiMessage.m_booked_find_it_under_my_a0400b9354));
       _load();
     }
   }
@@ -126,10 +128,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final a = _agent;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: ZineAppBar(title: a?.name ?? 'Voice agent', tag: 'ai voice agent'),
+      appBar: ZineAppBar(title: a?.name ?? uiCopy(UiMessage.m_voice_agent_59a9e0144b), tag: 'ai voice agent'),
       body: ZinePaper(
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: AD.tabGroups))
@@ -220,7 +223,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
               ZineCardHead(
                   icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
                   accent: AD.tabCalls,
-                  title: 'About this agent'),
+                  title: uiCopy(UiMessage.m_about_this_agent_dcadf4c969)),
               const SizedBox(height: Msg.s2),
               Text(a.systemProfile, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
             ]),
@@ -270,7 +273,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: widget.bookingId != null
               ? ZineButton(
-                  label: 'Join your booked session',
+                  label: uiCopy(UiMessage.m_join_your_booked_session_fdf7fd320a),
                   icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                   trailingIcon: false,
                   fullWidth: true,
@@ -280,7 +283,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
               : Row(children: [
                   Expanded(
                     child: ZineButton(
-                      label: 'Book a time',
+                      label: uiCopy(UiMessage.m_book_a_time_f8d5b30d2f),
                       variant: ZineButtonVariant.blue,
                       icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
                       trailingIcon: false,
@@ -292,7 +295,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                   const SizedBox(width: Msg.s2),
                   Expanded(
                     child: ZineButton(
-                      label: busy ? 'Agent busy' : 'Call now',
+                      label: busy ? uiCopy(UiMessage.m_agent_busy_f9e486a96d) : uiCopy(UiMessage.m_call_now_2f756f1ec5),
                       icon: busy
                           ? PhosphorIcons.phoneSlash(PhosphorIconsStyle.bold)
                           : PhosphorIcons.phone(PhosphorIconsStyle.bold),

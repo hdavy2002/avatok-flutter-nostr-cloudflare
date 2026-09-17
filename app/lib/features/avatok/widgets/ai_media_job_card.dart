@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -89,6 +92,7 @@ class AiMediaJobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return switch (job.status) {
       AiMediaJobStatus.queued || AiMediaJobStatus.running => _WorkingCard(
           job: job, width: width, onCancel: onCancel,
@@ -121,7 +125,7 @@ class AiMediaJobPreparingCard extends StatelessWidget {
   final double width;
 
   @override
-  Widget build(BuildContext context) => _WorkingCard(job: job, width: width);
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return _WorkingCard(job: job, width: width); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -213,6 +217,7 @@ class _CardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       width: width,
       margin: const EdgeInsets.only(bottom: 8),
@@ -267,6 +272,7 @@ class _WorkingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final music = job.kind == AiMediaJobKind.musicGenerate;
     final accent = music ? Colors.white : AD.iconSearch;
     return _CardShell(
@@ -302,7 +308,7 @@ class _WorkingCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: _pillButton(
-              label: 'Cancel',
+              label: uiCopy(UiMessage.m_cancel_19766ed6cc),
               onPressed: onCancel,
               color: music ? Colors.white : AD.textSecondary,
             ),
@@ -338,6 +344,7 @@ class _AnimatedMediaPlaceholderState extends State<_AnimatedMediaPlaceholder>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final icon = _kindIcon(widget.kind);
     return SizedBox(
       width: widget.size, height: widget.size,
@@ -447,14 +454,14 @@ class _ReadyCard extends StatelessWidget {
 
   List<PopupMenuEntry<String>> _menuItems() {
     final items = <PopupMenuEntry<String>>[];
-    if (onTapOpen != null) items.add(const PopupMenuItem(value: 'open', child: Text('Open')));
-    if (onCopyResult != null) items.add(const PopupMenuItem(value: 'copy', child: Text('Copy result')));
-    if (onDownload != null) items.add(const PopupMenuItem(value: 'download', child: Text('Download')));
-    if (onShare != null) items.add(const PopupMenuItem(value: 'share', child: Text('Share')));
+    if (onTapOpen != null) items.add(const PopupMenuItem(value: 'open', child: UiText(UiMessage.m_open_ed077f3d81)));
+    if (onCopyResult != null) items.add(const PopupMenuItem(value: 'copy', child: UiText(UiMessage.m_copy_result_c467973d01)));
+    if (onDownload != null) items.add(const PopupMenuItem(value: 'download', child: UiText(UiMessage.m_download_d6eafe8235)));
+    if (onShare != null) items.add(const PopupMenuItem(value: 'share', child: UiText(UiMessage.m_share_29887a5ff9)));
     if (onSaveToLibrary != null) {
-      items.add(const PopupMenuItem(value: 'save', child: Text('Save to AvaStorage')));
+      items.add(const PopupMenuItem(value: 'save', child: UiText(UiMessage.m_save_to_avastorage_f613a81eb8)));
     }
-    if (onDelete != null) items.add(const PopupMenuItem(value: 'delete', child: Text('Delete')));
+    if (onDelete != null) items.add(const PopupMenuItem(value: 'delete', child: UiText(UiMessage.m_delete_e2d0a54968)));
     return items;
   }
 
@@ -483,6 +490,7 @@ class _ReadyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final accent = AD.bubbleOutPlay; // green = "done"
     final menu = _menuItems();
     // [MEDIA-CARD-SAFE-1] Read the optional bytes into a local so the two
@@ -542,7 +550,7 @@ class _ReadyCard extends StatelessWidget {
                   ),
                   if (onShare != null)
                     IconButton(
-                      tooltip: 'Share video',
+                      tooltip: uiCopy(UiMessage.m_share_video_401c5cc8bf),
                       onPressed: onShare,
                       icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
                       color: AD.onBandCream.withValues(alpha: 0.7),
@@ -560,8 +568,8 @@ class _ReadyCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'Made on AvaTOK AI',
+                UiText(
+                  UiMessage.m_made_on_avatok_ai_4f8d067e19,
                   style: TextStyle(
                       color: AD.onBandCream.withValues(alpha: 0.54), fontSize: 10),
                 ),
@@ -612,7 +620,7 @@ class _ReadyCard extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                   child: PopupMenuButton<String>(
-                    tooltip: 'Media options',
+                    tooltip: uiCopy(UiMessage.m_media_options_bd2f99c3de),
                     icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
                     padding: EdgeInsets.zero,
                     onSelected: _onMenuSelected,
@@ -629,7 +637,7 @@ class _ReadyCard extends StatelessWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 12, color: accent),
                     const SizedBox(width: 4),
-                    Text('READY', style: ADText.statCaption(c: Colors.white)),
+                    UiText(UiMessage.m_ready_c2e3ac47f4, style: ADText.statCaption(c: Colors.white)),
                   ]),
                 ),
               ),
@@ -669,7 +677,7 @@ class _ReadyCard extends StatelessWidget {
           ),
           if (menu.isNotEmpty)
             PopupMenuButton<String>(
-              tooltip: 'Options',
+              tooltip: uiCopy(UiMessage.m_options_d0db8b5e36),
               icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
               padding: EdgeInsets.zero,
               onSelected: _onMenuSelected,
@@ -693,6 +701,7 @@ class _FailedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return _CardShell(
       width: width,
       borderColor: AD.danger,
@@ -714,14 +723,14 @@ class _FailedCard extends StatelessWidget {
                 style: ADText.rowName(c: AD.danger)),
             if ((job.errorCode ?? '').isNotEmpty) ...[
               const SizedBox(height: 2),
-              Text('Error: ${job.errorCode}', style: ADText.statCaption(c: AD.textTertiary)),
+              UiText(UiMessage.m_error_value1_b5dcb267c0, params: {'value1': (job.errorCode).toString()}, style: ADText.statCaption(c: AD.textTertiary)),
             ],
           ]),
         ),
         if (onRetry != null) ...[
           const SizedBox(width: 8),
           _pillButton(
-            label: 'Retry',
+            label: uiCopy(UiMessage.m_retry_942087cc2d),
             onPressed: onRetry,
             color: AD.danger,
             icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
@@ -745,6 +754,7 @@ class _CancelledCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return _CardShell(
       width: width,
       borderColor: AD.borderControl,
@@ -762,15 +772,15 @@ class _CancelledCard extends StatelessWidget {
         const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('Cancelled', style: ADText.rowName(c: AD.textSecondary)),
+            UiText(UiMessage.m_cancelled_d353a99eb4, style: ADText.rowName(c: AD.textSecondary)),
             const SizedBox(height: 2),
-            Text('This ${job.kind.displayNoun} job was cancelled.',
+            UiText(UiMessage.m_this_value1_job_was_cancelled_95c2d37891, params: {'value1': (job.kind.displayNoun).toString()},
                 maxLines: 2, overflow: TextOverflow.ellipsis, style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ),
         if (onRetry != null) ...[
           const SizedBox(width: 8),
-          _pillButton(label: 'Retry', onPressed: onRetry, color: AD.textSecondary),
+          _pillButton(label: uiCopy(UiMessage.m_retry_942087cc2d), onPressed: onRetry, color: AD.textSecondary),
         ],
       ]),
     );

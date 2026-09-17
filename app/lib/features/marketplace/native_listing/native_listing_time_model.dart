@@ -1,3 +1,4 @@
+import '../../../core/localization/ui_text.dart';
 // [CAL-TIME-1 2026-09-15] Pure, widget-free value objects behind the native
 // listing wizard's Time step (AUDIT-2026-09-15 §1 and §11).
 //
@@ -23,7 +24,7 @@ const List<String> _kMonthNames = <String>[
 /// and availability_schedule_rules both use it).
 const List<String> _kSchemaWeekdays = <String>['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-String nativeListingWeekdayName(int weekday) => _kSchemaWeekdays[weekday.clamp(0, 6).toInt()];
+String nativeListingWeekdayName(int weekday) => authoredUiCopy(_kSchemaWeekdays[weekday.clamp(0, 6).toInt()]);
 
 /// The shortest horizon the server accepts. putSchedule() validates
 /// `horizon_days` as 1..62 (calendar_availability.ts): anything larger is a 400,
@@ -78,8 +79,8 @@ String nativeListingClockLabel(int minutes) {
 
 /// `Fri 18 Dec 2026 · 18:00` — no zone suffix; callers add the zone they used.
 String nativeListingHumanDateTime(DateTime value) {
-  final day = _kWeekdayNames[(value.weekday - 1).clamp(0, 6).toInt()];
-  final month = _kMonthNames[(value.month - 1).clamp(0, 11).toInt()];
+  final day = authoredUiCopy(_kWeekdayNames[(value.weekday - 1).clamp(0, 6).toInt()]);
+  final month = authoredUiCopy(_kMonthNames[(value.month - 1).clamp(0, 11).toInt()]);
   return '$day ${value.day} $month ${value.year} · '
       '${nativeListingClockLabel(value.hour * 60 + value.minute)}';
 }

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -83,34 +85,34 @@ class _PersonalPhoneFieldState extends State<PersonalPhoneField> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [
           Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
           const SizedBox(width: 8),
-          Text('Personal phone (optional)', style: ADText.threadName()),
+          UiText(UiMessage.m_personal_phone_optional_73b0525072, style: ADText.threadName()),
         ]),
         const SizedBox(height: Msg.s1),
-        Text(
-          'Shown on your share card if you turn that on. We don\'t verify it, '
-          'don\'t text it, and it has no effect on your account.',
+        UiText(
+          UiMessage.m_shown_on_your_share_card_e2bba842bf,
           style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 12),
         ),
         const SizedBox(height: Msg.s2),
         AdField(
           controller: _phoneCtrl,
-          label: 'Phone number',
+          label: uiCopy(UiMessage.m_phone_number_306f1bb206),
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\-\s()]'))],
           onChanged: (_) { if (_saved) setState(() => _saved = false); },
         ),
         const SizedBox(height: 8),
         Row(children: [
-          AdButton(label: 'Save', fontSize: 15, onPressed: _save),
+          AdButton(label: uiCopy(UiMessage.m_save_1509f561f2), fontSize: 15, onPressed: _save),
           if (_saved) ...[
             const SizedBox(width: Msg.s2),
-            Text('Saved', style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13)),
+            UiText(UiMessage.m_saved_b5c120b316, style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13)),
           ],
         ]),
       ],

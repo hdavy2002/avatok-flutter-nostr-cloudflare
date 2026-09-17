@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -117,20 +119,20 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   String _fallbackTitle(InboxConv c, String my) {
-    if (c.kind == 'group') return 'Group chat';
+    if (c.kind == 'group') return uiCopy(UiMessage.m_group_chat_28c7d3f8b7);
     final peer = c.peerOf(my);
-    return peer == null ? 'Conversation' : 'User ${peer.length > 10 ? peer.substring(peer.length - 6) : peer}';
+    return peer == null ? uiCopy(UiMessage.m_conversation_ccca181757) : uiCopy(UiMessage.m_user_value1_04ab9143d0, {'value1': (peer.length > 10 ? peer.substring(peer.length - 6) : peer).toString()});
   }
 
   String _contextLabel(InboxConv c) {
     final ctx = c.context ?? '';
     if (ctx.startsWith('event:')) {
       final lid = ctx.substring(6);
-      return _listingTitles[lid] != null ? 'About: ${_listingTitles[lid]}' : 'Event inquiry';
+      return _listingTitles[lid] != null ? uiCopy(UiMessage.m_about_value1_36318d09c0, {'value1': (_listingTitles[lid]).toString()}) : uiCopy(UiMessage.m_event_inquiry_da3bf9e4fa);
     }
-    if (ctx.startsWith('consult:')) return 'Consult thread';
-    if (ctx.startsWith('channel:')) return 'Channel message';
-    return c.kind == 'group' ? 'Group conversation' : 'Direct message';
+    if (ctx.startsWith('consult:')) return uiCopy(UiMessage.m_consult_thread_59eecb682a);
+    if (ctx.startsWith('channel:')) return uiCopy(UiMessage.m_channel_message_a9f34efa1a);
+    return c.kind == 'group' ? uiCopy(UiMessage.m_group_conversation_b6aebd2846) : uiCopy(UiMessage.m_direct_message_cd3e16057d);
   }
 
   /// Lazily resolve event names for "Event inquiry — <event name>" rows.
@@ -180,11 +182,12 @@ class _InboxScreenState extends State<InboxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final shown = _filter == 'all' ? _rows : _rows.where((r) => r.source == _filter).toList();
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'AvaInbox',
+        title: uiCopy(UiMessage.m_avainbox_26011c3bf8),
         markWord: 'Inbox',
         tag: 'every message · one list',
         actions: [

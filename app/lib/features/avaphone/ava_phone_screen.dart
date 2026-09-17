@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -66,6 +68,7 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: PhoneTheme.bg,
       body: SafeArea(
@@ -118,9 +121,9 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
                   selectedIcon: PhosphorIcon(
                       PhosphorIcons.house(PhosphorIconsStyle.fill),
                       color: PhoneTheme.accent),
-                  label: 'Home'),
-              const NavigationDestination(
-                  icon: _DialpadNavIcon(), label: 'Dialpad'),
+                  label: uiCopy(UiMessage.m_home_3a78695388)),
+               NavigationDestination(
+                  icon: _DialpadNavIcon(), label: uiCopy(UiMessage.m_dialpad_e34b822476)),
               NavigationDestination(
                   icon: PhosphorIcon(
                       PhosphorIcons.phone(PhosphorIconsStyle.bold),
@@ -128,7 +131,7 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
                   selectedIcon: PhosphorIcon(
                       PhosphorIcons.phone(PhosphorIconsStyle.fill),
                       color: PhoneTheme.accent),
-                  label: 'Calls'),
+                  label: uiCopy(UiMessage.m_calls_b73a5e2ca6)),
               NavigationDestination(
                   icon: PhosphorIcon(
                       PhosphorIcons.addressBook(PhosphorIconsStyle.bold),
@@ -136,7 +139,7 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
                   selectedIcon: PhosphorIcon(
                       PhosphorIcons.addressBook(PhosphorIconsStyle.fill),
                       color: PhoneTheme.accent),
-                  label: 'Contacts'),
+                  label: uiCopy(UiMessage.m_contacts_b450645deb)),
             ],
           ),
         ),
@@ -155,6 +158,7 @@ class _DialpadNavIcon extends StatelessWidget {
   const _DialpadNavIcon();
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       width: 34,
       height: 28,
@@ -270,8 +274,8 @@ class _CallsTabState extends State<_CallsTab> {
               avatarUrl: _avatarFor(c.seed))),
           title: Text(c.name.isNotEmpty ? c.name : c.seed,
               style: PhoneTheme.value(size: 15)),
-          subtitle: Text(
-              'Called ${history.length} time${history.length == 1 ? '' : 's'}',
+          subtitle: UiText(
+              UiMessage.m_called_value1_time_value2_f91a6cb74e, params: {'value1': (history.length).toString(), 'value2': (history.length == 1 ? '' : uiCopy(UiMessage.m_s_043a718774)).toString()},
               style: PhoneTheme.sub(size: 12)),
         ),
         const Divider(color: PhoneTheme.border, height: 1),
@@ -282,7 +286,7 @@ class _CallsTabState extends State<_CallsTab> {
           ListTile(
               leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular),
                   color: PhoneTheme.callGreen),
-              title: Text('Call', style: PhoneTheme.value(size: 15)),
+              title: UiText(UiMessage.m_call_d6e645b7d2, style: PhoneTheme.value(size: 15)),
               onTap: () {
                 Navigator.pop(ctx);
                 _call(c);
@@ -291,7 +295,7 @@ class _CallsTabState extends State<_CallsTab> {
             leading: PhosphorIcon(
                 PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
                 color: PhoneTheme.teal),
-            title: Text('Call history (${history.length})',
+            title: UiText(UiMessage.m_call_history_value1_4c08edd7fe, params: {'value1': (history.length).toString()},
                 style: PhoneTheme.value(size: 15)),
             onTap: () {
               Navigator.pop(ctx);
@@ -300,7 +304,7 @@ class _CallsTabState extends State<_CallsTab> {
         ListTile(
             leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold),
                 color: PhoneTheme.lilac),
-            title: Text(isContact ? 'View contact' : 'Add to contacts',
+            title: Text(isContact ? uiCopy(UiMessage.m_view_contact_f79b2c12a8) : uiCopy(UiMessage.m_add_to_contacts_724e05d19d),
                 style: PhoneTheme.value(size: 15)),
             onTap: () {
               Navigator.pop(ctx);
@@ -310,7 +314,7 @@ class _CallsTabState extends State<_CallsTab> {
         ListTile(
             leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
                 color: PhoneTheme.lilac),
-            title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
+            title: UiText(UiMessage.m_copy_contact_401debc8da, style: PhoneTheme.value(size: 15)),
             onTap: () {
               Navigator.pop(ctx);
               ContactActions.copy(context, _contactOf(c));
@@ -319,7 +323,7 @@ class _CallsTabState extends State<_CallsTab> {
             leading: PhosphorIcon(
                 PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
                 color: PhoneTheme.accent),
-            title: Text('Share contact', style: PhoneTheme.value(size: 15)),
+            title: UiText(UiMessage.m_share_contact_d294640153, style: PhoneTheme.value(size: 15)),
             onTap: () {
               Navigator.pop(ctx);
               ContactActions.share(context, _contactOf(c));
@@ -328,7 +332,7 @@ class _CallsTabState extends State<_CallsTab> {
             leading: PhosphorIcon(
                 PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
                 color: PhoneTheme.teal),
-            title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
+            title: UiText(UiMessage.m_forward_contact_7e096fab58, style: PhoneTheme.value(size: 15)),
             onTap: () {
               Navigator.pop(ctx);
               ContactActions.forward(context, _contactOf(c));
@@ -336,7 +340,7 @@ class _CallsTabState extends State<_CallsTab> {
         ListTile(
             leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
                 color: PhoneTheme.danger),
-            title: Text('Delete this log',
+            title: UiText(UiMessage.m_delete_this_log_7d05888fb9,
                 style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
             onTap: () async {
               Navigator.pop(ctx);
@@ -378,8 +382,8 @@ class _CallsTabState extends State<_CallsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                  '${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
+              UiText(
+                  UiMessage.m_value1_value2_call_value3_6c89f0f12c, params: {'value1': (c.name.isNotEmpty ? c.name : c.seed).toString(), 'value2': (history.length).toString(), 'value3': (history.length == 1 ? '' : 's').toString()},
                   style: PhoneTheme.title(size: 17)),
               const SizedBox(height: Msg.s2),
               ConstrainedBox(
@@ -423,6 +427,7 @@ class _CallsTabState extends State<_CallsTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final favs = _favorites;
     return Column(
       children: [
@@ -449,7 +454,7 @@ class _CallsTabState extends State<_CallsTab> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
                               Msg.s4, Msg.s4, Msg.s4, Msg.s2),
-                          child: Text('Recent',
+                          child: UiText(UiMessage.m_recent_690dbe9dc0,
                               style: PhoneTheme.tag(
                                   size: 11, color: PhoneTheme.textMute)),
                         ),
@@ -476,10 +481,10 @@ class _CallsTabState extends State<_CallsTab> {
             PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
                 size: 46, color: PhoneTheme.textMute),
             const SizedBox(height: Msg.s3),
-            Text('No calls yet', style: PhoneTheme.title(size: 17)),
+            UiText(UiMessage.m_no_calls_yet_68f06cf8ec, style: PhoneTheme.title(size: 17)),
             const SizedBox(height: Msg.s1),
-            Text(
-                'Tap the keypad to dial an AvaTOK number — no need to save a contact first.',
+            UiText(
+                UiMessage.m_tap_the_keypad_to_dial_b8354695e9,
                 textAlign: TextAlign.center,
                 style: PhoneTheme.sub(size: 13)),
           ]),
@@ -531,7 +536,7 @@ class _CallsTabState extends State<_CallsTab> {
                       ),
                   ]),
                   const SizedBox(height: Msg.s1),
-                  Text(c.name.isNotEmpty ? c.name.split(' ').first : 'Unknown',
+                  Text(c.name.isNotEmpty ? c.name.split(' ').first : uiCopy(UiMessage.m_unknown_b764cdc0ea),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: PhoneTheme.sub(size: 11, color: PhoneTheme.text)),
@@ -550,6 +555,7 @@ class _SearchHeader extends StatelessWidget {
   const _SearchHeader({required this.onDialpad});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
       child: Row(children: [
@@ -568,7 +574,7 @@ class _SearchHeader extends StatelessWidget {
                   size: 18,
                   color: PhoneTheme.textSoft),
               const SizedBox(width: Msg.s2),
-              Text('Search AvaTOK numbers & names',
+              UiText(UiMessage.m_search_avatok_numbers_names_a1dd43e94f,
                   style: PhoneTheme.sub(size: 13)),
             ]),
           ),
@@ -599,6 +605,7 @@ class _NetworkBanner extends StatelessWidget {
   const _NetworkBanner();
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(Msg.s4, 2, Msg.s4, Msg.s1),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -613,8 +620,8 @@ class _NetworkBanner extends StatelessWidget {
             size: 15, color: PhoneTheme.teal),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-              'Everything here is on the AvaTOK network — not your phone contacts.',
+          child: UiText(
+              UiMessage.m_everything_here_is_on_the_6bf928821a,
               style: PhoneTheme.sub(size: 11, color: PhoneTheme.textSoft)),
         ),
       ]),
@@ -641,22 +648,23 @@ class _CallRow extends StatelessWidget {
         CallDir.incoming => (
             icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular),
             color: PhoneTheme.callGreen,
-            label: 'Incoming'
+            label: uiCopy(UiMessage.m_incoming_e301820ac8)
           ),
         CallDir.outgoing => (
             icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular),
             color: PhoneTheme.teal,
-            label: 'Outgoing'
+            label: uiCopy(UiMessage.m_outgoing_3619cf0b90)
           ),
         CallDir.missed => (
             icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular),
             color: PhoneTheme.danger,
-            label: 'Missed'
+            label: uiCopy(UiMessage.m_missed_3d86eb082e)
           ),
       };
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final d = _dir;
     return InkWell(
       onTap: onTap,
@@ -865,7 +873,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
     if (num == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not a phone number')),
+        const SnackBar(content: UiText(UiMessage.m_not_a_phone_number_762f812961)),
       );
       return;
     }
@@ -990,8 +998,8 @@ class _DialpadSheetState extends State<_DialpadSheet>
         setState(() => _dialing = false);
         Navigator.pop(context);
         ScaffoldMessenger.maybeOf(navContext)?.showSnackBar(SnackBar(
-            content: Text(
-                'Calling ${resolved.countryName.isEmpty ? resolved.canonicalNumber : resolved.countryName} from ${resolved.outgoingLine!.displayNumber} · 0.50 tokens/minute')));
+            content: UiText(
+                UiMessage.m_calling_value1_from_value2_0_30cbcc6ea9, params: {'value1': (resolved.countryName.isEmpty ? resolved.canonicalNumber : resolved.countryName).toString(), 'value2': (resolved.outgoingLine!.displayNumber).toString()})));
       } on AvaCallsApiException catch (e) {
         if (!mounted) return;
         setState(() {
@@ -1053,6 +1061,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final bottom = MediaQuery.of(context).padding.bottom;
     return Container(
       decoration: const BoxDecoration(
@@ -1084,7 +1093,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
                 behavior: HitTestBehavior.opaque,
                 onLongPress: _pasteFromClipboard,
                 child: Center(
-                  child: Text(_digits.isEmpty ? 'Number to call' : _digits,
+                  child: Text(_digits.isEmpty ? uiCopy(UiMessage.m_number_to_call_b02832a975) : _digits,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: PhoneTheme.title(
@@ -1101,7 +1110,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
                   ? IconButton(
                       padding: EdgeInsets.zero,
                       visualDensity: VisualDensity.compact,
-                      tooltip: 'Paste number',
+                      tooltip: uiCopy(UiMessage.m_paste_number_4b07b777ad),
                       onPressed: _pasteFromClipboard,
                       icon: PhosphorIcon(
                           PhosphorIcons.clipboard(PhosphorIconsStyle.bold),
@@ -1255,6 +1264,7 @@ class _Key extends StatelessWidget {
       this.onLongPress});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,

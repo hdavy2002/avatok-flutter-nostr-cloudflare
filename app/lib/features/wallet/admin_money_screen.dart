@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -63,24 +66,24 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
           borderRadius: Msg.brLg,
           side: const BorderSide(color: AD.borderCard, width: 1),
         ),
-        title: Text('Manual refund', style: ADText.threadName()),
+        title: UiText(UiMessage.m_manual_refund_e2dedff4a5, style: ADText.threadName()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineField(controller: order, label: 'Order id'),
+          ZineField(controller: order, label: uiCopy(UiMessage.m_order_id_a23d884ae7)),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: amount, keyboardType: TextInputType.number, label: 'Amount (coins)'),
+          ZineField(controller: amount, keyboardType: TextInputType.number, label: uiCopy(UiMessage.m_amount_coins_1819c8052e)),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: reason, label: 'Reason (required, audited)'),
+          ZineField(controller: reason, label: uiCopy(UiMessage.m_reason_required_audited_aa7224ffba)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
-          ZineButton(label: 'Refund', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
+          ZineButton(label: uiCopy(UiMessage.m_refund_6b37bd3508), fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
     );
     if (ok != true) return;
     final r = await MoneyApi.adminRefund(orderId: order.text.trim(), amount: int.tryParse(amount.text) ?? 0, reason: reason.text.trim());
-    _snack(r['ok'] == true ? 'Refunded.' : 'Failed: ${r['error'] ?? r['status']}');
+    _snack(r['ok'] == true ? uiCopy(UiMessage.m_refunded_d8e8fd56ef) : uiCopy(UiMessage.m_failed_value1_af1e8f2668, {'value1': (r['error'] ?? r['status']).toString()}));
     _lookup();
   }
 
@@ -95,22 +98,22 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
           borderRadius: Msg.brLg,
           side: const BorderSide(color: AD.borderCard, width: 1),
         ),
-        title: Text('Adjust $uid', style: ADText.threadName()),
+        title: UiText(UiMessage.m_adjust_uid_bae86db2fb, params: {'uid': (uid).toString()}, style: ADText.threadName()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineField(controller: amount, keyboardType: const TextInputType.numberWithOptions(signed: true), label: 'Amount (coins, ± allowed)'),
+          ZineField(controller: amount, keyboardType: const TextInputType.numberWithOptions(signed: true), label: uiCopy(UiMessage.m_amount_coins_allowed_979d0b4119)),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: reason, label: 'Reason (required, audited)'),
+          ZineField(controller: reason, label: uiCopy(UiMessage.m_reason_required_audited_aa7224ffba)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
-          ZineButton(label: 'Apply', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
+          ZineButton(label: uiCopy(UiMessage.m_apply_31e392d1c0), fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
     );
     if (ok != true || uid.isEmpty) return;
     final r = await MoneyApi.adminAdjust(account: uid, amount: int.tryParse(amount.text) ?? 0, reason: reason.text.trim());
-    _snack(r['ok'] == true ? 'Adjusted.' : 'Failed: ${r['error'] ?? r['status']}');
+    _snack(r['ok'] == true ? uiCopy(UiMessage.m_adjusted_40ce0a5493) : uiCopy(UiMessage.m_failed_value1_af1e8f2668, {'value1': (r['error'] ?? r['status']).toString()}));
     _lookup();
   }
 
@@ -121,18 +124,19 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final a = _account;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(
-        title: 'Money ops',
+      appBar:  ZineAppBar(
+        title: uiCopy(UiMessage.m_money_ops_42f2dcd6fc),
         markWord: 'ops',
         tag: 'admin console',
       ),
       body: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6), children: [
         ZineField(
           controller: _userCtrl,
-          label: 'User id (Clerk uid)',
+          label: uiCopy(UiMessage.m_user_id_clerk_uid_9b93522327),
           leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
           onSubmitted: (_) => _lookup(),
           trailing: GestureDetector(
@@ -163,7 +167,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
           Row(children: [
             Expanded(
               child: ZineButton(
-                label: 'Refund',
+                label: uiCopy(UiMessage.m_refund_6b37bd3508),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 16,
                 onPressed: _refundDialog,
@@ -172,7 +176,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
             const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineButton(
-                label: 'Adjust',
+                label: uiCopy(UiMessage.m_adjust_fd8a7d7b3e),
                 variant: ZineButtonVariant.blue,
                 fontSize: 16,
                 onPressed: _adjustDialog,
@@ -180,12 +184,12 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
             ),
           ]),
           const SizedBox(height: Msg.s5),
-          Text('Ledger', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_ledger_ee69eb4afc, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
           for (final e in _ledger) _ledgerRow(e),
         ],
         const SizedBox(height: Msg.s5),
-        Text('Reconciliation runs', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_reconciliation_runs_048656be44, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         if (_recon.isEmpty)
           Padding(
@@ -245,9 +249,8 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
                   .copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
         ]),
         const SizedBox(height: 2),
-        Text(
-          '${e['debit']} → ${e['credit']} · ref ${e['ref'] ?? '—'} · '
-          '${DateTime.fromMillisecondsSinceEpoch(((e['created_at'] as num?) ?? 0).toInt())}',
+        UiText(
+          UiMessage.m_value1_value2_ref_value3_value4_21562d893b, params: {'value1': (e['debit']).toString(), 'value2': (e['credit']).toString(), 'value3': (e['ref'] ?? '—').toString(), 'value4': (DateTime.fromMillisecondsSinceEpoch(((e['created_at'] as num?) ?? 0).toInt())).toString()},
           maxLines: 2,
           style: ADText.statCaption(),
         ),

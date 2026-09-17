@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'virtual_numbers_models.dart';
 
 /// Sponsor-demo fixtures used until the telephony provider is connected.
@@ -6,7 +8,7 @@ class VirtualNumbersDemo {
   static final lines = <VirtualLine>[
     VirtualLine(
       id: 'demo-did-business',
-      label: 'AvaTOK Business',
+      label: uiCopy(UiMessage.m_avatok_business_67f9056a27),
       kind: VirtualLineKind.did,
       canonicalNumber: '+14155550148',
       displayNumber: '+1 (415) 555-0148',
@@ -25,9 +27,9 @@ class VirtualNumbersDemo {
       monthlyTokens: 600,
       provider: 'Demo provider',
     ),
-    const VirtualLine(
+     VirtualLine(
       id: 'demo-avatok-family',
-      label: 'Family & friends',
+      label: uiCopy(UiMessage.m_family_friends_761ee4de39),
       kind: VirtualLineKind.avatok,
       canonicalNumber: 'AVA-2026-8188',
       displayNumber: 'AVA 2026 8188',
@@ -35,9 +37,9 @@ class VirtualNumbersDemo {
       capabilities: {'voice': true, 'messaging': true, 'recording': true},
       unreadCount: 2,
     ),
-    const VirtualLine(
+     VirtualLine(
       id: 'demo-did-india',
-      label: 'India office',
+      label: uiCopy(UiMessage.m_india_office_b650866560),
       kind: VirtualLineKind.did,
       canonicalNumber: '+911155501926',
       displayNumber: '+91 11 5550 1926',
@@ -62,8 +64,8 @@ class VirtualNumbersDemo {
       VirtualLineActivity(
         id: '$lineId-call',
         type: VirtualActivityType.calls,
-        title: 'Priya Sharma',
-        subtitle: 'Incoming call answered by Ava',
+        title: uiCopy(UiMessage.m_priya_sharma_188492b7d2),
+        subtitle: uiCopy(UiMessage.m_incoming_call_answered_by_ava_830632cbf9),
         direction: 'incoming',
         occurredAt: now.subtract(const Duration(minutes: 18)),
         durationSeconds: 194,
@@ -75,8 +77,8 @@ class VirtualNumbersDemo {
       VirtualLineActivity(
         id: '$lineId-otp',
         type: VirtualActivityType.otp,
-        title: 'Verification code · 482 913',
-        subtitle: 'Your one-time code expires in 10 minutes',
+        title: uiCopy(UiMessage.m_verification_code_482_913_6c948d82b5),
+        subtitle: uiCopy(UiMessage.m_your_one_time_code_expires_e4f1a10729),
         direction: 'incoming',
         occurredAt: now.subtract(const Duration(hours: 1)),
         unread: true,
@@ -84,16 +86,16 @@ class VirtualNumbersDemo {
       VirtualLineActivity(
         id: '$lineId-sms',
         type: VirtualActivityType.textMessages,
-        title: 'Delivery partner',
-        subtitle: 'Your parcel will arrive between 2–4 PM.',
+        title: uiCopy(UiMessage.m_delivery_partner_cb946ef0d3),
+        subtitle: uiCopy(UiMessage.m_your_parcel_will_arrive_between_d5bf7570be),
         direction: 'incoming',
         occurredAt: now.subtract(const Duration(hours: 3)),
       ),
       VirtualLineActivity(
         id: '$lineId-receptionist',
         type: VirtualActivityType.receptionist,
-        title: 'Ava receptionist summary',
-        subtitle: 'Qualified a new sponsor lead and requested a callback.',
+        title: uiCopy(UiMessage.m_ava_receptionist_summary_cdbd0b049e),
+        subtitle: uiCopy(UiMessage.m_qualified_a_new_sponsor_lead_7dcad7a716),
         direction: 'incoming',
         occurredAt: now.subtract(const Duration(days: 1)),
         durationSeconds: 87,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -45,7 +46,14 @@ class Identity {
 /// Holds the signed-in Clerk account id so each account gets its OWN local key
 /// on a shared device. Set right after auth; cleared on sign-out.
 class AccountScope {
-  static String? id;
+  static String? _id;
+  static final changes = ValueNotifier<String?>(null);
+  static String? get id => _id;
+  static set id(String? value) {
+    if (_id == value) return;
+    _id = value;
+    changes.value = value;
+  }
 }
 
 /// Persists the local key material in platform secure storage (Keychain /

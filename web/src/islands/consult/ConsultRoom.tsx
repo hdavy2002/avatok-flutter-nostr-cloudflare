@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * ConsultRoom — the fan's side of a paid 1:1 consult at /consult/<booking>.
  * Fully client-side (no SSR of media). Flow: PreJoin green-room → auth gate
@@ -66,6 +68,8 @@ const HUD: Record<SfuConnState, { label: string; cls: string } | null> = {
 };
 
 function ConsultRoomInner({ booking }: { booking: string }) {
+  const {t:uiT}=useUiTranslation("web-consult");
+
   const [phase, setPhase] = useState<Phase>('prejoin');
   const [gate, setGate] = useState<Gate>(null);
   const [joinErr, setJoinErr] = useState<string | null>(null);
@@ -389,14 +393,14 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <h1 className="font-display font-semibold text-[26px] text-ink">Call ended</h1>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult.00ff74289a121c75" source="Call ended" /></h1>
           <p className="font-body font-bold text-[15px] text-inkSoft">{endReason}</p>
           <div className="flex gap-3">
             <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="My bookings" />
+              <Button variant="lime" label={uiT("web-consult.be1b53baca18d782","My bookings")} />
             </a>
             <a href="/explore" className="no-underline">
-              <Button variant="ghost" label="Explore" />
+              <Button variant="ghost" label={uiT("web-consult.3b73900b8d29f963","Explore")} />
             </a>
           </div>
         </div>
@@ -417,11 +421,9 @@ function ConsultRoomInner({ booking }: { booking: string }) {
             </span>
           )}
           {wsStatus === 'reconnecting' && (
-            <span className="rounded-zine-badge border-zine border-coral bg-card px-3 py-1.5 font-mono font-bold text-[14px] text-coral">
-              Room offline…
-            </span>
+            <span className="rounded-zine-badge border-zine border-coral bg-card px-3 py-1.5 font-mono font-bold text-[14px] text-coral"><UiText id="web-consult.0295d2275cad2d22" source="Room offline…" />{" "}</span>
           )}
-          {endsAt && <Countdown target={endsAt} label="Ends in" onZero={() => endSession('Time is up.')} />}
+          {endsAt && <Countdown target={endsAt} label={uiT("web-consult.87d0485a90e5ebb0","Ends in")} onZero={() => endSession('Time is up.')} />}
         </div>
 
         {/* stage */}
@@ -432,7 +434,7 @@ function ConsultRoomInner({ booking }: { booking: string }) {
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-paper2 text-center">
               <Spinner size={28} />
               <p className="font-body font-bold text-[15px] text-inkSoft">
-                {hostLive === false ? `Waiting for ${info.peer_name}…` : `Connecting to ${info.peer_name}…`}
+                {hostLive === false ? uiT("web-consult.619a1000ad6c0898","Waiting for {value0}…",{value0:String(info.peer_name)}) : uiT("web-consult.bbdd2d0a7af122b8","Connecting to {value0}…",{value0:String(info.peer_name)})}
               </p>
             </div>
           )}
@@ -441,9 +443,7 @@ function ConsultRoomInner({ booking }: { booking: string }) {
           <div className="absolute bottom-3 right-3 aspect-[3/4] w-28 overflow-hidden rounded-zine border-zine border-ink bg-ink shadow-zine-sm sm:w-36">
             <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full -scale-x-100 object-cover" />
             {!camOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display text-[12px] text-paper">
-                Camera off
-              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display text-[12px] text-paper"><UiText id="web-consult.ce3ef7450f8e26f1" source="Camera off" />{" "}</div>
             )}
           </div>
 
@@ -470,11 +470,11 @@ function ConsultRoomInner({ booking }: { booking: string }) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendChat()}
             maxLength={120}
-            placeholder="Message…"
-            aria-label="Chat message"
+            placeholder={uiT("web-consult.fc71507e47999a33","Message…")}
+            aria-label={uiT("web-consult.f6820511a8178983","Chat message")}
             className="min-w-0 flex-1 rounded-zine-field border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink focus:outline-none focus:shadow-zine-focus"
           />
-          <Button variant="blue" label="Send" onClick={sendChat} />
+          <Button variant="blue" label={uiT("web-consult.f6f4688ff23d50c6","Send")} onClick={sendChat} />
         </div>
 
         {/* controls */}
@@ -498,15 +498,11 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Not open yet</span>
-          <h1 className="font-display font-semibold text-[26px] text-ink">You're early</h1>
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            The room opens 10 minutes before your slot. We'll let you in automatically.
-          </p>
-          <Countdown target={gate.opensAt} label="Opens in" onZero={() => void attemptJoin()} />
-          <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
-            Back to my bookings
-          </a>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk"><UiText id="web-consult.a52b97a613669bf9" source="Not open yet" /></span>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult.2287a8df49fbafdb" source="You're early" /></h1>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult.48e4587ef5dce027" source="The room opens 10 minutes before your slot. We'll let you in automatically." />{" "}</p>
+          <Countdown target={gate.opensAt} label={uiT("web-consult.127b12967e16df24","Opens in")} onZero={() => void attemptJoin()} />
+          <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold"><UiText id="web-consult.014e87d4bef7ad34" source="Back to my bookings" />{" "}</a>
         </div>
       </Centered>
     );
@@ -515,10 +511,10 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <h1 className="font-display font-semibold text-[26px] text-ink">This isn't your booking</h1>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult.f7b8108e2fefa851" source="This isn't your booking" /></h1>
           <p className="font-body font-bold text-[15px] text-inkSoft">{gate.message}</p>
           <a href="/dashboard" className="no-underline">
-            <Button variant="lime" label="My bookings" />
+            <Button variant="lime" label={uiT("web-consult.be1b53baca18d782","My bookings")} />
           </a>
         </div>
       </Centered>
@@ -528,10 +524,10 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <h1 className="font-display font-semibold text-[26px] text-ink">Session not active</h1>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult.c2aa64d74c4e33fd" source="Session not active" /></h1>
           <p className="font-body font-bold text-[15px] text-inkSoft">{gate.message}</p>
           <a href="/dashboard" className="no-underline">
-            <Button variant="lime" label="My bookings" />
+            <Button variant="lime" label={uiT("web-consult.be1b53baca18d782","My bookings")} />
           </a>
         </div>
       </Centered>
@@ -541,12 +537,10 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <h1 className="font-display font-semibold text-[26px] text-ink">This session is over</h1>
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            The booking window has closed. Any refund is handled automatically.
-          </p>
+          <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult.313d313f979daf44" source="This session is over" /></h1>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult.49c3ae20dcc6efa0" source="The booking window has closed. Any refund is handled automatically." />{" "}</p>
           <a href="/dashboard" className="no-underline">
-            <Button variant="lime" label="My bookings" />
+            <Button variant="lime" label={uiT("web-consult.be1b53baca18d782","My bookings")} />
           </a>
         </div>
       </Centered>
@@ -556,7 +550,7 @@ function ConsultRoomInner({ booking }: { booking: string }) {
   return (
     <Centered>
       <PreJoin
-        title="Your 1:1 session"
+        title={uiT("web-consult.2403c08f4b76ce33","Your 1:1 session")}
         joining={phase === 'joining'}
         error={joinErr}
         onReady={onReadyFromPreJoin}

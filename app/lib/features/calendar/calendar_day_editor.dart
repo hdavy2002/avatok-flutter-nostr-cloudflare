@@ -1,3 +1,7 @@
+import '../../core/localization/known_ui_copy.dart';
+
+import '../../core/localization/ui_text.dart';
+
 // The day editor (audit findings 2, 3, A8).
 //
 // Before this, one date could only ever hold ONE exception: the editor loaded
@@ -157,6 +161,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final timezone = widget.timezone;
     return SafeArea(
       child: Padding(
@@ -183,23 +188,20 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
                     onTap: () => Navigator.pop(context)),
               ]),
               const SizedBox(height: Msg.s3),
-              Text(
-                  'Blocking applies to every listing by default. Choose "Only this '
-                  'listing" to change just one listing’s schedule. Switching scope '
-                  'loads that schedule before you edit it, so nothing is copied '
-                  'between them.',
+              UiText(
+                  UiMessage.m_blocking_applies_to_every_listing_2052dce87d,
                   style: calSub(13)),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
                 ZineChip(
-                    label: 'All listings',
+                    label: uiCopy(UiMessage.m_all_listings_39623e25ae),
                     active: _scopeListingId == null,
                     onTap: _loadingScope
                         ? null
                         : () => _switchScope(null, 'All listings')),
                 if (widget.selectedListingId != null)
                   ZineChip(
-                      label: 'Only this listing',
+                      label: uiCopy(UiMessage.m_only_this_listing_4fb9f930ad),
                       active: _scopeListingId != null,
                       onTap: _loadingScope
                           ? null
@@ -208,29 +210,29 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
               ]),
               if (_loadingScope) ...[
                 const SizedBox(height: Msg.s2),
-                Text('Loading that schedule…', style: calSub(12)),
+                UiText(UiMessage.m_loading_that_schedule_e74e68f138, style: calSub(12)),
               ],
               if (_scopeError != null) ...[
                 const SizedBox(height: Msg.s2),
                 Text(_scopeError!, style: calSub(12, c: AD.danger)),
               ],
               const SizedBox(height: Msg.s4),
-              Text('This day', style: calTitle(16)),
+              UiText(UiMessage.m_this_day_16f586d3bd, style: calTitle(16)),
               const SizedBox(height: Msg.s2),
               Text(
                   _scopeListingId == null
-                      ? 'Showing your shared calendar hours.'
-                      : 'Showing the saved hours for ${_listingTitle(_scopeListingId)} only.',
+                      ? uiCopy(UiMessage.m_showing_your_shared_calendar_hours_3c5be0f1ec)
+                      : uiCopy(UiMessage.m_showing_the_saved_hours_for_a9fda8dba7, {'value1': (_listingTitle(_scopeListingId)).toString()}),
                   style: ADText.statCaption(c: AD.textSecondary)),
               const SizedBox(height: Msg.s2),
               if (_exceptions.isEmpty)
-                Text('Your usual working hours apply.', style: calSub(13))
+                UiText(UiMessage.m_your_usual_working_hours_apply_e53a54bad2, style: calSub(13))
               else
                 ..._exceptions.map(_exceptionRow),
               const SizedBox(height: Msg.s3),
               Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
                 ZineButton(
-                    label: "I'm busy",
+                    label: uiCopy(UiMessage.m_i_m_busy_4fb4c407bc),
                     variant: ZineButtonVariant.blue,
                     fontSize: 14,
                     icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
@@ -238,7 +240,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
                     onPressed: () =>
                         _addInterval(AvailabilityExceptionStatus.unavailable)),
                 ZineButton(
-                    label: "I'm available",
+                    label: uiCopy(UiMessage.m_i_m_available_a8f7245b7a),
                     variant: ZineButtonVariant.ghost,
                     fontSize: 14,
                     icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.regular),
@@ -247,7 +249,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
                         _addInterval(AvailabilityExceptionStatus.available)),
                 if (widget.listings.isNotEmpty)
                   ZineButton(
-                      label: 'Keep time for a listing',
+                      label: uiCopy(UiMessage.m_keep_time_for_a_listing_6cf361f163),
                       variant: ZineButtonVariant.ghost,
                       fontSize: 14,
                       icon: PhosphorIcons.tag(PhosphorIconsStyle.regular),
@@ -258,14 +260,14 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
               const SizedBox(height: Msg.s2),
               Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
                 ZineButton(
-                    label: 'Block the whole day',
+                    label: uiCopy(UiMessage.m_block_the_whole_day_5543db2e78),
                     variant: ZineButtonVariant.ghost,
                     fontSize: 13,
                     icon: PhosphorIcons.calendarX(PhosphorIconsStyle.regular),
                     trailingIcon: false,
                     onPressed: _blockWholeDay),
                 ZineButton(
-                    label: 'Block a date range',
+                    label: uiCopy(UiMessage.m_block_a_date_range_f795ad3f75),
                     variant: ZineButtonVariant.ghost,
                     fontSize: 13,
                     icon: PhosphorIcons.calendarPlus(PhosphorIconsStyle.regular),
@@ -273,7 +275,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
                     onPressed: _pickHolidayRange),
                 if (_exceptions.isNotEmpty)
                   ZineButton(
-                      label: 'Use normal hours',
+                      label: uiCopy(UiMessage.m_use_normal_hours_c6efc9ad1a),
                       variant: ZineButtonVariant.ghost,
                       fontSize: 13,
                       icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.regular),
@@ -302,7 +304,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
               ],
               const SizedBox(height: Msg.s4),
               ZineButton(
-                  label: 'Save changes',
+                  label: uiCopy(UiMessage.m_save_changes_dd0ae7a5cb),
                   variant: ZineButtonVariant.blue,
                   fontSize: 16,
                   fullWidth: true,
@@ -341,7 +343,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
     };
     final range = exception.isAllDay || exception.looksLikeMidnightToMidnight
         ? 'All day'
-        : minutesRangeLabel(exception.startMin, exception.endMin);
+        : knownUiCopy(minutesRangeLabel(exception.startMin, exception.endMin));
     return Padding(
       padding: const EdgeInsets.only(bottom: Msg.s2),
       child: ZineCard(
@@ -364,7 +366,7 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
           calendarIconAction(
             icon: PhosphorIcons.trash(PhosphorIconsStyle.regular),
             color: AD.danger,
-            tooltip: 'Remove this interval',
+            tooltip: uiCopy(UiMessage.m_remove_this_interval_6302119fbc),
             onTap: () => setState(() {
               _exceptions = removeException(_exceptions, exception.id);
               _dirty = true;
@@ -393,18 +395,16 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
           shape: RoundedRectangleBorder(
               borderRadius: Msg.brLg,
               side: const BorderSide(color: AD.borderControl)),
-          title: Text('Switch to $label?', style: calTitle(17)),
-          content: Text(
-              'Your unsaved changes here belong to the current schedule. Switching '
-              'loads $label’s own hours, so those changes will be discarded rather '
-              'than copied across.',
+          title: UiText(UiMessage.m_switch_to_label_e8ebdc7df7, params: {'label': (label).toString()}, style: calTitle(17)),
+          content: UiText(
+              UiMessage.m_your_unsaved_changes_here_belong_9da8e7d027, params: {'label': (label).toString()},
               style: calSub(13)),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text('Keep editing', style: calLinkStyle)),
+                child: UiText(UiMessage.m_keep_editing_e76fd2add0, style: calLinkStyle)),
             ZineButton(
-                label: 'Switch scope',
+                label: uiCopy(UiMessage.m_switch_scope_4cfb379030),
                 variant: ZineButtonVariant.blue,
                 fontSize: 14,
                 onPressed: () => Navigator.pop(dialogContext, true)),
@@ -513,8 +513,8 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
     final days = picked.end.difference(picked.start).inDays + 1;
     if (days > kMaxHorizonDays) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'Choose a shorter range — at most $kMaxHorizonDays days at a time.')));
+          content: UiText(
+              UiMessage.m_choose_a_shorter_range_at_6a533dadd1, params: {'kMaxHorizonDays': (kMaxHorizonDays).toString()})));
       return;
     }
     final horizon = widget.horizonDays;
@@ -523,9 +523,8 @@ class _CalendarDayEditorSheetState extends State<CalendarDayEditorSheet> {
         horizon <= kMaxHorizonDays &&
         days > horizon) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'This schedule can be booked $horizon day(s) ahead, so a $days-day '
-              'holiday goes past it. Shorten the range or raise the booking horizon.')));
+          content: UiText(
+              UiMessage.m_this_schedule_can_be_booked_1824a65689, params: {'horizon': (horizon).toString(), 'days': (days).toString()})));
       return;
     }
     setState(() {
@@ -615,6 +614,7 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reserved = _status == AvailabilityExceptionStatus.reserved;
     return AlertDialog(
       backgroundColor: AD.card,
@@ -631,14 +631,14 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
           children: [
             Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
               ZineChip(
-                  label: "I'm busy",
+                  label: uiCopy(UiMessage.m_i_m_busy_4fb4c407bc),
                   active: _status == AvailabilityExceptionStatus.unavailable,
                   onTap: () => setState(() {
                         _status = AvailabilityExceptionStatus.unavailable;
                         _error = null;
                       })),
               ZineChip(
-                  label: "I'm available",
+                  label: uiCopy(UiMessage.m_i_m_available_a8f7245b7a),
                   active: _status == AvailabilityExceptionStatus.available,
                   onTap: () => setState(() {
                         _status = AvailabilityExceptionStatus.available;
@@ -646,7 +646,7 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
                       })),
               if (widget.listings.isNotEmpty)
                 ZineChip(
-                    label: 'Keep for a listing',
+                    label: uiCopy(UiMessage.m_keep_for_a_listing_47f1ebca42),
                     active: reserved,
                     onTap: () => setState(() {
                           _status = AvailabilityExceptionStatus.reserved;
@@ -669,9 +669,9 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Text('All day', style: calValue(15)),
+                      UiText(UiMessage.m_all_day_34233e542b, style: calValue(15)),
                       const SizedBox(height: 2),
-                      Text('Blocks minute 0 through end of day (1440).',
+                      UiText(UiMessage.m_blocks_minute_0_through_end_bba45b4510,
                           style: ADText.statCaption(c: AD.textSecondary)),
                     ])),
                 ZineToggle(
@@ -716,11 +716,10 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                        Text('Ends at midnight', style: calValue(15)),
+                        UiText(UiMessage.m_ends_at_midnight_ee44c9711d, style: calValue(15)),
                         const SizedBox(height: 2),
-                        Text(
-                            'Keeps the end-of-day value (1440) for a partial interval, '
-                            'so an evening block or late working hours save correctly.',
+                        UiText(
+                            UiMessage.m_keeps_the_end_of_day_f7ffbb51b8,
                             style: ADText.statCaption(c: AD.textSecondary)),
                       ])),
                   ZineToggle(
@@ -735,14 +734,14 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
             if (reserved) ...[
               const SizedBox(height: Msg.s3),
               ZineDropdown<String>(
-                  label: 'Kept for',
+                  label: uiCopy(UiMessage.m_kept_for_a646856428),
                   // A stored listing that is not in the current filter would
                   // crash a DropdownButton with a value outside its items.
                   value: _listingId != null &&
                           widget.listings.any((l) => l.id == _listingId)
                       ? _listingId
                       : null,
-                  hint: 'Choose a listing',
+                  hint: uiCopy(UiMessage.m_choose_a_listing_5d2d777f9b),
                   items: widget.listings
                       .map((listing) => DropdownMenuItem(
                           value: listing.id, child: Text(listing.title)))
@@ -762,9 +761,9 @@ class _CalendarIntervalDialogState extends State<CalendarIntervalDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: calLinkStyle)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: calLinkStyle)),
         ZineButton(
-          label: 'Save',
+          label: uiCopy(UiMessage.m_save_1509f561f2),
           variant: ZineButtonVariant.blue,
           fontSize: 14,
           onPressed: _save,
@@ -854,9 +853,10 @@ Future<void> showCalendarNumberDialog(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) {
+        UiLocaleScope.watch(context);
         final parsed =
             controller.text.trim().isEmpty ? null : int.tryParse(controller.text.trim());
-        final error = validate(parsed);
+        final error = knownUiError(validate(parsed));
         return AlertDialog(
           backgroundColor: AD.card,
           shape: RoundedRectangleBorder(
@@ -877,7 +877,7 @@ Future<void> showCalendarNumberDialog(
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                error ?? 'Allowed: $min–$max.',
+                error ?? uiCopy(UiMessage.m_allowed_min_max_36e2ce3099, {'min': (min).toString(), 'max': (max).toString()}),
                 style: calSub(12, c: error == null ? AD.textSecondary : AD.danger),
               ),
             ),
@@ -885,9 +885,9 @@ Future<void> showCalendarNumberDialog(
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: Text('Cancel', style: calLinkStyle)),
+                child: UiText(UiMessage.m_cancel_19766ed6cc, style: calLinkStyle)),
             ZineButton(
-                label: 'Save',
+                label: uiCopy(UiMessage.m_save_1509f561f2),
                 variant: ZineButtonVariant.blue,
                 fontSize: 14,
                 onPressed: error == null

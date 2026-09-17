@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // LiveStage — the joined-call chrome for the GetStream live viewer. [WEB-GS-LIVE-1]
 //
 // Must be rendered inside <StreamVideo><StreamCall call={call}>. Renders the
@@ -92,6 +94,8 @@ export function LiveStage({
   getJwt,
   listingId,
 }: LiveStageProps) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const call = useCall();
   const { useCallCallingState, useIsCallLive, useCallStartedAt, useParticipantCount, useRemoteParticipants } =
     useCallStateHooks();
@@ -192,7 +196,7 @@ export function LiveStage({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
               <Spinner size={26} color="#fff" />
               <p className="font-display font-semibold text-[16px] text-white">
-                {serverEnded ? 'The creator has ended this session.' : isLive ? 'Connecting to the stream…' : 'Waiting for the creator to go live…'}
+                {serverEnded ? uiT("web-live-gs.6d4defb5619f842a","The creator has ended this session.") : isLive ? uiT("web-live-gs.a8c4ca20bbf7eda4","Connecting to the stream…") : uiT("web-live-gs.0442e4e717f18337","Waiting for the creator to go live…")}
               </p>
             </div>
           )}
@@ -206,16 +210,15 @@ export function LiveStage({
                 aria-hidden
               />
               <span className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink">
-                {serverEnded ? 'Ended' : hostReconnecting ? 'Reconnecting' : isLive ? 'Live' : 'Waiting'}
+                {serverEnded ? uiT("web-live-gs.7cdc804e6996997d","Ended") : hostReconnecting ? uiT("web-live-gs.afb118fcb16c3727","Reconnecting") : isLive ? uiT("web-live-gs.b64ac05f17e64d03","Live") : uiT("web-live-gs.6e293a8c009e0011","Waiting")}
               </span>
               {isLive && (
                 <span className="font-mono text-[14px] text-inkSoft tabular-nums font-bold">· {elapsed}</span>
               )}
               <span className="font-mono text-[14px] text-inkSoft tabular-nums font-bold">
-                · {fmtCount(viewerCount)} watching
-              </span>
+                · {fmtCount(viewerCount)}{" "}<UiText id="web-live-gs.19bda4aa00eaf9a1" source="watching" />{" "}</span>
             </div>
-            <style>{'@keyframes zine-pulse{0%,100%{opacity:1}50%{opacity:.35}}'}</style>
+            <style>{uiT("web-live-gs.eb3bb1a7cb30aae1","@keyframes zine-pulse{0%,100%{opacity:1}50%{opacity:.35}}")}</style>
           </div>
 
           {/* creator-reconnecting overlay — server-authoritative, takes
@@ -224,10 +227,9 @@ export function LiveStage({
           {hostReconnecting && !connectionLost && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/70 px-6 text-center">
               <Spinner size={26} color="#fff" />
-              <p className="font-display font-semibold text-[16px] text-white">
-                Creator reconnecting · {fmtCountdown(serverState?.reconnect_deadline_ms, now)}
+              <p className="font-display font-semibold text-[16px] text-white"><UiText id="web-live-gs.ae16a5694e23de99" source="Creator reconnecting ·" />{" "}{fmtCountdown(serverState?.reconnect_deadline_ms, now)}
               </p>
-              <p className="font-body font-bold text-[13px] text-white/80">Your seat is saved — hang tight.</p>
+              <p className="font-body font-bold text-[13px] text-white/80"><UiText id="web-live-gs.23f176923f099c6c" source="Your seat is saved — hang tight." /></p>
             </div>
           )}
 
@@ -235,17 +237,17 @@ export function LiveStage({
           {!hostReconnecting && reconnecting && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/60 px-6 text-center">
               <Spinner size={26} color="#fff" />
-              <p className="font-display font-semibold text-[16px] text-white">Reconnecting…</p>
+              <p className="font-display font-semibold text-[16px] text-white"><UiText id="web-live-gs.27b80374e1151af6" source="Reconnecting…" /></p>
               {reconnectStuckAt && (
                 <>
-                  <p className="font-body font-bold text-[13px] text-white/80">This is taking longer than usual.</p>
+                  <p className="font-body font-bold text-[13px] text-white/80"><UiText id="web-live-gs.beda94e911d3f059" source="This is taking longer than usual." /></p>
                   <button
                     type="button"
                     onClick={retry}
                     disabled={retrying}
                     className="rounded-full border-zine border-ink bg-lime px-5 py-2 font-display font-semibold text-[14px] text-ink shadow-zine-sm disabled:opacity-70"
                   >
-                    {retrying ? 'Retrying…' : 'Retry now'}
+                    {retrying ? uiT("web-live-gs.a16c8b1c95956fba","Retrying…") : uiT("web-live-gs.5148c3e20576923b","Retry now")}
                   </button>
                 </>
               )}
@@ -254,15 +256,15 @@ export function LiveStage({
 
           {connectionLost && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/80 px-6 text-center">
-              <p className="font-display font-semibold text-[18px] text-white">Connection lost</p>
-              <p className="font-body font-bold text-[14px] text-white/80">We couldn't keep you connected to the stream.</p>
+              <p className="font-display font-semibold text-[18px] text-white"><UiText id="web-live-gs.6c44751e62681094" source="Connection lost" /></p>
+              <p className="font-body font-bold text-[14px] text-white/80"><UiText id="web-live-gs.755c48ec8633e252" source="We couldn't keep you connected to the stream." /></p>
               <button
                 type="button"
                 onClick={retry}
                 disabled={retrying}
                 className="rounded-full border-zine border-ink bg-lime px-6 py-2.5 font-display font-semibold text-[15px] text-ink shadow-zine-sm disabled:opacity-70"
               >
-                {retrying ? 'Retrying…' : 'Reconnect'}
+                {retrying ? uiT("web-live-gs.a16c8b1c95956fba","Retrying…") : uiT("web-live-gs.bf8a9eab9e7e141b","Reconnect")}
               </button>
             </div>
           )}
@@ -273,24 +275,20 @@ export function LiveStage({
           {creatorName && <Avatar src={creatorAvatar} name={creatorName} size={36} />}
           <div className="min-w-0 flex-1">
             <p className="truncate font-display font-semibold text-[16px] text-ink">{title}</p>
-            {creatorName && <p className="truncate font-body font-bold text-[13px] text-inkSoft">with {creatorName}</p>}
+            {creatorName && <p className="truncate font-body font-bold text-[13px] text-inkSoft"><UiText id="web-live-gs.0695b563acde461f" source="with" />{" "}{creatorName}</p>}
           </div>
           <button
             type="button"
             onClick={onLeave}
             className="shrink-0 rounded-full border-zine border-ink bg-card px-4 py-2 font-display font-semibold text-[14px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-          >
-            Leave
-          </button>
+          ><UiText id="web-live-gs.fc6e4a408d56be96" source="Leave" />{" "}</button>
         </div>
       </div>
 
       {/* Chat (side panel on desktop, stacked below the stage on phones).
           [APP-ONLY-TX-1 2026-09-12] now carries file attachments — RULEBOOK §7. */}
       <aside className="flex h-[60vh] min-h-0 flex-col bg-card md:h-auto md:rounded-zine md:border-zine md:border-ink md:overflow-hidden md:shadow-zine-sm">
-        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
-          Live chat
-        </div>
+        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft"><UiText id="web-live-gs.1c7cc7287ca8090e" source="Live chat" />{" "}</div>
         <div className="min-h-0 flex-1">
           <GsChat
             apiKey={chatApiKey}

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -63,7 +65,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
     setState(() => _creatingId = null);
     if (link == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not create the link — please try again.')));
+          content: UiText(UiMessage.m_could_not_create_the_link_5d8a044182)));
       return;
     }
     Analytics.capture('affiliate_link_created', {
@@ -74,14 +76,15 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'Pick a product', markWord: 'product', tag: 'promote & earn'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_pick_a_product_f5c8cc8860), markWord: 'product', tag: 'promote & earn'),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
           child: ZineField(
-            hint: 'Search listings or creators…',
+            hint: uiCopy(UiMessage.m_search_listings_or_creators_b88f51a749),
             leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
             onSubmitted: (v) {
               _q = v;

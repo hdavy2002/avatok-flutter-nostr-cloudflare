@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -112,16 +114,14 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       // contacts permission stop worrying.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(n == null
-              ? "Couldn't back up — check your connection and try again"
+              ? uiCopy(UiMessage.m_couldn_t_back_up_check_cdd8dd5a55)
               : n == 0
                   ? (role == ContactBackupRole.sub
                       // A sub with nothing of their own isn't broken — there is
                       // genuinely nothing of theirs to save yet.
-                      ? 'Nothing to back up yet — contacts you add in AvaTOK '
-                          'will be saved to your account'
-                      : 'Nothing to back up yet — open Contacts first so '
-                          'AvaTOK can see your contact book')
-                  : 'Backed up $n contacts to AvaTOK')));
+                      ? uiCopy(UiMessage.m_nothing_to_back_up_yet_ac1f35ff0d)
+                      : uiCopy(UiMessage.m_nothing_to_back_up_yet_795b393907))
+                  : uiCopy(UiMessage.m_backed_up_n_contacts_to_c62bce1711, {'n': (n).toString()}))));
     }
   }
 
@@ -138,8 +138,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("This phone is now yours — all its contacts will be backed up "
-            'to your account')));
+        content: UiText(UiMessage.m_this_phone_is_now_yours_a29970ce44)));
   }
 
   /// [AVADIAL-BACKUP-OWNER] Remove the shared handset's contacts from THIS account's
@@ -160,23 +159,20 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text("Remove this phone's contacts from your backup?",
+        title: UiText(UiMessage.m_remove_this_phone_s_contacts_1a87ce9740,
             style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
-        content: Text(
-          'Your backup keeps the $_backedUp contacts you added in AvaTOK. Anything '
-          "that came from this phone's address book is removed from your account — "
-          "you'll still see them here on this phone, they just stop following you "
-          'to a new one.\n\nThis cannot be undone.',
+        content: UiText(
+          UiMessage.m_your_backup_keeps_the_backedup_34a9205809, params: {'backedUp': (_backedUp).toString()},
           style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove', style: AvaDialTheme.value(size: 14, color: AD.danger)),
+            child: UiText(UiMessage.m_remove_c3812fc4ac, style: AvaDialTheme.value(size: 14, color: AD.danger)),
           ),
         ],
       ),
@@ -190,8 +186,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(n == null
-              ? "Couldn't update your backup — try again"
-              : 'Your backup now holds only your own $n contacts')));
+              ? uiCopy(UiMessage.m_couldn_t_update_your_backup_c6d5497a1f)
+              : uiCopy(UiMessage.m_your_backup_now_holds_only_47d6feb761, {'n': (n).toString()}))));
     }
   }
 
@@ -211,7 +207,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Replace your backup?',
+        title: UiText(UiMessage.m_replace_your_backup_086efa3ce9,
             style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
         content: Text(
           // $_backedUp, not $_count: a sub only ever uploads their OWN contacts, so
@@ -219,9 +215,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           // — and understate what is about to be lost. `_stored` is 0 when the
           // status call failed, so don't assert a number we don't have.
           (_stored > 0
-                  ? 'Your AvaTOK account has $_stored contacts saved. This throws all '
-                      'of them away'
-                  : 'This throws away everything saved in your AvaTOK account') +
+                  ? uiCopy(UiMessage.m_your_avatok_account_has_stored_ec23cc315c, {'stored': (_stored).toString()})
+                  : uiCopy(UiMessage.m_this_throws_away_everything_saved_db819dfa99)) +
               " and saves this phone's $_backedUp instead.\n\n"
                   'Anything saved from another phone will be lost, and this cannot '
                   'be undone. Normal backups only ever add — you never need this '
@@ -231,11 +226,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Replace', style: AvaDialTheme.value(size: 14, color: AD.danger)),
+            child: UiText(UiMessage.m_replace_95e154398a, style: AvaDialTheme.value(size: 14, color: AD.danger)),
           ),
         ],
       ),
@@ -250,8 +245,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(n == null || n == 0
-              ? "Couldn't replace your backup — try again"
-              : 'Your backup now holds $n contacts')));
+              ? uiCopy(UiMessage.m_couldn_t_replace_your_backup_ab19e05012)
+              : uiCopy(UiMessage.m_your_backup_now_holds_n_e2d05c2e3a, {'n': (n).toString()}))));
     }
   }
 
@@ -264,20 +259,19 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Restore contacts?', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
-        content: Text(
-          'This adds contacts from your AvaTOK backup that aren\'t already on this '
-          'phone. Existing contacts are left as they are.',
+        title: UiText(UiMessage.m_restore_contacts_631be75666, style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_this_adds_contacts_from_your_b3cd2eae92,
           style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Restore', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
+            child: UiText(UiMessage.m_restore_a76e13b983, style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
           ),
         ],
       ),
@@ -300,10 +294,10 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       setState(() => _restoring = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(n == null
-              ? "Couldn't restore — check your connection and try again"
+              ? uiCopy(UiMessage.m_couldn_t_restore_check_your_3818a63b06)
               : n == 0
-                  ? 'No AvaTOK backup found yet'
-                  : 'Restored $n contacts to this phone')));
+                  ? uiCopy(UiMessage.m_no_avatok_backup_found_yet_2f48f2bdcd)
+                  : uiCopy(UiMessage.m_restored_n_contacts_to_this_23ec421ea9, {'n': (n).toString()}))));
     }
   }
 
@@ -315,6 +309,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AvaDialTheme.bg,
       appBar: AppBar(
@@ -322,7 +317,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-        title: Text('Contacts backup', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_contacts_backup_86cadcc4ba, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
@@ -337,13 +332,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Backed up automatically',
+                        UiText(UiMessage.m_backed_up_automatically_6624e80b04,
                             style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
                         const SizedBox(height: 2),
-                        Text(
-                            'AvaTOK backs your contacts up every day, on its own — '
-                            'no Gmail needed, nothing to switch on. Backups only '
-                            'ever add, so nothing you saved is overwritten.',
+                        UiText(
+                            UiMessage.m_avatok_backs_your_contacts_up_9e95ba4e6c,
                             style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft)),
                       ]),
                     ),
@@ -363,14 +356,11 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                   AdCard(
                     color: AvaDialTheme.surface2,
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Shared phone',
+                      UiText(UiMessage.m_shared_phone_e05ad9a2d6,
                           style: AvaDialTheme.title(size: 14, color: AvaDialTheme.text)),
                       const SizedBox(height: 4),
-                      Text(
-                        "This phone's contacts belong to the account that set it up. "
-                        'You can use them here, but only the contacts YOU add in '
-                        'AvaTOK are saved to your account — those are the ones that '
-                        'follow you to a new phone.',
+                      UiText(
+                        UiMessage.m_this_phone_s_contacts_belong_815ca93707,
                         style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                       ),
                       // Both escape hatches live here, on the one card a
@@ -380,7 +370,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                         TextButton(
                           onPressed: _busy ? null : _claimPhone,
                           style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                          child: Text('This is my phone',
+                          child: UiText(UiMessage.m_this_is_my_phone_26920b733b,
                               style: AvaDialTheme.value(size: 13, color: AD.iconSearch)),
                         ),
                         const SizedBox(width: 12),
@@ -388,7 +378,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                           TextButton(
                             onPressed: _busy ? null : _pruneBorrowed,
                             style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                            child: Text('Remove its contacts from my backup',
+                            child: UiText(UiMessage.m_remove_its_contacts_from_my_f3f43255a3,
                                 style: AvaDialTheme.value(size: 13, color: AD.iconSearch)),
                           ),
                       ]),
@@ -397,7 +387,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 ],
                 const SizedBox(height: 16),
                 AdButton(
-                  label: 'Back up now',
+                  label: uiCopy(UiMessage.m_back_up_now_02a2840b59),
                   variant: AdButtonVariant.teal,
                   trailingIcon: false,
                   loading: _busy,
@@ -405,7 +395,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 ),
                 const SizedBox(height: Msg.s2),
                 AdButton(
-                  label: 'Restore from AvaTOK',
+                  label: uiCopy(UiMessage.m_restore_from_avatok_69bff70aa8),
                   variant: AdButtonVariant.ghost,
                   trailingIcon: false,
                   loading: _restoring,
@@ -416,15 +406,15 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     padding: const EdgeInsets.only(top: Msg.s3),
                     child: Text(
                       _rTotal > 0
-                          ? 'Restoring… $_rDone of $_rTotal contacts'
+                          ? uiCopy(UiMessage.m_restoring_rdone_of_rtotal_contacts_7d877882f5, {'rDone': (_rDone).toString(), 'rTotal': (_rTotal).toString()})
                           : (_rDone > 0
-                              ? 'Restoring… $_rDone contacts'
-                              : 'Preparing your backup…'),
+                              ? uiCopy(UiMessage.m_restoring_rdone_contacts_c2392e90f0, {'rDone': (_rDone).toString()})
+                              : uiCopy(UiMessage.m_preparing_your_backup_9174795f8b)),
                       style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                     ),
                   ),
                 const SizedBox(height: Msg.s4),
-                Text('How it works', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
+                UiText(UiMessage.m_how_it_works_9c870aa6e5, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
                 const SizedBox(height: 8),
                 _bullet('AvaTOK backs your contacts up once a day by itself, and again '
                     'whenever you change one. Tap Back up now if you want it done '
@@ -452,8 +442,8 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: (_busy || _restoring) ? null : _replaceBackup,
-                  child: Text(
-                    "Replace my backup with this phone's contacts",
+                  child: UiText(
+                    UiMessage.m_replace_my_backup_with_this_9d230e68cc,
                     style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textMute),
                   ),
                 ),

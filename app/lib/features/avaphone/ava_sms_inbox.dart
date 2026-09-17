@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -94,6 +96,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final threads = _threads;
     return Scaffold(
       backgroundColor: PhoneTheme.bg,
@@ -106,7 +109,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           side: const BorderSide(color: PhoneTheme.border, width: 2)),
         onPressed: _compose,
         icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 18),
-        label: Text('New message', style: PhoneTheme.tag(size: 11, color: Colors.white)),
+        label: UiText(UiMessage.m_new_message_78f5975a5d, style: PhoneTheme.tag(size: 11, color: Colors.white)),
       ),
       body: SafeArea(
         bottom: false,
@@ -114,7 +117,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
             child: Row(children: [
-              Text('Messages', style: PhoneTheme.title(size: 24)),
+              UiText(UiMessage.m_messages_04d7b48339, style: PhoneTheme.title(size: 24)),
               const Spacer(),
               PhoneTheme.chip('AvaTOK SMS', color: PhoneTheme.teal,
                   icon: PhosphorIcons.chatText(PhosphorIconsStyle.fill)),
@@ -122,7 +125,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s5, 0, Msg.s5, Msg.s2),
-            child: Text('Text any AvaTOK number — separate from your Messenger chats.',
+            child: UiText(UiMessage.m_text_any_avatok_number_separate_5b03a528ba,
                 style: PhoneTheme.sub(size: 12)),
           ),
           Expanded(
@@ -158,9 +161,9 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
             const SizedBox(height: Msg.s3),
-            Text('No messages yet', style: PhoneTheme.title(size: 17)),
+            UiText(UiMessage.m_no_messages_yet_f42e0f6601, style: PhoneTheme.title(size: 17)),
             const SizedBox(height: Msg.s1),
-            Text('Tap "New message" to text an AvaTOK number.',
+            UiText(UiMessage.m_tap_new_message_to_text_92f86529b9,
                 textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
           ]),
         ),
@@ -177,6 +180,7 @@ class _SmsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -200,7 +204,7 @@ class _SmsRow extends StatelessWidget {
                 ],
               ]),
               const SizedBox(height: Msg.s1),
-              Text(preview.isEmpty ? 'Tap to open' : preview,
+              Text(preview.isEmpty ? uiCopy(UiMessage.m_tap_to_open_f760e3779b) : preview,
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: PhoneTheme.sub(size: 13, color: unread ? PhoneTheme.text : PhoneTheme.textSoft)),
             ]),
@@ -261,6 +265,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final bottom = MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom;
     // Only AvaTOK-network contacts are offered as quick-picks (never the phone book).
     final saved = widget.contacts.where((c) => c.number.isNotEmpty).take(20).toList();
@@ -278,9 +283,9 @@ class _ComposeSheetState extends State<_ComposeSheet> {
             child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill)),
           ),
-          Text('New message', style: PhoneTheme.title(size: 20)),
+          UiText(UiMessage.m_new_message_78f5975a5d, style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
-          Text('Send to any AvaTOK number.', style: PhoneTheme.sub(size: 12)),
+          UiText(UiMessage.m_send_to_any_avatok_number_f0c8fdcb9e, style: PhoneTheme.sub(size: 12)),
           const SizedBox(height: Msg.s3),
           TextField(
             controller: _ctrl,
@@ -289,7 +294,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
             style: PhoneTheme.value(size: 16),
             cursorColor: PhoneTheme.accent,
             decoration: InputDecoration(
-              hintText: 'AvaTOK number, e.g. +233 24 555 0148',
+              hintText: uiCopy(UiMessage.m_avatok_number_e_g_233_647aa7ddc0),
               hintStyle: PhoneTheme.sub(size: 13, color: PhoneTheme.textMute),
               filled: true,
               fillColor: PhoneTheme.surface2,
@@ -323,12 +328,12 @@ class _ComposeSheetState extends State<_ComposeSheet> {
               icon: _resolving
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
                   : PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.fill), size: 18),
-              label: Text(_resolving ? 'Finding…' : 'Start chat', style: PhoneTheme.value(size: 15, color: Colors.white)),
+              label: Text(_resolving ? uiCopy(UiMessage.m_finding_4115f461d9) : uiCopy(UiMessage.m_start_chat_0bce1a892d), style: PhoneTheme.value(size: 15, color: Colors.white)),
             ),
           ),
           if (saved.isNotEmpty) ...[
             const SizedBox(height: Msg.s4),
-            Text('Your AvaTOK contacts', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
+            UiText(UiMessage.m_your_avatok_contacts_aad97f6ca3, style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),

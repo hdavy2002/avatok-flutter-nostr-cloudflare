@@ -1,26 +1,232 @@
 ---
-import { publicImage } from '../lib/config';
 export const prerender = true;
-import Base from '../layouts/Base.astro';
-import PricingCalculatorPreview from '../components/pricing/PricingCalculatorPreview.astro';
-import '../styles/pricing-preview.css';
+import Content from '../layouts/Content.astro';
 ---
 
-<Base title="Plan your usage · avaTOK" description="Plan your avaTOK usage with an interactive calculator. Explore monthly and yearly estimates using clearly labelled sample rates.">
-  <main class="pricing-preview">
-    <div class="pp-container">
-      <header class="pp-intro">
-        <div class="pp-intro-copy">
-          <div class="pp-eyebrow"><span class="pp-preview-badge">Usage calculator</span><span>Plan your usage</span></div>
-          <h1>Make room for your<br class="pp-desktop-break" /> next big idea<span>.</span></h1>
-          <p>A quick conversation or a regular gathering. Shape your sessions and see how your usage adds up.</p>
+<Content
+  kicker="Plan your usage"
+  title="Calculate Your Pricing"
+  description="Estimate avaTOK usage with clear Token and Indian-rupee pricing."
+  image="/og/pricing-fees.png"
+  lead="Choose a use case, set your expected usage, and see how your monthly estimate will be calculated."
+  updated="2026-09-09"
+  width="wide"
+  tone="sky"
+  helpHref="/help/billing/platform-fee"
+>
+  <section class="pricing-intro" aria-labelledby="calculator-title">
+    <p data-i18n="web-pricing-fees.b0e8c0e71aa039e2" class="eyebrow">Usage calculator · first draft</p>
+    <h2 data-i18n="web-pricing-fees.412160b1f9e5dfe3" id="calculator-title">Estimate your monthly usage</h2>
+    <p>
+      <ui-copy style="display:contents" data-i18n="web-pricing-fees.a57a6391cad9ac72">Build a quick estimate for the way you expect to use avaTOK. Token amounts are the internal unit;</ui-copy>
+      <strong data-i18n="web-pricing-fees.1333886bf7b67378">1 Token = ₹1</strong> <ui-copy style="display:contents" data-i18n="web-pricing-fees.32df79f87ed2464e">is the fixed customer-facing value in India. Token
+      amounts are whole rupees and payment records retain the exact Token amount.</ui-copy>
+    </p>
+  </section>
+
+  <div class="pricing-calculator" data-calculator>
+    <section class="calculator-card calculator-inputs" aria-labelledby="inputs-title">
+      <div class="card-heading">
+        <div>
+          <p data-i18n="web-pricing-fees.1ec08a2f0975b2a7" class="eyebrow">Your usage</p>
+          <h2 data-i18n="web-pricing-fees.343425fefebacf28" id="inputs-title">Video and audio pricing calculator</h2>
         </div>
-        <img class="pp-chai-art" src={publicImage('/assets/pricing-preview/chai-kettle.jpeg', { width: 420, fit: 'scale-down' })} alt="" width="150" height="175" />
-      </header>
-      <PricingCalculatorPreview />
-      <p class="help-crosslink" style="margin: 28px 0; font-size: 16px; line-height: 1.6;">Questions about billing? <a href="/help/billing/platform-fee" style="color: #ad4816; font-weight: 700; text-decoration: underline; text-underline-offset: 3px;">Read the help centre →</a></p>
-      <img class="pp-end-art" src={publicImage('/assets/pricing-preview/floral-signal.jpeg', { width: 256, fit: 'scale-down' })} alt="" width="65" height="86" loading="lazy" />
-      <p class="pp-footnote">An early look at our calculator. Options and rates are being finalized.</p>
-    </div>
-  </main>
-</Base>
+        <span data-i18n="web-pricing-fees.76cee837b160e6d8" class="draft-badge">Rates coming soon</span>
+      </div>
+      <p data-i18n="web-pricing-fees.bd5a8b687c3446e4" class="card-copy">Choose the options that best match your expected calls, streams, or audio rooms.</p>
+
+      <fieldset>
+        <legend data-i18n="web-pricing-fees.471efbcbe46d0a9a">Use case</legend>
+        <div class="option-grid option-grid--three">
+          <label class="choice"><input type="radio" name="use-case" value="video" checked /> <span data-i18n="web-pricing-fees.85d01cc241bd5952">Video calls</span></label>
+          <label class="choice"><input type="radio" name="use-case" value="streaming" /> <span data-i18n="web-pricing-fees.a091a4deca29ce3e">Live streaming</span></label>
+          <label class="choice"><input type="radio" name="use-case" value="audio" /> <span data-i18n="web-pricing-fees.72b5cf22c7004b57">Audio rooms</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="web-pricing-fees.b8c237eb0d10bc61">Video quality</legend>
+        <div class="option-grid option-grid--five">
+          <label class="choice"><input type="radio" name="quality" value="audio-only" checked /> <span data-i18n="web-pricing-fees.224b45b631727121">Audio only</span></label>
+          <label class="choice"><input type="radio" name="quality" value="sd" /> <span data-i18n="web-pricing-fees.495496f0156b1a6c">SD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="hd" /> <span data-i18n="web-pricing-fees.323e41792751e840">HD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="fhd" /> <span data-i18n="web-pricing-fees.c4e60e05ae4f293a">FHD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="4k" /> <span data-i18n="web-pricing-fees.cc1e5d5a9c88e51f">4K</span></label>
+        </div>
+      </fieldset>
+
+      <div class="range-field">
+        <div class="field-label"><label data-i18n="web-pricing-fees.ee374cd39fb9f646" for="participants">Participants per call</label><output id="participants-output">2</output></div>
+        <input id="participants" type="range" min="1" max="25" value="2" />
+        <div class="range-hint"><span>1</span><span>25</span></div>
+      </div>
+
+      <div class="range-field">
+        <div class="field-label"><label data-i18n="web-pricing-fees.85e7f79eace4fc35" for="duration">Average session duration</label><output data-i18n="web-pricing-fees.b63f1f48f79dc3c0" id="duration-output">60 min</output></div>
+        <input id="duration" type="range" min="5" max="240" step="5" value="60" />
+        <div class="range-hint"><span data-i18n="web-pricing-fees.53bc57cdb69279bb">5 min</span><span data-i18n="web-pricing-fees.e5bc99278849514d">4 hours</span></div>
+      </div>
+
+      <div class="range-field">
+        <div class="field-label"><label data-i18n="web-pricing-fees.af69214d2077aa72" for="sessions">Monthly sessions</label><output id="sessions-output">1</output></div>
+        <input id="sessions" type="range" min="1" max="100" value="1" />
+        <div class="range-hint"><span>1</span><span>100</span></div>
+      </div>
+
+      <fieldset>
+        <legend data-i18n="web-pricing-fees.ccfc53fcbd494330">Add-ons</legend>
+        <div class="option-grid option-grid--three">
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="recording" /> <span data-i18n="web-pricing-fees.80e8dd1a5a05f707">Recording</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="noise-cancellation" /> <span data-i18n="web-pricing-fees.7ad2abcd2236cedc">Noise cancellation</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="transcription" /> <span data-i18n="web-pricing-fees.0d13b205fa003608">Transcriptions / captions</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="hls" /> <span data-i18n="web-pricing-fees.24d013654ce3577d">HLS live streaming</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="rtmp-in" /> <span data-i18n="web-pricing-fees.24df81ebfb2f23ae">RTMP in</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="rtmp-out" /> <span data-i18n="web-pricing-fees.c189e8d3bc80dcb8">RTMP out</span></label>
+        </div>
+      </fieldset>
+    </section>
+
+    <aside class="calculator-card calculator-summary" aria-labelledby="summary-title">
+      <div class="card-heading">
+        <div>
+          <p data-i18n="web-pricing-fees.121a8cb03a5e79ee" class="eyebrow">Your estimate</p>
+          <h2 data-i18n="web-pricing-fees.9ccba222f889a6c0" id="summary-title">Estimated cost</h2>
+        </div>
+        <div data-india-i18n-attr="aria-label:web-pricing-fees.a4a987fb16d9bd93" class="billing-toggle" role="group" aria-label="Billing period">
+          <button data-i18n="web-pricing-fees.9b11f6b707d2a03e" type="button" class="is-active" data-period="monthly">Monthly</button>
+          <button data-i18n="web-pricing-fees.6e69b59ed34d42ef" type="button" data-period="yearly">Yearly</button>
+        </div>
+      </div>
+
+      <div class="estimate-total">
+        <span data-i18n="web-pricing-fees.fef6b5bc2373b600" class="estimate-value">Pricing soon</span>
+        <span data-i18n="web-pricing-fees.e0a9e9de578dccd4" class="estimate-caption">Rates will be published here</span>
+      </div>
+
+      <dl class="usage-breakdown">
+        <div><dt data-i18n="web-pricing-fees.7582c76331aca385">Participant minutes</dt><dd id="participant-minutes">120</dd></div>
+        <div><dt data-i18n="web-pricing-fees.133f5f122a99dd36">Sessions per month</dt><dd id="session-count">1</dd></div>
+        <div><dt data-i18n="web-pricing-fees.05801a429ffd09d0">Selected add-ons</dt><dd id="addon-count">0</dd></div>
+      </dl>
+
+      <div class="rate-notice">
+        <strong data-i18n="web-pricing-fees.e100c285890b3ea8">Pricing values are being finalized.</strong>
+        <p data-i18n="web-pricing-fees.dd5c4198ff9459c7">Once feature costs and participant-minute rates are set, this panel will calculate the estimate automatically.</p>
+      </div>
+      <a class="summary-link" href="mailto:support@avatok.ai?subject=Pricing%20calculator"><ui-copy style="display:contents" data-i18n="web-pricing-fees.5ed2786c5bb2a8d1">Ask about pricing</ui-copy> <span aria-hidden="true">→</span></a>
+    </aside>
+  </div>
+
+  <section class="pricing-notes" aria-labelledby="notes-title">
+    <p data-i18n="web-pricing-fees.f1ee9bf0ae1a4512" class="eyebrow">How this will work</p>
+    <h2 data-i18n="web-pricing-fees.2998d93de305d674" id="notes-title">A clearer way to plan your usage</h2>
+    <p data-i18n="web-pricing-fees.16ffeb73bfa4b2b0">
+      Your estimate will be based on the selected feature, quality, participant minutes, session
+      count, and any optional add-ons. The final amount shown before you confirm a paid feature remains
+      the authoritative price.
+    </p>
+  </section>
+</Content>
+
+<script>
+  const calculator = document.querySelector('[data-calculator]');
+
+  if (calculator) {
+    const participants = document.querySelector('#participants');
+    const duration = document.querySelector('#duration');
+    const sessions = document.querySelector('#sessions');
+    const participantOutput = document.querySelector('#participants-output');
+    const durationOutput = document.querySelector('#duration-output');
+    const sessionsOutput = document.querySelector('#sessions-output');
+    const participantMinutes = document.querySelector('#participant-minutes');
+    const sessionCount = document.querySelector('#session-count');
+    const addonCount = document.querySelector('#addon-count');
+
+    function updateEstimate() {
+      const participantCount = Number(participants.value);
+      const durationMinutes = Number(duration.value);
+      const sessionTotal = Number(sessions.value);
+      const addons = calculator.querySelectorAll('input[name="addon"]:checked').length;
+
+      participantOutput.textContent = participantCount;
+      durationOutput.textContent = `${durationMinutes} min`;
+      sessionsOutput.textContent = sessionTotal;
+      participantMinutes.textContent = (participantCount * durationMinutes * sessionTotal).toLocaleString();
+      sessionCount.textContent = sessionTotal;
+      addonCount.textContent = addons;
+    }
+
+    calculator.querySelectorAll('input[type="range"], input[type="checkbox"]').forEach((input) => {
+      input.addEventListener('input', updateEstimate);
+      input.addEventListener('change', updateEstimate);
+    });
+
+    calculator.querySelectorAll('[data-period]').forEach((button) => {
+      button.addEventListener('click', () => {
+        calculator.querySelectorAll('[data-period]').forEach((period) => period.classList.remove('is-active'));
+        button.classList.add('is-active');
+      });
+    });
+
+    updateEstimate();
+  }
+</script>
+
+<style is:global>
+  .pricing-intro, .pricing-notes { padding:28px 30px; border:1px solid var(--ink); border-radius:24px; background:var(--white); color:var(--ink); }
+  .pricing-intro { margin-bottom:34px; box-shadow:10px 10px 0 var(--blue); }
+  .pricing-intro h2, .pricing-notes h2 { margin:8px 0 12px; font-family:var(--display); font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:.03em; }
+  .pricing-intro p:last-child, .pricing-notes p:last-child { max-width:780px; margin:0; }
+  .eyebrow { margin:0; color:var(--blue); font-size:13px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+  .pricing-calculator { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr); gap:24px; align-items:start; }
+  .calculator-card { padding:30px; border:1px solid var(--ink); border-radius:24px; background:var(--white); color:var(--ink); box-shadow:8px 8px 0 rgba(22,22,20,.9); }
+  .calculator-summary { position:sticky; top:28px; box-shadow:8px 8px 0 var(--pink); }
+  .card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+  .calculator-card h2 { margin:7px 0 0; font-size:clamp(24px,2.5vw,34px); line-height:1.05; letter-spacing:.03em; }
+  .card-copy { margin:16px 0 30px; color:rgba(22,22,20,.7); font-size:17px; line-height:1.45; }
+  .draft-badge { flex:none; padding:8px 10px; border-radius:999px; background:var(--lime); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+  fieldset { margin:0 0 34px; padding:0; border:0; }
+  legend, .range-field label { margin-bottom:11px; color:var(--ink); font-size:16px; font-weight:800; }
+  .option-grid { display:grid; gap:9px; }
+  .option-grid--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .option-grid--five { grid-template-columns:repeat(5,minmax(0,1fr)); }
+  .choice { display:flex; align-items:center; gap:8px; min-height:45px; padding:9px 11px; border:1px solid rgba(22,22,20,.28); border-radius:8px; background:rgba(253,241,211,.55); font-size:14px; line-height:1.2; cursor:pointer; }
+  .choice:has(input:checked) { border-color:var(--blue); background:#d7eef0; box-shadow:inset 0 0 0 1px var(--blue); }
+  .choice input { accent-color:var(--blue); width:16px; height:16px; flex:none; }
+  .range-field { margin:0 0 38px; }
+  .field-label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .field-label output { min-width:82px; padding:8px 10px; border-radius:7px; background:#f0e2c9; text-align:right; font-weight:800; }
+  input[type="range"] { display:block; width:100%; margin:13px 0 5px; accent-color:var(--blue); }
+  .range-hint { display:flex; justify-content:space-between; color:rgba(22,22,20,.58); font-size:12px; }
+  .billing-toggle { display:flex; padding:4px; border-radius:9px; background:#f0e2c9; }
+  .billing-toggle button { padding:8px 11px; border:0; border-radius:6px; background:transparent; color:var(--ink); font:inherit; font-size:13px; cursor:pointer; }
+  .billing-toggle button.is-active { background:var(--white); box-shadow:0 1px 3px rgba(22,22,20,.15); font-weight:800; }
+  .estimate-total { display:grid; place-items:center; min-height:170px; margin:30px 0 25px; padding:24px; border:1px solid rgba(22,22,20,.25); border-radius:18px; background:#fffaf0; text-align:center; }
+  .estimate-value { color:var(--blue); font-family:var(--display); font-size:clamp(34px,4vw,52px); font-weight:700; letter-spacing:.03em; }
+  .estimate-caption { color:rgba(22,22,20,.6); font-size:15px; }
+  .usage-breakdown { margin:0; }
+  .usage-breakdown div { display:flex; justify-content:space-between; gap:15px; padding:15px 0; border-bottom:1px solid rgba(22,22,20,.2); }
+  .usage-breakdown dt { color:rgba(22,22,20,.72); }
+  .usage-breakdown dd { margin:0; color:var(--blue); font-weight:800; }
+  .rate-notice { margin-top:24px; padding:18px; border-left:5px solid var(--blue); border-radius:0 14px 14px 0; background:#d7eef0; }
+  .rate-notice strong { display:block; margin-bottom:5px; }
+  .rate-notice p { margin:0; color:rgba(22,22,20,.72); font-size:15px; line-height:1.4; }
+  .summary-link { display:flex; justify-content:space-between; align-items:center; margin-top:24px; padding:14px 16px; border-radius:20px; background:var(--ink); color:var(--white) !important; text-decoration:none !important; font-weight:800; }
+  .pricing-notes { margin-top:34px; box-shadow:10px 10px 0 var(--lime); }
+  @media (max-width:900px) { .pricing-calculator { grid-template-columns:1fr; } .calculator-summary { position:static; } .option-grid--five { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  @media (max-width:560px) {
+    .pricing-intro, .pricing-notes, .calculator-card { padding:22px 19px; }
+    .card-heading { display:block; }
+    .draft-badge { display:inline-block; margin-top:14px; }
+    .option-grid--three, .option-grid--five { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .option-grid--three .choice:first-child { grid-column:span 2; }
+    .calculator-inputs fieldset { margin-bottom:40px; }
+    .calculator-inputs fieldset:nth-of-type(2) { padding-bottom:28px; }
+    .calculator-inputs fieldset + .range-field { margin-top:0; padding-top:0; }
+    .calculator-inputs #participants-output { margin-top:12px; }
+    .calculator-inputs .range-field { margin-bottom:46px; }
+    .calculator-inputs .range-field + .range-field { margin-top:8px; }
+    .choice { min-height:50px; padding:10px 11px; }
+    .billing-toggle { margin-top:16px; width:max-content; }
+  }
+</style>

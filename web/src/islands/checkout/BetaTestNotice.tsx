@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* [BETA-TESTMODE-1 2026-09-14] The buyer-facing beta / test-mode notice.
  *
  * Shown ONLY when the gateway the buyer has actually selected reports
@@ -43,17 +44,12 @@ export function BetaTestNotice({ gateway, listingId }: BetaTestNoticeProps) {
 
   return (
     <Card fillClassName="bg-paper2">
-      <p className="font-mono font-bold uppercase tracking-[0.1em] text-[11px] text-inkMute">
-        Beta demonstration · test mode
-      </p>
-      <p className="mt-2 font-body font-bold text-[15px] text-ink">
-        This is a beta demonstration. Payments are in test mode, and no real money will be charged.
-        Please use the test payment details shown below.
-      </p>
+      <p className="font-mono font-bold uppercase tracking-[0.1em] text-[11px] text-inkMute"><UiText id="web-checkout.f28c598d75d22878" source="Beta demonstration · test mode" />{" "}</p>
+      <p className="mt-2 font-body font-bold text-[15px] text-ink"><UiText id="web-checkout.8874a37921d7a5f7" source="This is a beta demonstration. Payments are in test mode, and no real money will be charged. Please use the test payment details shown below." />{" "}</p>
 
       {gateway === 'razorpay' ? (
         <div className="mt-3 flex flex-col gap-2">
-          <p className="font-body font-bold text-[14px] text-inkSoft">Test card — use any random CVV and any future expiry date:</p>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.7d3479ea0027f506" source="Test card — use any random CVV and any future expiry date:" /></p>
           <ul className="flex flex-col gap-1">
             {RAZORPAY_TEST_CARDS.map((c) => (
               <li key={c.number} className="font-mono text-[14px] text-ink">
@@ -61,25 +57,16 @@ export function BetaTestNotice({ gateway, listingId }: BetaTestNoticeProps) {
               </li>
             ))}
           </ul>
-          <p className="font-body font-bold text-[14px] text-inkSoft">
-            On the mock bank page that follows, choose <strong>Success</strong> to complete the payment or{' '}
-            <strong>Failure</strong> to see a declined payment.
-          </p>
-          <p className="font-body font-bold text-[14px] text-inkSoft">
-            Paying by UPI instead: <span className="font-mono text-ink">success@razorpay</span> completes,{' '}
-            <span className="font-mono text-ink">failure@razorpay</span> declines.
-          </p>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.a439dc626ad5931e" source="On the mock bank page that follows, choose" />{" "}<strong><UiText id="web-checkout.c88a0b907419a70c" source="Success" /></strong>{" "}<UiText id="web-checkout.98096d74e91c3b23" source="to complete the payment or" />{' '}
+            <strong><UiText id="web-checkout.7031edbcf9c42caa" source="Failure" /></strong>{" "}<UiText id="web-checkout.bb287cb9fef61b02" source="to see a declined payment." />{" "}</p>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.d1d96629da3ee38a" source="Paying by UPI instead:" />{" "}<span className="font-mono text-ink">success@razorpay</span>{" "}<UiText id="web-checkout.4e59abe6d3bc5643" source="completes," />{' '}
+            <span className="font-mono text-ink">failure@razorpay</span>{" "}<UiText id="web-checkout.7a6970b7e40bb7a8" source="declines." />{" "}</p>
         </div>
       ) : (
-        <p className="mt-3 font-body font-bold text-[14px] text-inkSoft">
-          This gateway is in its sandbox. Use the test details from that provider’s own documentation —
-          Razorpay’s test cards will not work here.
-        </p>
+        <p className="mt-3 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.a893466db9f72e15" source="This gateway is in its sandbox. Use the test details from that provider’s own documentation — Razorpay’s test cards will not work here." />{" "}</p>
       )}
 
-      <p className="mt-3 font-body text-[13px] text-inkMute">
-        Nothing is charged and no booking is billed while this notice is showing.
-      </p>
+      <p className="mt-3 font-body text-[13px] text-inkMute"><UiText id="web-checkout.687ac02b12ef2ed5" source="Nothing is charged and no booking is billed while this notice is showing." />{" "}</p>
     </Card>
   );
 }

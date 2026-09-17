@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -122,7 +125,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Correct this memory', style: ADText.threadName(c: AD.textPrimary)),
+        title: UiText(UiMessage.m_correct_this_memory_ec3e7cc297, style: ADText.threadName(c: AD.textPrimary)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -130,14 +133,14 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
           minLines: 2,
           style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
               fontSize: 14, color: AD.textPrimary),
-          decoration: InputDecoration(hintText: 'What should Ava remember instead?',
+          decoration: InputDecoration(hintText: uiCopy(UiMessage.m_what_should_ava_remember_instead_02b0f96668),
               hintStyle: ADText.preview(c: AD.textTertiary)),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text('Save', style: ADText.preview(c: AD.iconSearch))),
+              child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AD.iconSearch))),
         ],
       ),
     );
@@ -176,15 +179,15 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Forget this memory?', style: ADText.threadName(c: AD.textPrimary)),
-        content: Text(
-            'Ava will stop using "${item.content}" to answer you. This can’t be undone.',
+        title: UiText(UiMessage.m_forget_this_memory_c257fa4d86, style: ADText.threadName(c: AD.textPrimary)),
+        content: UiText(
+            UiMessage.m_ava_will_stop_using_value1_67278bd1aa, params: {'value1': (item.content).toString()},
             style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Forget', style: ADText.preview(c: AD.danger))),
+              child: UiText(UiMessage.m_forget_a6bd489d95, style: ADText.preview(c: AD.danger))),
         ],
       ),
     );
@@ -251,6 +254,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -282,22 +286,22 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
         // Short responsive title — ellipsizes before the trailing controls do.
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('AvaBrain',
+            UiText(UiMessage.m_avabrain_7012aa07e1,
                 style: ADText.threadName(c: onBand),
                 maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
-            Text('What Ava remembers about you',
+            UiText(UiMessage.m_what_ava_remembers_about_you_32363f41ab,
                 style: ADText.preview(c: onBand),
                 maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
           ]),
         ),
         IconButton(
-          tooltip: 'Consent settings',
+          tooltip: uiCopy(UiMessage.m_consent_settings_24be79f138),
           icon: PhosphorIcon(PhosphorIcons.slidersHorizontal(PhosphorIconsStyle.bold),
               color: onBand, size: 20),
           onPressed: _openConsent,
         ),
         IconButton(
-          tooltip: 'Export my memory',
+          tooltip: uiCopy(UiMessage.m_export_my_memory_dcac11a3aa),
           icon: _exporting
               ? SizedBox(width: 18, height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2, color: onBand))
@@ -322,14 +326,13 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 54),
             const SizedBox(height: Msg.s3),
-            Text(_fetchFailed ? 'Memory isn’t available yet' : 'Nothing remembered yet',
+            Text(_fetchFailed ? uiCopy(UiMessage.m_memory_isn_t_available_yet_cf7f4807bb) : uiCopy(UiMessage.m_nothing_remembered_yet_52b468cbb7),
                 style: ADText.threadName(c: AD.textPrimary), textAlign: TextAlign.center),
             const SizedBox(height: Msg.s1),
             Text(
               _fetchFailed
-                  ? 'Check back soon — this screen turns on as AvaBrain memory rolls out.'
-                  : 'As you chat with Ava and use AvaTOK, durable facts and preferences '
-                      'will show up here for you to confirm, correct, or forget.',
+                  ? uiCopy(UiMessage.m_check_back_soon_this_screen_5dfa1b77d7)
+                  : uiCopy(UiMessage.m_as_you_chat_with_ava_df7c5cde5e),
               style: ADText.preview(), textAlign: TextAlign.center,
             ),
           ]),
@@ -408,6 +411,7 @@ class _MemoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final hedged = item.isLowConfidence;
     return AdCard(
       radius: AD.rListCard,
@@ -416,7 +420,7 @@ class _MemoryRow extends StatelessWidget {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Text(
-              hedged ? 'Ava thinks: ${item.content}' : item.content,
+              hedged ? uiCopy(UiMessage.m_ava_thinks_value1_d371955f90, {'value1': (item.content).toString()}) : item.content,
               style: hedged
                   ? ADText.bubbleBody(c: AD.textSecondary).copyWith(fontStyle: FontStyle.italic)
                   : ADText.bubbleBody(c: AD.textPrimary),
@@ -439,19 +443,19 @@ class _MemoryRow extends StatelessWidget {
           if (!item.userConfirmed)
             IconButton(
               visualDensity: VisualDensity.compact,
-              tooltip: 'Confirm',
+              tooltip: uiCopy(UiMessage.m_confirm_eebdd24a77),
               icon: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), size: 20, color: AD.online),
               onPressed: onConfirm,
             ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            tooltip: 'Correct',
+            tooltip: uiCopy(UiMessage.m_correct_aca01a1a3a),
             icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
             onPressed: onCorrect,
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            tooltip: 'Forget',
+            tooltip: uiCopy(UiMessage.m_forget_a6bd489d95),
             icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 18, color: AD.danger),
             onPressed: onForget,
           ),
@@ -464,7 +468,7 @@ class _MemoryRow extends StatelessWidget {
 class _ConfirmedBadge extends StatelessWidget {
   const _ConfirmedBadge();
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.online,
@@ -473,7 +477,7 @@ class _ConfirmedBadge extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 10, color: Colors.white),
           const SizedBox(width: Msg.s1),
-          Text('confirmed', style: ADText.statCaption(c: Colors.white)),
+          UiText(UiMessage.m_confirmed_9599915bd8, style: ADText.statCaption(c: Colors.white)),
         ]),
-      );
+      ); }
 }

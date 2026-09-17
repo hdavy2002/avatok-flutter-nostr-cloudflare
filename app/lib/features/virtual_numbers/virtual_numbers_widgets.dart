@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -24,7 +26,7 @@ class VirtualNumbersUi {
               : IconButton(
                   onPressed: onBack,
                   icon: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.regular)),
-                  tooltip: 'Back'),
+                  tooltip: uiCopy(UiMessage.m_back_76900f1bfd)),
           title: Text(title, style: AvaDialTheme.title(size: 21)),
           actions: actions,
         ),
@@ -121,7 +123,7 @@ class VirtualLineAvatar extends StatelessWidget {
   final VirtualLine line;
   final double size;
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Semantics(
         label: line.typeLabel,
         child: Container(
           width: size,
@@ -137,5 +139,5 @@ class VirtualLineAvatar extends StatelessWidget {
                   : line.label.characters.first.toUpperCase(),
               style: AvaDialTheme.title(size: size * .38, color: Colors.white)),
         ),
-      );
+      ); }
 }

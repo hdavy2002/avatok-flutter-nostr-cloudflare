@@ -1,17 +1,19 @@
 ---
+import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 interface Props { compact?: boolean; }
 const { compact = false } = Astro.props;
 ---
 <div class:list={['global-locales', compact && 'global-locales--compact']}>
   <details class="global-selector">
-    <summary aria-label="Choose country experience"><span aria-hidden="true">🌐</span> Global <span class="global-chevron" aria-hidden="true">⌄</span></summary>
+    <summary data-india-i18n-attr="aria-label:web-common.a39d5691b0ce64d4" aria-label="Choose country experience"><span aria-hidden="true">🌐</span> <ui-copy style="display:contents" data-i18n="web-common.a258b30f88c30650">Global</ui-copy> <span class="global-chevron" aria-hidden="true">⌄</span></summary>
     <div class="global-selector__menu">
-      <p>Choose your experience</p>
-      <a href="/" aria-current="page" data-site-experience="global">🌐 Global · English <span aria-hidden="true">✓</span></a>
-      <a href="/india" data-site-experience="india">🇮🇳 India <span aria-hidden="true">→</span></a>
-      <small>More country experiences are on the way.</small>
+      <p data-i18n="web-common.b5fcd3657c5e3959">Choose your experience</p>
+      <a href="/" aria-current="page" data-site-experience="global"><ui-copy style="display:contents" data-i18n="web-common.abd2373108b0e135">🌐 Global · English</ui-copy> <span aria-hidden="true">✓</span></a>
+      <a href="/india" data-site-experience="india"><ui-copy style="display:contents" data-i18n="web-common.e632a1efa068f672">🇮🇳 India</ui-copy> <span aria-hidden="true">→</span></a>
+      <small data-i18n="web-common.82abb7ff5ecb8983">More country experiences are on the way.</small>
     </div>
   </details>
+  <IndiaLanguageSelector id={compact ? "global-language-compact" : "global-language"} />
 </div>
 <script>
   document.querySelectorAll<HTMLDetailsElement>('.global-selector').forEach((selector) => {

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // Phase 7 A3 — AvaConsult pre-join screen: mic permission + level meter, cam
 // preview, network probe (RTT + ~2 s bandwidth estimate) → green/yellow/red
 // verdict with plain-language tips, and the "starts in 03:12" countdown.
@@ -120,6 +122,7 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final now = DateTime.now().millisecondsSinceEpoch;
     final startsAt = (_join?['starts_at'] as num?)?.toInt();
     final startsIn = startsAt != null ? startsAt - now : null;
@@ -181,10 +184,10 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
                 Expanded(
                   child: Text(
                     _probing
-                        ? 'Checking your connection…'
+                        ? uiCopy(UiMessage.m_checking_your_connection_2beb1a859c)
                         : _probe == null
-                            ? 'Could not check the connection — joining may still work.'
-                            : '${_probe!.tip}  (${_probe!.rttMs} ms · ${_probe!.kbps} kbps)',
+                            ? uiCopy(UiMessage.m_could_not_check_the_connection_5bac8d9228)
+                            : uiCopy(UiMessage.m_value1_value2_ms_value3_kbps_2fb3b2543d, {'value1': (_probe!.tip).toString(), 'value2': (_probe!.rttMs).toString(), 'value3': (_probe!.kbps).toString()}),
                     style: ADText.preview().copyWith(fontSize: 13, height: 1.42),
                   ),
                 ),
@@ -196,7 +199,7 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
             if (_opensAt != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: Msg.s3),
-                child: Text('The room opens ${fmtIn(_opensAt! - now)} before the start.',
+                child: UiText(UiMessage.m_the_room_opens_value1_before_700b2cf0cd, params: {'value1': (fmtIn(_opensAt! - now)).toString()},
                     textAlign: TextAlign.center,
                     style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42)),
               ),
@@ -205,8 +208,8 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
               icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
               trailingIcon: false,
               label: _join != null
-                  ? (startsIn != null && startsIn > 0 ? 'Join — starts in ${fmtIn(startsIn)}' : 'Join now')
-                  : (_opensAt != null ? 'Too early — check again' : 'Checking…'),
+                  ? (startsIn != null && startsIn > 0 ? uiCopy(UiMessage.m_join_starts_in_value1_4b494a56aa, {'value1': (fmtIn(startsIn)).toString()}) : uiCopy(UiMessage.m_join_now_028e666e2c))
+                  : (_opensAt != null ? uiCopy(UiMessage.m_too_early_check_again_374a7e2477) : uiCopy(UiMessage.m_checking_ec963ffc91)),
               onPressed: _join != null ? _enter : (_error == null ? _checkJoin : null),
             ),
           ]),

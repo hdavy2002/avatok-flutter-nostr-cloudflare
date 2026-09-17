@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -76,6 +78,7 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -83,7 +86,7 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: Msg.hairline),
-        title: Text('Cards', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_cards_a52fcbbc33, style: ADText.appTitle()),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
@@ -92,7 +95,7 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
                 padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Toggle cards on or off, and drag to reorder your Home dashboard.',
+                  child: UiText(UiMessage.m_toggle_cards_on_or_off_bef75f6bde,
                       style: ADText.preview()),
                 ),
               ),

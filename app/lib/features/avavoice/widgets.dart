@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -20,10 +22,10 @@ String fmtWhenMs(int ms) {
   final isTomorrow = d.year == tomorrow.year && d.month == tomorrow.month && d.day == tomorrow.day;
   final hh = d.hour.toString().padLeft(2, '0');
   final mm = d.minute.toString().padLeft(2, '0');
-  if (sameDay) return 'Today $hh:$mm';
-  if (isTomorrow) return 'Tomorrow $hh:$mm';
+  if (sameDay) return uiCopy(UiMessage.m_today_hh_mm_311c650448, {'hh': (hh).toString(), 'mm': (mm).toString()});
+  if (isTomorrow) return uiCopy(UiMessage.m_tomorrow_hh_mm_30dda316ff, {'hh': (hh).toString(), 'mm': (mm).toString()});
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return '${months[d.month - 1]} ${d.day}, $hh:$mm';
+  return '${authoredUiCopy(months[d.month - 1])} ${d.day}, $hh:$mm';
 }
 
 /// "Call Now" / "Agent Busy" live chip. busy = coral (white text), free = mint.
@@ -33,6 +35,7 @@ class AvailabilityChip extends StatelessWidget {
   const AvailabilityChip({super.key, required this.busy, this.compact = false});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final fill = busy ? AD.danger : AD.online;
     const fg = Colors.white;
     const dot = Colors.white;
@@ -47,7 +50,7 @@ class AvailabilityChip extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 7, height: 7, decoration: const BoxDecoration(color: dot, shape: BoxShape.circle)),
         const SizedBox(width: Msg.s1),
-        Text(busy ? 'Agent busy' : 'Call now',
+        Text(busy ? uiCopy(UiMessage.m_agent_busy_f9e486a96d) : uiCopy(UiMessage.m_call_now_2f756f1ec5),
             style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
       ]),
     );
@@ -57,7 +60,7 @@ class AvailabilityChip extends StatelessWidget {
 class VisionBadge extends StatelessWidget {
   const VisionBadge({super.key});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.tabCalls,
@@ -68,15 +71,15 @@ class VisionBadge extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 12, color: Colors.white),
           const SizedBox(width: 4),
-          Text('Vision', style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
+          UiText(UiMessage.m_vision_c587c2601c, style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
         ]),
-      );
+      ); }
 }
 
 class FreeBadge extends StatelessWidget {
   const FreeBadge({super.key});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.online,
@@ -84,8 +87,8 @@ class FreeBadge extends StatelessWidget {
           border: Border.all(color: AD.borderControl, width: 1),
           boxShadow: Msg.none,
         ),
-        child: Text('Free', style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
-      );
+        child: UiText(UiMessage.m_free_f411a1fb62, style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
+      ); }
 }
 
 /// Marketplace agent card.
@@ -96,6 +99,7 @@ class AgentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePressable(
       onTap: onTap,
       radius: BorderRadius.circular(Msg.rLg),
@@ -125,8 +129,8 @@ class AgentCard extends StatelessWidget {
               if (agent.visionEnabled) ...[const VisionBadge(), const SizedBox(width: Msg.s1)],
               Flexible(child: Text(
                 agent.isFreeForCallers
-                    ? 'Up to ${agent.sessionLimitMin} min'
-                    : '${agent.rateLabel} · up to ${agent.sessionLimitMin} min',
+                    ? uiCopy(UiMessage.m_up_to_value1_min_6c143a4616, {'value1': (agent.sessionLimitMin).toString()})
+                    : uiCopy(UiMessage.m_value1_up_to_value2_min_a9f9173e83, {'value1': (agent.rateLabel).toString(), 'value2': (agent.sessionLimitMin).toString()}),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
               )),
@@ -161,6 +165,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
   String _q = '';
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final items = kVoiceLanguages
         .where((e) => _q.isEmpty || e.value.toLowerCase().contains(_q.toLowerCase()))
         .toList();
@@ -172,12 +177,12 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s2),
-              child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+              child: UiText(UiMessage.m_which_language_should_the_agent_c50d14e029, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: ZineField(
-                hint: 'Search languages',
+                hint: uiCopy(UiMessage.m_search_languages_98cdcf4f24),
                 leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                 onChanged: (v) => setState(() => _q = v),
               ),

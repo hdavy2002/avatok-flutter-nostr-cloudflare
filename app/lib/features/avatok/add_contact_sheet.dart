@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -129,6 +131,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mq = MediaQuery.of(context);
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
     final saved = _filteredSaved;
@@ -147,7 +150,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               ),
             ),
             Row(children: [
-              Text('New chat', style: ADText.appTitle()),
+              UiText(UiMessage.m_new_chat_db18382a24, style: ADText.appTitle()),
               const Spacer(),
               GestureDetector(
                 onTap: _addByLink,
@@ -155,8 +158,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               ),
             ]),
             const SizedBox(height: 4),
-            Text(
-                'Find someone by their email or AvaTOK number.',
+            UiText(
+                UiMessage.m_find_someone_by_their_email_7fd32d4b64,
                 style: ADText.preview()),
             const SizedBox(height: Msg.s3),
             // White dark-v2 resolve field.
@@ -179,7 +182,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                     decoration: InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
-                      hintText: 'Email or AvaTOK number',
+                      hintText: uiCopy(UiMessage.m_email_or_avatok_number_70e53516ef),
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                       contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
@@ -194,22 +197,21 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 child: Row(children: [
                   const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: Msg.s2),
-                  Text('Looking up on AvaTOK…', style: ADText.preview()),
+                  UiText(UiMessage.m_looking_up_on_avatok_eab3017a75, style: ADText.preview()),
                 ]),
               ),
             if (_resolvedHit != null) _resolvedTile(_resolvedHit!),
             if (_resolvedMiss && !_resolving)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: Msg.s2),
-                child: Text(
-                    'No AvaTOK account for that. You can only find people by their '
-                    'email or AvaTOK number — invite them below instead.',
+                child: UiText(
+                    UiMessage.m_no_avatok_account_for_that_6ad980b0f1,
                     style: ADText.preview(c: AD.textSecondary)),
               ),
             // Saved AvaTOK contacts as quick-picks (never the phone book).
             if (saved.isNotEmpty) ...[
               const SizedBox(height: Msg.s2),
-              Text('YOUR AVATOK CONTACTS', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_your_avatok_contacts_d758e46aec, style: ADText.sectionLabel()),
               const SizedBox(height: 4),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 300),
@@ -240,7 +242,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                     PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textPrimary),
                   const SizedBox(width: Msg.s2),
-                  Text(_inviting ? 'Opening…' : 'Invite friends to AvaTok',
+                  Text(_inviting ? uiCopy(UiMessage.m_opening_c926c2c50e) : uiCopy(UiMessage.m_invite_friends_to_avatok_1823fff3ff),
                       style: ADText.rowName()),
                 ]),
               ),
@@ -264,7 +266,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             child: Avatar(seed: c.uid, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
           ),
           title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ADText.rowName()),
-          subtitle: Text('On AvaTOK — tap to add & message', style: ADText.preview()),
+          subtitle: UiText(UiMessage.m_on_avatok_tap_to_add_17cde53914, style: ADText.preview()),
           trailing: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: AD.online, size: 22),
           onTap: () => Navigator.pop(context, c),
         ),

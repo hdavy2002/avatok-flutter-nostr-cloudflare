@@ -1,0 +1,1003 @@
+{
+  "status": "source-inventory-unverified-runtime",
+  "namespaces": 199,
+  "sourceMessages": 10160,
+  "sourceCharacters": 494491,
+  "catalogs": [
+    {
+      "namespace": "app",
+      "sourceMessages": 3608,
+      "sourceCharacters": 115325
+    },
+    {
+      "namespace": "common",
+      "sourceMessages": 49,
+      "sourceCharacters": 618
+    },
+    {
+      "namespace": "landing",
+      "sourceMessages": 84,
+      "sourceCharacters": 2819
+    },
+    {
+      "namespace": "web--username-",
+      "sourceMessages": 2,
+      "sourceCharacters": 34
+    },
+    {
+      "namespace": "web-about",
+      "sourceMessages": 53,
+      "sourceCharacters": 3619
+    },
+    {
+      "namespace": "web-acceptable-use",
+      "sourceMessages": 101,
+      "sourceCharacters": 7671
+    },
+    {
+      "namespace": "web-add",
+      "sourceMessages": 5,
+      "sourceCharacters": 57
+    },
+    {
+      "namespace": "web-agent",
+      "sourceMessages": 18,
+      "sourceCharacters": 436
+    },
+    {
+      "namespace": "web-agent-live",
+      "sourceMessages": 31,
+      "sourceCharacters": 528
+    },
+    {
+      "namespace": "web-auth",
+      "sourceMessages": 156,
+      "sourceCharacters": 4753
+    },
+    {
+      "namespace": "web-authored",
+      "sourceMessages": 700,
+      "sourceCharacters": 33278
+    },
+    {
+      "namespace": "web-biometric-retention",
+      "sourceMessages": 71,
+      "sourceCharacters": 4788
+    },
+    {
+      "namespace": "web-blog",
+      "sourceMessages": 162,
+      "sourceCharacters": 10263
+    },
+    {
+      "namespace": "web-book",
+      "sourceMessages": 2,
+      "sourceCharacters": 77
+    },
+    {
+      "namespace": "web-c",
+      "sourceMessages": 2,
+      "sourceCharacters": 31
+    },
+    {
+      "namespace": "web-careers",
+      "sourceMessages": 21,
+      "sourceCharacters": 893
+    },
+    {
+      "namespace": "web-checkout",
+      "sourceMessages": 107,
+      "sourceCharacters": 3554
+    },
+    {
+      "namespace": "web-child-safety",
+      "sourceMessages": 40,
+      "sourceCharacters": 3086
+    },
+    {
+      "namespace": "web-common",
+      "sourceMessages": 353,
+      "sourceCharacters": 9178
+    },
+    {
+      "namespace": "web-community-guidelines",
+      "sourceMessages": 25,
+      "sourceCharacters": 1999
+    },
+    {
+      "namespace": "web-consult",
+      "sourceMessages": 50,
+      "sourceCharacters": 800
+    },
+    {
+      "namespace": "web-consult-gs",
+      "sourceMessages": 91,
+      "sourceCharacters": 2114
+    },
+    {
+      "namespace": "web-consultation-terms",
+      "sourceMessages": 86,
+      "sourceCharacters": 7827
+    },
+    {
+      "namespace": "web-contact",
+      "sourceMessages": 25,
+      "sourceCharacters": 530
+    },
+    {
+      "namespace": "web-content-0a5f9bbe6df0",
+      "sourceMessages": 25,
+      "sourceCharacters": 2323
+    },
+    {
+      "namespace": "web-content-0d79ef9997d8",
+      "sourceMessages": 21,
+      "sourceCharacters": 2386
+    },
+    {
+      "namespace": "web-content-0df93a4e0f46",
+      "sourceMessages": 36,
+      "sourceCharacters": 3066
+    },
+    {
+      "namespace": "web-content-1109e302f501",
+      "sourceMessages": 33,
+      "sourceCharacters": 2241
+    },
+    {
+      "namespace": "web-content-27f806dfa45e",
+      "sourceMessages": 26,
+      "sourceCharacters": 2267
+    },
+    {
+      "namespace": "web-content-2bfdb6547ffd",
+      "sourceMessages": 28,
+      "sourceCharacters": 3267
+    },
+    {
+      "namespace": "web-content-316ef9f30757",
+      "sourceMessages": 50,
+      "sourceCharacters": 2419
+    },
+    {
+      "namespace": "web-content-3328de7a2f28",
+      "sourceMessages": 39,
+      "sourceCharacters": 2332
+    },
+    {
+      "namespace": "web-content-372f7d9f81e0",
+      "sourceMessages": 20,
+      "sourceCharacters": 1970
+    },
+    {
+      "namespace": "web-content-43a911a5f8c6",
+      "sourceMessages": 63,
+      "sourceCharacters": 4657
+    },
+    {
+      "namespace": "web-content-4a1b04cb9de2",
+      "sourceMessages": 49,
+      "sourceCharacters": 2709
+    },
+    {
+      "namespace": "web-content-4bba5a02ab26",
+      "sourceMessages": 14,
+      "sourceCharacters": 1782
+    },
+    {
+      "namespace": "web-content-58a7f11bffa5",
+      "sourceMessages": 29,
+      "sourceCharacters": 2517
+    },
+    {
+      "namespace": "web-content-674f3e2c614c",
+      "sourceMessages": 41,
+      "sourceCharacters": 2013
+    },
+    {
+      "namespace": "web-content-89ba676ad0a2",
+      "sourceMessages": 28,
+      "sourceCharacters": 3340
+    },
+    {
+      "namespace": "web-content-a7eb34ea13d6",
+      "sourceMessages": 26,
+      "sourceCharacters": 2357
+    },
+    {
+      "namespace": "web-content-aab91ac9aa0e",
+      "sourceMessages": 18,
+      "sourceCharacters": 1557
+    },
+    {
+      "namespace": "web-content-b24c3952cbe6",
+      "sourceMessages": 23,
+      "sourceCharacters": 1824
+    },
+    {
+      "namespace": "web-content-f99663f48df5",
+      "sourceMessages": 37,
+      "sourceCharacters": 1993
+    },
+    {
+      "namespace": "web-content-fb16b19b0ae4",
+      "sourceMessages": 21,
+      "sourceCharacters": 1749
+    },
+    {
+      "namespace": "web-cookies",
+      "sourceMessages": 26,
+      "sourceCharacters": 1521
+    },
+    {
+      "namespace": "web-dashboard",
+      "sourceMessages": 618,
+      "sourceCharacters": 18538
+    },
+    {
+      "namespace": "web-disco",
+      "sourceMessages": 140,
+      "sourceCharacters": 5316
+    },
+    {
+      "namespace": "web-dmca",
+      "sourceMessages": 19,
+      "sourceCharacters": 2112
+    },
+    {
+      "namespace": "web-e",
+      "sourceMessages": 2,
+      "sourceCharacters": 34
+    },
+    {
+      "namespace": "web-global-guide-ask-me-anything-1-1",
+      "sourceMessages": 25,
+      "sourceCharacters": 2000
+    },
+    {
+      "namespace": "web-global-guide-channel-coaching",
+      "sourceMessages": 25,
+      "sourceCharacters": 1998
+    },
+    {
+      "namespace": "web-global-guide-close-friends-studio",
+      "sourceMessages": 25,
+      "sourceCharacters": 1995
+    },
+    {
+      "namespace": "web-global-guide-creator-watch-party",
+      "sourceMessages": 25,
+      "sourceCharacters": 2088
+    },
+    {
+      "namespace": "web-global-guide-launch-night-live",
+      "sourceMessages": 25,
+      "sourceCharacters": 2015
+    },
+    {
+      "namespace": "web-global-guide-learn-the-move",
+      "sourceMessages": 25,
+      "sourceCharacters": 2048
+    },
+    {
+      "namespace": "web-global-guide-taste-of-your-world",
+      "sourceMessages": 25,
+      "sourceCharacters": 2179
+    },
+    {
+      "namespace": "web-global-guide-trend-breakdown-live",
+      "sourceMessages": 25,
+      "sourceCharacters": 2024
+    },
+    {
+      "namespace": "web-global-ideas",
+      "sourceMessages": 39,
+      "sourceCharacters": 1449
+    },
+    {
+      "namespace": "web-grievance",
+      "sourceMessages": 97,
+      "sourceCharacters": 4984
+    },
+    {
+      "namespace": "web-guide-idea-1",
+      "sourceMessages": 11,
+      "sourceCharacters": 1271
+    },
+    {
+      "namespace": "web-guide-idea-10",
+      "sourceMessages": 11,
+      "sourceCharacters": 988
+    },
+    {
+      "namespace": "web-guide-idea-100",
+      "sourceMessages": 11,
+      "sourceCharacters": 900
+    },
+    {
+      "namespace": "web-guide-idea-101",
+      "sourceMessages": 11,
+      "sourceCharacters": 966
+    },
+    {
+      "namespace": "web-guide-idea-102",
+      "sourceMessages": 11,
+      "sourceCharacters": 936
+    },
+    {
+      "namespace": "web-guide-idea-103",
+      "sourceMessages": 11,
+      "sourceCharacters": 833
+    },
+    {
+      "namespace": "web-guide-idea-104",
+      "sourceMessages": 11,
+      "sourceCharacters": 892
+    },
+    {
+      "namespace": "web-guide-idea-105",
+      "sourceMessages": 11,
+      "sourceCharacters": 906
+    },
+    {
+      "namespace": "web-guide-idea-106",
+      "sourceMessages": 11,
+      "sourceCharacters": 859
+    },
+    {
+      "namespace": "web-guide-idea-107",
+      "sourceMessages": 11,
+      "sourceCharacters": 897
+    },
+    {
+      "namespace": "web-guide-idea-108",
+      "sourceMessages": 11,
+      "sourceCharacters": 956
+    },
+    {
+      "namespace": "web-guide-idea-109",
+      "sourceMessages": 11,
+      "sourceCharacters": 914
+    },
+    {
+      "namespace": "web-guide-idea-11",
+      "sourceMessages": 11,
+      "sourceCharacters": 1073
+    },
+    {
+      "namespace": "web-guide-idea-110",
+      "sourceMessages": 11,
+      "sourceCharacters": 902
+    },
+    {
+      "namespace": "web-guide-idea-111",
+      "sourceMessages": 11,
+      "sourceCharacters": 888
+    },
+    {
+      "namespace": "web-guide-idea-112",
+      "sourceMessages": 11,
+      "sourceCharacters": 831
+    },
+    {
+      "namespace": "web-guide-idea-113",
+      "sourceMessages": 11,
+      "sourceCharacters": 951
+    },
+    {
+      "namespace": "web-guide-idea-114",
+      "sourceMessages": 11,
+      "sourceCharacters": 907
+    },
+    {
+      "namespace": "web-guide-idea-115",
+      "sourceMessages": 11,
+      "sourceCharacters": 1048
+    },
+    {
+      "namespace": "web-guide-idea-12",
+      "sourceMessages": 11,
+      "sourceCharacters": 1055
+    },
+    {
+      "namespace": "web-guide-idea-13",
+      "sourceMessages": 11,
+      "sourceCharacters": 1088
+    },
+    {
+      "namespace": "web-guide-idea-14",
+      "sourceMessages": 11,
+      "sourceCharacters": 991
+    },
+    {
+      "namespace": "web-guide-idea-15",
+      "sourceMessages": 11,
+      "sourceCharacters": 1115
+    },
+    {
+      "namespace": "web-guide-idea-16",
+      "sourceMessages": 11,
+      "sourceCharacters": 1018
+    },
+    {
+      "namespace": "web-guide-idea-17",
+      "sourceMessages": 11,
+      "sourceCharacters": 968
+    },
+    {
+      "namespace": "web-guide-idea-18",
+      "sourceMessages": 11,
+      "sourceCharacters": 997
+    },
+    {
+      "namespace": "web-guide-idea-19",
+      "sourceMessages": 11,
+      "sourceCharacters": 985
+    },
+    {
+      "namespace": "web-guide-idea-2",
+      "sourceMessages": 11,
+      "sourceCharacters": 1128
+    },
+    {
+      "namespace": "web-guide-idea-20",
+      "sourceMessages": 11,
+      "sourceCharacters": 1086
+    },
+    {
+      "namespace": "web-guide-idea-21",
+      "sourceMessages": 11,
+      "sourceCharacters": 944
+    },
+    {
+      "namespace": "web-guide-idea-22",
+      "sourceMessages": 11,
+      "sourceCharacters": 992
+    },
+    {
+      "namespace": "web-guide-idea-23",
+      "sourceMessages": 11,
+      "sourceCharacters": 986
+    },
+    {
+      "namespace": "web-guide-idea-24",
+      "sourceMessages": 11,
+      "sourceCharacters": 1026
+    },
+    {
+      "namespace": "web-guide-idea-25",
+      "sourceMessages": 11,
+      "sourceCharacters": 980
+    },
+    {
+      "namespace": "web-guide-idea-26",
+      "sourceMessages": 11,
+      "sourceCharacters": 1036
+    },
+    {
+      "namespace": "web-guide-idea-27",
+      "sourceMessages": 11,
+      "sourceCharacters": 1093
+    },
+    {
+      "namespace": "web-guide-idea-28",
+      "sourceMessages": 11,
+      "sourceCharacters": 1061
+    },
+    {
+      "namespace": "web-guide-idea-29",
+      "sourceMessages": 11,
+      "sourceCharacters": 1219
+    },
+    {
+      "namespace": "web-guide-idea-3",
+      "sourceMessages": 11,
+      "sourceCharacters": 1147
+    },
+    {
+      "namespace": "web-guide-idea-30",
+      "sourceMessages": 11,
+      "sourceCharacters": 1050
+    },
+    {
+      "namespace": "web-guide-idea-31",
+      "sourceMessages": 11,
+      "sourceCharacters": 1126
+    },
+    {
+      "namespace": "web-guide-idea-32",
+      "sourceMessages": 11,
+      "sourceCharacters": 986
+    },
+    {
+      "namespace": "web-guide-idea-33",
+      "sourceMessages": 11,
+      "sourceCharacters": 928
+    },
+    {
+      "namespace": "web-guide-idea-34",
+      "sourceMessages": 11,
+      "sourceCharacters": 994
+    },
+    {
+      "namespace": "web-guide-idea-35",
+      "sourceMessages": 11,
+      "sourceCharacters": 992
+    },
+    {
+      "namespace": "web-guide-idea-36",
+      "sourceMessages": 11,
+      "sourceCharacters": 1018
+    },
+    {
+      "namespace": "web-guide-idea-37",
+      "sourceMessages": 11,
+      "sourceCharacters": 948
+    },
+    {
+      "namespace": "web-guide-idea-38",
+      "sourceMessages": 11,
+      "sourceCharacters": 1029
+    },
+    {
+      "namespace": "web-guide-idea-39",
+      "sourceMessages": 11,
+      "sourceCharacters": 1023
+    },
+    {
+      "namespace": "web-guide-idea-4",
+      "sourceMessages": 11,
+      "sourceCharacters": 1318
+    },
+    {
+      "namespace": "web-guide-idea-40",
+      "sourceMessages": 11,
+      "sourceCharacters": 1002
+    },
+    {
+      "namespace": "web-guide-idea-41",
+      "sourceMessages": 11,
+      "sourceCharacters": 1021
+    },
+    {
+      "namespace": "web-guide-idea-42",
+      "sourceMessages": 11,
+      "sourceCharacters": 959
+    },
+    {
+      "namespace": "web-guide-idea-43",
+      "sourceMessages": 11,
+      "sourceCharacters": 1033
+    },
+    {
+      "namespace": "web-guide-idea-44",
+      "sourceMessages": 11,
+      "sourceCharacters": 980
+    },
+    {
+      "namespace": "web-guide-idea-45",
+      "sourceMessages": 11,
+      "sourceCharacters": 910
+    },
+    {
+      "namespace": "web-guide-idea-46",
+      "sourceMessages": 11,
+      "sourceCharacters": 1006
+    },
+    {
+      "namespace": "web-guide-idea-47",
+      "sourceMessages": 11,
+      "sourceCharacters": 991
+    },
+    {
+      "namespace": "web-guide-idea-48",
+      "sourceMessages": 11,
+      "sourceCharacters": 952
+    },
+    {
+      "namespace": "web-guide-idea-49",
+      "sourceMessages": 11,
+      "sourceCharacters": 988
+    },
+    {
+      "namespace": "web-guide-idea-5",
+      "sourceMessages": 11,
+      "sourceCharacters": 1104
+    },
+    {
+      "namespace": "web-guide-idea-50",
+      "sourceMessages": 11,
+      "sourceCharacters": 974
+    },
+    {
+      "namespace": "web-guide-idea-51",
+      "sourceMessages": 11,
+      "sourceCharacters": 934
+    },
+    {
+      "namespace": "web-guide-idea-52",
+      "sourceMessages": 11,
+      "sourceCharacters": 901
+    },
+    {
+      "namespace": "web-guide-idea-53",
+      "sourceMessages": 11,
+      "sourceCharacters": 1006
+    },
+    {
+      "namespace": "web-guide-idea-54",
+      "sourceMessages": 11,
+      "sourceCharacters": 954
+    },
+    {
+      "namespace": "web-guide-idea-55",
+      "sourceMessages": 11,
+      "sourceCharacters": 943
+    },
+    {
+      "namespace": "web-guide-idea-56",
+      "sourceMessages": 11,
+      "sourceCharacters": 1059
+    },
+    {
+      "namespace": "web-guide-idea-57",
+      "sourceMessages": 11,
+      "sourceCharacters": 991
+    },
+    {
+      "namespace": "web-guide-idea-58",
+      "sourceMessages": 11,
+      "sourceCharacters": 1039
+    },
+    {
+      "namespace": "web-guide-idea-59",
+      "sourceMessages": 11,
+      "sourceCharacters": 1022
+    },
+    {
+      "namespace": "web-guide-idea-6",
+      "sourceMessages": 11,
+      "sourceCharacters": 1080
+    },
+    {
+      "namespace": "web-guide-idea-60",
+      "sourceMessages": 11,
+      "sourceCharacters": 986
+    },
+    {
+      "namespace": "web-guide-idea-61",
+      "sourceMessages": 11,
+      "sourceCharacters": 903
+    },
+    {
+      "namespace": "web-guide-idea-62",
+      "sourceMessages": 11,
+      "sourceCharacters": 997
+    },
+    {
+      "namespace": "web-guide-idea-63",
+      "sourceMessages": 11,
+      "sourceCharacters": 885
+    },
+    {
+      "namespace": "web-guide-idea-64",
+      "sourceMessages": 11,
+      "sourceCharacters": 876
+    },
+    {
+      "namespace": "web-guide-idea-65",
+      "sourceMessages": 11,
+      "sourceCharacters": 948
+    },
+    {
+      "namespace": "web-guide-idea-66",
+      "sourceMessages": 11,
+      "sourceCharacters": 832
+    },
+    {
+      "namespace": "web-guide-idea-67",
+      "sourceMessages": 11,
+      "sourceCharacters": 917
+    },
+    {
+      "namespace": "web-guide-idea-68",
+      "sourceMessages": 11,
+      "sourceCharacters": 936
+    },
+    {
+      "namespace": "web-guide-idea-69",
+      "sourceMessages": 11,
+      "sourceCharacters": 941
+    },
+    {
+      "namespace": "web-guide-idea-7",
+      "sourceMessages": 11,
+      "sourceCharacters": 1163
+    },
+    {
+      "namespace": "web-guide-idea-70",
+      "sourceMessages": 11,
+      "sourceCharacters": 862
+    },
+    {
+      "namespace": "web-guide-idea-71",
+      "sourceMessages": 11,
+      "sourceCharacters": 950
+    },
+    {
+      "namespace": "web-guide-idea-72",
+      "sourceMessages": 11,
+      "sourceCharacters": 883
+    },
+    {
+      "namespace": "web-guide-idea-73",
+      "sourceMessages": 11,
+      "sourceCharacters": 896
+    },
+    {
+      "namespace": "web-guide-idea-74",
+      "sourceMessages": 11,
+      "sourceCharacters": 915
+    },
+    {
+      "namespace": "web-guide-idea-75",
+      "sourceMessages": 11,
+      "sourceCharacters": 914
+    },
+    {
+      "namespace": "web-guide-idea-76",
+      "sourceMessages": 11,
+      "sourceCharacters": 907
+    },
+    {
+      "namespace": "web-guide-idea-77",
+      "sourceMessages": 11,
+      "sourceCharacters": 885
+    },
+    {
+      "namespace": "web-guide-idea-78",
+      "sourceMessages": 11,
+      "sourceCharacters": 770
+    },
+    {
+      "namespace": "web-guide-idea-79",
+      "sourceMessages": 11,
+      "sourceCharacters": 910
+    },
+    {
+      "namespace": "web-guide-idea-8",
+      "sourceMessages": 11,
+      "sourceCharacters": 1208
+    },
+    {
+      "namespace": "web-guide-idea-80",
+      "sourceMessages": 11,
+      "sourceCharacters": 981
+    },
+    {
+      "namespace": "web-guide-idea-81",
+      "sourceMessages": 11,
+      "sourceCharacters": 927
+    },
+    {
+      "namespace": "web-guide-idea-82",
+      "sourceMessages": 11,
+      "sourceCharacters": 840
+    },
+    {
+      "namespace": "web-guide-idea-83",
+      "sourceMessages": 11,
+      "sourceCharacters": 889
+    },
+    {
+      "namespace": "web-guide-idea-84",
+      "sourceMessages": 11,
+      "sourceCharacters": 828
+    },
+    {
+      "namespace": "web-guide-idea-85",
+      "sourceMessages": 11,
+      "sourceCharacters": 850
+    },
+    {
+      "namespace": "web-guide-idea-86",
+      "sourceMessages": 11,
+      "sourceCharacters": 933
+    },
+    {
+      "namespace": "web-guide-idea-87",
+      "sourceMessages": 11,
+      "sourceCharacters": 863
+    },
+    {
+      "namespace": "web-guide-idea-88",
+      "sourceMessages": 11,
+      "sourceCharacters": 961
+    },
+    {
+      "namespace": "web-guide-idea-89",
+      "sourceMessages": 11,
+      "sourceCharacters": 908
+    },
+    {
+      "namespace": "web-guide-idea-9",
+      "sourceMessages": 11,
+      "sourceCharacters": 1043
+    },
+    {
+      "namespace": "web-guide-idea-90",
+      "sourceMessages": 11,
+      "sourceCharacters": 950
+    },
+    {
+      "namespace": "web-guide-idea-91",
+      "sourceMessages": 11,
+      "sourceCharacters": 864
+    },
+    {
+      "namespace": "web-guide-idea-92",
+      "sourceMessages": 11,
+      "sourceCharacters": 848
+    },
+    {
+      "namespace": "web-guide-idea-93",
+      "sourceMessages": 11,
+      "sourceCharacters": 790
+    },
+    {
+      "namespace": "web-guide-idea-94",
+      "sourceMessages": 11,
+      "sourceCharacters": 890
+    },
+    {
+      "namespace": "web-guide-idea-95",
+      "sourceMessages": 11,
+      "sourceCharacters": 896
+    },
+    {
+      "namespace": "web-guide-idea-96",
+      "sourceMessages": 11,
+      "sourceCharacters": 868
+    },
+    {
+      "namespace": "web-guide-idea-97",
+      "sourceMessages": 11,
+      "sourceCharacters": 951
+    },
+    {
+      "namespace": "web-guide-idea-98",
+      "sourceMessages": 11,
+      "sourceCharacters": 906
+    },
+    {
+      "namespace": "web-guide-idea-99",
+      "sourceMessages": 11,
+      "sourceCharacters": 910
+    },
+    {
+      "namespace": "web-guide-shared",
+      "sourceMessages": 12,
+      "sourceCharacters": 1171
+    },
+    {
+      "namespace": "web-help",
+      "sourceMessages": 5,
+      "sourceCharacters": 81
+    },
+    {
+      "namespace": "web-ideas",
+      "sourceMessages": 292,
+      "sourceCharacters": 14709
+    },
+    {
+      "namespace": "web-join",
+      "sourceMessages": 3,
+      "sourceCharacters": 61
+    },
+    {
+      "namespace": "web-l",
+      "sourceMessages": 4,
+      "sourceCharacters": 159
+    },
+    {
+      "namespace": "web-landing",
+      "sourceMessages": 36,
+      "sourceCharacters": 929
+    },
+    {
+      "namespace": "web-listing",
+      "sourceMessages": 66,
+      "sourceCharacters": 1494
+    },
+    {
+      "namespace": "web-live",
+      "sourceMessages": 45,
+      "sourceCharacters": 884
+    },
+    {
+      "namespace": "web-live-gs",
+      "sourceMessages": 119,
+      "sourceCharacters": 2920
+    },
+    {
+      "namespace": "web-marketplace",
+      "sourceMessages": 44,
+      "sourceCharacters": 609
+    },
+    {
+      "namespace": "web-marketplace-terms",
+      "sourceMessages": 92,
+      "sourceCharacters": 8544
+    },
+    {
+      "namespace": "web-original",
+      "sourceMessages": 19,
+      "sourceCharacters": 607
+    },
+    {
+      "namespace": "web-pay",
+      "sourceMessages": 2,
+      "sourceCharacters": 30
+    },
+    {
+      "namespace": "web-payouts",
+      "sourceMessages": 50,
+      "sourceCharacters": 3760
+    },
+    {
+      "namespace": "web-pricing-fees",
+      "sourceMessages": 48,
+      "sourceCharacters": 1310
+    },
+    {
+      "namespace": "web-privacy",
+      "sourceMessages": 63,
+      "sourceCharacters": 6799
+    },
+    {
+      "namespace": "web-recording",
+      "sourceMessages": 72,
+      "sourceCharacters": 7103
+    },
+    {
+      "namespace": "web-refunds",
+      "sourceMessages": 79,
+      "sourceCharacters": 6092
+    },
+    {
+      "namespace": "web-sign-out",
+      "sourceMessages": 1,
+      "sourceCharacters": 16
+    },
+    {
+      "namespace": "web-site",
+      "sourceMessages": 7,
+      "sourceCharacters": 61
+    },
+    {
+      "namespace": "web-sso-callback",
+      "sourceMessages": 1,
+      "sourceCharacters": 11
+    },
+    {
+      "namespace": "web-terms",
+      "sourceMessages": 47,
+      "sourceCharacters": 4884
+    },
+    {
+      "namespace": "web-tokens",
+      "sourceMessages": 54,
+      "sourceCharacters": 4232
+    },
+    {
+      "namespace": "web-vision",
+      "sourceMessages": 122,
+      "sourceCharacters": 3185
+    },
+    {
+      "namespace": "web-watch",
+      "sourceMessages": 2,
+      "sourceCharacters": 18
+    }
+  ]
+}

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -90,6 +93,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_claimed) {
       return Scaffold(
         body: Container(
@@ -104,15 +108,15 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                     size: 56, color: Colors.white),
               ),
               const SizedBox(height: 24),
-              Text("It's yours!", style: ADText.appTitle().copyWith(fontSize: 34), textAlign: TextAlign.center),
+              UiText(UiMessage.m_it_s_yours_e4ffd474a3, style: ADText.appTitle().copyWith(fontSize: 34), textAlign: TextAlign.center),
               const SizedBox(height: Msg.s2),
               Text('@$_clean', style: ADText.rowName(c: AD.iconSearch)),
               const SizedBox(height: 12),
               ConstrainedBox(constraints: const BoxConstraints(maxWidth: 280),
-                child: Text("Locked in and reserved. Let's set up the rest of you.",
+                child: UiText(UiMessage.m_locked_in_and_reserved_let_fe62345337,
                     style: ADText.preview(c: AD.textSecondary), textAlign: TextAlign.center)),
               const SizedBox(height: Msg.s5),
-              AdButton(label: 'Keep going', onPressed: widget.onClaimed,
+              AdButton(label: uiCopy(UiMessage.m_keep_going_9d7fd0e0bd), onPressed: widget.onClaimed,
                   icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)),
             ]),
           ))),
@@ -143,7 +147,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                       const SizedBox(width: Msg.s2),
                     ],
                     const SizedBox(width: 4),
-                    Text('STEP 1 / 3', style: ADText.sectionLabel()),
+                    UiText(UiMessage.m_step_1_3_8adfbfa132, style: ADText.sectionLabel()),
                   ]),
                 ],
               ),
@@ -169,8 +173,8 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                     const SizedBox(height: Msg.s3),
                     Text.rich(
                       TextSpan(children: [
-                        const TextSpan(text: 'Pick your '),
-                        TextSpan(text: 'handle', style: const TextStyle(color: AD.primaryBadge)),
+                         TextSpan(text: uiCopy(UiMessage.m_pick_your_422d86c758)),
+                        TextSpan(text: uiCopy(UiMessage.m_handle_c2a116aa91), style: const TextStyle(color: AD.primaryBadge)),
                       ]),
                       textAlign: TextAlign.center,
                       style: ADText.appTitle().copyWith(fontSize: 38, height: 1.08),
@@ -181,10 +185,10 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                         constraints: const BoxConstraints(maxWidth: 300),
                         child: Text.rich(
                           TextSpan(
-                            text: "That's all we need for now — it's reserved instantly, and it's ",
+                            text: uiCopy(UiMessage.m_that_s_all_we_need_400eb1bccd),
                             children: [
                               TextSpan(
-                                  text: 'yours to own.',
+                                  text: uiCopy(UiMessage.m_yours_to_own_0ad42d4005),
                                   style: ADText.preview(c: AD.textSecondary).copyWith(
                                       fontWeight: FontWeight.w700, color: AD.textPrimary)),
                             ],
@@ -197,9 +201,9 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                     const SizedBox(height: Msg.s6),
                     AdField(
                       controller: _ctrl,
-                      label: 'your handle',
+                      label: uiCopy(UiMessage.m_your_handle_c92454ecd9),
                       labelIcon: PhosphorIcons.at(PhosphorIconsStyle.bold),
-                      hint: 'yourname',
+                      hint: uiCopy(UiMessage.m_yourname_22f6e39681),
                       leadText: '@',
                       autofocus: true,
                       maxLength: 20,
@@ -224,7 +228,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                 ),
               ),
               AdButton(
-                label: 'Claim my handle',
+                label: uiCopy(UiMessage.m_claim_my_handle_8be4546d02),
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                 fullWidth: true,
                 fontSize: 21,
@@ -233,7 +237,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
               ),
               const SizedBox(height: Msg.s4),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text('already on AvaTOK? ', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
+                UiText(UiMessage.m_already_on_avatok_e9f91abec6, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 ZineLink('log in', onTap: widget.onHaveAccount, fontSize: 14, underline: AD.iconSearch),
               ]),
               const SizedBox(height: 16),
@@ -241,7 +245,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                 PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
                     size: 14, color: AD.iconSearch),
                 const SizedBox(width: 8),
-                Text('reserved instantly · no email yet', style: ADText.sectionLabel(c: AD.textTertiary)),
+                UiText(UiMessage.m_reserved_instantly_no_email_yet_8de1c4f769, style: ADText.sectionLabel(c: AD.textTertiary)),
               ]),
             ]),
           ),
@@ -266,7 +270,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
           kind: AdStickerKind.ok,
           icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill));
     } else if (_avail == false) {
-      sticker = AdSticker(_msg == null || _msg == 'Taken' ? '@$v is taken' : _msg!,
+      sticker = AdSticker(_msg == null || _msg == 'Taken' ? uiCopy(UiMessage.m_v_is_taken_9529087df2, {'v': (v).toString()}) : _msg!,
           kind: AdStickerKind.no,
           icon: PhosphorIcons.xCircle(PhosphorIconsStyle.fill));
     } else {
@@ -279,7 +283,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
       const Spacer(),
       if (v.isNotEmpty)
         Text.rich(
-          TextSpan(text: 'avatok.me/', children: [
+          TextSpan(text: uiCopy(UiMessage.m_avatok_me_462b428dc6), children: [
             TextSpan(text: v, style: ADText.statCaption(c: AD.iconSearch).copyWith(fontSize: 12)),
           ]),
           style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 12),

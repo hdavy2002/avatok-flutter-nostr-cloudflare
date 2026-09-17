@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* ReviewerOnboarding — first-sign-in onboarding + terms acceptance for accounts
  * in REVIEWER MODE (payment-gateway or app-store reviewers).
  *
@@ -80,6 +82,8 @@ export interface ReviewerOnboardingProps {
 }
 
 export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps) {
+ const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [cfg, setCfg] = useState<ReviewerConfig | null>(null);
   const [accepted, setAccepted] = useState<boolean | null>(null);
   const [checked, setChecked] = useState(false);
@@ -158,35 +162,24 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
   return createPortal(
     <div className="ro-scrim" role="dialog" aria-modal="true" aria-labelledby="ro-title">
       <div className="ro-card">
-        <p className="ro-kicker">Welcome to avaTOK</p>
-        <h2 className="ro-title" id="ro-title">Before you start</h2>
+        <p className="ro-kicker"><UiText id="web-dashboard.721feaa18450b1e6" source="Welcome to avaTOK" /></p>
+        <h2 className="ro-title" id="ro-title"><UiText id="web-dashboard.74e492d5d0df0bab" source="Before you start" /></h2>
 
-        <p className="ro-lead">
-          avaTOK is a creator marketplace for paid live events, private 1:1 sessions
-          and AI voice agents. Thank you for taking the time to review it.
-        </p>
+        <p className="ro-lead"><UiText id="web-dashboard.0cbbe6459d3b69c9" source="avaTOK is a creator marketplace for paid live events, private 1:1 sessions and AI voice agents. Thank you for taking the time to review it." />{" "}</p>
 
         <ul className="ro-list">
           <li>
-            <strong>We are an early-stage startup.</strong> avaTOK is built and operated
-            by an independent founding team in India. We are currently an{' '}
-            <strong>unregistered business</strong>; registration of a company in Mumbai
-            is in process. <a href="/terms#status" target="_blank" rel="noreferrer">Read our full status</a>.
+            <strong><UiText id="web-dashboard.63daeb29abfbc2cc" source="We are an early-stage startup." /></strong>{" "}<UiText id="web-dashboard.aac0944d09bd4cd8" source="avaTOK is built and operated by an independent founding team in India. We are currently an" />{' '}
+            <strong><UiText id="web-dashboard.2cc9b827c20aa0f9" source="unregistered business" /></strong><UiText id="web-dashboard.0a984f1d42a2293b" source="; registration of a company in Mumbai is in process." />{" "}<a href="/terms#status" target="_blank" rel="noreferrer"><UiText id="web-dashboard.1e7c107176e052c9" source="Read our full status" /></a>.
           </li>
           <li>
-            <strong>The site is not fully operational.</strong> We are at the ideation
-            and testing stage. Features may change or be paused, and test data may be
-            reset. Access is invite-only.
-          </li>
+            <strong><UiText id="web-dashboard.90a8d5b8ab6bac9c" source="The site is not fully operational." /></strong>{" "}<UiText id="web-dashboard.26ccffac20aa876b" source="We are at the ideation and testing stage. Features may change or be paused, and test data may be reset. Access is invite-only." />{" "}</li>
           <li>
-            <strong>Payments are not live.</strong> Our payment gateway application is
-            under review, so no real money can move on this account and no charge will
-            be made to you. Prices shown are indicative.
-          </li>
+            <strong><UiText id="web-dashboard.098ae124bfa76cda" source="Payments are not live." /></strong>{" "}<UiText id="web-dashboard.2575660644382cf5" source="Our payment gateway application is under review, so no real money can move on this account and no charge will be made to you. Prices shown are indicative." />{" "}</li>
           <li>
-            <strong>Tokens are our in-app unit.</strong> 1 token = ₹1, fixed. See{' '}
-            <a href="/tokens" target="_blank" rel="noreferrer">Tokens &amp; Wallet</a> and{' '}
-            <a href="/pricing-fees" target="_blank" rel="noreferrer">Pricing &amp; Fees</a>.
+            <strong><UiText id="web-dashboard.d5bc5cba6e5c4741" source="Tokens are our in-app unit." /></strong>{" "}<UiText id="web-dashboard.a040c2235e0891bd" source="1 token = ₹1, fixed. See" />{' '}
+            <a href="/tokens" target="_blank" rel="noreferrer"><UiText id="web-dashboard.4f40c430b4aba8c5" source="Tokens & Wallet" /></a>{" "}<UiText id="web-dashboard.6201111b83a0cb5b" source="and" />{' '}
+            <a href="/pricing-fees" target="_blank" rel="noreferrer"><UiText id="web-dashboard.39f57a6e5029c0fc" source="Pricing & Fees" /></a>.
           </li>
         </ul>
 
@@ -196,73 +189,18 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
             checked={checked}
             onChange={(e) => setChecked(e.currentTarget.checked)}
           />
-          <span>
-            I have read and accept the{' '}
-            <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a>,{' '}
-            <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> and{' '}
-            <a href="/refunds" target="_blank" rel="noreferrer">Refunds &amp; Cancellations</a> policy.
-          </span>
+          <span><UiText id="web-dashboard.e0d4704374a7ee84" source="I have read and accept the" />{' '}
+            <a href="/terms" target="_blank" rel="noreferrer"><UiText id="web-dashboard.4afa55bf7aec7ddc" source="Terms of Service" /></a>,{' '}
+            <a href="/privacy" target="_blank" rel="noreferrer"><UiText id="web-dashboard.506ff394621596dd" source="Privacy Policy" /></a>{" "}<UiText id="web-dashboard.6201111b83a0cb5b" source="and" />{' '}
+            <a href="/refunds" target="_blank" rel="noreferrer"><UiText id="web-dashboard.7f529853635b4f28" source="Refunds & Cancellations" /></a>{" "}<UiText id="web-dashboard.fb60318f422ee917" source="policy." />{" "}</span>
         </label>
 
-        <button type="button" className="ro-btn" disabled={!checked} onClick={accept}>
-          Accept and continue
-        </button>
+        <button type="button" className="ro-btn" disabled={!checked} onClick={accept}><UiText id="web-dashboard.ea9ac3e0bdc36386" source="Accept and continue" />{" "}</button>
 
-        <p className="ro-foot">
-          Questions during your review? <a href="mailto:support@avatok.ai">support@avatok.ai</a> ·
-          Mumbai, India
-        </p>
+        <p className="ro-foot"><UiText id="web-dashboard.20c3460dedcec159" source="Questions during your review?" />{" "}<a href="mailto:support@avatok.ai">support@avatok.ai</a>{" "}<UiText id="web-dashboard.9ee6e0114bdad18a" source="· Mumbai, India" />{" "}</p>
       </div>
 
-      <style>{`
-        .ro-scrim {
-          position: fixed; inset: 0; z-index: 9999;
-          display: flex; align-items: center; justify-content: center;
-          padding: 20px; background: rgba(22, 22, 20, 0.72);
-          overflow-y: auto;
-        }
-        .ro-card {
-          width: min(100%, 620px); max-height: 92vh; overflow-y: auto;
-          padding: clamp(22px, 4vw, 36px);
-          background: #fffdf7; border: 2px solid #161614; border-radius: 22px;
-          box-shadow: 10px 10px 0 #4f5cff;
-          font-family: 'Instrument Sans', system-ui, sans-serif; color: #161614;
-        }
-        .ro-kicker {
-          margin: 0 0 6px; font-family: 'Nunito', system-ui, sans-serif;
-          font-size: 12px; font-weight: 900; text-transform: uppercase;
-          letter-spacing: 0.14em; color: #1e5f66;
-        }
-        .ro-title {
-          margin: 0 0 14px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400;
-          font-size: clamp(30px, 5vw, 42px); line-height: 1.02;
-          letter-spacing: 0.055em; word-spacing: 0.2em; text-transform: uppercase;
-        }
-        .ro-lead { margin: 0 0 16px; font-size: 16px; line-height: 1.55; }
-        .ro-list { margin: 0 0 20px; padding-left: 20px; display: grid; gap: 10px; }
-        .ro-list li { font-size: 15px; line-height: 1.55; }
-        .ro-list a, .ro-foot a, .ro-check a { color: #1e5f66; text-underline-offset: 3px; }
-        .ro-check {
-          display: flex; gap: 11px; align-items: flex-start;
-          padding: 14px; margin-bottom: 18px;
-          border: 1px solid #161614; border-radius: 14px; background: #f6e4cd;
-          font-size: 14px; line-height: 1.5; cursor: pointer;
-        }
-        .ro-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; cursor: pointer; }
-        .ro-btn {
-          width: 100%; padding: 14px 22px; cursor: pointer;
-          font-family: 'Nunito', system-ui, sans-serif; font-size: 15px; font-weight: 900;
-          letter-spacing: 0.06em; text-transform: uppercase;
-          color: #161614; background: #ffd95e;
-          border: 2px solid #161614; border-radius: 999px; box-shadow: 4px 4px 0 #161614;
-          transition: transform .12s ease, box-shadow .12s ease;
-        }
-        .ro-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: 2px 2px 0 #161614; }
-        .ro-btn:not(:disabled):hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #161614; }
-        .ro-foot {
-          margin: 16px 0 0; font-size: 12.5px; line-height: 1.5; color: #5c584d;
-        }
-      `}</style>
+      <style>{uiT("web-dashboard.01c64cb9f55255f8","\n        .ro-scrim {\n          position: fixed; inset: 0; z-index: 9999;\n          display: flex; align-items: center; justify-content: center;\n          padding: 20px; background: rgba(22, 22, 20, 0.72);\n          overflow-y: auto;\n        }\n        .ro-card {\n          width: min(100%, 620px); max-height: 92vh; overflow-y: auto;\n          padding: clamp(22px, 4vw, 36px);\n          background: #fffdf7; border: 2px solid #161614; border-radius: 22px;\n          box-shadow: 10px 10px 0 #4f5cff;\n          font-family: 'Instrument Sans', system-ui, sans-serif; color: #161614;\n        }\n        .ro-kicker {\n          margin: 0 0 6px; font-family: 'Nunito', system-ui, sans-serif;\n          font-size: 12px; font-weight: 900; text-transform: uppercase;\n          letter-spacing: 0.14em; color: #1e5f66;\n        }\n        .ro-title {\n          margin: 0 0 14px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400;\n          font-size: clamp(30px, 5vw, 42px); line-height: 1.02;\n          letter-spacing: 0.055em; word-spacing: 0.2em; text-transform: uppercase;\n        }\n        .ro-lead { margin: 0 0 16px; font-size: 16px; line-height: 1.55; }\n        .ro-list { margin: 0 0 20px; padding-left: 20px; display: grid; gap: 10px; }\n        .ro-list li { font-size: 15px; line-height: 1.55; }\n        .ro-list a, .ro-foot a, .ro-check a { color: #1e5f66; text-underline-offset: 3px; }\n        .ro-check {\n          display: flex; gap: 11px; align-items: flex-start;\n          padding: 14px; margin-bottom: 18px;\n          border: 1px solid #161614; border-radius: 14px; background: #f6e4cd;\n          font-size: 14px; line-height: 1.5; cursor: pointer;\n        }\n        .ro-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; cursor: pointer; }\n        .ro-btn {\n          width: 100%; padding: 14px 22px; cursor: pointer;\n          font-family: 'Nunito', system-ui, sans-serif; font-size: 15px; font-weight: 900;\n          letter-spacing: 0.06em; text-transform: uppercase;\n          color: #161614; background: #ffd95e;\n          border: 2px solid #161614; border-radius: 999px; box-shadow: 4px 4px 0 #161614;\n          transition: transform .12s ease, box-shadow .12s ease;\n        }\n        .ro-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: 2px 2px 0 #161614; }\n        .ro-btn:not(:disabled):hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #161614; }\n        .ro-foot {\n          margin: 16px 0 0; font-size: 12.5px; line-height: 1.5; color: #5c584d;\n        }\n      ",{})}</style>
     </div>,
     document.body,
   );

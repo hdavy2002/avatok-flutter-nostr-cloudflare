@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -209,6 +212,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final media = MediaQuery.of(context);
     final size = media.size;
 
@@ -284,7 +288,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                     _RoundIconButton(
                       icon: PhosphorIcons.caretDown(PhosphorIconsStyle.regular),
                       onTap: _toMini,
-                      tooltip: 'Minimize',
+                      tooltip: uiCopy(UiMessage.m_minimize_d72e311c4d),
                       dark: false,
                     ),
                     Expanded(
@@ -302,14 +306,14 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                     _RoundIconButton(
                       icon: PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
                       onTap: () => _openExternal(url),
-                      tooltip: 'Open in app',
+                      tooltip: uiCopy(UiMessage.m_open_in_app_7100b12091),
                       dark: false,
                     ),
                     const SizedBox(width: Msg.s1),
                     _RoundIconButton(
                       icon: PhosphorIcons.x(PhosphorIconsStyle.regular),
                       onTap: LinkViewer.close,
-                      tooltip: 'Close',
+                      tooltip: uiCopy(UiMessage.m_close_7d9eb7acb1),
                       dark: false,
                     ),
                   ]),
@@ -341,6 +345,7 @@ class _RoundIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final btn = GestureDetector(
       onTap: onTap,
       child: Container(
@@ -476,6 +481,7 @@ class _ViewerContentState extends State<_ViewerContent> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final yt = _yt;
     if (yt != null) {
       return Container(
@@ -517,6 +523,7 @@ class _EmbedBlocked extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       color: Colors.black,
       padding: const EdgeInsets.all(24),
@@ -526,14 +533,14 @@ class _EmbedBlocked extends StatelessWidget {
           PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
               size: 34, color: Colors.white70),
           const SizedBox(height: 12),
-          Text(
-            "This video can't be played here",
+          UiText(
+            UiMessage.m_this_video_can_t_be_bcd62a7139,
             textAlign: TextAlign.center,
             style: ADText.rowName(c: Colors.white),
           ),
           const SizedBox(height: Msg.s1),
-          Text(
-            'The uploader turned off playback outside YouTube.',
+          UiText(
+            UiMessage.m_the_uploader_turned_off_playback_0faa9ac051,
             textAlign: TextAlign.center,
             style: ADText.preview(c: Colors.white60),
           ),
@@ -549,7 +556,7 @@ class _EmbedBlocked extends StatelessWidget {
             },
             icon: Icon(PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
                 size: 17),
-            label: const Text('Watch on YouTube'),
+            label: const UiText(UiMessage.m_watch_on_youtube_818cd74804),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF0000),
               foregroundColor: Colors.white,

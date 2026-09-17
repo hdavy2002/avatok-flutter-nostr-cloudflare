@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* SidebarUser — the dashboard sidebar's profile card + sign-out, and the
  * auth guard for the whole /dashboard surface (kept in one island so there is a
  * single Clerk provider on the page).
@@ -49,9 +51,7 @@ function Card({
         type="button"
         onClick={onSignOut}
         className="rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"
-      >
-        Sign out
-      </button>
+      ><UiText id="web-dashboard.48f0d3d397d49f13" source="Sign out" />{" "}</button>
     </div>
   );
 }
@@ -123,6 +123,8 @@ function ClerkUser() {
 
 /** Guest-only fallback when no Clerk key is configured. */
 function GuestOnlyUser() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [ready, setReady] = useState(false);
   const [handle, setHandle] = useState<string | null>(null);
   useEffect(() => {
@@ -139,7 +141,7 @@ function GuestOnlyUser() {
   if (!ready) return <div className="h-[84px] animate-pulse rounded-zine border-zine border-ink bg-paper2" />;
   return (
     <Card
-      name={handle || 'Guest'}
+      name={handle || uiT("web-dashboard.5ed8944a85a9763f","Guest")}
       handle={handle}
       onSignOut={() => {
         try {

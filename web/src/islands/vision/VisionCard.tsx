@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // VisionCard — a marketplace poster for one published vision agent.
 //
 // Built on the kit poster pattern (mirrors components/ListingTile) so it reads
@@ -50,6 +52,8 @@ export interface VisionCardProps {
 }
 
 export function VisionCard({ agent, busy }: VisionCardProps) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   const target = `/vision/agent/${encodeURIComponent(agent.id)}`;
   const isBusy = busy ?? (agent.activeCalls ?? 0) >= 10;
   const free = isFreeForCallers(agent);
@@ -73,7 +77,7 @@ export function VisionCard({ agent, busy }: VisionCardProps) {
 
         {/* availability chip */}
         <span className="absolute left-2 top-2">
-          {isBusy ? <Pill kind="no">● Busy</Pill> : <Pill kind="ok">● Call now</Pill>}
+          {isBusy ? <Pill kind="no"><UiText id="web-vision.392a4a1fc57e71dd" source="● Busy" /></Pill> : <Pill kind="ok"><UiText id="web-vision.0c184087d2923038" source="● Call now" /></Pill>}
         </span>
 
         {/* score label badge */}
@@ -94,14 +98,14 @@ export function VisionCard({ agent, busy }: VisionCardProps) {
 
         {/* capability / overlay badges */}
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Pill kind="hint">{CAPABILITY_LABEL[agent.capability] ?? 'Vision'}</Pill>
+          <Pill kind="hint">{CAPABILITY_LABEL[agent.capability] ?? uiT("web-vision.c587c2601ccfc456","Vision")}</Pill>
           {overlay && <Pill kind="hint">{overlay}</Pill>}
-          {agent.agenticSnapshotEnabled && <Pill kind="hint">Snapshot</Pill>}
+          {agent.agenticSnapshotEnabled && <Pill kind="hint"><UiText id="web-vision.6ad27bd4ec33b079" source="Snapshot" /></Pill>}
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2">
           <span className="font-mono text-[13px] uppercase tracking-[0.06em] text-inkSoft truncate font-bold">
-            {agent.creatorName ? agent.creatorName : 'AvaVision'}
+            {agent.creatorName ? agent.creatorName : uiT("web-vision.c06fa2f9826ce04a","AvaVision")}
           </span>
           <span
             className={[

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 // SessionRoom — the AvaVision split-screen live vision session island.
 //
 // Mirrors web-client Phase E's AgentCall (auth gate → calls/now → sessions/start →
@@ -95,6 +97,8 @@ function fmtClock(sec: number): string {
 const CUE_EVERY_MS = 5000; // throttle Live system cues independent of the badge
 
 function SessionRoomInner({ agentId, seed }: Props) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   const auth = useAuthToken();
 
   const [phase, setPhase] = useState<Phase>('idle');
@@ -433,7 +437,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
   const langPicker = useMemo(
     () => (
       <label className="flex w-full max-w-xs flex-col gap-1.5">
-        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Coach in</span>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.06662dc5e5bdaea9" source="Coach in" /></span>
         <select
           className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-2.5 font-body font-bold text-[15px] text-ink shadow-zine-xs focus:outline-none"
           value={language}
@@ -482,16 +486,13 @@ function SessionRoomInner({ agentId, seed }: Props) {
               checked={consent}
               onChange={(e) => setConsent(e.target.checked)}
             />
-            <span className="font-body font-bold text-[13px] leading-snug text-ink">
-              I agree to turn on my camera for this session. {name} sees a low-detail view (~1 frame/sec) to
-              coach my technique. The skeleton/overlay runs only on my device and is never uploaded.
-            </span>
+            <span className="font-body font-bold text-[13px] leading-snug text-ink"><UiText id="web-vision.b3cf9ac6190af369" source="I agree to turn on my camera for this session." />{" "}{name}{" "}<UiText id="web-vision.3da0639d19a463e9" source="sees a low-detail view (~1 frame/sec) to coach my technique. The skeleton/overlay runs only on my device and is never uploaded." />{" "}</span>
           </label>
-          <Button variant="lime" fullWidth label="Start vision session" disabled={!consent} onClick={start} />
+          <Button variant="lime" fullWidth label={uiT("web-vision.1fc92a85358f1244","Start vision session")} disabled={!consent} onClick={start} />
           <p className="max-w-md text-center font-body text-[12px] text-inkMute">
             {free
-              ? 'Free — the creator covers it. Camera + mic access required.'
-              : 'Billed per minute from your AvaWallet. Camera + mic access required.'}
+              ? uiT("web-vision.721500a5b866cbb0","Free — the creator covers it. Camera + mic access required.")
+              : uiT("web-vision.3e3605b034913cec","Billed per minute from your AvaWallet. Camera + mic access required.")}
           </p>
         </div>
       )}
@@ -500,7 +501,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
         <div className="flex flex-col items-center gap-3 py-2">
           <Spinner size={28} color="var(--zine-lilac)" />
           <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-            {phase === 'authing' ? 'verifying…' : phase === 'starting' ? 'starting session…' : 'connecting…'}
+            {phase === 'authing' ? uiT("web-vision.8073bb0cbbb0838e","verifying…") : phase === 'starting' ? uiT("web-vision.53a9228f63883617","starting session…") : uiT("web-vision.4b6394535d80d9a6","connecting…")}
           </span>
         </div>
       )}
@@ -531,7 +532,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
             {/* "the agent can see you" persistent indicator */}
             {liveish && (
               <div className="absolute right-3 top-3">
-                <Pill kind="no" icon="●">{name} can see you</Pill>
+                <Pill kind="no" icon="●">{name}{" "}<UiText id="web-vision.88d7109b09de31f9" source="can see you" /></Pill>
               </div>
             )}
 
@@ -557,7 +558,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
                     agentSpeaking ? 'bg-lilac text-ink' : 'bg-card text-inkSoft',
                   ].join(' ')}
                 >
-                  {agentSpeaking ? '● speaking' : phase === 'wrapup' ? 'wrapping up' : 'listening'}
+                  {agentSpeaking ? uiT("web-vision.0d50d8a9e4b15571","● speaking") : phase === 'wrapup' ? uiT("web-vision.efdbdf81cb451d9c","wrapping up") : uiT("web-vision.8560878b8782af43","listening")}
                 </span>
               </div>
             )}
@@ -587,7 +588,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
-              aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+              aria-label={muted ? uiT("web-vision.a22cb32b07345be1","Unmute microphone") : uiT("web-vision.2d1be6900bbed8f9","Mute microphone")}
               onClick={toggleMute}
               className={[
                 'inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-zine border-ink shadow-zine-xs',
@@ -610,8 +611,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
                   'bg-blue text-ink',
                 ].join(' ')}
               >
-                {snapLoading ? <Spinner size={16} color="var(--zine-ink)" /> : '🔍'} Analyze my form
-                {remainingSnaps != null && remainingSnaps > 0 && (
+                {snapLoading ? <Spinner size={16} color="var(--zine-ink)" /> : '🔍'}{" "}<UiText id="web-vision.81f706302a12e908" source="Analyze my form" />{" "}{remainingSnaps != null && remainingSnaps > 0 && (
                   <span className="rounded-full bg-ink px-1.5 text-[10px] text-paper">{remainingSnaps}</span>
                 )}
               </button>
@@ -619,7 +619,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
 
             <button
               type="button"
-              aria-label="End session"
+              aria-label={uiT("web-vision.f00b921ff35b9045","End session")}
               onClick={onHangup}
               className="inline-flex h-16 w-16 items-center justify-center rounded-full border-zine border-ink bg-coral text-white shadow-zine-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
             >
@@ -634,18 +634,17 @@ function SessionRoomInner({ agentId, seed }: Props) {
         <div className="flex w-full max-w-md flex-col items-center gap-3">
           <div className="flex w-full flex-col items-center gap-2 rounded-zine border-zine border-ink bg-card p-5 text-center shadow-zine-sm">
             <span className="font-display font-semibold text-[19px] text-ink">
-              {phase === 'error' ? 'Could not connect' : 'Session ended'}
+              {phase === 'error' ? uiT("web-vision.8630b4dd33f22d2f","Could not connect") : uiT("web-vision.4a50e4c0c4ffa965","Session ended")}
             </span>
             {phase === 'error' ? (
               <p className="font-body font-bold text-[14px] text-coral">{error}</p>
             ) : (
-              <p className="font-body font-bold text-[14px] text-inkSoft">
-                You trained with {name} for {fmtClock(elapsed)}.
-                {!free && agent ? ` Billed ~${billedMin} min; unused escrow is refunded.` : ' This session was free.'}
+              <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-vision.da291f892e5c5aa3" source="You trained with" />{" "}{name}{" "}<UiText id="web-vision.10c22bcf4c768b51" source="for" />{" "}{fmtClock(elapsed)}.
+                {!free && agent ? uiT("web-vision.1cdf1182ad2c34a9"," Billed ~{value0} min; unused escrow is refunded.",{value0:String(billedMin)}) : uiT("web-vision.dc734a25c8be93f5"," This session was free.")}
               </p>
             )}
           </div>
-          <Button variant="lime" fullWidth label={phase === 'error' ? 'Try again' : 'Start another session'} onClick={onHangup} />
+          <Button variant="lime" fullWidth label={phase === 'error' ? uiT("web-vision.d8b8392e2c542950","Try again") : uiT("web-vision.c86ae1e9afa4f3a3","Start another session")} onClick={onHangup} />
         </div>
       )}
 

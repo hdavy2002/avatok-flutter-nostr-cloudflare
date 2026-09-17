@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -39,6 +42,7 @@ class AppBadge extends StatelessWidget {
   const AppBadge({super.key, required this.appKey});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final a = affApp(appKey);
     return ZineSticker(a.label, icon: a.icon);
   }
@@ -54,6 +58,7 @@ class StatCard extends StatelessWidget {
       required this.icon, required this.color, this.sub});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZineCard(
       radius: Msg.rLg,
       padding: const EdgeInsets.all(Msg.s4),
@@ -87,6 +92,7 @@ class ListingPickCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final est = estimatedCommissionPerSale(listing.price);
     return ZineCard(
       radius: Msg.rLg,
@@ -132,13 +138,13 @@ class ListingPickCard extends StatelessWidget {
               Text(affTokensLabel(listing.price),
                   style: ADText.rowName().copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 1),
-              Text('You earn ~${affTokensLabel(est)} per sale — for life',
+              UiText(UiMessage.m_you_earn_value1_per_sale_0aa6604d30, params: {'value1': (affTokensLabel(est)).toString()},
                   style: ADText.rowName(c: AD.online)),
             ]),
           ),
           const SizedBox(width: Msg.s3),
           ZineButton(
-            label: 'Create my link',
+            label: uiCopy(UiMessage.m_create_my_link_c3761b48f4),
             variant: ZineButtonVariant.blue,
             fontSize: 14,
             loading: busy,
@@ -157,6 +163,7 @@ class LinkRow extends StatelessWidget {
   const LinkRow({super.key, required this.link, required this.onTap});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final a = affApp(link.app);
     return ZinePressable(
       onTap: onTap,
@@ -177,7 +184,7 @@ class LinkRow extends StatelessWidget {
               ],
             ]),
             const SizedBox(height: Msg.s1),
-            Text('${link.clicks} clicks · ${link.binds} referred',
+            UiText(UiMessage.m_value1_clicks_value2_referred_d2394dddfb, params: {'value1': (link.clicks).toString(), 'value2': (link.binds).toString()},
                 style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ),
@@ -185,7 +192,7 @@ class LinkRow extends StatelessWidget {
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(affTokensLabel(link.earnedTokens),
               style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
-          Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
+          UiText(UiMessage.m_earned_63e39794f7, style: ADText.sectionLabel(c: AD.textTertiary)),
         ]),
       ]),
     );
@@ -197,7 +204,7 @@ class AffEmpty extends StatelessWidget {
   final String text;
   const AffEmpty(this.text, {super.key});
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Center(
         child: Padding(
           padding: const EdgeInsets.all(Msg.s6),
           child: ZineEmptyState(
@@ -205,5 +212,5 @@ class AffEmpty extends StatelessWidget {
             text: text,
           ),
         ),
-      );
+      ); }
 }

@@ -19,7 +19,7 @@ const ideas = [
 <span data-india-i18n="ideasTitle">{copy.ideasTitle}</span>
 </h2>
 <div class="india-idea-grid">{ideas.map((idea) => <article class:list={['india-idea-card', `india-idea-card--${idea.tone}`]}>
-<img src={publicImage(idea.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(idea.image, [420, 640, 900], { fit: 'scale-down' })} sizes="(max-width: 699px) 90vw, 25vw" width="1536" height="1024" alt="" loading="lazy" decoding="async" />
+<img src={publicImage(idea.image, { width: 900, fit: 'scale-down' })} alt="" loading="lazy" />
 <div>
 <h3 data-india-i18n={idea.titleKey}>{idea.title}</h3>
 <p data-india-i18n={idea.bodyKey}>{idea.body}</p>

@@ -1,6 +1,6 @@
 ---
 import { publicImage } from '../lib/config';
-/** Exact original screenshot slices. Never paint duplicate text over baked copy. */
+/** Source-locale artwork; alternate locales receive visible real-text sections. */
 interface Props { part: 'hero' | 'middle' | 'cta' }
 const { part } = Astro.props;
 const root = '/assets/global-original/';
@@ -18,28 +18,33 @@ const categories = [
 ];
 ---
 {part === 'hero' && <section class="original-hero" aria-labelledby="original-hero-title">
-  <h1 class="original-sr" id="original-hero-title">Your people are everywhere. Your income should be too.</h1>
-  <p class="original-sr">Go live, get booked, and turn what you know into income — paid out in the currency and payment method that works where you live.</p>
+  <h1 data-i18n="web-common.ff2649ba5da39b23" class="original-sr" id="original-hero-title">Your people are everywhere. Your income should be too.</h1>
+  <p data-i18n="web-common.eb1b2af48feaf5f7" class="original-sr">Go live, get booked, and turn what you know into income — paid out in the currency and payment method that works where you live.</p>
   <div class="original-desktop original-panel original-hero-panel">
-    <picture><source type="image/avif" srcset={publicImage(`${root}hero-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1536" height="924" alt="" fetchpriority="high" decoding="async" /></picture>
-    <a class="original-hotspot original-hero-start" href={signup} aria-label="Start earning free"><span class="original-sr">Start earning free</span></a>
-    <a class="original-hotspot original-hero-how" href="#how-it-works" aria-label="See how it works"><span class="original-sr">See how it works</span></a>
+    <picture><source type="image/webp" srcset={publicImage(`${root}hero-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}hero-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1536" height="924" alt="" fetchpriority="high" decoding="async" /></picture>
+    <a data-india-i18n-attr="aria-label:web-common.c54a63bb77c61e9d" class="original-hotspot original-hero-start" href={signup} aria-label="Start earning free"><span data-i18n="web-common.c54a63bb77c61e9d" class="original-sr">Start earning free</span></a>
+    <a data-india-i18n-attr="aria-label:web-common.a105ad29235aa71e" class="original-hotspot original-hero-how" href="#how-it-works" aria-label="See how it works"><span data-i18n="web-common.a105ad29235aa71e" class="original-sr">See how it works</span></a>
   </div>
   <div class="original-mobile original-hero-mobile">
     <div class="original-hero-mobile-copy">
-      <picture><source type="image/avif" srcset={publicImage(`${root}hero-heading.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-heading.png`, { width: 1600, fit: 'scale-down' })} width="592" height="322" alt="" fetchpriority="high" decoding="async" /></picture>
-      <picture><source type="image/avif" srcset={publicImage(`${root}hero-description.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-description.png`, { width: 1600, fit: 'scale-down' })} width="543" height="93" alt="" decoding="async" /></picture>
+      <picture><source type="image/webp" srcset={publicImage(`${root}hero-heading.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}hero-heading.png`, { width: 1600, fit: 'scale-down' })} width="592" height="322" alt="" fetchpriority="high" decoding="async" /></picture>
+      <picture><source type="image/webp" srcset={publicImage(`${root}hero-description.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}hero-description.png`, { width: 1600, fit: 'scale-down' })} width="543" height="93" alt="" decoding="async" /></picture>
       <div class="original-hero-mobile-buttons">
-        <a href={signup} aria-label="Start earning free"><picture><source type="image/avif" srcset={publicImage(`${root}hero-start.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-start.png`, { width: 1600, fit: 'scale-down' })} width="289" height="67" alt="Start earning free" /></picture></a>
-        <a href="#how-it-works" aria-label="See how it works"><picture><source type="image/avif" srcset={publicImage(`${root}hero-how.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-how.png`, { width: 1600, fit: 'scale-down' })} width="241" height="67" alt="See how it works" /></picture></a>
+        <a data-india-i18n-attr="aria-label:web-common.c54a63bb77c61e9d" href={signup} aria-label="Start earning free"><picture><source type="image/webp" srcset={publicImage(`${root}hero-start.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.c54a63bb77c61e9d" src={publicImage(`${root}hero-start.png`, { width: 1600, fit: 'scale-down' })} width="289" height="67" alt="Start earning free" /></picture></a>
+        <a data-india-i18n-attr="aria-label:web-common.a105ad29235aa71e" href="#how-it-works" aria-label="See how it works"><picture><source type="image/webp" srcset={publicImage(`${root}hero-how.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.a105ad29235aa71e" src={publicImage(`${root}hero-how.png`, { width: 1600, fit: 'scale-down' })} width="241" height="67" alt="See how it works" /></picture></a>
       </div>
-      <picture><source type="image/avif" srcset={publicImage(`${root}hero-benefits.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-benefits.png`, { width: 1600, fit: 'scale-down' })} width="563" height="99" alt="Local currency. Direct to your bank. You keep 80%. See the availability and fees note below." /></picture>
+      <picture><source type="image/webp" srcset={publicImage(`${root}hero-benefits.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.3689f6566ae26d8e" src={publicImage(`${root}hero-benefits.png`, { width: 1600, fit: 'scale-down' })} width="563" height="99" alt="Local currency. Direct to your bank. You keep 80%. See the availability and fees note below." /></picture>
     </div>
-    <picture class="original-hero-mobile-art"><source type="image/avif" srcset={publicImage(`${root}hero-art.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-art.png`, { width: 1600, fit: 'scale-down' })} width="881" height="819" alt="The original four-creator collage: retro flares, colourful fashion, beauty, dance and music on torn yellow paper." decoding="async" /></picture>
-    <picture><source type="image/avif" srcset={publicImage(`${root}hero-skyline.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}hero-skyline.png`, { width: 1600, fit: 'scale-down' })} width="651" height="159" alt="A collage of cities and landmarks around the world." decoding="async" /></picture>
+    <picture class="original-hero-mobile-art"><source type="image/webp" srcset={publicImage(`${root}hero-art.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.75287923470d1630" src={publicImage(`${root}hero-art.png`, { width: 1600, fit: 'scale-down' })} width="881" height="819" alt="The original four-creator collage: retro flares, colourful fashion, beauty, dance and music on torn yellow paper." decoding="async" /></picture>
+    <picture><source type="image/webp" srcset={publicImage(`${root}hero-skyline.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.b4b1bc21890b2789" src={publicImage(`${root}hero-skyline.png`, { width: 1600, fit: 'scale-down' })} width="651" height="159" alt="A collage of cities and landmarks around the world." decoding="async" /></picture>
+  </div>
+  <div class="original-localized original-localized-actions">
+    <a data-i18n="web-original.start" href={signup}>Start earning free</a>
+    <a data-i18n="web-original.how" href="#how-it-works">See how it works</a>
+    <p data-i18n="web-original.benefits">Local currency. Direct to your bank. You keep 80%. Check availability and fees below.</p>
   </div>
   <div class="original-availability">
-    <p>Artwork shows illustrative payouts, currencies and coverage. Available countries, payment methods, fees and the amount you keep depend on eligibility and current terms. <a href="/payouts">Check payout details</a>.</p>
+    <p><ui-copy style="display:contents" data-i18n="web-common.2c58c66496582fab">Artwork shows illustrative payouts, currencies and coverage. Available countries, payment methods, fees and the amount you keep depend on eligibility and current terms.</ui-copy> <a data-i18n="web-common.93ac9862d58bf4c5" href="/payouts">Check payout details</a>.</p>
   </div>
 </section>}
 
@@ -47,57 +52,77 @@ const categories = [
   <div id="how-it-works" class="original-anchor-wrap">
     <section id="formats" class="original-formats" aria-labelledby="original-formats-title">
       <span id="live-streaming" class="original-anchor" aria-hidden="true"></span><span id="live-friends" class="original-anchor" aria-hidden="true"></span>
-      <h2 id="original-formats-title" class="original-sr">Turn your following into a business.</h2>
-      <p class="original-sr">One place to go live, get booked, and get paid around the world.</p>
+      <h2 data-i18n="web-common.3c95859c3624e5e7" id="original-formats-title" class="original-sr">Turn your following into a business.</h2>
+      <p data-i18n="web-common.e073ec6e116422b9" class="original-sr">One place to go live, get booked, and get paid around the world.</p>
+      <div class="original-localized original-localized-grid">
+        {formats.map(format => <a href={format.href} data-i18n={`web-original.format.${format.name}`}>{format.label}</a>)}
+      </div>
       <div class="original-desktop original-panel">
-        <picture><source type="image/avif" srcset={publicImage(`${root}formats-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}formats-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="555" alt="" loading="lazy" decoding="async" /></picture>
+        <picture><source type="image/webp" srcset={publicImage(`${root}formats-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}formats-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="555" alt="" loading="lazy" decoding="async" /></picture>
         {formats.map((format, index) => <a class="original-hotspot original-format-hotspot" style={`left:${index * 32.3 + 1.3}%;`} href={format.href} aria-label={format.label}><span class="original-sr">{format.label}</span></a>)}
       </div>
       <div class="original-mobile original-formats-mobile">
-        <picture class="original-mobile-heading"><source type="image/avif" srcset={publicImage(`${root}formats-heading.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}formats-heading.png`, { width: 1600, fit: 'scale-down' })} width="630" height="116" alt="" loading="lazy" decoding="async" /></picture>
-        <p class="original-mobile-intro">One place to go live, get booked, and get paid around the world.</p>
-        <div class="original-format-stack">{formats.map(format => <a href={format.href} aria-label={format.label}><picture><source type="image/avif" srcset={publicImage(`${root}format-${format.name}.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}format-${format.name}.png`, { width: 1600, fit: 'scale-down' })} width={format.width} height={format.height} alt={format.label} loading="lazy" decoding="async" /></picture></a>)}</div>
-        <img class="original-paper-divider" src={publicImage(`${root}paper-divider.webp`, { width: 1600, fit: 'scale-down' })} width="420" height="29" alt="" loading="lazy" />
+        <picture class="original-mobile-heading"><source type="image/webp" srcset={publicImage(`${root}formats-heading.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}formats-heading.png`, { width: 1600, fit: 'scale-down' })} width="630" height="116" alt="" loading="lazy" decoding="async" /></picture>
+        <p data-i18n="web-common.e073ec6e116422b9" class="original-mobile-intro">One place to go live, get booked, and get paid around the world.</p>
+        <div class="original-format-stack">{formats.map(format => <a href={format.href} aria-label={format.label}><picture><source type="image/webp" srcset={publicImage(`${root}format-${format.name}.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}format-${format.name}.png`, { width: 1600, fit: 'scale-down' })} width={format.width} height={format.height} alt={format.label} loading="lazy" decoding="async" /></picture></a>)}</div>
+        <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
       </div>
     </section>
   </div>
   <section id="payouts" class="original-payouts" aria-labelledby="original-payouts-title">
-    <h2 id="original-payouts-title" class="original-sr">Your money should feel local.</h2>
-    <p class="original-sr">Fans pay in their currency. You receive in yours. Bank transfer, UPI in India and other local methods depend on country, eligibility and availability.</p>
-    <a class="original-desktop original-panel" href="/payouts" aria-label="Your money should feel local. Read payout availability, currencies and fees."><picture><source type="image/avif" srcset={publicImage(`${root}payouts-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}payouts-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="321" alt="" loading="lazy" decoding="async" /></picture></a>
+    <h2 data-i18n="web-common.9024387ab2dcb7d5" id="original-payouts-title" class="original-sr">Your money should feel local.</h2>
+    <p data-i18n="web-common.f11c4be491215fba" class="original-sr">Fans pay in their currency. You receive in yours. Bank transfer, UPI in India and other local methods depend on country, eligibility and availability.</p>
+    <div class="original-localized original-localized-actions"><a data-i18n="web-original.payouts" href="/payouts">Check payout availability, currencies and fees</a></div>
+    <a data-india-i18n-attr="aria-label:web-common.6a6d1523ac987745" class="original-desktop original-panel" href="/payouts" aria-label="Your money should feel local. Read payout availability, currencies and fees."><picture><source type="image/webp" srcset={publicImage(`${root}payouts-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}payouts-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="321" alt="" loading="lazy" decoding="async" /></picture></a>
     <div class="original-mobile original-payouts-mobile">
-      <div class="original-mobile-heading original-payout-title-lines" aria-hidden="true"><picture><source type="image/avif" srcset={publicImage(`${root}payouts-heading-top.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}payouts-heading-top.png`, { width: 1600, fit: 'scale-down' })} width="336" height="60" alt="" loading="lazy" decoding="async" /></picture><picture><source type="image/avif" srcset={publicImage(`${root}payouts-heading-bottom.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}payouts-heading-bottom.png`, { width: 1600, fit: 'scale-down' })} width="427" height="57" alt="" loading="lazy" decoding="async" /></picture></div>
-      <p class="original-mobile-intro">Fans pay in their currency. You receive in yours.</p>
-      <a class="original-payout-map" href="/payouts" aria-label="See supported payout currencies and payment methods"><picture><source type="image/avif" srcset={publicImage(`${root}payouts-map.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}payouts-map.png`, { width: 1600, fit: 'scale-down' })} width="596" height="321" alt="Original world collage with USD, EUR, JPY, BRL, NGN and INR examples. Illustration, not confirmation of availability." loading="lazy" decoding="async" /></picture></a>
-      <picture class="original-payout-sticker"><source type="image/avif" srcset={publicImage(`${root}payouts-sticker.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}payouts-sticker.png`, { width: 1600, fit: 'scale-down' })} width="324" height="74" alt="No currency scavenger hunt." loading="lazy" decoding="async" /></picture>
-      <img class="original-paper-divider" src={publicImage(`${root}paper-divider.webp`, { width: 1600, fit: 'scale-down' })} width="420" height="29" alt="" loading="lazy" />
+      <div class="original-mobile-heading original-payout-title-lines" aria-hidden="true"><picture><source type="image/webp" srcset={publicImage(`${root}payouts-heading-top.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}payouts-heading-top.png`, { width: 1600, fit: 'scale-down' })} width="336" height="60" alt="" loading="lazy" decoding="async" /></picture><picture><source type="image/webp" srcset={publicImage(`${root}payouts-heading-bottom.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}payouts-heading-bottom.png`, { width: 1600, fit: 'scale-down' })} width="427" height="57" alt="" loading="lazy" decoding="async" /></picture></div>
+      <p data-i18n="web-common.1f0c9072e3e50f81" class="original-mobile-intro">Fans pay in their currency. You receive in yours.</p>
+      <a data-india-i18n-attr="aria-label:web-common.39cd5f980a1f88f2" class="original-payout-map" href="/payouts" aria-label="See supported payout currencies and payment methods"><picture><source type="image/webp" srcset={publicImage(`${root}payouts-map.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.5cb9a42df0ec3edd" src={publicImage(`${root}payouts-map.png`, { width: 1600, fit: 'scale-down' })} width="596" height="321" alt="Original world collage with USD, EUR, JPY, BRL, NGN and INR examples. Illustration, not confirmation of availability." loading="lazy" decoding="async" /></picture></a>
+      <picture class="original-payout-sticker"><source type="image/webp" srcset={publicImage(`${root}payouts-sticker.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.c27b95503bc06779" src={publicImage(`${root}payouts-sticker.png`, { width: 1600, fit: 'scale-down' })} width="324" height="74" alt="No currency scavenger hunt." loading="lazy" decoding="async" /></picture>
+      <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
     </div>
   </section>
   <section class="original-categories" aria-labelledby="original-categories-title">
-    <h2 class="original-sr" id="original-categories-title">Built for the internet’s most interesting people.</h2>
+    <h2 data-i18n="web-common.45c4e816194229ab" class="original-sr" id="original-categories-title">Built for the internet’s most interesting people.</h2>
+    <div class="original-localized original-localized-grid original-localized-categories">{categories.map(category => <a href="/global-ideas" data-i18n={`web-original.category.${category.name}`}>{category.name}</a>)}</div>
     <div class="original-desktop original-panel">
-      <picture><source type="image/avif" srcset={publicImage(`${root}categories-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}categories-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="244" alt="" loading="lazy" decoding="async" /></picture>
+      <picture><source type="image/webp" srcset={publicImage(`${root}categories-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}categories-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="244" alt="" loading="lazy" decoding="async" /></picture>
       {categories.map((category, index) => <a class="original-hotspot original-category-hotspot" style={`left:${index * 12.5}%;`} href="/global-ideas" aria-label={`Explore ${category.name} creator ideas`}><span class="original-sr">{category.name}</span></a>)}
     </div>
     <div class="original-mobile original-categories-mobile">
       <div class="original-category-mobile-title" aria-hidden="true">
-        <img src={publicImage(`${root}categories-heading-top.webp`, { width: 1600, fit: 'scale-down' })} width="488" height="48" alt="" loading="lazy" />
-        <img src={publicImage(`${root}categories-heading-bottom.webp`, { width: 1600, fit: 'scale-down' })} width="339" height="48" alt="" loading="lazy" />
+        <img src={`${root}categories-heading-top.webp`} width="488" height="48" alt="" loading="lazy" />
+        <img src={`${root}categories-heading-bottom.webp`} width="339" height="48" alt="" loading="lazy" />
       </div>
-      <div class="original-category-grid">{categories.map(category => <a href="/global-ideas" aria-label={`Explore ${category.name} creator ideas`}><picture><source type="image/avif" srcset={publicImage(`${root}category-${category.name}.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}category-${category.name}.png`, { width: 1600, fit: 'scale-down' })} width={category.width} height="196" alt={category.name} loading="lazy" decoding="async" /></picture></a>)}</div>
+      <div class="original-category-grid">{categories.map(category => <a href="/global-ideas" aria-label={`Explore ${category.name} creator ideas`}><picture><source type="image/webp" srcset={publicImage(`${root}category-${category.name}.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}category-${category.name}.png`, { width: 1600, fit: 'scale-down' })} width={category.width} height="196" alt={category.name} loading="lazy" decoding="async" /></picture></a>)}</div>
     </div>
   </section>
 </>}
 
 {part === 'cta' && <section class="original-cta" aria-labelledby="original-cta-title">
-  <h2 class="original-sr" id="original-cta-title">Your people are waiting.</h2>
+  <h2 data-i18n="web-common.3ff02e2b56b6bb4b" class="original-sr" id="original-cta-title">Your people are waiting.</h2>
+  <div class="original-localized original-localized-actions"><a data-i18n="web-original.listing" href={signup}>Create your free listing</a></div>
   <div class="original-desktop original-panel">
-    <picture><source type="image/avif" srcset={publicImage(`${root}cta-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}cta-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="144" alt="" loading="lazy" decoding="async" /></picture>
-    <a class="original-hotspot original-cta-hotspot" href={signup} aria-label="Create your free listing"><span class="original-sr">Create your free listing</span></a>
+    <picture><source type="image/webp" srcset={publicImage(`${root}cta-desktop.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}cta-desktop.png`, { width: 1600, fit: 'scale-down' })} width="1024" height="144" alt="" loading="lazy" decoding="async" /></picture>
+    <a data-india-i18n-attr="aria-label:web-common.60be9273c8e3a386" class="original-hotspot original-cta-hotspot" href={signup} aria-label="Create your free listing"><span data-i18n="web-common.60be9273c8e3a386" class="original-sr">Create your free listing</span></a>
   </div>
   <div class="original-mobile original-cta-mobile">
-    <picture class="original-cta-mobile-title"><source type="image/avif" srcset={publicImage(`${root}cta-heading.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}cta-heading.png`, { width: 1600, fit: 'scale-down' })} width="532" height="58" alt="" loading="lazy" decoding="async" /></picture>
-    <a href={signup} aria-label="Create your free listing"><picture><source type="image/avif" srcset={publicImage(`${root}cta-button.webp`, { width: 1600, fit: 'scale-down', format: 'avif' })} /><img src={publicImage(`${root}cta-button.png`, { width: 1600, fit: 'scale-down' })} width="234" height="55" alt="Create your free listing" loading="lazy" decoding="async" /></picture></a>
-    <img class="original-cta-edge" src={publicImage(`${root}cta-edge.webp`, { width: 1600, fit: 'scale-down' })} width="1024" height="25" alt="" loading="lazy" />
+    <picture class="original-cta-mobile-title"><source type="image/webp" srcset={publicImage(`${root}cta-heading.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}cta-heading.png`, { width: 1600, fit: 'scale-down' })} width="532" height="58" alt="" loading="lazy" decoding="async" /></picture>
+    <a data-india-i18n-attr="aria-label:web-common.60be9273c8e3a386" href={signup} aria-label="Create your free listing"><picture><source type="image/webp" srcset={publicImage(`${root}cta-button.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.60be9273c8e3a386" src={publicImage(`${root}cta-button.png`, { width: 1600, fit: 'scale-down' })} width="234" height="55" alt="Create your free listing" loading="lazy" decoding="async" /></picture></a>
+    <img class="original-cta-edge" src={`${root}cta-edge.webp`} width="1024" height="25" alt="" loading="lazy" />
   </div>
 </section>}
+
+<style>
+.original-localized { display:none; }
+:global(html:not([lang="en"])) :is(.original-hero,.original-formats,.original-payouts,.original-categories,.original-cta) { padding:clamp(24px,5vw,64px);background:var(--paper,#fff5df);color:var(--ink,#161614); }
+:global(html:not([lang="en"])) :is(.original-desktop,.original-mobile) { display:none!important; }
+:global(html:not([lang="en"])) .original-sr { position:static!important;width:auto!important;height:auto!important;overflow:visible!important;clip:auto!important;clip-path:none!important;white-space:normal!important;margin:0 0 20px!important;padding:0!important; }
+:global(html:not([lang="en"])) :is(h1,h2).original-sr { max-width:22ch;font-size:clamp(28px,4vw,58px);line-height:1.2; }
+:global(html:not([lang="en"])) p.original-sr { max-width:65ch;font-size:1.15rem;line-height:1.6; }
+:global(html:not([lang="en"])) .original-localized { display:flex;gap:16px;flex-wrap:wrap;line-height:1.6; }
+:global(html:not([lang="en"])) .original-localized a { display:block;padding:16px 22px;border:2px solid currentColor;border-radius:14px;color:inherit;text-decoration:none;font-weight:700; }
+:global(html:not([lang="en"])) .original-localized a:focus-visible { outline:4px solid #d93825;outline-offset:4px; }
+:global(html:not([lang="en"])) .original-localized-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); }
+:global(html:not([lang="en"])) .original-localized-actions p { flex-basis:100%; }
+</style>

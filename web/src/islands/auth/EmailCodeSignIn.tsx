@@ -1,3 +1,6 @@
+import { UiMessage } from "../../lib/i18n/react";
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [BUY-OTP-1] Sign in with an email and a 6-digit code, inside checkout.
  * No password field, ever.
  *
@@ -52,6 +55,8 @@ export interface EmailCodeSignInProps {
 }
 
 export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInProps) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const { isLoaded: signUpLoaded, signUp } = useSignUp();
   const { isLoaded: signInLoaded, signIn, setActive } = useSignIn();
 
@@ -129,59 +134,53 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
     } finally { setBusy(false); }
   }
 
-  if (!ready) return <p className="font-body font-bold text-[14px] text-inkSoft">Loading…</p>;
+  if (!ready) return <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-auth.ba3bbbe10d8bef66" source="Loading…" /></p>;
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="font-display font-semibold text-[20px] text-ink">
-          {step === 'email' ? 'Your email' : 'Enter the code'}
+          {step === 'email' ? uiT("web-auth.33fe95ce02091218","Your email") : uiT("web-auth.b0ed70c457e2eeee","Enter the code")}
         </h2>
         <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">
           {step === 'email'
-            ? `We'll send a 6-digit code${reason ? ` ${reason}` : ''}. No password needed.`
-            : `We sent a 6-digit code to ${email.trim().toLowerCase()}.`}
+            ? uiT("web-auth.78608c3779b384a9","We'll send a 6-digit code{value0}. No password needed.",{value0:String(reason ? ` ${reason}` : '')})
+            : uiT("web-auth.38469a011eff44a0","We sent a 6-digit code to {value0}.",{value0:String(email.trim().toLowerCase())})}
         </p>
       </div>
 
       {step === 'email' ? (
         <>
-          <Field label="Email" type="email" inputMode="email" autoComplete="email"
-            placeholder="you@example.com" value={email}
+          <Field label={uiT("web-auth.969ccbd3cf6300ec","Email")} type="email" inputMode="email" autoComplete="email"
+            placeholder={uiT("web-auth.53e6cdc30765aade","you@example.com")} value={email}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void submitEmail(); }} />
-          {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
+          {error && <p className="font-body font-bold text-[14px] text-coral">⚠ <UiMessage namespace="web-auth" value={error} /></p>}
           {/* Clerk smart-CAPTCHA mount point — `captcha_enabled` is on and this
               form can create an account. Without id="clerk-captcha" Clerk falls
               back to an invisible challenge and can reject the attempt. */}
           <div id="clerk-captcha" />
-          <Button variant="lime" label="Send code" loading={busy} disabled={!emailValid} onClick={submitEmail} />
+          <Button variant="lime" label={uiT("web-auth.66a5b4090d14cb41","Send code")} loading={busy} disabled={!emailValid} onClick={submitEmail} />
         </>
       ) : (
         <>
-          <Field label="Code" inputMode="numeric" autoComplete="one-time-code"
+          <Field label={uiT("web-auth.340f463033e0fd5d","Code")} inputMode="numeric" autoComplete="one-time-code"
             placeholder="123456" value={code}
             onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
             onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }} />
-          {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
-          <Button variant="lime" label="Continue" loading={busy} disabled={code.trim().length < 4} onClick={submitCode} />
+          {error && <p className="font-body font-bold text-[14px] text-coral">⚠ <UiMessage namespace="web-auth" value={error} /></p>}
+          <Button variant="lime" label={uiT("web-auth.31fbef162594de01","Continue")} loading={busy} disabled={code.trim().length < 4} onClick={submitCode} />
           <div className="flex items-center gap-4">
             <button type="button" onClick={() => void resend()} disabled={busy}
-              className="font-body font-bold text-[13px] text-blueInk underline disabled:opacity-50">
-              Resend code
-            </button>
+              className="font-body font-bold text-[13px] text-blueInk underline disabled:opacity-50"><UiText id="web-auth.b97457409ab5b375" source="Resend code" />{" "}</button>
             <button type="button" onClick={() => { setStep('email'); setCode(''); setError(null); }}
-              className="font-body font-bold text-[13px] text-inkSoft underline">
-              Use a different email
-            </button>
+              className="font-body font-bold text-[13px] text-inkSoft underline"><UiText id="web-auth.b7337027ef1f69f1" source="Use a different email" />{" "}</button>
           </div>
         </>
       )}
 
       {onCancel && (
-        <button type="button" onClick={onCancel} className="self-start font-body font-bold text-[13px] text-inkSoft underline">
-          Cancel
-        </button>
+        <button type="button" onClick={onCancel} className="self-start font-body font-bold text-[13px] text-inkSoft underline"><UiText id="web-auth.19766ed6ccb2f4a3" source="Cancel" />{" "}</button>
       )}
     </div>
   );

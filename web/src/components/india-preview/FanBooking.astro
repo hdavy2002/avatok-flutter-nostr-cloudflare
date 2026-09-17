@@ -1,0 +1,44 @@
+---
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-booking india-wrap" aria-labelledby="addon-booking-title" id="addon-booking">
+<div class="india-booking__copy">
+<p class="india-kicker">
+<span data-india-i18n="bookingEyebrow">{copy.bookingEyebrow}</span>
+</p>
+<h2 id="addon-booking-title">
+<span data-india-i18n="bookingTitle">{copy.bookingTitle}</span>
+</h2>
+<p>
+<span data-india-i18n="bookingBody">{copy.bookingBody}</span>
+</p>
+<a class="india-button india-button--dark" href="/marketplace">
+<span data-india-i18n="bookingCta">{copy.bookingCta}</span> <span aria-hidden="true">↗</span>
+</a>
+</div>
+<div class="india-pass" aria-label={copy.bookingTicket} data-india-i18n-attr="aria-label:bookingTicket">
+<div class="india-pass__head">
+<span>
+<span data-india-i18n="bookingTicket">{copy.bookingTicket}</span>
+</span>
+<span>avaTOK</span>
+</div>
+<div class="india-pass__body">
+<span class="india-pass__stamp">✦</span>
+<p>
+<span data-india-i18n="bookingLive">{copy.bookingLive}</span>
+</p>
+<strong>
+<span data-india-i18n="showcaseLabel">{copy.showcaseLabel}</span>
+</strong>
+<small>
+<span data-india-i18n="bookingSeat">{copy.bookingSeat}</span>
+<br />
+<span data-india-i18n="bookingOnline">{copy.bookingOnline}</span>
+</small>
+</div>
+<div class="india-pass__tear" aria-hidden="true">
+</div>
+</div>
+</section>

@@ -98,7 +98,7 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
 # NOTE: the Live/WebSocket lanes are NOT affected by this — see lib/vertex.ts.
 VERTEX_PROJECT = "avatok-avaglobal"
 VERTEX_LOCATION = "global"
-WALLET_TOPUP_ENABLED = "1"   # TEST MODE 2026-06-18 (sk_test) — set LIVE Stripe keys before real money-in
+WALLET_TOPUP_ENABLED = "0"   # Money-in providers retired; kept for old clients/config shape.
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # Public Stripe publishable key (NOT a secret) — returned to the app for the in-app
 # PaymentSheet. MUST match the STRIPE_SECRET_KEY mode (pk_test ↔ sk_test). REPLACE.
@@ -728,7 +728,7 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model
 # staging at a prod project would put throwaway traffic on the production quota this
 # change exists to protect. Set VERTEX_PROJECT = "avatok-staging" here only after
 # that project has its own service account + Vertex AI User role.
-WALLET_TOPUP_ENABLED = "1"   # staging: test-mode Stripe ON (2026-06-10)
+WALLET_TOPUP_ENABLED = "0"   # Money-in providers retired; kept for old clients/config shape.
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"  # public; must match sk_test mode
 # [STAGING-ISOLATION-1] Was pointed at prod's Clerk tenant (clerk.avatok.ai), so a

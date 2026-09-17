@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* PayoutPanel — earnings + bank accounts + payout history. The user initiates
  * a withdrawal themselves (button); bank-account setup happens in the app (it
  * collects sensitive bank details). APIs:
@@ -16,6 +18,8 @@ const usd = inr;
 const dt = (ms?: number) => (ms ? new Date(ms).toLocaleDateString() : '');
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [earn, setEarn] = useState<{ released_total?: number; held?: number; upcoming?: number } | null>(null);
@@ -38,33 +42,33 @@ function Inner() {
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1 rounded-zine border-zine border-ink bg-lime p-5 shadow-zine-sm">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Available</span>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.e674447337e83c13" source="Available" /></span>
           <span className="font-display font-semibold text-[30px] leading-none text-ink">{usd(earn?.released_total)}</span>
         </div>
         <div className="flex flex-col gap-1 rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Held (clearing)</span>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.9cd681a4b9256db7" source="Held (clearing)" /></span>
           <span className="font-display font-semibold text-[30px] leading-none text-ink">{usd(earn?.held)}</span>
         </div>
         <div className="flex flex-col gap-1 rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Upcoming (7d)</span>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.f5c9affe338ba3de" source="Upcoming (7d)" /></span>
           <span className="font-display font-semibold text-[30px] leading-none text-ink">{usd(earn?.upcoming)}</span>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
         <div className="min-w-0">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Bank account</span>
-          <div className="font-display font-semibold text-[16px] text-ink">{accounts.length ? `•••• ${accounts[0]?.last4 ?? accounts[0]?.account_last4 ?? ''} · ${accounts[0]?.status ?? 'linked'}` : 'No bank linked yet'}</div>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.1b4271352e4485ef" source="Bank account" /></span>
+          <div className="font-display font-semibold text-[16px] text-ink">{accounts.length ? `•••• ${accounts[0]?.last4 ?? accounts[0]?.account_last4 ?? ''} · ${accounts[0]?.status ?? 'linked'}` : uiT("web-dashboard.0766822737cce221","No bank linked yet")}</div>
         </div>
         {accounts.length === 0
-          ? <span className="ml-auto rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute">Add bank in the app</span>
-          : <span className="ml-auto rounded-full border-zine border-ink bg-lime px-3 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink shadow-zine-xs">Ready</span>}
+          ? <span className="ml-auto rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute"><UiText id="web-dashboard.0806132f649ba955" source="Add bank in the app" /></span>
+          : <span className="ml-auto rounded-full border-zine border-ink bg-lime px-3 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink shadow-zine-xs"><UiText id="web-dashboard.5fa7aac5375c5815" source="Ready" /></span>}
       </div>
 
       <div>
-        <h2 className="mb-3 font-display font-semibold text-[18px] text-ink">Payout history</h2>
+        <h2 className="mb-3 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.d16d135b430c2477" source="Payout history" /></h2>
         {history.length === 0 ? (
-          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm">No payouts yet. Minimum withdrawal is $10.</div>
+          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm"><UiText id="web-dashboard.8feaeee1033ad212" source="No payouts yet. Minimum withdrawal is $10." /></div>
         ) : (
           <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
             {history.map((h, i) => (

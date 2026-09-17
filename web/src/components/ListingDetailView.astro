@@ -280,28 +280,28 @@ const listingViewProps = {
 <div class="ld" data-listing-id={id}>
   {isOwner && (
     <div class="ld-owner-bar">
-      <span>You own this listing</span>
-      <a href={`/dashboard/listings/new?id=${encodeURIComponent(id)}`} data-cta="edit_listing">Edit listing →</a>
+      <span data-i18n="web-common.d064fd11eec1112a">You own this listing</span>
+      <a data-i18n="web-common.4017444612f25c54" href={`/dashboard/listings/new?id=${encodeURIComponent(id)}`} data-cta="edit_listing">Edit listing →</a>
     </div>
   )}
 
   <div class="ld-breadcrumb-bar">
     <div class="ld-wrap ld-breadcrumb">
-      <span>BAZAAR</span>
+      <span data-i18n="web-common.12dfddb2d5d5f752">BAZAAR</span>
       {listing.section && <><span class="ld-breadcrumb-sep">›</span><span>{String(listing.section).toUpperCase()}</span></>}
       <span class="ld-breadcrumb-sep">›</span>
       <span class="ld-breadcrumb-current">{listing.title.toUpperCase()}</span>
-      <span class="ld-breadcrumb-num">LISTING #{id.slice(0, 8).toUpperCase()}</span>
+      <span class="ld-breadcrumb-num"><ui-copy style="display:contents" data-i18n="web-common.5053da37c13f34e5">LISTING #</ui-copy>{id.slice(0, 8).toUpperCase()}</span>
     </div>
   </div>
 
   {isLive && (
     <div class="ld-live-band" data-section="live_band">
       <div class="ld-wrap ld-live-band-row">
-        <span class="ld-live-lead"><span class="ld-live-dot"></span>LIVE NOW</span>
-        {listing.watching != null && <span class="ld-live-sub">{listing.watching} WATCHING</span>}
-        {endMs && <span class="ld-live-sub" data-listing-time data-ms={endMs} data-tz={tz}>ENDS {formatListingClock(endMs, tz)}</span>}
-        <a href={`/watch/${encodeURIComponent(id)}`} class="ld-join-now" data-cta="join_now">▸ JOIN NOW</a>
+        <span class="ld-live-lead"><span class="ld-live-dot"></span><ui-copy style="display:contents" data-i18n="web-common.f027a9493c39e226">LIVE NOW</ui-copy></span>
+        {listing.watching != null && <span class="ld-live-sub">{listing.watching} <ui-copy style="display:contents" data-i18n="web-common.9dd11708e29aa738">WATCHING</ui-copy></span>}
+        {endMs && <span class="ld-live-sub" data-listing-time data-ms={endMs} data-tz={tz}><ui-copy style="display:contents" data-i18n="web-common.f9eeb3d083a4effc">ENDS</ui-copy> {formatListingClock(endMs, tz)}</span>}
+        <a data-i18n="web-common.9d82e2d7839b265e" href={`/watch/${encodeURIComponent(id)}`} class="ld-join-now" data-cta="join_now">▸ JOIN NOW</a>
       </div>
     </div>
   )}
@@ -328,12 +328,12 @@ const listingViewProps = {
           <div class="ld-stage-media ld-stage-placeholder" aria-hidden="true"></div>
         )}
         <div class="ld-stage-pills">
-          {isLive && <span class="ld-pill ld-pill--live">LIVE NOW</span>}
+          {isLive && <span data-i18n="web-common.f027a9493c39e226" class="ld-pill ld-pill--live">LIVE NOW</span>}
           {isLive && listing.watching != null && <span class="ld-pill">◉ {listing.watching}</span>}
-          {(listing.joined_count ?? 0) > 0 && <span class="ld-pill">✓ {listing.joined_count} BOOKED</span>}
+          {(listing.joined_count ?? 0) > 0 && <span class="ld-pill">✓ {listing.joined_count} <ui-copy style="display:contents" data-i18n="web-common.e74aebc370324da2">BOOKED</ui-copy></span>}
           <span class="ld-stage-actions">
-            <button type="button" class="ld-icon-btn" id="share-toggle" aria-label="Share">⤴</button>
-            <button type="button" class="ld-icon-btn" id="fav-toggle" aria-label="Favourite">♡</button>
+            <button data-india-i18n-attr="aria-label:web-common.29887a5ff9846ccc" type="button" class="ld-icon-btn" id="share-toggle" aria-label="Share">⤴</button>
+            <button data-india-i18n-attr="aria-label:web-common.e39b24993c31d7bb" type="button" class="ld-icon-btn" id="fav-toggle" aria-label="Favourite">♡</button>
           </span>
         </div>
         <div class="ld-scallop"></div>
@@ -389,60 +389,60 @@ const listingViewProps = {
         {listing.rating_avg != null && (
           <span class="ld-chip">★ {Number(listing.rating_avg).toFixed(1)}{listing.review_count ? ` · ${listing.review_count}` : ''}</span>
         )}
-        {(listing.creator?.follower_count ?? 0) > 0 && <span class="ld-chip">♡ {listing.creator!.follower_count} REGULARS</span>}
+        {(listing.creator?.follower_count ?? 0) > 0 && <span class="ld-chip">♡ {listing.creator!.follower_count} <ui-copy style="display:contents" data-i18n="web-common.899001a8c7539867">REGULARS</ui-copy></span>}
         {durationTag && langTag && <span class="ld-chip">{durationTag} · {langTag}</span>}
         {!durationTag && langTag && <span class="ld-chip">{langTag}</span>}
         <span class={`ld-chip ${listing.adults_only ? '' : 'ld-chip--strong'}`}>{listing.adults_only ? '18+' : '✓ 100% REAL HUMAN · NO AI'}</span>
-        {isAgent && <span class="ld-chip ld-chip--ai">AI VOICE AGENT</span>}
+        {isAgent && <span data-i18n="web-common.62c7f371fc7250af" class="ld-chip ld-chip--ai">AI VOICE AGENT</span>}
       </div>
 
       {(listing.blurb || listing.description) && <p class="ld-blurb">{listing.blurb || listing.description}</p>}
 
       {(listing.joined_count || seatsLeft != null || trust?.shows_hosted || trust?.comeback_pct != null) && (
         <div class="ld-stats-board" data-section="stats">
-          {listing.joined_count != null && <div><b>{listing.joined_count}</b><span>✓ BOOKED THIS SHOW</span></div>}
-          {isLive && listing.watching != null && <div><b>{listing.watching}</b><span>WATCHING</span></div>}
-          {trust?.shows_hosted != null && trust.shows_hosted > 0 && <div><b>{trust.shows_hosted}</b><span>SHOWS HOSTED</span></div>}
-          {trust?.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>♡ COME BACK AGAIN</span></div>}
+          {listing.joined_count != null && <div><b>{listing.joined_count}</b><span data-i18n="web-common.dd1344139b951d1c">✓ BOOKED THIS SHOW</span></div>}
+          {isLive && listing.watching != null && <div><b>{listing.watching}</b><span data-i18n="web-common.9dd11708e29aa738">WATCHING</span></div>}
+          {trust?.shows_hosted != null && trust.shows_hosted > 0 && <div><b>{trust.shows_hosted}</b><span data-i18n="web-common.4aceb8dc2d0e2155">SHOWS HOSTED</span></div>}
+          {trust?.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span data-i18n="web-common.13ee7fd4145e0959">♡ COME BACK AGAIN</span></div>}
         </div>
       )}
 
       {priceUnit != null && (
         <div class="ld-price-row">
           <span class="ld-price-big">{priceStr} <span class="ld-price-unit">{priceUnit}</span></span>
-          <span class="ld-price-note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
+          <span data-i18n="web-common.d0c81ca7a5b68afd" class="ld-price-note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
         </div>
       )}
       {isFreeEntry && (
         <div class="ld-price-row">
-          <span class="ld-price-big">FREE</span>
+          <span data-i18n="web-common.19f1fa5ec989d121" class="ld-price-big">FREE</span>
           <span class="ld-price-note">{freeBox.hostPays}</span>
         </div>
       )}
 
       {whatYouGet.length > 0 && (
         <div class="ld-what-you-get" data-section="what_you_get">
-          <h2 class="ld-eyebrow-label">WHAT YOU GET</h2>
+          <h2 data-i18n="web-common.33b68f3d344e9c91" class="ld-eyebrow-label">WHAT YOU GET</h2>
           <ul>{whatYouGet.map((s) => <li>{s}</li>)}</ul>
         </div>
       )}
       {(whoFor.length > 0 || notFor.length > 0) && (
         <div class="ld-who-for-grid">
-          {whoFor.length > 0 && <div><h3>THIS IS FOR</h3><ul>{whoFor.map((s) => <li>{s}</li>)}</ul></div>}
-          {notFor.length > 0 && <div><h3>NOT FOR</h3><ul>{notFor.map((s) => <li>{s}</li>)}</ul></div>}
+          {whoFor.length > 0 && <div><h3 data-i18n="web-common.d3d0cad418c56645">THIS IS FOR</h3><ul>{whoFor.map((s) => <li>{s}</li>)}</ul></div>}
+          {notFor.length > 0 && <div><h3 data-i18n="web-common.f3f406c69de3267b">NOT FOR</h3><ul>{notFor.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
       {layout === 'agent' && (canDo.length > 0 || cantDo.length > 0) && (
         <div class="ld-who-for-grid" data-section="agent_honesty">
-          {canDo.length > 0 && <div><h3>SHE CAN</h3><ul>{canDo.map((s) => <li>{s}</li>)}</ul></div>}
-          {cantDo.length > 0 && <div><h3>SHE CAN'T</h3><ul>{cantDo.map((s) => <li>{s}</li>)}</ul></div>}
+          {canDo.length > 0 && <div><h3 data-i18n="web-common.b513776c2a95d436">SHE CAN</h3><ul>{canDo.map((s) => <li>{s}</li>)}</ul></div>}
+          {cantDo.length > 0 && <div><h3 data-i18n="web-common.85aa8254de5b86fd">SHE CAN'T</h3><ul>{cantDo.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
       {layout === 'agent' && sampleChat.length > 0 && (
         <div class="ld-sample-chat" data-section="sample_chat">
-          <h2 class="ld-eyebrow-label">SAMPLE CHAT</h2>
+          <h2 data-i18n="web-common.6a4cd80349bcd7e5" class="ld-eyebrow-label">SAMPLE CHAT</h2>
           {sampleChat.slice(0, 6).map((m) => (
             <div class={`ld-chat-line ${m.who === 'agent' ? 'ld-chat-line--agent' : 'ld-chat-line--user'}`}>{m.line}</div>
           ))}
@@ -454,15 +454,15 @@ const listingViewProps = {
       )}
       {layout === 'consult' && prepText && (
         <div class="ld-prep-box" data-section="prep">
-          <h2 class="ld-eyebrow-label">WHAT WE'LL COVER</h2>
+          <h2 data-i18n="web-common.5f2d93dae97c8604" class="ld-eyebrow-label">WHAT WE'LL COVER</h2>
           <p>{prepText}</p>
         </div>
       )}
       {layout === 'consult' && sampleQa.length > 0 && (
         <div class="ld-sample-qa" data-section="sample_qa">
-          <h2 class="ld-eyebrow-label">SAMPLE Q&amp;A</h2>
+          <h2 data-i18n="web-common.86797d495fce82eb" class="ld-eyebrow-label">SAMPLE Q&amp;A</h2>
           {sampleQa.slice(0, 3).map((qa) => (
-            <div class="ld-qa-pair"><p class="ld-qa-q">Q. {qa.q}</p><p class="ld-qa-a">A. {qa.a}</p></div>
+            <div class="ld-qa-pair"><p class="ld-qa-q"><ui-copy style="display:contents" data-i18n="web-common.b5cc54febd390682">Q.</ui-copy> {qa.q}</p><p class="ld-qa-a"><ui-copy style="display:contents" data-i18n="web-common.e53657178cb6855a">A.</ui-copy> {qa.a}</p></div>
           ))}
         </div>
       )}
@@ -470,7 +470,7 @@ const listingViewProps = {
       {!isFreeEntry && (
         <div class="ld-masala-quote-row">
           <img src={publicImage('/ld/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="" class="ld-masala-sticker" loading="lazy" />
-          <div class="ld-masala-quote">"Booked seat, booked mood." — a regular</div>
+          <div data-i18n="web-common.90331203950bff06" class="ld-masala-quote">"Booked seat, booked mood." — a regular</div>
         </div>
       )}
     </div>
@@ -484,11 +484,11 @@ const listingViewProps = {
         {isLive ? (
           <div class="ld-booking-live-header">
             <span class="ld-live-dot"></span>
-            <span class="ld-booking-live-lead">LIVE NOW{listing.watching != null ? ` · ${listing.watching}` : ''}</span>
-            <span class="ld-booking-live-sub">BOOK &amp; JOIN INSTANTLY</span>
+            <span class="ld-booking-live-lead"><ui-copy style="display:contents" data-i18n="web-common.f027a9493c39e226">LIVE NOW</ui-copy>{listing.watching != null ? ` · ${listing.watching}` : ''}</span>
+            <span data-i18n="web-common.6429c00d42dea562" class="ld-booking-live-sub">BOOK &amp; JOIN INSTANTLY</span>
           </div>
         ) : startsAtLabel ? (
-          <div class="ld-booking-next-header"><span data-listing-time data-ms={startMs} data-tz={tz}>NEXT SHOW · {startsAtLabel}</span></div>
+          <div class="ld-booking-next-header"><span data-listing-time data-ms={startMs} data-tz={tz}><ui-copy style="display:contents" data-i18n="web-common.ae7175ef01ebbaf7">NEXT SHOW ·</ui-copy> {startsAtLabel}</span></div>
         ) : null}
         <div class="ld-booking-body">
           <div class="ld-booking-title-row">
@@ -516,18 +516,18 @@ const listingViewProps = {
           />
         </div>
       </div>
-      <div class="ld-handwriting">Seat gayi toh gaana bhi gaya.<br />— Bazaar rule #7</div>
+      <div class="ld-handwriting"><ui-copy style="display:contents" data-i18n="web-common.3e0d7f1f018a226f">Seat gayi toh gaana bhi gaya.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
     </aside>
 
     <main class="ld-main">
       {howItWorks.length > 0 && (
         <section data-section="how_it_works">
-          <h2 class="ld-section-title">How the show <span class="ld-accent">works.</span></h2>
+          <h2 class="ld-section-title"><ui-copy style="display:contents" data-i18n="web-common.f9dd6c4767902cfb">How the show</ui-copy> <span data-i18n="web-common.f2d96d2b41bd401a" class="ld-accent">works.</span></h2>
           <div class="ld-strip-frame"><TruckBorder kind="jhalar" count={40} /></div>
           <div class="ld-step-grid">
             {howItWorks.map((s, i) => (
               <div class="ld-card ld-step-card">
-                <div class="ld-step-tag">STEP {i + 1} · {s.label.toUpperCase()}</div>
+                <div class="ld-step-tag"><ui-copy style="display:contents" data-i18n="web-common.78e75a25d80993a5">STEP</ui-copy> {i + 1} · {s.label.toUpperCase()}</div>
                 <p>{s.body}</p>
               </div>
             ))}
@@ -538,8 +538,8 @@ const listingViewProps = {
       {creator && (
         <section data-section="host">
           <div class="ld-section-head">
-            <h2 class="ld-section-title">Meet the <span class="ld-accent">host.</span></h2>
-            <span class="ld-section-note">ID VERIFIED · PAST SESSIONS SHOWN UNEDITED</span>
+            <h2 class="ld-section-title"><ui-copy style="display:contents" data-i18n="web-common.0f13af84d1e19999">Meet the</ui-copy> <span data-i18n="web-common.c4f4b2517d599afa" class="ld-accent">host.</span></h2>
+            <span data-i18n="web-common.05a2db3d17d8726c" class="ld-section-note">ID VERIFIED · PAST SESSIONS SHOWN UNEDITED</span>
           </div>
           <div class="ld-strip-frame"><TruckBorder kind="tassels" count={40} /></div>
           <HostCard
@@ -566,7 +566,7 @@ const listingViewProps = {
           <div class="ld-section-head">
             <h2 class="ld-section-title">{houseRules.title}</h2>
             <img src={publicImage('/ld/jatt-sticker.png', { width: 900, fit: 'scale-down' })} alt="" class="ld-caution-sticker" loading="lazy" />
-            <span class="ld-section-note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+            <span data-i18n="web-common.ead43b00684c9888" class="ld-section-note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="ld-strip-frame"><TruckBorder kind="eyes" count={40} /></div>
           <div class="ld-rules-card">
@@ -589,7 +589,7 @@ const listingViewProps = {
             </div>
             <div class="ld-rules-baseline-row">
               <span class="ld-rules-baseline-text">{houseRules.platformBaseline}</span>
-              <a href="/terms" class="ld-rules-baseline-link">READ PLATFORM RULES</a>
+              <a data-i18n="web-common.4160a94d053eff1a" href="/terms" class="ld-rules-baseline-link">READ PLATFORM RULES</a>
             </div>
           </div>
         </section>
@@ -597,7 +597,7 @@ const listingViewProps = {
 
       {faq.length > 0 && (
         <section data-section="faq">
-          <h2 class="ld-section-title">FAQ</h2>
+          <h2 data-i18n="web-common.dbc468a14b601d5d" class="ld-section-title">FAQ</h2>
           <div class="ld-faq-list">
             {faq.map((f) => (
               <details class="ld-faq-item t-acc">

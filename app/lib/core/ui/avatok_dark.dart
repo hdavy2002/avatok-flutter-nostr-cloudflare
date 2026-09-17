@@ -1,3 +1,4 @@
+import '../localization/ui_font_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -661,8 +662,8 @@ class ADText {
 
   static TextStyle _s(double size, FontWeight w, Color c,
           {double? spacing, double height = 1.2}) =>
-      TextStyle(fontFamily: family, fontSize: size, fontWeight: w,
-          color: c, letterSpacing: spacing, height: height);
+      UiFontPolicy.style(TextStyle(fontFamily: family, fontSize: size, fontWeight: w,
+          color: c, letterSpacing: spacing, height: height));
 
   /// Display-face variant of [_s]. Asserts the Comfortaa weight ceiling in
   /// debug so a synthesised bold is caught at the call site, not on a phone.
@@ -671,8 +672,8 @@ class ADText {
     assert(w.value <= 700,
         'Comfortaa has no weight above 700 — w${w.value} would be synthesised '
         'and the glyphs will smear. Use w700 or switch to ADText.family.');
-    return TextStyle(fontFamily: display, fontSize: size, fontWeight: w,
-        color: c, letterSpacing: spacing, height: height);
+    return UiFontPolicy.style(TextStyle(fontFamily: display, fontSize: size, fontWeight: w,
+        color: c, letterSpacing: spacing, height: height));
   }
 
   /// App wordmark / screen title — 22 / 700. The heaviest weight in the app.

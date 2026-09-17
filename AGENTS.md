@@ -1,5 +1,12 @@
 # avaTOK-2-Flutter
 
+## Model preference — owner update 2026-09-16
+
+Use **Astra (`gpt-6-astra`) only** going forward for this project: coordination,
+audit, implementation, and any subagents. This explicit owner instruction
+supersedes the earlier DeepAstra Luna routing. Do not start Luna workers.
+Instructions cannot change an existing runtime model; disclose any mismatch.
+
 ---
 
 ## 🚨 STAGING vs PRODUCTION — AI READ THIS FIRST (2026-07-09)

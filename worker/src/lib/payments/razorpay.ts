@@ -21,7 +21,8 @@ import { constantTimeEqual, hmacSha256Hex } from "./types";
 const BASE = "https://api.razorpay.com/v1";
 
 export function razorpayConfigured(env: Env): boolean {
-  return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && env.RAZORPAY_WEBHOOK_SECRET);
+  // Razorpay is permanently retired. Do not let credentials alone activate it.
+  return false;
 }
 
 function authHeader(env: Env): string {

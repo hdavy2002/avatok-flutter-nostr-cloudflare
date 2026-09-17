@@ -1,6 +1,6 @@
 ---
-import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
 import { publicImage } from '../lib/config';
+import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
 import GlobalIdeaCard from './GlobalIdeaCard.astro';
 import '../styles/global-spacing.css';
 interface Props { mainHeading?: boolean }
@@ -10,11 +10,12 @@ const Heading = mainHeading ? 'h1' : 'h2';
 <section class="original-ideas" id="group-sessions" aria-labelledby="original-ideas-heading">
   <div class="original-ideas__heading">
     <img src={publicImage('/assets/global-original/ideas-heading.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="138" loading="lazy" />
-    <div class="original-ideas__mobile-heading"><p>YOUR NEXT CREATOR BUSINESS</p><Heading id="original-ideas-heading">Turn your content into <em>moments people can book.</em></Heading><p>Eight starting points for YouTube, TikTok and Instagram creators.</p></div>
+    <div class="original-ideas__mobile-heading"><p data-i18n="web-common.e023dc0a64547a80">YOUR NEXT CREATOR BUSINESS</p><Heading id="original-ideas-heading"><ui-copy style="display:contents" data-i18n="web-original.ideasLead">Turn your content into</ui-copy> <em data-i18n="web-common.86b7d4b337d82abb">moments people can book.</em></Heading><p data-i18n="web-common.b20d99dad5a4d504">Eight starting points for YouTube, TikTok and Instagram creators.</p></div>
   </div>
   <div class="original-ideas__grid">{globalCreatorIdeas.map(idea => <GlobalIdeaCard idea={idea} headingLevel={mainHeading ? 'h2' : 'h3'} />)}</div>
-  <a class="original-ideas__explore" href="/global-ideas" aria-label="Explore all ideas"><img src={publicImage('/assets/global-original/ideas-explore.png', { width: 414, fit: 'scale-down' })} alt="Explore all ideas →" width="414" height="67" loading="lazy" /></a>
-  <img class="original-ideas__tape" src={publicImage('/assets/global-original/ideas-tape.png', { width: 1536, fit: 'scale-down' })} alt="Live events · Private 1:1 · Group sessions · Local payouts. Start with what your audience already asks you." width="1536" height="101" loading="lazy" />
+  <a data-india-i18n-attr="aria-label:web-common.8b80065913ac487f" class="original-ideas__explore" href="/global-ideas" aria-label="Explore all ideas"><img data-india-i18n-attr="alt:web-common.50042ffde3277813" src={publicImage('/assets/global-original/ideas-explore.png', { width: 414, fit: 'scale-down' })} alt="Explore all ideas →" width="414" height="67" loading="lazy" /></a>
+  <div class="original-ideas__localized-actions"><a href="/global-ideas" data-i18n="web-original.explore">Explore all ideas →</a><p data-i18n="web-original.tape">Live events · Private 1:1 · Group sessions · Local payouts. Start with what your audience already asks you.</p></div>
+  <img data-india-i18n-attr="alt:web-common.b1ce973a44524a0d" class="original-ideas__tape" src={publicImage('/assets/global-original/ideas-tape.png', { width: 1536, fit: 'scale-down' })} alt="Live events · Private 1:1 · Group sessions · Local payouts. Start with what your audience already asks you." width="1536" height="101" loading="lazy" />
 </section>
 <style is:global>
   .original-ideas{width:100%;max-width:1536px;margin:0 auto;background:#f8f4e8;color:#14130f}
@@ -35,4 +36,13 @@ const Heading = mainHeading ? 'h1' : 'h2';
     .original-ideas__explore{width:80%;margin:12px auto}
     .original-ideas__tape{min-height:60px;object-fit:contain}
   }
+  .original-ideas__localized-actions{display:none}
+  html:not([lang="en"]) .original-ideas__heading>img,
+  html:not([lang="en"]) .original-ideas__explore,
+  html:not([lang="en"]) .original-ideas__tape{display:none}
+  html:not([lang="en"]) .original-ideas__mobile-heading{position:static;width:auto;height:auto;overflow:visible;clip-path:none;text-align:center;padding:32px 20px}
+  html:not([lang="en"]) .original-ideas__mobile-heading :is(h1,h2){font-size:clamp(28px,4vw,48px);line-height:1.25}
+  html:not([lang="en"]) .original-ideas__localized-actions{display:block;text-align:center;padding:28px 20px}
+  html:not([lang="en"]) .original-ideas__localized-actions a{display:inline-block;padding:14px 22px;border:2px solid currentColor;border-radius:12px;color:inherit;font-weight:700}
+  html:not([lang="en"]) .original-ideas__grid{gap:16px;padding:16px;box-sizing:border-box;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
 </style>

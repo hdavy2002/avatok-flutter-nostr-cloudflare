@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -387,16 +389,16 @@ class PstnDialResult {
 String pstnErrorFor(Map<String, dynamic> res, String code) {
   final err = res['error'] as String?;
   if (err == 'no_permission') {
-    return 'AvaTOK needs call permission to dial $code — grant it, then try again.';
+    return uiCopy(UiMessage.m_avatok_needs_call_permission_to_f4790105a2, {'code': (code).toString()});
   }
   if (err == 'ussd_unavailable') {
-    return "Your phone didn't let AvaTOK send $code in the background.";
+    return uiCopy(UiMessage.m_your_phone_didn_t_let_2dc3b2e6fc, {'code': (code).toString()});
   }
-  if (err == 'no_code') return 'Something went wrong preparing $code.';
+  if (err == 'no_code') return uiCopy(UiMessage.m_something_went_wrong_preparing_code_b2947805b3, {'code': (code).toString()});
   if (res['timeout'] == true) {
-    return "$code didn't get a response from your carrier — check your signal and try again.";
+    return uiCopy(UiMessage.m_code_didn_t_get_a_6475113a58, {'code': (code).toString()});
   }
-  return "Your carrier didn't accept $code — try again, or dial it yourself from the keypad.";
+  return uiCopy(UiMessage.m_your_carrier_didn_t_accept_8139ce1fa7, {'code': (code).toString()});
 }
 
 // ── [AVA-RCPT-VERIFY-1] Carrier-confirmed verification (2026-07-17) ─────────
@@ -715,6 +717,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Second line of defense — see class doc. Callers should already gate the
     // navigation on this flag; this just keeps a stale nav-stack entry inert
     // if the flag flips off mid-session.
@@ -725,7 +728,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           backgroundColor: AvaDialTheme.surface,
           leading: const AdBackButton(),
           iconTheme: const IconThemeData(color: AvaDialTheme.text),
-          title: Text('Voicemail', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
+          title: UiText(UiMessage.m_voicemail_9c1a51d97b, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
         ),
         body: const SizedBox.shrink(),
       );
@@ -742,7 +745,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         // near-invisible brown (owner report 2026-07-17). Explicit + themed.
         leading: const AdBackButton(),
         iconTheme: const IconThemeData(color: AvaDialTheme.text),
-        title: Text('Voicemail', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_voicemail_9c1a51d97b, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -755,17 +758,13 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Voicemail via your carrier',
+                  UiText(UiMessage.m_voicemail_via_your_carrier_93b55dda35,
                       style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
                   const SizedBox(height: 4),
-                  Text(
+                  UiText(
                     // [AVA-VM-PAID-1] No longer claims all three conditions are
                     // yours to switch on — two are a paid upgrade.
-                    'AvaTOK is no longer your phone or SMS app, so it can only pick up '
-                    'calls your carrier hands it. The steps below tell your carrier to '
-                    "send calls you can't take to AvaTOK instead of ringing out — "
-                    "you'll see them in your Inbox with a transcript. A step only "
-                    'turns green once your carrier confirms it.',
+                    UiMessage.m_avatok_is_no_longer_your_c4ca93f202,
                     style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                   ),
                 ]),
@@ -776,7 +775,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           if (_simLoading)
             Padding(
               padding: const EdgeInsets.only(bottom: 4, left: 4),
-              child: Text('Checking your SIM…',
+              child: UiText(UiMessage.m_checking_your_sim_25b54c93ca,
                   style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textMute)),
             )
           else
@@ -789,8 +788,8 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                 Expanded(
                   child: Text(
                     (_simLabel == null || _simLabel!.isEmpty)
-                        ? 'Using your default calling SIM'
-                        : 'Using $_simLabel for these codes',
+                        ? uiCopy(UiMessage.m_using_your_default_calling_sim_c97c8f328e)
+                        : uiCopy(UiMessage.m_using_simlabel_for_these_codes_ed0a090eee, {'simLabel': (_simLabel).toString()}),
                     style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textMute),
                   ),
                 ),
@@ -802,7 +801,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           // the Settings-only "Turn off" affordance on verified rows.
           PstnForwardingWizard(did: _did, storage: _sec, showTurnOff: true),
           const SizedBox(height: Msg.s4),
-          Text('What this does not do', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
+          UiText(UiMessage.m_what_this_does_not_do_57557703f8, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
           const SizedBox(height: 8),
           _bullet('No spam filtering here — that needs the call-screening role, which '
               'AvaTOK no longer asks for.'),
@@ -847,7 +846,7 @@ void registerPstnForwardingSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'pstn_forwarding',
-      title: 'Voicemail',
+      title: uiCopy(UiMessage.m_voicemail_9c1a51d97b),
       order: 26, // AVA-DIAL-6's "Default phone & messages" (26) is retired —
       // Voicemail takes its slot in the settings order.
       visible: () => Platform.isAndroid && RemoteConfig.pstnVoicemail,
@@ -861,6 +860,7 @@ class _PstnForwardingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: () {
         Analytics.capture('settings_pstn_forwarding_opened');
@@ -878,9 +878,9 @@ class _PstnForwardingRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Voicemail', style: ADText.rowName()),
+              UiText(UiMessage.m_voicemail_9c1a51d97b, style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text('Send missed, declined and unreachable calls to your AvaTOK Inbox.',
+              UiText(UiMessage.m_send_missed_declined_and_unreachable_98d88b07cd,
                   style: ADText.preview()),
             ]),
           ),

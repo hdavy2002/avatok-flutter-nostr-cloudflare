@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -45,6 +47,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final env = kAvatokEnv.toUpperCase(); // PROD | STAGING
     final isProd = kAvatokEnv == 'prod';
     return Scaffold(
@@ -64,7 +67,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text('About',
+                  child: UiText(UiMessage.m_about_4efca0d10c,
                       style: ADText.appTitle(c: AD.onBand(AD.headerFooter)),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -78,7 +81,7 @@ class _AboutScreenState extends State<AboutScreen> {
         children: [
           const SizedBox(height: 8),
           Row(children: [
-            Text('AvaTOK', style: ADText.appTitle()),
+            UiText(UiMessage.m_avatok_b692b5d2b4, style: ADText.appTitle()),
             const SizedBox(width: Msg.s2),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
@@ -96,9 +99,8 @@ class _AboutScreenState extends State<AboutScreen> {
           _row('Backend', kSignalingHost),
           _row('Build (git)', Analytics.release),
           const SizedBox(height: Msg.s5),
-          Text(
-            'Tip: testers should install the prod build to use live features. '
-            'A STAGING badge means this device is talking to the staging backend.',
+          UiText(
+            UiMessage.m_tip_testers_should_install_the_10ea7ea050,
             style: ADText.preview(c: AD.textSecondary),
           ),
         ],

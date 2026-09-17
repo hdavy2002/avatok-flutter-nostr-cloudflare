@@ -1,5 +1,6 @@
 ---
-import { publicImageSrcSet, publicImage as optimizePublicArtwork } from '../lib/config';
+import { publicImage } from '../lib/config';
+import { authoredKey } from '../lib/i18n/authoredKey';
 // [WEB-HELP-2 2026-09-11] Redesigned help-ARTICLE layout, replacing the
 // WEB-HELP-1 version. Per design/help-centre/Article.dc.html (1440) and
 // PhoneArticle.dc.html (390) — the approved mockup, values lifted verbatim
@@ -109,27 +110,24 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
       <div class="help-band-inner">
         <div class="help-band-text">
           <p class="help-breadcrumb">
-            <a href="/help">Help centre</a>
+            <a data-i18n="web-common.9a3f58691d52c3fc" href="/help">Help centre</a>
             <span aria-hidden="true">/</span>
-            <span class="help-breadcrumb-current">{section.label}</span>
+            <span data-i18n={authoredKey(section.label)} class="help-breadcrumb-current">{section.label}</span>
           </p>
-          <h1>{entry.data.title}</h1>
+          <h1 data-i18n={authoredKey(entry.data.title)}>{entry.data.title}</h1>
           <div class="help-band-desc-row">
-            <p class="help-desc">{entry.data.description}</p>
+            <p data-i18n={authoredKey(entry.data.description)} class="help-desc">{entry.data.description}</p>
             {stampSrc && (
               <img
                 class="help-stamp help-stamp-mobile"
-                src={optimizePublicArtwork(stampSrc, { width: 420, fit: 'scale-down' })}
-                srcset={publicImageSrcSet(stampSrc, [96, 160, 256, 420, 640], { fit: 'scale-down' })}
-                sizes="(max-width: 767px) 84px, 150px"
-                decoding="async"
+                src={stampSrc}
                 width="84"
                 height="126"
                 alt=""
               />
             )}
           </div>
-          <p class="help-updated">Updated {updatedLabel} · {audienceLabel}</p>
+          <p class="help-updated"><ui-copy style="display:contents" data-i18n="web-common.3a5ecca188c0579c">Updated</ui-copy> {updatedLabel} · {audienceLabel}</p>
         </div>
 
         <div class="help-band-aside">
@@ -137,10 +135,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
           {stampSrc && (
             <img
               class="help-stamp help-stamp-desktop"
-              src={optimizePublicArtwork(stampSrc, { width: 420, fit: 'scale-down' })}
-                srcset={publicImageSrcSet(stampSrc, [96, 160, 256, 420, 640], { fit: 'scale-down' })}
-                sizes="(max-width: 767px) 84px, 150px"
-                decoding="async"
+              src={stampSrc}
               width="150"
               height="225"
               alt=""
@@ -170,7 +165,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
             search above is hidden at this width. */}
         <details class="help-rail-toggle">
           <summary>
-            <span class="help-rail-toggle-title">Browse help</span>
+            <span data-i18n="web-common.729fc7c23941a522" class="help-rail-toggle-title">Browse help</span>
             <span class="help-rail-toggle-icon" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
             </span>
@@ -188,7 +183,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
             third column yet). */}
         {showOtp && (
           <details class="help-otp-collapse">
-            <summary>On this page</summary>
+            <summary data-i18n="web-common.b5658fc8edda24f9">On this page</summary>
             <HelpOnThisPage headings={otpHeadings} />
           </details>
         )}
@@ -197,36 +192,36 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
           <slot />
         </article>
 
-        <nav class="help-prevnext" aria-label="More in this section">
+        <nav data-india-i18n-attr="aria-label:web-common.dfc8c9e4987432df" class="help-prevnext" aria-label="More in this section">
           {prev && (
             <a class="help-prevnext-link help-prev" href={helpUrl(prev)}>
               <span class="help-prevnext-dir">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
-                Previous
+                <ui-copy style="display:contents" data-i18n="web-common.a57b08a480b822a0">Previous</ui-copy>
               </span>
-              <span class="help-prevnext-title">{prev.data.title}</span>
+              <span data-i18n={authoredKey(prev.data.title)} class="help-prevnext-title">{prev.data.title}</span>
             </a>
           )}
           {next && (
             <a class="help-prevnext-link help-next" href={helpUrl(next)}>
               <span class="help-prevnext-dir">
-                Next
+                <ui-copy style="display:contents" data-i18n="web-common.1ff57a29d7c9d11b">Next</ui-copy>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13"></path><path d="M13 6l6 6-6 6"></path></svg>
               </span>
-              <span class="help-prevnext-title">{next.data.title}</span>
+              <span data-i18n={authoredKey(next.data.title)} class="help-prevnext-title">{next.data.title}</span>
             </a>
           )}
         </nav>
 
         {showRelatedPolicies && (
           <div class="help-related">
-            <span class="help-related-label">Related policies</span>
+            <span data-i18n="web-common.1a0ee259f32ec88a" class="help-related-label">Related policies</span>
             {RELATED_POLICIES.map((p) => (
-              <a class="help-related-chip" href={p.href}>{p.label}</a>
+              <a class="help-related-chip" href={p.href}><ui-copy style="display:contents" data-i18n={authoredKey(p.label)}>{p.label}</ui-copy></a>
             ))}
             <img
               class="help-related-kettle"
-              src={optimizePublicArtwork('/help/art/kettle.png', { width: 440, fit: 'scale-down' })}
+              src={publicImage('/help/art/kettle.png', { width: 440, fit: 'scale-down' })}
               width="220"
               height="246"
               alt=""

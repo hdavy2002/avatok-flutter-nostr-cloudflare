@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -175,9 +178,9 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
         track: AudioTrack(
           trackId: _trackId,
           title: _title.text.trim().isEmpty
-              ? 'Call with $_peerName'
+              ? uiCopy(UiMessage.m_call_with_peername_e2878b7783, {'peerName': (_peerName).toString()})
               : _title.text.trim(),
-          subtitle: 'Call recording',
+          subtitle: uiCopy(UiMessage.m_call_recording_bb8d55c975),
           originRoute: 'inbox:${_c.conv}',
         ),
         bytes: bytes,
@@ -231,14 +234,14 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
         _dirty = !ok;
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ok ? 'Saved' : 'Couldn’t save. Try again.')));
+          content: Text(ok ? uiCopy(UiMessage.m_saved_b5c120b316) : uiCopy(UiMessage.m_couldn_t_save_try_again_01b8acdece))));
     } catch (e, st) {
       unawaited(Analytics.captureException(e, st,
           screen: 'callrec_detail', handled: true, extra: {'stage': 'save_meta'}));
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Couldn’t save. Try again.')));
+          const SnackBar(content: UiText(UiMessage.m_couldn_t_save_try_again_01b8acdece)));
     }
   }
 
@@ -272,6 +275,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final meta = <String>[
       callRecDateLabel(_startedAt),
       callRecTimeLabel(_startedAt),
@@ -290,7 +294,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
               AdBackButton(onTap: () => Navigator.of(context).pop()),
               const SizedBox(width: Msg.s3),
               Expanded(
-                child: Text('Call recording',
+                child: UiText(UiMessage.m_call_recording_bb8d55c975,
                     style: AvaDialTheme.title(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
@@ -310,7 +314,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
             ),
             const SizedBox(height: Msg.s3),
             Center(
-              child: Text('Call between $_peerName and you',
+              child: UiText(UiMessage.m_call_between_peername_and_you_96a86c039c, params: {'peerName': (_peerName).toString()},
                   style: ADText.statCaption(c: AD.bubbleOutPlay)
                       .copyWith(fontWeight: FontWeight.w700)),
             ),
@@ -370,10 +374,10 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
                         Expanded(
                           child: Text(
                             playing
-                                ? 'Playing${label.isEmpty ? '' : ' · $label'}'
+                                ? uiCopy(UiMessage.m_playing_value1_d4a901d3ab, {'value1': (label.isEmpty ? '' : ' · $label').toString()})
                                 : (label.isEmpty
-                                    ? 'Play recording'
-                                    : 'Play recording · $label'),
+                                    ? uiCopy(UiMessage.m_play_recording_67e0ddff71)
+                                    : uiCopy(UiMessage.m_play_recording_label_e5c0276a89, {'label': (label).toString()})),
                             style: ADText.rowName(c: AvaDialTheme.text),
                           ),
                         ),
@@ -403,7 +407,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
                 valueListenable: CallRecordingStore.I.uploadIssues,
                 builder: (_, issues, __) => Text(
                   issues[_callId]?.message ??
-                      'Not backed up yet — saved on this phone.',
+                      uiCopy(UiMessage.m_not_backed_up_yet_saved_fb3954606d),
                   style: ADText.statCaption(c: AD.unreadAccent),
                 ),
               ),
@@ -411,14 +415,14 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
             const SizedBox(height: Msg.s5),
 
             // ---- editable title + description ----
-            Text('Title', style: ADText.sectionLabel(c: AvaDialTheme.textMute)),
+            UiText(UiMessage.m_title_7e8cd2056d, style: ADText.sectionLabel(c: AvaDialTheme.textMute)),
             const SizedBox(height: Msg.s1),
-            _field(_title, hint: 'Call with $_peerName', maxLines: 1),
+            _field(_title, hint: uiCopy(UiMessage.m_call_with_peername_e2878b7783, {'peerName': (_peerName).toString()}), maxLines: 1),
             const SizedBox(height: Msg.s4),
-            Text('Description',
+            UiText(UiMessage.m_description_526e0087cc,
                 style: ADText.sectionLabel(c: AvaDialTheme.textMute)),
             const SizedBox(height: Msg.s1),
-            _field(_desc, hint: 'What was this call about?', maxLines: 4),
+            _field(_desc, hint: uiCopy(UiMessage.m_what_was_this_call_about_a4641da029), maxLines: 4),
             const SizedBox(height: Msg.s3),
             Align(
               alignment: Alignment.centerRight,
@@ -428,7 +432,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
                     PhosphorIcons.floppyDisk(PhosphorIconsStyle.regular),
                     size: 18,
                     color: _dirty ? AvaDialTheme.accent : AvaDialTheme.textMute),
-                label: Text(_saving ? 'Saving…' : 'Save',
+                label: Text(_saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_1509f561f2),
                     style: ADText.rowName(
                         c: _dirty ? AvaDialTheme.accent : AvaDialTheme.textMute)),
               ),
@@ -438,17 +442,17 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
             // ---- actions ----
             _action(
               icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular),
-              label: 'Share',
+              label: uiCopy(UiMessage.m_share_29887a5ff9),
               onTap: _share,
             ),
             _action(
               icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.regular),
-              label: 'Download',
+              label: uiCopy(UiMessage.m_download_d6eafe8235),
               onTap: _download,
             ),
             _action(
               icon: PhosphorIcons.trash(PhosphorIconsStyle.regular),
-              label: 'Delete',
+              label: uiCopy(UiMessage.m_delete_e2d0a54968),
               danger: true,
               onTap: _delete,
             ),

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -153,7 +156,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     if (ok) {
       Analytics.capture('avabrain_companion_mode_set', {'gid': _group.id, 'mode': mode});
     } else {
-      _toast('Could not change Ava Companion mode — please try again.');
+      _toast(uiCopy(UiMessage.m_could_not_change_ava_companion_a50b66554f));
     }
   }
 
@@ -272,7 +275,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       // (GroupApi.addMembers already emits the group_members_added telemetry.)
       GroupApi.announce(_group.id, 'added ${_label(uid)} to the group');
     } else {
-      _toast('Could not add member');
+      _toast(uiCopy(UiMessage.m_could_not_add_member_cc6200a332));
     }
     await _refresh();
   }
@@ -280,7 +283,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Future<void> _removeMember(String uid) async {
     setState(() => _busy = true);
     final ok = await GroupApi.removeMember(_group.id, uid);
-    if (!ok) _toast('Could not remove member'); // telemetry emitted in GroupApi
+    if (!ok) _toast(uiCopy(UiMessage.m_could_not_remove_member_15751c8390)); // telemetry emitted in GroupApi
     await _refresh();
   }
 
@@ -288,7 +291,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     setState(() => _busy = true);
     final makeAdmin = _roleOf(uid) == 'member';
     final ok = await GroupApi.setRole(_group.id, uid, makeAdmin ? 'admin' : 'member');
-    if (!ok) _toast('Could not update admin'); // telemetry emitted in GroupApi
+    if (!ok) _toast(uiCopy(UiMessage.m_could_not_update_admin_764dbb5d7d)); // telemetry emitted in GroupApi
     await _refresh();
   }
 
@@ -308,18 +311,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           const SizedBox(height: 8),
           ListTile(
             leading: Icon(PhosphorIcons.camera(PhosphorIconsStyle.regular), color: AD.textPrimary),
-            title: Text('Take photo', style: ADText.rowName()),
+            title: UiText(UiMessage.m_take_photo_7100ac9979, style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.camera); },
           ),
           ListTile(
             leading: Icon(PhosphorIcons.images(PhosphorIconsStyle.regular), color: AD.textPrimary),
-            title: Text('Choose from gallery', style: ADText.rowName()),
+            title: UiText(UiMessage.m_choose_from_gallery_763abbaa72, style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.gallery); },
           ),
           if (has)
             ListTile(
               leading: Icon(PhosphorIcons.trash(PhosphorIconsStyle.regular), color: AD.danger),
-              title: Text('Remove photo', style: ADText.rowName(c: AD.danger)),
+              title: UiText(UiMessage.m_remove_photo_f46512ab20, style: ADText.rowName(c: AD.danger)),
               onTap: () { Navigator.pop(ctx); _removeGroupPhoto(); },
             ),
           const SizedBox(height: 8),
@@ -341,7 +344,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       final url = await Directory.uploadAvatar(cropped);
       if (url == null) {
         if (mounted) setState(() => _photoBusy = false);
-        _toast('Upload failed — please try again.');
+        _toast(uiCopy(UiMessage.m_upload_failed_please_try_again_3802cacfbf));
         return;
       }
       // Seed the cache with the bytes we already hold so the photo paints
@@ -350,7 +353,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       final g = await GroupApi.setAvatar(_group.id, url);
       if (!mounted) return;
       setState(() { _photoBusy = false; if (g != null) _group = g; });
-      _toast(g == null ? 'Could not save the group photo.' : 'Group photo updated');
+      _toast(g == null ? uiCopy(UiMessage.m_could_not_save_the_group_1f48f1156e) : uiCopy(UiMessage.m_group_photo_updated_5a269a7359));
       if (g != null) {
         // [AVAGRP-CARDS-1] Owner (pic 6): nobody in the group could tell WHO
         // changed the group photo. Same client-side announcement pattern as
@@ -369,7 +372,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _photoBusy = false);
-      _toast("Couldn't open that image — try another.");
+      _toast(uiCopy(UiMessage.m_couldn_t_open_that_image_bac25c078e));
     }
   }
 
@@ -380,7 +383,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     if (!mounted) return;
     setState(() { _photoBusy = false; if (g != null) _group = g; });
     if (g == null) {
-      _toast('Could not remove the group photo.');
+      _toast(uiCopy(UiMessage.m_could_not_remove_the_group_ad5cb717c0));
     } else {
       // [AVAGRP-CARDS-1] Same "who did it" announcement as the change path.
       final myName = (await ProfileStore().load()).displayName;
@@ -402,13 +405,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Group description', style: ADText.threadName()),
+        title: UiText(UiMessage.m_group_description_751e68347f, style: ADText.threadName()),
         content: TextField(
           controller: ctrl, maxLines: 3, autofocus: true,
           cursorColor: AD.newGroup,
           style: ADText.rowName(),
           decoration: InputDecoration(
-            hintText: 'What is this group about?',
+            hintText: uiCopy(UiMessage.m_what_is_this_group_about_54139a095e),
             hintStyle: ADText.preview(),
             enabledBorder: const OutlineInputBorder(
                 borderSide: BorderSide(color: AD.borderControl)),
@@ -418,9 +421,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text('Save', style: ADText.rowName(c: AD.newGroup))),
+              child: UiText(UiMessage.m_save_1509f561f2, style: ADText.rowName(c: AD.newGroup))),
         ],
       ),
     );
@@ -449,13 +452,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ? PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold)
                     : PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
                 color: AD.iconSearch),
-            title: Text(isAdmin ? 'Dismiss as admin' : 'Make admin',
+            title: Text(isAdmin ? uiCopy(UiMessage.m_dismiss_as_admin_081d1d39da) : uiCopy(UiMessage.m_make_admin_34d9bc4dab),
                 style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _toggleAdmin(uid); },
           ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), color: AD.danger),
-          title: Text('Remove from group', style: ADText.rowName(c: AD.danger)),
+          title: UiText(UiMessage.m_remove_from_group_035edd9bd7, style: ADText.rowName(c: AD.danger)),
           onTap: () { Navigator.pop(ctx); _removeMember(uid); },
         ),
       ])),
@@ -472,7 +475,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Future<void> _archive() async {
     await ChatFlagsStore().toggle('archived', 'g:${_group.id}');
     Analytics.capture('group_archived', {'gid': _group.id});
-    if (mounted) { _toast('Group archived'); Navigator.pop(context, true); }
+    if (mounted) { _toast(uiCopy(UiMessage.m_group_archived_2449df8073)); Navigator.pop(context, true); }
   }
 
   Future<void> _confirmDelete() async {
@@ -483,14 +486,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Delete group?', style: ADText.threadName()),
-        content: Text('This permanently deletes the group for everyone. This cannot be undone.',
+        title: UiText(UiMessage.m_delete_group_6be2e6236d, style: ADText.threadName()),
+        content: UiText(UiMessage.m_this_permanently_deletes_the_group_f7c8cf8c48,
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ADText.rowName(c: AD.danger))),
+              child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.rowName(c: AD.danger))),
         ],
       ),
     );
@@ -503,7 +506,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       await GroupStore().remove(_group.id);
       if (mounted) Navigator.pop(context, true);
     } else {
-      _toast('Could not delete the group');
+      _toast(uiCopy(UiMessage.m_could_not_delete_the_group_835d802c6d));
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -518,7 +521,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           color: AD.newGroup,
           borderRadius: BorderRadius.circular(AD.rChip),
         ),
-        child: const Text('Added',
+        child: const UiText(UiMessage.m_added_6b02e0d363,
             style: TextStyle(
                 fontFamily: ADText.family,
                 fontWeight: FontWeight.w600,
@@ -549,13 +552,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       builder: (ctx) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Add members', style: ADText.threadName()),
+          UiText(UiMessage.m_add_members_d600b9239e, style: ADText.threadName()),
           const SizedBox(height: 8),
           // [ISSUE-GROUP-ADDED-FLAT-1] Empty state now only fires when there are no
           // eligible contacts at all — existing members are listed, not filtered out.
           if (candidates.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s5),
-                child: Text('No contacts available to add',
+                child: UiText(UiMessage.m_no_contacts_available_to_add_4dd4109b31,
                     style: ADText.preview(c: AD.textSecondary)))
           else
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 340), child: ListView(shrinkWrap: true, children: [
@@ -599,6 +602,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: Column(children: [
@@ -628,7 +632,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   ),
                 ),
                 const SizedBox(width: Msg.s3),
-                Text('Group info', style: ADText.appTitle()),
+                UiText(UiMessage.m_group_info_941422dee5, style: ADText.appTitle()),
               ]),
             ),
           ),
@@ -682,7 +686,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             const SizedBox(height: 12),
             Center(child: Text(_group.name, style: ADText.appTitle())),
             const SizedBox(height: 4),
-            Center(child: Text('${_group.members.length} MEMBERS', style: ADText.sectionLabel())),
+            Center(child: UiText(UiMessage.m_value1_members_977f064668, params: {'value1': (_group.members.length).toString()}, style: ADText.sectionLabel())),
             const SizedBox(height: Msg.s3),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -703,7 +707,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       // white (textPrimary); the empty placeholder stays dimmer so it
                       // still reads as a placeholder, but lifted tertiary -> secondary.
                       Expanded(child: Text(
-                          _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
+                          _group.description.isEmpty ? (_amAdmin ? uiCopy(UiMessage.m_add_a_group_description_d546cc4076) : uiCopy(UiMessage.m_no_description_bcd8cc53f4)) : _group.description,
                           style: ADText.preview(
                               c: _group.description.isEmpty ? AD.textSecondary : AD.textPrimary))),
                       if (_amAdmin)
@@ -716,17 +720,17 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             const SizedBox(height: 8),
             ListTile(
               leading: _badge(PhosphorIcons.link(PhosphorIconsStyle.bold), AD.iconSearch),
-              title: Text('Copy invite link', style: ADText.rowName()),
-              subtitle: Text('Share so others can ask to join', style: ADText.preview()),
+              title: UiText(UiMessage.m_copy_invite_link_5c58cd7963, style: ADText.rowName()),
+              subtitle: UiText(UiMessage.m_share_so_others_can_ask_ec7dce0f20, style: ADText.preview()),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
-                showAdToast(context, message: 'Invite link copied');
+                showAdToast(context, message: uiCopy(UiMessage.m_invite_link_copied_bd769dab6c));
               },
             ),
             if (_amAdmin)
               ListTile(
                 leading: _badge(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), AD.newGroup),
-                title: Text('Add members', style: ADText.rowName()),
+                title: UiText(UiMessage.m_add_members_d600b9239e, style: ADText.rowName()),
                 onTap: _busy ? null : _pickToAdd,
               ),
             // [AVABRAIN-COMPANION-UI-1] Ava Companion mode (bible §6.2/§6.3) —
@@ -734,7 +738,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             if (_companionModeLoaded) _companionModeSection(),
             Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
-              child: Text('MEMBERS', style: ADText.sectionLabel()),
+              child: UiText(UiMessage.m_members_324ddfd466, style: ADText.sectionLabel()),
             ),
             for (final m in _group.members)
               ListTile(
@@ -753,7 +757,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     _adminPill(),
                   ],
                 ]),
-                subtitle: m == _myUid ? Text('You', style: ADText.preview()) : null,
+                subtitle: m == _myUid ? UiText(UiMessage.m_you_08b0419357, style: ADText.preview()) : null,
                 trailing: (_amAdmin && m != _myUid)
                     ? IconButton(
                         icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: AD.textSecondary),
@@ -777,7 +781,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: _actionButton(
-                label: 'Archive group',
+                label: uiCopy(UiMessage.m_archive_group_3a6563f6ce),
                 icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
                 fill: AD.card, labelColor: AD.textPrimary, borderColor: AD.borderControl,
                 onTap: _busy ? null : _archive,
@@ -788,7 +792,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _actionButton(
-                  label: 'Delete group',
+                  label: uiCopy(UiMessage.m_delete_group_3f7374ac08),
                   icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
                   fill: AD.destructiveBg, labelColor: AD.destructiveInk,
                   onTap: _busy ? null : _confirmDelete,
@@ -797,7 +801,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: _actionButton(
-                label: 'Leave group',
+                label: uiCopy(UiMessage.m_leave_group_3475393dbe),
                 icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
                 fill: AD.destructiveBg, labelColor: AD.destructiveInk,
                 onTap: _busy ? null : _leave,
@@ -841,16 +845,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           Row(children: [
             PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 16, color: AD.iconVideo),
             const SizedBox(width: 8),
-            Text('Ava Companion', style: ADText.rowName()),
+            UiText(UiMessage.m_ava_companion_ba0ca49319, style: ADText.rowName()),
           ]),
           const SizedBox(height: 4),
           Text(
             _amAdmin
-                ? 'Off: no observation. Assistant: replies only when @ava\'d. '
-                  'Companion: Ava may privately suggest things to members or, within '
-                  'this group\'s own limits, propose a group post — always shown as a '
-                  'draft someone approves before it sends.'
-                : 'Current mode for this group. Only a group admin can change it.',
+                ? uiCopy(UiMessage.m_off_no_observation_assistant_replies_6ecf465198)
+                : uiCopy(UiMessage.m_current_mode_for_this_group_f2457737d9),
             style: ADText.preview(),
           ),
           const SizedBox(height: Msg.s2),
@@ -893,7 +894,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           color: AD.newGroup.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(AD.rChip),
         ),
-        child: Text('ADMIN', style: ADText.statCaption(c: AD.newGroup)),
+        child: UiText(UiMessage.m_admin_835d6dc88b, style: ADText.statCaption(c: AD.newGroup)),
       );
 
   /// Full-width action pill; solid (destructive) or ghost/secondary variant.

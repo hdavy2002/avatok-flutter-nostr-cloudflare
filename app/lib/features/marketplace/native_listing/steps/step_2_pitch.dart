@@ -34,6 +34,7 @@ class Step2Pitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final kind = '${listingDraftValue(draft, 'kind', 'kind', 'live_event')}';
     final groups = kind == 'live_event'
         ? const ['india_goes_live']
@@ -50,12 +51,12 @@ class Step2Pitch extends StatelessWidget {
         const NativeStepLabel('Category'),
         const SizedBox(height: 12),
         for (final group in groups) ...[
-          Text(_groups[group]!, style: ADText.threadName(c: AD.textPrimary)),
+          Text(authoredUiCopy(_groups[group]!), style: ADText.threadName(c: AD.textPrimary)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final category in _categoriesFor(group))
               AdChip(
-                label: '${category.emoji ?? ''}${category.emoji == null ? '' : ' '}${category.label}',
+                label: '${category.emoji ?? ''}${category.emoji == null ? '' : ' '}${authoredUiCopy(category.label)}',
                 active: selected == category.id,
                 onTap: () => patch({'category': category.id}),
               ),

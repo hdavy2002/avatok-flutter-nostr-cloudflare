@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -75,12 +77,12 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
           const SizedBox(height: 8),
           ListTile(
             leading: Icon(PhosphorIcons.camera(PhosphorIconsStyle.regular), color: AD.textPrimary),
-            title: Text('Take photo', style: ADText.rowName()),
+            title: UiText(UiMessage.m_take_photo_7100ac9979, style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.camera); },
           ),
           ListTile(
             leading: Icon(PhosphorIcons.images(PhosphorIconsStyle.regular), color: AD.textPrimary),
-            title: Text('Choose from gallery', style: ADText.rowName()),
+            title: UiText(UiMessage.m_choose_from_gallery_763abbaa72, style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.gallery); },
           ),
           const SizedBox(height: 8),
@@ -146,7 +148,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() { _creating = false; _photoUploadFailed = true; });
-      showAdToast(context, message: 'Group photo failed to upload — try picking it again.');
+      showAdToast(context, message: uiCopy(UiMessage.m_group_photo_failed_to_upload_e13ea0eac3));
       return;
     }
     _photoUrl = url;
@@ -163,7 +165,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     if (g == null) {
       if (mounted) {
         setState(() => _creating = false);
-        showAdToast(context, message: 'Could not create the group — try again');
+        showAdToast(context, message: uiCopy(UiMessage.m_could_not_create_the_group_06fd4fdcff));
       }
       return;
     }
@@ -193,8 +195,8 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         if (mounted) {
           setState(() => _creating = false);
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Group created, but the photo failed to save.'),
-            action: SnackBarAction(label: 'Retry', onPressed: _create),
+            content: const UiText(UiMessage.m_group_created_but_the_photo_6f6403f345),
+            action: SnackBarAction(label: uiCopy(UiMessage.m_retry_942087cc2d), onPressed: _create),
             duration: const Duration(seconds: 6),
           ));
         }
@@ -215,6 +217,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final canCreate = _canCreate && !_creating;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -247,7 +250,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                     ),
                   ),
                   const SizedBox(width: Msg.s3),
-                  Expanded(child: Text('New group', style: ADText.appTitle())),
+                  Expanded(child: UiText(UiMessage.m_new_group_df796c655f, style: ADText.appTitle())),
                   _createButton(canCreate),
                 ]),
               ),
@@ -269,7 +272,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s1),
-              child: Text('ADD MEMBERS', style: ADText.sectionLabel()),
+              child: UiText(UiMessage.m_add_members_93b8a4df17, style: ADText.sectionLabel()),
             ),
           ),
           Expanded(
@@ -290,7 +293,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                               size: 32, color: AD.textTertiary)),
                         ),
                         const SizedBox(height: Msg.s3),
-                        Text('Add contacts first to build a group',
+                        UiText(UiMessage.m_add_contacts_first_to_build_9953427692,
                             textAlign: TextAlign.center,
                             style: ADText.preview(c: AD.textSecondary)),
                       ]),
@@ -345,7 +348,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             borderRadius: Msg.brMd,
             border: enabled ? null : Border.all(color: AD.borderControl, width: 1),
           ),
-          child: Text(_creating ? '…' : 'Create', style: ADText.rowName(c: fg)),
+          child: Text(_creating ? '…' : uiCopy(UiMessage.m_create_4759498ac2), style: ADText.rowName(c: fg)),
         ),
       ),
     );
@@ -375,7 +378,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
               style: ADText.rowName(c: AD.textOnInput),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Group name',
+                hintText: uiCopy(UiMessage.m_group_name_762ebb70ef),
                 hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -437,8 +440,8 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       const SizedBox(height: 8),
       Text(
         _photoUploadFailed
-            ? 'Upload failed — tap to try again'
-            : (hasPhoto ? 'Group photo' : 'Add group photo · required'),
+            ? uiCopy(UiMessage.m_upload_failed_tap_to_try_def5fa8e82)
+            : (hasPhoto ? uiCopy(UiMessage.m_group_photo_70b563f700) : uiCopy(UiMessage.m_add_group_photo_required_a762584390)),
         style: ADText.preview(c: _photoUploadFailed ? AD.danger : AD.textSecondary),
       ),
     ]);

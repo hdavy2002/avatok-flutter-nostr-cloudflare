@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -138,13 +140,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           side: const BorderSide(color: AD.borderControl, width: 1)),
       titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
       contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
-      title: const Text('Call ended'),
+      title: const UiText(UiMessage.m_call_ended_00ff74289a),
       content: Text(a.isFreeForCallers
-          ? 'You talked with ${a.name} for ${_fmt(_elapsedSec)}. This call was free — the creator covered it.'
-          : 'You talked with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtTokens(perMinuteTokens(a.ratePerHourTokens))} = ${fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))}. Any unused escrow is refunded to your AvaWallet.'),
+          ? uiCopy(UiMessage.m_you_talked_with_value1_for_01e8c66414, {'value1': (a.name).toString(), 'value2': (_fmt(_elapsedSec)).toString()})
+          : uiCopy(UiMessage.m_you_talked_with_value1_for_a7670da219, {'value1': (a.name).toString(), 'value2': (_fmt(_elapsedSec)).toString(), 'billed': (billed).toString(), 'value4': (fmtTokens(perMinuteTokens(a.ratePerHourTokens))).toString(), 'value5': (fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))).toString()})),
       actions: [TextButton(
           onPressed: () { Navigator.pop(d); Navigator.pop(context); },
-          child: const Text('Done'))],
+          child: const UiText(UiMessage.m_done_11a6767d56))],
     ));
   }
 
@@ -155,6 +157,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final remaining = (_limitMinutes * 60 - _elapsedSec).clamp(0, kMaxSessionMinutes * 60);
     // Voice-agent call = paper screen: lilac AI crest, mono state stickers,
     // zine bordered control circles, coral hang-up.
@@ -202,7 +205,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             if (_state == 'error')
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(_error ?? 'Connection failed',
+                child: Text(_error ?? uiCopy(UiMessage.m_connection_failed_596c52f1eb),
                     textAlign: TextAlign.center,
                     style: ADText.tabLabel(c: AD.danger).copyWith(fontSize: 12, letterSpacing: 0.48)),
               )
@@ -219,8 +222,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             if (_state == 'wrapup')
               Padding(
                 padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
-                child: Text(
-                    'Time is almost up — the agent will wrap up politely. You can book another session to continue.',
+                child: UiText(
+                    UiMessage.m_time_is_almost_up_the_c121ffe8d8,
                     textAlign: TextAlign.center,
                     style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
               ),
@@ -232,7 +235,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 if (a.visionEnabled) ...[
                   _roundBtn(PhosphorIcons.monitor(PhosphorIconsStyle.bold), () {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Screen sharing arrives with the live audio engine (Phase 4).')));
+                        content: UiText(UiMessage.m_screen_sharing_arrives_with_the_4c7348c8a5)));
                   }),
                   const SizedBox(width: Msg.s4),
                 ],
@@ -313,6 +316,7 @@ class _PulsingRingState extends State<_PulsingRing>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!widget.active) return widget.child;
     return AnimatedBuilder(
       animation: _c,

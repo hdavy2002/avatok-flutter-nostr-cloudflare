@@ -1,5 +1,5 @@
 ---
-import { publicImage as optimizePublicArtwork } from '../lib/config';
+import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
 // blue "chai" truck-art strip on top, dark panel with three columns — BAZAAR /
@@ -28,7 +28,7 @@ import TruckBorder from './TruckBorder.astro';
 import GlobalFooter from './GlobalFooter.astro';
 
 export interface Props { variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
-const { variant = 'india', indiaLandingLanguage = false } = Astro.props;
+const { variant = 'india', indiaLandingLanguage = true } = Astro.props;
 
 const year = new Date().getFullYear();
 
@@ -121,7 +121,7 @@ const chromeKey = (value: string) => ({
 
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
-      <img src={optimizePublicArtwork('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
+      <img data-india-i18n-attr="alt:web-common.bc1848dfbe79762d" src={publicImage('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
       <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
       <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
     </div>
@@ -147,7 +147,7 @@ const chromeKey = (value: string) => ({
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
-      <span>© {year} AVATOK · <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">AVATOK ·</ui-copy> <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -19,12 +21,12 @@ import '../../core/ui/motion/motion.dart';
 /// status line is the entire answer to "did that work?".
 String _statusLabel(String s) {
   switch (s) {
-    case 'published': return 'live';
-    case 'completed': return 'sold';
-    case 'cancelled': return 'archived';
-    case 'pending_review': return 'Review pending';
-    case 'approved': return 'approved — going live shortly';
-    case 'rejected': return 'changes requested';
+    case 'published': return uiCopy(UiMessage.m_live_247610f4de);
+    case 'completed': return uiCopy(UiMessage.m_sold_a6fffccf2d);
+    case 'cancelled': return uiCopy(UiMessage.m_archived_dd9e881230);
+    case 'pending_review': return uiCopy(UiMessage.m_review_pending_9834120e9c);
+    case 'approved': return uiCopy(UiMessage.m_approved_going_live_shortly_4e0c2312d7);
+    case 'rejected': return uiCopy(UiMessage.m_changes_requested_525ad2636a);
     default: return s;
   }
 }
@@ -72,13 +74,14 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         foregroundColor: AD.textPrimary,
         elevation: 0,
-        title: Text('My listings', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_my_listings_db849f91bd, style: ADText.appTitle()),
       ),
       body: Column(children: [
         if (widget.highlightPendingReview) const _SubmittedBanner(),
@@ -107,7 +110,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             if (items.isEmpty) {
               return ListView(children: [
                 const SizedBox(height: 120),
-                Center(child: Text('You have no active listings yet.',
+                Center(child: UiText(UiMessage.m_you_have_no_active_listings_61b895e7d3,
                     style: ADText.preview())),
               ]);
             }
@@ -132,15 +135,16 @@ class _SubmittedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
       color: AD.haldi,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Sent for review', style: ADText.rowName()),
+        UiText(UiMessage.m_sent_for_review_0d9a269df1, style: ADText.rowName()),
         const SizedBox(height: Msg.s1),
-        Text(
-          'Your listing is with the team. You will get a notification when it goes live.',
+        UiText(
+          UiMessage.m_your_listing_is_with_the_5571bdbd6c,
           style: ADText.preview(c: AD.textPrimary),
         ),
       ]),
@@ -160,7 +164,7 @@ class _MyListingRow extends StatelessWidget {
     if (res['ok'] == true) {
       onChanged();
     } else {
-      showAdToast(context, message: 'Could not update listing.');
+      showAdToast(context, message: uiCopy(UiMessage.m_could_not_update_listing_b49f8a558c));
     }
   }
 
@@ -202,6 +206,7 @@ class _MyListingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final sold = card.status == 'completed' || card.status == 'sold';
     return AdCard(
       padding: EdgeInsets.zero,
@@ -247,10 +252,10 @@ class _MyListingRow extends StatelessWidget {
             }
           },
           itemBuilder: (_) => [
-            PopupMenuItem(value: 'edit', child: Text('Edit', style: ADText.rowName())),
-            if (!sold) PopupMenuItem(value: 'sold', child: Text('Mark sold', style: ADText.rowName())),
-            PopupMenuItem(value: 'renew', child: Text('Renew', style: ADText.rowName())),
-            PopupMenuItem(value: 'delete', child: Text('Delete', style: ADText.rowName(c: AD.danger))),
+            PopupMenuItem(value: 'edit', child: UiText(UiMessage.m_edit_464c4ffd01, style: ADText.rowName())),
+            if (!sold) PopupMenuItem(value: 'sold', child: UiText(UiMessage.m_mark_sold_74cd724f3c, style: ADText.rowName())),
+            PopupMenuItem(value: 'renew', child: UiText(UiMessage.m_renew_90c1689b0b, style: ADText.rowName())),
+            PopupMenuItem(value: 'delete', child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.rowName(c: AD.danger))),
           ],
         ),
       ),
@@ -265,6 +270,7 @@ class _MyListingRowSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s3),
       child: Row(children: [

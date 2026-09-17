@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 /* [LIST-WIZ-1] Small reusable add/remove list editors shared by steps 5 and 6 —
  * every one of these backs an `attrs.content_*` array the server validates in
  * contentAttrsError (worker/src/routes/listings.ts). Kept generic (not typed to
@@ -72,7 +74,7 @@ export function TwoFieldListEditor({
         <div key={i} className="rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
           <div className="mb-2 flex items-center justify-between">
             <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">{itemNoun} {i + 1}</span>
-            <button type="button" onClick={() => remove(i)} className="font-body font-bold text-[12px] text-coral">Remove</button>
+            <button type="button" onClick={() => remove(i)} className="font-body font-bold text-[12px] text-coral"><UiText id="web-dashboard.c3812fc4acb861d5" source="Remove" /></button>
           </div>
           <label className="mb-2 block">
             <span className={labelCls}>{aLabel}</span>
@@ -94,7 +96,7 @@ export function TwoFieldListEditor({
           + {addLabel}
         </button>
       )}
-      <p className="font-body font-bold text-[11px] text-inkMute">{items.length}/{max} · minimum {min}</p>
+      <p className="font-body font-bold text-[11px] text-inkMute">{items.length}/{max}{" "}<UiText id="web-dashboard.50368266b0f18990" source="· minimum" />{" "}{min}</p>
     </div>
   );
 }
@@ -106,6 +108,8 @@ export function StringListEditor({
   items: string[]; onChange: (next: string[]) => void;
   itemMax: number; min: number; max: number; placeholder?: string; addLabel: string;
 }) {
+ const {t:uiT}=useUiTranslation("web-dashboard");
+
   function update(i: number, value: string) {
     const next = items.slice(); next[i] = value; onChange(next);
   }
@@ -126,13 +130,15 @@ export function StringListEditor({
           + {addLabel}
         </button>
       )}
-      <p className="font-body font-bold text-[11px] text-inkMute">{items.length}/{max}{min ? ` · minimum ${min}` : ''}</p>
+      <p className="font-body font-bold text-[11px] text-inkMute">{items.length}/{max}{min ? uiT("web-dashboard.4c09c9c9e91621c7"," · minimum {value0}",{value0:String(min)}) : ''}</p>
     </div>
   );
 }
 
 /** {who, line} sample-chat editor for AI listings. */
 export function ChatLineEditor({ items, onChange, max }: { items: { who: string; line: string }[]; onChange: (next: { who: string; line: string }[]) => void; max: number }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   function update(i: number, key: 'who' | 'line', value: string) {
     const next = items.slice(); next[i] = { ...next[i], [key]: value }; onChange(next);
   }
@@ -142,18 +148,16 @@ export function ChatLineEditor({ items, onChange, max }: { items: { who: string;
     <div className="flex flex-col gap-2">
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-2">
-          <input className={`${inputCls} w-28 flex-none`} value={item.who} maxLength={40} placeholder="Who"
+          <input className={`${inputCls} w-28 flex-none`} value={item.who} maxLength={40} placeholder={uiT("web-dashboard.c17b94b8c9394d40","Who")}
             onChange={(e) => update(i, 'who', e.target.value)} />
-          <input className={inputCls} value={item.line} maxLength={300} placeholder="Line"
+          <input className={inputCls} value={item.line} maxLength={300} placeholder={uiT("web-dashboard.d7852cd0d2453e8c","Line")}
             onChange={(e) => update(i, 'line', e.target.value)} />
           <button type="button" onClick={() => remove(i)} className="font-body font-bold text-[12px] text-coral">✕</button>
         </div>
       ))}
       {items.length < max && (
         <button type="button" onClick={add}
-          className="rounded-zine border-zine border-dashed border-ink bg-card px-3 py-2 font-body font-bold text-[13px] text-inkSoft">
-          + Add line
-        </button>
+          className="rounded-zine border-zine border-dashed border-ink bg-card px-3 py-2 font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.3a5614528d44175b" source="+ Add line" />{" "}</button>
       )}
       <p className="font-body font-bold text-[11px] text-inkMute">{items.length}/{max}</p>
     </div>

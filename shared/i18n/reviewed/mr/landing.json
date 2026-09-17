@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported indiaLandingTranslationsWest.ts native-speaker review required before publication.",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "मुख्य मजकुराकडे जा"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "भारतीय क्रिएटर्सची तिकीट खिडकी"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "चाहते आहेत? स्वतःचा शो रंगवा."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "तुमची कला, तुमची गोष्ट, तुमचा वेळ—चाहत्यांना बोलवा आणि तुमच्या अटींवर बुकिंग घ्या."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "मोफत सुरुवात करा"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "कमाईचे पर्याय पाहा"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "तुमचे पान. तुमची किंमत. तुमचे चाहते."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "प्रकार 01 · थेट प्रक्षेपण"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "तुमच्या लाइव्हला खास कार्यक्रम बनवा."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "थेट वर्ग, गप्पा, तालीम किंवा पूजा—तिकीट ठेवा आणि चाहत्यांना भेटा."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "थेट कार्यक्रम ठरवा"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "तिकिटासह · ऑनलाइन"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "प्रकार 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "एक चाहता. खास तुमचा वेळ."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "ऑनलाइन व्हिडिओ भेटीसाठी वेळ द्या. सल्ला, सराव, गोष्टी किंवा मनमोकळ्या गप्पा."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 सत्र सुरू करा"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "खासगी · व्हिडिओ भेट"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "मोठ्या पडद्यावर"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "स्क्रीनवरची ओळख आता खास नाते बनू शकते."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "संगीत, मेकअप, गेमिंग, स्वयंपाक, नृत्य—चाहते पाहत आहेत. आता त्यांना एकत्र आणा."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "थेट कार्यक्रम / शनिवार रात्री 8 वाजता"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "बाजारपेठ पाहा"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "तुमचे वेळापत्रक, तुमचे नियम"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "तुमचा 1:1 कट्टा."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "तुमची उपलब्धता ठरवा, सत्राचे स्वरूप सांगा आणि बुकिंगपूर्वी अपेक्षा स्पष्ट करा. भेट ऑनलाइन होईल."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "स्पष्ट मर्यादांसह ऑनलाइन व्हिडिओ भेटी."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "कंटेंटपासून कमाईच्या संधीपर्यंत"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "तुम्ही काय सादर कराल?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "नृत्याचा कट्टा"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "नृत्यरचना, अभिप्राय आणि एकत्र सराव."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "घरची चव"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "थेट पाककृती, प्रादेशिक थाळी आणि स्वयंपाकाच्या युक्त्या."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "अभ्यासाचा सोबती"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "उजळणी, भाषेचा सराव आणि परीक्षेपूर्वी प्रोत्साहन."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "स्टाइलचा कट्टा"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "लूकचे मार्गदर्शन, साडी नेसणे आणि बजेटमधील फॅशन."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "हे कसे चालते"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "पोस्टरपासून बुकिंगपर्यंत—चार सोप्या पायऱ्या."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "तयार करा"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "तुमचे क्रिएटर पान आणि सत्राची माहिती लिहा."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "किंमत ठरवा"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "तिकीट किंवा सत्राची किंमत निवडा."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "शेअर करा"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "तुमच्या चाहत्यांना लिंक पाठवा."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "सत्र घ्या"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "ऑनलाइन या, वेळ द्या आणि तुमचा शो रंगवा."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "तुमच्या चाहत्यांसाठी"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "चाहत्याला बुकिंग कसे दिसेल?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "एक स्पष्ट पान. एक तारीख. एक जागा. पैसे भरल्यावर सत्रात सहभागी होण्याची माहिती मिळते."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "प्रत्यक्ष लिस्टिंग पाहा"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "बुकिंग पास"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "थेट कार्यक्रम"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "1 जागा राखीव"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "ऑनलाइन · भारत"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "हिशोब अगदी स्पष्ट"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "एकूण उत्पन्नाचा अंदाज पाहा."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "आकडे बदलून थेट कार्यक्रम आणि 1:1 बुकिंगमधून किती एकूण उत्पन्न मिळू शकते ते पाहा."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "लाइव्ह तिकिटाची किंमत"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "प्रत्येक कार्यक्रमातील प्रेक्षक"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "महिन्यातील कार्यक्रम"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 सत्राची किंमत"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "महिन्यातील बुकिंग"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "थेट कार्यक्रमाचे एकूण उत्पन्न"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 चे एकूण उत्पन्न"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "एकत्रित उत्पन्नाचा अंदाज"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "हा शुल्क, कर, परतावे आणि इतर खर्च वजा करण्यापूर्वीचा नमुना अंदाज आहे. कमाईची हमी नाही."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "नियोजनासाठी रुपयांतील उदाहरण; प्रत्यक्ष किंमत आणि पेमेंटवरील रक्कम सध्याच्या किंमत मार्गदर्शकानुसार असेल."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "जाणून घ्या"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "स्पष्ट मर्यादा, चांगला अनुभव."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "खूप चाहते असणे गरजेचे आहे का?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "नाही. एका उपयुक्त सत्रापासून सुरुवात करा आणि तुमच्या कामात रस असलेल्यांपर्यंत पोहोचा."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "ही प्रत्यक्ष भेट आहे का?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "नाही. थेट कार्यक्रम आणि 1:1 सत्रे ऑनलाइन होतात. सत्राची माहिती स्पष्ट ठेवा."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "मला पैसे कधी मिळतील?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "पैसे मिळण्याची वेळ आणि उपलब्ध पद्धती क्रिएटर डॅशबोर्ड व लागू अटींमध्ये दिल्या आहेत."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "मी माझ्या मर्यादा ठरवू शकतो का?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "हो. प्रकाशित करण्यापूर्वी स्वरूप, उपलब्धता, किंमत आणि सत्रात काय असेल ते ठरवा."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "आता तुमची पाळी"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "तुमच्या आवाजाला तिकीट द्या."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "आज एक सत्र तयार करा. उद्या तुमचा पहिला शो सुरू करा."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "तुमची लिस्टिंग मोफत तयार करा"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "सजावट"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "एकूण उत्पन्नाचा अंदाज मोजणारे साधन"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "वारंवार विचारले जाणारे प्रश्न"
+    }
+  }
+}

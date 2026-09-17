@@ -1,0 +1,21 @@
+---
+import TruckBorder from '../TruckBorder.astro';
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-close india-wrap" aria-labelledby="addon-closing-title" id="addon-closing">
+<div class="india-help-border" aria-hidden="true"><TruckBorder kind="jhalar" count={16} /></div>
+<img class="india-close__burst" src="/ornament-flower.png" width="130" height="130" alt="" loading="lazy" />
+<p class="india-kicker">
+<span data-india-i18n="closeEyebrow">{copy.closeEyebrow}</span>
+</p>
+<h2 id="addon-closing-title">
+<span data-india-i18n="closeTitle">{copy.closeTitle}</span>
+</h2>
+<p>
+<span data-india-i18n="closeBody">{copy.closeBody}</span>
+</p>
+<a class="india-button india-button--dark" href="/sign-up">
+<span data-india-i18n="closeCta">{copy.closeCta}</span> <span aria-hidden="true">↗</span>
+</a>
+</section>

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
@@ -59,9 +62,9 @@ Future<bool> showCallAgentSheet(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
               decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
-          Text('Call the seller’s agent', style: TextStyle(fontFamily: ADText.display, fontWeight: FontWeight.w700, fontSize: 19, color: AD.textPrimary)),
+          UiText(UiMessage.m_call_the_seller_s_agent_0b492bbc3e, style: TextStyle(fontFamily: ADText.display, fontWeight: FontWeight.w700, fontSize: 19, color: AD.textPrimary)),
           const SizedBox(height: Msg.s2),
-          Text('Your agent negotiates in the background — you can keep browsing. The result lands in your chat as a voice note.',
+          UiText(UiMessage.m_your_agent_negotiates_in_the_d90de5a6cf,
               style: TextStyle(fontFamily: ADText.family, fontSize: 13, color: AD.textSecondary)),
           const SizedBox(height: Msg.s4),
           label('Your max price'),
@@ -86,14 +89,14 @@ Future<bool> showCallAgentSheet(
           const SizedBox(height: Msg.s4),
           if (dailyLimited)
             AdButton(
-              label: 'Message seller',
+              label: uiCopy(UiMessage.m_message_seller_d5a6774306),
               fullWidth: true,
               fontSize: 17,
               onPressed: () { Navigator.of(ctx).pop(false); onMessageSeller?.call(); },
             )
           else
           AdButton(
-              label: busy ? 'Starting…' : 'Start negotiation',
+              label: busy ? uiCopy(UiMessage.m_starting_bbe5fc3b9e) : uiCopy(UiMessage.m_start_negotiation_d2e69b8fc8),
               fullWidth: true,
               fontSize: 17,
               loading: busy,

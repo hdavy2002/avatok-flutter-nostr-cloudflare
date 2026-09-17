@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -281,8 +284,8 @@ String _dayHeader(DateTime d) {
   final that = DateTime(d.year, d.month, d.day);
   final diff = today.difference(that).inDays;
   final base = '${d.day} ${_months[d.month - 1]} ${d.year} (${_weekdays[d.weekday - 1]})';
-  if (diff == 0) return 'Today · $base';
-  if (diff == 1) return 'Yesterday · $base';
+  if (diff == 0) return uiCopy(UiMessage.m_today_base_e772a560df, {'base': (base).toString()});
+  if (diff == 1) return uiCopy(UiMessage.m_yesterday_base_e668070aac, {'base': (base).toString()});
   return base;
 }
 
@@ -339,11 +342,11 @@ class _SearchBar extends StatelessWidget {
   final ValueChanged<String> onChanged;
   const _SearchBar({required this.hint, required this.onChanged});
   @override
-  Widget build(BuildContext context) => AdField(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return AdField(
         hint: hint,
         leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
         onChanged: onChanged,
-      );
+      ); }
 }
 
 /// Orange pill action button replacing the Material FAB (§7.1).
@@ -352,7 +355,7 @@ class _ZineFab extends StatelessWidget {
   final String? label;
   const _ZineFab({required this.onTap, this.label});
   @override
-  Widget build(BuildContext context) => ZinePressable(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return ZinePressable(
         onTap: onTap,
         color: AD.primaryBadge,
         borderColor: AD.primaryBadge,
@@ -368,7 +371,7 @@ class _ZineFab extends StatelessWidget {
             Text(label!, style: ADText.rowName(c: Colors.white)),
           ],
         ]),
-      );
+      ); }
 }
 
 /// Bottom-sheet row: phosphor icon + Nunito label.
@@ -541,6 +544,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final counts = _aggCounts(_tree);
     final q = _query.toLowerCase();
     final roots = _rootFolders(counts, _audioSplit)
@@ -562,7 +566,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
       backgroundColor: AD.bg,
       drawer: shellScope == null ? null : const AvaSidebarForShell(),
       appBar: _darkHeader(
-        title: 'AvaLibrary',
+        title: uiCopy(UiMessage.m_avalibrary_15f0f979af),
         tag: 'Your files, every type',
         // Outside the shell there is no drawer, so fall back to a back button
         // rather than leaving the screen with no leading control at all.
@@ -582,22 +586,22 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                 },
               ),
       ),
-      floatingActionButton: _ZineFab(onTap: _add, label: 'Add'),
+      floatingActionButton: _ZineFab(onTap: _add, label: uiCopy(UiMessage.m_add_9fd728c66c)),
       body: RefreshIndicator(
         color: AD.iconSearch,
         onRefresh: _load,
         child: _loading && _tree == null
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
             : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
-                _SearchBar(hint: 'Search files & folders', onChanged: (v) => setState(() => _query = v)),
+                _SearchBar(hint: uiCopy(UiMessage.m_search_files_folders_9f1dfd2b4d), onChanged: (v) => setState(() => _query = v)),
                 const SizedBox(height: Msg.s3),
                 if (empty)
                   _emptyBody()
                 else ...[
-                  Text('Your files across every AvaVerse app, by type.', style: ADText.preview()),
+                  UiText(UiMessage.m_your_files_across_every_avaverse_dd1f833386, style: ADText.preview()),
                   const SizedBox(height: Msg.s3),
                   if (roots.isNotEmpty) ...[
-                    Text('Library', style: ADText.sectionLabel()),
+                    UiText(UiMessage.m_library_dc20b3d5d2, style: ADText.sectionLabel()),
                     const SizedBox(height: Msg.s2),
                     for (final r in roots) _row(
                       icon: r.cat.icon, color: r.cat.color, title: r.cat.label,
@@ -606,11 +610,11 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                     ),
                     const SizedBox(height: Msg.s4),
                   ],
-                  Text('Folders', style: ADText.sectionLabel()),
+                  UiText(UiMessage.m_folders_c4d6bb200f, style: ADText.sectionLabel()),
                   const SizedBox(height: Msg.s2),
                   if (folders.isEmpty)
                     Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(q.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
+                        child: Text(q.isEmpty ? uiCopy(UiMessage.m_no_folders_yet_tap_add_402516144c) : uiCopy(UiMessage.m_no_folders_match_cfbf414bca),
                             style: ADText.preview()))
                   else
                     for (final f in folders) _row(
@@ -682,11 +686,11 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
               Expanded(child: Text(f.name, style: ADText.threadName())),
             ])),
         const Divider(height: 2, color: AD.borderHairline, thickness: 1),
-        _sheetTile(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), title: 'Rename',
+        _sheetTile(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_rename_3064d79a29),
             onTap: () => Navigator.pop(context, 'rename')),
         _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: AD.danger,
-            title: 'Delete folder', textColor: AD.danger,
-            subtitle: 'Files move back to their type folder',
+            title: uiCopy(UiMessage.m_delete_folder_39f35f2d44), textColor: AD.danger,
+            subtitle: uiCopy(UiMessage.m_files_move_back_to_their_eb2c07ee9e),
             onTap: () => Navigator.pop(context, 'delete')),
         const SizedBox(height: 8),
       ])),
@@ -913,6 +917,7 @@ class _FolderViewState extends State<_FolderView> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final isFolder = widget.folderId != null;
     final visible = _visible;
     final cells = _buildCells(visible);
@@ -935,7 +940,7 @@ class _FolderViewState extends State<_FolderView> {
         tag: 'AvaLibrary / ${widget.title}',
         actions: [
           IconButton(
-            tooltip: 'Pick a day',
+            tooltip: uiCopy(UiMessage.m_pick_a_day_ad99c92449),
             onPressed: _pickDay,
             icon: PhosphorIcon(PhosphorIcons.calendarDots(PhosphorIconsStyle.bold),
                 size: 22, color: _dayFilter != null ? AD.iconSearch : AD.textPrimary),
@@ -946,7 +951,7 @@ class _FolderViewState extends State<_FolderView> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s2),
-          child: _SearchBar(hint: 'Search files', onChanged: _onQuery),
+          child: _SearchBar(hint: uiCopy(UiMessage.m_search_files_179fed85ec), onChanged: _onQuery),
         ),
         if (_dayFilter != null) _dayChip(),
         if (isFolder) _typeChips(),
@@ -1084,9 +1089,9 @@ class _FolderViewState extends State<_FolderView> {
     }
     try {
       await MediaService.downloadLibraryItem(m);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File is ready to use')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_file_is_ready_to_use_f8399a937f)));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this file')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_open_this_file_7283b2934f)));
     }
   }
 
@@ -1104,46 +1109,46 @@ class _FolderViewState extends State<_FolderView> {
                   style: ADText.threadName())),
             ])),
         const Divider(height: 2, color: AD.borderHairline, thickness: 1),
-        _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: 'Move to…',
+        _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_move_to_5af2f53c94),
             onTap: () => Navigator.pop(context, 'move')),
-        _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: 'Copy to…',
-            subtitle: "Shortcut — doesn't use extra storage",
+        _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_copy_to_323b69dbb7),
+            subtitle: uiCopy(UiMessage.m_shortcut_doesn_t_use_extra_de496bce25),
             onTap: () => Navigator.pop(context, 'copy')),
         if (m.isPrivate)
           _sheetTile(icon: PhosphorIcons.brain(PhosphorIconsStyle.bold), iconColor: AD.iconVideo,
-              title: 'Let AvaBrain read this',
-              subtitle: 'On-device only — nothing leaves your phone but a summary',
+              title: uiCopy(UiMessage.m_let_avabrain_read_this_ca023523cd),
+              subtitle: uiCopy(UiMessage.m_on_device_only_nothing_leaves_b4f1386898),
               onTap: () => Navigator.pop(context, 'brain')),
         _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: AD.danger,
-            title: 'Delete', textColor: AD.danger,
+            title: uiCopy(UiMessage.m_delete_e2d0a54968), textColor: AD.danger,
             onTap: () => Navigator.pop(context, 'delete')),
         const SizedBox(height: 8),
       ])),
     );
     if (!mounted || action == null) return;
     if (action == 'brain') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reading on-device…')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_reading_on_device_a3e6512306)));
       try {
         final msg = await PrivateIngest.ingest(m);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       } catch (_) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not read this file')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_read_this_file_90399c23ef)));
       }
     } else if (action == 'delete') {
       await LibraryApi.delete(m.id);
       setState(() => _items.removeWhere((x) => x.id == m.id));
     } else if (action == 'move' || action == 'copy') {
-      final dest = await _pickDestination(context, title: action == 'move' ? 'Move file to' : 'Copy file to');
+      final dest = await _pickDestination(context, title: action == 'move' ? uiCopy(UiMessage.m_move_file_to_8484eb6662) : uiCopy(UiMessage.m_copy_file_to_c7524b6451));
       if (dest == null) return;
       if (action == 'move') {
         await LibraryApi.move(m.id, dest.folder, app: dest.app);
         if (dest.app != widget.app || widget.folderId != dest.folder) {
           setState(() => _items.removeWhere((x) => x.id == m.id));
         }
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_moved_b11c9047f3)));
       } else {
         await LibraryApi.copy(m.id, dest.folder, app: dest.app);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied (shortcut — counted once)')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_copied_shortcut_counted_once_9af033e809)));
       }
     }
   }
@@ -1207,6 +1212,7 @@ class _ThumbTileState extends State<_ThumbTile> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final m = widget.item;
 
     // [LIB-AUDIO-SPLIT-1] Audio has no frame to decode, so the preview is
@@ -1338,10 +1344,10 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
     shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(Msg.s5),
-          child: Text('${appByKey(app).name} — choose folder', style: ADText.threadName())),
+          child: UiText(UiMessage.m_value1_choose_folder_d237ad2184, params: {'value1': (appByKey(app).name).toString()}, style: ADText.threadName())),
       const Divider(height: 2, color: AD.borderHairline, thickness: 1),
       Flexible(child: ListView(shrinkWrap: true, children: [
-        _sheetTile(icon: PhosphorIcons.house(PhosphorIconsStyle.bold), title: 'Library root (its type folder)',
+        _sheetTile(icon: PhosphorIcons.house(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_library_root_its_type_folder_a30b805b78),
             onTap: () => Navigator.pop(context, kRoot)),
         for (final f in folders)
           _sheetTile(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), iconColor: AD.iconSearch,
@@ -1364,12 +1370,12 @@ Future<bool> showAddSheet(BuildContext context, {required String app, String? fo
       const SizedBox(height: Msg.s2),
       if (onNewFolder != null)
         _sheetTile(icon: PhosphorIcons.folderPlus(PhosphorIconsStyle.bold), iconColor: AD.iconSearch,
-            title: 'New folder', onTap: () => Navigator.pop(context, 'folder')),
-      _sheetTile(icon: PhosphorIcons.images(PhosphorIconsStyle.bold), title: 'Upload photo',
+            title: uiCopy(UiMessage.m_new_folder_cf28f49ec5), onTap: () => Navigator.pop(context, 'folder')),
+      _sheetTile(icon: PhosphorIcons.images(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_upload_photo_32258ba63e),
           onTap: () => Navigator.pop(context, 'photo')),
-      _sheetTile(icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), title: 'Take photo',
+      _sheetTile(icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_take_photo_7100ac9979),
           onTap: () => Navigator.pop(context, 'camera')),
-      _sheetTile(icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), title: 'Upload file',
+      _sheetTile(icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), title: uiCopy(UiMessage.m_upload_file_d99bcd78b5),
           onTap: () => Navigator.pop(context, 'file')),
       const SizedBox(height: Msg.s2),
     ])),
@@ -1378,18 +1384,18 @@ Future<bool> showAddSheet(BuildContext context, {required String app, String? fo
   if (action == 'folder') { await onNewFolder?.call(); return false; }
 
   final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(const SnackBar(content: Text('Uploading…')));
+  messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_uploading_5ce44dd77d)));
   try {
     final n = await _pickAndUpload(action, app: app, folderId: folderId);
     if (n > 0) {
-      messenger.showSnackBar(SnackBar(content: Text('Uploaded $n file${n == 1 ? '' : 's'}')));
+      messenger.showSnackBar(SnackBar(content: UiText(UiMessage.m_uploaded_n_file_value2_4e615a0c37, params: {'n': (n).toString(), 'value2': (n == 1 ? '' : 's').toString()})));
       Analytics.capture('library_upload', {'count': n, 'source': action, 'app': app});
       return true;
     }
     messenger.hideCurrentSnackBar();
     return false;
   } catch (e) {
-    messenger.showSnackBar(const SnackBar(content: Text('Upload failed — please try again.')));
+    messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_upload_failed_please_try_again_3802cacfbf)));
     Analytics.error(domain: 'media', code: 'library_upload_failed', message: e.toString(), screen: 'avalibrary');
     return false;
   }
@@ -1543,6 +1549,7 @@ class _ImageViewerState extends State<_ImageViewer> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final m = widget.item;
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1593,7 +1600,7 @@ class _ImageViewerState extends State<_ImageViewer> {
                         ? Image.file(_thumb!, fit: BoxFit.contain)
                         : const Padding(
                             padding: EdgeInsets.all(24),
-                            child: Text('Image unavailable',
+                            child: UiText(UiMessage.m_image_unavailable_7817cd0656,
                                 style: TextStyle(color: Colors.white)));
                   },
                 ),
@@ -1672,18 +1679,18 @@ Future<String?> _promptName(BuildContext context, String title, {String initial 
             children: [
               Text(title, style: ADText.threadName()),
               const SizedBox(height: Msg.s3),
-              AdField(controller: ctrl, autofocus: true, hint: 'Folder name'),
+              AdField(controller: ctrl, autofocus: true, hint: uiCopy(UiMessage.m_folder_name_14d34edf50)),
               const SizedBox(height: Msg.s4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: Text('Cancel', style: ADText.preview(c: AD.iconSearch)),
+                    child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.iconSearch)),
                   ),
                   const SizedBox(width: 8),
                   AdButton(
-                    label: 'Save it',
+                    label: uiCopy(UiMessage.m_save_it_531eaba2d5),
                     variant: AdButtonVariant.teal,
                     fontSize: 15,
                     onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Shared account schedule for customer tickets and creator operations. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ClerkIsland, getActiveTokenWaited as getActiveToken, SignInButton } from '../../lib/clerk';
@@ -47,6 +49,8 @@ export interface CommercialScheduleProps {
 }
 
 function CommercialScheduleInner({ role, kind, description, emptyTitle, emptyBody }: CommercialScheduleProps) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const { userId, isLoaded } = useAuth();
   const [rowsAccount, setRowsAccount] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -146,12 +150,12 @@ function CommercialScheduleInner({ role, kind, description, emptyTitle, emptyBod
     return resendCommercialConfirmation(orderId, fresh);
   }
 
-  if (!authChecked) return <div className="flex items-center gap-3 p-6"><Spinner size={22} /><span className="font-body font-bold text-inkSoft">Checking your account…</span></div>;
+  if (!authChecked) return <div className="flex items-center gap-3 p-6"><Spinner size={22} /><span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.caea68eeb986ae1f" source="Checking your account…" /></span></div>;
   if (!token) return (
     <Card shadow="lg"><div className="flex flex-col gap-3">
-      <h2 className="font-display text-[22px] font-semibold text-ink">Sign in to see your {role === 'customer' ? 'tickets and appointments' : 'creator schedule'}</h2>
-      <p className="font-body text-[15px] font-bold text-inkSoft">Your schedule is tied to the account that purchased or hosts each session.</p>
-      <div><SignInButton mode="modal"><Button variant="lime" label="Sign in" /></SignInButton></div>
+      <h2 className="font-display text-[22px] font-semibold text-ink"><UiText id="web-dashboard.80e674a55d594324" source="Sign in to see your" />{" "}{role === 'customer' ? uiT("web-dashboard.ea4ea2182329296a","tickets and appointments") : uiT("web-dashboard.74712bdae0ab2693","creator schedule")}</h2>
+      <p className="font-body text-[15px] font-bold text-inkSoft"><UiText id="web-dashboard.8ff9f843631ce9be" source="Your schedule is tied to the account that purchased or hosts each session." /></p>
+      <div><SignInButton mode="modal"><Button variant="lime" label={uiT("web-dashboard.bfd402b2f6f38125","Sign in")} /></SignInButton></div>
     </div></Card>
   );
 
@@ -161,11 +165,11 @@ function CommercialScheduleInner({ role, kind, description, emptyTitle, emptyBod
       {description && <p className="font-body text-[15px] font-bold text-inkSoft">{description}</p>}
       <ScheduleTabs view={view} onChange={(next) => { capture('dashboard_schedule_tab_switch', { view: next }); setView(next); }} />
       {error && <div className="rounded-zine border-zine border-coral bg-paper2 p-3 font-body text-[14px] font-bold text-ink" role="alert">⚠ {error}</div>}
-      {serverNow && <p className="font-mono text-[11px] font-bold uppercase tracking-[0.04em] text-inkMute">Times shown in your local timezone · schedule checked {new Date(serverNow).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>}
-      {loading && !rows ? <div className="flex items-center gap-3 p-4"><Spinner size={22} /><span className="font-body font-bold text-inkSoft">Loading your schedule…</span></div>
+      {serverNow && <p className="font-mono text-[11px] font-bold uppercase tracking-[0.04em] text-inkMute"><UiText id="web-dashboard.a4d8c3a367ce7702" source="Times shown in your local timezone · schedule checked" />{" "}{new Date(serverNow).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>}
+      {loading && !rows ? <div className="flex items-center gap-3 p-4"><Spinner size={22} /><span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.d7d7dc2fba89191f" source="Loading your schedule…" /></span></div>
         : visible.length ? <div className="flex flex-col gap-3">{visible.map((row) => <TicketCard key={rowKey(row)} session={row} past={view === 'past' || view === 'cancelled'} onResend={role === 'customer' ? resend : undefined} />)}</div>
-        : !error ? <Card fillClassName="bg-paper2"><p className="font-body text-[15px] font-bold text-inkSoft">{emptyTitle ?? (role === 'customer' ? 'Nothing here yet.' : 'No sessions in this view.')}</p>{emptyBody && <p className="mt-1 font-body text-[14px] font-bold text-inkMute">{emptyBody}</p>}</Card> : null}
-      {cursor && <button type="button" onClick={() => token && void loadPage(token, view, cursor, false)} disabled={loadingMore} className="self-start rounded-full border-zine border-ink bg-paper px-4 py-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-ink shadow-zine-xs disabled:opacity-50">{loadingMore ? 'Loading…' : 'Load more'}</button>}
+        : !error ? <Card fillClassName="bg-paper2"><p className="font-body text-[15px] font-bold text-inkSoft">{emptyTitle ?? (role === 'customer' ? uiT("web-dashboard.2de5247a982a1cd6","Nothing here yet.") : uiT("web-dashboard.6196e0ea459852cb","No sessions in this view."))}</p>{emptyBody && <p className="mt-1 font-body text-[14px] font-bold text-inkMute">{emptyBody}</p>}</Card> : null}
+      {cursor && <button type="button" onClick={() => token && void loadPage(token, view, cursor, false)} disabled={loadingMore} className="self-start rounded-full border-zine border-ink bg-paper px-4 py-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-ink shadow-zine-xs disabled:opacity-50">{loadingMore ? uiT("web-dashboard.ba3bbbe10d8bef66","Loading…") : uiT("web-dashboard.ac8991ef01019cf5","Load more")}</button>}
     </div>
   );
 }
@@ -178,6 +182,10 @@ function CommercialScheduleInner({ role, kind, description, emptyTitle, emptyBod
  * with no transition so the pill never animates in from `left:0`.
  */
 function ScheduleTabs({ view, onChange }: { view: CommercialScheduleView; onChange: (v: CommercialScheduleView) => void }) {
+ const {source:uiSource}=useUiTranslation("web-dashboard");
+
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const barRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
   const tabRefs = useRef<Partial<Record<CommercialScheduleView, HTMLButtonElement | null>>>({});
@@ -208,7 +216,7 @@ function ScheduleTabs({ view, onChange }: { view: CommercialScheduleView; onChan
   }, [moveTo]);
 
   return (
-    <div ref={barRef} className="t-tabs" role="tablist" aria-label="Schedule views">
+    <div ref={barRef} className="t-tabs" role="tablist" aria-label={uiT("web-dashboard.1e46001ee49c3837","Schedule views")}>
       <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
       {VIEWS.map((item) => (
         <button
@@ -220,7 +228,7 @@ function ScheduleTabs({ view, onChange }: { view: CommercialScheduleView; onChan
           onClick={() => onChange(item.value)}
           className="t-tab font-mono text-[12px] font-bold uppercase tracking-[0.04em]"
         >
-          {item.label}
+          {uiSource(item.label)}
         </button>
       ))}
     </div>
@@ -228,7 +236,7 @@ function ScheduleTabs({ view, onChange }: { view: CommercialScheduleView; onChan
 }
 
 export function CommercialSchedule(props: CommercialScheduleProps) {
-  if (!CLERK_PUBLISHABLE_KEY) return <p>Sign-in is temporarily unavailable.</p>;
+  if (!CLERK_PUBLISHABLE_KEY) return <p><UiText id="web-dashboard.b8383a57c86296ea" source="Sign-in is temporarily unavailable." /></p>;
   return <ClerkIsland><CommercialScheduleInner {...props} /></ClerkIsland>;
 }
 

@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "مضموٗنِ اصلس منز گژھو"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "ہِندوستانی تخلیق کارن ہٕنٛد ٹِکٹ ونڈو"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "تُہند فین بیس چھا؟ پنُن شو شروع کٔریو۔"
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "پنُن ہُنر، کہٲنی تہ وقت فینن سٲتھ ونٛدٕیو؛ پنٕنٕن شرطن پیٚٹھ دعوت تہ بکنگ لو۔"
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "مفت تخلیق شروع کٔریو"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "کمٲی ہٕنٛد طٔریقہ دٔیژھو"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "تُہند صفحہ۔ تُہند قٕیمت۔ تُہند لوگ۔"
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "فارمیٹ ۰۱ · لائیو"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "لائیو اسٹریم واقعہ بنإیو۔"
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "یِک لائیو کلاس، واچ پارٹی، ریہرسل یا پوجا—ٹِکٹ لٲگِتھ کمرہ کھولو تہ فینن سٲتھ مٔلیو۔"
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "لائیو واقعہ منصوبہ بنإیو"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "ٹِکٹ دار · آن لائن میزبانی"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "فارمیٹ ۰۲ · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "یِک فین سٲتھ تُہند وقت۔"
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "آن لائن ویڈیو ملاقات خٲطرٕ سلاٹ کھولو—مشورہ، مشق، کہٲنی یا یِک مرکوز گفتگو۔"
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 سیشن پیش کٔریو"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "نجی · ویڈیو ملاقات"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "بٔڈ سکرین"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "سکرین پیٚٹھ گژھان چیز رابطہ بنٲوِتھ ہیکِہ۔"
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "موسیقی، میک اَپ، گیمِنگ، رٮ۪سپی، نٲچ یا عقیدت—لوگ پہلے ہُند دیکھان؛ تمن خٲطرٕ کمرہ دٔیو۔"
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "لائیو کمرہ / سُہ ہفتہٕ ۸:۰۰ بجے"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "مارکیٹ پلیس دٔیژھو"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "تُہند کیلنڈر، تُہند قاعدہ"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "تُہند 1:1 کونہ۔"
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "دستیاب وقت مقرر کٔریو، فارمیٹ سمجإیو تہ ہر بکنگ برونٛہہ توقعات صاف تھاوِیو۔ ہمیشہ صرف آن لائن۔"
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "صاف حدن سٲتھ آن لائن ویڈیو ملاقات۔"
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "مضموٗنس منز آفرس تام"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "تُہِ کٲہ ہوسٹ کرِو؟"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "نٲچ اڈہ"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "کوریوگرافی، رائے تہ مشقس کمرہ۔"
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "گَرٕک ذائقہ"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "لائیو رٮ۪سپی، علاقٲی تھٲلی تہ باورچی خانس ہنٛد چال۔"
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "مطالعہ ساتھی"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "دہرٲون وقت، زبان مشق تہ امتحان خٲطرٕ حوصلہ۔"
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "سٹائل ڈیسک"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "لُک تجزیہ، لباس پہننس ہٕنٛد طریقہ تہ سستٕ خریداری۔"
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "یہِ کَتھ چھُ کَم کَران"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "پوسٹر پٮ۪ٹھ بکنگ تام—چار آسان قدم۔"
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "بنإیو"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "پنُن تخلیق کار صفحہ تہ آفر لِکھِو۔"
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "قٕیمت تھاوِیو"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "ٹِکٹ یا سیشن ہٕنٛد قٕیمت چُنِو۔"
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "ونٛدٕیو"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "لنک پنٕنٕن کمیونٹیَس پٮ۪ٹھ بھیٚجو۔"
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "ہوسٹ کٔریو"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "کمرہ کھولو، وقت دٔیو تہ پنُن شو چلإیو۔"
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "تُہند فینن خٲطرٕ"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "فینس خٲطرٕ بکنگ کَتھ دِژھِ؟"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "صاف صفحہ، یِک تاریخ تہ یِک سیٹ۔ ادائیگی پَتھ کمرس ہٕنٛد راستہ دِژھِ۔"
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "اصلی لسٹنگ دٔیژھو"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "بکنگ پاس"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "لائیو واقعہ"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "یِک سیٹ محفوظ"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "آن لائن · ہِندوستان"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "حساب صاف"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "پنٕنٕن مجموعی کمٲی ہٕنٛد اندازہ دٔیژھو۔"
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "ان پُٹ بدلِتھ ٹِکٹ دار واقعن یا 1:1 بکنگن ہٕنٛد ممکنہ مجموعی کمٲی دٔیژھو۔"
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "لائیو ٹِکٹ قٕیمت"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "ہر واقعس منز ناظر"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "ماہس منز واقعات"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 قٕیمت"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "ماہس منز بکنگ"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "لائیو واقعس ہٕنٛد مجموع"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 مجموع"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "ملٲوِتھ مجموع کمٲی ہٕنٛد اندازہ"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "پلیٹ فارم فیس، ٹیکس، رقم واپسی تہ باقی خرچن برونٛہہ مثٲلی مجموع۔ کمٲی ہٕنٛد وعدہ نَہ۔"
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR منز منصوبہ بندی ہٕنٛد مثال؛ اصلی لسٹنگ قٕیمت تہ چیک آؤٹ حوالہ موجودہ قٕیمت رہنمٲی مطابق ہُند۔"
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "یِہ چھُ جانُن"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "صاف حد بہتر کمرہ بناوان۔"
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "کیا مےٚ بٔڈ فالوٕنگ ضٔروٗری چھِ؟"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "نَہ۔ یِک فائدٕ مند آفر سٲتھ شروع کٔریو تہ تمن سٲتھ ونٛدٕیو یِم تُہند کٲم پسند کران۔"
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "کیا یہِ سٲمنٛے ملاقات ہٕنٛد بکنگ چھِ؟"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "نَہ۔ لائیو واقعات تہ 1:1 سیشن آن لائن گژھان؛ لسٹنگ تہ توقعات مخصوص تھاوِیو۔"
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "مےٚ پَیسہ کَتھ مِلان؟"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "ادائیگی ہٕنٛد وقت تہ اہل طریقہ تُہند تخلیق کار ڈیش بورڈس تہ لاگو شرطن منز دِژھان۔"
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "کیا مےٚ پنٕنٕن حد مقرر کٔرِتھ ہیکِو؟"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "آ۔ شایع کرنس برونٛہہ فارمیٹ، دستیابی، قٕیمت تہ سیشن منز شامل چیز چُنِو۔"
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "تُہند وار"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "پنُن آواز ٹِکٹ دٔیو۔"
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "آج یِک آفر لِکھِو۔ سُہ پنُن پہل کمرہ کھولو۔"
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "پنٕنٕن مفت لسٹنگ بنإیو"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "سجاوٹی"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "مجموعی کمٲی ہٕنٛد اندازہ حسابگر"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "عام سوالات"
+    }
+  }
+}

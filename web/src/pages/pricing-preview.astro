@@ -1,0 +1,25 @@
+---
+export const prerender = true;
+import Base from '../layouts/Base.astro';
+import PricingCalculatorPreview from '../components/pricing/PricingCalculatorPreview.astro';
+import '../styles/pricing-preview.css';
+---
+
+<Base title="Plan your usage · avaTOK" description="Explore a preview of the avaTOK usage calculator. Shape your sessions and see your monthly or yearly usage." noindex={true}>
+  <main class="pricing-preview">
+    <div class="pp-container">
+      <header class="pp-intro">
+        <div class="pp-intro-copy">
+          <div class="pp-eyebrow"><span class="pp-preview-badge">Design preview</span><span>Plan your usage</span></div>
+          <h1>Make room for your<br class="pp-desktop-break" /> next big idea<span>.</span></h1>
+          <p>A quick conversation or a regular gathering. Shape your sessions and see how your usage adds up.</p>
+        </div>
+        <img class="pp-chai-art" src="/assets/pricing-preview/chai-kettle.jpeg" alt="" width="150" height="175" />
+      </header>
+      <PricingCalculatorPreview />
+      <p class="help-crosslink" style="margin: 28px 0; font-size: 16px; line-height: 1.6;">Questions about billing? <a href="/help/billing/platform-fee" style="color: #ad4816; font-weight: 700; text-decoration: underline; text-underline-offset: 3px;">Read the help centre →</a></p>
+      <img class="pp-end-art" src="/assets/pricing-preview/floral-signal.jpeg" alt="" width="65" height="86" loading="lazy" />
+      <p class="pp-footnote">An early look at our calculator. Options and rates are being finalized.</p>
+    </div>
+  </main>
+</Base>

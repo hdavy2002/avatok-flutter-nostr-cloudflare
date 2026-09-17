@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // AgentBookingBox — the customer's side of an AI voice agent listing
 // (`[AGENT-LIVE-1]`, BUILD SPEC §6, D9). Duration chips → price → "Talk now"
 // when the agent is free right now, else "Next free HH:MM" + "Pick a time"
@@ -63,6 +65,8 @@ function nextDays(n: number, tz: string): string[] {
 type Step = 'idle' | 'authing' | 'quoting' | 'booking';
 
 function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
+  const {t:uiT}=useUiTranslation("web-agent-live");
+
   const tz = useMemo(() => visitorTz(), []);
   const [agent, setAgent] = useState<AgentPublic | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -203,7 +207,7 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="mb-2 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft">How long?</div>
+        <div className="mb-2 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft"><UiText id="web-agent-live.82f333e6f7f9b5da" source="How long?" /></div>
         <div className="flex flex-wrap gap-2">
           {agent.slotMinutes.map((m) => (
             <button
@@ -213,15 +217,14 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
               onClick={() => { setMinutes(m); setStarts(null); setSelectedStart(null); }}
               className={[chipBase, minutes === m ? 'bg-lime text-ink shadow-zine-xs' : 'bg-card text-ink'].join(' ')}
             >
-              {m} min
-            </button>
+              {m}{" "}<UiText id="web-agent-live.1f6fa6f69d185e60" source="min" />{" "}</button>
           ))}
         </div>
       </div>
 
       {price != null && (
         <div className="flex items-baseline justify-between">
-          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft">Price</span>
+          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft"><UiText id="web-agent-live.93c91c851e7acc17" source="Price" /></span>
           <span className="font-display font-semibold text-[22px] text-ink">{inr(price)}</span>
         </div>
       )}
@@ -230,9 +233,7 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
         <div className="rounded-zine border-zine border-coral bg-card p-3 font-body font-bold text-[13px] text-ink shadow-zine-error">
           {err}
           {addTokensHref && (
-            <a href={addTokensHref} className="mt-2 block font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline">
-              Add tokens →
-            </a>
+            <a href={addTokensHref} className="mt-2 block font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline"><UiText id="web-agent-live.53d454b7a8ecbb0c" source="Add tokens →" />{" "}</a>
           )}
         </div>
       )}
@@ -243,7 +244,7 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
           fullWidth
           loading={busy}
           disabled={busy}
-          label={busy ? 'Connecting…' : `Talk now · ${price != null ? inr(price) : ''}`}
+          label={busy ? uiT("web-agent-live.72021eb70e91b4d5","Connecting…") : `Talk now · ${price != null ? inr(price) : ''}`}
           onClick={() => void runCheckout({ instant: true })}
         />
       )}
@@ -251,9 +252,9 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
       {!agent.availableNow && !showPicker && (
         <div className="flex flex-col gap-2.5">
           <p className="font-body font-bold text-[13px] text-inkSoft">
-            {agent.nextFreeAt != null ? `Next free ${fmtClock(agent.nextFreeAt, tz)}` : 'Not free right now'}
+            {agent.nextFreeAt != null ? uiT("web-agent-live.d6f2cd30c339ac35","Next free {value0}",{value0:String(fmtClock(agent.nextFreeAt, tz))}) : uiT("web-agent-live.c4b56334d311e905","Not free right now")}
           </p>
-          <Button variant="blue" fullWidth disabled={busy} label="Pick a time" onClick={openPicker} />
+          <Button variant="blue" fullWidth disabled={busy} label={uiT("web-agent-live.ec116342c6998ca9","Pick a time")} onClick={openPicker} />
         </div>
       )}
 
@@ -299,7 +300,7 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
               ))}
             </div>
           ) : (
-            <p className="font-body font-bold text-[13px] text-inkMute">No free times that day — try another.</p>
+            <p className="font-body font-bold text-[13px] text-inkMute"><UiText id="web-agent-live.eb83da5e2521c66a" source="No free times that day — try another." /></p>
           )}
 
           <Button
@@ -307,15 +308,13 @@ function AgentBookingBoxInner({ listingId }: AgentBookingBoxProps) {
             fullWidth
             loading={busy}
             disabled={busy || selectedStart == null}
-            label={busy ? 'Booking…' : `Book · ${price != null ? inr(price) : ''}`}
+            label={busy ? uiT("web-agent-live.ea2081a66d4471ab","Booking…") : `Book · ${price != null ? inr(price) : ''}`}
             onClick={() => selectedStart != null && void runCheckout({ instant: false, startsAt: selectedStart })}
           />
         </div>
       )}
 
-      <p className="font-body text-[11px] text-inkMute">
-        Billed per minute for the slot you book. You&rsquo;re still charged for the full slot even if you leave early.
-      </p>
+      <p className="font-body text-[11px] text-inkMute"><UiText id="web-agent-live.35bf8fd6c34c6fdf" source="Billed per minute for the slot you book. You’re still charged for the full slot even if you leave early." />{" "}</p>
     </div>
   );
 }

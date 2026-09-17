@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -54,19 +56,19 @@ Future<void> sendVoicemailToChat(
   if (!context.mounted) return;
 
   final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(SnackBar(content: Text('Sending to ${contact.name}…')));
+  messenger.showSnackBar(SnackBar(content: UiText(UiMessage.m_sending_to_value1_800a17a5d2, params: {'value1': (contact.name).toString()})));
 
   try {
     final bytes = await _fetchRecordingBytes(card);
     if (bytes == null) {
       Analytics.capture('inbox_send_to_chat', {'ok': false, 'stage': 'fetch'});
-      messenger.showSnackBar(const SnackBar(content: Text('Couldn’t load the recording to send.')));
+      messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_load_the_recording_faa42509e4)));
       return;
     }
     final id = await IdentityStore().load();
     if (id == null) {
       Analytics.capture('inbox_send_to_chat', {'ok': false, 'stage': 'identity'});
-      messenger.showSnackBar(const SnackBar(content: Text('Couldn’t send — try again after signing in.')));
+      messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_send_try_again_fc2700e9f9)));
       return;
     }
     final name = 'Voicemail from $callerName.wav'
@@ -90,13 +92,13 @@ Future<void> sendVoicemailToChat(
       'ok': true, 'bytes': bytes.length, 'duration_s': card.durationSec,
     });
     if (context.mounted) {
-      messenger.showSnackBar(SnackBar(content: Text('Sent to ${contact.name}')));
+      messenger.showSnackBar(SnackBar(content: UiText(UiMessage.m_sent_to_value1_6443f4984b, params: {'value1': (contact.name).toString()})));
     }
   } catch (e) {
     AvaLog.I.log('avadial', 'inbox send-to-chat failed: $e');
     Analytics.capture('inbox_send_to_chat', {'ok': false, 'stage': 'send'});
     if (context.mounted) {
-      messenger.showSnackBar(const SnackBar(content: Text('Couldn’t send the recording.')));
+      messenger.showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_send_the_recording_c99a3bcb25)));
     }
   }
 }
@@ -194,6 +196,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final contacts = _filtered;
     return SafeArea(
       child: Padding(
@@ -208,7 +211,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Row(children: [
-              Text('Send to', style: ADText.threadName(c: AvaDialTheme.text)),
+              UiText(UiMessage.m_send_to_9bcbb3bc11, style: ADText.threadName(c: AvaDialTheme.text)),
             ]),
           ),
           Padding(
@@ -232,7 +235,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
-                      hintText: 'Search contacts',
+                      hintText: uiCopy(UiMessage.m_search_contacts_f863aac249),
                       hintStyle: ADText.preview(c: AvaDialTheme.textMute),
                     ),
                   ),
@@ -250,7 +253,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: Msg.s6),
                         child: Text(
-                          _query.isEmpty ? 'No AvaTOK contacts yet' : 'No matches',
+                          _query.isEmpty ? uiCopy(UiMessage.m_no_avatok_contacts_yet_c48570f6c0) : uiCopy(UiMessage.m_no_matches_2df01a03ff),
                           style: ADText.preview(c: AvaDialTheme.textSoft),
                         ),
                       )

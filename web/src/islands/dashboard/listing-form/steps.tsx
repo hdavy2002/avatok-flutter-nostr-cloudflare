@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 /* [LIST-WIZ-1] The 8 step bodies. Each is a plain function component taking
  * `draft` + `patch` (a partial-state setter) plus whatever step-specific
  * plumbing it needs (categories list, upload handler, slot API calls). All
@@ -77,12 +79,14 @@ function ErrLine({ err, field }: { err: FieldErr; field: string }) {
  * this field already true.
  */
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [interacted, setInteracted] = useState(false);
   return (
     <label className="flex cursor-pointer items-center gap-3">
       <span
         className={['t-toggle', interacted && 'is-init'].filter(Boolean).join(' ')}
-        data-on={checked ? 'true' : 'false'}
+        data-on={checked ? uiT("web-dashboard.b5bea41b6c623f7c","true") : uiT("web-dashboard.fcbcf165908dd18a","false")}
         aria-hidden="true"
         style={{
           position: 'relative', display: 'inline-flex', alignItems: 'center', flex: 'none',
@@ -161,11 +165,13 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
    */
   freeEntryLocked: boolean;
 }) {
+ const {source:uiSource}=useUiTranslation("web-dashboard");
+
   const showFreeEntryCard = !freeEntryLocked || draft.free_entry;
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <span className={labelCls}>Type</span>
+        <span className={labelCls}><UiText id="web-dashboard.baaddf70fb5d432b" source="Type" /></span>
         {/* [LIST-RESPONSIVE-1 2026-09-05] Three columns at 360px gives each
             card ~105px, which breaks "Broadcast to ticket holders" onto four
             lines and leaves the tap target a tall thin sliver. Stacked on a
@@ -178,7 +184,7 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
               className={['flex flex-col items-start gap-1 rounded-zine border-zine border-ink p-2.5 text-left shadow-zine-xs transition-transform duration-zine',
                 k.disabled ? 'opacity-40' : '', draft.kind === k.key ? 'bg-lime' : 'bg-card'].join(' ')}>
               <span className="text-[18px]">{k.chip}</span>
-              <span className="font-display font-semibold text-[16px] text-ink">{k.label}</span>
+              <span className="font-display font-semibold text-[16px] text-ink">{uiSource(k.label)}</span>
               <span className="font-body font-bold text-[14px] leading-snug text-inkSoft">{k.sub}</span>
             </button>
           ))}
@@ -191,19 +197,19 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
             <input type="checkbox" checked={draft.free_entry}
               onChange={(e) => { if (!e.target.checked) patch({ free_entry: false }); }}
               className="h-5 w-5 rounded border-zine border-ink" />
-            <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
-            <span className="font-body font-bold text-[11px] text-inkSoft">Turn this off to continue as a paid listing.</span>
+            <span className="font-body font-bold text-[14px] text-ink"><UiText id="web-dashboard.6a3d36b0cc6b3212" source="This is a free show" /></span>
+            <span className="font-body font-bold text-[11px] text-inkSoft"><UiText id="web-dashboard.bb267acae07ff0f8" source="Turn this off to continue as a paid listing." /></span>
           </label>
         ) : (
           <label className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
             <input type="checkbox" checked={draft.free_entry} onChange={(e) => patch({ free_entry: e.target.checked })}
               className="h-5 w-5 rounded border-zine border-ink" />
-            <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
+            <span className="font-body font-bold text-[14px] text-ink"><UiText id="web-dashboard.6a3d36b0cc6b3212" source="This is a free show" /></span>
           </label>
         )
       )}
       <div>
-        <span className={labelCls}>Schedule</span>
+        <span className={labelCls}><UiText id="web-dashboard.f4830a1dae298044" source="Schedule" /></span>
         <div className="flex flex-col gap-2">
           {(draft.kind === 'live_event' ? LIVE_EVENT_SCHEDULE_OPTS : SCHEDULE_OPTS).map((o) => (
             <button key={o.key} type="button" onClick={() => patch({ schedule_mode: o.key })}
@@ -283,6 +289,8 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
    *  of the sitting, including anything typed afterwards. */
   onSkipAi: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   // [MKT-3GROUP-1] Sub-categories are DRIVEN BY THE STEP-1 KIND. `live_event`
   // gets one group's blips (india_goes_live); `consult` gets TWO groups' blips
   // shown under two headings — whichever blip the creator picks is what files
@@ -318,27 +326,27 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
     <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">
       <div className="flex flex-col gap-5">
         <div>
-          <CopyFieldAssist field="title" label="Title" state={copy} patch={patch} value={draft.title}
+          <CopyFieldAssist field="title" label={uiT("web-dashboard.7e8cd2056da73a7f","Title")} state={copy} patch={patch} value={draft.title}
             assisted={aiAssisted.title} onSettled={(_how, text) => onAssisted('title', text)} />
-          <Field label="Title" placeholder="e.g. Friday night live cook-along" value={draft.title}
+          <Field label={uiT("web-dashboard.7e8cd2056da73a7f","Title")} placeholder={uiT("web-dashboard.3486051692cdd358","e.g. Friday night live cook-along")} value={draft.title}
             onChange={(e) => patch({ title: e.target.value.slice(0, 140) })} />
           <ErrLine err={err} field="title" />
         </div>
         <div>
-          <CopyFieldAssist field="blurb" label="Blurb" state={copy} patch={patch} value={draft.blurb}
+          <CopyFieldAssist field="blurb" label={uiT("web-dashboard.9a7196d27d70507d","Blurb")} state={copy} patch={patch} value={draft.blurb}
             assisted={aiAssisted.blurb} onSettled={(_how, text) => onAssisted('blurb', text)} />
-          <Field label="Blurb (one line)" placeholder="What fans get, in one punchy line" value={draft.blurb}
+          <Field label={uiT("web-dashboard.b68fc35ef2c56d42","Blurb (one line)")} placeholder={uiT("web-dashboard.42d383b8b11e8fd6","What fans get, in one punchy line")} value={draft.blurb}
             onChange={(e) => patch({ blurb: e.target.value.slice(0, 120) })} />
           <div className="mt-1 flex">{charCount(draft.blurb, 120)}</div>
           <ErrLine err={err} field="blurb" />
         </div>
         <div>
-          <CopyFieldAssist field="description" label="Description" state={copy} patch={patch} value={draft.description}
+          <CopyFieldAssist field="description" label={uiT("web-dashboard.526e0087cc3f254d","Description")} state={copy} patch={patch} value={draft.description}
             assisted={aiAssisted.description} onSettled={(_how, text) => onAssisted('description', text)} />
           <label className="block">
-            <span className={labelCls}>Description</span>
+            <span className={labelCls}><UiText id="web-dashboard.526e0087cc3f254d" source="Description" /></span>
             <textarea className={textareaCls} rows={4} value={draft.description} maxLength={8000}
-              placeholder="Tell people what to expect" onChange={(e) => patch({ description: e.target.value })} />
+              placeholder={uiT("web-dashboard.a64c9e2c279a06a7","Tell people what to expect")} onChange={(e) => patch({ description: e.target.value })} />
           </label>
         </div>
 
@@ -347,30 +355,28 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
             step — one failed attempt is enough to earn the way out. */}
         {copy.anyFailed && !allAssisted && (
           <Card fillClassName="bg-paper2">
-            <p className="font-body font-bold text-[13px] text-coral">⚠ The AI check could not run.</p>
+            <p className="font-body font-bold text-[13px] text-coral"><UiText id="web-dashboard.49d29d4bb4d6304e" source="⚠ The AI check could not run." /></p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => void copy.retryFailed()} disabled={copy.anyBusy}
                 className="rounded-zineField border-zine border-ink bg-blue px-3 py-1.5 font-body font-bold text-[12px] text-ink shadow-zine-xs">
-                {copy.anyBusy ? 'Trying again…' : 'Try again'}
+                {copy.anyBusy ? uiT("web-dashboard.02a596b8a1dc8556","Trying again…") : uiT("web-dashboard.d8b8392e2c542950","Try again")}
               </button>
               <button type="button" onClick={onSkipAi}
-                className="rounded-zineField border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[12px] text-inkSoft shadow-zine-xs">
-                Continue without AI
-              </button>
+                className="rounded-zineField border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[12px] text-inkSoft shadow-zine-xs"><UiText id="web-dashboard.0bad8c58b7711615" source="Continue without AI" />{" "}</button>
             </div>
           </Card>
         )}
         <ErrLine err={err} field="ai_assist" />
 
         {groups.map((g) => (
-          <BlipGroup key={g.id} heading={groups.length > 1 ? g.heading : 'Category'}
+          <BlipGroup key={g.id} heading={groups.length > 1 ? g.heading : uiT("web-dashboard.292c06f0045a45d0","Category")}
             blips={blipsForGroup(g.id, categories, conferenceEnabled)}
             selected={draft.category} onPick={(id) => patch({ category: id })} />
         ))}
         <ErrLine err={err} field="category" />
 
         <div>
-          <span className={labelCls}>Audio and video</span>
+          <span className={labelCls}><UiText id="web-dashboard.9b7a90d51b4b253b" source="Audio and video" /></span>
           <div className="flex flex-col gap-2">
             {MEDIA_MODES.map((m) => (
               <button key={m.id} type="button" onClick={() => patch({ media_mode: m.id })}
@@ -387,7 +393,7 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
         </div>
 
         <div>
-          <span className={labelCls}>Language</span>
+          <span className={labelCls}><UiText id="web-dashboard.a4fe65264ef7dbb3" source="Language" /></span>
           <div className="flex flex-wrap gap-2">
             {LANGS.map((l) => {
               const on = draft.spoken_lang.includes(l);
@@ -400,17 +406,10 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
             })}
           </div>
           {langCapped && (
-            <p className="mt-2 font-body font-bold text-[13px] text-coral">
-              ⚠ That is as many languages as fit ({LANG_CSV_MAX} characters in total).
-              Remove one before adding another, or pick “Others”.
-            </p>
+            <p className="mt-2 font-body font-bold text-[13px] text-coral"><UiText id="web-dashboard.d84fb723c33c6e83" source="⚠ That is as many languages as fit (" />{LANG_CSV_MAX}{" "}<UiText id="web-dashboard.503888fc1a0a4b9a" source="characters in total). Remove one before adding another, or pick “Others”." />{" "}</p>
           )}
         </div>
-        <p className="font-body text-[13px] text-inkSoft">
-          Your title and blurb are what get painted onto your poster. Everything
-          else you enter — price, timing, rules — appears next to it, not on it.
-          Ava reviews all three fields here, before you go on.
-        </p>
+        <p className="font-body text-[13px] text-inkSoft"><UiText id="web-dashboard.54d907498ef3e33f" source="Your title and blurb are what get painted onto your poster. Everything else you enter — price, timing, rules — appears next to it, not on it. Ava reviews all three fields here, before you go on." />{" "}</p>
       </div>
     </div>
   );
@@ -437,6 +436,8 @@ function discountedPrice(price: number, pctRaw: string): number | null {
 }
 
 export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: Patch; err: FieldErr }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const price = Number(draft.price) || 0;
   const split = feeSplit(price);
   /* [PROMO-SHELVE-1] With promotions shelved there is no discount to preview,
@@ -454,41 +455,35 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
     <div className="flex flex-col gap-5">
       {draft.free_entry ? (
         <Card fillClassName="bg-paper2">
-          <p className="font-body font-bold text-[13px] text-inkSoft">
-            This is a free show — attendees pay nothing.
-          </p>
+          <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.92f477d5ec87fa08" source="This is a free show — attendees pay nothing." />{" "}</p>
         </Card>
       ) : (
         <>
           <div>
-            <Field label="Price per hour (Tokens = ₹)" inputMode="numeric" placeholder={`min ${PRICING.minPriceTokensPerHour}`} value={draft.price}
+            <Field label={uiT("web-dashboard.09f88bb0a789890a","Price per hour (Tokens = ₹)")} inputMode="numeric" placeholder={`min ${PRICING.minPriceTokensPerHour}`} value={draft.price}
               onChange={(e) => patch({ price: e.target.value.replace(/[^0-9]/g, '') })} />
-            <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">
-              Everything is priced per hour. A session shorter than an hour still bills the full hour.
-            </p>
+            <p className="mt-1 font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.dc2eb4fd57996c69" source="Everything is priced per hour. A session shorter than an hour still bills the full hour." />{" "}</p>
             <ErrLine err={err} field="price" />
           </div>
 
           {price > 0 && (
             <Card fillClassName="bg-paper2">
-              <p className="font-body font-bold text-[13px] text-ink">
-                At ₹{price}/hr, avaTOK takes ₹{split.fee} and you keep ₹{split.creator}.
+              <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.e786406a7cf2b9c2" source="At ₹" />{price}<UiText id="web-dashboard.c1409f8795a2bad6" source="/hr, avaTOK takes ₹" />{split.fee}{" "}<UiText id="web-dashboard.65fb17d22dac7abf" source="and you keep ₹" />{split.creator}.
               </p>
               <p className="mt-1 font-body text-[12px] text-inkSoft">
-                ₹{PRICING.flatTokensPerHour} flat + {PRICING.commissionPct}% of what’s left. A 2-hour booking bills the flat fee twice.
-              </p>
+                ₹{PRICING.flatTokensPerHour}{" "}<UiText id="web-dashboard.2029b52b55f9a44b" source="flat +" />{" "}{PRICING.commissionPct}<UiText id="web-dashboard.b48fc60c158e496a" source="% of what’s left. A 2-hour booking bills the flat fee twice." />{" "}</p>
             </Card>
           )}
 
           <div>
-            <span className={labelCls}>Worked examples</span>
+            <span className={labelCls}><UiText id="web-dashboard.936698aa19410efc" source="Worked examples" /></span>
             <div className="overflow-x-auto rounded-zine border-zine border-ink shadow-zine-xs">
               <table className="w-full font-body text-[13px]">
                 <thead>
                   <tr className="border-b-2 border-ink bg-paper2 text-left">
-                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator sets</th>
-                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">avaTOK takes</th>
-                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator keeps</th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.5f0046bac1969116" source="Creator sets" /></th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="avaTOK takes" /></th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.81daa0f1638ccfdb" source="Creator keeps" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -496,7 +491,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                     const s = feeSplit(p);
                     return (
                       <tr key={p} className="border-b border-ink/15 last:border-b-0">
-                        <td className="p-2 font-bold text-ink">₹{p}/hr</td>
+                        <td className="p-2 font-bold text-ink">₹{p}<UiText id="web-dashboard.0a6ca99bd1a255ba" source="/hr" /></td>
                         <td className="p-2 text-inkSoft">₹{s.fee}</td>
                         <td className="p-2 text-inkSoft">₹{s.creator}</td>
                       </tr>
@@ -516,12 +511,12 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
           {LISTING_PROMOTIONS_ENABLED && (
             <>
               <div>
-                <Field label="Early-bird discount % (optional)" inputMode="numeric" placeholder="e.g. 20" value={draft.early_bird_pct}
+                <Field label={uiT("web-dashboard.1c43c0dcee9b5cbf","Early-bird discount % (optional)")} inputMode="numeric" placeholder={uiT("web-dashboard.e4181cc1b917035f","e.g. 20")} value={draft.early_bird_pct}
                   onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
                 <ErrLine err={err} field="early_bird_pct" />
               </div>
               <div>
-                <Field label="Promo code (optional)" placeholder="e.g. FRIENDS20" value={draft.promo_code}
+                <Field label={uiT("web-dashboard.c620196dff40c09a","Promo code (optional)")} placeholder={uiT("web-dashboard.b21380d68b69f59d","e.g. FRIENDS20")} value={draft.promo_code}
                   onChange={(e) => patch({ promo_code: e.target.value.toUpperCase().slice(0, 24) })} />
                 <ErrLine err={err} field="promo_code" />
               </div>
@@ -530,7 +525,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                   number — a discount the creator never chose, invented client-side
                   in saveEarlyBirdAndPromo(). */}
               <div>
-                <Field label="Promo code discount % (needed if you set a code)" inputMode="numeric" placeholder="e.g. 15" value={draft.promo_pct}
+                <Field label={uiT("web-dashboard.5da463d127032f63","Promo code discount % (needed if you set a code)")} inputMode="numeric" placeholder={uiT("web-dashboard.4e4173b891c5910c","e.g. 15")} value={draft.promo_pct}
                   onChange={(e) => patch({ promo_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
                 <ErrLine err={err} field="promo_pct" />
               </div>
@@ -546,15 +541,15 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
               split with a discount subtracted afterwards. */}
           {price > 0 && (earlyPrice !== null || promoPrice !== null) && (
             <div>
-              <span className={labelCls}>What a customer pays</span>
+              <span className={labelCls}><UiText id="web-dashboard.ec072a8aca16855d" source="What a customer pays" /></span>
               <div className="overflow-x-auto rounded-zine border-zine border-ink shadow-zine-xs">
                 <table className="w-full font-body text-[13px]">
                   <thead>
                     <tr className="border-b-2 border-ink bg-paper2 text-left">
-                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Buying with</th>
-                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Customer pays</th>
-                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">avaTOK takes</th>
-                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">You keep</th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.8018e16c02982db7" source="Buying with" /></th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.742bc6ee58b256ca" source="Customer pays" /></th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="avaTOK takes" /></th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.0e5467ac43335fc4" source="You keep" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -563,7 +558,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                       return (
                         <tr key={row.label} className="border-b border-ink/15 last:border-b-0">
                           <td className="p-2 font-bold text-ink">{row.label}</td>
-                          <td className="p-2 font-bold text-ink">₹{row.pay}/hr</td>
+                          <td className="p-2 font-bold text-ink">₹{row.pay}<UiText id="web-dashboard.0a6ca99bd1a255ba" source="/hr" /></td>
                           <td className="p-2 text-inkSoft">₹{sp.fee}</td>
                           <td className="p-2 text-inkSoft">₹{sp.creator}</td>
                         </tr>
@@ -572,10 +567,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                   </tbody>
                 </table>
               </div>
-              <p className="mt-1 font-body text-[12px] text-inkSoft">
-                avaTOK’s ₹{PRICING.flatTokensPerHour} flat + {PRICING.commissionPct}% is taken from what the
-                customer actually pays, so a discount comes out of both sides — not only yours.
-              </p>
+              <p className="mt-1 font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.89c2a84ef6b263b0" source="avaTOK’s ₹" />{PRICING.flatTokensPerHour}{" "}<UiText id="web-dashboard.2029b52b55f9a44b" source="flat +" />{" "}{PRICING.commissionPct}<UiText id="web-dashboard.f4a9ae34a26c3254" source="% is taken from what the customer actually pays, so a discount comes out of both sides — not only yours." />{" "}</p>
             </div>
           )}
         </>
@@ -599,6 +591,10 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
 export function Step4Time({ draft, patch, err }: {
   draft: ListingDraft; patch: Patch; err: FieldErr;
 }) {
+ const {source:uiSource}=useUiTranslation("web-dashboard");
+
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   // [LIVE-SCHEDULE-FIX-1 2026-09-05] Rescue an EXISTING live_event that was
   // saved on one of the three modes we no longer offer (see
   // LIVE_EVENT_SCHEDULE_OPTS). Hiding the buttons is not enough on its own: the
@@ -628,23 +624,23 @@ export function Step4Time({ draft, patch, err }: {
     <div className="flex flex-col gap-5">
       {draft.kind === 'live_event' && (
         <Card fillClassName="bg-paper2">
-          <p className="font-body font-bold text-[13px] text-ink">For a live event, you do not need to reserve the event time here first.</p>
-          <p className="mt-1 font-body text-[12px] text-inkSoft">Set working hours only when you offer consultations. We check your connected Google Calendar for existing busy events; after this listing is published, the event itself becomes a protected commitment.</p>
+          <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.849eda16ad4e5dfe" source="For a live event, you do not need to reserve the event time here first." /></p>
+          <p className="mt-1 font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.ab2b7598af2f7822" source="Set working hours only when you offer consultations. We check your connected Google Calendar for existing busy events; after this listing is published, the event itself becomes a protected commitment." /></p>
         </Card>
       )}
       <label className="block">
-        <span className={labelCls}>Timezone</span>
+        <span className={labelCls}><UiText id="web-dashboard.4ceca1d52cede44d" source="Timezone" /></span>
         <select className={inputCls} value={tzOther ? TZ_OTHER : draft.timezone}
           onChange={(e) => {
             if (e.target.value === TZ_OTHER) { setTzOther(true); return; }
             setTzOther(false);
             patch({ timezone: e.target.value });
           }}>
-          {TZ_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          <option value={TZ_OTHER}>Other…</option>
+          {TZ_OPTIONS.map((o) => <option key={o.value} value={o.value}>{uiSource(o.label)}</option>)}
+          <option value={TZ_OTHER}><UiText id="web-dashboard.1e37529209c1d3b0" source="Other…" /></option>
         </select>
         {tzOther && (
-          <input type="text" className={`${inputCls} mt-2`} placeholder="e.g. Asia/Tokyo"
+          <input type="text" className={`${inputCls} mt-2`} placeholder={uiT("web-dashboard.defdff3b0e3ff0e9","e.g. Asia/Tokyo")}
             value={draft.timezone} onChange={(e) => patch({ timezone: e.target.value })} />
         )}
         <ErrLine err={err} field="timezone" />
@@ -652,12 +648,12 @@ export function Step4Time({ draft, patch, err }: {
 
       {draft.kind === 'consult' && (
         <div>
-          <span className={labelCls}>Consult availability</span>
+          <span className={labelCls}><UiText id="web-dashboard.61d81df568c031bc" source="Consult availability" /></span>
           <div className="flex flex-col gap-2">
             {availabilityModes.map((mode) => (
               <button key={mode.key} type="button" onClick={() => patch({ availability_mode: mode.key })}
                 className={['flex items-center justify-between rounded-zine border-zine border-ink p-3 text-left shadow-zine-xs', draft.availability_mode === mode.key ? 'bg-lime' : 'bg-card'].join(' ')}>
-                <span><span className="block font-display font-semibold text-[15px] text-ink">{mode.label}</span><span className="block font-body font-bold text-[12px] text-inkSoft">{mode.help}</span></span>
+                <span><span className="block font-display font-semibold text-[15px] text-ink">{uiSource(mode.label)}</span><span className="block font-body font-bold text-[12px] text-inkSoft">{mode.help}</span></span>
                 {draft.availability_mode === mode.key && <span>✓</span>}
               </button>
             ))}
@@ -668,14 +664,14 @@ export function Step4Time({ draft, patch, err }: {
            *  whether they still came from the calendar. */}
           <p className="mt-2 font-body text-[12px] font-bold text-inkSoft">
             {draft.availability_mode === 'shared'
-              ? 'This listing inherits your calendar’s working hours, notice, gap before and after each session, daily limit and booking horizon. Change them any time in Calendar & availability.'
+              ? uiT("web-dashboard.b28170604e067727","This listing inherits your calendar’s working hours, notice, gap before and after each session, daily limit and booking horizon. Change them any time in Calendar & availability.")
               : draft.availability_mode === 'custom'
-                ? 'These weekly windows replace your usual hours for this listing only. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.'
-                : 'These windows are kept for this listing so no other listing can use that time. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.'}
+                ? uiT("web-dashboard.077315ce112f7520","These weekly windows replace your usual hours for this listing only. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.")
+                : uiT("web-dashboard.222497f6c5802bd5","These windows are kept for this listing so no other listing can use that time. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.")}
           </p>
           {draft.availability_mode === 'custom' && (
             <div className="mt-3 flex flex-col gap-2 rounded-zine border-zine border-dashed border-ink p-3">
-              <p className="font-body font-bold text-[12px] text-inkSoft">Add at least one weekly window. Times use {draft.timezone}.</p>
+              <p className="font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.ea06d75dad8650d9" source="Add at least one weekly window. Times use" />{" "}{draft.timezone}.</p>
               {rules.map((rule, index) => {
                 /* [CAL-AUDIT-2026-09-15 · #2] An all-day window (0..1440) from
                  * the app must be visible and editable here, not shown as an
@@ -685,26 +681,24 @@ export function Step4Time({ draft, patch, err }: {
                 const wholeDay = isAllDayInterval(rule.start_min, rule.end_min);
                 return (
                   <div key={`${index}-${rule.weekday}`} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-                    <label className="block"><span className={labelCls}>Day</span><select className={inputCls} value={rule.weekday} onChange={(e) => patchRule(index, { weekday: Number(e.target.value) })}>{RECUR_DAYS.map((day, i) => <option key={day} value={i}>{day}</option>)}</select></label>
+                    <label className="block"><span className={labelCls}><UiText id="web-dashboard.8f2364e11b8be3ff" source="Day" /></span><select className={inputCls} value={rule.weekday} onChange={(e) => patchRule(index, { weekday: Number(e.target.value) })}>{RECUR_DAYS.map((day, i) => <option key={day} value={i}>{day}</option>)}</select></label>
                     {wholeDay ? (
-                      <p className="col-span-2 pb-2 font-body font-bold text-[12px] text-inkSoft">Whole day (00:00–24:00)</p>
+                      <p className="col-span-2 pb-2 font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.9ca22edbcb391db3" source="Whole day (00:00–24:00)" /></p>
                     ) : (
                       <>
-                        <label className="block"><span className={labelCls}>Starts</span><input className={inputCls} type="time" value={minutesToClock(rule.start_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { start_min: h * 60 + m }); }} /></label>
-                        <label className="block"><span className={labelCls}>Ends</span><input className={inputCls} type="time" value={minutesToClock(rule.end_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { end_min: h * 60 + m }); }} /></label>
+                        <label className="block"><span className={labelCls}><UiText id="web-dashboard.96dbedeca7dfb7fa" source="Starts" /></span><input className={inputCls} type="time" value={minutesToClock(rule.start_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { start_min: h * 60 + m }); }} /></label>
+                        <label className="block"><span className={labelCls}><UiText id="web-dashboard.e98982c9f2ba3332" source="Ends" /></span><input className={inputCls} type="time" value={minutesToClock(rule.end_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { end_min: h * 60 + m }); }} /></label>
                       </>
                     )}
                     <div className="flex items-end justify-between gap-2 pb-2">
                       <label className="flex items-center gap-1 font-body font-bold text-[12px] text-ink">
-                        <input type="checkbox" checked={wholeDay} onChange={(e) => patchRule(index, e.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} />
-                        All day
-                      </label>
-                      <button type="button" className="font-body font-bold text-[12px] text-coral" onClick={() => patch({ availability_rules: rules.filter((_, i) => i !== index) })}>Remove</button>
+                        <input type="checkbox" checked={wholeDay} onChange={(e) => patchRule(index, e.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} /><UiText id="web-dashboard.34233e542b7b9a86" source="All day" />{" "}</label>
+                      <button type="button" className="font-body font-bold text-[12px] text-coral" onClick={() => patch({ availability_rules: rules.filter((_, i) => i !== index) })}><UiText id="web-dashboard.c3812fc4acb861d5" source="Remove" /></button>
                     </div>
                   </div>
                 );
               })}
-              <button type="button" className="self-start font-body font-bold text-[13px] text-blueInk underline" onClick={() => patch({ availability_rules: [...rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] })}>+ Add weekly window</button>
+              <button type="button" className="self-start font-body font-bold text-[13px] text-blueInk underline" onClick={() => patch({ availability_rules: [...rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] })}><UiText id="web-dashboard.065ebe5a67b81bfb" source="+ Add weekly window" /></button>
               <ErrLine err={err} field="availability_rules" />
             </div>
           )}
@@ -714,14 +708,12 @@ export function Step4Time({ draft, patch, err }: {
       {draft.schedule_mode === 'fixed_date' && (
         <>
           {(draft.kind !== 'consult' || draft.availability_mode === 'exclusive') && <div>
-            <Field label="Starts" type="datetime-local" value={draft.starts_at} onChange={(e) => patch({ starts_at: e.target.value })} />
+            <Field label={uiT("web-dashboard.96dbedeca7dfb7fa","Starts")} type="datetime-local" value={draft.starts_at} onChange={(e) => patch({ starts_at: e.target.value })} />
             <ErrLine err={err} field="starts_at" />
-            <p className="mt-1 font-body text-[12px] font-bold text-inkSoft">
-              This exact time is checked against your calendar as you type. It is reserved only once the listing is published (and a booking is confirmed) — a saved draft holds nothing.
-            </p>
+            <p className="mt-1 font-body text-[12px] font-bold text-inkSoft"><UiText id="web-dashboard.6663e61a5eb5a95f" source="This exact time is checked against your calendar as you type. It is reserved only once the listing is published (and a booking is confirmed) — a saved draft holds nothing." />{" "}</p>
           </div>}
           <label className="block">
-            <span className={labelCls}>Length (minutes)</span>
+            <span className={labelCls}><UiText id="web-dashboard.62fa4bc7f024a215" source="Length (minutes)" /></span>
             <input type="number" min={5} max={480} className={inputCls} value={draft.duration_min}
               onChange={(e) => patch({ duration_min: Number(e.target.value) })} />
             <ErrLine err={err} field="duration_min" />
@@ -732,7 +724,7 @@ export function Step4Time({ draft, patch, err }: {
       {draft.schedule_mode === 'recurring' && (
         <>
           <div>
-            <span className={labelCls}>Days</span>
+            <span className={labelCls}><UiText id="web-dashboard.e08c0aa8f558f39f" source="Days" /></span>
             <div className="flex flex-wrap gap-2">
               {RECUR_DAYS.map((d, i) => {
                 const on = draft.recurrence_days.includes(i);
@@ -748,12 +740,12 @@ export function Step4Time({ draft, patch, err }: {
             <ErrLine err={err} field="recurrence_days" />
           </div>
           <label className="block">
-            <span className={labelCls}>Time</span>
+            <span className={labelCls}><UiText id="web-dashboard.33b93476cf597a33" source="Time" /></span>
             <input type="time" className={inputCls} value={draft.recurrence_time} onChange={(e) => patch({ recurrence_time: e.target.value })} />
             <ErrLine err={err} field="recurrence_time" />
           </label>
           <label className="block">
-            <span className={labelCls}>Length (minutes)</span>
+            <span className={labelCls}><UiText id="web-dashboard.62fa4bc7f024a215" source="Length (minutes)" /></span>
             <input type="number" min={5} max={480} className={inputCls} value={draft.duration_min}
               onChange={(e) => patch({ duration_min: Number(e.target.value) })} />
             <ErrLine err={err} field="duration_min" />
@@ -765,26 +757,26 @@ export function Step4Time({ draft, patch, err }: {
         <Card fillClassName="bg-paper2">
           <p className="font-body font-bold text-[13px] text-inkSoft">
             {draft.schedule_mode === 'on_request'
-              ? 'No fixed time — people will request a slot and you confirm it.'
-              : 'No fixed time — this listing is joinable any time.'}
+              ? uiT("web-dashboard.84b60765aeaac608","No fixed time — people will request a slot and you confirm it.")
+              : uiT("web-dashboard.6e38ab33ad247868","No fixed time — this listing is joinable any time.")}
           </p>
         </Card>
       )}
 
       {(draft.kind === 'consult' || draft.kind === 'ai_agent') && (
         <div>
-          <Field label="Typical reply time (minutes, optional)" inputMode="numeric" value={draft.response_time_min}
+          <Field label={uiT("web-dashboard.3b5d124c4c1e6baf","Typical reply time (minutes, optional)")} inputMode="numeric" value={draft.response_time_min}
             onChange={(e) => patch({ response_time_min: e.target.value.replace(/[^0-9]/g, '') })} />
           <ErrLine err={err} field="response_time_min" />
         </div>
       )}
-      {draft.kind === 'consult' && <p className="font-body font-bold text-[12px] text-inkSoft">Consults always have one seat. Duration is the session length used by the calendar and checkout.</p>}
+      {draft.kind === 'consult' && <p className="font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.18f93b467f136abd" source="Consults always have one seat. Duration is the session length used by the calendar and checkout." /></p>}
       {draft.kind !== 'consult' && (
         <label className="block">
-          <span className={labelCls}>Seats (capacity)</span>
-          <input type="number" min={0} max={5000} className={inputCls} value={draft.capacity || ''} placeholder="e.g. 60 — blank = unlimited"
+          <span className={labelCls}><UiText id="web-dashboard.2cbf296c88b772e8" source="Seats (capacity)" /></span>
+          <input type="number" min={0} max={5000} className={inputCls} value={draft.capacity || ''} placeholder={uiT("web-dashboard.060f479fc3ced338","e.g. 60 — blank = unlimited")}
             onChange={(e) => patch({ capacity: Number(e.target.value) || 0 })} />
-          <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">Total seats for this show. The page shows “32 of 60 free”; leave blank for no cap.</p>
+          <p className="mt-1 font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.6028ace6cfbc6831" source="Total seats for this show. The page shows “32 of 60 free”; leave blank for no cap." /></p>
           <ErrLine err={err} field="capacity" />
         </label>
       )}
@@ -794,6 +786,8 @@ export function Step4Time({ draft, patch, err }: {
 
 // ── Step 5 — How it works ──────────────────────────────────────────────────
 export function Step5HowItWorks({ draft, patch }: { draft: ListingDraft; patch: Patch }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const flavourKey = `${draft.category}:${draft.kind}`;
   function applyDefaults() {
     const d = defaultsFor(draft.category, draft.kind);
@@ -804,8 +798,8 @@ export function Step5HowItWorks({ draft, patch }: { draft: ListingDraft; patch: 
       {/* [LIST-OPTIONAL-CONTENT-1] Optional — min={0}. The copy must not claim
           a minimum the validator no longer enforces; a form that says
           "minimum 2" while Next works at 0 is worse than either rule alone. */}
-      <SectionHeader title="How it works" hint="Optional — up to 5 short steps explaining what happens once someone books. Skip it if you'd rather."
-        action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline">Use suggested</button>} />
+      <SectionHeader title={uiT("web-dashboard.9c870aa6e5e93270","How it works")} hint="Optional — up to 5 short steps explaining what happens once someone books. Skip it if you'd rather."
+        action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline"><UiText id="web-dashboard.55f8e1ad22126405" source="Use suggested" /></button>} />
       <TwoFieldListEditor
         items={draft.content_how_it_works as unknown as Record<string, string>[]}
         onChange={(next) => patch({ content_how_it_works: next as unknown as ListingDraft['content_how_it_works'] })}
@@ -818,6 +812,8 @@ export function Step5HowItWorks({ draft, patch }: { draft: ListingDraft; patch: 
 
 // ── Step 6 — House rules & details ─────────────────────────────────────────
 export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: Patch }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const flavourKey = `${draft.category}:${draft.kind}`;
   function applyDefaults() {
     const d = defaultsFor(draft.category, draft.kind);
@@ -839,10 +835,10 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
   return (
     <div className="flex flex-col gap-7">
       {/* [LIST-OPTIONAL-CONTENT-1] Optional — min={0} on the rules editor. */}
-      <SectionHeader title="House rules" hint="Optional — up to 8 rules, plus a short intro line. Skip it if you'd rather."
-        action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline">Use suggested for this category</button>} />
+      <SectionHeader title={uiT("web-dashboard.152b8e467b197aee","House rules")} hint="Optional — up to 8 rules, plus a short intro line. Skip it if you'd rather."
+        action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline"><UiText id="web-dashboard.5624bf8e06b9621e" source="Use suggested for this category" /></button>} />
       <label className="block">
-        <span className={labelCls}>Intro line</span>
+        <span className={labelCls}><UiText id="web-dashboard.81261b7be6218ad1" source="Intro line" /></span>
         <textarea className={textareaCls} rows={2} maxLength={280} value={draft.content_house_rules_intro}
           onChange={(e) => patch({ content_house_rules_intro: e.target.value })} />
         <div className="mt-1 flex">{charCount(draft.content_house_rules_intro, 280)}</div>
@@ -854,25 +850,25 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
         min={0} max={8} addLabel="Add a rule" itemNoun="Rule" />
 
       <div>
-        <span className={labelCls}>What you get (3–5)</span>
+        <span className={labelCls}><UiText id="web-dashboard.cc20f598099c1241" source="What you get (3–5)" /></span>
         <StringListEditor items={draft.content_what_you_get} onChange={(next) => patch({ content_what_you_get: next })}
-          itemMax={80} min={3} max={5} addLabel="Add an item" placeholder="e.g. Live Q&A" />
+          itemMax={80} min={3} max={5} addLabel="Add an item" placeholder={uiT("web-dashboard.548e852c626d91c2","e.g. Live Q&A")} />
       </div>
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <div>
-          <span className={labelCls}>Who this is for (up to 3)</span>
+          <span className={labelCls}><UiText id="web-dashboard.dab2f2c89d4850eb" source="Who this is for (up to 3)" /></span>
           <StringListEditor items={draft.content_who_for} onChange={(next) => patch({ content_who_for: next })}
             itemMax={80} min={0} max={3} addLabel="Add" />
         </div>
         <div>
-          <span className={labelCls}>Not for (up to 3)</span>
+          <span className={labelCls}><UiText id="web-dashboard.fc7c06d8a2cccef2" source="Not for (up to 3)" /></span>
           <StringListEditor items={draft.content_not_for} onChange={(next) => patch({ content_not_for: next })}
             itemMax={80} min={0} max={3} addLabel="Add" />
         </div>
       </div>
 
       <div>
-        <span className={labelCls}>FAQ (3–6)</span>
+        <span className={labelCls}><UiText id="web-dashboard.88b1cec53ad0dbd9" source="FAQ (3–6)" /></span>
         <TwoFieldListEditor items={draft.content_faq as unknown as Record<string, string>[]}
           onChange={(next) => patch({ content_faq: next as unknown as ListingDraft['content_faq'] })}
           aKey="q" bKey="a" aLabel="Question" bLabel="Answer" aMax={120} bMax={300}
@@ -880,7 +876,7 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
       </div>
 
       <div>
-        <span className={labelCls}>Join requirements</span>
+        <span className={labelCls}><UiText id="web-dashboard.936fd8f7377783a6" source="Join requirements" /></span>
         <div className="flex flex-wrap gap-4">
           {(['mic', 'cam', 'listen_only', 'recording'] as const).map((k) => (
             <label key={k} className="flex items-center gap-2">
@@ -893,27 +889,27 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
         </div>
       </div>
       <label className="block max-w-[220px]">
-        <span className={labelCls}>Join lead time (minutes)</span>
+        <span className={labelCls}><UiText id="web-dashboard.5f4faae526f18397" source="Join lead time (minutes)" /></span>
         <input type="number" min={0} max={60} className={inputCls} value={draft.content_join_lead_minutes}
           onChange={(e) => patch({ content_join_lead_minutes: Number(e.target.value) })} />
       </label>
 
       {draft.kind === 'consult' && (
         <>
-          <Field label="Credential (e.g. Chartered Accountant)" value={draft.credential} maxLength={40}
+          <Field label={uiT("web-dashboard.e5c16774f7fac7ec","Credential (e.g. Chartered Accountant)")} value={draft.credential} maxLength={40}
             onChange={(e) => patch({ credential: e.target.value })} />
           <div>
-            <span className={labelCls}>Sample Q&amp;A (up to 3)</span>
+            <span className={labelCls}><UiText id="web-dashboard.9bfb6ba27f93951e" source="Sample Q&A (up to 3)" /></span>
             <TwoFieldListEditor items={draft.content_sample_qa as unknown as Record<string, string>[]}
               onChange={(next) => patch({ content_sample_qa: next as unknown as ListingDraft['content_sample_qa'] })}
               aKey="q" bKey="a" aLabel="Question" bLabel="Answer" aMax={120} bMax={300}
               min={0} max={3} addLabel="Add sample Q&A" itemNoun="Q" />
           </div>
           <label className="block">
-            <span className={labelCls}>Preparation instructions</span>
+            <span className={labelCls}><UiText id="web-dashboard.032b1c727a3523a1" source="Preparation instructions" /></span>
             <textarea className={textareaCls} rows={3} maxLength={600} value={draft.commercial_preparation_instructions}
               onChange={(e) => patch({ commercial_preparation_instructions: e.target.value })}
-              placeholder="What should the buyer prepare or bring?" />
+              placeholder={uiT("web-dashboard.ea60a1be95c79648","What should the buyer prepare or bring?")} />
             <div className="mt-1 flex">{charCount(draft.commercial_preparation_instructions, 600)}</div>
           </label>
         </>
@@ -922,15 +918,15 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
       {draft.kind === 'ai_agent' && (
         <>
           <div>
-            <span className={labelCls}>Can do (up to 3)</span>
+            <span className={labelCls}><UiText id="web-dashboard.0da6cc0b05a47c7b" source="Can do (up to 3)" /></span>
             <StringListEditor items={draft.content_can_do} onChange={(next) => patch({ content_can_do: next })} itemMax={80} min={0} max={3} addLabel="Add" />
           </div>
           <div>
-            <span className={labelCls}>Can&rsquo;t do (up to 3)</span>
+            <span className={labelCls}><UiText id="web-dashboard.4f6565a30588f101" source="Can’t do (up to 3)" /></span>
             <StringListEditor items={draft.content_cant_do} onChange={(next) => patch({ content_cant_do: next })} itemMax={80} min={0} max={3} addLabel="Add" />
           </div>
           <div>
-            <span className={labelCls}>Sample chat (up to 6 lines)</span>
+            <span className={labelCls}><UiText id="web-dashboard.1c43a4cccc663bf0" source="Sample chat (up to 6 lines)" /></span>
             <ChatLineEditor items={draft.content_sample_chat} onChange={(next) => patch({ content_sample_chat: next })} max={6} />
           </div>
         </>
@@ -946,19 +942,17 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
   onRemoveCover: (url: string) => void;
   uploading: boolean;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <span className={labelCls}>Photos (optional · up to 5)</span>
+        <span className={labelCls}><UiText id="web-dashboard.801bd471635147e1" source="Photos (optional · up to 5)" /></span>
         {/* [LISTING-POSTER-OPTIONAL-1] The gallery is optional. The poster is
             generated after submit from the listing copy, even when this is left
             empty. */}
-        <p className="mt-1 font-body text-[13px] text-inkSoft">
-          Add up to five listing photos if you have them. They appear below the
-          poster, which is generated after submit from your title, category,
-          tags and description.
-        </p>
+        <p className="mt-1 font-body text-[13px] text-inkSoft"><UiText id="web-dashboard.e874ffc6f1e6c8b5" source="Add up to five listing photos if you have them. They appear below the poster, which is generated after submit from your title, category, tags and description." />{" "}</p>
         {/* [LIST-RESPONSIVE-1] Two up on a phone: three square thumbs at 360px
             are ~100px each, too small to judge a photo by or to hit the ✕ on. */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -972,7 +966,7 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
           {draft.cover_media.length < 5 && (
             <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
               className="flex aspect-square items-center justify-center rounded-zine border-zine border-dashed border-ink bg-card font-body font-bold text-[13px] text-inkSoft">
-              {uploading ? 'Uploading…' : '+ Add'}
+              {uploading ? uiT("web-dashboard.5ce44dd77dae789f","Uploading…") : uiT("web-dashboard.c007258c23b0c011","+ Add")}
             </button>
           )}
         </div>
@@ -980,45 +974,45 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
         <ErrLine err={err} field="cover_media" />
       </div>
 
-      <Field label="Video URL (optional)" placeholder="https://youtube.com/..." value={draft.video_url}
+      <Field label={uiT("web-dashboard.38aa236cedd4c262","Video URL (optional)")} placeholder="https://youtube.com/..." value={draft.video_url}
         onChange={(e) => patch({ video_url: e.target.value })} />
-      <Field label="Location (optional)" placeholder="e.g. Mumbai" value={draft.location}
+      <Field label={uiT("web-dashboard.9dc1bb3158511a55","Location (optional)")} placeholder={uiT("web-dashboard.f9ab688e81fb11aa","e.g. Mumbai")} value={draft.location}
         onChange={(e) => patch({ location: e.target.value })} />
-      <Toggle checked={draft.adults_only} onChange={(v) => patch({ adults_only: v })} label="This is for adults only (18+)" />
+      <Toggle checked={draft.adults_only} onChange={(v) => patch({ adults_only: v })} label={uiT("web-dashboard.470de1b368cc3890","This is for adults only (18+)")} />
 
-      <SectionHeader title="Booking policy" />
+      <SectionHeader title={uiT("web-dashboard.58e3fced1c1a2554","Booking policy")} />
       {draft.kind === 'live_event' && (
         <label className="block max-w-xs">
-          <span className={labelCls}>Refund window</span>
+          <span className={labelCls}><UiText id="web-dashboard.d9b00fc9990e1a83" source="Refund window" /></span>
           <select className={inputCls} value={draft.commercial_refund_window_hours}
             onChange={(e) => patch({ commercial_refund_window_hours: Number(e.target.value) })}>
-            {REFUND_WINDOWS.map((h) => <option key={h} value={h}>{h === 0 ? 'No refunds' : `${h} hours before start`}</option>)}
+            {REFUND_WINDOWS.map((h) => <option key={h} value={h}>{h === 0 ? uiT("web-dashboard.246b2a2b8005ffe0","No refunds") : uiT("web-dashboard.164fd3a5299378cf","{value0} hours before start",{value0:String(h)})}</option>)}
           </select>
         </label>
       )}
       {draft.kind === 'consult' && (
         <div className="flex flex-col gap-4">
           <label className="block max-w-xs">
-            <span className={labelCls}>Cancellation window</span>
+            <span className={labelCls}><UiText id="web-dashboard.fa164dd8d2b6c93a" source="Cancellation window" /></span>
             <select className={inputCls} value={draft.commercial_cancellation_window_hours}
               onChange={(e) => patch({ commercial_cancellation_window_hours: Number(e.target.value) })}>
-              {REFUND_WINDOWS.map((h) => <option key={h} value={h}>{h === 0 ? 'No cancellations' : `${h} hours before start`}</option>)}
+              {REFUND_WINDOWS.map((h) => <option key={h} value={h}>{h === 0 ? uiT("web-dashboard.81534e3f8957950f","No cancellations") : uiT("web-dashboard.164fd3a5299378cf","{value0} hours before start",{value0:String(h)})}</option>)}
             </select>
           </label>
           <label className="block max-w-xs">
-            <span className={labelCls}>Minimum booking notice</span>
+            <span className={labelCls}><UiText id="web-dashboard.210cfd3e41f36425" source="Minimum booking notice" /></span>
             <select className={inputCls} value={draft.commercial_booking_notice_hours}
               onChange={(e) => patch({ commercial_booking_notice_hours: Number(e.target.value) })}>
-              {BOOKING_NOTICE_HOURS.map((h) => <option key={h} value={h}>{h} hour{h === 1 ? '' : 's'}</option>)}
+              {BOOKING_NOTICE_HOURS.map((h) => <option key={h} value={h}>{h}{" "}<UiText id="web-dashboard.9ac0add475dd38e6" source="hour" />{h === 1 ? '' : uiT("web-dashboard.043a718774c572bd","s")}</option>)}
             </select>
           </label>
           <label className="flex items-center gap-3">
             <input type="checkbox" checked={draft.commercial_reschedule_allowed}
               onChange={(e) => patch({ commercial_reschedule_allowed: e.target.checked })}
               className="h-5 w-5 rounded border-zine border-ink" />
-            <span className="font-body font-bold text-[14px] text-ink">Allow rescheduling</span>
+            <span className="font-body font-bold text-[14px] text-ink"><UiText id="web-dashboard.375a56532a1b127a" source="Allow rescheduling" /></span>
           </label>
-          <p className="font-body font-bold text-[12px] text-inkSoft">No-show policy: the session is charged (fixed).</p>
+          <p className="font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.d6e4a5a35a8145c6" source="No-show policy: the session is charged (fixed)." /></p>
         </div>
       )}
     </div>
@@ -1126,6 +1120,8 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
   publicHref: string | null; error: string | null;
   creator?: CreatorInfo;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   // A rejected listing is an editable draft that must expose the same submit
   // action after the creator fixes the requested changes.
   const isDraftState = !published && !pendingReview && !approvedAwaitingPublish;
@@ -1153,71 +1149,71 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
       <div className="flex flex-col gap-4">
         <SectionHeader
-          title={isDraftState ? 'Ready to send for review?' : 'Status'}
-          hint={isDraftState ? 'Everything you entered, in one place. Go back to any step to change it.' : undefined}
+          title={isDraftState ? uiT("web-dashboard.4d738c5a02e2ea77","Ready to send for review?") : uiT("web-dashboard.920e413c7d411b61","Status")}
+          hint={isDraftState ? uiT("web-dashboard.05cdcf1a9fcb2c49","Everything you entered, in one place. Go back to any step to change it.") : undefined}
         />
 
         {/* ── the plain summary ─────────────────────────────────────────── */}
         <Card fillClassName="bg-card">
           <div className="flex flex-col">
-            <SummaryRow label="Type">
-              {KIND_LABEL[draft.kind]}{draft.free_entry ? ' · Free show' : ''}
+            <SummaryRow label={uiT("web-dashboard.baaddf70fb5d432b","Type")}>
+              {KIND_LABEL[draft.kind]}{draft.free_entry ? uiT("web-dashboard.c8676656c2330d5f"," · Free show") : ''}
             </SummaryRow>
-            <SummaryText label="Title" value={draft.title} />
-            <SummaryText label="Blurb" value={draft.blurb} />
-            <SummaryText label="Description" value={draft.description} />
-            <SummaryText label="Category" value={categoryLabel(draft.category, categories)} />
-            <SummaryText label="Languages" value={draft.spoken_lang.join(', ')} />
-            <SummaryRow label="Price">
-              {draft.free_entry ? 'Free' : price > 0 ? `₹${price} per hour` : 'Not set'}
+            <SummaryText label={uiT("web-dashboard.7e8cd2056da73a7f","Title")} value={draft.title} />
+            <SummaryText label={uiT("web-dashboard.9a7196d27d70507d","Blurb")} value={draft.blurb} />
+            <SummaryText label={uiT("web-dashboard.526e0087cc3f254d","Description")} value={draft.description} />
+            <SummaryText label={uiT("web-dashboard.292c06f0045a45d0","Category")} value={categoryLabel(draft.category, categories)} />
+            <SummaryText label={uiT("web-dashboard.318655cea4bd2096","Languages")} value={draft.spoken_lang.join(', ')} />
+            <SummaryRow label={uiT("web-dashboard.93c91c851e7acc17","Price")}>
+              {draft.free_entry ? uiT("web-dashboard.f411a1fb62758b4c","Free") : price > 0 ? uiT("web-dashboard.7d04d3b5a524ccbf","₹{value0} per hour",{value0:String(price)}) : uiT("web-dashboard.4895f73177ab5d67","Not set")}
             </SummaryRow>
             {/* [PROMO-SHELVE-1] No "Early bird" / "Promo code" rows while
                 promotions are shelved — a summary must not report something the
                 creator was never offered and the server will not store. */}
             {LISTING_PROMOTIONS_ENABLED && !draft.free_entry && draft.early_bird_pct && (
-              <SummaryRow label="Early bird">{draft.early_bird_pct}% off</SummaryRow>
+              <SummaryRow label={uiT("web-dashboard.589ae376db546fb4","Early bird")}>{draft.early_bird_pct}<UiText id="web-dashboard.5e0aa53f41a26fe8" source="% off" /></SummaryRow>
             )}
             {LISTING_PROMOTIONS_ENABLED && !draft.free_entry && draft.promo_code.trim() && (
-              <SummaryRow label="Promo code">
-                {draft.promo_code.trim()}{draft.promo_pct ? ` · ${draft.promo_pct}% off` : ''}
+              <SummaryRow label={uiT("web-dashboard.ec0c21885e3f3e67","Promo code")}>
+                {draft.promo_code.trim()}{draft.promo_pct ? uiT("web-dashboard.b3a01ca9239df0a8"," · {value0}% off",{value0:String(draft.promo_pct)}) : ''}
               </SummaryRow>
             )}
-            <SummaryRow label="Schedule">{schedule}</SummaryRow>
-            <SummaryRow label="Capacity">
-              {draft.kind === 'consult' ? 'One seat (1:1)' : draft.capacity > 0 ? `${draft.capacity} seats` : 'Unlimited'}
+            <SummaryRow label={uiT("web-dashboard.f4830a1dae298044","Schedule")}>{schedule}</SummaryRow>
+            <SummaryRow label={uiT("web-dashboard.ae65d096550ff4eb","Capacity")}>
+              {draft.kind === 'consult' ? uiT("web-dashboard.7519d70f2e88fc0d","One seat (1:1)") : draft.capacity > 0 ? uiT("web-dashboard.536b1e01068b522c","{value0} seats",{value0:String(draft.capacity)}) : uiT("web-dashboard.11dde17d6c3e2098","Unlimited")}
             </SummaryRow>
-            <SummaryText label="Typical reply" value={draft.response_time_min ? `${draft.response_time_min} min` : ''} />
-            <SummaryList label="How it works" items={draft.content_how_it_works.map((h) => `${h.label} — ${h.body}`)} />
-            <SummaryText label="House rules intro" value={draft.content_house_rules_intro} />
-            <SummaryList label="House rules" items={draft.content_house_rules.map((r) => `${r.heading} — ${r.body}`)} />
-            <SummaryList label="What you get" items={draft.content_what_you_get} />
-            <SummaryList label="Who it's for" items={draft.content_who_for} />
-            <SummaryList label="Not for" items={draft.content_not_for} />
-            <SummaryList label="FAQ" items={draft.content_faq.map((q) => `${q.q} — ${q.a}`)} />
-            <SummaryList label="Sample Q&A" items={draft.content_sample_qa.map((q) => `${q.q} — ${q.a}`)} />
-            <SummaryList label="Joining" items={joinBits} />
-            <SummaryRow label="Join lead time">{draft.content_join_lead_minutes} min before start</SummaryRow>
-            <SummaryText label="Credential" value={draft.credential} />
-            <SummaryText label="Preparation" value={draft.commercial_preparation_instructions} />
-            <SummaryText label="Location" value={draft.location} />
-            <SummaryRow label="Audience">{draft.adults_only ? 'Adults only (18+)' : 'Open to all ages'}</SummaryRow>
+            <SummaryText label={uiT("web-dashboard.7ef044ac210685bc","Typical reply")} value={draft.response_time_min ? `${draft.response_time_min} min` : ''} />
+            <SummaryList label={uiT("web-dashboard.9c870aa6e5e93270","How it works")} items={draft.content_how_it_works.map((h) => `${h.label} — ${h.body}`)} />
+            <SummaryText label={uiT("web-dashboard.5c61ab02b7465c73","House rules intro")} value={draft.content_house_rules_intro} />
+            <SummaryList label={uiT("web-dashboard.152b8e467b197aee","House rules")} items={draft.content_house_rules.map((r) => `${r.heading} — ${r.body}`)} />
+            <SummaryList label={uiT("web-dashboard.41a1acbef2962368","What you get")} items={draft.content_what_you_get} />
+            <SummaryList label={uiT("web-dashboard.60c3907ec26963d2","Who it's for")} items={draft.content_who_for} />
+            <SummaryList label={uiT("web-dashboard.9eed17bb0c55e0dd","Not for")} items={draft.content_not_for} />
+            <SummaryList label={uiT("web-dashboard.dbc468a14b601d5d","FAQ")} items={draft.content_faq.map((q) => `${q.q} — ${q.a}`)} />
+            <SummaryList label={uiT("web-dashboard.b82ef0712add75fb","Sample Q&A")} items={draft.content_sample_qa.map((q) => `${q.q} — ${q.a}`)} />
+            <SummaryList label={uiT("web-dashboard.f61d43f6f16a1105","Joining")} items={joinBits} />
+            <SummaryRow label={uiT("web-dashboard.d4a35d55856c9346","Join lead time")}>{draft.content_join_lead_minutes}{" "}<UiText id="web-dashboard.4c7b022e050d2162" source="min before start" /></SummaryRow>
+            <SummaryText label={uiT("web-dashboard.b1c42b3ce118093b","Credential")} value={draft.credential} />
+            <SummaryText label={uiT("web-dashboard.cf2befb0f1a62829","Preparation")} value={draft.commercial_preparation_instructions} />
+            <SummaryText label={uiT("web-dashboard.15b61974b2707a7b","Location")} value={draft.location} />
+            <SummaryRow label={uiT("web-dashboard.545c02357695a6ff","Audience")}>{draft.adults_only ? uiT("web-dashboard.c8a817daa87aa663","Adults only (18+)") : uiT("web-dashboard.12386b2adad1c93c","Open to all ages")}</SummaryRow>
             {draft.kind === 'live_event' && (
-              <SummaryRow label="Refunds">
+              <SummaryRow label={uiT("web-dashboard.0942c1799b5a1676","Refunds")}>
                 {draft.commercial_refund_window_hours === 0
-                  ? 'No refunds'
-                  : `Refundable up to ${draft.commercial_refund_window_hours} hours before the start`}
+                  ? uiT("web-dashboard.246b2a2b8005ffe0","No refunds")
+                  : uiT("web-dashboard.13ffdd073727571b","Refundable up to {value0} hours before the start",{value0:String(draft.commercial_refund_window_hours)})}
               </SummaryRow>
             )}
             {draft.kind === 'consult' && (
               <>
-                <SummaryRow label="Cancellation">
+                <SummaryRow label={uiT("web-dashboard.53c8fc0bacc0298d","Cancellation")}>
                   {draft.commercial_cancellation_window_hours === 0
-                    ? 'No cancellations'
-                    : `Free cancellation up to ${draft.commercial_cancellation_window_hours} hours before`}
+                    ? uiT("web-dashboard.81534e3f8957950f","No cancellations")
+                    : uiT("web-dashboard.21a60c1ea58dcf24","Free cancellation up to {value0} hours before",{value0:String(draft.commercial_cancellation_window_hours)})}
                 </SummaryRow>
-                <SummaryRow label="Rescheduling">{draft.commercial_reschedule_allowed ? 'Allowed' : 'Not allowed'}</SummaryRow>
-                <SummaryRow label="Booking notice">{draft.commercial_booking_notice_hours} hours</SummaryRow>
-                <SummaryRow label="No-show">The session is charged</SummaryRow>
+                <SummaryRow label={uiT("web-dashboard.ce92c5f4fc00c52c","Rescheduling")}>{draft.commercial_reschedule_allowed ? uiT("web-dashboard.1bb201d188352e9b","Allowed") : uiT("web-dashboard.f0406a0e7eb17426","Not allowed")}</SummaryRow>
+                <SummaryRow label={uiT("web-dashboard.c0c61eb0570b754b","Booking notice")}>{draft.commercial_booking_notice_hours}{" "}<UiText id="web-dashboard.404314b1f4bd8fa2" source="hours" /></SummaryRow>
+                <SummaryRow label={uiT("web-dashboard.5f7894d4e38ee2be","No-show")}><UiText id="web-dashboard.3f8c99c34942577b" source="The session is charged" /></SummaryRow>
               </>
             )}
           </div>
@@ -1228,7 +1224,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
           <Card fillClassName="bg-paper2">
             {draft.cover_media.length > 0 && (
               <div>
-                <span className={labelCls}>Photos ({draft.cover_media.length})</span>
+                <span className={labelCls}><UiText id="web-dashboard.8897ffa9cdecc43e" source="Photos (" />{draft.cover_media.length})</span>
                 <div className="flex flex-wrap gap-2">
                   {draft.cover_media.map((c) => (
                     <img key={c.url} src={cfImage(c.url, { width: 240 })} alt=""
@@ -1238,11 +1234,11 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
               </div>
             )}
             {vid && (
-              <div className={draft.cover_media.length > 0 ? 'mt-4' : ''}>
-                <span className={labelCls}>Video</span>
+              <div className={draft.cover_media.length > 0 ? uiT("web-dashboard.dc1d1f5a54cfdc4e","mt-4") : ''}>
+                <span className={labelCls}><UiText id="web-dashboard.d534be829e32196b" source="Video" /></span>
                 {ytId ? (
                   <div className="overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs" style={{ aspectRatio: '16 / 9' }}>
-                    <iframe src={`https://www.youtube.com/embed/${ytId}`} title="Listing video"
+                    <iframe src={`https://www.youtube.com/embed/${ytId}`} title={uiT("web-dashboard.f0330d0fa72a85d1","Listing video")}
                       allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
                       allowFullScreen className="h-full w-full border-0" />
                   </div>
@@ -1261,7 +1257,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
         <div className="flex flex-col gap-2">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2">
-              <span className={c.info ? 'text-inkMute' : c.ok ? 'text-lime' : 'text-coral'}>
+              <span className={c.info ? uiT("web-dashboard.2b9c204723a0a79d","text-inkMute") : c.ok ? uiT("web-dashboard.81dbf990801c60f5","text-lime") : uiT("web-dashboard.1f9c74894c20febf","text-coral")}>
                 {c.info ? '·' : c.ok ? '✓' : '○'}
               </span>
               <span className={`font-body font-bold text-[14px] ${c.info ? 'text-inkSoft' : 'text-ink'}`}>{c.label}</span>
@@ -1277,10 +1273,8 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
             find out from a refused booking. */}
         {isDraftState && (
           <Card fillClassName="bg-paper2">
-            <p className="font-body font-bold text-[13px] text-ink">Before your first booking</p>
-            <p className="mt-1 font-body text-[12px] text-inkSoft">
-              Bookings are accepted only while Calendar &amp; availability → Connected calendars shows <b>Ready</b> and names the calendars that block your time. If it shows Syncing or Needs attention, open that screen and use “Sync busy times now” (or Reconnect) before this listing goes live. The time you chose in step 4 is checked against the same rule.
-            </p>
+            <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.4ac7524b77b21e80" source="Before your first booking" /></p>
+            <p className="mt-1 font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.fe1e58ddfbf17942" source="Bookings are accepted only while Calendar & availability → Connected calendars shows" />{" "}<b><UiText id="web-dashboard.5fa7aac5375c5815" source="Ready" /></b>{" "}<UiText id="web-dashboard.61dfa476fe814992" source="and names the calendars that block your time. If it shows Syncing or Needs attention, open that screen and use “Sync busy times now” (or Reconnect) before this listing goes live. The time you chose in step 4 is checked against the same rule." />{" "}</p>
           </Card>
         )}
 
@@ -1294,34 +1288,34 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
             creator's only self-serve action here is submitting a draft. */}
         {published && (
           <Card fillClassName="bg-paper2">
-            <p className="font-body font-bold text-[13px] text-ink">This listing is published.</p>
-            {publicHref && <a href={publicHref} className="mt-2 inline-block font-body font-bold text-[13px] text-blueInk underline">Open the public page</a>}
+            <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.e6c90ab00bab6212" source="This listing is published." /></p>
+            {publicHref && <a href={publicHref} className="mt-2 inline-block font-body font-bold text-[13px] text-blueInk underline"><UiText id="web-dashboard.0c63464549a3c985" source="Open the public page" /></a>}
           </Card>
         )}
         {pendingReview && (
           <Card fillClassName="bg-lilac">
-            <p className="font-body font-bold text-[13px] text-ink">Pending review</p>
-            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">This listing is with the team for review. We’ll notify you as soon as it’s checked.</p>
+            <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.f1c45f3f1314dadd" source="Pending review" /></p>
+            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.7147040a44f62b55" source="This listing is with the team for review. We’ll notify you as soon as it’s checked." /></p>
           </Card>
         )}
         {approvedAwaitingPublish && (
           <Card fillClassName="bg-blue">
-            <p className="font-body font-bold text-[13px] text-ink">Approved</p>
-            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">This listing is approved and will go live shortly.</p>
+            <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.87b42e40c2a290e0" source="Approved" /></p>
+            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.99db6835925b460b" source="This listing is approved and will go live shortly." /></p>
           </Card>
         )}
         {rejected && (
           <Card fillClassName="bg-coral">
-            <p className="font-body font-bold text-[13px] text-paper">Changes requested</p>
-            <p className="mt-1 font-body font-bold text-[13px] text-paper">The team asked for changes before this can go live. Edit the earlier steps and send it for review again.</p>
+            <p className="font-body font-bold text-[13px] text-paper"><UiText id="web-dashboard.10a92a8ad3ee5891" source="Changes requested" /></p>
+            <p className="mt-1 font-body font-bold text-[13px] text-paper"><UiText id="web-dashboard.6872007516b9b157" source="The team asked for changes before this can go live. Edit the earlier steps and send it for review again." /></p>
           </Card>
         )}
         {isDraftState && (
           <>
             {/* [LIST-FORM-2] Renamed per spec §6 step 8 — "Submit for review"
                 didn't say who reviews it or how long that takes. */}
-            <Button variant="lime" label={rejected ? "Submit changes for review" : "Submit for human review"} loading={publishing} onClick={onSubmitForReview} fullWidth />
-            <p className="font-body font-bold text-[12px] text-inkSoft">Usually checked within an hour; calendar or content issues can take up to 48 hours. We’ll email you when it is published or if more changes are needed.</p>
+            <Button variant="lime" label={rejected ? uiT("web-dashboard.c1395d7425ea6903","Submit changes for review") : uiT("web-dashboard.cd84eda463f409bd","Submit for human review")} loading={publishing} onClick={onSubmitForReview} fullWidth />
+            <p className="font-body font-bold text-[12px] text-inkSoft"><UiText id="web-dashboard.7d96b446a1154c74" source="Usually checked within an hour; calendar or content issues can take up to 48 hours. We’ll email you when it is published or if more changes are needed." /></p>
           </>
         )}
       </div>
@@ -1331,7 +1325,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
           exists — a placeholder that looks like a finished product is worse
           than one that admits it is waiting. */}
       <div className="lg:sticky lg:top-4 lg:self-start">
-        <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Your poster</p>
+        <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.ab33d2a64b6e1464" source="Your poster" /></p>
         <PosterPreview poster={draft.poster} draft={draft} creator={creator} />
       </div>
     </div>
@@ -1342,6 +1336,8 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
 function PosterPreview({ poster, draft, creator }: {
   poster: PosterMirror | null; draft: ListingDraft; creator?: CreatorInfo;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const url = poster?.variants?.portrait?.url || poster?.url;
   const status = poster?.status;
 
@@ -1351,7 +1347,7 @@ function PosterPreview({ poster, draft, creator }: {
     return (
       <div className="mx-auto w-full max-w-[320px]">
         <div className="relative overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">
-          <img src={cfImage(url, { width: 640 })} alt={title || 'Listing poster'}
+          <img src={cfImage(url, { width: 640 })} alt={title || uiT("web-dashboard.2dbfaf8d439f5502","Listing poster")}
             className="block w-full" style={{ aspectRatio: '2 / 3', objectFit: 'cover' }} />
           {/* lettering === 'overlay' means the artwork is deliberately textless
               because the model could not be trusted to letter it — so the copy
@@ -1364,7 +1360,7 @@ function PosterPreview({ poster, draft, creator }: {
           )}
         </div>
         {status === 'rejected' && (
-          <p className="mt-2 font-body font-bold text-[12px] text-coral">This poster was rejected — a new one will be generated.</p>
+          <p className="mt-2 font-body font-bold text-[12px] text-coral"><UiText id="web-dashboard.d93dbf2ed635cbe9" source="This poster was rejected — a new one will be generated." /></p>
         )}
       </div>
     );
@@ -1383,7 +1379,7 @@ function PosterPreview({ poster, draft, creator }: {
         <p className="font-body text-[13px] text-inkSoft">{message}</p>
       </div>
       {creator?.name && (
-        <p className="mt-2 text-center font-body text-[12px] text-inkSoft">Listing by {creator.name}</p>
+        <p className="mt-2 text-center font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.21b1fd6960ce06d3" source="Listing by" />{" "}{creator.name}</p>
       )}
     </div>
   );

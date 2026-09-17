@@ -1,0 +1,67 @@
+---
+import TruckBorder from '../TruckBorder.astro';
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-section india-formats" id="addon-formats" aria-labelledby="addon-formats-title">
+<div class="india-help-border" aria-hidden="true"><TruckBorder kind="lotus" count={16} /></div>
+      <div class="india-wrap">
+<p class="india-kicker">
+<span>
+<span data-india-i18n="liveEyebrow">{copy.liveEyebrow}</span>
+</span> <span aria-hidden="true">—</span> <span>
+<span data-india-i18n="oneEyebrow">{copy.oneEyebrow}</span>
+</span>
+</p>
+<h2 id="addon-formats-title">
+<span data-india-i18n="showcaseTitle">{copy.showcaseTitle}</span>
+</h2>
+<p class="india-section-lede">
+<span data-india-i18n="showcaseBody">{copy.showcaseBody}</span>
+</p>
+        <div class="india-format-grid">
+          <article class="india-format-card india-format-card--pink">
+<div class="india-format-card__number">01</div>
+<img class="india-help-sticker india-help-sticker--swag" src="/help/art/desi-swag.png" width="220" height="156" alt="" aria-hidden="true" loading="lazy" />
+<p class="india-kicker">
+<span data-india-i18n="liveEyebrow">{copy.liveEyebrow}</span>
+</p>
+<h3>
+<span data-india-i18n="liveTitle">{copy.liveTitle}</span>
+</h3>
+<p>
+<span data-india-i18n="liveBody">{copy.liveBody}</span>
+</p>
+<a href="/marketplace?group=india_goes_live">
+<span>
+<span data-india-i18n="liveCta">{copy.liveCta}</span>
+</span> <span aria-hidden="true">↗</span>
+</a>
+<span class="india-format-meta">
+<span data-india-i18n="liveMeta">{copy.liveMeta}</span>
+</span>
+</article>
+          <article class="india-format-card india-format-card--purple">
+<div class="india-format-card__number">02</div>
+<img class="india-help-sticker india-help-sticker--uncle" src="/help/art/tension-uncle.png" width="482" height="916" alt="" aria-hidden="true" loading="lazy" />
+<p class="india-kicker">
+<span data-india-i18n="oneEyebrow">{copy.oneEyebrow}</span>
+</p>
+<h3>
+<span data-india-i18n="oneTitle">{copy.oneTitle}</span>
+</h3>
+<p>
+<span data-india-i18n="oneBody">{copy.oneBody}</span>
+</p>
+<a href="/marketplace?group=book_their_time">
+<span>
+<span data-india-i18n="oneCta">{copy.oneCta}</span>
+</span> <span aria-hidden="true">↗</span>
+</a>
+<span class="india-format-meta">
+<span data-india-i18n="oneMeta">{copy.oneMeta}</span>
+</span>
+</article>
+        </div>
+      </div>
+    </section>

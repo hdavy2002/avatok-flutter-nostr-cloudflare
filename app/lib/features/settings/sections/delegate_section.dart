@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -32,7 +34,7 @@ void registerDelegateSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_delegate',
-      title: 'Ava delegate',
+      title: uiCopy(UiMessage.m_ava_delegate_2155b6d937),
       order: 27, // just below "Ava voice" (25), above "Tools & connectors" (30)
       builder: (context) => const _DelegateCard(),
     ),
@@ -96,6 +98,7 @@ class _DelegateCardState extends State<_DelegateCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -103,11 +106,8 @@ class _DelegateCardState extends State<_DelegateCard> {
           ZineIconBadge(icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'Let Ava watch a chat and step in when you’re @mentioned and away. '
-              'Replies are always disclosed ("Ava — for you") — never impersonation. '
-              'Switch it on per chat from the chat’s Ava menu; set the defaults '
-              'for new chats here.',
+            child: UiText(
+              UiMessage.m_let_ava_watch_a_chat_4c44540628,
               style: ADText.preview(),
             ),
           ),
@@ -119,8 +119,8 @@ class _DelegateCardState extends State<_DelegateCard> {
           builder: (context, on, _) => Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Alert me on mentions by default', style: ADText.rowName()),
-                Text('New chats start by pushing you on @mentions.', style: ADText.preview()),
+                UiText(UiMessage.m_alert_me_on_mentions_by_545cb63d42, style: ADText.rowName()),
+                UiText(UiMessage.m_new_chats_start_by_pushing_99a942231d, style: ADText.preview()),
               ]),
             ),
             const SizedBox(width: Msg.s2),
@@ -137,11 +137,11 @@ class _DelegateCardState extends State<_DelegateCard> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Flexible(child: Text('Let Ava reply for me by default', style: ADText.rowName())),
+                  Flexible(child: UiText(UiMessage.m_let_ava_reply_for_me_60d74dc500, style: ADText.rowName())),
                   const SizedBox(width: 8),
                   const PaidBadge(),
                 ]),
-                Text('New chats start with on-your-behalf replies (while offline).',
+                UiText(UiMessage.m_new_chats_start_with_on_da3ca7d48b,
                     style: ADText.preview()),
               ]),
             ),
@@ -168,6 +168,7 @@ class _AdToggle extends StatelessWidget {
   const _AdToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

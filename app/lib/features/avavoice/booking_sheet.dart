@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -82,7 +84,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     if (_working) return;
     if (_scheduled.isBefore(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please pick a time in the future.')));
+          const SnackBar(content: UiText(UiMessage.m_please_pick_a_time_in_08a6bc9a06)));
       return;
     }
     setState(() => _working = true);
@@ -103,22 +105,22 @@ class _BookingSheetState extends State<_BookingSheet> {
         Analytics.capture('avavoice_topup_prompted', {'agent': a.id, 'where': 'booking'});
         final needed = (r['needed'] as num?)?.toInt();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Not enough Tokens'
-              '${needed != null ? ' — you need ${fmtTokens(needed)}' : ''}.'),
-          action: SnackBarAction(label: 'Top up', onPressed: () => Navigator.push(
+          content: UiText(UiMessage.m_not_enough_tokens_value1_0520a4334d, params: {'value1': (needed != null ? ' — you need ${fmtTokens(needed)}' : '').toString()}),
+          action: SnackBarAction(label: uiCopy(UiMessage.m_top_up_79f52e0ce6), onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const WalletScreen()))),
         ));
       case 409:
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('That slot just filled up — pick another time.')));
+            content: UiText(UiMessage.m_that_slot_just_filled_up_efabd8c0be)));
       default:
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-            r['detail']?.toString() ?? r['error']?.toString() ?? 'Booking failed.')));
+            r['detail']?.toString() ?? r['error']?.toString() ?? uiCopy(UiMessage.m_booking_failed_c7f3752691))));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final perMin = perMinuteTokens(a.ratePerHourTokens);
     return SafeArea(
       child: Padding(
@@ -126,7 +128,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Book ${a.name}', style: ADText.threadName().copyWith(fontSize: 21, height: 1.1, letterSpacing: -0.2)),
+            UiText(UiMessage.m_book_value1_3d944bfd70, params: {'value1': (a.name).toString()}, style: ADText.threadName().copyWith(fontSize: 21, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 16),
             Row(children: [
               Expanded(child: _picker(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
@@ -135,7 +137,7 @@ class _BookingSheetState extends State<_BookingSheet> {
               Expanded(child: _picker(PhosphorIcons.clock(PhosphorIconsStyle.bold), _time.format(context), _pickTime)),
             ]),
             const SizedBox(height: 16),
-            Text('Session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+            UiText(UiMessage.m_session_length_c0c996d902, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
             const SizedBox(height: Msg.s2),
             Wrap(spacing: 8, runSpacing: 8, children: _durationChoices.map((m) {
               return ZineChip(
@@ -159,7 +161,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                   Row(children: [
                     PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), size: 18, color: AD.online),
                     const SizedBox(width: 8),
-                    Expanded(child: Text("Free — this agent's creator covers the call.",
+                    Expanded(child: UiText(UiMessage.m_free_this_agent_s_creator_7d03c45342,
                         style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
                   ])
                 else ...[
@@ -169,15 +171,15 @@ class _BookingSheetState extends State<_BookingSheet> {
                   const SizedBox(height: 8),
                   _row('Held in escrow now', fmtTokens(_totalTokens), bold: true),
                   const SizedBox(height: Msg.s1),
-                  Align(alignment: Alignment.centerLeft, child: Text(
-                      "You're only charged for minutes you actually talk — unused minutes are refunded after the call.",
+                  Align(alignment: Alignment.centerLeft, child: UiText(
+                      UiMessage.m_you_re_only_charged_for_6b74bb2250,
                       style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11, height: 1.42))),
                 ],
               ]),
             ),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: a.isFreeForCallers ? 'Confirm booking' : 'Pay ${fmtTokens(_totalTokens)} & book',
+              label: a.isFreeForCallers ? uiCopy(UiMessage.m_confirm_booking_fa1e17d8f8) : uiCopy(UiMessage.m_pay_value1_book_ddc5593a00, {'value1': (fmtTokens(_totalTokens)).toString()}),
               fullWidth: true,
               loading: _working,
               icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),

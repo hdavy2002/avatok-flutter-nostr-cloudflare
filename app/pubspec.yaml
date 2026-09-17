@@ -20,6 +20,9 @@ dependencies:
   flutter_chat_types: ^3.6.2
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   # [STREAM-LANE-1] flutter_webrtc ^0.12.5 → stream_webrtc_flutter ^3.0.0 on
   # 2026-08-21: run #608 failed mergeReleaseNativeLibs because flutter_webrtc's
   # binary (io.github.webrtc-sdk:android 125.x) and the Stream SDK's

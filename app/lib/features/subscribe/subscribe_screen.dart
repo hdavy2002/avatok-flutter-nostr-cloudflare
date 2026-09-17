@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -115,6 +117,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -128,15 +131,15 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 onTap: () => Navigator.maybePop(context),
               ),
               const SizedBox(width: Msg.s3),
-              Text('Subscribe', style: ADText.appTitle()),
+              UiText(UiMessage.m_subscribe_cc0e38da9c, style: ADText.appTitle()),
             ]),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                'Pick a plan. Upgrade or cancel anytime.',
+              child: UiText(
+                UiMessage.m_pick_a_plan_upgrade_or_99e3e9c7fd,
                 style: ADText.preview(c: AD.textSecondary),
               ),
             ),
@@ -193,10 +196,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               Text(name, style: ADText.appTitle()),
               Text(
                 price == 0
-                    ? 'Free forever'
+                    ? uiCopy(UiMessage.m_free_forever_56f9c1ca9d)
                     : playPrice != null
-                        ? '$playPrice / month'
-                        : 'Priced by Google Play',
+                        ? uiCopy(UiMessage.m_playprice_month_768b9ae81b, {'playPrice': (playPrice).toString()})
+                        : uiCopy(UiMessage.m_priced_by_google_play_6f840aa4ca),
                 style: ADText.sectionLabel(c: AD.textSecondary),
               ),
             ]),
@@ -210,7 +213,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 border: Border.all(color: AD.borderCard, width: 1),
               ),
               child: AdSwitchText(
-                _currentStatus == 'canceled' ? 'Ending' : 'Your plan',
+                _currentStatus == 'canceled' ? uiCopy(UiMessage.m_ending_a17bfde380) : uiCopy(UiMessage.m_your_plan_d9ab76c650),
                 // Dark ink ON the green fill — NOT AD.online, which would be
                 // green-on-green and invisible.
                 style: ADText.sectionLabel(c: AD.textOnInput),
@@ -230,7 +233,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         const SizedBox(height: Msg.s2),
         if (!isCurrent && tier > 0) _cta(tier),
         if (tier == 0 && !isCurrent)
-          Text('Always available', style: ADText.sectionLabel(c: AD.textSecondary)),
+          UiText(UiMessage.m_always_available_0fda37724c, style: ADText.sectionLabel(c: AD.textSecondary)),
       ]),
     );
   }
@@ -250,7 +253,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           child: busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AD.bg))
               : Text(
-                  upgrade ? 'Upgrade to this plan' : 'Switch to this plan',
+                  upgrade ? uiCopy(UiMessage.m_upgrade_to_this_plan_c9390940cf) : uiCopy(UiMessage.m_switch_to_this_plan_790f964c88),
                   style: ADText.rowName(c: AD.bg),
                 ),
         ),
@@ -309,6 +312,7 @@ class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ListView(
       children: [
         const SizedBox(height: 80),
@@ -320,7 +324,7 @@ class _ErrorState extends StatelessWidget {
             color: AD.card,
             radius: BorderRadius.circular(Msg.rLg),
             padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s3),
-            child: Text('Retry', style: ADText.rowName()),
+            child: UiText(UiMessage.m_retry_942087cc2d, style: ADText.rowName()),
           ),
         ),
       ],

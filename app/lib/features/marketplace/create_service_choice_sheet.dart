@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -34,6 +37,7 @@ class CreateServiceChoiceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final live = RemoteConfig.commercialLiveListingsEnabled;
     final consult = RemoteConfig.commercialConsultListingsEnabled;
     return SafeArea(
@@ -56,13 +60,13 @@ class CreateServiceChoiceSheet extends StatelessWidget {
           const SizedBox(height: Msg.s4),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('What do you want to offer?', style: ADText.appTitle()),
+            child: UiText(UiMessage.m_what_do_you_want_to_8cdf9f4e38, style: ADText.appTitle()),
           ),
           const SizedBox(height: Msg.s1),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              'Customers discover and pay through Marketplace. Calls and streams run privately through GetStream.',
+            child: UiText(
+              UiMessage.m_customers_discover_and_pay_through_81bc67e26a,
               style: ADText.preview(),
             ),
           ),
@@ -71,8 +75,8 @@ class CreateServiceChoiceSheet extends StatelessWidget {
             _ServiceChoice(
               icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
               color: AD.danger,
-              title: 'Create a live event',
-              subtitle: 'Choose a time and ticket price, then share the public event page. Only entitled accounts enter.',
+              title: uiCopy(UiMessage.m_create_a_live_event_003a5f40a1),
+              subtitle: uiCopy(UiMessage.m_choose_a_time_and_ticket_267bd53f63),
               badges: const ['One-to-many', 'Free or paid ticket'],
               onTap: () => Navigator.pop(context, 'live_event'),
             ),
@@ -81,8 +85,8 @@ class CreateServiceChoiceSheet extends StatelessWidget {
             _ServiceChoice(
               icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
               color: AD.tabCalls,
-              title: 'Offer a 1:1 consultation',
-              subtitle: 'Set your price and duration. Customers choose an available time and pay before joining.',
+              title: uiCopy(UiMessage.m_offer_a_1_1_consultation_743ac25976),
+              subtitle: uiCopy(UiMessage.m_set_your_price_and_duration_2be47a736d),
               badges: const ['Private 1:1', 'Paid booking'],
               onTap: () => Navigator.pop(context, 'consult'),
             ),
@@ -95,8 +99,8 @@ class CreateServiceChoiceSheet extends StatelessWidget {
             ),
             const SizedBox(width: Msg.s2),
             Expanded(
-              child: Text(
-                'A shared link never replaces payment or an account-bound ticket.',
+              child: UiText(
+                UiMessage.m_a_shared_link_never_replaces_3b98d2145c,
                 style: ADText.preview(c: AD.textSecondary),
               ),
             ),
@@ -124,7 +128,7 @@ class _ServiceChoice extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Semantics(
         button: true,
         label: '$title. $subtitle',
         child: Material(
@@ -190,5 +194,5 @@ class _ServiceChoice extends StatelessWidget {
             ),
           ),
         ),
-      );
+      ); }
 }

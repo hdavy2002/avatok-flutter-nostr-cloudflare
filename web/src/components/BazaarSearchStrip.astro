@@ -29,8 +29,8 @@ const { action, value = '' } = Astro.props;
       action={action}
       class="flex flex-[1_1_340px] items-center gap-2.5 rounded-full border-zine border-ink bg-paper py-1.5 pl-5 pr-1.5 shadow-zine-sm focus-within:shadow-zine-focus"
     >
-      <label for="bazaar-q" class="sr-only">Search the marketplace</label>
-      <input
+      <label data-i18n="web-common.0a6ea1b070583a80" for="bazaar-q" class="sr-only">Search the marketplace</label>
+      <input data-india-i18n-attr="placeholder:web-common.cd4f22d4614777b9"
         id="bazaar-q"
         name="q"
         type="search"
@@ -40,7 +40,7 @@ const { action, value = '' } = Astro.props;
         placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…"
         class="min-w-0 flex-1 border-none bg-transparent py-2 font-body text-[16px] font-semibold text-ink outline-none placeholder:text-placeholder"
       />
-      <button
+      <button data-i18n="web-common.1207f81e54d27b74"
         type="submit"
         class="flex-none rounded-full border-zine border-ink bg-coral px-6 py-2.5 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
       >
@@ -50,7 +50,7 @@ const { action, value = '' } = Astro.props;
 
     {/* Decorative tagline. Hidden below lg — at phone width the field needs the
         whole row, and this is flavour, not information. */}
-    <p class="hidden flex-none font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-inkMute lg:block">
+    <p data-i18n="web-common.25b8e27d3a7c2935" class="hidden flex-none font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-inkMute lg:block">
       Dhoondte reh jaoge? Nahi. Yahan sab milega.
     </p>
   </div>

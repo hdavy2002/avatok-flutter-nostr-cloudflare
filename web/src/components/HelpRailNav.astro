@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../lib/i18n/authoredKey';
 // [WEB-HELP-2 2026-09-11] Restyled for the Article.dc.html / PhoneArticle.dc.html
 // redesign — same shared section/article nav list Help.astro renders twice
 // (desktop always-visible copy + the <details> "Browse help" copy), still
@@ -31,10 +32,10 @@ const SWATCH: Record<HelpSectionId, string> = {
 };
 ---
 
-<nav class="help-rail-nav" aria-label="Help sections">
+<nav data-india-i18n-attr="aria-label:web-common.90de10118eb22f97" class="help-rail-nav" aria-label="Help sections">
   <a class="help-rail-all" href="/help">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
-    All help topics
+    <ui-copy style="display:contents" data-i18n="web-common.d2d3ab361b22ef98">All help topics</ui-copy>
   </a>
   {tree.map((s) => (
     <div class="help-rail-section">
@@ -43,7 +44,7 @@ const SWATCH: Record<HelpSectionId, string> = {
         href={`/help#${s.id}`}
       >
         <span class="help-rail-swatch" style={`background:${SWATCH[s.id]}`} aria-hidden="true"></span>
-        {s.label}
+        <ui-copy style="display:contents" data-i18n={authoredKey(s.label)}>{s.label}</ui-copy>
       </a>
       <ul>
         {s.entries.map((e) => {
@@ -51,7 +52,7 @@ const SWATCH: Record<HelpSectionId, string> = {
           return (
             <li>
               <a href={helpUrl(e)} aria-current={isCurrent ? 'page' : undefined}>
-                {e.data.title}
+                <ui-copy style="display:contents" data-i18n={authoredKey(e.data.title)}>{e.data.title}</ui-copy>
               </a>
             </li>
           );

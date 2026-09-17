@@ -1,3 +1,6 @@
+
+import '../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -356,8 +359,8 @@ class _AvaShellState extends State<AvaShell> {
       _push(AppRegistry.byId(dest) != null
           ? ComingSoon.forApp(dest)
           : ComingSoon(
-              title: 'Coming soon',
-              subtitle: 'Not available right now',
+              title: uiCopy(UiMessage.m_coming_soon_4f7d640176),
+              subtitle: uiCopy(UiMessage.m_not_available_right_now_64833438f3),
               icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
               color: AD.iconSearch));
       return;
@@ -507,7 +510,7 @@ class _AvaShellState extends State<AvaShell> {
       case 'billing':
         _push(ComingSoon(
             title: dest[0].toUpperCase() + dest.substring(1),
-            subtitle: 'Coming soon',
+            subtitle: uiCopy(UiMessage.m_coming_soon_4f7d640176),
             icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
             color: AD.iconSearch));
         return;
@@ -575,18 +578,16 @@ class _AvaShellState extends State<AvaShell> {
                     size: 36),
                 const SizedBox(width: 12),
                 Expanded(
-                    child: Text('Get your AvaTOK number',
+                    child: UiText(UiMessage.m_get_your_avatok_number_15c66bf74d,
                         style: ADText.threadName())),
               ]),
               const SizedBox(height: 12),
-              Text(
-                  'Pick a free number that represents you on AvaTOK so you can stay in '
-                  'touch without giving out your real phone — your real number always '
-                  'stays private. Free accounts get one number; you can choose it now.',
+              UiText(
+                  UiMessage.m_pick_a_free_number_that_6277871cd0,
                   style: ADText.preview()),
               const SizedBox(height: Msg.s4),
               AdButton(
-                  label: 'Choose my number',
+                  label: uiCopy(UiMessage.m_choose_my_number_ae2930744f),
                   variant: AdButtonVariant.teal,
                   fullWidth: true,
                   fontSize: 16,
@@ -597,7 +598,7 @@ class _AvaShellState extends State<AvaShell> {
               Center(
                   child: TextButton(
                       onPressed: () => Navigator.pop(ctx, false),
-                      child: Text('Maybe later',
+                      child: UiText(UiMessage.m_maybe_later_2ac741e620,
                           style: TextStyle(
                               fontFamily: ADText.family,
                               fontWeight: FontWeight.w700,
@@ -614,6 +615,7 @@ class _AvaShellState extends State<AvaShell> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Mandatory-profile gate (pic5): block the entire app until the profile is
     // complete. A brief loader while we read the local profile; then either the
     // non-skippable setup screen or the real shell.

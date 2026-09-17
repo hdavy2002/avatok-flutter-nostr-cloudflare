@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // ⚠️ [LIST-EMBED-1 2026-09-05, owner decision] "List with Ava" IS NO LONGER
 // REACHABLE. Every "Create listing" entry point now checks
 // `RemoteConfig.listingWebFormEnabled` (default TRUE) FIRST and opens the web
@@ -797,7 +800,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         'compose_ms': DateTime.now().difference(_openedAt).inMilliseconds,
       });
       if (!mounted) return;
-      showAdToast(context, message: 'Submitted for review. You can publish after approval.');
+      showAdToast(context, message: uiCopy(UiMessage.m_submitted_for_review_you_can_4f8de926ae));
       Navigator.of(context).maybePop(id);
       return;
     }
@@ -895,6 +898,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -906,7 +910,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         title: Row(children: [
           _sparkleBadge(30),
           const SizedBox(width: Msg.s3),
-          Text('List with Ava', style: ADText.appTitle()),
+          UiText(UiMessage.m_list_with_ava_f493b34625, style: ADText.appTitle()),
         ]),
         bottom: _progress > 0
             ? PreferredSize(
@@ -1014,7 +1018,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           // placeholder; once deltas arrive it types out with a trailing cursor
           // until the final `say` reconciles it and drops the streaming flag.
           if (m.text.isEmpty && m.streaming)
-            Text('Ava is thinking…', style: ADText.preview(c: AD.textSecondary))
+            UiText(UiMessage.m_ava_is_thinking_55ecde9f01, style: ADText.preview(c: AD.textSecondary))
           else if (m.text.isNotEmpty)
             Text(m.streaming ? '${m.text}▌' : m.text,
                 style: ADText.bubbleBody(
@@ -1034,7 +1038,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             borderRadius: AD.bubbleInRadius,
             border: Border.all(color: AD.borderControl, width: 1),
           ),
-          child: Text('Ava is thinking…', style: ADText.preview(c: AD.textSecondary)),
+          child: UiText(UiMessage.m_ava_is_thinking_55ecde9f01, style: ADText.preview(c: AD.textSecondary)),
         ),
       );
 
@@ -1066,7 +1070,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             const SizedBox(width: Msg.s3),
             GestureDetector(
               onTap: _openIdentityHelp,
-              child: Text('How do I do this?',
+              child: UiText(UiMessage.m_how_do_i_do_this_414136cc68,
                   style: ADText.preview(c: AD.iconSearch)),
             ),
           ]),
@@ -1086,7 +1090,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           const SizedBox(width: Msg.s3),
           GestureDetector(
             onTap: _declineResume,
-            child: Text('Start fresh', style: ADText.preview(c: AD.textSecondary)),
+            child: UiText(UiMessage.m_start_fresh_652aceea79, style: ADText.preview(c: AD.textSecondary)),
           ),
         ]),
       ]),
@@ -1097,7 +1101,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         border: AD.borderControl,
         child: Row(children: [
           Expanded(
-              child: Text('Start a new listing?',
+              child: UiText(UiMessage.m_start_a_new_listing_731bd00454,
                   style: ADText.preview(c: AD.textSecondary))),
           _pill('New listing', _avaGreen, AD.sendActiveInk, _open),
         ]),
@@ -1126,7 +1130,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
               size: 16, color: _avaGreen),
           const SizedBox(width: Msg.s2),
-          Text('Ready for review', style: ADText.rowName()),
+          UiText(UiMessage.m_ready_for_review_75c2a5c81d, style: ADText.rowName()),
         ]),
         const SizedBox(height: Msg.s3),
         if (cover != null && cover.isNotEmpty) ...[
@@ -1161,7 +1165,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         _composeFeePanel(card),
         if (_missing.isNotEmpty) ...[
           const SizedBox(height: Msg.s3),
-          Text('Still needed: ${_missing.join(', ')}',
+          UiText(UiMessage.m_still_needed_value1_051197a08b, params: {'value1': (_missing.join(', ')).toString()},
               style: ADText.preview(c: AD.danger)),
         ],
         const SizedBox(height: Msg.s3),
@@ -1363,9 +1367,9 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                   fontWeight: FontWeight.w600,
                   fontSize: 15,
                   color: AD.textOnInput),
-              decoration: const InputDecoration(
+              decoration:  InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Tell Ava about it…',
+                hintText: uiCopy(UiMessage.m_tell_ava_about_it_fa2d73847b),
                 hintStyle: TextStyle(
                     fontFamily: ADText.family,
                     fontWeight: FontWeight.w600,

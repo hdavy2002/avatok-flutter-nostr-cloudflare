@@ -1,33 +1,30 @@
 /*
  * money.ts — the ONE place the web client turns a token count into money.
  *
- * [TOKENS-INR-RAIL-1 2026-08-28] Before this file existed, eight modules each
+ * [TOKENS-INR-RAIL-1 2026-09-17] Before this file existed, eight modules each
  * carried their own copy of
  *
- *     `$${(coins / 100).toFixed(2)}`
+ *     a cents-based formatter
  *
- * — a formatter from the era when a token was priced at one US cent, so 500
- * tokens rendered as "$5.00". The owner's pricing decision is 1 token = ₹1
- * (see CLAUDE.md, [TOKENS-INR-1] and [TOKENS-INR-RAIL-1]), which makes that
- * formatter wrong twice over: wrong symbol AND wrong magnitude. 500 tokens are
- * ₹500, not ₹5. The divide-by-100 has to go, not just the dollar sign.
+ * — a formatter from the era when a token was priced at one US cent. The customer-
+ * facing rule is now fixed: 1 Token = ₹1. Tokens are whole rupees, so there is no
+ * division or FX conversion in this formatter.
  *
  * Every call site now delegates here so the next pricing change is one edit.
  *
  * WHAT DOES NOT BELONG IN THIS FILE:
  *   • Marketplace listing prices. Those carry their own `currency` field and
- *     are genuinely multi-currency (see components/ListingTile.tsx and, in the
- *     app, intent_theme.dart). A seller may list in USD, EUR, whatever.
- *   • Real US dollars — provider cost accounting in micro_usd, Google Play's
- *     USD-defined SKU tiers. Those are actual dollars and keep their "$".
+ *     are separate from Token values (see components/ListingTile.tsx and, in
+ *     the app, intent_theme.dart).
+ *   • Provider currency snapshots — those carry their own authoritative currency
+ *     and are outside this token formatter.
  */
 
-/** The fixed, owner-set rate. Not an FX conversion — see lib/fx_rates.ts. */
+/** The fixed, owner-set rate: one Token is one Indian rupee. */
 export const RUPEES_PER_TOKEN = 1;
 
 /**
- * A token amount as money: `₹500`, `₹1,200`. Whole rupees, because a token is
- * a whole rupee and fractions of one cannot be bought or spent.
+ * A token amount as money: `₹500`, `₹1,200`.
  */
 export function inr(tokens: number | null | undefined): string {
   if (tokens == null || !Number.isFinite(Number(tokens))) return '—';
@@ -66,7 +63,7 @@ export function inrWithTokens(tokens: number): string {
 export const GST_RATE_PCT = 18;
 
 export interface PriceBreakdown {
-  /** The creator's price, in tokens (₹1 each). */
+  /** The creator's price, in Tokens (1 Token = ₹1). */
   base: number;
   /** Platform fee. Zero today; carried so it can be switched on without reshaping this. */
   fee: number;

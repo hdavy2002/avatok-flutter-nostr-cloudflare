@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -159,7 +161,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     final number = _numberCtrl.text.trim();
     if (number.isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Enter a number first')));
+          .showSnackBar(const SnackBar(content: UiText(UiMessage.m_enter_a_number_first_5a9906f621)));
       return;
     }
     setState(() => _saving = true);
@@ -246,6 +248,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AvaDialTheme.bg,
       appBar: AppBar(
@@ -257,10 +260,10 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         // (owner request — the default back arrow was too faint to notice).
         leading: IconButton(
           icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
-          tooltip: 'Cancel',
+          tooltip: uiCopy(UiMessage.m_cancel_19766ed6cc),
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
         ),
-        title: Text(widget.create ? 'Add contact' : 'Edit contact',
+        title: Text(widget.create ? uiCopy(UiMessage.m_add_contact_a02ce0df21) : uiCopy(UiMessage.m_edit_contact_81cd065a45),
             style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
       ),
       body: _loading
@@ -337,14 +340,13 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                     onPressed: _addField,
                     icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
                         color: AD.iconSearch, size: 20),
-                    label: Text('Add field',
+                    label: UiText(UiMessage.m_add_field_5f42d901b6,
                         style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
                   ),
                 ),
                 const SizedBox(height: Msg.s3),
-                Text(
-                  'Saved to your phone\'s contacts. Extra AvaTOK details (AvaTOK '
-                  'number, custom fields) are kept in AvaTOK.',
+                UiText(
+                  UiMessage.m_saved_to_your_phone_s_b96e62cf2c,
                   style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                 ),
                 // Bottom breathing room so the last field can scroll clear of the
@@ -369,7 +371,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                 top: false,
                 minimum: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                 child: AdButton(
-                  label: widget.create ? 'Add contact' : 'Save',
+                  label: widget.create ? uiCopy(UiMessage.m_add_contact_a02ce0df21) : uiCopy(UiMessage.m_save_1509f561f2),
                   variant: AdButtonVariant.primary,
                   loading: _saving,
                   onPressed: _saving ? null : _save,

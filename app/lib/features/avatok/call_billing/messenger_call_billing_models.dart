@@ -1,3 +1,4 @@
+import '../../../core/localization/ui_text.dart';
 import 'dart:math' as math;
 
 /// The media choices understood by the provider-neutral Messenger billing
@@ -23,11 +24,11 @@ extension MessengerCallQualitySkuWire on MessengerCallQualitySku {
       };
 
   String get label => switch (this) {
-        MessengerCallQualitySku.audio => 'Audio',
-        MessengerCallQualitySku.videoSd => 'SD',
-        MessengerCallQualitySku.videoHd => 'HD',
-        MessengerCallQualitySku.video2k => '2K',
-        MessengerCallQualitySku.video4k => '4K',
+        MessengerCallQualitySku.audio => uiCopy(UiMessage.m_audio_bc1b88907d),
+        MessengerCallQualitySku.videoSd => uiCopy(UiMessage.m_sd_495496f015),
+        MessengerCallQualitySku.videoHd => uiCopy(UiMessage.m_hd_323e417927),
+        MessengerCallQualitySku.video2k => uiCopy(UiMessage.m_2k_b1bd7eac62),
+        MessengerCallQualitySku.video4k => uiCopy(UiMessage.m_4k_cc1e5d5a9c),
       };
 
   bool get isVideo => this != MessengerCallQualitySku.audio;
@@ -70,12 +71,12 @@ class MessengerCallRate {
   }
 
   String get unavailableReason {
-    if (!supported) return 'Not supported on this device yet';
+    if (!supported) return uiCopy(UiMessage.m_not_supported_on_this_device_a1b34219e0);
     if (centitokensPerParticipantMinute == null) {
-      return 'Pricing is not available yet';
+      return uiCopy(UiMessage.m_pricing_is_not_available_yet_2b748448bb);
     }
     if (centitokensPerParticipantMinute! <= 0) {
-      return 'Pricing is not configured yet';
+      return uiCopy(UiMessage.m_pricing_is_not_configured_yet_75a29c72b1);
     }
     return '';
   }

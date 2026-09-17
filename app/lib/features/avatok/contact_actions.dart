@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -43,7 +45,7 @@ class ContactActions {
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Contact copied')));
+          .showSnackBar(const SnackBar(content: UiText(UiMessage.m_contact_copied_ed92e532d5)));
     }
   }
 
@@ -85,7 +87,7 @@ class ContactActions {
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Couldn't share contact")));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_share_contact_b7370d0235)));
       }
     }
   }
@@ -141,8 +143,8 @@ class ContactActions {
     if (context.mounted) {
       final n = targets.length;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'Contact sent to $n ${n == 1 ? 'chat' : 'chats'}')));
+          content: UiText(
+              UiMessage.m_contact_sent_to_n_value2_8295dd8eaa, params: {'n': (n).toString(), 'value2': (n == 1 ? 'chat' : 'chats').toString()})));
     }
   }
 }

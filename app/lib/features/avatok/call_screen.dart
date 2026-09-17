@@ -1,3 +1,7 @@
+import '../../core/localization/known_ui_copy.dart';
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 // (unawaited comes from dart:async, already imported above)
@@ -685,7 +689,7 @@ class _CallScreenState extends State<CallScreen> {
     _agentCall = null;
     setState(() => _agentStatus = 'failed');
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't connect to the Ava AI agent")));
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_connect_to_the_c40c90fa92)));
     _session.endByUser();
   }
 
@@ -772,7 +776,7 @@ class _CallScreenState extends State<CallScreen> {
           duration: const Duration(seconds: 6),
           action: failure.canOpenSettings
               ? SnackBarAction(
-                  label: 'Settings',
+                  label: uiCopy(UiMessage.m_settings_74a883a037),
                   onPressed: () =>
                       unawaited(CallMediaPermissions.openSettings()),
                 )
@@ -782,11 +786,11 @@ class _CallScreenState extends State<CallScreen> {
       placeCallFailed: () {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("Couldn't reach ${widget.title} — retry?"),
+            content: UiText(UiMessage.m_couldn_t_reach_value1_retry_26d3510769, params: {'value1': (widget.title).toString()}),
             // [CALL-DIAL-FAIL-1] Redial (not just pop) when the launch site gave
             // us a hook — mirrors the in-sticker Retry button below.
             action: SnackBarAction(
-              label: 'Retry',
+              label: uiCopy(UiMessage.m_retry_942087cc2d),
               onPressed: () {
                 final retry = widget.onRetry;
                 _popIfMounted();
@@ -799,7 +803,7 @@ class _CallScreenState extends State<CallScreen> {
       unreachable: () {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('${widget.title} is unreachable right now')));
+              content: UiText(UiMessage.m_value1_is_unreachable_right_now_aee327f3cb, params: {'value1': (widget.title).toString()})));
         }
       },
       // [RECEPT-SETTINGS-1] voicemail removed — no voicemail status snackbars.
@@ -845,13 +849,13 @@ class _CallScreenState extends State<CallScreen> {
   /// audio…" while connected but not yet audible (flag on only), otherwise the
   /// ordinary status line (ringing/declined/etc — unchanged).
   String _connectedLabel(CallSession s, bool connected, bool audible) {
-    if (s.videoUpgrading.value) return 'Adding video…';
+    if (s.videoUpgrading.value) return uiCopy(UiMessage.m_adding_video_87b83427a4);
     if (connected && audible) return s.clock;
-    if (connected && !audible) return 'AvaTOK audio call';
+    if (connected && !audible) return uiCopy(UiMessage.m_avatok_audio_call_944dd9dbe1);
     if (!widget.outgoing && s.uiPhase.value == 'connecting') {
-      return 'AvaTOK audio call';
+      return uiCopy(UiMessage.m_avatok_audio_call_944dd9dbe1);
     }
-    return s.statusText;
+    return knownUiCopy(s.statusText);
   }
 
   void _onSessionChanged() {
@@ -862,14 +866,14 @@ class _CallScreenState extends State<CallScreen> {
     if (mounted && billing != null && billing.lowBalance && !_billingWarningShown) {
       _billingWarningShown = true;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Your call balance is running low.'),
+        content: UiText(UiMessage.m_your_call_balance_is_running_b40abc54e8),
         duration: Duration(seconds: 5),
       ));
     }
     if (mounted && billing?.renewalFailure != null && !_billingRenewalFailureShown) {
       _billingRenewalFailureShown = true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Call ended because paid time could not be renewed: ${billing!.renewalFailure}'),
+        content: UiText(UiMessage.m_call_ended_because_paid_time_6d10e1e7d4, params: {'value1': (billing!.renewalFailure).toString()}),
         duration: const Duration(seconds: 6),
       ));
     }
@@ -1515,10 +1519,10 @@ class _CallScreenState extends State<CallScreen> {
     // action and keep only the informational text about the failed escalation.
     messenger.showSnackBar(SnackBar(
       duration: const Duration(seconds: 8),
-      content: Text('$why Call $peerName back?'),
+      content: UiText(UiMessage.m_why_call_peername_back_2e762e9fa3, params: {'why': (why).toString(), 'peerName': (peerName).toString()}),
       action: RemoteConfig.messengerCallingEnabled
           ? SnackBarAction(
-              label: 'Call back',
+              label: uiCopy(UiMessage.m_call_back_fbb0a343f6),
               onPressed: () {
                 Analytics.capture(
                     'addcall_call_back_tapped', {'peer_uid': peerUid});
@@ -1542,7 +1546,7 @@ class _CallScreenState extends State<CallScreen> {
       if (peerName.trim().isNotEmpty) peerName.trim(),
       ...picked.map((c) => c.name.trim()).where((n) => n.isNotEmpty),
     ];
-    if (names.isEmpty) return 'Group call';
+    if (names.isEmpty) return uiCopy(UiMessage.m_group_call_39aa01ba79);
     if (names.length == 1) return names.first;
     final head = names.take(3).toList();
     final extra = names.length - head.length;
@@ -1600,6 +1604,7 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final s = _session;
     final billing = s.billingState.value;
     final phase = s.uiPhase.value;
@@ -1715,8 +1720,8 @@ class _CallScreenState extends State<CallScreen> {
                   ),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Text(
-                      'Waiting for remote video…',
+                    child: UiText(
+                      UiMessage.m_waiting_for_remote_video_ab8e421b54,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white, fontSize: 15),
                     ),
@@ -1737,8 +1742,8 @@ class _CallScreenState extends State<CallScreen> {
                   ),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Text(
-                      'Video unavailable — audio is connected',
+                    child: UiText(
+                      UiMessage.m_video_unavailable_audio_is_connected_e599ac1eaf,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white, fontSize: 15),
                     ),
@@ -1813,8 +1818,8 @@ class _CallScreenState extends State<CallScreen> {
               child: Semantics(
                 button: true,
                 label: _pipSwapped
-                    ? 'Show their video full screen'
-                    : 'Show your video full screen',
+                    ? uiCopy(UiMessage.m_show_their_video_full_screen_0afbe9ed75)
+                    : uiCopy(UiMessage.m_show_your_video_full_screen_305b6b8de3),
                 child: GestureDetector(
                   // `opaque`, not the default `deferToChild`: the child is a
                   // platform view (RTCVideoView) and a Stack of Positioned-only
@@ -1873,7 +1878,7 @@ class _CallScreenState extends State<CallScreen> {
                         bottom: 2,
                         child: Semantics(
                           button: true,
-                          label: 'Switch camera',
+                          label: uiCopy(UiMessage.m_switch_camera_43f019ea13),
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             // flipCamera is a Future<void>; nothing here needs
@@ -1952,7 +1957,7 @@ class _CallScreenState extends State<CallScreen> {
                               // the avatar), so the subtitle carries it there.
                               showVideo
                                   ? _connectedLabel(s, connected, audible)
-                                  : 'End-to-end encrypted',
+                                  : uiCopy(UiMessage.m_end_to_end_encrypted_f01afb7a9c),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: ADText.sectionLabel(
@@ -2042,7 +2047,7 @@ class _CallScreenState extends State<CallScreen> {
                           myLabel: s.myName,
                         ),
                         const SizedBox(height: Msg.s5),
-                        Text('Ava',
+                        UiText(UiMessage.m_ava_149f7514de,
                             textAlign: TextAlign.center,
                             style: ADText.appTitle().copyWith(fontSize: 28)),
                       ] else ...[
@@ -2277,7 +2282,7 @@ class _CallScreenState extends State<CallScreen> {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                      content: Text('Contact saved')));
+                                      content: UiText(UiMessage.m_contact_saved_4d1709f379)));
                             }
                           },
                           onClose: () {
@@ -2307,7 +2312,7 @@ class _CallScreenState extends State<CallScreen> {
                           widget.onRetry != null) ...[
                         const SizedBox(height: Msg.s4),
                         AdButton(
-                          label: 'Retry',
+                          label: uiCopy(UiMessage.m_retry_942087cc2d),
                           icon: PhosphorIcons.arrowClockwise(
                               PhosphorIconsStyle.bold),
                           onPressed: () {
@@ -2328,7 +2333,7 @@ class _CallScreenState extends State<CallScreen> {
                             ),
                           ),
                           icon: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.regular)),
-                          label: const Text('View call receipt'),
+                          label: const UiText(UiMessage.m_view_call_receipt_7efc34f89b),
                         ),
                       ] else if (billing != null) ...[
                         const SizedBox(height: Msg.s3),
@@ -2339,14 +2344,14 @@ class _CallScreenState extends State<CallScreen> {
                                 s.billingState.value?.receipt == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text(
-                                      'Your receipt is still being finalized. Try again shortly.'),
+                                  content: UiText(
+                                      UiMessage.m_your_receipt_is_still_being_1db6ee98d8),
                                 ),
                               );
                             }
                           },
                           icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)),
-                          label: const Text('Refresh receipt'),
+                          label: const UiText(UiMessage.m_refresh_receipt_354d8c8eba),
                         ),
                       ],
                     ],
@@ -2497,7 +2502,7 @@ class _CallScreenState extends State<CallScreen> {
                       icon: speaker
                           ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
                           : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
-                      label: 'Speaker',
+                      label: uiCopy(UiMessage.m_speaker_a9e0c70585),
                       active: speaker,
                       onTap: s.toggleSpeaker,
                     ),
@@ -2508,7 +2513,7 @@ class _CallScreenState extends State<CallScreen> {
                           ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                           : PhosphorIcons.videoCameraSlash(
                               PhosphorIconsStyle.bold),
-                      label: videoUpgrading ? 'Adding…' : 'Video',
+                      label: videoUpgrading ? uiCopy(UiMessage.m_adding_c6de6f45c8) : uiCopy(UiMessage.m_video_d534be829e),
                       active: videoUpgrading || (video && camOn),
                       onTap: videoUpgrading ? null : s.toggleCamera,
                     ),
@@ -2519,7 +2524,7 @@ class _CallScreenState extends State<CallScreen> {
                           ? PhosphorIcons.microphoneSlash(
                               PhosphorIconsStyle.bold)
                           : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                      label: 'Mute',
+                      label: uiCopy(UiMessage.m_mute_8dd6857baf),
                       // Inverted vs the old row: the tile lights up when the mic
                       // is CUT, because that is the state you need to notice.
                       active: muted,
@@ -2545,7 +2550,7 @@ class _CallScreenState extends State<CallScreen> {
                     // the package, not intuition.
                     child: _CallTile(
                       icon: PhosphorIcons.numpad(PhosphorIconsStyle.bold),
-                      label: 'Keypad',
+                      label: uiCopy(UiMessage.m_keypad_d8bd2790e9),
                       onTap: () => _showDtmfPad(s),
                     ),
                   ),
@@ -2577,7 +2582,7 @@ class _CallScreenState extends State<CallScreen> {
                     child: _CallTile(
                       icon: PhosphorIcons.phoneDisconnect(
                           PhosphorIconsStyle.fill),
-                      label: 'End',
+                      label: uiCopy(UiMessage.m_end_f4db1e4847),
                       onTap: _hangup,
                       bg: AD.destructiveBg,
                       border: AD.destructiveBg,
@@ -2630,7 +2635,7 @@ class _CallScreenState extends State<CallScreen> {
                       builder: (context, held, _) {
                         final tile = _CallTile(
                           icon: PhosphorIcons.pause(PhosphorIconsStyle.bold),
-                          label: held ? 'On hold' : 'Hold',
+                          label: held ? uiCopy(UiMessage.m_on_hold_ebe7db36e4) : uiCopy(UiMessage.m_hold_8e685d5409),
                           active: held,
                           // Holding a call that has not connected would hold
                           // ringback and nothing else — same reasoning, and the
@@ -2671,7 +2676,7 @@ class _CallScreenState extends State<CallScreen> {
                             final tile = _CallTile(
                               icon: PhosphorIcons.userPlus(
                                   PhosphorIconsStyle.bold),
-                              label: 'Add',
+                              label: uiCopy(UiMessage.m_add_9fd728c66c),
                               onTap: live ? () => unawaited(_addToCall()) : null,
                             );
                             return live
@@ -2690,7 +2695,7 @@ class _CallScreenState extends State<CallScreen> {
                           child: _CallTile(
                             icon: PhosphorIcons.phoneDisconnect(
                                 PhosphorIconsStyle.fill),
-                            label: 'End call',
+                            label: uiCopy(UiMessage.m_end_call_2fe13d93a1),
                             onTap: _hangup,
                             bg: AD.destructiveBg,
                             border: AD.destructiveBg,
@@ -2733,7 +2738,7 @@ class _CallScreenState extends State<CallScreen> {
                 child: Center(
                   child: Semantics(
                     button: true,
-                    label: 'Show call controls',
+                    label: uiCopy(UiMessage.m_show_call_controls_abd6093445),
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => _toggleControlPanel('tap_handle'),
@@ -2994,7 +2999,7 @@ class _CallScreenState extends State<CallScreen> {
         } catch (_) {/* best-effort */}
         if (mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Contact saved')));
+              .showSnackBar(const SnackBar(content: UiText(UiMessage.m_contact_saved_4d1709f379)));
         }
       },
       // [RECEPT-SETTINGS-1] The classic "Leave a voicemail" option was removed
@@ -3041,6 +3046,7 @@ class _PeerStateLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<bool>(
       valueListenable: session.peerHold,
       builder: (context, held, _) => ValueListenableBuilder<bool>(
@@ -3126,6 +3132,7 @@ class _CallTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final fill = bg ?? (active ? AD.primaryBadge : AD.cardHover);
     final edge = border ?? (active ? AD.primaryBadge : AD.borderControl);
     final foreground = ink ?? (active ? AD.textOnInput : AD.textPrimary);
@@ -3253,14 +3260,13 @@ class _CallRecordTileState extends State<_CallRecordTile> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Record this call?', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_record_this_call_747581a243, style: ADText.appTitle()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'AvaTOK records the AUDIO of both sides of the call — yours and '
-              '$theirs. Video is never captured, even if the camera is on.',
+            UiText(
+              UiMessage.m_avatok_records_the_audio_of_8c82031eff, params: {'theirs': (theirs).toString()},
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s3),
@@ -3271,22 +3277,18 @@ class _CallRecordTileState extends State<_CallRecordTile> {
             // unconditional — the peer's phone has to be running a build that
             // understands the frame — so the copy says "up-to-date" rather than
             // claiming something the code cannot guarantee for every device.
-            Text(
-              'AvaTOK tells the other person: on an up-to-date version of the '
-              'app they see a “Recording” indicator on their call screen for as '
-              'long as you are recording.',
+            UiText(
+              UiMessage.m_avatok_tells_the_other_person_9f519ad64f,
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s3),
-            Text(
-              'The recording is saved to your Inbox and counts toward your '
-              'AvaStorage. It stays until you delete it.',
+            UiText(
+              UiMessage.m_the_recording_is_saved_to_d7e45a7c27,
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s3),
-            Text(
-              'Recording laws differ by country and state. You are responsible '
-              'for recording lawfully.',
+            UiText(
+              UiMessage.m_recording_laws_differ_by_country_f95bf925a8,
               style: ADText.timestamp(),
             ),
           ],
@@ -3294,12 +3296,12 @@ class _CallRecordTileState extends State<_CallRecordTile> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(d, false),
-            child: Text('Not now',
+            child: UiText(UiMessage.m_not_now_a0e63d7c71,
                 style: ADText.preview(c: AD.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: Text('Start recording',
+            child: UiText(UiMessage.m_start_recording_30756af013,
                 style: ADText.preview(c: AD.primaryBadge)),
           ),
         ],
@@ -3422,12 +3424,12 @@ class _CallRecordTileState extends State<_CallRecordTile> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Recording unavailable', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_recording_unavailable_2ef4c842e6, style: ADText.appTitle()),
         content: Text(message, style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(d),
-            child: Text('OK', style: ADText.preview(c: AD.primaryBadge)),
+            child: UiText(UiMessage.m_ok_565339bc4d, style: ADText.preview(c: AD.primaryBadge)),
           ),
         ],
       ),
@@ -3436,6 +3438,7 @@ class _CallRecordTileState extends State<_CallRecordTile> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<CallRecordingPhase>(
       valueListenable: CallRecordingStore.I.phase,
       builder: (context, phase, _) => ValueListenableBuilder<String?>(
@@ -3560,12 +3563,13 @@ class _RecordingIndicatorPill extends StatelessWidget {
   /// fits where "Amy Williams is recording" wraps or ellipsises away the verb.
   String get _peerFirst {
     final t = peerName.trim();
-    if (t.isEmpty) return 'The other person';
+    if (t.isEmpty) return uiCopy(UiMessage.m_the_other_person_167d3be5c3);
     return t.split(RegExp(r'\s+')).first;
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<bool>(
       valueListenable: session.peerRecording,
       builder: (context, peerRec, _) => ValueListenableBuilder<CallRecordingPhase>(
@@ -3658,6 +3662,7 @@ class _MinimizeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePressable(
       onTap: onTap,
       color: light ? AD.card : Colors.white.withValues(alpha: 0.16),
@@ -3754,7 +3759,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => Center(
               child:
-                  Text('A', style: ADText.appTitle().copyWith(fontSize: 40))),
+                  UiText(UiMessage.m_a_559aead082, style: ADText.appTitle().copyWith(fontSize: 40))),
         ),
       );
 
@@ -3769,6 +3774,7 @@ class _ReceptionistDuoState extends State<_ReceptionistDuo>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AnimatedBuilder(
       animation: Listenable.merge([widget.mic, widget.ava, _flow]),
       builder: (context, _) {
@@ -3920,6 +3926,7 @@ class _CallNetHudState extends State<_CallNetHud>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<CallNetStats>(
       valueListenable: widget.session.netStats,
       builder: (context, ns, _) {
@@ -3998,7 +4005,7 @@ class _CallNetHudState extends State<_CallNetHud>
             _rateChip(
                 PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), ns.upKbps),
             const SizedBox(width: Msg.s2),
-            Text('${ns.dataMb.toStringAsFixed(ns.dataMb < 10 ? 1 : 0)} MB',
+            UiText(UiMessage.m_value1_mb_60e78b906d, params: {'value1': (ns.dataMb.toStringAsFixed(ns.dataMb < 10 ? 1 : 0)).toString()},
                 style: ADText.timestamp(c: _fg)),
             if (weak) ...[
               const SizedBox(width: 8),
@@ -4013,13 +4020,13 @@ class _CallNetHudState extends State<_CallNetHud>
                     borderRadius: Msg.brPill,
                   ),
                   child:
-                  Text('Weak', style: ADText.statCaption(c: Colors.white)),
+                  UiText(UiMessage.m_weak_8d6cea2517, style: ADText.statCaption(c: Colors.white)),
                 ),
               ),
             ],
             if (indicatorOn && poor) ...[
               const SizedBox(width: 8),
-              Text('Poor network — try WiFi', style: ADText.statCaption(c: AD.danger)),
+              UiText(UiMessage.m_poor_network_try_wifi_a3f99ea614, style: ADText.statCaption(c: AD.danger)),
             ],
           ],
         ),
@@ -4049,7 +4056,7 @@ class _CallNetHudState extends State<_CallNetHud>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Connection', style: ADText.appTitle()),
+              UiText(UiMessage.m_connection_639a40e82b, style: ADText.appTitle()),
               const SizedBox(height: 4),
               Text(_transport, style: ADText.statCaption(c: AD.textTertiary)),
               const SizedBox(height: 16),
@@ -4067,7 +4074,7 @@ class _CallNetHudState extends State<_CallNetHud>
                       size: 16, color: AD.danger),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('The other side is on a weak network.',
+                    child: UiText(UiMessage.m_the_other_side_is_on_f5e0553791,
                         style: ADText.preview(c: AD.danger)),
                   ),
                 ]),
@@ -4115,6 +4122,7 @@ class _QualityBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     const n = 5;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -4159,16 +4167,17 @@ class _AgentCallPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       AdSticker(_line,
           kind: status == 'failed' ? AdStickerKind.no : AdStickerKind.plain),
       const SizedBox(height: Msg.s1),
-      Text('AI assistant · this call is transcribed',
+      UiText(UiMessage.m_ai_assistant_this_call_is_d2ba7088d9,
           style: ADText.preview(), textAlign: TextAlign.center),
       if (status == 'connecting' || status == 'connected') ...[
         const SizedBox(height: Msg.s4),
         AdButton(
-          label: 'End agent call',
+          label: uiCopy(UiMessage.m_end_agent_call_22cdcfef82),
           icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
           onPressed: onHangup,
         ),
@@ -4194,6 +4203,7 @@ class _CallFailureNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 340),
       child: Container(

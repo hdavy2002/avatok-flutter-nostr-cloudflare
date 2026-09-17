@@ -1,3 +1,5 @@
+
+import '../localization/ui_text.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -114,6 +116,7 @@ class _ZinePressableState extends State<ZinePressable> {
   bool _down = false;
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final enabled = widget.onTap != null;
     final reduce = MediaQuery.of(context).disableAnimations;
     final dx = _down && enabled ? 1.0 : 0.0;
@@ -177,6 +180,7 @@ class ZineButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final disabled = onPressed == null || loading;
     final fg = disabled ? AD.textTertiary : _fg;
     final content = Row(
@@ -249,6 +253,7 @@ class ZineCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (onTap != null) {
       return ZinePressable(
         onTap: onTap, color: color, borderColor: borderColor, padding: padding,
@@ -278,6 +283,7 @@ class ZineIconBadge extends StatelessWidget {
   const ZineIconBadge({super.key, required this.icon, this.color = AD.newGroup, this.size = 34});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       width: size, height: size,
       decoration: BoxDecoration(
@@ -299,6 +305,7 @@ class ZineCardHead extends StatelessWidget {
   const ZineCardHead({super.key, required this.icon, required this.title, this.accent = AD.newGroup, this.tag});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Row(children: [
       ZineIconBadge(icon: icon, color: accent),
       const SizedBox(width: Msg.s3),
@@ -380,6 +387,7 @@ class _ZineFieldState extends State<ZineField> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final focused = _focus.hasFocus;
     // The old design signalled focus/error with a coloured HARD offset shadow.
     // On the dark surface that reads as a smear, so state now lives in the
@@ -484,6 +492,7 @@ class ZineErrorMsg extends StatelessWidget {
   const ZineErrorMsg(this.text, {super.key});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: const EdgeInsets.only(top: Msg.s2),
       child: Row(children: [
@@ -503,6 +512,7 @@ class ZineChip extends StatelessWidget {
   const ZineChip({super.key, required this.label, this.active = false, this.onTap});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePressable(
       onTap: onTap,
       color: active ? AD.primaryBadge : AD.card,
@@ -534,6 +544,7 @@ class ZineSticker extends StatelessWidget {
   const ZineSticker(this.text, {super.key, this.kind = ZineStickerKind.plain, this.icon, this.onTap});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final (fill, fg) = switch (kind) {
       ZineStickerKind.ok => (AD.online, Colors.white),
       ZineStickerKind.no => (AD.destructiveBg, Colors.white),
@@ -573,6 +584,7 @@ class ZineBackButton extends StatelessWidget {
   const ZineBackButton({super.key, this.onTap, this.icon});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePressable(
       onTap: onTap ?? () => Navigator.of(context).maybePop(),
       pressedColor: AD.cardHover,
@@ -598,6 +610,7 @@ class ZineStepPips extends StatelessWidget {
   const ZineStepPips({super.key, required this.total, required this.active});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       for (var i = 1; i <= total; i++) ...[
         Container(
@@ -611,7 +624,7 @@ class ZineStepPips extends StatelessWidget {
         const SizedBox(width: Msg.s2),
       ],
       const SizedBox(width: Msg.s1),
-      Text('Step $active / $total', style: _tKicker()),
+      UiText(UiMessage.m_step_active_total_299dbc4486, params: {'active': (active).toString(), 'total': (total).toString()}, style: _tKicker()),
     ]);
   }
 }
@@ -624,6 +637,7 @@ class ZineDotPatch extends StatelessWidget {
   const ZineDotPatch({super.key, this.width = 70, this.height = 56, this.opacity = 0.8});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Opacity(
       opacity: opacity,
       child: CustomPaint(size: Size(width, height), painter: _DotsPainter()),
@@ -656,6 +670,7 @@ class ZineTape extends StatelessWidget {
   const ZineTape({super.key, this.width = 92, this.height = 25, this.angleDeg = -4});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Transform.rotate(
       angle: angleDeg * math.pi / 180,
       child: Container(
@@ -678,6 +693,7 @@ class ZineLogoMark extends StatelessWidget {
   const ZineLogoMark({super.key, this.size = 58});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SizedBox(
       width: size, height: size * 0.92,
       child: CustomPaint(painter: _ZineLogoPainter()),
@@ -718,6 +734,7 @@ class ZineCrest extends StatelessWidget {
   const ZineCrest({super.key, this.size = 116, this.child});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SizedBox(
       width: size + 68, height: size + 24,
       child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
@@ -776,6 +793,7 @@ class ZineMarkTitle extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final style = _tHero(fontSize);
     // RESPUI-13: when the mark word IS the whole title (pre and post both
     // empty — e.g. ZineAppBar's `title == markWord` case, such as Settings'
@@ -844,6 +862,7 @@ class ZineLink extends StatelessWidget {
   const ZineLink(this.text, {super.key, this.onTap, this.underline = AD.primaryBadge, this.fontSize = 13});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -865,6 +884,7 @@ class ZineToggle extends StatelessWidget {
   const ZineToggle({super.key, required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
@@ -907,6 +927,7 @@ class ZineDropdown<T> extends StatelessWidget {
   const ZineDropdown({super.key, required this.items, this.value, this.onChanged, this.label, this.hint});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (label != null) ...[
         Text(_sentence(label!), style: _tKicker()),
@@ -990,6 +1011,7 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final onBand = AD.onBand(AD.headerFooter);
     Widget titleW;
     // App-bar titles are always a single readable white line. The highlighted
@@ -1084,6 +1106,7 @@ class ZinePaper extends StatelessWidget {
   const ZinePaper({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       color: AD.bg,
       child: CustomPaint(
@@ -1135,6 +1158,7 @@ class ZineSuccessOverlay extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePaper(
       child: SafeArea(
         child: Center(
@@ -1193,6 +1217,7 @@ class ZineEmptyState extends StatelessWidget {
   const ZineEmptyState({super.key, required this.icon, required this.text});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: 64, height: 64,
@@ -1244,6 +1269,7 @@ class ZineScrollBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SafeArea(
       top: safeTop,
       bottom: safeBottom,

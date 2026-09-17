@@ -16,8 +16,8 @@ const items = cards.filter((c) => c.id !== excludeId).slice(0, 8);
 {items.length > 0 && (
   <div class="ld-wrap ld-browse-section">
     <div class="ld-section-head">
-      <h2 class="ld-section-title">Browse more <span class="ld-accent">events.</span></h2>
-      <span class="ld-section-note">{items.length} MORE LIKE THIS</span>
+      <h2 class="ld-section-title"><ui-copy style="display:contents" data-i18n="web-common.be3398565992e357">Browse more</ui-copy> <span data-i18n="web-common.9faa09a3e4bdccca" class="ld-accent">events.</span></h2>
+      <span class="ld-section-note">{items.length} <ui-copy style="display:contents" data-i18n="web-common.45392cfc1fdb4723">MORE LIKE THIS</ui-copy></span>
     </div>
     <div class="ld-strip-frame"><TruckBorder kind="jhalar" count={40} /></div>
     <div class="ld-browse-grid" data-section="browse_more">

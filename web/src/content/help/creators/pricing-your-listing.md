@@ -8,7 +8,7 @@ keywords: ["price", "tokens", "minimum price", "per hour pricing", "free listing
 audience: creator
 faq:
   - q: What currency do I set my price in?
-    a: You set it in tokens. One token equals ₹1, so a price of 500 tokens is shown to buyers as ₹500.
+    a: You set it in whole tokens. avaTOK uses 100 Tokens = $1 as an internal anchor; buyer checkout may show a server-owned local-currency quote.
   - q: What's the lowest price I can set?
     a: For live shows and 1:1 sessions, the minimum is 49 tokens per hour.
   - q: Can I list something for free?
@@ -16,13 +16,13 @@ faq:
 draft: false
 ---
 
-Every live show and 1:1 session on avaTOK is priced **per hour, per person**, in tokens. One token is worth ₹1, so a price of 500 tokens is ₹500, and buyers see it with GST added at checkout.
+Every live show and 1:1 session on avaTOK is priced **per hour, per person**, in whole tokens. avaTOK uses 100 Tokens = $1 as an internal accounting anchor. Buyers see a server-owned local-currency quote at checkout, with the quote and payment snapshot recorded immutably.
 
 ## Setting your price
 
 When you create or edit a listing, you enter a whole-number token price for one hour with one participant. The buyer pays that listing price for each booking or ticket, plus GST, at checkout.
 
-There's a floor: avaTOK won't accept a price below **49 tokens (₹49) per hour** for a paid live show or 1:1 session. The wizard and the server both refuse anything lower.
+There's a floor: avaTOK won't accept a price below **49 tokens per hour** for a paid live show or 1:1 session. The wizard and the server both refuse anything lower.
 
 Marketplace listings (buy, sell, social items) don't carry this per-hour structure or floor — you set a plain price for the item or offer.
 
@@ -32,7 +32,7 @@ There's a "this is a free show" option in the listing wizard, but as things stan
 
 ## How buyers see it
 
-Your price is shown as a rupee amount (`₹500`), and at checkout buyers see GST added on top. There's no separate currency conversion for your token price; ₹1 = 1 token, always.
+Your listing price is shown in tokens. At checkout, the server supplies the local-currency quote and records the immutable quote/payment snapshot. Do not describe the internal anchor as a fixed local-currency conversion.
 
 ## The fee
 

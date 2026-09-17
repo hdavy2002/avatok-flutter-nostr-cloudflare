@@ -29,6 +29,10 @@ class PlayPrices {
   /// Localised price for [productId] if it has already been fetched.
   static String? cached(String productId) => _cache[productId];
 
+  /// Returns only the store-authored string. There is deliberately no numeric
+  /// fallback here: a missing Play price must not become a guessed FX value.
+  static String? localizedPrice(String productId) => cached(productId);
+
   /// Fetch and cache Play's localised price for each id in [ids]. Returns the
   /// prices it managed to resolve — an empty map is a normal outcome, not an
   /// error, and must never be surfaced to the user as a failure.

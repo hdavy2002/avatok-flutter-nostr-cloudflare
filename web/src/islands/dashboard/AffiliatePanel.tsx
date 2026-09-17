@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* AffiliatePanel — the affiliate pipeline on the web.
  *   GET  /api/affiliate/me     → { registered, code, status, link_url_base, totals }
  *   GET  /api/affiliate/links  → { links: [...] }  (headline stats per link)
@@ -49,14 +50,14 @@ function Inner() {
   }
 
   if (!checked) return <div className="flex items-center gap-3 p-8"><Spinner size={22} /></div>;
-  if (token && me === null) return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading…</span></div>;
+  if (token && me === null) return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.ba3bbbe10d8bef66" source="Loading…" /></span></div>;
 
   if (!token || !me?.registered) {
     return (
       <div className="flex flex-col items-start gap-4 rounded-zine border-zine border-ink bg-paper2 p-8 shadow-zine">
         <span className="flex h-12 w-12 items-center justify-center rounded-zine border-zine border-ink bg-coral text-[22px] text-paper shadow-zine-xs">📣</span>
-        <h2 className="font-display font-semibold text-[24px] text-ink">Earn 10% for life</h2>
-        <p className="max-w-xl font-body font-bold text-[15px] leading-relaxed text-inkSoft">Share any listing, and when someone you referred buys, you earn 10% of every purchase they ever make — paid from the platform's cut, never the creator's.</p>
+        <h2 className="font-display font-semibold text-[24px] text-ink"><UiText id="web-dashboard.fe91d3ec997ae0c3" source="Earn 10% for life" /></h2>
+        <p className="max-w-xl font-body font-bold text-[15px] leading-relaxed text-inkSoft"><UiText id="web-dashboard.afa465316247bd2e" source="Share any listing, and when someone you referred buys, you earn 10% of every purchase they ever make — paid from the platform's cut, never the creator's." /></p>
         <button type="button" disabled={busy || !token} onClick={registerNow} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{busy ? 'Setting up…' : 'Become an affiliate'}</button>
       </div>
     );
@@ -74,23 +75,23 @@ function Inner() {
 
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
         <div>
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Your code</span>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.77ed10a2d34bf99b" source="Your code" /></span>
           <div className="font-display font-semibold text-[22px] text-ink">{me.code ?? '—'}</div>
         </div>
-        <a href="/marketplace" className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create a link</a>
+        <a href="/marketplace" className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.bb1b089f66aaa5e6" source="+ Create a link" /></a>
       </div>
 
       <div>
-        <h2 className="mb-3 font-display font-semibold text-[18px] text-ink">Your links</h2>
+        <h2 className="mb-3 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.219ee7d1ee3f648a" source="Your links" /></h2>
         {links.length === 0 ? (
-          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm">No links yet — open a listing in the marketplace and tap "Share & earn" to create one.</div>
+          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm"><UiText id="web-dashboard.a75df30368506590" source="No links yet — open a listing in the marketplace and tap \"Share & earn\" to create one." /></div>
         ) : (
           <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
             {links.map((l, i) => (
               <div key={l.id} className={`flex flex-wrap items-center gap-3 p-3 ${i ? 'border-t-zine border-ink' : ''}`}>
                 <code className="min-w-0 flex-1 truncate font-mono text-[14px] text-blueInk font-bold">{l.url ?? l.id}</code>
-                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.clicks ?? 0} clicks</span>
-                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.purchases ?? 0} sales</span>
+                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.clicks ?? 0}{" "}<UiText id="web-dashboard.72b40fb15edacca3" source="clicks" /></span>
+                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.purchases ?? 0}{" "}<UiText id="web-dashboard.e04eb29020eaa961" source="sales" /></span>
                 <span className="font-display font-semibold text-[13px] text-ink">{usd(l.earned_coins)}</span>
               </div>
             ))}

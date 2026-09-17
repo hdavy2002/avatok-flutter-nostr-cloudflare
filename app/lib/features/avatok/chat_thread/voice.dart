@@ -13,15 +13,15 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       MicSheetOption(
         icon: PhosphorIcons.microphone(PhosphorIconsStyle.fill),
         color: AD.danger,
-        title: 'Record audio',
-        subtitle: 'Record a voice note and send it',
+        title: uiCopy(UiMessage.m_record_audio_f9db93fda0),
+        subtitle: uiCopy(UiMessage.m_record_a_voice_note_and_7dad9945bf),
         onTap: _toggleRecord,
       ),
       MicSheetOption(
         icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
         color: AD.online,
-        title: 'Convert voice to text',
-        subtitle: 'Speak and watch it type into the box',
+        title: uiCopy(UiMessage.m_convert_voice_to_text_a1f6552c49),
+        subtitle: uiCopy(UiMessage.m_speak_and_watch_it_type_a8a5be8d21),
         onTap: _startVoiceToText,
       ),
     ]);
@@ -76,7 +76,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     if (!await _recorder.hasPermission()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission needed for voice messages')));
+            const SnackBar(content: UiText(UiMessage.m_microphone_permission_needed_for_voice_ed2784473f)));
       }
       return;
     }
@@ -392,7 +392,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       });
       if (!sameNote && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Still loading the other voice message…'),
+            content: UiText(UiMessage.m_still_loading_the_other_voice_1c8fc87822),
             duration: Duration(seconds: 1)));
       }
       return;
@@ -415,7 +415,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
           track: AudioTrack(
             trackId: trackId,
             title: widget.chat.name,
-            subtitle: 'Voice note',
+            subtitle: uiCopy(UiMessage.m_voice_note_8f54b0d1e3),
             originRoute: _convKey,
           ),
           bytes: m.localBytes ?? Uint8List(0), // ignored on the resume-in-place path
@@ -434,7 +434,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Couldn't resume this voice message")));
+              const SnackBar(content: UiText(UiMessage.m_couldn_t_resume_this_voice_ae658d18f9)));
         }
       } finally {
         if (mounted && _loadingAudioId == m.id) {
@@ -488,7 +488,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
         track: AudioTrack(
           trackId: trackId,
           title: widget.chat.name,
-          subtitle: 'Voice note',
+          subtitle: uiCopy(UiMessage.m_voice_note_8f54b0d1e3),
           originRoute: _convKey,
         ),
         bytes: bytes,
@@ -538,8 +538,8 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(failStage == 'resolve_download'
-                ? "Couldn't download this voice message — ask them to resend it."
-                : "Couldn't play this voice message")));
+                ? uiCopy(UiMessage.m_couldn_t_download_this_voice_edd4551583)
+                : uiCopy(UiMessage.m_couldn_t_play_this_voice_b141a19050))));
       }
     } finally {
       if (mounted && _loadingAudioId == m.id) {
@@ -761,12 +761,12 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   /// toast, never a hang or a silent no-op.
   Future<void> _transcribeVoice(_Msg m) async {
     if (m.media?.storage != 'digital') {
-      _toast('This voice note was sent encrypted — ask them to resend it.');
+      _toast(uiCopy(UiMessage.m_this_voice_note_was_sent_0207d894f9));
       return;
     }
     final mediaId = m.media?.id;
     if (mediaId == null || mediaId.isEmpty) {
-      _toast("This voice note hasn't finished sending yet — try again in a moment.");
+      _toast(uiCopy(UiMessage.m_this_voice_note_hasn_t_c51c94a02c));
       return;
     }
     final convId = _serverConvId ?? _convKey;
@@ -776,7 +776,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       convId: convId,
       kind: AiMediaJobKind.audioTranscribe,
       sourceMediaId: mediaId,
-      label: 'Converting to text…',
+      label: uiCopy(UiMessage.m_converting_to_text_adc585ea90),
     );
     _handleJobOutcome(outcome);
   }
@@ -788,16 +788,16 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   /// and the original recording is never replaced or removed.
   Future<void> _translateVoice(_Msg m) async {
     if (m.media?.storage != 'digital') {
-      _toast('This voice note was sent encrypted — ask them to resend it.');
+      _toast(uiCopy(UiMessage.m_this_voice_note_was_sent_0207d894f9));
       return;
     }
     if (!await BrainConsent.isOn('messaging')) {
-      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to translate.');
+      if (mounted) _toast(uiCopy(UiMessage.m_turn_on_avabrain_for_your_5b6ee659c9));
       return;
     }
     final mediaId = m.media?.id;
     if (mediaId == null || mediaId.isEmpty) {
-      _toast("This voice note hasn't finished sending yet — try again in a moment.");
+      _toast(uiCopy(UiMessage.m_this_voice_note_hasn_t_c51c94a02c));
       return;
     }
     // Reuse the shared language picker sheet.
@@ -832,7 +832,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
                 PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                     size: 20, color: AD.textPrimary),
                 const SizedBox(width: 10),
-                Text('Translate into…', style: ADText.threadName()),
+                UiText(UiMessage.m_translate_into_2929768abe, style: ADText.threadName()),
               ]),
             ),
             Flexible(

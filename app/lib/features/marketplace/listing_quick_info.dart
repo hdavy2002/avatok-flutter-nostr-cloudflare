@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // [POSTER-FIRST-1 2026-09-05] The "More info" sheet — the phone twin of
 // web/src/islands/listing/QuickInfo.tsx.
 //
@@ -52,6 +55,7 @@ class _QuickInfoSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // A sheet must never be taller than the screen it rises into, and the rules
     // list is creator-supplied so its length is unbounded — cap it and scroll.
     final maxHeight = MediaQuery.sizeOf(context).height * 0.85;
@@ -121,29 +125,29 @@ class _QuickInfoSheet extends StatelessWidget {
                         spacing: Msg.s4,
                         runSpacing: Msg.s3,
                         children: [
-                          _Fact(label: 'Price', value: fmtTokens(card.effectivePrice)),
+                          _Fact(label: uiCopy(UiMessage.m_price_93c91c851e), value: fmtTokens(card.effectivePrice)),
                           // durationMin is NULLABLE on ListingCard — an
                           // always-on agent listing has no duration at all.
                           if ((card.durationMin ?? 0) > 0)
-                            _Fact(label: 'Duration', value: _duration(card.durationMin!)),
-                          if (when != null) _Fact(label: 'Date & time', value: when),
+                            _Fact(label: uiCopy(UiMessage.m_duration_4fc52a3c4c), value: _duration(card.durationMin!)),
+                          if (when != null) _Fact(label: uiCopy(UiMessage.m_date_time_2459ea4289), value: when),
                           if ((card.spokenLang ?? '').isNotEmpty)
-                            _Fact(label: 'Language', value: card.spokenLang!),
+                            _Fact(label: uiCopy(UiMessage.m_language_a4fe65264e), value: card.spokenLang!),
                           if ((card.location ?? '').isNotEmpty)
-                            _Fact(label: 'Location', value: card.location!),
+                            _Fact(label: uiCopy(UiMessage.m_location_15b61974b2), value: card.location!),
                         ],
                       ),
                       if (expect.isNotEmpty) ...[
                         const SizedBox(height: Msg.s3),
                         Divider(color: AD.borderCard, height: 1),
                         const SizedBox(height: Msg.s3),
-                        _Section(label: 'What to expect', items: expect),
+                        _Section(label: uiCopy(UiMessage.m_what_to_expect_7ef84dcd83), items: expect),
                       ],
                       if (rules.isNotEmpty) ...[
                         const SizedBox(height: Msg.s3),
                         Divider(color: AD.borderCard, height: 1),
                         const SizedBox(height: Msg.s3),
-                        _Section(label: 'Boundaries & house rules', items: rules),
+                        _Section(label: uiCopy(UiMessage.m_boundaries_house_rules_14bc6396c2), items: rules),
                       ],
                     ],
                   ),
@@ -160,7 +164,7 @@ class _QuickInfoSheet extends StatelessWidget {
                           Navigator.of(context).pop();
                           onBook!();
                         },
-                        child: const Text('Book now'),
+                        child: const UiText(UiMessage.m_book_now_b6b3d1164a),
                       ),
                     ),
                     const SizedBox(width: Msg.s2),
@@ -175,7 +179,7 @@ class _QuickInfoSheet extends StatelessWidget {
                         PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                         size: 16,
                       ),
-                      label: const Text('Details'),
+                      label: const UiText(UiMessage.m_details_45989de49f),
                     ),
                   ),
                 ]),
@@ -209,6 +213,7 @@ class _Fact extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -235,6 +240,7 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

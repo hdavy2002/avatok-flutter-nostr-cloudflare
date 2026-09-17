@@ -1,3 +1,5 @@
+
+import 'localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
@@ -220,7 +222,7 @@ class DeepLinks {
           phone: '',
         );
         await ContactsStore().add(contact);
-        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
+        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: UiText(UiMessage.m_added_value1_b4155f8b44, params: {'value1': (contact.name).toString()})));
       });
       return;
     }
@@ -237,7 +239,7 @@ class DeepLinks {
       if (contact != null) {
         await ContactsStore().add(contact);
         final messenger = ScaffoldMessenger.maybeOf(ctx);
-        messenger?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
+        messenger?.showSnackBar(SnackBar(content: UiText(UiMessage.m_added_value1_b4155f8b44, params: {'value1': (contact.name).toString()})));
       }
     });
   }
@@ -381,7 +383,7 @@ class _CommercialLiveLinkScreenState
           builder: (_) => CommercialLiveViewerScreen(
             listingId: widget.listingId,
             entitlementId: '',
-            title: 'Live event',
+            title: uiCopy(UiMessage.m_live_event_544b6ea60b),
             gateway: gateway,
           ),
         ));
@@ -394,7 +396,7 @@ class _CommercialLiveLinkScreenState
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
         body: Center(
           child: _error == null
               ? const CircularProgressIndicator()
@@ -405,10 +407,10 @@ class _CommercialLiveLinkScreenState
                     children: [
                       Text(_error!, textAlign: TextAlign.center),
                       const SizedBox(height: 16),
-                      FilledButton(onPressed: _resolve, child: const Text('Try again')),
+                      FilledButton(onPressed: _resolve, child: const UiText(UiMessage.m_try_again_d8b8392e2c)),
                     ],
                   ),
                 ),
         ),
-      );
+      ); }
 }

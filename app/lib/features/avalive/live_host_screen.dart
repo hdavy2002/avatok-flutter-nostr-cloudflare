@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 7 — AvaLive CREATOR broadcast HUD. Go-live publishes via WHIP from the
 // phone (shared flutter_webrtc). HUD: watching-now, elapsed + time remaining,
 // earnings-so-far chip (ticket revenue + live donations ticking up),
@@ -215,19 +218,19 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
           ListTile(title: Text(name, style: ADText.threadName())),
           ListTile(
             leading: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.regular), color: AD.iconNeutral),
-            title: Text('Mute', style: ADText.rowName()),
-            subtitle: Text('No more messages — can keep watching', style: ADText.preview()),
+            title: UiText(UiMessage.m_mute_8dd6857baf, style: ADText.rowName()),
+            subtitle: UiText(UiMessage.m_no_more_messages_can_keep_10be548d3f, style: ADText.preview()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'mute', target: uid); },
           ),
           ListTile(
             leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.regular), color: AD.danger),
-            title: Text('Ban', style: ADText.rowName(c: AD.danger)),
-            subtitle: Text('Kicked — join token revoked, no re-entry', style: ADText.preview()),
+            title: UiText(UiMessage.m_ban_520ed297c9, style: ADText.rowName(c: AD.danger)),
+            subtitle: UiText(UiMessage.m_kicked_join_token_revoked_no_0f4fe80886, style: ADText.preview()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
           ListTile(
             leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.regular), color: AD.iconNeutral),
-            title: Text('Report', style: ADText.rowName()),
+            title: UiText(UiMessage.m_report_b6ce788d97, style: ADText.rowName()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
         ]),
@@ -244,12 +247,12 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('Pin a message', style: ADText.threadName()),
-        content: ZineField(controller: ctl, maxLength: 200, hint: 'Say it loud…'),
+        title: UiText(UiMessage.m_pin_a_message_e06409cdf5, style: ADText.threadName()),
+        content: ZineField(controller: ctl, maxLength: 200, hint: uiCopy(UiMessage.m_say_it_loud_31ff268f64)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, ''),
-              child: Text('Unpin', style: ADText.rowName(c: AD.textSecondary))),
-          ZineButton(label: 'Pin', fontSize: 16, onPressed: () => Navigator.pop(dCtx, ctl.text.trim())),
+              child: UiText(UiMessage.m_unpin_ee3c716130, style: ADText.rowName(c: AD.textSecondary))),
+          ZineButton(label: uiCopy(UiMessage.m_pin_ff1cee7441), fontSize: 16, onPressed: () => Navigator.pop(dCtx, ctl.text.trim())),
         ],
       ),
     );
@@ -266,13 +269,13 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('End stream?', style: ADText.threadName()),
-        content: Text('The event moves to settlement — your 80% lands in the wallet after the rules pass.',
+        title: UiText(UiMessage.m_end_stream_10f049ccc1, style: ADText.threadName()),
+        content: UiText(UiMessage.m_the_event_moves_to_settlement_43d0364972,
             style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, false),
-              child: Text('Keep going', style: ADText.rowName(c: AD.textSecondary))),
-          ZineButton(label: 'End stream', fontSize: 16, variant: ZineButtonVariant.coral,
+              child: UiText(UiMessage.m_keep_going_9d7fd0e0bd, style: ADText.rowName(c: AD.textSecondary))),
+          ZineButton(label: uiCopy(UiMessage.m_end_stream_23c13af337), fontSize: 16, variant: ZineButtonVariant.coral,
               onPressed: () => Navigator.pop(dCtx, true)),
         ],
       ),
@@ -304,6 +307,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_ended) return _settlementScreen();
     if (!_started) return _preLiveScreen();
 
@@ -318,7 +322,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
         if (_reconnecting)
           Container(
             color: kInkScrimHeavy, alignment: Alignment.center,
-            child: Text('Reconnecting in $_reconnectIn…', style: ADText.rowName(c: AD.textPrimary)),
+            child: UiText(UiMessage.m_reconnecting_in_reconnectin_ab74017eff, params: {'reconnectIn': (_reconnectIn).toString()}, style: ADText.rowName(c: AD.textPrimary)),
           ),
         // feed (doubles as moderation surface — long-press a line)
         Positioned(
@@ -344,7 +348,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                         borderRadius: Msg.brPill,
                         border: Border.all(color: AD.borderControl, width: 1),
                       ),
-                      child: Text(_live ? 'Live' : _status,
+                      child: Text(_live ? uiCopy(UiMessage.m_live_b64ac05f17) : _status,
                           style: ADText.sectionLabel(
                               c: _live ? AD.destructiveInk : AD.textSecondary)),
                     ),
@@ -356,7 +360,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                       decoration: BoxDecoration(shape: BoxShape.circle, color: _healthColor),
                     ),
                     const SizedBox(width: Msg.s1),
-                    Text('$_bitrateKbps kbps', style: ADText.sectionLabel(c: AD.textPrimary)),
+                    UiText(UiMessage.m_bitratekbps_kbps_a35151493a, params: {'bitrateKbps': (_bitrateKbps).toString()}, style: ADText.sectionLabel(c: AD.textPrimary)),
                   ]),
                   const SizedBox(height: Msg.s1),
                   Row(children: [
@@ -370,7 +374,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                         borderRadius: Msg.brPill,
                         border: Border.all(color: AD.borderControl, width: 1),
                       ),
-                      child: Text('~\u20b9$earnings so far',
+                      child: UiText(UiMessage.m_earnings_so_far_1756471bec, params: {'earnings': (earnings).toString()},
                           style: ADText.sectionLabel(c: AD.bg)),
                     ),
                   ]),
@@ -387,7 +391,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               LiveCircleButton(
                 icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.regular),
-                tooltip: 'Flip camera',
+                tooltip: uiCopy(UiMessage.m_flip_camera_c6fbc83ef2),
                 onTap: () {
                   final v = _stream?.getVideoTracks();
                   if (v != null && v.isNotEmpty) Helper.switchCamera(v.first);
@@ -395,20 +399,20 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
               ),
               LiveCircleButton(
                 icon: PhosphorIcons.pushPin(PhosphorIconsStyle.regular),
-                tooltip: 'Pin message',
+                tooltip: uiCopy(UiMessage.m_pin_message_b936d77870),
                 onTap: _pinDialog,
               ),
               PopupMenuButton<int>(
-                tooltip: 'Slow mode',
+                tooltip: uiCopy(UiMessage.m_slow_mode_1efc091c01),
                 color: AD.menu,
                 shape: RoundedRectangleBorder(
                     borderRadius: Msg.brMd,
                     side: const BorderSide(color: AD.borderControl, width: 1)),
                 onSelected: (s) { setState(() => _slowSec = s); SessionApi.mod(widget.listingId, 'slow', sec: s); },
                 itemBuilder: (_) => [
-                  PopupMenuItem(value: 0, child: Text('Slow mode off', style: ADText.preview(c: AD.textPrimary))),
-                  PopupMenuItem(value: 5, child: Text('1 msg / 5 s', style: ADText.preview(c: AD.textPrimary))),
-                  PopupMenuItem(value: 30, child: Text('1 msg / 30 s', style: ADText.preview(c: AD.textPrimary))),
+                  PopupMenuItem(value: 0, child: UiText(UiMessage.m_slow_mode_off_44d68b8d71, style: ADText.preview(c: AD.textPrimary))),
+                  PopupMenuItem(value: 5, child: UiText(UiMessage.m_1_msg_5_s_02240de8dc, style: ADText.preview(c: AD.textPrimary))),
+                  PopupMenuItem(value: 30, child: UiText(UiMessage.m_1_msg_30_s_add9035410, style: ADText.preview(c: AD.textPrimary))),
                 ],
                 child: Container(
                   width: 46, height: 46,
@@ -425,7 +429,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                 icon: PhosphorIcons.stopCircle(PhosphorIconsStyle.bold),
                 fill: AD.danger,
                 size: 54,
-                tooltip: 'End stream',
+                tooltip: uiCopy(UiMessage.m_end_stream_23c13af337),
                 onTap: _end,
               ),
             ]),
@@ -449,7 +453,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
               Row(children: [
                 ZineBackButton(onTap: () => Navigator.of(context).maybePop()),
                 const SizedBox(width: Msg.s3),
-                Expanded(child: ZineMarkTitle(pre: 'Go ', mark: 'live', fontSize: 30, textAlign: TextAlign.left)),
+                Expanded(child: ZineMarkTitle(pre: uiCopy(UiMessage.m_go_23e5dce060), mark: uiCopy(UiMessage.m_live_247610f4de), fontSize: 30, textAlign: TextAlign.left)),
                 const ZineSticker('AvaLive', kind: ZineStickerKind.hint),
               ]),
               const SizedBox(height: Msg.s1),
@@ -481,14 +485,14 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
               Center(child: ZineSticker(_status, kind: isError ? ZineStickerKind.no : ZineStickerKind.hint)),
               const SizedBox(height: Msg.s3),
               ZineButton(
-                label: "Go live",
+                label: uiCopy(UiMessage.m_go_live_a9f6901697),
                 fullWidth: true,
                 fontSize: 21,
                 icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
                 onPressed: _ready ? _goLive : null,
               ),
               const SizedBox(height: Msg.s2),
-              Center(child: Text('Your 80% · straight to your wallet',
+              Center(child: UiText(UiMessage.m_your_80_straight_to_your_9661e7ff61,
                   style: ADText.sectionLabel())),
             ]),
           ),

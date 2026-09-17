@@ -6,6 +6,9 @@
 /// paid plan / topped-up wallet. Non-subscribers see the call disabled and a
 /// prompt to subscribe.
 library;
+import '../../../core/localization/ui_text.dart';
+
+
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -58,7 +61,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
     if (!_available) {
       Analytics.capture('aivoice_call_start', const {'blocked': 'kill_switch'});
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Voice calling with Ava is currently unavailable.')));
+          content: UiText(UiMessage.m_voice_calling_with_ava_is_b59ece7546)));
       return;
     }
     // [WALLET-GET-STATE-1] Only a CONFIRMED free wallet routes to Subscribe.
@@ -78,6 +81,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Killed by the server switch → fully unavailable (subscribing won't help).
     // Otherwise fall back to the premium gate — but ONLY on a CONFIRMED free
     // wallet. `.loading`/`.unavailable` are deliberately NOT locked: a failed
@@ -89,7 +93,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
     final locked = unavailable || _walletState == WalletEntitlementState.free;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: ZineAppBar(title: 'AvaBrain Voice', markWord: 'Voice', tag: 'AI'),
+      appBar: ZineAppBar(title: uiCopy(UiMessage.m_avabrain_voice_a75b5a20fb), markWord: 'Voice', tag: 'AI'),
       body: ZinePaper(
         child: SafeArea(
           top: false,
@@ -125,25 +129,21 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
               ),
             ),
             const SizedBox(height: Msg.s5),
-            Text('Talk to AvaBrain',
+            UiText(UiMessage.m_talk_to_avabrain_588f938022,
                 style: ADText.threadName().copyWith(fontSize: 20)),
             const SizedBox(height: Msg.s2),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Msg.s6),
               child: Text(
                 unavailable
-                    ? 'Voice calling with Ava is currently unavailable. Please check '
-                        'back soon.'
+                    ? uiCopy(UiMessage.m_voice_calling_with_ava_is_bdafe5e90f)
                     : checking
-                        ? 'Checking your AvaBrain plan…'
+                        ? uiCopy(UiMessage.m_checking_your_avabrain_plan_495faeb90d)
                         : locked
-                            ? 'Voice calling will use AvaBrain tokens. Add tokens to have '
-                                'hands-free, real-time conversations with Ava.'
+                            ? uiCopy(UiMessage.m_voice_calling_will_use_avabrain_109425ded9)
                             : walletUnverified
-                                ? "Couldn't verify your wallet — you can still tap to call; "
-                                    "we'll confirm when you do."
-                                : 'Tap to call AvaBrain and have a hands-free conversation. It knows your '
-                                    'name and answers in real time.',
+                                ? uiCopy(UiMessage.m_couldn_t_verify_your_wallet_a450ba473a)
+                                : uiCopy(UiMessage.m_tap_to_call_avabrain_and_d3c7c5e25e),
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14),
               ),
@@ -153,7 +153,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
               padding: const EdgeInsets.only(bottom: Msg.s6),
               child: unavailable
                   ? ZineButton(
-                      label: 'Unavailable',
+                      label: uiCopy(UiMessage.m_unavailable_ca18449697),
                       variant: ZineButtonVariant.lime,
                       icon: PhosphorIcons.prohibit(PhosphorIconsStyle.fill),
                       trailingIcon: false,
@@ -161,7 +161,7 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                     )
                   : checking
                   ? ZineButton(
-                      label: 'Checking…',
+                      label: uiCopy(UiMessage.m_checking_ec963ffc91),
                       variant: ZineButtonVariant.lime,
                       icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
                       trailingIcon: false,
@@ -169,14 +169,14 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
                     )
                   : locked
                   ? ZineButton(
-                      label: 'Subscribe to talk to Ava',
+                      label: uiCopy(UiMessage.m_subscribe_to_talk_to_ava_9baa22c58f),
                       variant: ZineButtonVariant.lime,
                       icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
                       trailingIcon: false,
                       onPressed: _goSubscribe,
                     )
                   : ZineButton(
-                      label: 'Call AvaBrain',
+                      label: uiCopy(UiMessage.m_call_avabrain_efb660036a),
                       icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
                       trailingIcon: false,
                       onPressed: () => _dial(context),

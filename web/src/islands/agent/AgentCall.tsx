@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // AgentCall — the AvaVoice agent-call island for /agent/<id>.
 //
 // Flow (MASTER-PROMPT §4b gating + worker/src/routes/avavoice.ts contract):
@@ -85,6 +87,8 @@ function fmtClock(sec: number): string {
 }
 
 function AgentCallInner({ agentId, seed }: Props) {
+  const {t:uiT}=useUiTranslation("web-agent");
+
   const auth = useAuthToken();
 
   const [phase, setPhase] = useState<CallPhase>('idle');
@@ -352,7 +356,7 @@ function AgentCallInner({ agentId, seed }: Props) {
       {phase === 'idle' && (
         <div className="flex w-full flex-col items-center gap-4">
           <label className="flex w-full max-w-xs flex-col gap-1.5">
-            <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Talk in</span>
+            <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-agent.9eaa259335df9363" source="Talk in" /></span>
             <select
               className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-2.5 font-body font-bold text-[15px] text-ink shadow-zine-xs focus:outline-none"
               value={language}
@@ -365,11 +369,11 @@ function AgentCallInner({ agentId, seed }: Props) {
               ))}
             </select>
           </label>
-          <Button variant="lime" fullWidth label="Talk now" onClick={start} />
+          <Button variant="lime" fullWidth label={uiT("web-agent.438e3083daedfaa6","Talk now")} onClick={start} />
           <p className="text-center font-body text-[12px] text-inkMute">
             {free
-              ? 'Free to call — the creator covers it. Mic access required.'
-              : 'Billed per minute from your AvaWallet. Mic access required.'}
+              ? uiT("web-agent.478b14cb44002258","Free to call — the creator covers it. Mic access required.")
+              : uiT("web-agent.e81c9174b7807a75","Billed per minute from your AvaWallet. Mic access required.")}
           </p>
         </div>
       )}
@@ -378,7 +382,7 @@ function AgentCallInner({ agentId, seed }: Props) {
         <div className="flex flex-col items-center gap-3 py-4">
           <Spinner size={28} color="var(--zine-lilac)" />
           <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-            {phase === 'authing' ? 'verifying…' : phase === 'starting' ? 'starting call…' : 'connecting…'}
+            {phase === 'authing' ? uiT("web-agent.8073bb0cbbb0838e","verifying…") : phase === 'starting' ? uiT("web-agent.3ac5c5dbc21c58a4","starting call…") : uiT("web-agent.4b6394535d80d9a6","connecting…")}
           </span>
         </div>
       )}
@@ -392,7 +396,7 @@ function AgentCallInner({ agentId, seed }: Props) {
               agentSpeaking ? 'bg-lilac text-ink' : 'bg-card text-inkSoft',
             ].join(' ')}
           >
-            {agentSpeaking ? '● speaking' : phase === 'wrapup' ? 'wrapping up' : 'listening'}
+            {agentSpeaking ? uiT("web-agent.0d50d8a9e4b15571","● speaking") : phase === 'wrapup' ? uiT("web-agent.efdbdf81cb451d9c","wrapping up") : uiT("web-agent.8560878b8782af43","listening")}
           </span>
           {caption && (
             <p className="min-h-[2.5em] max-w-sm text-center font-body font-bold text-[15px] leading-snug text-ink">
@@ -400,9 +404,7 @@ function AgentCallInner({ agentId, seed }: Props) {
             </p>
           )}
           {phase === 'wrapup' && (
-            <p className="max-w-xs text-center font-body text-[12px] text-inkMute">
-              Time is almost up — the agent will wrap up. Start another call to keep going.
-            </p>
+            <p className="max-w-xs text-center font-body text-[12px] text-inkMute"><UiText id="web-agent.d4a006e38abbfe21" source="Time is almost up — the agent will wrap up. Start another call to keep going." />{" "}</p>
           )}
         </div>
       )}
@@ -410,14 +412,13 @@ function AgentCallInner({ agentId, seed }: Props) {
       {(phase === 'ended' || phase === 'error') && (
         <div className="flex w-full flex-col items-center gap-2 rounded-zine border-zine border-ink bg-card p-5 text-center shadow-zine-sm">
           <span className="font-display font-semibold text-[19px] text-ink">
-            {phase === 'error' ? 'Could not connect' : 'Call ended'}
+            {phase === 'error' ? uiT("web-agent.8630b4dd33f22d2f","Could not connect") : uiT("web-agent.00ff74289a121c75","Call ended")}
           </span>
           {phase === 'error' ? (
             <p className="font-body font-bold text-[14px] text-coral">{error}</p>
           ) : (
-            <p className="font-body font-bold text-[14px] text-inkSoft">
-              You talked with {name} for {fmtClock(elapsed)}.
-              {!free && agent ? ` Billed ~${billedMin} min; unused escrow is refunded.` : ' This call was free.'}
+            <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-agent.ac49f138b6fa2128" source="You talked with" />{" "}{name}{" "}<UiText id="web-agent.10c22bcf4c768b51" source="for" />{" "}{fmtClock(elapsed)}.
+              {!free && agent ? uiT("web-agent.1cdf1182ad2c34a9"," Billed ~{value0} min; unused escrow is refunded.",{value0:String(billedMin)}) : uiT("web-agent.b124ccbacf574ce2"," This call was free.")}
             </p>
           )}
         </div>

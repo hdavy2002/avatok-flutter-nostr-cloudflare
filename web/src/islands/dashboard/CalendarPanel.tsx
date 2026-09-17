@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [CAL-AUDIT-2026-09-15] The creator calendar island.
  *
  * Rewritten (same markup language, same class names, same API calls) from the
@@ -183,6 +185,8 @@ function CalendarGrid({ cursor, selectedDate, onSelect, schedule, itemsByDay, av
 function WeekGrid({ selectedDate, onSelect, schedule, itemsByDay }: {
   selectedDate: string; onSelect: (date: string) => void; schedule: CreatorSchedule; itemsByDay: Map<string, DayItem[]>;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const first = startOfCalendarWeek(parseDateKey(selectedDate));
   return (
     <div className="calendar-week-grid" role="grid" aria-label={`Week of ${dateLabel(formatDateKey(first))}`}>
@@ -198,10 +202,10 @@ function WeekGrid({ selectedDate, onSelect, schedule, itemsByDay }: {
             <span className="calendar-week-head"><b>{DAYS[day.getDay()]}</b><strong>{day.getDate()}</strong></span>
             {intervals.map((item) => (
               <span className={`calendar-week-exception ${item.status}`} key={item.id}>
-                {item.status === 'reserved' ? 'Reserved' : item.status === 'available' ? 'Open' : 'Blocked'} · {intervalLabel(item.start_min, item.end_min)}
+                {item.status === 'reserved' ? uiT("web-dashboard.3385ffe6747065e4","Reserved") : item.status === 'available' ? uiT("web-dashboard.ed077f3d8125d60d","Open") : uiT("web-dashboard.18f2a0947f9d6523","Blocked")} · {intervalLabel(item.start_min, item.end_min)}
               </span>
             ))}
-            {!items.length && !intervals.length && <span className="calendar-week-empty">No commitments</span>}
+            {!items.length && !intervals.length && <span className="calendar-week-empty"><UiText id="web-dashboard.31acc78f4f1ee4a3" source="No commitments" /></span>}
             {items.map((row) => (
               <span className={`calendar-event ${row.tone}`} key={row.key}>
                 <b>{row.title}</b><small>{epochRangeLabel(row.start, row.end, schedule.timezone)}{bookingRoleLabel(row.bookingRole) ? ` · ${bookingRoleLabel(row.bookingRole)}` : ''}</small>
@@ -218,8 +222,10 @@ function Agenda({ selectedDate, onSelect, schedule, itemsByDay, listings, days =
   selectedDate: string; onSelect: (date: string) => void; schedule: CreatorSchedule; itemsByDay: Map<string, DayItem[]>;
   listings: ListingCard[]; days?: number;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   return (
-    <div className="calendar-agenda" aria-label="Upcoming calendar agenda">
+    <div className="calendar-agenda" aria-label={uiT("web-dashboard.073c1262af0a81ea","Upcoming calendar agenda")}>
       {Array.from({ length: days }, (_, index) => addCalendarDays(parseDateKey(selectedDate), index)).map((day) => {
         const key = formatDateKey(day);
         const items = itemsByDay.get(key) ?? [];
@@ -244,7 +250,7 @@ function Agenda({ selectedDate, onSelect, schedule, itemsByDay, listings, days =
                   <small>{epochRangeLabel(row.start, row.end, schedule.timezone)} · {row.status}{bookingRoleLabel(row.bookingRole) ? ` · ${bookingRoleLabel(row.bookingRole)}` : ''}</small>
                 </span>
               ))}
-              {!intervals.length && !items.length && <span className="calendar-agenda-empty">No commitments or exceptions</span>}
+              {!intervals.length && !items.length && <span className="calendar-agenda-empty"><UiText id="web-dashboard.9b24163e5cadb8da" source="No commitments or exceptions" /></span>}
             </span>
           </button>
         );
@@ -275,6 +281,8 @@ interface DayEditorProps {
 }
 
 function DayEditor({ date, schedule, listings, token, selectedListing, requestedStatus, itemsByDay, onSelectDate, onSaved, onStatusConsumed }: DayEditorProps) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const dayIntervals = intervalsForDate(schedule, date);
   const dayItems = itemsByDay.get(date) ?? [];
   const [composer, setComposer] = useState<Composer>({ mode: 'closed' });
@@ -644,17 +652,15 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     <section className="calendar-card calendar-editor" aria-labelledby="day-editor-heading">
       <div className="calendar-card-heading">
         <div>
-          <p className="calendar-eyebrow">Selected day · {schedule.timezone}</p>
+          <p className="calendar-eyebrow"><UiText id="web-dashboard.b13a92d0b2d24515" source="Selected day ·" />{" "}{schedule.timezone}</p>
           <h2 id="day-editor-heading">{dayLabel}</h2>
         </div>
-        <StatusBadge status={dayIntervals.length ? `${dayIntervals.length} exception${dayIntervals.length === 1 ? '' : 's'}` : 'Usual hours'} />
+        <StatusBadge status={dayIntervals.length ? `${dayIntervals.length} exception${dayIntervals.length === 1 ? '' : 's'}` : uiT("web-dashboard.b1413f4a07d38ffc","Usual hours")} />
       </div>
-      <p className="calendar-muted">
-        Every window on this day is listed below and can be changed on its own. Existing bookings stay protected until explicitly rescheduled or cancelled.
-      </p>
+      <p className="calendar-muted"><UiText id="web-dashboard.8565628c50a9ddc0" source="Every window on this day is listed below and can be changed on its own. Existing bookings stay protected until explicitly rescheduled or cancelled." />{" "}</p>
 
       <div className="calendar-intervals">
-        {!dayIntervals.length && <p className="calendar-muted">Your usual working hours apply on this day.</p>}
+        {!dayIntervals.length && <p className="calendar-muted"><UiText id="web-dashboard.6dd2d37d553049c7" source="Your usual working hours apply on this day." /></p>}
         {dayIntervals.map((exception) => (
           <div className="calendar-interval" key={exception.id}>
             <div>
@@ -664,23 +670,23 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
               </span>
               <small>
                 {exception.status === 'reserved'
-                  ? `Kept for ${scopeLabel(exception, listings)}`
-                  : exception.listing_id ? scopeLabel(exception, listings) : 'All listings'}
-                {holdsCommitment(exception) ? ' · overlaps an existing commitment' : ''}
+                  ? uiT("web-dashboard.523cfe5ee2ac38dd","Kept for {value0}",{value0:String(scopeLabel(exception, listings))})
+                  : exception.listing_id ? scopeLabel(exception, listings) : uiT("web-dashboard.39623e25ae17a8db","All listings")}
+                {holdsCommitment(exception) ? uiT("web-dashboard.f4086c27598a9df8"," · overlaps an existing commitment") : ''}
               </small>
             </div>
             <div className="calendar-interval-actions">
-              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => openEdit(exception)} disabled={busy}>Edit</button>
+              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => openEdit(exception)} disabled={busy}><UiText id="web-dashboard.464c4ffd019e1e96" source="Edit" /></button>
               {pendingRemove === exception.id ? (
                 <>
-                  <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void removeOne(exception)} disabled={busy}>Confirm remove</button>
-                  <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setPendingRemove(null)} disabled={busy}>Cancel</button>
+                  <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void removeOne(exception)} disabled={busy}><UiText id="web-dashboard.10764ef5d00450ba" source="Confirm remove" /></button>
+                  <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setPendingRemove(null)} disabled={busy}><UiText id="web-dashboard.19766ed6ccb2f4a3" source="Cancel" /></button>
                 </>
               ) : (
                 <button type="button" className="calendar-remove" onClick={() => {
                   if (exception.status === 'reserved' || holdsCommitment(exception)) setPendingRemove(exception.id);
                   else void removeOne(exception);
-                }} disabled={busy}>Remove</button>
+                }} disabled={busy}><UiText id="web-dashboard.c3812fc4acb861d5" source="Remove" /></button>
               )}
             </div>
           </div>
@@ -689,17 +695,17 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
 
       {composer.mode === 'closed' && (
         <div className="calendar-interval-actions">
-          <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => openAdd('unavailable')} disabled={busy}>+ Add another time</button>
+          <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => openAdd('unavailable')} disabled={busy}><UiText id="web-dashboard.ffa1b5d1b13974a6" source="+ Add another time" /></button>
           {dayIntervals.length > 0 && (pendingClear ? (
             <>
-              <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void clearDay()} disabled={busy}>Confirm: use usual hours</button>
-              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setPendingClear(false)} disabled={busy}>Cancel</button>
+              <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void clearDay()} disabled={busy}><UiText id="web-dashboard.e295717296152f6a" source="Confirm: use usual hours" /></button>
+              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setPendingClear(false)} disabled={busy}><UiText id="web-dashboard.19766ed6ccb2f4a3" source="Cancel" /></button>
             </>
           ) : (
             <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => {
               if (reservedOverlap || dayItems.length) setPendingClear(true);
               else void clearDay();
-            }} disabled={busy}>Use usual hours</button>
+            }} disabled={busy}><UiText id="web-dashboard.82678a7bb507641f" source="Use usual hours" /></button>
           ))}
         </div>
       )}
@@ -707,27 +713,24 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
       {composer.mode !== 'closed' && (
         <div className="calendar-composer">
           <div className="calendar-editor-fields">
-            <label>What is this time?
-              <select className={CONTROL} value={status} onChange={(event) => {
+            <label><UiText id="web-dashboard.e0db220b9cb72120" source="What is this time?" />{" "}<select className={CONTROL} value={status} onChange={(event) => {
                 const next = event.target.value as ExceptionStatus;
                 setStatus(next);
                 if (next === 'reserved') setScope('listing');
               }}>
-                <option value="unavailable">I'm busy</option>
-                <option value="available">I'm available</option>
-                <option value="reserved">Keep this time for a listing</option>
+                <option value="unavailable"><UiText id="web-dashboard.4fb4c407bc01d8bf" source="I'm busy" /></option>
+                <option value="available"><UiText id="web-dashboard.a8f7245b7ac72427" source="I'm available" /></option>
+                <option value="reserved"><UiText id="web-dashboard.902d53b9ec99e402" source="Keep this time for a listing" /></option>
               </select>
             </label>
-            <label>Applies to
-              <select className={CONTROL} value={status === 'reserved' ? 'listing' : scope} disabled={!!editing || status === 'reserved'} onChange={(event) => setScope(event.target.value as 'creator' | 'listing')}>
-                <option value="creator">All listings (creator-wide)</option>
-                <option value="listing">Only {listingTitle || 'one listing'}</option>
+            <label><UiText id="web-dashboard.6687458beee57a58" source="Applies to" />{" "}<select className={CONTROL} value={status === 'reserved' ? uiT("web-dashboard.0fc4dfc4feb3b154","listing") : scope} disabled={!!editing || status === 'reserved'} onChange={(event) => setScope(event.target.value as 'creator' | 'listing')}>
+                <option value="creator"><UiText id="web-dashboard.eb8c47b7dc05e91a" source="All listings (creator-wide)" /></option>
+                <option value="listing"><UiText id="web-dashboard.879d8fb64f88733e" source="Only" />{" "}{listingTitle || uiT("web-dashboard.5af17668bf98e7d3","one listing")}</option>
               </select>
             </label>
             {(status === 'reserved' || scope === 'listing') && (
-              <label>Listing
-                <select className={CONTROL} value={listingId} onChange={(event) => setListingId(event.target.value)}>
-                  <option value="">Choose a listing…</option>
+              <label><UiText id="web-dashboard.fc7f1aa2054c2283" source="Listing" />{" "}<select className={CONTROL} value={listingId} onChange={(event) => setListingId(event.target.value)}>
+                  <option value=""><UiText id="web-dashboard.5825664816d2370e" source="Choose a listing…" /></option>
                   {listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}
                 </select>
               </label>
@@ -737,49 +740,41 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
                 const next = event.target.checked;
                 setAllDay(next);
                 if (next) { setStart('00:00'); setEnd('17:00'); }
-              }} />
-              All day (00:00–24:00)
-            </label>
-            {!allDay && <label>Starts<input className={CONTROL} type="time" value={start} onChange={(event) => setStart(event.target.value)} /></label>}
+              }} /><UiText id="web-dashboard.b2aa99ef71c2d141" source="All day (00:00–24:00)" />{" "}</label>
+            {!allDay && <label><UiText id="web-dashboard.96dbedeca7dfb7fa" source="Starts" /><input className={CONTROL} type="time" value={start} onChange={(event) => setStart(event.target.value)} /></label>}
             {!allDay && (
-              <label>Ends
-                <input className={CONTROL} type="time" value={end} disabled={endOfDay} onChange={(event) => setEnd(event.target.value)} />
+              <label><UiText id="web-dashboard.e98982c9f2ba3332" source="Ends" />{" "}<input className={CONTROL} type="time" value={end} disabled={endOfDay} onChange={(event) => setEnd(event.target.value)} />
                 {/* [audit #2] The explicit end-of-day control. "24:00" is a legal
                  *  SAVED value but never a legal <input type="time"> value, so the
                  *  flag — not the field — decides the minute that is saved. */}
                 <span className="calendar-check">
-                  <input type="checkbox" checked={endOfDay} onChange={(event) => setEndOfDay(event.target.checked)} />
-                  ends at end of day (24:00)
-                </span>
+                  <input type="checkbox" checked={endOfDay} onChange={(event) => setEndOfDay(event.target.checked)} /><UiText id="web-dashboard.c7de137e86e1c924" source="ends at end of day (24:00)" />{" "}</span>
               </label>
             )}
             {!editing && (
-              <label>Repeat
-                <select className={CONTROL} value={repeat} onChange={(event) => setRepeat(event.target.value as 'none' | 'weekly')}>
-                  <option value="none">This date only</option>
-                  <option value="weekly">Every week through the schedule horizon</option>
+              <label><UiText id="web-dashboard.b6b7a0065808a62e" source="Repeat" />{" "}<select className={CONTROL} value={repeat} onChange={(event) => setRepeat(event.target.value as 'none' | 'weekly')}>
+                  <option value="none"><UiText id="web-dashboard.d31d574a22f3b563" source="This date only" /></option>
+                  <option value="weekly"><UiText id="web-dashboard.145061a8f880fbbf" source="Every week through the schedule horizon" /></option>
                 </select>
               </label>
             )}
           </div>
           {editing && (
-            <p className="calendar-muted">
-              Editing the window that is already saved. Its scope stays {editing.listing_id ? `“${scopeLabel(editing, listings)}”` : '“all listings”'}; remove it and add a new window to change where it applies.
-            </p>
+            <p className="calendar-muted"><UiText id="web-dashboard.10b2e352507e181a" source="Editing the window that is already saved. Its scope stays" />{" "}{editing.listing_id ? `“${scopeLabel(editing, listings)}”` : uiT("web-dashboard.74616ca9579b6078","“all listings”")}<UiText id="web-dashboard.454cda9cd06a3983" source="; remove it and add a new window to change where it applies." />{" "}</p>
           )}
           <p className="calendar-muted">
-            {allDay ? 'All day' : `${start}–${endOfDay ? '24:00' : end}`}
+            {allDay ? uiT("web-dashboard.34233e542b7b9a86","All day") : `${start}–${endOfDay ? '24:00' : end}`}
             {' · '}
-            {status === 'reserved' ? `kept for ${chosenListingTitle ?? 'the chosen listing'}` : status === 'available' ? 'open for booking' : 'blocked'}
+            {status === 'reserved' ? uiT("web-dashboard.7341cde027598072","kept for {value0}",{value0:String(chosenListingTitle ?? 'the chosen listing')}) : status === 'available' ? uiT("web-dashboard.d1c4566539dc9d22","open for booking") : uiT("web-dashboard.6973dddd3ef9cb6a","blocked")}
             {' · '}
             {status === 'reserved' || scope === 'listing'
-              ? `saved on ${chosenListingTitle ?? 'the chosen listing'}'s own schedule`
-              : 'saved on your creator-wide schedule'}
+              ? uiT("web-dashboard.6ed890d2c0aa4a30","saved on {value0}'s own schedule",{value0:String(chosenListingTitle ?? 'the chosen listing')})
+              : uiT("web-dashboard.7c55b257f55961ee","saved on your creator-wide schedule")}
           </p>
 
           {conflicts.length > 0 && (
             <div className="calendar-conflict" role="alert">
-              <b>Conflict found</b>
+              <b><UiText id="web-dashboard.35b1bac2b4318e81" source="Conflict found" /></b>
               {conflicts.map((item) => (
                 <span key={`${item.title}-${item.start_at}`}>{item.title} · {epochRangeLabel(item.start_at, item.end_at, schedule.timezone, true)}</span>
               ))}
@@ -787,7 +782,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
           )}
           {alternatives.length > 0 && (
             <div className="calendar-alternatives">
-              <b>Free times nearby</b>
+              <b><UiText id="web-dashboard.9cee155d6180a025" source="Free times nearby" /></b>
               {alternatives.map((slot) => (
                 <button type="button" key={slot.start_at} className="calendar-alternative" onClick={() => {
                   const { date: slotDate, time } = zonedDateAndTime(slot.start_at, schedule.timezone);
@@ -808,43 +803,40 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
            *  confirms. Reserved windows never appear here — the plan refuses them. */}
           {replaceConfirm && (
             <div className="calendar-conflict" role="alert">
-              <b>This replaces {replaceConfirm.windows.length} existing window{replaceConfirm.windows.length === 1 ? '' : 's'}</b>
+              <b><UiText id="web-dashboard.9ef1f743c81c305c" source="This replaces" />{" "}{replaceConfirm.windows.length}{" "}<UiText id="web-dashboard.3f271f0521f923f6" source="existing window" />{replaceConfirm.windows.length === 1 ? '' : uiT("web-dashboard.043a718774c572bd","s")}</b>
               {replaceConfirm.windows.map((item) => (
                 <span key={item.id}>
                   {dateLabel(item.date, { month: 'short', day: 'numeric' })} · {intervalLabel(item.start_min, item.end_min)} · {statusWordForException(item.status)}
                 </span>
               ))}
-              <span>Nothing has been saved yet. Confirm to replace them, or keep them.</span>
+              <span><UiText id="web-dashboard.d1a44a54c56a4f4a" source="Nothing has been saved yet. Confirm to replace them, or keep them." /></span>
             </div>
           )}
 
           <div className="calendar-interval-actions">
             <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void save()} disabled={busy}>
-              {busy ? 'Saving…' : replaceConfirm?.kind === 'window' ? `Confirm: replace ${replaceConfirm.windows.length} window${replaceConfirm.windows.length === 1 ? '' : 's'}` : editing ? 'Save this window' : 'Add this time'}
+              {busy ? uiT("web-dashboard.23e39291d6135814","Saving…") : replaceConfirm?.kind === 'window' ? uiT("web-dashboard.d854c9c3ac189c6f","Confirm: replace {value0} window{value1}",{value0:String(replaceConfirm.windows.length),value1:String(replaceConfirm.windows.length === 1 ? '' : 's')}) : editing ? uiT("web-dashboard.9daaa6974e82644c","Save this window") : uiT("web-dashboard.dd898991954a7a45","Add this time")}
             </button>
-            <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setComposer({ mode: 'closed' }); setConflicts([]); setAlternatives([]); setError(null); setReplaceConfirm(null); onStatusConsumed(); }} disabled={busy}>{replaceConfirm?.kind === 'window' ? 'Keep them' : 'Cancel'}</button>
-            {!editing && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setRangeOpen((open) => !open); setReplaceConfirm((current) => (current?.kind === 'range' ? null : current)); }} disabled={busy}>{rangeOpen ? 'Hide date range' : 'Block several days'}</button>}
+            <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setComposer({ mode: 'closed' }); setConflicts([]); setAlternatives([]); setError(null); setReplaceConfirm(null); onStatusConsumed(); }} disabled={busy}>{replaceConfirm?.kind === 'window' ? uiT("web-dashboard.0d472b0953093973","Keep them") : uiT("web-dashboard.19766ed6ccb2f4a3","Cancel")}</button>
+            {!editing && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setRangeOpen((open) => !open); setReplaceConfirm((current) => (current?.kind === 'range' ? null : current)); }} disabled={busy}>{rangeOpen ? uiT("web-dashboard.42011e7f8445179d","Hide date range") : uiT("web-dashboard.1a2ccb7710307748","Block several days")}</button>}
           </div>
 
           {!editing && rangeOpen && (
             <div className="calendar-range">
-              <p className="calendar-eyebrow">From this date through this date</p>
-              <p className="calendar-muted">
-                Adds one all-day {status === 'reserved' ? 'kept' : status === 'available' ? 'open' : 'blocked'} window per day, using the listing chosen above. Ranges stop at your {clampHorizonDays(schedule.horizon_days)}-day booking horizon and the {MAX_EXCEPTIONS}-exception limit for one schedule; anything left out is reported before saving.
-              </p>
+              <p className="calendar-eyebrow"><UiText id="web-dashboard.1bd623b608a46374" source="From this date through this date" /></p>
+              <p className="calendar-muted"><UiText id="web-dashboard.7c8c9e8c63a7e3a7" source="Adds one all-day" />{" "}{status === 'reserved' ? uiT("web-dashboard.79f076abdd19a752","kept") : status === 'available' ? uiT("web-dashboard.2348f99874421257","open") : uiT("web-dashboard.6973dddd3ef9cb6a","blocked")}{" "}<UiText id="web-dashboard.494fba1ced6861f0" source="window per day, using the listing chosen above. Ranges stop at your" />{" "}{clampHorizonDays(schedule.horizon_days)}<UiText id="web-dashboard.edfd3fd9f1dd3222" source="-day booking horizon and the" />{" "}{MAX_EXCEPTIONS}<UiText id="web-dashboard.623431edd607a4b4" source="-exception limit for one schedule; anything left out is reported before saving." />{" "}</p>
               <div className="calendar-editor-fields">
-                <label>From<input className={CONTROL} type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} /></label>
-                <label>Through<input className={CONTROL} type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} /></label>
+                <label><UiText id="web-dashboard.218197693424e015" source="From" /><input className={CONTROL} type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} /></label>
+                <label><UiText id="web-dashboard.afc6abac44c4184c" source="Through" /><input className={CONTROL} type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} /></label>
               </div>
               <p className="calendar-muted">
-                {rangePreview.dates.length} day{rangePreview.dates.length === 1 ? '' : 's'} will be added
-                {rangeAffected.length ? ` · ${rangeAffected.length} already hold a booking (they are not cancelled)` : ''}.
+                {rangePreview.dates.length}{" "}<UiText id="web-dashboard.944c27e5b97ab779" source="day" />{rangePreview.dates.length === 1 ? '' : uiT("web-dashboard.043a718774c572bd","s")}{" "}<UiText id="web-dashboard.d203828dcc5cad39" source="will be added" />{" "}{rangeAffected.length ? uiT("web-dashboard.683f068ec6424759"," · {value0} already hold a booking (they are not cancelled)",{value0:String(rangeAffected.length)}) : ''}.
               </p>
               {rangePreview.messages.map((line) => <p className="calendar-form-message calendar-warning" key={line}>{line}</p>)}
               {rangeMessages.map((line) => <p className="calendar-form-message calendar-warning" key={line}>{line}</p>)}
               <div className="calendar-interval-actions">
-                <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveRange()} disabled={busy}>{busy ? 'Saving…' : replaceConfirm?.kind === 'range' ? `Confirm: replace ${replaceConfirm.windows.length} window${replaceConfirm.windows.length === 1 ? '' : 's'}` : 'Apply to these days'}</button>
-                {replaceConfirm?.kind === 'range' && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setReplaceConfirm(null)} disabled={busy}>Keep them</button>}
+                <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveRange()} disabled={busy}>{busy ? uiT("web-dashboard.23e39291d6135814","Saving…") : replaceConfirm?.kind === 'range' ? uiT("web-dashboard.d854c9c3ac189c6f","Confirm: replace {value0} window{value1}",{value0:String(replaceConfirm.windows.length),value1:String(replaceConfirm.windows.length === 1 ? '' : 's')}) : uiT("web-dashboard.6e44ccee344f268a","Apply to these days")}</button>
+                {replaceConfirm?.kind === 'range' && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setReplaceConfirm(null)} disabled={busy}><UiText id="web-dashboard.0d472b0953093973" source="Keep them" /></button>}
               </div>
             </div>
           )}
@@ -871,6 +863,8 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
   schedule: CreatorSchedule; token: string; listings: ListingCard[]; selectedListing: string;
   onSaved: (schedule: CreatorSchedule) => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [draft, setDraft] = useState(schedule);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -907,17 +901,17 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
       <section className="calendar-card">
         <div className="calendar-card-heading">
           <div>
-            <p className="calendar-eyebrow">Weekly windows</p>
-            <h2>Working hours</h2>
+            <p className="calendar-eyebrow"><UiText id="web-dashboard.d2b877320f24092a" source="Weekly windows" /></p>
+            <h2><UiText id="web-dashboard.b9c635214e54995c" source="Working hours" /></h2>
           </div>
-          <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setDraft((value) => ({ ...value, rules: [...value.rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] }))}>+ Add hours</button>
+          <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setDraft((value) => ({ ...value, rules: [...value.rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] }))}><UiText id="web-dashboard.241837054a718c3b" source="+ Add hours" /></button>
         </div>
         <p className="calendar-muted">
           {draft.listing_id
-            ? `These hours belong to ${listingTitle ?? 'this listing'} only.`
-            : 'These are the creator windows every listing can inherit; a listing-specific schedule can narrow or replace them.'}
+            ? uiT("web-dashboard.8a11b0d719fbd266","These hours belong to {value0} only.",{value0:String(listingTitle ?? 'this listing')})
+            : uiT("web-dashboard.a459ac2b8d090e02","These are the creator windows every listing can inherit; a listing-specific schedule can narrow or replace them.")}
         </p>
-        {!draft.rules.length && <div className="calendar-empty calendar-empty-small"><b>No working hours yet</b><span>Add a window before opening dates to customers.</span></div>}
+        {!draft.rules.length && <div className="calendar-empty calendar-empty-small"><b><UiText id="web-dashboard.66db2aab9a84b932" source="No working hours yet" /></b><span><UiText id="web-dashboard.ea4c686ef185712d" source="Add a window before opening dates to customers." /></span></div>}
         <div className="calendar-rule-list">
           {draft.rules.map((rule, index) => {
             const wholeDay = isAllDayInterval(rule.start_min, rule.end_min);
@@ -928,28 +922,22 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
             const endOfDay = isEndOfDayInterval(rule.start_min, rule.end_min);
             return (
               <div className="calendar-rule" key={`${rule.weekday}-${index}`}>
-                <label>Day
-                  <select className={CONTROL} value={rule.weekday} onChange={(event) => updateRule(index, { weekday: Number(event.target.value) })}>
+                <label><UiText id="web-dashboard.8f2364e11b8be3ff" source="Day" />{" "}<select className={CONTROL} value={rule.weekday} onChange={(event) => updateRule(index, { weekday: Number(event.target.value) })}>
                     {DAYS.map((day, weekday) => <option value={weekday} key={day}>{day}</option>)}
                   </select>
                 </label>
                 {!wholeDay && (
-                  <label>Starts<input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.start_min, LAST_CLOCK_MIN))} onChange={(event) => updateRule(index, { start_min: timeToMinutes(event.target.value) })} /></label>
+                  <label><UiText id="web-dashboard.96dbedeca7dfb7fa" source="Starts" /><input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.start_min, LAST_CLOCK_MIN))} onChange={(event) => updateRule(index, { start_min: timeToMinutes(event.target.value) })} /></label>
                 )}
                 {!wholeDay && (
-                  <label>Ends
-                    <input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.end_min, LAST_CLOCK_MIN))} disabled={endOfDay} onChange={(event) => updateRule(index, { end_min: timeToMinutes(event.target.value) })} />
+                  <label><UiText id="web-dashboard.e98982c9f2ba3332" source="Ends" />{" "}<input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.end_min, LAST_CLOCK_MIN))} disabled={endOfDay} onChange={(event) => updateRule(index, { end_min: timeToMinutes(event.target.value) })} />
                     <span className="calendar-check">
-                      <input type="checkbox" checked={endOfDay} onChange={(event) => updateRule(index, { end_min: event.target.checked ? 1440 : LAST_CLOCK_MIN })} />
-                      ends at end of day (24:00)
-                    </span>
+                      <input type="checkbox" checked={endOfDay} onChange={(event) => updateRule(index, { end_min: event.target.checked ? 1440 : LAST_CLOCK_MIN })} /><UiText id="web-dashboard.c7de137e86e1c924" source="ends at end of day (24:00)" />{" "}</span>
                   </label>
                 )}
                 <label className="calendar-check">
-                  <input type="checkbox" checked={wholeDay} onChange={(event) => updateRule(index, event.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} />
-                  All day
-                </label>
-                <button type="button" className="calendar-remove" aria-label={`Remove ${DAYS[rule.weekday]} hours`} onClick={() => setDraft((value) => ({ ...value, rules: value.rules.filter((_, i) => i !== index) }))}>Remove</button>
+                  <input type="checkbox" checked={wholeDay} onChange={(event) => updateRule(index, event.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} /><UiText id="web-dashboard.34233e542b7b9a86" source="All day" />{" "}</label>
+                <button type="button" className="calendar-remove" aria-label={`Remove ${DAYS[rule.weekday]} hours`} onClick={() => setDraft((value) => ({ ...value, rules: value.rules.filter((_, i) => i !== index) }))}><UiText id="web-dashboard.c3812fc4acb861d5" source="Remove" /></button>
               </div>
             );
           })}
@@ -957,19 +945,17 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
       </section>
 
       <section className="calendar-card">
-        <p className="calendar-eyebrow">Booking policy</p>
-        <h2>How slots behave</h2>
+        <p className="calendar-eyebrow"><UiText id="web-dashboard.58e3fced1c1a2554" source="Booking policy" /></p>
+        <h2><UiText id="web-dashboard.97583372035de9f7" source="How slots behave" /></h2>
         <div className="calendar-policy-fields">
-          <label>Creator timezone
-            <select className={CONTROL} value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })}>
+          <label><UiText id="web-dashboard.487e34fa0b7a121c" source="Creator timezone" />{" "}<select className={CONTROL} value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })}>
               {Array.from(new Set([draft.timezone, ...TIMEZONES])).map((timezone) => <option value={timezone} key={timezone}>{timezone}</option>)}
             </select>
           </label>
-          <label>Schedule mode
-            <select className={CONTROL} value={draft.mode} onChange={(event) => setDraft({ ...draft, mode: event.target.value as CreatorSchedule['mode'] })}>
-              <option value="shared">Shared across listings</option>
-              <option value="custom">Custom listing hours</option>
-              <option value="exclusive">Exclusive windows</option>
+          <label><UiText id="web-dashboard.04a40528293f013d" source="Schedule mode" />{" "}<select className={CONTROL} value={draft.mode} onChange={(event) => setDraft({ ...draft, mode: event.target.value as CreatorSchedule['mode'] })}>
+              <option value="shared"><UiText id="web-dashboard.4f6241d4163c0485" source="Shared across listings" /></option>
+              <option value="custom"><UiText id="web-dashboard.a15b43d356b349a1" source="Custom listing hours" /></option>
+              <option value="exclusive"><UiText id="web-dashboard.5bdc405187e439d9" source="Exclusive windows" /></option>
             </select>
           </label>
           {POLICY_FIELDS.map(([key, label, hint, min, max]) => (
@@ -980,13 +966,13 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
             </label>
           ))}
         </div>
-        <p className="calendar-muted">Timezone changes regroup recurring rules by wall time. Confirm affected appointments before making a change.</p>
+        <p className="calendar-muted"><UiText id="web-dashboard.dcf1d0f68a23c609" source="Timezone changes regroup recurring rules by wall time. Confirm affected appointments before making a change." /></p>
         <ul className="calendar-policy-summary">
           {policySummaryLines({ schedule: draft, listingTitle }).map((line) => <li key={line}>{line}</li>)}
         </ul>
         {message && <p className="calendar-form-message" role="status">{message}</p>}
         <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void save()} disabled={saving}>
-          {saving ? 'Saving…' : `Save working hours for ${listingTitle ?? 'all listings'}`}
+          {saving ? uiT("web-dashboard.23e39291d6135814","Saving…") : uiT("web-dashboard.1c013d87406c9e9e","Save working hours for {value0}",{value0:String(listingTitle ?? 'all listings')})}
         </button>
       </section>
     </div>
@@ -997,6 +983,8 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
 function ConnectedCalendars({ token, status, onStatus, onReload }: {
   token: string; status: GoogleCalendarStatus | null; onStatus: (value: GoogleCalendarStatus) => void; onReload: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [busy, setBusy] = useState<null | 'connect' | 'list' | 'sync' | 'save' | 'disconnect'>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1081,26 +1069,22 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
     <section className="calendar-card calendar-connected-card">
       <div className="calendar-card-heading">
         <div>
-          <p className="calendar-eyebrow">External availability</p>
-          <h2>Connected calendars</h2>
+          <p className="calendar-eyebrow"><UiText id="web-dashboard.d9c8d414e4caac2f" source="External availability" /></p>
+          <h2><UiText id="web-dashboard.e4432d00d36f09f9" source="Connected calendars" /></h2>
         </div>
         <StatusBadge status={readiness.label} />
       </div>
-      <p className="calendar-muted">
-        Selected Google calendars contribute busy time. Private titles and guest details never reach customers. AvaTOK bookings stay authoritative if Google is unavailable.
-      </p>
-      <p className="calendar-muted">
-        Bookings are only accepted while this reads <b>Ready</b> — that is the same rule the booking engine applies before it takes a reservation. Not connected, Syncing and Needs attention all refuse new bookings.
-      </p>
+      <p className="calendar-muted"><UiText id="web-dashboard.ce991ed3f1d4ae75" source="Selected Google calendars contribute busy time. Private titles and guest details never reach customers. AvaTOK bookings stay authoritative if Google is unavailable." />{" "}</p>
+      <p className="calendar-muted"><UiText id="web-dashboard.e4fe7d7e1414cd03" source="Bookings are only accepted while this reads" />{" "}<b><UiText id="web-dashboard.5fa7aac5375c5815" source="Ready" /></b>{" "}<UiText id="web-dashboard.a18a4b42cbf643b3" source="— that is the same rule the booking engine applies before it takes a reservation. Not connected, Syncing and Needs attention all refuse new bookings." />{" "}</p>
       <p className="calendar-muted" role="status">{readiness.detail}</p>
 
-      {!status && <div className="calendar-state calendar-state-loading"><Spinner size={20} /> Checking connection…</div>}
+      {!status && <div className="calendar-state calendar-state-loading"><Spinner size={20} />{" "}<UiText id="web-dashboard.de9fc337d5990009" source="Checking connection…" /></div>}
 
       {status && !status.connected && (
         <div className="calendar-empty calendar-empty-small">
-          <b>No calendar connected</b>
-          <span>Connect Google Calendar when external meetings should block slots. Until then, Google busy time cannot be verified.</span>
-          <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void connect()} disabled={!!busy}>{busy === 'connect' ? 'Opening…' : 'Connect Google Calendar'}</button>
+          <b><UiText id="web-dashboard.c2be9bb61b0e163a" source="No calendar connected" /></b>
+          <span><UiText id="web-dashboard.c299b2dfaed2bf3d" source="Connect Google Calendar when external meetings should block slots. Until then, Google busy time cannot be verified." /></span>
+          <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void connect()} disabled={!!busy}>{busy === 'connect' ? uiT("web-dashboard.c926c2c50e65d5a5","Opening…") : uiT("web-dashboard.c04f9d6a937ed0cb","Connect Google Calendar")}</button>
         </div>
       )}
 
@@ -1108,51 +1092,50 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
         <>
           <div className="calendar-sync-panel">
             <div>
-              <b>Busy-time synchronisation</b>
-              <span>{lastSuccessText}. {readiness.selectedCount} calendar{readiness.selectedCount === 1 ? '' : 's'} block time.</span>
+              <b><UiText id="web-dashboard.657c82108b65da18" source="Busy-time synchronisation" /></b>
+              <span>{lastSuccessText}. {readiness.selectedCount}{" "}<UiText id="web-dashboard.5152790e278eb890" source="calendar" />{readiness.selectedCount === 1 ? '' : uiT("web-dashboard.043a718774c572bd","s")}{" "}<UiText id="web-dashboard.c3719d3982b02041" source="block time." /></span>
             </div>
             <div className="calendar-sync-actions">
-              <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void syncNow()} disabled={!!busy}>{busy === 'sync' ? 'Syncing…' : 'Sync busy times now'}</button>
-              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => void refreshCalendars()} disabled={!!busy}>{busy === 'list' ? 'Refreshing…' : 'Refresh calendar list'}</button>
-              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => void connect()} disabled={!!busy}>Reconnect</button>
-              <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void disconnect()} disabled={!!busy}>{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</button>
+              <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void syncNow()} disabled={!!busy}>{busy === 'sync' ? uiT("web-dashboard.8a046cc90ab0a981","Syncing…") : uiT("web-dashboard.b3b0dc53fca87e58","Sync busy times now")}</button>
+              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => void refreshCalendars()} disabled={!!busy}>{busy === 'list' ? uiT("web-dashboard.1c0def7be0607b96","Refreshing…") : uiT("web-dashboard.98071fc01411c436","Refresh calendar list")}</button>
+              <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => void connect()} disabled={!!busy}><UiText id="web-dashboard.bf8a9eab9e7e141b" source="Reconnect" /></button>
+              <button type="button" className={`${ACTION} calendar-danger`} onClick={() => void disconnect()} disabled={!!busy}>{busy === 'disconnect' ? uiT("web-dashboard.cb2b6a572a8588d8","Disconnecting…") : uiT("web-dashboard.acfc5be785a9bb3d","Disconnect")}</button>
             </div>
           </div>
 
           {(readiness.state === 'attention' || readiness.state === 'syncing') && (
             <p className="calendar-form-message calendar-warning" role="status">
               {readiness.state === 'syncing'
-                ? 'The first import has not finished. Until it does, new bookings are refused.'
-                : `Fix this before relying on Google busy time: ${readiness.detail}`}
+                ? uiT("web-dashboard.12a5e2f61cb428aa","The first import has not finished. Until it does, new bookings are refused.")
+                : uiT("web-dashboard.1cf3c7b93c4b931b","Fix this before relying on Google busy time: {value0}",{value0:String(readiness.detail)})}
             </p>
           )}
 
           {calendars.length > 0 && (
             <div className="calendar-card" style={{ marginTop: '1rem' }}>
-              <p className="calendar-eyebrow">Availability sources</p>
-              <p className="calendar-muted">Choose which calendars block slots, then choose where AvaTOK bookings are written. CalendarList permission may require reconnecting an older connection.</p>
+              <p className="calendar-eyebrow"><UiText id="web-dashboard.5f3fee23a8fbc51a" source="Availability sources" /></p>
+              <p className="calendar-muted"><UiText id="web-dashboard.3cfb0168649b2506" source="Choose which calendars block slots, then choose where AvaTOK bookings are written. CalendarList permission may require reconnecting an older connection." /></p>
               {calendars.map((item) => {
                 const source = readiness.sources.find((entry) => entry.id === item.id);
                 return (
                   <div className="calendar-source" key={item.id}>
                     <label className="calendar-source-main">
                       <input type="checkbox" checked={item.selected} onChange={() => toggleCalendar(item.id)} />
-                      <span>{item.summary}{item.primary ? ' · primary' : ''}</span>
-                      {item.destination && <span className="calendar-badge calendar-badge-reserved">AvaTOK events</span>}
+                      <span>{item.summary}{item.primary ? uiT("web-dashboard.940bbab2b1839a27"," · primary") : ''}</span>
+                      {item.destination && <span className="calendar-badge calendar-badge-reserved"><UiText id="web-dashboard.f351ca0b2b77bd4a" source="AvaTOK events" /></span>}
                     </label>
                     <span className="calendar-source-meta">
-                      <StatusBadge status={source?.state === 'ready' ? 'Ready' : source?.state === 'attention' ? 'Needs attention' : source?.state === 'syncing' ? 'Syncing' : 'Not used'} />
-                      <small>{item.timezone || 'timezone unknown'}{source?.detail ? ` · ${source.detail}` : ''}</small>
+                      <StatusBadge status={source?.state === 'ready' ? uiT("web-dashboard.5fa7aac5375c5815","Ready") : source?.state === 'attention' ? uiT("web-dashboard.c1ebc7817870e5be","Needs attention") : source?.state === 'syncing' ? uiT("web-dashboard.5c8b9e1ce0a2bc31","Syncing") : uiT("web-dashboard.dccafe55abe3dd98","Not used")} />
+                      <small>{item.timezone || uiT("web-dashboard.3feedd19618b46ee","timezone unknown")}{source?.detail ? ` · ${source.detail}` : ''}</small>
                     </span>
                   </div>
                 );
               })}
-              <label className="calendar-destination">AvaTOK event destination
-                <select className={CONTROL} value={destination} onChange={(event) => setDestination(event.target.value)}>
+              <label className="calendar-destination"><UiText id="web-dashboard.e368d753c861712f" source="AvaTOK event destination" />{" "}<select className={CONTROL} value={destination} onChange={(event) => setDestination(event.target.value)}>
                   {calendars.filter((item) => item.selected && (!item.access_role || item.access_role === 'writer' || item.access_role === 'owner')).map((item) => <option key={item.id} value={item.id}>{item.summary}</option>)}
                 </select>
               </label>
-              <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveSelection()} disabled={!!busy}>{busy === 'save' ? 'Saving…' : 'Save calendar choices'}</button>
+              <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveSelection()} disabled={!!busy}>{busy === 'save' ? uiT("web-dashboard.23e39291d6135814","Saving…") : uiT("web-dashboard.665182a0c1700eaf","Save calendar choices")}</button>
             </div>
           )}
         </>
@@ -1175,6 +1158,8 @@ function dayBounds(key: string, timezone: string): { from: number; to: number } 
 }
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const loadSequence = useRef(0);
   const tokenRef = useRef<string | null>(null);
   const listingRef = useRef('');
@@ -1506,8 +1491,8 @@ function Inner() {
     if (token) void load(token, selectedListing, true);
   }
 
-  if (!checked || (state === 'loading' && !schedule)) return <div className="calendar-state calendar-state-loading"><Spinner size={24} /><span>Loading your calendar…</span></div>;
-  if (!token) return <div className="calendar-state calendar-state-error" role="alert">Sign in to manage your calendar and availability.</div>;
+  if (!checked || (state === 'loading' && !schedule)) return <div className="calendar-state calendar-state-loading"><Spinner size={24} /><span><UiText id="web-dashboard.ba586c580595cc55" source="Loading your calendar…" /></span></div>;
+  if (!token) return <div className="calendar-state calendar-state-error" role="alert"><UiText id="web-dashboard.3549fe36c397b45f" source="Sign in to manage your calendar and availability." /></div>;
 
   const listingTitle = listings.find((listing) => listing.id === selectedListing)?.title ?? null;
 
@@ -1518,19 +1503,19 @@ function Inner() {
       {/* [audit #9] The edit scope is visible on every tab, not only inside the
        *  Calendar tab: a creator must never wonder which schedule a save hits. */}
       <div className="calendar-scope">
-        <label className="calendar-scope-label" htmlFor="calendar-scope">Editing</label>
+        <label className="calendar-scope-label" htmlFor="calendar-scope"><UiText id="web-dashboard.fab4539d26e078ca" source="Editing" /></label>
         <select id="calendar-scope" className={CONTROL} value={selectedListing} onChange={(event) => setSelectedListing(event.target.value)}>
-          <option value="">All listings (creator-wide)</option>
+          <option value=""><UiText id="web-dashboard.eb8c47b7dc05e91a" source="All listings (creator-wide)" /></option>
           {listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}
         </select>
         <span className="calendar-muted">
           {listingTitle
-            ? `Working hours, blocks and policy below belong to ${listingTitle}. Personal busy time still defaults to all listings.`
-            : 'Working hours, blocks and policy below apply to every listing. Pick a listing to plan its own windows.'}
+            ? uiT("web-dashboard.5d298c2cb20c4a25","Working hours, blocks and policy below belong to {value0}. Personal busy time still defaults to all listings.",{value0:String(listingTitle)})
+            : uiT("web-dashboard.0fe5e22a87143a7f","Working hours, blocks and policy below apply to every listing. Pick a listing to plan its own windows.")}
         </span>
       </div>
 
-      <nav className="calendar-nav" aria-label="Calendar settings tabs">
+      <nav className="calendar-nav" aria-label={uiT("web-dashboard.3676e86c090d177e","Calendar settings tabs")}>
         {([['calendar', 'Calendar'], ['hours', 'Working hours'], ['connected', 'Connected calendars']] as [Tab, string][]).map(([value, label]) => (
           <button type="button" className="calendar-tab" aria-selected={tab === value} key={value} onClick={() => setTab(value)}>{label}</button>
         ))}
@@ -1538,16 +1523,14 @@ function Inner() {
 
       {state === 'error' && error && (
         <div className="calendar-form-message" role="alert">
-          {error} <button type="button" className="underline" onClick={refresh}>Try again</button>
+          {error} <button type="button" className="underline" onClick={refresh}><UiText id="web-dashboard.d8b8392e2c542950" source="Try again" /></button>
         </div>
       )}
       {/* [audit #4] Busy time or appointments failing is NOT a quiet day. */}
       {state !== 'error' && degraded.length > 0 && (
         <div className="calendar-degraded" role="status">
-          <b>The diary may be incomplete.</b>
-          <span>
-            Could not load {degraded.join('; ')}. Showing the last known values — an apparently empty day is not proof you are free.
-            {' '}<button type="button" className="underline" onClick={refresh}>Retry</button>
+          <b><UiText id="web-dashboard.cc634ffd2be94850" source="The diary may be incomplete." /></b>
+          <span><UiText id="web-dashboard.81bc72e54792e9fc" source="Could not load" />{" "}{degraded.join('; ')}<UiText id="web-dashboard.d75fc6221e1a2190" source=". Showing the last known values — an apparently empty day is not proof you are free." />{" "}{' '}<button type="button" className="underline" onClick={refresh}><UiText id="web-dashboard.942087cc2d41e013" source="Retry" /></button>
           </span>
         </div>
       )}
@@ -1562,48 +1545,46 @@ function Inner() {
       {tab === 'calendar' && schedule && (
         <>
           <div className="calendar-toolbar">
-            <label className="sr-only" htmlFor="calendar-timezone">Timezone</label>
+            <label className="sr-only" htmlFor="calendar-timezone"><UiText id="web-dashboard.4ceca1d52cede44d" source="Timezone" /></label>
             <select id="calendar-timezone" className={CONTROL} value={schedule.timezone} disabled>
               {Array.from(new Set([schedule.timezone, ...TIMEZONES])).map((timezone) => <option value={timezone} key={timezone}>{timezone}</option>)}
             </select>
             <span className="calendar-updated">{updatedLabel(lastLoadedAt)}</span>
             <span className="calendar-toolbar-spacer" />
-            <button type="button" className={`${ACTION} calendar-secondary`} onClick={refresh}>Refresh</button>
-            <button type="button" className={`${ACTION} calendar-secondary`} onClick={goToday}>Today</button>
-            <div className="calendar-view-toggle" aria-label="Calendar view">
-              <button type="button" className="calendar-view-button" aria-pressed={view === 'month'} onClick={() => setView('month')}>Month</button>
-              <button type="button" className="calendar-view-button" aria-pressed={view === 'week'} onClick={() => setView('week')}>Week</button>
-              <button type="button" className="calendar-view-button" aria-pressed={view === 'agenda'} onClick={() => setView('agenda')}>Agenda</button>
-              <button type="button" className="calendar-view-button" onClick={() => setRequestedStatus('unavailable')}>Block time</button>
-              <button type="button" className="calendar-view-button" onClick={() => setRequestedStatus('available')}>Open availability</button>
+            <button type="button" className={`${ACTION} calendar-secondary`} onClick={refresh}><UiText id="web-dashboard.0e91610117029a62" source="Refresh" /></button>
+            <button type="button" className={`${ACTION} calendar-secondary`} onClick={goToday}><UiText id="web-dashboard.2b065c7c9ce466e5" source="Today" /></button>
+            <div className="calendar-view-toggle" aria-label={uiT("web-dashboard.66a89d9a70cdf18f","Calendar view")}>
+              <button type="button" className="calendar-view-button" aria-pressed={view === 'month'} onClick={() => setView('month')}><UiText id="web-dashboard.310ca503ef36f177" source="Month" /></button>
+              <button type="button" className="calendar-view-button" aria-pressed={view === 'week'} onClick={() => setView('week')}><UiText id="web-dashboard.e78041ab51a818a2" source="Week" /></button>
+              <button type="button" className="calendar-view-button" aria-pressed={view === 'agenda'} onClick={() => setView('agenda')}><UiText id="web-dashboard.0fdf485f5bfd3762" source="Agenda" /></button>
+              <button type="button" className="calendar-view-button" onClick={() => setRequestedStatus('unavailable')}><UiText id="web-dashboard.f2528d968937419e" source="Block time" /></button>
+              <button type="button" className="calendar-view-button" onClick={() => setRequestedStatus('available')}><UiText id="web-dashboard.fc31b9e73c1696bd" source="Open availability" /></button>
             </div>
           </div>
 
           {availabilityError && (
-            <p className="calendar-form-message calendar-warning" role="status">
-              Bookable slot counts are unknown right now ({availabilityError}). The calendar still shows confirmed commitments and will not show “0 open” for a day it could not check.
-            </p>
+            <p className="calendar-form-message calendar-warning" role="status"><UiText id="web-dashboard.57fb7a1d8cc8d71e" source="Bookable slot counts are unknown right now (" />{availabilityError}<UiText id="web-dashboard.489436244667a5d1" source="). The calendar still shows confirmed commitments and will not show “0 open” for a day it could not check." />{" "}</p>
           )}
           {!availabilityChecked && !selectedListing && listings.length > 0 && (
-            <p className="calendar-muted">Select a listing above to see how many bookable slots each day has. Until then, no day is shown as “0 open”.</p>
+            <p className="calendar-muted"><UiText id="web-dashboard.c3d0ce7392ed0182" source="Select a listing above to see how many bookable slots each day has. Until then, no day is shown as “0 open”." /></p>
           )}
           {!listings.length && (
             <div className="calendar-empty calendar-empty-small" style={{ marginBottom: '1rem' }}>
-              <b>No listings yet</b>
-              <span>Create and publish a listing before reserving exclusive time.</span>
-              <a className={`${ACTION} calendar-primary`} href="/dashboard/listings/new">Create a listing</a>
+              <b><UiText id="web-dashboard.38975ad4e8356135" source="No listings yet" /></b>
+              <span><UiText id="web-dashboard.db6ae2bd5f8e8588" source="Create and publish a listing before reserving exclusive time." /></span>
+              <a className={`${ACTION} calendar-primary`} href="/dashboard/listings/new"><UiText id="web-dashboard.9a697d39c1f46d3c" source="Create a listing" /></a>
             </div>
           )}
 
           <div className="calendar-main-grid">
             <section className="calendar-card calendar-month-panel">
               <div className="calendar-month-heading">
-                <button type="button" className="calendar-arrow" aria-label="Previous month" onClick={() => moveCursor(-1)}>←</button>
-                <h2>{view === 'agenda' ? 'Upcoming agenda' : monthLabel(cursor)}</h2>
-                <button type="button" className="calendar-arrow" aria-label="Next month" onClick={() => moveCursor(1)}>→</button>
+                <button type="button" className="calendar-arrow" aria-label={uiT("web-dashboard.6a2769502a5dda78","Previous month")} onClick={() => moveCursor(-1)}>←</button>
+                <h2>{view === 'agenda' ? uiT("web-dashboard.533e21e0187ca38f","Upcoming agenda") : monthLabel(cursor)}</h2>
+                <button type="button" className="calendar-arrow" aria-label={uiT("web-dashboard.74e53211fef4b4d4","Next month")} onClick={() => moveCursor(1)}>→</button>
               </div>
               <details className="calendar-phone-month">
-                <summary>Show month overview</summary>
+                <summary><UiText id="web-dashboard.b2f58970cb5ff3c7" source="Show month overview" /></summary>
                 <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />
               </details>
               {view === 'month' && <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />}
@@ -1616,8 +1597,8 @@ function Inner() {
               {view === 'agenda' && <Agenda selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} listings={listings} />}
               {!monthItemCount && !schedule.rules.length && (
                 <div className="calendar-empty calendar-empty-small" style={{ marginTop: '1rem' }}>
-                  <b>Your calendar is quiet</b>
-                  <span>Add working hours or open a date to start accepting bookings.</span>
+                  <b><UiText id="web-dashboard.ec63106d7896e0e8" source="Your calendar is quiet" /></b>
+                  <span><UiText id="web-dashboard.5bcfe13f05f3ac7b" source="Add working hours or open a date to start accepting bookings." /></span>
                 </div>
               )}
             </section>

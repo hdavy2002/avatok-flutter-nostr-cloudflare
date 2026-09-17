@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -41,9 +43,10 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'Subscribers', markWord: 'Subs', tag: 'bound for life'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_subscribers_a344c89d66), markWord: 'Subs', tag: 'bound for life'),
       body: _failed
           ? Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -52,7 +55,7 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
                   text: 'Could not load subscribers.',
                 ),
                 const SizedBox(height: Msg.s4),
-                ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
+                ZineButton(label: uiCopy(UiMessage.m_retry_942087cc2d), variant: ZineButtonVariant.ghost,
                     fontSize: 16, onPressed: _load),
               ]),
             )
@@ -76,9 +79,8 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
 
   Widget _header() => Padding(
         padding: const EdgeInsets.only(bottom: Msg.s1),
-        child: Text(
-          '${_subs!.length} referred ${_subs!.length == 1 ? 'user' : 'users'} on '
-          '"${widget.link.title}" — identities are anonymized for privacy.',
+        child: UiText(
+          UiMessage.m_value1_referred_value2_on_value3_871a1fbfb3, params: {'value1': (_subs!.length).toString(), 'value2': (_subs!.length == 1 ? 'user' : 'users').toString(), 'value3': (widget.link.title).toString()},
           style: ADText.preview(),
         ),
       );
@@ -95,8 +97,8 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(s.maskedHandle, style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text(
-                'Bound ${fmtAffDate(s.boundAt)} · spent ${affTokensLabel(s.ltvTokens)}',
+              UiText(
+                UiMessage.m_bound_value1_spent_value2_99499afbb3, params: {'value1': (fmtAffDate(s.boundAt)).toString(), 'value2': (affTokensLabel(s.ltvTokens)).toString()},
                 style: ADText.sectionLabel(c: AD.textTertiary),
               ),
             ]),
@@ -105,7 +107,7 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text('+${affTokensLabel(s.commissionTokens)}',
                 style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
-            Text('Your cut', style: ADText.sectionLabel(c: AD.textTertiary)),
+            UiText(UiMessage.m_your_cut_37a92b2853, style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ]),
       );

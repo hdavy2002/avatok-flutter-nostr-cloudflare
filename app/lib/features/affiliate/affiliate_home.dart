@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -87,7 +90,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
         _links = platform == null ? [] : [platform];
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Welcome aboard! Pick a product to start earning.')));
+          content: UiText(UiMessage.m_welcome_aboard_pick_a_product_83d5e42e0c)));
       if (platform != null && mounted) {
         await showLinkCreatedSheet(context, platform);
       }
@@ -105,15 +108,14 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
             borderRadius: BorderRadius.circular(Msg.rLg),
             side: const BorderSide(color: AD.borderCard, width: 1),
           ),
-          title: Text('Verify your email first', style: ADText.appTitle()),
-          content: Text(
-              'Becoming an affiliate just needs a verified email + password '
-              '(free, takes a minute). Verify now?',
+          title: UiText(UiMessage.m_verify_your_email_first_b42ffc1652, style: ADText.appTitle()),
+          content: UiText(
+              UiMessage.m_becoming_an_affiliate_just_needs_1718dadd3b,
               style: ADText.preview()),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false),
-                child: Text('Not now', style: ADText.preview(c: AD.textSecondary))),
-            ZineButton(label: 'Verify email', fontSize: 15,
+                child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary))),
+            ZineButton(label: uiCopy(UiMessage.m_verify_email_e89a77e7fe), fontSize: 15,
                 onPressed: () => Navigator.pop(c, true)),
           ],
         ),
@@ -127,8 +129,8 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(r['error'] == 'network'
-            ? 'No connection — please try again.'
-            : 'Could not register right now — please try again later.')));
+            ? uiCopy(UiMessage.m_no_connection_please_try_again_e1a53ff941)
+            : uiCopy(UiMessage.m_could_not_register_right_now_9698bca263))));
   }
 
   void _openPicker() {
@@ -149,10 +151,11 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!RemoteConfig.avaAffiliateEnabled) {
       return Scaffold(
         backgroundColor: AD.bg,
-        appBar: const ZineAppBar(title: 'AvaAffiliate', markWord: 'Affiliate'),
+        appBar:  ZineAppBar(title: uiCopy(UiMessage.m_avaaffiliate_53e9815fa4), markWord: 'Affiliate'),
         body: Center(
           child: ZineEmptyState(
             icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
@@ -164,7 +167,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'AvaAffiliate',
+        title: uiCopy(UiMessage.m_avaaffiliate_53e9815fa4),
         markWord: 'Affiliate',
         tag: 'earn 10% for life',
         actions: [
@@ -186,7 +189,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
                 ),
                 const SizedBox(height: Msg.s4),
                 ZineButton(
-                  label: 'Retry',
+                  label: uiCopy(UiMessage.m_retry_942087cc2d),
                   variant: ZineButtonVariant.ghost,
                   fontSize: 16,
                   onPressed: () { setState(() => _loadFailed = false); _load(); },
@@ -215,12 +218,10 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
             ZineIconBadge(icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
                 color: AD.card, size: 42),
             const SizedBox(height: Msg.s4),
-            Text('Earn 10% for life', style: ADText.appTitle().copyWith(fontSize: 30)),
+            UiText(UiMessage.m_earn_10_for_life_fe91d3ec99, style: ADText.appTitle().copyWith(fontSize: 30)),
             const SizedBox(height: Msg.s3),
-            Text(
-              'Promote any creator listing on AvaLive, AvaConsult or AvaVoice. '
-              'Every user who joins through your link earns you 10% of '
-              'everything they ever spend on it — paid instantly to your AvaWallet.',
+            UiText(
+              UiMessage.m_promote_any_creator_listing_on_3c25dc9f8d,
               style: ADText.preview(c: AD.textPrimary),
             ),
           ]),
@@ -234,14 +235,14 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
             'Commission lands in your AvaWallet the moment a referred purchase settles. The creator\'s share is never touched.'),
         const SizedBox(height: Msg.s5),
         ZineButton(
-          label: 'Become an Affiliate',
+          label: uiCopy(UiMessage.m_become_an_affiliate_655fe15c44),
           fullWidth: true,
           fontSize: 21,
           loading: _registering,
           onPressed: _registering ? null : _register,
         ),
         const SizedBox(height: Msg.s3),
-        Text('Free to join. All you need is a verified email.',
+        UiText(UiMessage.m_free_to_join_all_you_5c60ca96dc,
             textAlign: TextAlign.center,
             style: ADText.sectionLabel(c: AD.textTertiary)),
       ],
@@ -283,7 +284,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
                 child: Row(children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Affiliate code', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_affiliate_code_9e39eeae10, style: ADText.sectionLabel()),
                       const SizedBox(height: 2),
                       Text(code, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ADText.sectionLabel()),
@@ -294,7 +295,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: code));
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Affiliate code copied.')));
+                          const SnackBar(content: UiText(UiMessage.m_affiliate_code_copied_1933ce2ae9)));
                     },
                   ),
                 ]),
@@ -319,7 +320,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           ]),
           const SizedBox(height: Msg.s4),
           ZineButton(
-            label: 'Promote a new product',
+            label: uiCopy(UiMessage.m_promote_a_new_product_47c84b5170),
             fullWidth: true,
             icon: PhosphorIcons.linkSimple(PhosphorIconsStyle.bold),
             trailingIcon: false,
@@ -327,7 +328,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           ),
           const SizedBox(height: Msg.s5),
           Row(children: [
-            Expanded(child: Text('My links', style: ADText.sectionLabel())),
+            Expanded(child: UiText(UiMessage.m_my_links_1a769975e9, style: ADText.sectionLabel())),
             ZineLink('EARNINGS →', onTap: () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => AffiliateEarningsScreen(totals: t)))),
           ]),
@@ -404,7 +405,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
                 ],
               ]),
               const SizedBox(height: Msg.s1),
-              Text('${l.clicks} clicks · ${l.binds} referred',
+              UiText(UiMessage.m_value1_clicks_value2_referred_d2394dddfb, params: {'value1': (l.clicks).toString(), 'value2': (l.binds).toString()},
                   style: ADText.sectionLabel(c: AD.textTertiary)),
             ]),
           ),
@@ -412,7 +413,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(affTokensLabel(l.earnedTokens),
                 style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
-            Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
+            UiText(UiMessage.m_earned_63e39794f7, style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ]),
       ),

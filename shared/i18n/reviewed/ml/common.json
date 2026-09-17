@@ -1,0 +1,54 @@
+{
+  "reviewed": true,
+  "provenance": "Existing indiaLandingLocales.ts reviewed-key chrome; incomplete keys remain missing. Santali script review required.",
+  "messages": {
+    "chrome.home": {
+      "source": "avaTOK home",
+      "text": "avaTOK ഹോം"
+    },
+    "chrome.mainNav": {
+      "source": "Main",
+      "text": "പ്രധാന മെനു"
+    },
+    "chrome.menu": {
+      "source": "Menu",
+      "text": "മെനു"
+    },
+    "chrome.login": {
+      "source": "Log in",
+      "text": "ലോഗിൻ"
+    },
+    "chrome.signup": {
+      "source": "Sign up",
+      "text": "സൈൻ അപ്പ്"
+    },
+    "chrome.dashboard": {
+      "source": "Dashboard",
+      "text": "ഡാഷ്ബോർഡ്"
+    },
+    "chrome.signout": {
+      "source": "Sign out",
+      "text": "സൈൻ ഔട്ട്"
+    },
+    "chrome.chooseLanguage": {
+      "source": "Choose language",
+      "text": "ഭാഷ തിരഞ്ഞെടുക്കുക"
+    },
+    "chrome.footerNav": {
+      "source": "Footer",
+      "text": "ഫൂട്ടർ"
+    },
+    "chrome.legal": {
+      "source": "Legal and safety",
+      "text": "നിയമവും സുരക്ഷയും"
+    },
+    "chrome.help": {
+      "source": "Help centre",
+      "text": "സഹായ കേന്ദ്രം"
+    },
+    "chrome.terms": {
+      "source": "Terms of Service",
+      "text": "സേവന നിബന്ധനകൾ"
+    }
+  }
+}

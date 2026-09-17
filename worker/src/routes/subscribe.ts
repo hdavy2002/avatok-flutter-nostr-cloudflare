@@ -22,16 +22,12 @@ import { isFail, requireUser } from "../authz";
 import { readConfig } from "./config";
 import { track } from "../hooks";
 import {
-  PLANS, isTierId, readPlans, setSub, getSub, type TierId,
+  PLANS, isTierId, setSub, getSub, type TierId,
 } from "./plans";
 import { verifyPlaySubscription } from "../play";
 
-function webBase(env: Env): string {
-  return (env as any).PUBLIC_WEB_URL || "https://avatok.ai";
-}
-
 async function billingOn(env: Env): Promise<boolean> {
-  try { return !!(await readConfig(env)).billingEnabled; } catch { return false; }
+  return false;
 }
 
 // ── POST /api/subscribe/checkout { tier, platform } ─────────────────────────
@@ -41,63 +37,7 @@ async function billingOn(env: Env): Promise<boolean> {
 export async function subscribeCheckout(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!(await billingOn(env))) return json({ ok: false, error: "billing not enabled", reason: "billing_disabled" }, 503);
-
-  let body: { tier?: number; platform?: string };
-  try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-  const tier = body.tier;
-  const platform = (body.platform || "web").toLowerCase();
-  if (!isTierId(tier) || tier === 0) return json({ error: "tier must be 1, 2 or 3" }, 400);
-
-  const plans = await readPlans(env);
-  const plan = plans[tier as TierId];
-
-  // ── Android → native Play Billing (client drives the purchase UI) ──────────
-  if (platform === "android") {
-    if (!plan.playProductId) return json({ error: "no play product for tier" }, 400);
-    return json({ ok: true, platform: "android", play_product_id: plan.playProductId, tier });
-  }
-
-  // ── Web → Stripe Checkout (mode=subscription) ──────────────────────────────
-  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, error: "stripe not configured", reason: "stripe_unconfigured" }, 503);
-
-  const checkoutId = crypto.randomUUID();
-  const form = new URLSearchParams();
-  form.set("mode", "subscription");
-  form.set("client_reference_id", ctx.uid);
-  form.set("success_url", `${webBase(env)}/subscribe?status=success&cid=${checkoutId}`);
-  form.set("cancel_url", `${webBase(env)}/subscribe?status=cancel`);
-  if (plan.stripePriceId) {
-    form.set("line_items[0][price]", plan.stripePriceId);
-    form.set("line_items[0][quantity]", "1");
-  } else {
-    // No Price ID minted yet → build the recurring price inline so the tier still works.
-    form.set("line_items[0][price_data][currency]", "usd");
-    form.set("line_items[0][price_data][unit_amount]", String(Math.round(plan.priceUsd * 100)));
-    form.set("line_items[0][price_data][recurring][interval]", "month");
-    form.set("line_items[0][price_data][product_data][name]", `AvaTOK ${plan.name}`);
-    form.set("line_items[0][quantity]", "1");
-  }
-  form.set("metadata[uid]", ctx.uid);
-  form.set("metadata[tier]", String(tier));
-  form.set("metadata[checkout_id]", checkoutId);
-  form.set("subscription_data[metadata][uid]", ctx.uid);
-  form.set("subscription_data[metadata][tier]", String(tier));
-
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-  });
-  const session = (await res.json()) as any;
-  if (!res.ok) return json({ ok: false, error: "stripe error", detail: session?.error?.message }, 502);
-
-  await env.DB_META.prepare(
-    "INSERT INTO subscription_checkouts (id, uid, tier, source, session_id, status, created_at) VALUES (?1,?2,?3,'stripe',?4,'pending',?5)",
-  ).bind(checkoutId, ctx.uid, tier, session.id, Date.now()).run();
-
-  track(env, ctx.uid, "subscribe_checkout_started", "subscribe", { tier, platform: "web", price_usd: plan.priceUsd });
-  return json({ ok: true, platform: "web", checkout_url: session.url, checkout_id: checkoutId, tier });
+  return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
 }
 
 // ── POST /api/subscribe/android/verify { productId, purchaseToken } ─────────
@@ -106,7 +46,7 @@ export async function subscribeCheckout(req: Request, env: Env): Promise<Respons
 export async function subscribeAndroidVerify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!(await billingOn(env))) return json({ ok: false, reason: "billing_disabled" }, 503);
+  if (!(await billingOn(env))) return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
 
   let body: { productId?: string; purchaseToken?: string };
   try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }

@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/avatok_dark.dart';
@@ -17,7 +19,7 @@ void registerFocusSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'focus_mode',
-      title: 'Focus mode',
+      title: uiCopy(UiMessage.m_focus_mode_047cfdebdd),
       order: 5, // sits near the top of the pluggable sections
       builder: (context) => const _FocusModeCard(),
     ),
@@ -40,6 +42,7 @@ class _FocusModeCardState extends State<_FocusModeCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: ValueListenableBuilder<bool>(
@@ -47,14 +50,12 @@ class _FocusModeCardState extends State<_FocusModeCard> {
         builder: (context, on, _) => Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Keep the menu focused', style: ADText.rowName()),
+              UiText(UiMessage.m_keep_the_menu_focused_c0f2763aa5, style: ADText.rowName()),
               const SizedBox(height: 2),
               Text(
                 on
-                    ? 'Showing AvaTOK + your account essentials only. Turn off to '
-                        'show all AvaVerse apps in the menu.'
-                    : 'Showing all AvaVerse apps. Turn on to keep the menu to '
-                        'AvaTOK + your account essentials.',
+                    ? uiCopy(UiMessage.m_showing_avatok_your_account_essentials_3a84e1d6f6)
+                    : uiCopy(UiMessage.m_showing_all_avaverse_apps_turn_f23c1146e9),
                 style: ADText.preview(),
               ),
             ]),
@@ -74,6 +75,7 @@ class _AdToggle extends StatelessWidget {
   const _AdToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

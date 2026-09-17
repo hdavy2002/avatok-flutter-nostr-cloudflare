@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -18,7 +20,7 @@ void registerToolsSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_tools',
-      title: 'Tools & connectors',
+      title: uiCopy(UiMessage.m_tools_connectors_1104df0496),
       order: 30, // below Focus mode / Ava AI, near the other Ava sections
       builder: (context) => const _ToolsCard(),
     ),
@@ -30,6 +32,7 @@ class _ToolsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(4),
       onTap: () => Navigator.of(context).push(
@@ -46,11 +49,10 @@ class _ToolsCard extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Connect Ava to your tools', style: ADText.rowName()),
+              UiText(UiMessage.m_connect_ava_to_your_tools_6235a0e922, style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text(
-                'Link Gmail, Drive and more so Ava can act for you. Your tokens '
-                'stay private to this account.',
+              UiText(
+                UiMessage.m_link_gmail_drive_and_more_ef1492d739,
                 style: ADText.preview(),
               ),
             ]),

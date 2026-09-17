@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -105,6 +107,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
@@ -113,7 +116,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         elevation: 0,
         foregroundColor: AD.textPrimary,
         leading: AdBackButton(),
-        title: Text('New message', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_new_message_78f5975a5d, style: ADText.appTitle()),
         shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       body: SafeArea(
@@ -122,7 +125,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
             child: AdField(
               controller: _search,
-              hint: 'Search name or type a number',
+              hint: uiCopy(UiMessage.m_search_name_or_type_a_41a11bbdef),
               leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
               keyboardType: TextInputType.text,
               autofocus: true,
@@ -170,7 +173,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Send to this number', style: AvaDialTheme.sub(size: 11, color: AD.textSecondary)),
+              UiText(UiMessage.m_send_to_this_number_9a5d8238b0, style: AvaDialTheme.sub(size: 11, color: AD.textSecondary)),
               const SizedBox(height: 2),
               Text(number,
                   maxLines: 1,
@@ -238,18 +241,17 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             color: AD.iconSearch,
             size: 52),
         const SizedBox(height: Msg.s3),
-        Text('Contacts are off',
+        UiText(UiMessage.m_contacts_are_off_03d6b52ec3,
             textAlign: TextAlign.center, style: AvaDialTheme.title(size: 17, color: AD.textPrimary)),
         const SizedBox(height: 8),
-        Text(
-          'Allow contacts so you can pick someone by name. You can still text any '
-          'number by typing it above.',
+        UiText(
+          UiMessage.m_allow_contacts_so_you_can_d5289a3419,
           textAlign: TextAlign.center,
           style: AvaDialTheme.sub(size: 13, color: AD.textSecondary),
         ),
         const SizedBox(height: 16),
         AdButton(
-          label: 'Allow contacts',
+          label: uiCopy(UiMessage.m_allow_contacts_54a03bcd4e),
           variant: AdButtonVariant.teal,
           fontSize: 15,
           onPressed: () async {
@@ -261,7 +263,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         const SizedBox(height: Msg.s2),
         TextButton(
           onPressed: _load,
-          child: Text('Try again', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
+          child: UiText(UiMessage.m_try_again_d8b8392e2c, style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
         ),
       ]),
     );
@@ -277,12 +279,12 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             size: 52),
         const SizedBox(height: Msg.s3),
         Text(
-          _search.text.trim().isEmpty ? 'No contacts found' : 'No matches',
+          _search.text.trim().isEmpty ? uiCopy(UiMessage.m_no_contacts_found_0013e6984b) : uiCopy(UiMessage.m_no_matches_2df01a03ff),
           textAlign: TextAlign.center,
           style: AvaDialTheme.title(size: 17, color: AD.textPrimary),
         ),
         const SizedBox(height: 8),
-        Text('Type a phone number above to start a new text.',
+        UiText(UiMessage.m_type_a_phone_number_above_96adfca9db,
             textAlign: TextAlign.center, style: AvaDialTheme.sub(size: 13, color: AD.textSecondary)),
       ]),
     );

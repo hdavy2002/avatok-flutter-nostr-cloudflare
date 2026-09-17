@@ -1,3 +1,7 @@
+import '../../core/localization/known_ui_copy.dart';
+
+import '../../core/localization/ui_text.dart';
+
 // Native creator calendar — the diary.
 //
 // Audit fixes covered here (15 September 2026):
@@ -400,7 +404,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     if (!mounted) return;
     if (_settingsRevision != before) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Working hours updated')));
+          const SnackBar(content: UiText(UiMessage.m_working_hours_updated_75e6d276e1)));
     }
   }
 
@@ -477,6 +481,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_accountChanged) {
       // The account switched under us. Never render the previous account's
       // diary while the new one loads.
@@ -490,7 +495,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Calendar & availability',
+        title: uiCopy(UiMessage.m_calendar_availability_9f49dccd2a),
         markWord: 'availability',
         tag: 'One creator, every commitment',
         actions: [
@@ -544,7 +549,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   Widget _topControls(bool wide, CalendarView view) {
     final items = <DropdownMenuItem<String>>[
-      const DropdownMenuItem(value: '', child: Text('All listings')),
+      const DropdownMenuItem(value: '', child: UiText(UiMessage.m_all_listings_39623e25ae)),
       ..._listings.map((listing) =>
           DropdownMenuItem(value: listing.id, child: Text(listing.title))),
     ];
@@ -553,7 +558,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: wide ? 420 : double.infinity),
           child: ZineDropdown<String>(
-            label: 'Showing availability for',
+            label: uiCopy(UiMessage.m_showing_availability_for_612bfe947f),
             value: _selectedListingId ?? '',
             items: items,
             onChanged: (value) async {
@@ -568,11 +573,11 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           ),
         )
       else
-        Text('Showing your creator schedule', style: calSub(14)),
+        UiText(UiMessage.m_showing_your_creator_schedule_de23a2b089, style: calSub(14)),
       const SizedBox(height: Msg.s1),
       Text(
-        editingScopeLabel(
-            selectedListingId: _selectedListingId, listings: _listings),
+        knownUiCopy(editingScopeLabel(
+            selectedListingId: _selectedListingId, listings: _listings)),
         style: ADText.statCaption(c: AD.textSecondary),
       ),
       if (_schedule != null) ...[
@@ -584,26 +589,26 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       const SizedBox(height: Msg.s2),
       Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
         ZineChip(
-            label: 'Month',
+            label: uiCopy(UiMessage.m_month_310ca503ef),
             active: view == CalendarView.month,
             onTap: () => setState(() => _viewOverride = CalendarView.month)),
         ZineChip(
-            label: 'Week',
+            label: uiCopy(UiMessage.m_week_e78041ab51),
             active: view == CalendarView.week,
             onTap: () => setState(() => _viewOverride = CalendarView.week)),
         ZineChip(
-            label: 'Agenda',
+            label: uiCopy(UiMessage.m_agenda_0fdf485f5b),
             active: view == CalendarView.agenda,
             onTap: () => setState(() => _viewOverride = CalendarView.agenda)),
         ZineButton(
-            label: 'Block time',
+            label: uiCopy(UiMessage.m_block_time_f2528d9689),
             variant: ZineButtonVariant.ghost,
             fontSize: 13,
             icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
             trailingIcon: false,
             onPressed: () => _openDayEditor(_selected, startBlocked: true)),
         ZineButton(
-            label: 'Refresh',
+            label: uiCopy(UiMessage.m_refresh_0e91610117),
             variant: ZineButtonVariant.ghost,
             fontSize: 13,
             loading: _refreshing,
@@ -617,7 +622,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         const SizedBox(width: Msg.s3),
         ZineLink('Connected calendars', onTap: _openSettings),
         const Spacer(),
-        Text(updatedAtLabel(_updatedAt),
+        Text(knownUiCopy(updatedAtLabel(_updatedAt)),
             style: ADText.statCaption(c: AD.textSecondary)),
       ]),
     ]);
@@ -662,22 +667,21 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         padding: const EdgeInsets.all(Msg.s3),
         borderColor: AD.danger,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Your last change was not saved', style: calValue(14)),
+          UiText(UiMessage.m_your_last_change_was_not_eb8608ce2a, style: calValue(14)),
           const SizedBox(height: 2),
-          Text(
-              '${pending.day.day} ${monthShort(pending.day)} could not be saved. The edit is '
-              'still here — retry when you have a connection.',
+          UiText(
+              UiMessage.m_value1_value2_could_not_be_7b498bae3a, params: {'value1': (pending.day.day).toString(), 'value2': (monthShort(pending.day)).toString()},
               style: calSub(12, c: AD.textSecondary)),
           const SizedBox(height: Msg.s2),
           Wrap(spacing: Msg.s2, children: [
             ZineButton(
-                label: 'Retry save',
+                label: uiCopy(UiMessage.m_retry_save_71fdfa790e),
                 variant: ZineButtonVariant.blue,
                 fontSize: 13,
                 trailingIcon: false,
                 onPressed: _retryPendingEdit),
             ZineButton(
-                label: 'Discard',
+                label: uiCopy(UiMessage.m_discard_eb1a70e392),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 13,
                 trailingIcon: false,
@@ -736,7 +740,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
                     view: view, month: _month, selected: _selected),
                 style: calTitle(17))),
         ZineChip(
-            label: _monthOverview ? 'Hide month' : 'Month overview',
+            label: _monthOverview ? uiCopy(UiMessage.m_hide_month_5196297c5c) : uiCopy(UiMessage.m_month_overview_32b62dd10f),
             active: _monthOverview,
             onTap: () => setState(() => _monthOverview = !_monthOverview)),
         const SizedBox(width: Msg.s2),
@@ -781,8 +785,8 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           const SizedBox(height: 2),
           Text(
               _schedule == null
-                  ? timezoneLabel(null)
-                  : '${_schedule!.timezone} · ${_schedule!.durationMin} min slots',
+                  ? knownUiCopy(timezoneLabel(null))
+                  : uiCopy(UiMessage.m_value1_value2_min_slots_8476fc4769, {'value1': (_schedule!.timezone).toString(), 'value2': (_schedule!.durationMin).toString()}),
               style: calSub(12)),
         ])),
         ZineLink('Today', onTap: _goToday),
@@ -903,9 +907,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
                       Text('${day.day}', style: calValue(16)),
                       const SizedBox(height: Msg.s2),
                       Text(
-                          weekAvailabilityLabel(
+                          knownUiCopy(weekAvailabilityLabel(
                               availableCount: _availableCount(day),
-                              listingSelected: listingSelected),
+                              listingSelected: listingSelected)),
                           style: ADText.statCaption(c: AD.textSecondary)),
                       const SizedBox(height: Msg.s2),
                       ..._onDay(day).take(3).map((block) => Padding(
@@ -915,16 +919,15 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
                               textAlign: TextAlign.center,
                               style: ADText.statCaption(c: AD.textSecondary)))),
                       if (_onDay(day).isEmpty)
-                        Text('No commitments',
+                        UiText(UiMessage.m_no_commitments_31acc78f4f,
                             textAlign: TextAlign.center,
                             style: ADText.statCaption(c: AD.textFaint)),
                     ]))),
           ))
       ]),
       const SizedBox(height: Msg.s3),
-      Text(
-          'Tap a day to inspect it, long press to change its hours. '
-          '${availabilityHint(listingSelected: listingSelected)}',
+      UiText(
+          UiMessage.m_tap_a_day_to_inspect_4659d56ddf, params: {'value1': (knownUiCopy(availabilityHint(listingSelected: listingSelected))).toString()},
           style: calSub(12)),
     ]);
   }
@@ -948,10 +951,10 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       calendarTimezoneNote(_timezone,
           deviceNote: 'your device is ${DateTime.now().timeZoneName}'),
       const SizedBox(height: Msg.s3),
-      Text('Hours for this day', style: calTitle(15)),
+      UiText(UiMessage.m_hours_for_this_day_888d5b5df8, style: calTitle(15)),
       const SizedBox(height: Msg.s2),
       if (exceptions.isEmpty)
-        Text('Your usual working hours apply.', style: calSub(13))
+        UiText(UiMessage.m_your_usual_working_hours_apply_e53a54bad2, style: calSub(13))
       else
         ...exceptions.map(_exceptionRow),
       const SizedBox(height: Msg.s2),
@@ -968,12 +971,12 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       ]),
       const SizedBox(height: Msg.s3),
       if (blocks.isNotEmpty) ...[
-        Text('Commitments', style: calTitle(15)),
+        UiText(UiMessage.m_commitments_35ebc1056b, style: calTitle(15)),
         const SizedBox(height: Msg.s2),
         ...blocks.map(_blockCard),
       ],
       if (slots.isNotEmpty) ...[
-        Text('Bookable slots', style: calTitle(15)),
+        UiText(UiMessage.m_bookable_slots_870a87da12, style: calTitle(15)),
         const SizedBox(height: Msg.s2),
         ...slots.map(_slotCard),
       ],
@@ -981,7 +984,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         _emptyAgenda(listingSelected: listingSelected),
       if (!listingSelected) ...[
         const SizedBox(height: Msg.s2),
-        Text(availabilityHint(listingSelected: false), style: calSub(12)),
+        Text(knownUiCopy(availabilityHint(listingSelected: false)), style: calSub(12)),
       ],
     ]);
   }
@@ -989,7 +992,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   Widget _exceptionRow(AvailabilityException exception) {
     final range = exception.isAllDay || exception.looksLikeMidnightToMidnight
         ? 'All day'
-        : minutesRangeLabel(exception.startMin, exception.endMin);
+        : knownUiCopy(minutesRangeLabel(exception.startMin, exception.endMin));
     final label = switch (exception.status) {
       AvailabilityExceptionStatus.available => "I'm available",
       AvailabilityExceptionStatus.unavailable => "I'm busy",
@@ -1015,7 +1018,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           calendarIconAction(
             icon: PhosphorIcons.trash(PhosphorIconsStyle.regular),
             color: AD.danger,
-            tooltip: 'Remove this interval',
+            tooltip: uiCopy(UiMessage.m_remove_this_interval_6302119fbc),
             onTap: () => _saveDayExceptions(
                 day: _selected,
                 before: _exceptionsFor(_selected),
@@ -1049,7 +1052,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   Widget _blockCard(CalBlock block) {
     final style = styleFor(block.sourceApp);
-    final statusLabel = blockStatusLabel(block);
+    final statusLabel = knownUiCopy(blockStatusLabel(block));
     return Padding(
       padding: const EdgeInsets.only(bottom: Msg.s2),
       child: ZineCard(
@@ -1126,7 +1129,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
               child: Text(
                   '${_hm(_scheduleTime(slot.startAt))}–${_hm(_scheduleTime(slot.endAt))}',
                   style: calValue(14))),
-          Text(free ? 'Open' : (slot.reason ?? 'Unavailable'),
+          Text(free ? uiCopy(UiMessage.m_open_ed077f3d81) : (slot.reason ?? uiCopy(UiMessage.m_unavailable_ca18449697)),
               style: ADText.statCaption(c: free ? AD.online : AD.textTertiary)),
         ]),
       ),
@@ -1249,7 +1252,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
     final tooMany = validateExceptionCount(exceptions.length);
     if (tooMany != null) {
-      setState(() => _error = tooMany);
+      setState(() => _error = knownUiCopy(tooMany));
       return;
     }
     await _persistExceptions(target, exceptions, day, scope: scope);
@@ -1342,66 +1345,55 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl)),
-        title: Text('Block this range?', style: calTitle(17)),
+        title: UiText(UiMessage.m_block_this_range_f2dfba4768, style: calTitle(17)),
         content: SingleChildScrollView(
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                    '${result.holidayFrom!.day} ${monthShort(result.holidayFrom!)} – '
-                    '${result.holidayTo!.day} ${monthShort(result.holidayTo!)} will be blocked across '
-                    '$scopeLabel (${plan.blockedDays} day(s)).',
+                UiText(
+                    UiMessage.m_value1_value2_value3_value4_will_451fd148e3, params: {'value1': (result.holidayFrom!.day).toString(), 'value2': (monthShort(result.holidayFrom!)).toString(), 'value3': (result.holidayTo!.day).toString(), 'value4': (monthShort(result.holidayTo!)).toString(), 'scopeLabel': (scopeLabel).toString(), 'value6': (plan.blockedDays).toString()},
                     style: calSub(13)),
                 if (plan.replacedDateCount > 0) ...[
                   const SizedBox(height: Msg.s3),
-                  Text(
-                      '${plan.replacedDateCount} of those day(s) already had hours or breaks '
-                      'saved. Those windows are replaced by one all-day block. Days outside the '
-                      'range keep every interval untouched.',
+                  UiText(
+                      UiMessage.m_value1_of_those_day_s_bdf1e472ef, params: {'value1': (plan.replacedDateCount).toString()},
                       style: calSub(13)),
                 ],
                 if (plan.alreadyBlockedDates.isNotEmpty) ...[
                   const SizedBox(height: Msg.s3),
-                  Text(
-                      '${plan.alreadyBlockedDates.length} day(s) were already blocked for this '
-                      'scope and are left exactly as they are.',
+                  UiText(
+                      UiMessage.m_value1_day_s_were_already_f6e4ed4143, params: {'value1': (plan.alreadyBlockedDates.length).toString()},
                       style: calSub(13)),
                 ],
                 if (plan.reservationDates.isNotEmpty) ...[
                   const SizedBox(height: Msg.s3),
-                  Text(
-                      '${plan.reservationDates.length} day(s) hold time kept for a listing. '
-                      'Those reserved windows stay reserved and AvaTOK blocks the rest of the day '
-                      'around them.',
+                  UiText(
+                      UiMessage.m_value1_day_s_hold_time_d88005c948, params: {'value1': (plan.reservationDates.length).toString()},
                       style: calSub(13)),
                 ],
                 if (plan.horizonUnknown) ...[
                   const SizedBox(height: Msg.s3),
-                  Text(
-                      'This schedule has no supported booking horizon stored, so the range is '
-                      'capped at $kMaxHorizonDays days and the server default applies until you '
-                      'set one.',
+                  UiText(
+                      UiMessage.m_this_schedule_has_no_supported_9bc8bf447e, params: {'kMaxHorizonDays': (kMaxHorizonDays).toString()},
                       style: calSub(13)),
                 ],
                 if (affected.isEmpty) ...[
                   const SizedBox(height: Msg.s3),
-                  Text('No existing commitments fall inside this range.',
+                  UiText(UiMessage.m_no_existing_commitments_fall_inside_b1e78b9667,
                       style: calSub(13)),
                 ] else ...[
                   const SizedBox(height: Msg.s3),
-                  Text(
-                      '${affected.length} existing commitment(s) fall inside this range:',
+                  UiText(
+                      UiMessage.m_value1_existing_commitment_s_fall_473620525f, params: {'value1': (affected.length).toString()},
                       style: calValue(13)),
                   const SizedBox(height: Msg.s2),
                   ...affected.take(6).map((block) => Text(
                       '· ${blockDateLabel(epochMs: block.startsAt, timezone: _timezone)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${blockSourceLabel(block)}',
                       style: calSub(12))),
                   const SizedBox(height: Msg.s2),
-                  Text(
-                      'AvaTOK never cancels a confirmed booking automatically. If one still '
-                      'overlaps the range the server refuses the block instead of cancelling it, '
-                      'so reschedule or cancel each one first — your edit is kept for retry.',
+                  UiText(
+                      UiMessage.m_avatok_never_cancels_a_confirmed_cecc461f27,
                       style: calSub(12, c: AD.danger)),
                 ],
               ]),
@@ -1409,9 +1401,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text('Back', style: calLinkStyle)),
+              child: UiText(UiMessage.m_back_76900f1bfd, style: calLinkStyle)),
           ZineButton(
-              label: 'Block range',
+              label: uiCopy(UiMessage.m_block_range_63b69b23f0),
               variant: ZineButtonVariant.blue,
               fontSize: 14,
               onPressed: () => Navigator.pop(dialogContext, true)),
@@ -1439,7 +1431,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     }
     final tooMany = validateExceptionCount(application.exceptions.length);
     if (tooMany != null) {
-      setState(() => _error = tooMany);
+      setState(() => _error = knownUiCopy(tooMany));
       return;
     }
     await _persistExceptions(target, application.exceptions, day, scope: scope);
@@ -1475,7 +1467,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     }
     final tooMany = validateExceptionCount(application.exceptions.length);
     if (tooMany != null) {
-      setState(() => _error = tooMany);
+      setState(() => _error = knownUiCopy(tooMany));
       return;
     }
     await _persistExceptions(target, application.exceptions, pending.day,
@@ -1516,8 +1508,8 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           ? 'all your listings'
           : _listingTitle(saved.listingId);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'Saved — ${day.day} ${monthShort(day)} now follows these hours for $label.')));
+          content: UiText(
+              UiMessage.m_saved_value1_value2_now_follows_f2ac6853e0, params: {'value1': (day.day).toString(), 'value2': (monthShort(day)).toString(), 'label': (label).toString()})));
     } catch (e) {
       if (!mounted || !_scopeIsCurrent(scope)) return;
       setState(() {

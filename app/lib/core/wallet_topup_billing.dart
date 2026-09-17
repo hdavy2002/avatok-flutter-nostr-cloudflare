@@ -12,18 +12,16 @@ import 'money_api.dart';
 /// (it maps productId → Tokens in routes/wallet.ts). Keep this list in lock-step
 /// with the Play Console and PLAY_TOPUP_PRODUCTS on the worker.
 class TopupTier {
-  const TopupTier(this.productId, this.usd, this.tokens);
+  const TopupTier(this.productId);
   final String productId;
-  final int usd;
-  final int tokens;
 }
 
 const List<TopupTier> kTopupTiers = [
-  TopupTier('avatok_topup_5', 5, 500),
-  TopupTier('avatok_topup_10', 10, 1000),
-  TopupTier('avatok_topup_25', 25, 2500),
-  TopupTier('avatok_topup_50', 50, 5000),
-  TopupTier('avatok_topup_100', 100, 10000),
+  TopupTier('avatok_topup_5'),
+  TopupTier('avatok_topup_10'),
+  TopupTier('avatok_topup_25'),
+  TopupTier('avatok_topup_50'),
+  TopupTier('avatok_topup_100'),
 ];
 
 const Set<String> _kTopupIds = {

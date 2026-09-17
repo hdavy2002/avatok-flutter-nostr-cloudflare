@@ -1,3 +1,4 @@
+import '../../core/localization/ui_text.dart';
 // [CF-CALL-003/004] conference_media_controller — the Cloudflare Realtime A/V
 // group-call controller (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-
 // PROPOSAL-2026-07-24.md Phase 3/4). Owns ONE RTCPeerConnection per the CF
@@ -623,12 +624,12 @@ class CloudflareConferenceController extends ChangeNotifier {
       if (m.isNotEmpty && !m.startsWith('Group call error')) {
         return m.substring(0, 1).toUpperCase() + m.substring(1);
       }
-      if (e.status == 503) return 'Group calls are temporarily unavailable.';
-      if (e.status == 403) return 'You can\'t join this call.';
-      if (e.status == 409) return 'This call is full.';
+      if (e.status == 503) return uiCopy(UiMessage.m_group_calls_are_temporarily_unavailable_eb9c461d3b);
+      if (e.status == 403) return uiCopy(UiMessage.m_you_can_t_join_this_2852612698);
+      if (e.status == 409) return uiCopy(UiMessage.m_this_call_is_full_b093a6dc01);
     }
-    if (e is TimeoutException) return 'The call server didn\'t respond. Check your connection and try again.';
-    return 'Could not join the call';
+    if (e is TimeoutException) return uiCopy(UiMessage.m_the_call_server_didn_t_595be883bc);
+    return uiCopy(UiMessage.m_could_not_join_the_call_feba101800);
   }
 
   // ---- [GCALL-W2-HOLD] process + screen hold ------------------------------------

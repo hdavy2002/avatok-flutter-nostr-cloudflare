@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -113,19 +116,19 @@ class _IdentityScreenState extends State<IdentityScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderHairline, width: 1),
           ),
-          title: Text('Change email', style: ADText.threadName()),
+          title: UiText(UiMessage.m_change_email_ff2ec2618b, style: ADText.threadName()),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             AdField(
               controller: emailCtrl,
               enabled: !sent,
-              label: 'New email address',
+              label: uiCopy(UiMessage.m_new_email_address_bb0d06f567),
               keyboardType: TextInputType.emailAddress,
             ),
             if (sent) ...[
               const SizedBox(height: 14),
               AdField(
                 controller: codeCtrl,
-                label: '6-digit code from your inbox',
+                label: uiCopy(UiMessage.m_6_digit_code_from_your_b449ffd029),
                 keyboardType: TextInputType.number,
               ),
             ],
@@ -133,8 +136,8 @@ class _IdentityScreenState extends State<IdentityScreen> {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ADText.preview(c: AD.textSecondary))),
-            AdButton(label: sent ? 'Verify' : 'Send code', variant: AdButtonVariant.teal,
+                child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary))),
+            AdButton(label: sent ? uiCopy(UiMessage.m_verify_eea2745e28) : uiCopy(UiMessage.m_send_code_66a5b4090d), variant: AdButtonVariant.teal,
                 fontSize: 15, onPressed: sent ? verify : send),
           ],
         );
@@ -154,19 +157,15 @@ class _IdentityScreenState extends State<IdentityScreen> {
           borderRadius: BorderRadius.circular(AD.rDialog),
           side: const BorderSide(color: AD.borderHairline, width: 1),
         ),
-        title: Text('Delete your account?', style: ADText.threadName()),
-        content: Text(
-          'This wipes EVERYTHING after a 30-day grace period: your profile, '
-          'messages, wallet, listings — and your identity verifications, '
-          'including the liveness photo and all KYC records. Verification '
-          'media cannot be deleted any other way.\n\n'
-          'You can cancel within 30 days by signing back in.',
+        title: UiText(UiMessage.m_delete_your_account_e3b4e71126, style: ADText.threadName()),
+        content: UiText(
+          UiMessage.m_this_wipes_everything_after_a_751b3167d1,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Keep my account', style: ADText.preview(c: AD.textSecondary))),
-          AdButton(label: 'Delete everything', variant: AdButtonVariant.danger,
+              child: UiText(UiMessage.m_keep_my_account_d62ce03448, style: ADText.preview(c: AD.textSecondary))),
+          AdButton(label: uiCopy(UiMessage.m_delete_everything_71eb8a08ff), variant: AdButtonVariant.danger,
               fontSize: 15, onPressed: () => Navigator.of(ctx).pop(true)),
         ],
       ),
@@ -185,6 +184,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final level = _ladder?.level ?? 1;
     final activePip = level.clamp(1, 3).toInt();
     return Scaffold(
@@ -207,7 +207,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text('AvaIdentity',
+                  child: UiText(UiMessage.m_avaidentity_18d50973e7,
                       style: ADText.appTitle(c: AD.onBand(AD.headerFooter)),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -233,14 +233,14 @@ class _IdentityScreenState extends State<IdentityScreen> {
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Trust level $level', style: ADText.appTitle()),
+                          UiText(UiMessage.m_trust_level_level_a869d51577, params: {'level': (level).toString()}, style: ADText.appTitle()),
                           const SizedBox(height: 3),
                           Text(
                             level >= 3
-                                ? 'Fully verified — payouts unlocked.'
+                                ? uiCopy(UiMessage.m_fully_verified_payouts_unlocked_a348389919)
                                 : level == 2
-                                    ? 'Verified human — creator features unlocked.'
-                                    : 'Member — verify to unlock creator features.',
+                                    ? uiCopy(UiMessage.m_verified_human_creator_features_unlocked_c696e74764)
+                                    : uiCopy(UiMessage.m_member_verify_to_unlock_creator_a48bf1db61),
                             style: ADText.preview(),
                           ),
                         ]),
@@ -262,14 +262,14 @@ class _IdentityScreenState extends State<IdentityScreen> {
                       const SizedBox(width: Msg.s1),
                       // [UI-CASE-1] Sentence case — shouted labels were part of
                       // the "amateur UI" finding.
-                      Text('Step $activePip of 3', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_step_activepip_of_3_aee46f469a, params: {'activePip': (activePip).toString()}, style: ADText.sectionLabel()),
                     ]),
                   ]),
                 ),
                 const SizedBox(height: Msg.s5),
 
                 // ── The ladder ────────────────────────────────────────────
-                Text('Your identity', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_your_identity_3b42154652, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s3),
                 _tick(true, PhosphorIcons.at(PhosphorIconsStyle.bold), AD.primaryBadge,
                     'Handle', 'Your unique @handle', null),
@@ -302,7 +302,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 const SizedBox(height: Msg.s5),
 
                 // ── Account actions ───────────────────────────────────────
-                Text('Account', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_account_7e1b0d5641, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s3),
                 _row(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), AD.iconSearch,
                     'Profile & photo', 'Display name, bio, profile picture',

@@ -62,7 +62,7 @@ async function schemaReady(env: Env): Promise<boolean> {
 
 /** Both switches, plus real credentials. Any one missing ⇒ the lane is off, loudly. */
 async function payEnabled(env: Env): Promise<{ ok: true } | { ok: false; reason: string; status: number }> {
-  if (!cashfreeConfigured(env)) return { ok: false, reason: "gateway_unconfigured", status: 503 };
+  return { ok: false, reason: "payments_disabled", status: 503 };
   let cfg;
   try { cfg = await readConfig(env); } catch { return { ok: false, reason: "config_unavailable", status: 503 }; }
   if (cfg.cashfreeEnabled !== true) return { ok: false, reason: "gateway_disabled", status: 404 };
@@ -201,6 +201,7 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
  * duplicate gets retried forever.
  */
 export async function cashfreeWebhook(req: Request, env: Env): Promise<Response> {
+  return json({ received: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   if (!cashfreeConfigured(env)) return json({ error: "unconfigured" }, 503);
   const raw = await req.text();
   const ok = await verifyCashfreeSignature(
@@ -313,6 +314,7 @@ export async function cashfreeWebhook(req: Request, env: Env): Promise<Response>
 
 /** GET /api/pay/cashfree/status?purchase=<id> — poll while the webhook is in flight. */
 export async function cashfreeStatus(req: Request, env: Env): Promise<Response> {
+  return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
   const purchaseId = new URL(req.url).searchParams.get("purchase") || "";

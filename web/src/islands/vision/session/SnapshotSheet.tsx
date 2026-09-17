@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 // SnapshotSheet — the "Analyze my form" result sheet.
 //
 // Renders the annotated frame Gemini returned (pixel-grounded), the optional
@@ -30,24 +32,21 @@ export function SnapshotSheet({
   remainingSnapshots,
   onClose,
 }: SnapshotSheetProps) {
+  const {t:uiT}=useUiTranslation("web-vision");
+
   return (
-    <Sheet open={open} onClose={onClose} title="Form analysis" dismissable={!loading}>
+    <Sheet open={open} onClose={onClose} title={uiT("web-vision.3849da149c946d2e","Form analysis")} dismissable={!loading}>
       {loading && (
         <div className="flex flex-col items-center gap-3 py-8">
           <Spinner size={28} color="var(--zine-lilac)" />
-          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-            analyzing your form…
-          </span>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft"><UiText id="web-vision.629f242f02e0bcc2" source="analyzing your form…" />{" "}</span>
         </div>
       )}
 
       {!loading && capReached && (
         <div className="flex flex-col items-center gap-2 rounded-zine border-zine border-ink bg-blue px-4 py-5 text-center shadow-zine-xs">
-          <span className="font-display font-semibold text-[18px] text-ink">You've used all your form checks</span>
-          <p className="font-body font-bold text-[14px] text-inkSoft">
-            This session's deep analyses are used up — no extra charge. Keep going with the live coaching,
-            or start a new session for more.
-          </p>
+          <span className="font-display font-semibold text-[18px] text-ink"><UiText id="web-vision.75c61a6bc6797fbf" source="You've used all your form checks" /></span>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-vision.fd82ea3de856be6b" source="This session's deep analyses are used up — no extra charge. Keep going with the live coaching, or start a new session for more." />{" "}</p>
         </div>
       )}
 
@@ -62,7 +61,7 @@ export function SnapshotSheet({
           {result.annotatedImage && (
             <img
               src={result.annotatedImage}
-              alt="Annotated analysis of your form"
+              alt={uiT("web-vision.4969badd45459223","Annotated analysis of your form")}
               className="w-full rounded-zine border-zine border-ink shadow-zine-sm"
             />
           )}
@@ -79,8 +78,8 @@ export function SnapshotSheet({
           {remainingSnapshots != null && (
             <p className="font-body text-[12px] text-inkMute">
               {remainingSnapshots > 0
-                ? `${remainingSnapshots} form check${remainingSnapshots === 1 ? '' : 's'} left this session.`
-                : 'No more form checks this session.'}
+                ? uiT("web-vision.cb9be7f19a300ed2","{value0} form check{value1} left this session.",{value0:String(remainingSnapshots),value1:String(remainingSnapshots === 1 ? '' : 's')})
+                : uiT("web-vision.c56c835c54dfa77c","No more form checks this session.")}
             </p>
           )}
         </div>

@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -30,7 +33,7 @@ void registerBusinessAgentSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_business_agent',
-      title: 'Ava Business Agent',
+      title: uiCopy(UiMessage.m_ava_business_agent_e8b5730759),
       order: 25, // just below Ava Receptionist (24)
       // [AVA-BIZCALL-12] Hide the row entirely when the feature flag is off —
       // never show a tile that opens a blank page.
@@ -138,10 +141,10 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         'enabled': _settings.enabled, 'routing': _settings.routing.wire,
         'has_hours': _settings.hours.anyEnabled,
       });
-      _toast(_settings.enabled ? 'Ava will answer your primary number' : 'Saved');
+      _toast(_settings.enabled ? uiCopy(UiMessage.m_ava_will_answer_your_primary_dc1634e2fc) : uiCopy(UiMessage.m_saved_b5c120b316));
     } else {
       Analytics.capture('agent_settings_save_failed', {});
-      _toast('Couldn’t save — check your connection and try again.');
+      _toast(uiCopy(UiMessage.m_couldn_t_save_check_your_da12340aa9));
     }
   }
 
@@ -157,7 +160,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       Analytics.capture('agent_doc_uploaded', {'name': f.name, 'service_id': serviceId ?? ''});
       _loadDocs();
     } else {
-      _toast('Couldn’t upload that document yet — the knowledge pipeline is still rolling out.');
+      _toast(uiCopy(UiMessage.m_couldn_t_upload_that_document_ceae634da2));
     }
   }
 
@@ -188,6 +191,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!RemoteConfig.voiceAgent) {
       // [AVA-BIZCALL-12] The row is hidden when the flag is off (see
       // registerBusinessAgentSection), but if the flag flips while this page
@@ -195,8 +199,8 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       return const Padding(
         padding: EdgeInsets.all(24),
         child: Center(
-          child: Text(
-            'Ava Business Agent isn’t enabled on this account yet.',
+          child: UiText(
+            UiMessage.m_ava_business_agent_isn_t_6a59e5646b,
             textAlign: TextAlign.center,
           ),
         ),
@@ -214,8 +218,8 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
               _header(),
               if (_notAvailable) ...[
                 const SizedBox(height: Msg.s3),
-                Text(
-                  'Ava Business Agent is rolling out — not available on your account yet.',
+                UiText(
+                  UiMessage.m_ava_business_agent_is_rolling_198cc0b394,
                   style: ADText.preview(c: AD.textTertiary),
                 ),
               ] else ...[
@@ -240,12 +244,10 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       const SizedBox(width: 12),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Ava Business Agent', style: ADText.rowName()),
+          UiText(UiMessage.m_ava_business_agent_e8b5730759, style: ADText.rowName()),
           const SizedBox(height: 2),
-          Text(
-            'A real AI voice agent that answers your AvaTOK number, uses your '
-            'documents, and can take a booking — paid from your wallet, minute '
-            'by minute.',
+          UiText(
+            UiMessage.m_a_real_ai_voice_agent_e5085261d6,
             style: ADText.preview(),
           ),
         ]),
@@ -258,11 +260,10 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Answer my calls', style: ADText.rowName()),
+            UiText(UiMessage.m_answer_my_calls_47ded1d878, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(
-              '6 tokens/min from your wallet, up to a 5-minute call. Turns off '
-              'automatically if your wallet runs out.',
+            UiText(
+              UiMessage.m_6_tokens_min_from_your_4f0a96204b,
               style: ADText.preview(),
             ),
           ]),
@@ -271,39 +272,37 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         _AdToggle(value: _settings.enabled, onChanged: _saving ? null : _toggleEnabled),
       ]),
       const SizedBox(height: Msg.s3),
-      Text('Instructions', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_instructions_934652dce4, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       AdField(
         controller: _instructions,
-        label: 'What should Ava do when you can’t answer?',
-        hint: 'e.g. Answer questions about our opening hours and menu. If a '
-            'caller wants to book a table, take their name, party size and '
-            'time, and email me the details.',
+        label: uiCopy(UiMessage.m_what_should_ava_do_when_4526d280ae),
+        hint: uiCopy(UiMessage.m_e_g_answer_questions_about_08a17882cc),
         minLines: 3,
         maxLines: null,
         textCapitalization: TextCapitalization.sentences,
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 16),
-      Text('KNOWLEDGE (DOCUMENTS)', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_knowledge_documents_16f4854a9c, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       _docsList(serviceId: null),
       const SizedBox(height: 8),
       AdChip(
-        label: _uploadingDoc ? 'Uploading…' : 'Upload a document',
+        label: _uploadingDoc ? uiCopy(UiMessage.m_uploading_5ce44dd77d) : uiCopy(UiMessage.m_upload_a_document_01e738db94),
         onTap: _uploadingDoc ? null : () => _pickAndUploadDoc(),
       ),
       const SizedBox(height: 16),
-      Text('Routing', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_routing_bcba696f3e, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       _routingPicker(_settings.routing, (r) => setState(() => _settings = _settings.copyWith(routing: r))),
       const SizedBox(height: 16),
-      Text('BUSINESS HOURS (OPTIONAL)', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_business_hours_optional_21d0e209be, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s2),
       _hoursEditor(_settings.hours, (h) => setState(() => _settings = _settings.copyWith(hours: h))),
       const SizedBox(height: 16),
       AdButton(
-        label: _saving ? 'Saving…' : 'Save',
+        label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_1509f561f2),
         fullWidth: true,
         fontSize: 15,
         loading: _saving,
@@ -325,8 +324,8 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('My AI calls', style: ADText.rowName()),
-            Text('Calls YOU made to other people’s Ava AI agents.', style: ADText.preview()),
+            UiText(UiMessage.m_my_ai_calls_f279faed37, style: ADText.rowName()),
+            UiText(UiMessage.m_calls_you_made_to_other_901cd383e6, style: ADText.preview()),
           ]),
         ),
         Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
@@ -337,7 +336,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
   Widget _docsList({required String? serviceId}) {
     final docs = _docs; // primary-only for now; service docs load per-sheet
     if (docs.isEmpty) {
-      return Text('No documents yet. Upload a menu, FAQ or price list for Ava to answer from.',
+      return UiText(UiMessage.m_no_documents_yet_upload_a_870e18dc79,
           style: ADText.preview());
     }
     return Column(children: [
@@ -348,7 +347,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
             Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
             const SizedBox(width: 8),
             Expanded(child: Text(d.name, style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
-            if (!d.indexed) Text('indexing…', style: ADText.statCaption(c: AD.textTertiary)),
+            if (!d.indexed) UiText(UiMessage.m_indexing_1558519e4a, style: ADText.statCaption(c: AD.textTertiary)),
             IconButton(
               icon: Icon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
               onPressed: () => _deleteDoc(d),
@@ -362,11 +361,11 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
 
   Widget _routingPicker(AgentRouting value, ValueChanged<AgentRouting> onChanged) {
     return Wrap(spacing: 8, runSpacing: 8, children: [
-      AdChip(label: 'Auto after 2 rings', active: value == AgentRouting.auto2Rings,
+      AdChip(label: uiCopy(UiMessage.m_auto_after_2_rings_53045b7303), active: value == AgentRouting.auto2Rings,
           onTap: () => onChanged(AgentRouting.auto2Rings)),
-      AdChip(label: 'Manual — “Send to Agent” only', active: value == AgentRouting.manualOnly,
+      AdChip(label: uiCopy(UiMessage.m_manual_send_to_agent_only_34f972f71b), active: value == AgentRouting.manualOnly,
           onTap: () => onChanged(AgentRouting.manualOnly)),
-      AdChip(label: 'Off', active: value == AgentRouting.off, onTap: () => onChanged(AgentRouting.off)),
+      AdChip(label: uiCopy(UiMessage.m_off_ca7981b46e), active: value == AgentRouting.off, onTap: () => onChanged(AgentRouting.off)),
     ]);
   }
 
@@ -406,12 +405,11 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 }),
               ),
             ] else
-              Expanded(child: Text('Closed', style: ADText.preview(c: AD.textTertiary))),
+              Expanded(child: UiText(UiMessage.m_closed_c21ead0614, style: ADText.preview(c: AD.textTertiary))),
           ]),
         ),
-      Text(
-        'Leave every day off for no hours restriction — Ava routes the same '
-        'way around the clock.',
+      UiText(
+        UiMessage.m_leave_every_day_off_for_e59262aae4,
         style: ADText.preview(),
       ),
     ]);
@@ -442,13 +440,12 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
   Widget _servicesSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text('Service numbers', style: ADText.rowName())),
-        AdChip(label: '+ Add a service', onTap: _addService),
+        Expanded(child: UiText(UiMessage.m_service_numbers_72d60c07e8, style: ADText.rowName())),
+        AdChip(label: uiCopy(UiMessage.m_add_a_service_299750f04e), onTap: _addService),
       ]),
       const SizedBox(height: 4),
-      Text(
-        'Extra AvaTOK numbers you advertise for paid calls (e.g. visa-interview '
-        'practice). The caller pays; you set the rate and length options.',
+      UiText(
+        UiMessage.m_extra_avatok_numbers_you_advertise_c89c14516c,
         style: ADText.preview(),
       ),
       const SizedBox(height: 12),
@@ -458,7 +455,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
         ))
       else if (_services.isEmpty)
-        Text('No service numbers yet.', style: ADText.preview(c: AD.textTertiary))
+        UiText(UiMessage.m_no_service_numbers_yet_c9cc225839, style: ADText.preview(c: AD.textTertiary))
       else
         Column(children: [for (final s in _services) _serviceTile(s)]),
     ]);
@@ -490,10 +487,10 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${s.name} by ${s.ownerName.isEmpty ? 'you' : s.ownerName}',
+              UiText(UiMessage.m_value1_by_value2_7488512832, params: {'value1': (s.name).toString(), 'value2': (s.ownerName.isEmpty ? 'you' : s.ownerName).toString()},
                   style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text('${s.rate} tokens/min · ${s.number.isEmpty ? 'number pending' : s.number}',
+              UiText(UiMessage.m_value1_tokens_min_value2_664348f200, params: {'value1': (s.rate).toString(), 'value2': (s.number.isEmpty ? 'number pending' : s.number).toString()},
                   style: ADText.preview()),
             ]),
           ),
@@ -567,6 +564,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
@@ -578,17 +576,16 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
               Center(child: Container(width: 40, height: 4,
                   decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
               const SizedBox(height: Msg.s3),
-              Text(widget.existing == null ? 'Add a service' : 'Edit service', style: ADText.threadName()),
+              Text(widget.existing == null ? uiCopy(UiMessage.m_add_a_service_066ae41e70) : uiCopy(UiMessage.m_edit_service_3b3ed7a7bf), style: ADText.threadName()),
               const SizedBox(height: 4),
-              Text(
-                'Callers see “${_name.text.isEmpty ? 'Your service' : _name.text} by you” '
-                'before they pay — a service number never shows as your personal line.',
+              UiText(
+                UiMessage.m_callers_see_value1_by_you_b0f8a3308c, params: {'value1': (_name.text.isEmpty ? 'Your service' : _name.text).toString()},
                 style: ADText.preview(),
               ),
               const SizedBox(height: 16),
-              AdField(controller: _name, label: 'Service name', hint: 'e.g. US visa interview practice'),
+              AdField(controller: _name, label: uiCopy(UiMessage.m_service_name_1bb8870cc0), hint: uiCopy(UiMessage.m_e_g_us_visa_interview_d435865f3a)),
               const SizedBox(height: Msg.s3),
-              Text('RATE (TOKENS / MIN, CALLER PAYS — MIN $kMinServiceRate)', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_rate_tokens_min_caller_pays_4bf98f622f, params: {'kMinServiceRate': (kMinServiceRate).toString()}, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               Row(children: [
                 Expanded(
@@ -604,40 +601,40 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                 ),
                 SizedBox(width: 44, child: Text('$_rate', textAlign: TextAlign.end, style: ADText.rowName())),
               ]),
-              Text('You net ${(_rate - 13).clamp(0, 999)} tokens/min after platform + line fees.',
+              UiText(UiMessage.m_you_net_value1_tokens_min_873d6e94ea, params: {'value1': ((_rate - 13).clamp(0, 999)).toString()},
                   style: ADText.preview()),
               const SizedBox(height: Msg.s3),
-              Text('LENGTH OPTIONS (MINUTES)', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_length_options_minutes_e5fb327fb8, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final m in const [10, 15, 20, 30, 45, 60, 90])
                   AdChip(label: '$m min', active: _lengths.contains(m), onTap: () => _toggleLength(m)),
               ]),
               const SizedBox(height: Msg.s3),
-              Text('Instructions', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_instructions_934652dce4, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               AdField(
                 controller: _instructions,
-                label: 'What does this service do?',
+                label: uiCopy(UiMessage.m_what_does_this_service_do_e116f4bf39),
                 minLines: 3,
                 maxLines: null,
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: Msg.s3),
-              Text('Routing', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_routing_bcba696f3e, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                AdChip(label: 'Auto after 2 rings', active: _routing == AgentRouting.auto2Rings,
+                AdChip(label: uiCopy(UiMessage.m_auto_after_2_rings_53045b7303), active: _routing == AgentRouting.auto2Rings,
                     onTap: () => setState(() => _routing = AgentRouting.auto2Rings)),
-                AdChip(label: 'Manual only', active: _routing == AgentRouting.manualOnly,
+                AdChip(label: uiCopy(UiMessage.m_manual_only_be1016ce6d), active: _routing == AgentRouting.manualOnly,
                     onTap: () => setState(() => _routing = AgentRouting.manualOnly)),
-                AdChip(label: 'Off', active: _routing == AgentRouting.off,
+                AdChip(label: uiCopy(UiMessage.m_off_ca7981b46e), active: _routing == AgentRouting.off,
                     onTap: () => setState(() => _routing = AgentRouting.off)),
               ]),
               if (widget.existing != null) ...[
                 const SizedBox(height: Msg.s3),
                 AdChip(
-                  label: 'Upload knowledge document',
+                  label: uiCopy(UiMessage.m_upload_knowledge_document_656ae97d84),
                   onTap: () async {
                     final res = await FilePicker.platform.pickFiles(withData: true);
                     final f = res?.files.single;
@@ -649,7 +646,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
               if (_error != null) AdErrorMsg(_error!),
               const SizedBox(height: Msg.s4),
               AdButton(
-                label: _saving ? 'Saving…' : (widget.existing == null ? 'Add service' : 'Save changes'),
+                label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : (widget.existing == null ? uiCopy(UiMessage.m_add_service_7d9366fdae) : uiCopy(UiMessage.m_save_changes_dd0ae7a5cb)),
                 fullWidth: true,
                 loading: _saving,
                 onPressed: _saving ? null : _save,
@@ -669,6 +666,7 @@ class _AdToggle extends StatelessWidget {
   const _AdToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

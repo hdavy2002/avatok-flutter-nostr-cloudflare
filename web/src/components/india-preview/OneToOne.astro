@@ -1,0 +1,32 @@
+---
+import TruckBorder from '../TruckBorder.astro';
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-meetup india-wrap" aria-labelledby="addon-meetup-title" id="addon-one-to-one">
+<div class="india-help-border" aria-hidden="true"><TruckBorder kind="chai" count={16} /></div>
+<div>
+<p class="india-kicker">
+<span data-india-i18n="meetupEyebrow">{copy.meetupEyebrow}</span>
+</p>
+<h2 id="addon-meetup-title">
+<span data-india-i18n="meetupTitle">{copy.meetupTitle}</span>
+</h2>
+<p>
+<span data-india-i18n="meetupBody">{copy.meetupBody}</span>
+</p>
+<p class="india-note">✦ <span data-india-i18n="meetupNote">{copy.meetupNote}</span>
+</p>
+</div>
+<div class="india-calendar" aria-hidden="true">
+<img class="india-help-sticker india-help-sticker--chai" src="/help/art/kettle.png" width="220" height="246" alt="" aria-hidden="true" loading="lazy" />
+<div class="india-calendar__top">
+<span data-india-i18n="oneMeta">{copy.oneMeta}</span>
+<span>•••</span>
+</div>
+<div class="india-calendar__month">
+<span data-india-i18n="meetupEyebrow">{copy.meetupEyebrow}</span>
+</div>
+<div class="india-calendar__days">{[...Array(31)].map((_, i) => <b class:list={[i === 7 || i === 14 || i === 22 ? 'is-booked' : '']}>{i + 1}</b>)}</div>
+</div>
+</section>

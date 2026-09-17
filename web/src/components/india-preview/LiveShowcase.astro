@@ -1,0 +1,32 @@
+---
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-showcase india-wrap" aria-labelledby="addon-showcase-title" id="addon-live">
+<div class="india-showcase__art">
+<img src="/india-live-translation-call.png" alt={copy.showcaseTitle} data-india-i18n-attr="alt:showcaseTitle" loading="lazy" />
+<span class="india-starburst" aria-hidden="true">✦</span>
+</div>
+<div class="india-showcase__copy">
+<p class="india-kicker">
+<span data-india-i18n="showcaseEyebrow">{copy.showcaseEyebrow}</span>
+</p>
+<h2 id="addon-showcase-title">
+<span data-india-i18n="showcaseTitle">{copy.showcaseTitle}</span>
+</h2>
+<p>
+<span data-india-i18n="showcaseBody">{copy.showcaseBody}</span>
+</p>
+<div class="india-live-strip">
+<span class="india-live-dot" aria-hidden="true">
+</span>
+<span>
+<span data-india-i18n="showcaseLabel">{copy.showcaseLabel}</span>
+</span>
+<a href="/marketplace?group=india_goes_live" aria-label={copy.showcaseButton} data-india-i18n-attr="aria-label:showcaseButton">↗</a>
+</div>
+<a class="india-button india-button--pink" href="/marketplace">
+<span data-india-i18n="showcaseButton">{copy.showcaseButton}</span>
+</a>
+</div>
+</section>

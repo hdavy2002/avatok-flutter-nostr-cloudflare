@@ -1,3 +1,6 @@
+import { UiMessage } from "../../lib/i18n/react";
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Shared primitives for the avaTOK auth surface (/sign-in, /sign-up).
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Built from design/login/README.md. All styling
@@ -82,8 +85,10 @@ export const STALLED_MESSAGE =
 
 /* ── Wordmark ─────────────────────────────────────────────────────────── */
 export function Wordmark({ href = '/' }: { href?: string }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   return (
-    <a className="auth-wordmark" href={href} aria-label="avaTOK home">
+    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","avaTOK home")}>
       <span className="wm-ava">ava</span>
       <span className="wm-tok">TOK</span>
     </a>
@@ -107,6 +112,8 @@ export function Field({
   required?: boolean;
   maxLength?: number;
 }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const id = useId();
   const errId = `${id}-err`;
   const [reveal, setReveal] = useState(false);
@@ -142,11 +149,11 @@ export function Field({
             onClick={() => setReveal((r) => !r)}
             aria-pressed={reveal}
           >
-            {reveal ? 'Hide' : 'Show'}
+            {reveal ? uiT("web-auth.ac20a57bfde0bbc4","Hide") : uiT("web-auth.0df6f1cad36c49da","Show")}
           </button>
         )}
       </div>
-      {error && <p className="auth-err" id={errId}>{error}</p>}
+      {error && <p className="auth-err" id={errId}><UiMessage namespace="web-auth" value={error} /></p>}
     </div>
   );
 }
@@ -162,11 +169,13 @@ export function Button({
   loading?: boolean;
   onClick?: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const cls = variant === 'primary' ? 'auth-btn' : `auth-btn auth-btn--${variant}`;
   return (
     <button type={type} className={cls} disabled={disabled || loading} onClick={onClick}>
       {/* README §Button states: loading swaps the label and goes non-interactive. */}
-      {loading ? 'One sec…' : children}
+      {loading ? uiT("web-auth.4152c1296fa27021","One sec…") : children}
     </button>
   );
 }
@@ -197,7 +206,7 @@ export function CheckRow({
         />
         <label htmlFor={id}>{children}</label>
       </div>
-      {error && <p className="auth-err" id={errId}>{error}</p>}
+      {error && <p className="auth-err" id={errId}><UiMessage namespace="web-auth" value={error} /></p>}
     </>
   );
 }
@@ -211,6 +220,8 @@ const ROLES: { id: Role; title: string; sub: string }[] = [
 ];
 
 export function RolePicker({ value, onChange }: { value: Role; onChange: (r: Role) => void }) {
+ const {source:uiSource}=useUiTranslation("web-auth");
+
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Arrow keys move between options, as a native radio group would.
@@ -226,7 +237,7 @@ export function RolePicker({ value, onChange }: { value: Role; onChange: (r: Rol
 
   return (
     <div className="auth-field">
-      <span className="auth-label" id="role-label">I&rsquo;m joining as</span>
+      <span className="auth-label" id="role-label"><UiText id="web-auth.586d31d11304b006" source="I’m joining as" /></span>
       <div className="auth-roles" role="radiogroup" aria-labelledby="role-label">
         {ROLES.map((r, i) => {
           const selected = value === r.id;
@@ -244,7 +255,7 @@ export function RolePicker({ value, onChange }: { value: Role; onChange: (r: Rol
             >
               <span className="auth-role-top">
                 <span className="auth-radio" aria-hidden="true">{selected ? '✓' : ''}</span>
-                <span className="auth-role-title">{r.title}</span>
+                <span className="auth-role-title">{uiSource(r.title)}</span>
               </span>
               <span className="auth-role-sub">{r.sub}</span>
             </button>
@@ -317,6 +328,8 @@ export function CodeStep({
   children?: ReactNode;
   cta?: string;
 }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   return (
     <form className="auth-form" onSubmit={onSubmit} noValidate>
       <div className="auth-desktop-head">
@@ -324,14 +337,13 @@ export function CodeStep({
         <h1 className="auth-h2">{heading}</h1>
       </div>
 
-      <p className="auth-footline" style={{ textAlign: 'left' }}>
-        We sent a 6-digit code to <strong>{sentTo}</strong>.
+      <p className="auth-footline" style={{ textAlign: 'left' }}><UiText id="web-auth.e1bb527efffc74b7" source="We sent a 6-digit code to" />{" "}<strong>{sentTo}</strong>.
       </p>
 
-      {formError && <p className="auth-formerr" role="alert">{formError}</p>}
+      {formError && <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError} /></p>}
 
       <Field
-        label="Verification code" name="code" inputMode="numeric" maxLength={6}
+        label={uiT("web-auth.3ee75029c70e284c","Verification code")} name="code" inputMode="numeric" maxLength={6}
         autoComplete="one-time-code" placeholder="123456"
         value={code} onChange={onCode} error={error}
       />
@@ -343,13 +355,11 @@ export function CodeStep({
       {onResend && (
         <div className="auth-foot">
           <p className="auth-footline">
-            {resent ? 'Code sent again.' : 'Didn’t get it?'}
+            {resent ? uiT("web-auth.8eb36a93a18bc192","Code sent again.") : uiT("web-auth.db282d70878d9d3c","Didn’t get it?")}
             <a
               href="#resend"
               onClick={(ev) => { ev.preventDefault(); onResend(); }}
-            >
-              Resend code
-            </a>
+            ><UiText id="web-auth.b97457409ab5b375" source="Resend code" />{" "}</a>
           </p>
         </div>
       )}
@@ -359,10 +369,10 @@ export function CodeStep({
 
 /* ── Ornaments ────────────────────────────────────────────────────────── */
 export function Rail() {
-  return <span className="auth-rail" aria-hidden="true">Creator Marketplace</span>;
+  return <span className="auth-rail" aria-hidden="true"><UiText id="web-auth.1ffe0e40e1c3005e" source="Creator Marketplace" /></span>;
 }
 export function Stamp() {
-  return <span className="auth-stamp" aria-hidden="true">Desi · Dil Se · Global</span>;
+  return <span className="auth-stamp" aria-hidden="true"><UiText id="web-auth.1dbccd09995a56ce" source="Desi · Dil Se · Global" /></span>;
 }
 
 /* ── Validation helpers (README §Validation) ──────────────────────────── */

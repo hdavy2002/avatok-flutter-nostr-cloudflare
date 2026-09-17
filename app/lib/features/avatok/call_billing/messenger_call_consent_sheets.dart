@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -91,6 +93,7 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final selectedRate = widget.catalog.rateFor(_selected);
     return SafeArea(
       child: Padding(
@@ -100,10 +103,10 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(child: _handle()),
-            Text('Choose video quality', style: ADText.appTitle()),
+            UiText(UiMessage.m_choose_video_quality_75fd802855, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
-            Text(
-              'Video calls are paid from the first connected second. You pay for both participants.',
+            UiText(
+              UiMessage.m_video_calls_are_paid_from_d35b177c31,
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s4),
@@ -117,8 +120,8 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
             _estimateCard(selectedRate),
             if (widget.spendableTokens != null) ...[
               const SizedBox(height: Msg.s2),
-              Text(
-                'Current wallet balance: ${_tokens(widget.spendableTokens!)} tokens',
+              UiText(
+                UiMessage.m_current_wallet_balance_value1_tokens_9a5107d265, params: {'value1': (_tokens(widget.spendableTokens!)).toString()},
                 style: ADText.sectionLabel(),
               ),
             ],
@@ -136,15 +139,15 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
                 ),
                 child: Text(
                   selectedRate.isAvailable
-                      ? 'Start paid video call'
-                      : 'Video pricing unavailable',
+                      ? uiCopy(UiMessage.m_start_paid_video_call_fe09e14497)
+                      : uiCopy(UiMessage.m_video_pricing_unavailable_94108b61ab),
                 ),
               ),
             ),
             Center(
               child: TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text('Cancel', style: ADText.preview()),
+                child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview()),
               ),
             ),
           ],
@@ -185,7 +188,7 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
                     Text(sku.label, style: ADText.rowName()),
                     Text(
                       rate.isAvailable
-                          ? '${_tokens(rate.estimatedTwoPersonTokensPerHour!)} tokens/hour for two people'
+                          ? uiCopy(UiMessage.m_value1_tokens_hour_for_two_5cbf3928f5, {'value1': (_tokens(rate.estimatedTwoPersonTokensPerHour!)).toString()})
                           : rate.unavailableReason,
                       style: ADText.preview(
                         c: rate.isAvailable ? AD.textSecondary : AD.textTertiary,
@@ -213,8 +216,8 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
         ),
         child: Text(
           rate.isAvailable
-              ? 'Estimated maximum: ${_tokens(rate.estimatedTwoPersonTokensPerHour!)} tokens per hour. Final billing uses connected participant time only.'
-              : 'Select an available quality to see the estimate.',
+              ? uiCopy(UiMessage.m_estimated_maximum_value1_tokens_per_130bec6f5e, {'value1': (_tokens(rate.estimatedTwoPersonTokensPerHour!)).toString()})
+              : uiCopy(UiMessage.m_select_an_available_quality_to_c5892fcc38),
           style: ADText.preview(),
         ),
       );
@@ -235,6 +238,7 @@ class _PaidAudioSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final available = rate.isAvailable;
     return SafeArea(
       child: Padding(
@@ -254,12 +258,12 @@ class _PaidAudioSheet extends StatelessWidget {
                 ),
               ),
             ),
-            Text('Paid audio via GetStream', style: ADText.appTitle()),
+            UiText(UiMessage.m_paid_audio_via_getstream_d84d79e8ca, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
             Text(
               available
-                  ? 'Continue with paid GetStream audio? You pay for both participants once today’s free allowance is exhausted.'
-                  : 'Paid audio pricing is not available yet. The call cannot continue without your confirmation and a configured rate.',
+                  ? uiCopy(UiMessage.m_continue_with_paid_getstream_audio_b41294107b)
+                  : uiCopy(UiMessage.m_paid_audio_pricing_is_not_934d828b41),
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s4),
@@ -270,8 +274,8 @@ class _PaidAudioSheet extends StatelessWidget {
               ),
             if (spendableTokens != null) ...[
               const SizedBox(height: Msg.s2),
-              Text(
-                'Current wallet balance: ${_tokens(spendableTokens!)} tokens',
+              UiText(
+                UiMessage.m_current_wallet_balance_value1_tokens_9a5107d265, params: {'value1': (_tokens(spendableTokens!)).toString()},
                 style: ADText.sectionLabel(),
               ),
             ],
@@ -291,13 +295,13 @@ class _PaidAudioSheet extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: Msg.brMd),
                   padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 ),
-                child: const Text('Continue with paid GetStream audio'),
+                child: const UiText(UiMessage.m_continue_with_paid_getstream_audio_31a9dcb40b),
               ),
             ),
             Center(
               child: TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text('Cancel call', style: ADText.preview()),
+                child: UiText(UiMessage.m_cancel_call_337754ee31, style: ADText.preview()),
               ),
             ),
           ],

@@ -1,3 +1,5 @@
+import '../../../core/localization/known_ui_copy.dart';
+import '../../../core/localization/ui_text.dart';
 // [CAL-GCAL-1 2026-09-15] Google Calendar readiness for the native listing
 // wizard (AUDIT-2026-09-15 §5/A5: the app's "Connected" line does not mean
 // ready). Publish, booking and the buyer-side preview all refuse while Google
@@ -58,19 +60,19 @@ class NativeListingGcalReadiness {
   String get headline {
     switch (state) {
       case NativeListingGcalState.ready:
-        return 'Google Calendar is ready';
+        return uiCopy(UiMessage.m_google_calendar_is_ready_d1729a8268);
       case NativeListingGcalState.notConnected:
-        return 'Google Calendar is not connected';
+        return uiCopy(UiMessage.m_google_calendar_is_not_connected_34580bfc42);
       case NativeListingGcalState.noSelectedCalendars:
-        return 'No Google calendar is selected';
+        return uiCopy(UiMessage.m_no_google_calendar_is_selected_48459b6dc3);
       case NativeListingGcalState.pending:
-        return 'Google Calendar has not synced yet';
+        return uiCopy(UiMessage.m_google_calendar_has_not_synced_8b3bc615f4);
       case NativeListingGcalState.stale:
-        return 'Google Calendar is out of date';
+        return uiCopy(UiMessage.m_google_calendar_is_out_of_fad1c221f1);
       case NativeListingGcalState.error:
-        return 'Google Calendar sync failed';
+        return uiCopy(UiMessage.m_google_calendar_sync_failed_47667ee1ee);
       case NativeListingGcalState.unknown:
-        return 'Google readiness is not confirmed';
+        return uiCopy(UiMessage.m_google_readiness_is_not_confirmed_8735e29b93);
     }
   }
 
@@ -80,20 +82,20 @@ class NativeListingGcalReadiness {
     switch (state) {
       case NativeListingGcalState.ready:
         return _freshnessSentence() ??
-            'Busy events from your selected calendars are counted, so publishing can protect this time.';
+            uiCopy(UiMessage.m_busy_events_from_your_selected_f9cd3308fb);
       case NativeListingGcalState.notConnected:
-        return 'Connect Google Calendar before submitting. Busy events have to be counted, or a customer could book time you are already using.';
+        return uiCopy(UiMessage.m_connect_google_calendar_before_submitting_eb91097b3f);
       case NativeListingGcalState.noSelectedCalendars:
-        return 'Select at least one Google calendar in Calendar & availability so busy events can be counted.';
+        return uiCopy(UiMessage.m_select_at_least_one_google_f0d780362b);
       case NativeListingGcalState.pending:
-        return 'Google Calendar has not finished its first sync. Refresh it in Calendar & availability, then check again.';
+        return uiCopy(UiMessage.m_google_calendar_has_not_finished_4256f493fd);
       case NativeListingGcalState.stale:
-        return 'The last successful sync is older than ${kNativeListingGcalMaxAge.inMinutes} minutes. Refresh Google Calendar before you publish.';
+        return uiCopy(UiMessage.m_the_last_successful_sync_is_a37ad7079e, {'value1': (kNativeListingGcalMaxAge.inMinutes).toString()});
       case NativeListingGcalState.error:
-        return 'The last Google sync reported an error. Reconnect Google Calendar, then check again.';
+        return uiCopy(UiMessage.m_the_last_google_sync_reported_038352dc33);
       case NativeListingGcalState.unknown:
-        final reason = detail ?? 'This app could not read your Google Calendar status.';
-        return '$reason Reconnect or refresh Google Calendar, then check again — AvaTOK will not treat busy times as protected until it can confirm this.';
+        final reason = detail == null ? uiCopy(UiMessage.m_this_app_could_not_read_12fe2a90ce) : knownUiCopy(detail!);
+        return uiCopy(UiMessage.m_reason_reconnect_or_refresh_google_6de7c73977, {'reason': (reason).toString()});
     }
   }
 
@@ -101,11 +103,11 @@ class NativeListingGcalReadiness {
     final at = lastSuccessAt;
     if (at == null) return null;
     final minutes = ((DateTime.now().millisecondsSinceEpoch - at) / 60000).round();
-    if (minutes <= 0) return 'Last successful sync: just now.';
-    if (minutes == 1) return 'Last successful sync: 1 minute ago.';
-    if (minutes < 120) return 'Last successful sync: $minutes minutes ago.';
+    if (minutes <= 0) return uiCopy(UiMessage.m_last_successful_sync_just_now_745754390a);
+    if (minutes == 1) return uiCopy(UiMessage.m_last_successful_sync_1_minute_1b4810295a);
+    if (minutes < 120) return uiCopy(UiMessage.m_last_successful_sync_minutes_minutes_431b2755cf, {'minutes': (minutes).toString()});
     final hours = (minutes / 60).round();
-    return hours == 1 ? 'Last successful sync: 1 hour ago.' : 'Last successful sync: $hours hours ago.';
+    return hours == 1 ? uiCopy(UiMessage.m_last_successful_sync_1_hour_ac06c3ee79) : uiCopy(UiMessage.m_last_successful_sync_hours_hours_0e2f8cf42c, {'hours': (hours).toString()});
   }
 
   /// Reads the status body defensively. `null`/unreadable means UNKNOWN.

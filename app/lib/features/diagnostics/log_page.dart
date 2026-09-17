@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -25,6 +27,7 @@ class _LogPageState extends State<LogPage> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final text = AvaLog.I.dump();
     return Scaffold(
       backgroundColor: AD.bg,
@@ -49,15 +52,15 @@ class _LogPageState extends State<LogPage> {
                     children: [
                       Text.rich(
                         TextSpan(children: [
-                          const TextSpan(text: 'Diag'),
-                          const TextSpan(text: 'nostics',
+                           TextSpan(text: uiCopy(UiMessage.m_diag_d539453308)),
+                           TextSpan(text: uiCopy(UiMessage.m_nostics_c6e6063d3a),
                               style: TextStyle(color: AD.primaryBadge)),
                         ]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: ADText.appTitle().copyWith(fontSize: 22, height: 1.08),
                       ),
-                      Text('IN-APP LOG', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_in_app_log_6c36d7cbb4, style: ADText.sectionLabel()),
                     ],
                   ),
                 ),
@@ -67,7 +70,7 @@ class _LogPageState extends State<LogPage> {
                     await Clipboard.setData(ClipboardData(text: text));
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Log copied — paste it back to share')));
+                        const SnackBar(content: UiText(UiMessage.m_log_copied_paste_it_back_67197ae2a8)));
                     }
                   },
                 ),
@@ -93,10 +96,10 @@ class _LogPageState extends State<LogPage> {
             boxShadow: const [],
             child: Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Force TURN relay on calls',
+                UiText(UiMessage.m_force_turn_relay_on_calls_ba6605e3ad,
                     style: ADText.rowName().copyWith(fontSize: 13)),
                 const SizedBox(height: 2),
-                Text('Test the worst-case path: media is forced through the relay',
+                UiText(UiMessage.m_test_the_worst_case_path_58abf3d029,
                     style: ADText.preview().copyWith(fontSize: 11)),
               ])),
               const SizedBox(width: Msg.s2),
@@ -125,7 +128,7 @@ class _LogPageState extends State<LogPage> {
                           size: 30, color: AD.textTertiary),
                     ),
                     const SizedBox(height: 12),
-                    Text('No log yet. Open a chat and send a message.',
+                    UiText(UiMessage.m_no_log_yet_open_a_f84e9d4734,
                         style: ADText.preview(c: AD.textSecondary),
                         textAlign: TextAlign.center),
                   ]),
@@ -160,7 +163,7 @@ class _LogPageState extends State<LogPage> {
           await Clipboard.setData(ClipboardData(text: text));
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Log copied to clipboard')));
+              const SnackBar(content: UiText(UiMessage.m_log_copied_to_clipboard_372e651b71)));
           }
         },
       ),

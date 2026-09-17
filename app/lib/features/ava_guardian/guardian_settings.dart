@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -115,11 +118,12 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
       if (ok) _verifyRequested = true;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Verification requested' : "Couldn't request verification — try again.")));
+        content: Text(ok ? uiCopy(UiMessage.m_verification_requested_e025f5e623) : uiCopy(UiMessage.m_couldn_t_request_verification_try_3822f79cba))));
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
@@ -131,7 +135,7 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
             const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava guardian',
+                UiText(UiMessage.m_ava_guardian_6b24e56281,
                     style: ADText.threadName().copyWith(fontSize: 18)),
                 if (widget.chatLabel != null && widget.chatLabel!.isNotEmpty)
                   Text(widget.chatLabel!,
@@ -150,9 +154,8 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
             // FREE — the single "Guardian is watching this chat" switch.
             _ToggleRow(
               icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
-              title: 'Guardian is watching this chat',
-              subtitle: 'Let Ava watch this chat for scams, spam, and unsafe behaviour. '
-                  'If something looks off, only you get a private heads-up.',
+              title: uiCopy(UiMessage.m_guardian_is_watching_this_chat_c401dc9263),
+              subtitle: uiCopy(UiMessage.m_let_ava_watch_this_chat_55d6abd936),
               value: _prefs.secureChat,
               onChanged: _setSecure,
             ),
@@ -169,9 +172,8 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
                     size: 16, color: AD.textSecondary),
                 const SizedBox(width: Msg.s2),
                 Expanded(
-                  child: Text(
-                    'Guardian warnings are private — only you ever see them, never the '
-                    'other person. Ava never reads end-to-end / on-device-only content.',
+                  child: UiText(
+                    UiMessage.m_guardian_warnings_are_private_only_be8e529ac6,
                     style: ADText.preview(c: AD.textSecondary)
                         .copyWith(fontSize: 12),
                   ),
@@ -194,12 +196,12 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
                   const SizedBox(width: Msg.s3),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Require verification', style: ADText.rowName()),
+                      UiText(UiMessage.m_require_verification_a35acd860d, style: ADText.rowName()),
                       const SizedBox(height: 2),
                       Text(
                         _verifyRequested
-                            ? 'Verification requested — Ava asked them to prove a live human face.'
-                            : "Ask this person to prove they're a real, live human with a quick face check.",
+                            ? uiCopy(UiMessage.m_verification_requested_ava_asked_them_e2a6a10eda)
+                            : uiCopy(UiMessage.m_ask_this_person_to_prove_c64b8f82c8),
                         style: ADText.preview(c: AD.textSecondary)
                             .copyWith(fontSize: 12),
                       ),
@@ -210,7 +212,7 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
                     const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2))
                   else
                     ZineButton(
-                      label: _verifyRequested ? 'Requested' : 'Ask',
+                      label: _verifyRequested ? uiCopy(UiMessage.m_requested_2d9e28289f) : uiCopy(UiMessage.m_ask_b8c209cdea),
                       variant: _verifyRequested ? ZineButtonVariant.ghost : ZineButtonVariant.blue,
                       onPressed: _verifyRequested ? null : _requireVerification,
                     ),
@@ -219,8 +221,8 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
             ],
             if (!GuardianPrefsClient.I.serverLive) ...[
               const SizedBox(height: Msg.s2),
-              Text(
-                'Saved on this device. Syncs to your account when the connection is back.',
+              UiText(
+                UiMessage.m_saved_on_this_device_syncs_6e5cc662ca,
                 style: ADText.statCaption(c: AD.textTertiary),
               ),
             ],
@@ -248,6 +250,7 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZineCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -214,7 +216,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     setState(() => _savingProfile = false);
     if (r.ok) { _next(); return; }
     showAdToast(context,
-        message: 'Could not save your profile — check your connection and try again');
+        message: uiCopy(UiMessage.m_could_not_save_your_profile_65b0fc94bf));
   }
 
   void _next() {
@@ -259,6 +261,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // RESPUI-2: resize for the keyboard so steps with text fields (profile)
     // never hide the input or the "Keep going" button beneath it.
     // RESPUI-3: horizontal gutter keys off ZineBreakpoints (tighter on <360dp).
@@ -288,7 +291,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         const SizedBox(width: Msg.s2),
                       ],
                       const SizedBox(width: 4),
-                      Text('STEP ${_step + 1} / $_steps', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_step_value1_steps_d2d9a8b208, params: {'value1': (_step + 1).toString(), 'steps': (_steps).toString()}, style: ADText.sectionLabel()),
                     ]),
                   ]),
                 ),
@@ -363,25 +366,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 16),
                 Text.rich(
                   TextSpan(children: [
-                    const TextSpan(text: 'How will you '),
-                    TextSpan(text: 'use', style: const TextStyle(color: AD.primaryBadge)),
-                    const TextSpan(text: ' AvaTOK?'),
+                     TextSpan(text: uiCopy(UiMessage.m_how_will_you_a8fe5d637c)),
+                    TextSpan(text: uiCopy(UiMessage.m_use_a3b142af6e), style: const TextStyle(color: AD.primaryBadge)),
+                     TextSpan(text: uiCopy(UiMessage.m_avatok_4380cd27a7)),
                   ]),
                   textAlign: TextAlign.left,
                   style: ADText.appTitle().copyWith(
                       fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                    'This sets up your account. Parent and Business accounts unlock extra '
-                    'management tools in the sidebar. You can change this later in Settings.',
+                UiText(
+                    UiMessage.m_this_sets_up_your_account_3b4a3f94db,
                     style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 const SizedBox(height: Msg.s5),
                 _kindCard(
                   kind: AccountKind.personal,
                   icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                   color: AD.iconSearch,
-                  title: 'Just me',
+                  title: uiCopy(UiMessage.m_just_me_3a4b4df869),
                   sub: 'A personal account with all the standard AvaVerse apps.',
                 ),
                 const SizedBox(height: Msg.s3),
@@ -389,7 +391,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   kind: AccountKind.parent,
                   icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
                   color: AD.iconVideo,
-                  title: 'Parent / family',
+                  title: uiCopy(UiMessage.m_parent_family_1ee69297e4),
                   sub: 'Create and manage accounts for your kids — app controls, '
                       'contact approvals, screen time and safety alerts.',
                 ),
@@ -398,7 +400,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   kind: AccountKind.enterprise,
                   icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold),
                   color: AD.online,
-                  title: 'Business / enterprise',
+                  title: uiCopy(UiMessage.m_business_enterprise_d8418d9a1b),
                   sub: 'Provision accounts for your team — employees, teams & roles, '
                       'app grants, billing and an audit log.',
                 ),
@@ -475,21 +477,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 16),
                 Text.rich(
                   TextSpan(children: [
-                    const TextSpan(text: 'Your '),
-                    TextSpan(text: 'name', style: const TextStyle(color: AD.primaryBadge)),
+                     TextSpan(text: uiCopy(UiMessage.m_your_b46fe55938)),
+                    TextSpan(text: uiCopy(UiMessage.m_name_82a3537ff0), style: const TextStyle(color: AD.primaryBadge)),
                   ]),
                   textAlign: TextAlign.left,
                   style: ADText.appTitle().copyWith(
                       fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
                 ),
                 const SizedBox(height: 8),
-                Text('This is how you’ll appear to people you message. You can set a private AvaTOK number later in Settings.',
+                UiText(UiMessage.m_this_is_how_you_ll_eaaee7beb6,
                     style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 const SizedBox(height: 24),
                 _field(
                   controller: _nameCtrl,
-                  label: 'first name',
-                  hint: 'e.g. Jordan',
+                  label: uiCopy(UiMessage.m_first_name_1b836d8680),
+                  hint: uiCopy(UiMessage.m_e_g_jordan_390c98a030),
                   leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                   onChanged: (_) => setState(() {}),
                   textCapitalization: TextCapitalization.words,
@@ -497,8 +499,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: Msg.s4),
                 _field(
                   controller: _lastCtrl,
-                  label: 'last name',
-                  hint: 'e.g. Rivers',
+                  label: uiCopy(UiMessage.m_last_name_5b87de02aa),
+                  hint: uiCopy(UiMessage.m_e_g_rivers_d161351a3f),
                   leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                   onChanged: (_) => setState(() {}),
                   textCapitalization: TextCapitalization.words,
@@ -782,7 +784,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: AdSticker(
-              on ? 'On' : 'Allow',
+              on ? uiCopy(UiMessage.m_on_1300117561) : uiCopy(UiMessage.m_allow_e213c161d5),
               kind: on ? AdStickerKind.ok : AdStickerKind.hint,
               icon: on
                   ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
@@ -877,7 +879,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       const SizedBox(width: 6),
                     ],
                     const SizedBox(width: 4),
-                    Text('STEP ${_step + 1}/$_steps',
+                    UiText(UiMessage.m_step_value1_steps_b77916942b, params: {'value1': (_step + 1).toString(), 'steps': (_steps).toString()},
                         style: TextStyle(
                             fontFamily: ADText.family,
                             fontWeight: FontWeight.w700,
@@ -887,7 +889,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   ]),
                   const SizedBox(height: Msg.s3),
                   Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                    Text('A few ',
+                    UiText(UiMessage.m_a_few_bd0601f0b4,
                         style: ADText.appTitle(c: onBand).copyWith(fontSize: 24, height: 1.15)),
                     Transform.rotate(
                       angle: -1.5 * math.pi / 180,
@@ -897,16 +899,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                           color: AD.haldi,
                           borderRadius: BorderRadius.circular(AD.rChip),
                         ),
-                        child: Text('permissions',
+                        child: UiText(UiMessage.m_permissions_4fe3cdd404,
                             style: ADText.appTitle(c: AD.onBandInk)
                                 .copyWith(fontSize: 24, height: 1.15)),
                       ),
                     ),
                   ]),
                   const SizedBox(height: Msg.s1),
-                  Text(
-                      'AvaTOK asks for everything it needs once, here — with a reason for '
-                      'each. You can change any of these later in Settings.',
+                  UiText(
+                      UiMessage.m_avatok_asks_for_everything_it_3b4575e460,
                       style: ADText.preview(c: onBand).copyWith(fontSize: 13)),
                 ]),
               ),
@@ -935,15 +936,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               children: [
                 Text.rich(
                   TextSpan(children: [
-                    const TextSpan(text: 'Terms & '),
-                    TextSpan(text: 'Conditions', style: const TextStyle(color: AD.primaryBadge)),
+                     TextSpan(text: uiCopy(UiMessage.m_terms_3f62e7c369)),
+                    TextSpan(text: uiCopy(UiMessage.m_conditions_97d4be8960), style: const TextStyle(color: AD.primaryBadge)),
                   ]),
                   textAlign: TextAlign.left,
                   style: ADText.appTitle().copyWith(
                       fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
                 ),
                 const SizedBox(height: Msg.s1),
-                Text('Please review before continuing', style: ADText.sectionLabel(c: AD.textTertiary)),
+                UiText(UiMessage.m_please_review_before_continuing_7236498851, style: ADText.sectionLabel(c: AD.textTertiary)),
                 const SizedBox(height: Msg.s4),
                 _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),
@@ -993,7 +994,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text('I have read and agree to the Terms & Conditions',
+                      child: UiText(UiMessage.m_i_have_read_and_agree_9ab1f11cba,
                           style: ADText.rowName(c: onBand).copyWith(fontSize: 14)),
                     ),
                   ]),
@@ -1036,8 +1037,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         const SizedBox(height: Msg.s5),
         Text.rich(
           TextSpan(children: [
-            const TextSpan(text: 'Find people you '),
-            TextSpan(text: 'know', style: const TextStyle(color: AD.primaryBadge)),
+             TextSpan(text: uiCopy(UiMessage.m_find_people_you_658d546a0b)),
+            TextSpan(text: uiCopy(UiMessage.m_know_cd1bb3012b), style: const TextStyle(color: AD.primaryBadge)),
           ]),
           textAlign: TextAlign.center,
           style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08),
@@ -1045,8 +1046,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         const SizedBox(height: 12),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
-          child: Text(
-              'Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
+          child: UiText(
+              UiMessage.m_upload_your_contacts_to_instantly_ee45104a2c,
               textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         ),
         const SizedBox(height: 32),
@@ -1085,15 +1086,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text.rich(
               TextSpan(children: [
-                const TextSpan(text: 'Set up your '),
-                TextSpan(text: 'apps', style: const TextStyle(color: AD.primaryBadge)),
+                 TextSpan(text: uiCopy(UiMessage.m_set_up_your_953c67c1cd)),
+                TextSpan(text: uiCopy(UiMessage.m_apps_d56f6359d2), style: const TextStyle(color: AD.primaryBadge)),
               ]),
               textAlign: TextAlign.left,
               style: ADText.appTitle().copyWith(
                   fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
             ),
             const SizedBox(height: Msg.s1),
-            Text('Toggle the AvaVerse apps you want. Change these anytime.',
+            UiText(UiMessage.m_toggle_the_avaverse_apps_you_014d305261,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
           ]),
         ),

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -68,12 +70,12 @@ class LiveLocationSession extends ChangeNotifier {
 
   /// "ends in 12 min" / "ends in 1 h 04 m" / "ended".
   String statusLabel() {
-    if (!isActive) return 'Live location ended';
+    if (!isActive) return uiCopy(UiMessage.m_live_location_ended_2eabb2da00);
     final r = remaining;
-    if (r.inMinutes < 60) return 'Live · ends in ${r.inMinutes} min';
+    if (r.inMinutes < 60) return uiCopy(UiMessage.m_live_ends_in_value1_min_612d444556, {'value1': (r.inMinutes).toString()});
     final h = r.inHours;
     final m = r.inMinutes % 60;
-    return 'Live · ends in $h h ${m.toString().padLeft(2, '0')} m';
+    return uiCopy(UiMessage.m_live_ends_in_h_h_accea08894, {'h': (h).toString(), 'value2': (m.toString().padLeft(2, '0')).toString()});
   }
 }
 
@@ -114,6 +116,7 @@ class LiveMapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final n = math.pow(2.0, zoom).toDouble();
     final maxIndex = n.toInt();
     final latRad = lat * math.pi / 180;
@@ -191,6 +194,7 @@ class _MapPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -228,6 +232,7 @@ class LiveMapScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -259,7 +264,7 @@ class LiveMapScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: Msg.s2, vertical: 2),
                           color: Colors.white.withOpacity(0.7),
-                          child: const Text('© OpenStreetMap',
+                          child: const UiText(UiMessage.m_openstreetmap_130a00dae4,
                               style: TextStyle(fontSize: 9, color: Colors.black54)),
                         ),
                       ),
@@ -283,7 +288,7 @@ class LiveMapScreen extends StatelessWidget {
                               style: ADText.rowName()),
                         ),
                         if (session.speed != null && session.isActive)
-                          Text('${(session.speed! * 3.6).toStringAsFixed(0)} km/h',
+                          UiText(UiMessage.m_value1_km_h_b09c9bb518, params: {'value1': ((session.speed! * 3.6).toStringAsFixed(0)).toString()},
                               style: ADText.statCaption(c: AD.textSecondary)),
                       ]),
                       const SizedBox(height: 12),
@@ -299,7 +304,7 @@ class LiveMapScreen extends StatelessWidget {
                               );
                             },
                             icon: Icon(PhosphorIcons.mapTrifold(PhosphorIconsStyle.regular), size: 16),
-                            label: const Text('Open in Google Maps'),
+                            label: const UiText(UiMessage.m_open_in_google_maps_7f22a63520),
                           ),
                         ),
                         if (onStop != null && session.isActive) ...[
@@ -317,7 +322,7 @@ class LiveMapScreen extends StatelessWidget {
                                       PhosphorIconsStyle.fill),
                                   size: 16,
                                   color: Colors.white),
-                              label: const Text('Stop sharing',
+                              label: const UiText(UiMessage.m_stop_sharing_b2c78147ed,
                                   style: TextStyle(color: Colors.white)),
                             ),
                           ),
@@ -355,6 +360,7 @@ class _LiveDotState extends State<_LiveDot>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!widget.active) {
       return Icon(PhosphorIcons.circle(PhosphorIconsStyle.fill), size: 11, color: AD.textSecondary);
     }

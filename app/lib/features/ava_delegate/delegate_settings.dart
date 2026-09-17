@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -94,6 +97,7 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
@@ -105,7 +109,7 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
             const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava delegate',
+                UiText(UiMessage.m_ava_delegate_2155b6d937,
                     style: ADText.threadName().copyWith(fontSize: 18)),
                 if (widget.chatLabel != null && widget.chatLabel!.isNotEmpty)
                   Text(widget.chatLabel!,
@@ -124,9 +128,8 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
             // FREE — alert on all mentions.
             _ToggleRow(
               icon: PhosphorIcons.bellRinging(PhosphorIconsStyle.fill),
-              title: 'Alert me on all mentions',
-              subtitle: 'Get a push whenever someone @mentions you in this chat — '
-                  'even when Ava isn’t replying for you.',
+              title: uiCopy(UiMessage.m_alert_me_on_all_mentions_0d641bab7e),
+              subtitle: uiCopy(UiMessage.m_get_a_push_whenever_someone_118888e793),
               value: _prefs.alertMentions,
               onChanged: _setAlert,
             ),
@@ -150,9 +153,8 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
                     size: 16, color: AD.textSecondary),
                 const SizedBox(width: Msg.s2),
                 Expanded(
-                  child: Text(
-                    'When Ava replies for you she always says so — "Ava — for <you>" — '
-                    'and only while you’re offline. She never pretends to be you.',
+                  child: UiText(
+                    UiMessage.m_when_ava_replies_for_you_ee84a2586c,
                     style: ADText.preview(c: AD.textSecondary)
                         .copyWith(fontSize: 12),
                   ),
@@ -161,8 +163,8 @@ class _DelegateSettingsSheetState extends State<DelegateSettingsSheet> {
             ),
             if (!DelegatePrefsClient.I.serverLive) ...[
               const SizedBox(height: Msg.s2),
-              Text(
-                'Saved on this device. Syncs to your account when delegate sync goes live.',
+              UiText(
+                UiMessage.m_saved_on_this_device_syncs_ef0e33bc8d,
                 style: ADText.statCaption(c: AD.textTertiary),
               ),
             ],
@@ -190,6 +192,7 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZineCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
@@ -222,6 +225,7 @@ class _MonitorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZineCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
@@ -233,7 +237,7 @@ class _MonitorRow extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(
-                  child: Text('Monitor & reply on my behalf',
+                  child: UiText(UiMessage.m_monitor_reply_on_my_behalf_d519be6431,
                       style: ADText.rowName())),
               const SizedBox(width: Msg.s2),
               const PaidBadge(),
@@ -241,10 +245,8 @@ class _MonitorRow extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               value
-                  ? 'When you’re @mentioned here and offline, Ava posts a disclosed '
-                      'holding reply so the group isn’t left waiting.'
-                  : 'Premium. Let Ava cover @mentions of you here while you’re away '
-                      '(always disclosed, never impersonation).',
+                  ? uiCopy(UiMessage.m_when_you_re_mentioned_here_ab1156056b)
+                  : uiCopy(UiMessage.m_premium_let_ava_cover_mentions_0028769607),
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
           ]),

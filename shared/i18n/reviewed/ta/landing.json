@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "முதன்மை உள்ளடக்கத்திற்குச் செல்லவும்"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "இந்திய படைப்பாளர்களுக்கான டிக்கெட் சாளரம்"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "ரசிகர்கள் இருக்கிறார்களா? உங்கள் நிகழ்ச்சியைத் தொடங்குங்கள்."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "உங்கள் திறமை, உங்கள் கதை, உங்கள் நேரம் — ரசிகர்களை அழைத்து, உங்கள் விதிமுறைகளில் முன்பதிவுகளைப் பெறுங்கள்."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "இலவசமாக உருவாக்கத் தொடங்குங்கள்"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "வருமான வடிவங்களைப் பார்க்கவும்"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "உங்கள் பக்கம். உங்கள் விலை. உங்கள் மக்கள்."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · நேரலை"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "உங்கள் livestream-ஐ நிகழ்ச்சியாக மாற்றுங்கள்."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "நேரலை வகுப்பு, watch party, ஒத்திகை அல்லது பூஜை — டிக்கெட் சேர்த்து, அறையைத் திறந்து, ரசிகர்களைச் சந்தியுங்கள்."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "நேரலை நிகழ்ச்சியைத் திட்டமிடுங்கள்"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "டிக்கெட் · இணையத்தில் நடத்தப்படும்"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "ஒரு நேரத்தில் ஒரு ரசிகருக்காக உங்கள் நேரம்."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "இணைய வீடியோ சந்திப்புக்கான நேரங்களைத் திறக்கவும். ஆலோசனை, பயிற்சி, கதைகள் அல்லது ஒருமுகமான உரையாடலை வழங்குங்கள்."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 அமர்வை வழங்குங்கள்"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "தனிப்பட்டது · வீடியோ சந்திப்பு"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "பெரிய திரை"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "திரையில் நடப்பது ஒரு உண்மையான தொடர்பாக மாறலாம்."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "இசை, மேக்கப், கேமிங், சமையல், நடனம், பக்தி — ரசிகர்கள் ஏற்கனவே பார்த்துக் கொண்டிருக்கிறார்கள். இப்போது அவர்களுக்கு ஒரு அறையை வழங்குங்கள்."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "நேரலை அறை / சனிக்கிழமை இரவு 8:00"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "சந்தைப்பட்டியலைப் பார்க்கவும்"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "உங்கள் நாட்காட்டி, உங்கள் விதிமுறைகள்"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "உங்கள் 1:1 மூலை."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "உங்கள் கிடைக்கும் நேரத்தை அமைத்து, வடிவத்தை விளக்கி, ஒவ்வொரு முன்பதிவுக்கும் முன் எதிர்பார்ப்புகளைத் தெளிவாக வைத்திருங்கள். எப்போதும் இணையத்தில் மட்டுமே."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "இணைய வீடியோ சந்திப்புகள், தெளிவான எல்லைகளுடன்."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "உள்ளடக்கத்திலிருந்து சலுகை வரை"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "நீங்கள் எதை நடத்தப் போகிறீர்கள்?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "நடன அரங்கம்"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "நடன அமைப்பு, கருத்து மற்றும் பயிற்சி அறை."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "வீட்டு சுவைகள்"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "நேரலை சமையல், பிராந்திய உணவு மற்றும் சமையலறைத் தந்திரங்கள்."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "படிப்பு நண்பர்"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "மறுபார்வை நேரம், மொழிப் பயிற்சி மற்றும் தேர்வு ஊக்கம்."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "அலங்கார மேசை"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "தோற்ற விளக்கம், சேலை அணியும் முறை மற்றும் சிக்கனக் கண்டுபிடிப்புகள்."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "இது எப்படி வேலை செய்கிறது"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "போஸ்டரிலிருந்து முன்பதிவு வரை — நான்கு எளிய படிகள்."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "உருவாக்கு"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "உங்கள் படைப்பாளர் பக்கத்தையும் சலுகையையும் எழுதுங்கள்."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "விலை அமை"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "டிக்கெட் அல்லது அமர்வுக்கான விலையைத் தேர்ந்தெடுக்கவும்."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "பகிர்"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "இணைப்பை உங்கள் சமூகத்தினருக்கு அனுப்புங்கள்."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "நடத்து"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "அறையைத் திறந்து, உங்கள் நேரத்தை வழங்கி, உங்கள் நிகழ்ச்சியை நடத்துங்கள்."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "உங்கள் ரசிகர்களுக்காக"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "ரசிகருக்கு முன்பதிவு எப்படி தெரியும்?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "ஒரு தெளிவான பக்கம். ஒரு தேதி. ஒரு இருக்கை. பணம் செலுத்திய பிறகு அறைக்குச் செல்லும் வழி அவர்களுக்கு கிடைக்கும்."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "உண்மையான பட்டியல்களைப் பார்க்கவும்"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "முன்பதிவு அனுமதிச்சீட்டு"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "நேரலை நிகழ்ச்சி"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "1 இருக்கை ஒதுக்கப்பட்டது"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "இணையத்தில் · இந்தியா"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "கணக்கு தெளிவாக"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "உங்கள் மொத்த மதிப்பீட்டைப் பாருங்கள்."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "உள்ளீடுகளை மாற்றி, டிக்கெட் நிகழ்ச்சிகள் அல்லது 1:1 முன்பதிவுகள் மூலம் உருவாகக்கூடிய மொத்தத்தைப் பாருங்கள்."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "நேரலை டிக்கெட் விலை"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "ஒவ்வொரு நிகழ்ச்சியின் பார்வையாளர்கள்"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "மாத நிகழ்ச்சிகள்"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 விலை"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "மாத முன்பதிவுகள்"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "நேரலை நிகழ்ச்சி மொத்தம்"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 மொத்தம்"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "இணைந்த மொத்த மதிப்பீடு"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "மேடை கட்டணம், வரி, பணத்திருப்பம் மற்றும் பிற செலவுகளுக்கு முன் காட்டப்படும் எடுத்துக்காட்டு மொத்தம். வருமான உறுதி அல்ல."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR-ல் காட்டப்படும் திட்டமிடல் எடுத்துக்காட்டு; உண்மையான பட்டியல் விலையும் checkout மேற்கோளும் தற்போதைய விலை வழிகாட்டியைப் பின்பற்றும்."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "தெரிந்துகொள்ள வேண்டியது"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "தெளிவான எல்லைகள் சிறந்த அறைகளை உருவாக்கும்."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "எனக்கு அதிகமான பின்தொடர்பவர்கள் தேவையா?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "தேவையில்லை. ஒரு பயனுள்ள சலுகையுடன் தொடங்கி, உங்கள் பணியை ஏற்கனவே விரும்புபவர்களுடன் பகிருங்கள்."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "இது நேரில் நடக்கும் முன்பதிவா?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "இல்லை. நேரலை நிகழ்ச்சிகளும் 1:1 அமர்வுகளும் இணையத்தில் நடக்கும். உங்கள் பட்டியலையும் எதிர்பார்ப்புகளையும் குறிப்பாக வைத்திருங்கள்."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "எப்போது பணம் கிடைக்கும்?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "பணம் வழங்கும் நேரமும் தகுதியான முறைகளும் உங்கள் படைப்பாளர் டாஷ்போர்டிலும் பொருந்தும் விதிமுறைகளிலும் காட்டப்படும்."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "என் சொந்த எல்லைகளை அமைக்க முடியுமா?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "முடியும். வெளியிடுவதற்கு முன் வடிவம், கிடைக்கும் நேரம், விலை மற்றும் அமர்வில் உள்ளவை ஆகியவற்றைத் தேர்ந்தெடுக்கவும்."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "உங்கள் முறை"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "உங்கள் குரலுக்கு ஒரு டிக்கெட் வழங்குங்கள்."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "இன்றே ஒரு சலுகையை எழுதுங்கள். நாளை உங்கள் முதல் அறையைத் திறக்குங்கள்."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "உங்கள் இலவச பட்டியலை உருவாக்குங்கள்"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "அலங்காரப் படம்"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "மொத்த வருமான மதிப்பீட்டு கணிப்பான்"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "அடிக்கடி கேட்கப்படும் கேள்விகள்"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../lib/i18n/authoredKey';
 import '../styles/tokens.css';
 import '../styles/global.css';
 // [UI-MOTION-1 2026-09-10] Imported HERE, not via @import in global.css — see
@@ -12,8 +13,6 @@ import '../styles/motion.css';
 // matches the home page poster, so the site now has ONE header everywhere.
 // Nav.astro is left in the tree for now, unreferenced, in case a page needs the
 // old zine chrome back; delete it once that's ruled out.
-import Fonts from '../components/Fonts.astro';
-import { publicImage } from '../lib/config';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
@@ -21,6 +20,8 @@ import { orgJsonLd } from '../lib/org';
 
 export interface Props {
   title?: string;
+  titleMessageKey?: string;
+  descriptionMessageKey?: string;
   description?: string;
   /** Absolute or path OpenGraph image. */
   image?: string;
@@ -64,6 +65,8 @@ export interface Props {
 
 const {
   title = 'AvaTok',
+  titleMessageKey,
+  descriptionMessageKey,
   // [WEB-SEO-1 2026-08-27] The old default described the receptionist/private
   // number product. What avaTOK actually sells today is: earn from home by
   // listening, chatting, being a home friend or live streaming. Every page that
@@ -82,7 +85,7 @@ const {
   keywords = 'avaTOK, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions',
   lang = 'en',
   dir = 'ltr',
-  indiaLandingLanguage = false,
+  indiaLandingLanguage = true,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
@@ -112,7 +115,7 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href={publicImage('/app-logo2.png', { width: 96 })} type="image/avif" />
+    <link rel="icon" href="/app-logo2.png" type="image/png" />
     <link rel="canonical" href={canonical} />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     {noindex
@@ -122,8 +125,8 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
         page links under the main result) are built from titles; "Contact us"
         or "Tokens & Wallet" with no brand read as generic and get dropped. A
         page that already names avaTOK keeps its title untouched. */}
-    <title>{pageTitle}</title>
-    <meta name="description" content={description} />
+    <title data-i18n-meta={titleMessageKey ?? authoredKey(pageTitle)}>{pageTitle}</title>
+    <meta data-i18n-meta={descriptionMessageKey ?? authoredKey(description)} name="description" content={description} />
     <meta name="keywords" content={keywords} />
 
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
@@ -147,12 +150,27 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     {/* [WEB-SEO-1] Organization + WebSite structured data on every page. */}
     {!noindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}
 
-    <Fonts global={Astro.url.pathname === '/global-ideas' || Astro.url.pathname.startsWith('/blog/global-creator-ideas/')} india={indiaLandingLanguage} />
+    {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:
+        those faces are no longer referenced by any token, so preloading them
+        made every page fetch two fonts it never rendered. */}
+
+    {/* [WEB-THEME-1] Brand faces. Also loaded by SiteHeader for the home
+        page, which bypasses this layout; duplicate <link>s to the same
+        href are de-duplicated by the browser, so this is not a double
+        download. Needed here for chrome={false} pages (auth, dashboard)
+        that never render SiteHeader. */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
+    {indiaLandingLanguage && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" />}
+    {/* [WEB-POSTHOG-1] PostHog core — every page through Base.astro gets it.
+        The landing page (index.astro) emits its own document and never
+        touches this layout, so it loads the same script separately. */}
     <script>
       import { initAnalytics } from '../lib/analytics';
-      import { initPerformance } from '../lib/performance';
-      initPerformance();
+      import { initImageTelemetry } from '../lib/imageTelemetry';
       initAnalytics();
+      initImageTelemetry();
     </script>
     {/* [LIST-DETAIL-EMBED-1 2026-09-09] Hide the site's header and footer inside
         the app's WebView — CLIENT-SIDE, on purpose.
@@ -206,8 +224,12 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     </style>
     <slot name="head" />
   </head>
-  <body class="min-h-screen bg-paper text-ink font-body">
+  <body data-i18n-namespace="web-common" class="min-h-screen bg-paper text-ink font-body">
     {chrome && <SiteHeader auth={headerAuth} indiaLandingLanguage={indiaLandingLanguage} />}
+    <script>
+      import { initUiLocale } from '../lib/i18n/dom';
+      initUiLocale();
+    </script>
     <slot />
     {chrome && <SiteFooter indiaLandingLanguage={indiaLandingLanguage} />}
   </body>

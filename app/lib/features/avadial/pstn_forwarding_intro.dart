@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -42,6 +44,7 @@ class PstnForwardingIntroScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
@@ -176,6 +179,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final hPad = ZineBreakpoints.pagePadding(context);
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
@@ -198,8 +202,8 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           const SizedBox(height: Msg.s4),
           Text.rich(
             TextSpan(children: [
-              const TextSpan(text: 'Your Ava '),
-              TextSpan(text: 'Voicemail box', style: const TextStyle(color: AD.primaryBadge)),
+               TextSpan(text: uiCopy(UiMessage.m_your_ava_e9675ee17a)),
+              TextSpan(text: uiCopy(UiMessage.m_voicemail_box_cfe1ecd299), style: const TextStyle(color: AD.primaryBadge)),
             ]),
             textAlign: TextAlign.center,
             style: ADText.appTitle().copyWith(
@@ -208,14 +212,12 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           const SizedBox(height: 12),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 340),
-            child: Text(
+            child: UiText(
               // [AVA-VM-PAID-1] Was "Under three circumstances" — only one is
               // free now, so that number is a promise the screen below no
               // longer keeps. Kept condition-count-agnostic so the copy stays
               // true whichever way `pstnPaidConditionsUnlocked` is flipped.
-              'When your phone can\'t take the call, your carrier sends it to your '
-              'Ava voicemail instead of ringing out. Priya answers, takes the '
-              'message, and it shows up in your Inbox — with a transcript.',
+              UiMessage.m_when_your_phone_can_t_643d9fd490,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14),
             ),
@@ -244,9 +246,8 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
                   size: 18, color: AD.online),
               const SizedBox(width: Msg.s2),
               Expanded(
-                child: Text(
-                  'A row only turns green after your carrier confirms the '
-                  'forwarding is on — no guesswork.',
+                child: UiText(
+                  UiMessage.m_a_row_only_turns_green_c4b625c668,
                   style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
                 ),
               ),
@@ -254,7 +255,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           ),
           const SizedBox(height: Msg.s5),
           AdButton(
-            label: _allDone ? 'Continue' : 'Finish the steps above',
+            label: _allDone ? uiCopy(UiMessage.m_continue_31fbef1625) : uiCopy(UiMessage.m_finish_the_steps_above_f6044d5342),
             onPressed: _allDone ? _continue : null,
             fullWidth: true,
             fontSize: 21,
@@ -270,7 +271,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           const SizedBox(height: Msg.s1),
           // [PA-UI-3] the standalone "Voicemail" settings row is gone (PA-UI-2);
           // carrier forwarding is now reached from Ava PA → Phone calls.
-          Text('You can turn this on later in Settings → Ava PA → Phone calls.',
+          UiText(UiMessage.m_you_can_turn_this_on_a679731354,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11)),
         ],

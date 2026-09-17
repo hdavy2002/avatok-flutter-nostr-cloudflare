@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -103,14 +106,14 @@ class _PayoutScreenState extends State<PayoutScreen> {
     if (!mounted) return;
     if (r['ok'] == true) {
       Analytics.capture('payout_requested_ui', {'amount': amount});
-      _snack('Withdrawal submitted — ${_inr(amount)} on its way to your bank.');
+      _snack(uiCopy(UiMessage.m_withdrawal_submitted_value1_on_its_efa3eb38cf, {'value1': (_inr(amount)).toString()}));
       _refresh();
     } else if (r['reason'] == 'tax_info_required') {
-      _snack('Tax information is missing for this bank. Remove it and add it again with your tax details.');
+      _snack(uiCopy(UiMessage.m_tax_information_is_missing_for_4ec0733aea));
     } else if (r['reason'] == 'pending_legal_approval') {
-      _snack('Payouts aren\'t live yet — your balance is safe and waiting.');
+      _snack(uiCopy(UiMessage.m_payouts_aren_t_live_yet_6a5cf96c64));
     } else {
-      _snack((r['error'] ?? 'Withdrawal failed').toString());
+      _snack((r['error'] ?? uiCopy(UiMessage.m_withdrawal_failed_de6410e9d1)).toString());
     }
   }
 
@@ -128,15 +131,14 @@ class _PayoutScreenState extends State<PayoutScreen> {
         builder: (_, ctrl) => Padding(
           padding: const EdgeInsets.all(Msg.s5),
           child: Column(children: [
-            Text('Creator agreement (v$version)', style: ADText.appTitle()),
+            UiText(UiMessage.m_creator_agreement_v_version_b9afc72def, params: {'version': (version).toString()}, style: ADText.appTitle()),
             const SizedBox(height: Msg.s3),
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
                 child: Text(
                     doc ??
-                        'Please review the AvaTOK creator agreement at avatok.ai/legal/creator-agreement. '
-                            'By accepting you confirm you have read and agree to it.',
+                        uiCopy(UiMessage.m_please_review_the_avatok_creator_26fbf553e8),
                     style: ADText.preview(c: AD.textPrimary)),
               ),
             ),
@@ -144,7 +146,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
             Row(children: [
               Expanded(
                 child: ZineButton(
-                  label: 'Decline',
+                  label: uiCopy(UiMessage.m_decline_a2d285b352),
                   variant: ZineButtonVariant.ghost,
                   fontSize: 17,
                   onPressed: () => Navigator.pop(ctx, false),
@@ -153,7 +155,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
               const SizedBox(width: Msg.s3),
               Expanded(
                 child: ZineButton(
-                  label: 'I agree',
+                  label: uiCopy(UiMessage.m_i_agree_99955b75e0),
                   fontSize: 17,
                   onPressed: () => Navigator.pop(ctx, true),
                 ),
@@ -165,16 +167,17 @@ class _PayoutScreenState extends State<PayoutScreen> {
     );
     if (ok != true) return false;
     final accepted = await IdentityApi.acceptAgreement(version);
-    if (!accepted) _snack('Could not record acceptance — please try again.');
+    if (!accepted) _snack(uiCopy(UiMessage.m_could_not_record_acceptance_please_809c670d68));
     return accepted;
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(
-        title: 'AvaPayout',
+      appBar:  ZineAppBar(
+        title: uiCopy(UiMessage.m_avapayout_4b5ee9ea3c),
         markWord: 'Payout',
         tag: 'straight to your bank',
       ),
@@ -204,8 +207,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         const ZineSticker('coming soon', kind: ZineStickerKind.hint),
                         const SizedBox(height: Msg.s2),
-                        Text(
-                          'Bank transfers are not live yet — you can link a bank and your balance keeps accruing.',
+                        UiText(
+                          UiMessage.m_bank_transfers_are_not_live_a03635d474,
                           style: ADText.preview(),
                         ),
                       ]),
@@ -213,7 +216,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   ],
                   const SizedBox(height: Msg.s5),
                   Row(children: [
-                    Expanded(child: Text('Bank accounts', style: ADText.sectionLabel())),
+                    Expanded(child: UiText(UiMessage.m_bank_accounts_65e0d05950, style: ADText.sectionLabel())),
                     ZineLink('+ Add bank', onTap: _addBank),
                   ]),
                   const SizedBox(height: Msg.s3),
@@ -228,10 +231,10 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   else
                     ..._accounts.map(_accountCard),
                   const SizedBox(height: Msg.s5),
-                  Text('History', style: ADText.sectionLabel()),
+                  UiText(UiMessage.m_history_0e76960093, style: ADText.sectionLabel()),
                   const SizedBox(height: Msg.s3),
                   if (_history.isEmpty)
-                    Text('No withdrawals yet.', style: ADText.preview())
+                    UiText(UiMessage.m_no_withdrawals_yet_5abaf9af8a, style: ADText.preview())
                   else
                     ..._history.map(_historyRow),
                 ],
@@ -283,7 +286,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
           const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text((a['label'] ?? 'Bank ****${a['account_number_last4'] ?? ''}').toString(),
+              Text((a['label'] ?? uiCopy(UiMessage.m_bank_value1_109e885f49, {'value1': (a['account_number_last4'] ?? '').toString()})).toString(),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.rowName()),
               const SizedBox(height: Msg.s1),
@@ -295,7 +298,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
           ),
           const SizedBox(width: Msg.s3),
           ZineButton(
-            label: 'Withdraw',
+            label: uiCopy(UiMessage.m_withdraw_164546a9c5),
             fontSize: 15,
             onPressed: _balance >= _kMinTokens ? () => _withdraw(a) : null,
           ),
@@ -406,36 +409,37 @@ class _AddBankSheetState extends State<_AddBankSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Add a bank account', style: ADText.appTitle()),
+          UiText(UiMessage.m_add_a_bank_account_14b7765b2f, style: ADText.appTitle()),
           const SizedBox(height: Msg.s4),
-          ZineField(controller: _holder, label: 'Account holder name'),
+          ZineField(controller: _holder, label: uiCopy(UiMessage.m_account_holder_name_5596842fc1)),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: _ifsc, label: 'IFSC code', textCapitalization: TextCapitalization.characters),
+          ZineField(controller: _ifsc, label: uiCopy(UiMessage.m_ifsc_code_cf583c60fb), textCapitalization: TextCapitalization.characters),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: _number, label: 'Account number', keyboardType: TextInputType.number),
+          ZineField(controller: _number, label: uiCopy(UiMessage.m_account_number_f7573b7f5d), keyboardType: TextInputType.number),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: _label, label: 'Label (optional)'),
+          ZineField(controller: _label, label: uiCopy(UiMessage.m_label_optional_7df60cafd5)),
           const SizedBox(height: Msg.s5),
-          Text('Tax details', style: ADText.threadName()),
+          UiText(UiMessage.m_tax_details_0c9ac13862, style: ADText.threadName()),
           const SizedBox(height: Msg.s1),
-          Text('Needed once for year-end reporting. We store only the type and last 4 digits.',
+          UiText(UiMessage.m_needed_once_for_year_end_3e8df8c476,
               style: ADText.preview()),
           const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
               child: ZineDropdown<String>(
-                label: 'Tax residency',
+                label: uiCopy(UiMessage.m_tax_residency_47bf7784ca),
                 value: _taxCountry,
                 items: const [
-                  DropdownMenuItem(value: 'IN', child: Text('India')),
-                  DropdownMenuItem(value: 'US', child: Text('United States')),
-                  DropdownMenuItem(value: 'GB', child: Text('United Kingdom')),
-                  DropdownMenuItem(value: 'EU', child: Text('EU (other)')),
+                  DropdownMenuItem(value: 'IN', child: UiText(UiMessage.m_india_abd1492145)),
+                  DropdownMenuItem(value: 'US', child: UiText(UiMessage.m_united_states_49dca65f36)),
+                  DropdownMenuItem(value: 'GB', child: UiText(UiMessage.m_united_kingdom_8d23a6e37e)),
+                  DropdownMenuItem(value: 'EU', child: UiText(UiMessage.m_eu_other_cd4f49f519)),
                 ],
                 onChanged: (v) => setState(() {
                   _taxCountry = v ?? 'IN';
@@ -446,25 +450,25 @@ class _AddBankSheetState extends State<_AddBankSheet> {
             const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineDropdown<String>(
-                label: 'ID type',
+                label: uiCopy(UiMessage.m_id_type_0f16bc151e),
                 value: _taxIdType,
                 items: const [
-                  DropdownMenuItem(value: 'pan', child: Text('PAN')),
-                  DropdownMenuItem(value: 'ssn', child: Text('SSN')),
-                  DropdownMenuItem(value: 'ein', child: Text('EIN')),
-                  DropdownMenuItem(value: 'tin', child: Text('TIN')),
-                  DropdownMenuItem(value: 'vat', child: Text('VAT')),
+                  DropdownMenuItem(value: 'pan', child: UiText(UiMessage.m_pan_e6205bc8ab)),
+                  DropdownMenuItem(value: 'ssn', child: UiText(UiMessage.m_ssn_f96e4bd5ab)),
+                  DropdownMenuItem(value: 'ein', child: UiText(UiMessage.m_ein_e24891dd2d)),
+                  DropdownMenuItem(value: 'tin', child: UiText(UiMessage.m_tin_eb431a7b39)),
+                  DropdownMenuItem(value: 'vat', child: UiText(UiMessage.m_vat_4885a17383)),
                 ],
                 onChanged: (v) => setState(() => _taxIdType = v ?? 'pan'),
               ),
             ),
           ]),
           const SizedBox(height: Msg.s3),
-          ZineField(controller: _taxId, label: 'Tax ID', error: _error != null),
+          ZineField(controller: _taxId, label: uiCopy(UiMessage.m_tax_id_b39071d6ed), error: _error != null),
           if (_error != null) ZineErrorMsg(_error!),
           const SizedBox(height: Msg.s5),
           ZineButton(
-            label: 'Save bank account',
+            label: uiCopy(UiMessage.m_save_bank_account_aefe472640),
             fullWidth: true,
             loading: _busy,
             onPressed: _busy ? null : _save,
@@ -496,21 +500,22 @@ class _AmountSheetState extends State<_AmountSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final valid = _amount >= _kMinTokens && _amount <= widget.max;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Withdraw to bank', style: ADText.appTitle()),
+          UiText(UiMessage.m_withdraw_to_bank_049fbebd7d, style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),
-          Text('Available: ${_inr(widget.max)} · minimum ${_inr(_kMinTokens)}',
+          UiText(UiMessage.m_available_value1_minimum_value2_b1fe80c7d1, params: {'value1': (_inr(widget.max)).toString(), 'value2': (_inr(_kMinTokens)).toString()},
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           ZineField(
             controller: _ctrl,
             autofocus: true,
-            label: 'Amount in tokens (1 token = \u20b91)',
+            label: uiCopy(UiMessage.m_amount_in_tokens_1_token_b0755e09ed),
             leadIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
             keyboardType: TextInputType.number,
             onChanged: (v) => setState(() => _amount = int.tryParse(v.trim()) ?? 0),
@@ -522,16 +527,14 @@ class _AmountSheetState extends State<_AmountSheet> {
               radius: Msg.rLg,
               boxShadow: const <BoxShadow>[],
               padding: const EdgeInsets.all(Msg.s3),
-              child: Text(
-                'You\'ll receive ≈ ${_inr(_amount)} in ${widget.currency}. '
-                'The Wise transfer fee is deducted from this amount; the exact '
-                'rate is locked when the transfer is created.',
+              child: UiText(
+                UiMessage.m_you_ll_receive_value1_in_adb8ffa04c, params: {'value1': (_inr(_amount)).toString(), 'value2': (widget.currency).toString()},
                 style: ADText.preview(c: AD.online),
               ),
             ),
           const SizedBox(height: Msg.s4),
           ZineButton(
-            label: valid ? 'Withdraw ${_inr(_amount)}' : 'Enter an amount',
+            label: valid ? uiCopy(UiMessage.m_withdraw_value1_5c8d8847e3, {'value1': (_inr(_amount)).toString()}) : uiCopy(UiMessage.m_enter_an_amount_d8a7700e1f),
             fullWidth: true,
             onPressed: valid ? () => Navigator.pop(context, _amount) : null,
           ),

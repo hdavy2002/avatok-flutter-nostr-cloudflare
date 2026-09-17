@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 7 — AvaConsult room. 1:1 = P2P over the CallRoom-DO signaling pattern
 // (same protocol as the AvaTok call screen; 2-peer cap reused). Group (≤10/20)
 // = Cloudflare Realtime SFU via the Worker proxy + the SAME flutter_webrtc —
@@ -118,7 +121,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
           PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular),
               size: 16, color: AD.textPrimary),
           const SizedBox(width: Msg.s2),
-          Text('5 minutes remaining', style: ADText.preview(c: AD.textPrimary)),
+          UiText(UiMessage.m_5_minutes_remaining_dae9e3934e, style: ADText.preview(c: AD.textPrimary)),
         ]),
         backgroundColor: AD.card,
       ));
@@ -193,7 +196,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
         case 'peer-left':
           setState(() { _peers.removeWhere((k, p) { p.dispose(); return true; }); _waitingRoom = true; });
         case 'busy':
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room is full (1:1).')));
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_room_is_full_1_1_6b5f50cd1a)));
       }
     }, onError: (_) {}, onDone: () {});
   }
@@ -268,7 +271,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
       }
     } on SessionApiError catch (e) {
       if (mounted) setState(() => _ended = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Group room unavailable: ${e.message}')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_group_room_unavailable_value1_7aa8196a5e, params: {'value1': (e.message).toString()})));
     }
   }
 
@@ -330,7 +333,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
           PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
               size: 16, color: AD.online),
           const SizedBox(width: Msg.s2),
-          Text('Extended by 15 minutes', style: ADText.preview(c: AD.textPrimary)),
+          UiText(UiMessage.m_extended_by_15_minutes_7f2ccf7a04, style: ADText.preview(c: AD.textPrimary)),
         ]),
         backgroundColor: AD.card,
       ));
@@ -339,7 +342,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     } on SessionApiError catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.status == 409 ? 'Your next slot is booked — cannot extend.' : e.message)));
+            content: Text(e.status == 409 ? uiCopy(UiMessage.m_your_next_slot_is_booked_6876be8d58) : e.message)));
       }
     }
   }
@@ -374,7 +377,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, MediaQuery.of(sheetCtx).viewInsets.bottom + Msg.s5),
         child: StatefulBuilder(builder: (_, setSheet) {
           return Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Rate this session', style: ADText.threadName().copyWith(fontSize: 19)),
+            UiText(UiMessage.m_rate_this_session_6eedcb8a77, style: ADText.threadName().copyWith(fontSize: 19)),
             const SizedBox(height: Msg.s3),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (var i = 1; i <= 5; i++)
@@ -387,10 +390,10 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
                   onPressed: () => setSheet(() => rating = i),
                 ),
             ]),
-            ZineField(controller: body, hint: 'Anything to add? (optional)'),
+            ZineField(controller: body, hint: uiCopy(UiMessage.m_anything_to_add_optional_21c31ca431)),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Done',
+              label: uiCopy(UiMessage.m_done_11a6767d56),
               fullWidth: true,
               onPressed: () async {
                 if (rating > 0) { try { await ListingsApi.review(listingId, rating, body.text.trim()); } catch (_) {} }
@@ -419,6 +422,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final now = DateTime.now().millisecondsSinceEpoch;
     final remaining = (_endsAt - now).clamp(0, 1 << 62);
     final waitLeft = (_startsAt + _kWaitWindowMs - now).clamp(0, _kWaitWindowMs);
@@ -444,15 +448,15 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
                   Text(
                     _waitingRoom
                         ? (_hostRole
-                            ? 'Waiting for ${widget.join['peer_name'] ?? 'the buyer'}… ${fmtMmSs(waitLeft)} left of ${fmtMmSs(_kWaitWindowMs)} wait'
-                            : 'Waiting for the host to join…')
-                        : 'Connecting…',
+                            ? uiCopy(UiMessage.m_waiting_for_value1_value2_left_cc0fefe3fb, {'value1': (widget.join['peer_name'] ?? 'the buyer').toString(), 'value2': (fmtMmSs(waitLeft)).toString(), 'value3': (fmtMmSs(_kWaitWindowMs)).toString()})
+                            : uiCopy(UiMessage.m_waiting_for_the_host_to_8c14e12755))
+                        : uiCopy(UiMessage.m_connecting_72021eb70e),
                     style: ADText.preview().copyWith(height: 1.42), textAlign: TextAlign.center,
                   ),
                   if (_hostRole && _waitingRoom)
                     Padding(
                       padding: const EdgeInsets.only(top: Msg.s3),
-                      child: Text('The no-show rule pays your wait automatically',
+                      child: UiText(UiMessage.m_the_no_show_rule_pays_7540aaa2f1,
                           style: ADText.sectionLabel(), textAlign: TextAlign.center),
                     ),
                 ]),
@@ -543,9 +547,9 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
                   ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
                   : PhosphorIcons.ear(PhosphorIconsStyle.bold), _toggleSpeaker, off: !_speakerOn),
               _ctl(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), _sendFile,
-                  tooltip: 'Send file (opens your AvaTok thread)'),
+                  tooltip: uiCopy(UiMessage.m_send_file_opens_your_avatok_679ff6dbc1)),
               if (_hostRole)
-                _ctl(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), _extend, tooltip: 'Extend +15 min'),
+                _ctl(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), _extend, tooltip: uiCopy(UiMessage.m_extend_15_min_f90e856a91)),
               // hang up — destructive circle
               GestureDetector(
                 onTap: () => _leave(),

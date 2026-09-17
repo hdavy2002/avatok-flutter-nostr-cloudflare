@@ -19,6 +19,8 @@
 // screen now closes itself when the CALLER cancels before the callee answers,
 // instead of sitting on screen ringing for a call that no longer exists.
 library;
+import '../core/localization/ui_text.dart';
+
 
 import 'dart:async';
 import 'dart:io';
@@ -278,6 +280,7 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // verified: packages/stream_video/lib/src/models/call_metadata.dart
     // (`class CallUser` has `id`/`name`/`image`) +
     // packages/stream_video/lib/src/call_state.dart (`CallState.createdByUser`
@@ -310,8 +313,8 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Incoming AvaTOK call…',
+              const UiText(
+                UiMessage.m_incoming_avatok_call_c152fd0465,
                 style: TextStyle(color: AD.textSecondary, fontSize: 14),
               ),
               const Spacer(),

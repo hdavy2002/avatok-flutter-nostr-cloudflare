@@ -53,16 +53,16 @@ extension _ChatThreadFormatting on _ChatThreadScreenState {
     // My bubbles are lime (ink text), so status ticks read in ink tones:
     // read = blue-ink, everything in-flight = ink-soft, failed = coral.
     if (m.failed) {
-      return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: AD.danger, label: 'Not sent · tap to retry');
+      return (icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), color: AD.danger, label: uiCopy(UiMessage.m_not_sent_tap_to_retry_672028aa96));
     }
     // [CHAT-UI-MEDIA-1] Background video transcode (moved off the pre-bubble
     // path by [MEDIA-INSTANT-1]) is otherwise invisible — the bubble just sits
     // there. Surface it explicitly instead of a bare "Sending…".
     if (m.transcoding) {
-      return (icon: PhosphorIcons.filmSlate(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Processing video…');
+      return (icon: PhosphorIcons.filmSlate(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_processing_video_fb3aba8b13));
     }
     if (m.uploading) {
-      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
+      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_sending_b8ed5279e8));
     }
     // [AVAGRP-BUBBLE-1 / message-info] Groups were hard-gated out above
     // (`_isGroup` in the old guard) because only the 1:1 thread-level
@@ -77,29 +77,29 @@ extension _ChatThreadFormatting on _ChatThreadScreenState {
     // populates them), so this still falls through to "Sent" exactly as before.
     if (_isGroup) {
       if (_memberUids.isNotEmpty && m.readBy.length >= _memberUids.length) {
-        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: 'Read');
+        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: uiCopy(UiMessage.m_read_9b9a8d05a7));
       }
       if (_memberUids.isNotEmpty && m.deliveredTo.length >= _memberUids.length) {
-        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Delivered');
+        return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_delivered_9061156573));
       }
       if (m.sent) {
-        return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sent');
+        return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_sent_c16bc82bf1));
       }
-      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
+      return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_sending_b8ed5279e8));
     }
     if (_peerReadTs > 0 && m.ts <= _peerReadTs) {
-      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: 'Read'); // 2 blue ticks
+      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.iconSearch, label: uiCopy(UiMessage.m_read_9b9a8d05a7)); // 2 blue ticks
     }
     if (_peerDeliveredTs > 0 && m.ts <= _peerDeliveredTs) {
-      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Delivered'); // 2 grey ticks
+      return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_delivered_9061156573)); // 2 grey ticks
     }
     if (m.sent) {
       // 1 tick = left this device / accepted. We deliberately DON'T claim
       // "waiting to reach phone" here — that contradicted the peer showing as
       // online (pic2). Truthful escalation: Sent → Delivered → Read.
-      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sent'); // 1 tick
+      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_sent_c16bc82bf1)); // 1 tick
     }
-    return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: 'Sending…');
+    return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: AD.bubbleOutMeta, label: uiCopy(UiMessage.m_sending_b8ed5279e8));
   }
 
 
@@ -199,9 +199,9 @@ extension _ChatThreadFormatting on _ChatThreadScreenState {
                     SizedBox(width: 12, height: 12,
                         child: CircularProgressIndicator(strokeWidth: 1.6, color: _sysPillMeta)),
                     const SizedBox(width: 7),
-                    Text('Loading older messages…', style: ADText.statCaption(c: _sysPillMeta)),
+                    UiText(UiMessage.m_loading_older_messages_913a378e70, style: ADText.statCaption(c: _sysPillMeta)),
                   ])
-                : Text(_archiveDone ? 'Start of conversation' : 'Older messages',
+                : Text(_archiveDone ? uiCopy(UiMessage.m_start_of_conversation_081456f694) : uiCopy(UiMessage.m_older_messages_de55a2029e),
                     style: ADText.statCaption(c: _sysPillMeta)),
           ),
           Expanded(child: Divider(color: _sysPillMeta.withValues(alpha: 0.35), thickness: 1)),

@@ -1,3 +1,5 @@
+
+import 'localization/ui_text.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -275,7 +277,7 @@ class UpdateService {
   /// showed the app was already updated).
   static Future<void> runManual() async {
     if (!Platform.isAndroid) {
-      _snack('Updates are available on Android only.');
+      _snack(uiCopy(UiMessage.m_updates_are_available_on_android_983a38d716));
       return;
     }
     Analytics.capture('update_check', {'source': 'manual'});
@@ -312,7 +314,7 @@ class UpdateService {
         'installed_build': current,
         'latest_build': latest,
       });
-      _snack("You're on the latest version (build $current).");
+      _snack(uiCopy(UiMessage.m_you_re_on_the_latest_fcc7964cce, {'current': (current).toString()}));
       return;
     }
 
@@ -325,8 +327,7 @@ class UpdateService {
         'available_build': latest,
       });
       if (latest <= 0 && notReady) {
-        _snack("You're on the latest version"
-            "${current != null && current > 0 ? ' (build $current)' : ''}.");
+        _snack(uiCopy(UiMessage.m_you_re_on_the_latest_10b576655e, {'value1': (current != null && current > 0 ? uiCopy(UiMessage.m_build_current_37be9fae30, {'current': (current).toString()}) : '').toString()}));
         return;
       }
 
@@ -373,9 +374,9 @@ class UpdateService {
       }
 
       if (notReady) {
-        _snack('The update is still reaching Google Play. Try again shortly.');
+        _snack(uiCopy(UiMessage.m_the_update_is_still_reaching_546664a956));
       } else {
-        _snack("Couldn't check Google Play right now. Please try again later.");
+        _snack(uiCopy(UiMessage.m_couldn_t_check_google_play_8dd0661a88));
       }
       return;
     }
@@ -383,8 +384,7 @@ class UpdateService {
     // If config has no target (latest<=0) and Play offers nothing installable,
     // treat as up to date rather than dumping the user in the store.
     if (latest <= 0 && path == _UpdatePath.store) {
-      _snack("You're on the latest version"
-          "${current != null && current > 0 ? ' (build $current)' : ''}.");
+      _snack(uiCopy(UiMessage.m_you_re_on_the_latest_10b576655e, {'value1': (current != null && current > 0 ? uiCopy(UiMessage.m_build_current_37be9fae30, {'current': (current).toString()}) : '').toString()}));
       return;
     }
 
@@ -745,7 +745,7 @@ class UpdateService {
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(d, false),
-                    child: const Text('Not now')),
+                    child: const UiText(UiMessage.m_not_now_a0e63d7c71)),
                 FilledButton(
                     onPressed: () => Navigator.pop(d, true), child: Text(cta)),
               ],
@@ -790,9 +790,9 @@ class UpdateService {
         await _runImmediate(trigger: trigger, available: available);
         break;
       case _UpdatePath.flexible:
-        _snack('Downloading the update…');
+        _snack(uiCopy(UiMessage.m_downloading_the_update_a14a1b55c8));
         final ok = await _runFlexible(source: trigger);
-        if (!ok) _snack("Couldn't update right now — we'll try again later.");
+        if (!ok) _snack(uiCopy(UiMessage.m_couldn_t_update_right_now_6063bec26a));
         break;
       case _UpdatePath.downloaded:
         await _completePending(trigger: trigger);
@@ -823,7 +823,7 @@ class UpdateService {
         'reason': 'call_in_progress',
         'available_build': available,
       }));
-      _snack('Update paused until your call ends.');
+      _snack(uiCopy(UiMessage.m_update_paused_until_your_call_c285e0c5c4));
       return;
     }
     _immediateInFlight = true;
@@ -846,7 +846,7 @@ class UpdateService {
         'trigger': trigger,
         'reason': e.toString(),
       });
-      _snack("Couldn't update right now — we'll try again later.");
+      _snack(uiCopy(UiMessage.m_couldn_t_update_right_now_6063bec26a));
     } finally {
       _immediateInFlight = false;
       _drainPendingPushDetection();
@@ -901,7 +901,7 @@ class UpdateService {
       _logOnce('complete', 'complete pending install failed: $e');
       Analytics.capture('update_complete_failed',
           {'trigger': trigger, 'reason': e.toString()});
-      _snack("Couldn't update right now — we'll try again later.");
+      _snack(uiCopy(UiMessage.m_couldn_t_update_right_now_6063bec26a));
     }
   }
 
@@ -936,7 +936,7 @@ class UpdateService {
     final pkg = await _packageName();
     if (pkg == null) {
       _snack(
-          "Couldn't open the Play Store. Please update from the Play Store app.");
+          uiCopy(UiMessage.m_couldn_t_open_the_play_101c279842));
       return;
     }
     Analytics.capture('update_open_store', {'source': source, 'package': pkg});
@@ -989,7 +989,7 @@ class UpdateService {
       'reason': attempts.join(','),
     });
     _snack(
-        "Couldn't open the Play Store. Please update from the Play Store app.");
+        uiCopy(UiMessage.m_couldn_t_open_the_play_101c279842));
   }
 
   // ── post-update confirmation ──────────────────────────────────────────────
@@ -1012,7 +1012,7 @@ class UpdateService {
     } catch (_) {/* best-effort */}
 
     if (stored != null && stored > 0 && stored < current) {
-      _snack("You've been updated to build $current");
+      _snack(uiCopy(UiMessage.m_you_ve_been_updated_to_073f2bf6d3, {'current': (current).toString()}));
       Analytics.capture('update_success_toast_shown', {
         'from_build': stored,
         'to_build': current,

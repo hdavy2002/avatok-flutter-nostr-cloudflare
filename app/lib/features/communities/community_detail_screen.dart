@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -62,11 +65,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('New channel', style: _cardTitle(21)),
-        content: ZineField(controller: ctrl, autofocus: true, hint: 'Channel name (e.g. General)'),
+        title: UiText(UiMessage.m_new_channel_ce76c34210, style: _cardTitle(21)),
+        content: ZineField(controller: ctrl, autofocus: true, hint: uiCopy(UiMessage.m_channel_name_e_g_general_0704549c11)),
         actions: [
-          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
-          ZineButton(label: 'Create', variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
+          ZineButton(label: uiCopy(UiMessage.m_cancel_19766ed6cc), variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+          ZineButton(label: uiCopy(UiMessage.m_create_4759498ac2), variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
         ],
       ),
     );
@@ -77,7 +80,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     if (g == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not create the channel — try again')));
+            const SnackBar(content: UiText(UiMessage.m_could_not_create_the_channel_f3bc04b933)));
       }
       return;
     }
@@ -118,7 +121,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     _loadChannels();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added ${picked.length} member(s)')));
+          SnackBar(content: UiText(UiMessage.m_added_value1_member_s_825ca59b4f, params: {'value1': (picked.length).toString()})));
     }
   }
 
@@ -128,9 +131,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       shape: RoundedRectangleBorder(
           borderRadius: Msg.brLg,
           side: const BorderSide(color: AD.borderControl, width: 1)),
-      title: Text('Community code', style: _cardTitle(21)),
+      title: UiText(UiMessage.m_community_code_6bbb6359f2, style: _cardTitle(21)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Share this code so others can join:',
+        UiText(UiMessage.m_share_this_code_so_others_e3bcb4fa1b,
             style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
         const SizedBox(height: Msg.s3),
         Container(
@@ -146,7 +149,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         ),
       ]),
       actions: [
-        ZineButton(label: 'Done', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+        ZineButton(label: uiCopy(UiMessage.m_done_11a6767d56), variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
       ],
     ));
   }
@@ -167,6 +170,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
@@ -185,9 +189,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               if (v == 'leave') _leave();
             },
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'members', child: Text('Add members', style: ADText.rowName().copyWith(fontSize: 14))),
-              PopupMenuItem(value: 'code', child: Text('Share code', style: ADText.rowName().copyWith(fontSize: 14))),
-              PopupMenuItem(value: 'leave', child: Text('Leave community', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 14))),
+              PopupMenuItem(value: 'members', child: UiText(UiMessage.m_add_members_d600b9239e, style: ADText.rowName().copyWith(fontSize: 14))),
+              PopupMenuItem(value: 'code', child: UiText(UiMessage.m_share_code_4c79ea5621, style: ADText.rowName().copyWith(fontSize: 14))),
+              PopupMenuItem(value: 'leave', child: UiText(UiMessage.m_leave_community_81e64989a3, style: ADText.rowName(c: AD.danger).copyWith(fontSize: 14))),
             ],
             child: Container(
               width: 42, height: 42,
@@ -237,7 +241,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(_c.name, style: _cardTitle(20)),
                 const SizedBox(height: Msg.s1),
-                Text(_c.about.isNotEmpty ? _c.about : '${_c.members.length} members',
+                Text(_c.about.isNotEmpty ? _c.about : uiCopy(UiMessage.m_value1_members_32b7fac4dc, {'value1': (_c.members.length).toString()}),
                     style: ADText.preview().copyWith(fontSize: 14)),
               ])),
             ]),
@@ -245,7 +249,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           const SizedBox(height: Msg.s4),
           Padding(
             padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s2),
-            child: Text('Channels', style: ADText.sectionLabel()),
+            child: UiText(UiMessage.m_channels_4c8906cf76, style: ADText.sectionLabel()),
           ),
           for (var i = 0; i < _channels.length; i++) ...[
             ZineCard(
@@ -266,7 +270,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: _cardTitle(16))),
                 const SizedBox(width: Msg.s2),
-                Text('${_channels[i].members.length} members',
+                UiText(UiMessage.m_value1_members_32b7fac4dc, params: {'value1': (_channels[i].members.length).toString()},
                     style: ADText.statCaption(c: AD.textSecondary)),
               ]),
             ),
@@ -292,7 +296,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   color: AD.newGroup,
                   size: 40),
               const SizedBox(width: Msg.s3),
-              Expanded(child: Text('Add members', style: _cardTitle(16))),
+              Expanded(child: UiText(UiMessage.m_add_members_d600b9239e, style: _cardTitle(16))),
               PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
                   size: 16, color: AD.textSecondary),
             ]),
@@ -316,13 +320,14 @@ class _MemberPickerState extends State<_MemberPicker> {
   final Set<String> _picked = {};
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final selectable = widget.contacts.where((c) => !widget.already.contains(c.uid)).toList();
     return SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
           padding: const EdgeInsets.all(Msg.s4),
           child: Row(children: [
-            Text('Add members', style: _cardTitle(19)),
+            UiText(UiMessage.m_add_members_d600b9239e, style: _cardTitle(19)),
             const Spacer(),
             ZineButton(
               label: 'Add (${_picked.length})',
@@ -334,7 +339,7 @@ class _MemberPickerState extends State<_MemberPicker> {
         if (selectable.isEmpty)
           Padding(
             padding: const EdgeInsets.all(Msg.s5),
-            child: Text('No more contacts to add',
+            child: UiText(UiMessage.m_no_more_contacts_to_add_2753a68b77,
                 style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
           ),
         Flexible(

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -642,12 +644,12 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s3),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Report spam', style: ADText.appTitle(c: AD.textPrimary)),
+            UiText(UiMessage.m_report_spam_147b4a0af8, style: ADText.appTitle(c: AD.textPrimary)),
             const SizedBox(height: Msg.s1),
-            Text('The call ends and $_displayName is reported.', style: ADText.preview(c: AD.textSecondary)),
-            ListTile(contentPadding: EdgeInsets.zero, title: Text('Report only', style: ADText.preview(c: AD.textPrimary)), onTap: () => Navigator.of(sheetContext).pop(false)),
-            ListTile(contentPadding: EdgeInsets.zero, title: Text('Report and block', style: ADText.preview(c: AD.destructiveBg)), onTap: () => Navigator.of(sheetContext).pop(true)),
-            TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('Cancel')),
+            UiText(UiMessage.m_the_call_ends_and_displayname_0573a0da0d, params: {'displayName': (_displayName).toString()}, style: ADText.preview(c: AD.textSecondary)),
+            ListTile(contentPadding: EdgeInsets.zero, title: UiText(UiMessage.m_report_only_5d49741265, style: ADText.preview(c: AD.textPrimary)), onTap: () => Navigator.of(sheetContext).pop(false)),
+            ListTile(contentPadding: EdgeInsets.zero, title: UiText(UiMessage.m_report_and_block_91bd9b9547, style: ADText.preview(c: AD.destructiveBg)), onTap: () => Navigator.of(sheetContext).pop(true)),
+            TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const UiText(UiMessage.m_cancel_19766ed6cc)),
           ]),
         ),
       ),
@@ -699,6 +701,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final name = _displayName;
     return PopScope(
       canPop: false,
@@ -726,7 +729,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(children: [
-                    Text(_accepting ? name : '$name is calling',
+                    Text(_accepting ? name : uiCopy(UiMessage.m_name_is_calling_fc424854d6, {'name': (name).toString()}),
                         textAlign: TextAlign.center,
                         style: ADText.appTitle(c: AD.textPrimary)),
                     const SizedBox(height: 8),
@@ -735,8 +738,8 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     // they are not user-facing progress screens on the normal
                     // fast path.
                     Text(_accepting
-                            ? 'AvaTOK audio call'
-                            : 'This is an AvaTOK to AvaTOK call',
+                            ? uiCopy(UiMessage.m_avatok_audio_call_944dd9dbe1)
+                            : uiCopy(UiMessage.m_this_is_an_avatok_to_59c440a132),
                         textAlign: TextAlign.center,
                         style: ADText.preview(c: AD.textSecondary)),
                   ]),
@@ -769,7 +772,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     Expanded(
                       child: _CallAction(
                         icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
-                        label: 'Report\nSpam',
+                        label: uiCopy(UiMessage.m_report_spam_064f82a50c),
                         tint: AD.danger,
                         filled: false,
                         onTap: _busy ? null : _reportSpam,
@@ -778,7 +781,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     Expanded(
                       child: _CallAction(
                         icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
-                        label: 'Decline',
+                        label: uiCopy(UiMessage.m_decline_a2d285b352),
                         tint: AD.destructiveBg,
                         filled: true,
                         onTap: _busy ? null : _decline,
@@ -787,7 +790,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     Expanded(
                       child: _CallAction(
                         icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                        label: 'Accept',
+                        label: uiCopy(UiMessage.m_accept_89713b9c9c),
                         tint: AD.incomingCall,
                         filled: true,
                         onTap: _busy ? null : _accept,
@@ -796,7 +799,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                     Expanded(
                       child: _CallAction(
                         icon: PhosphorIcons.headset(PhosphorIconsStyle.bold),
-                        label: 'Receptionist',
+                        label: uiCopy(UiMessage.m_receptionist_ab63c0d065),
                         tint: AD.textSecondary,
                         filled: false,
                         onTap: _busy ? null : _receptionist,
@@ -853,6 +856,7 @@ class _CallAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final dim = onTap == null;
     return GestureDetector(
       onTap: onTap,
@@ -930,6 +934,7 @@ class _QuickReplySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       decoration: const BoxDecoration(
         color: AD.card,
@@ -947,12 +952,12 @@ class _QuickReplySheet extends StatelessWidget {
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text('Quick replies', style: ADText.appTitle(c: AD.textPrimary)),
+          child: UiText(UiMessage.m_quick_replies_ba5ca289c1, style: ADText.appTitle(c: AD.textPrimary)),
         ),
         const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text('$callerName gets this as a message — the call ends quietly',
+          child: UiText(UiMessage.m_callername_gets_this_as_a_47f50053ec, params: {'callerName': (callerName).toString()},
               style: ADText.preview(c: AD.textSecondary)),
         ),
         const SizedBox(height: Msg.s3),
