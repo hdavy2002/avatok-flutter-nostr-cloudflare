@@ -61,6 +61,7 @@ const privatePreviewFiles = new Set([
 const derived = new Map([
   ['islands/dashboard/MyFavourites.tsx', new Set(['thumb'])],
   ['islands/admin/SubmissionPanel.tsx', new Set(['faceUrl'])],
+  ['layouts/Help.astro', new Set(['stampImage'])],
 ]);
 for (const file of walk(join(web, 'src')).filter(file => /\.(astro|tsx)$/.test(file))) {
   const name = relative(join(web, 'src'), file);
