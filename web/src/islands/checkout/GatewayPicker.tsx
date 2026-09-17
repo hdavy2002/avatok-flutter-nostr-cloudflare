@@ -287,6 +287,7 @@ export function GatewayPicker({
         });
         setHdfcIntent(intent);
         setPhase('hdfc-qr');
+        setBusy(false);
         return;
       }
       const created = await request<GatewayOrderResponse>(`/api/pay/${selected}/order`, {
