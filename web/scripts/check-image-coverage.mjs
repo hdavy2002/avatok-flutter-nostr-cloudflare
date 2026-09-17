@@ -56,6 +56,7 @@ for (const file of walk(join(web, 'dist')).filter(file => /\.(html|css)$/.test(f
 const privatePreviewFiles = new Set([
   'islands/agent-live/AgentTalkRoom.tsx', 'islands/consult-gs/SessionChat.tsx',
   'islands/live-gs/GsChat.tsx', 'islands/vision/session/SnapshotSheet.tsx',
+  'islands/checkout/GatewayPicker.tsx',
 ]);
 const derived = new Map([
   ['islands/dashboard/MyFavourites.tsx', new Set(['thumb'])],
