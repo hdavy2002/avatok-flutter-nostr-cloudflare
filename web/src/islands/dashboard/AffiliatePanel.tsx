@@ -84,7 +84,7 @@ function Inner() {
       <div>
         <h2 className="mb-3 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.219ee7d1ee3f648a" source="Your links" /></h2>
         {links.length === 0 ? (
-          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm"><UiText id="web-dashboard.a75df30368506590" source="No links yet — open a listing in the marketplace and tap \"Share & earn\" to create one." /></div>
+          <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm"><UiText id="web-dashboard.a75df30368506590" source={'No links yet — open a listing in the marketplace and tap "Share & earn" to create one.'} /></div>
         ) : (
           <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
             {links.map((l, i) => (
