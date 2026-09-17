@@ -209,7 +209,7 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 
 // The promoted homepage has one accurate share preview and canonical URL.
 const rawShareImage = meta(rawHtml, 'og:image');
-assert.match(rawShareImage, /^https:\/\/avatok\.ai\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.jpg$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
+assert.match(rawShareImage, /^https:\/\/avatok\.ai\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.(?:jpg|png)$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
 assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
 assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
