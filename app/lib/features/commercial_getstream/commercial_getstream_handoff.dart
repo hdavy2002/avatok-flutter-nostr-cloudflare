@@ -5,10 +5,14 @@
 // call type and call id. Keeping this contract separate from the widgets makes
 // it difficult for a future UI to accidentally fall back to Cloudflare, a
 // legacy CallRoom, or a client-generated room.
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart' as video;
 import 'package:stream_chat/stream_chat.dart' as chat;
 
 import '../../core/chat_sdk.dart';
+import '../../core/calls/stream_video_quality_controller.dart';
 import '../../core/remote_config.dart';
 import '../../identity/identity.dart' show AccountScope;
 
@@ -271,6 +275,7 @@ class CommercialGetStreamMediaPlan {
   video.CallConnectOptions get connectOptions => video.CallConnectOptions(
         camera: video.TrackOption.fromSetting(enabled: cameraEnabled),
         microphone: video.TrackOption.fromSetting(enabled: microphoneEnabled),
+        targetResolution: const video.StreamTargetResolution(width: 1280, height: 720),
       );
 }
 
@@ -280,6 +285,7 @@ class CommercialGetStreamSession {
     required this.call,
     this.chatClient,
     this.chatChannel,
+    this.quality,
   }) : accountId = AccountScope.id ?? '' {
     _active.add(this);
   }
@@ -303,7 +309,14 @@ class CommercialGetStreamSession {
   final video.Call call;
   final chat.StreamChatClient? chatClient;
   final chat.Channel? chatChannel;
+  final StreamVideoQualityController? quality;
   final String accountId;
+  VoidCallback? _qualityBindingCleanup;
+
+  void attachQualityBinding(VoidCallback cleanup) {
+    _qualityBindingCleanup?.call();
+    _qualityBindingCleanup = cleanup;
+  }
 
   Future<void>? _leaveFuture;
 
@@ -320,6 +333,10 @@ class CommercialGetStreamSession {
 
   Future<void> _leaveInternal() async {
     try {
+      _qualityBindingCleanup?.call();
+      _qualityBindingCleanup = null;
+      await quality?.close();
+      quality?.dispose();
       try {
         await call.setCameraEnabled(enabled: false).timeout(const Duration(seconds: 2));
       } catch (_) {}
@@ -430,6 +447,7 @@ class ServerAuthorizedCommercialGetStreamConnector
         callType: video.StreamCallType.fromString(handoff.callType),
         id: handoff.callId,
       );
+      StreamVideoQualityController.enableSubscriberPause(call);
       final plan = CommercialGetStreamMediaPlan(
         canPublish: handoff.mediaPlan.canPublish,
         cameraEnabled: handoff.mediaPlan.canPublish && cameraEnabled,
@@ -442,11 +460,23 @@ class ServerAuthorizedCommercialGetStreamConnector
                 handoff.role == CommercialGetStreamRole.host,
       );
       if (joined.isFailure) throw StateError('GetStream room join rejected');
+      // Guard the await boundary: a departing account must not attach a new
+      // controller or preference store to an already-switched account.
+      handoff.assertForAccount();
+      final quality = RemoteConfig.commercialQualityPolicy.enabled
+          ? StreamVideoQualityController.forCall(
+              call,
+              videoAllowed: true,
+              canPublish: plan.canPublish,
+            )
+          : null;
+      if (quality != null) unawaited(quality.start());
       return CommercialGetStreamSession(
         client: client,
         call: call,
         chatClient: chatClient,
         chatChannel: chatChannel,
+        quality: quality,
       );
     } catch (_) {
       // A Call object can exist even when join() rejects. Leave it before

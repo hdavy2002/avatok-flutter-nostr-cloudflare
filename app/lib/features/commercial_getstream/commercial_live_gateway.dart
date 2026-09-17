@@ -4,10 +4,159 @@
 // GetStream credentials. Never move this call to a cacheable GET.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
+import '../../core/calls/stream_video_quality_controller.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
+import '../../identity/identity.dart' show AccountScope;
 import 'commercial_getstream_handoff.dart';
+
+enum CommercialQualityMode {
+  auto('auto'),
+  bestQuality('best'),
+  dataSaver('data_saver');
+
+  const CommercialQualityMode(this.wireValue);
+  final String wireValue;
+
+  static CommercialQualityMode fromWire(Object? value) => switch (value) {
+    'best' => bestQuality,
+    'data_saver' => dataSaver,
+    _ => auto,
+  };
+}
+
+/// Preference only. A mode is not proof of applied media quality, and it must
+/// never influence price or camera/microphone intent.
+class CommercialQualityPreferences {
+  CommercialQualityPreferences._();
+  static const _storage = FlutterSecureStorage();
+  static const _key = 'commercial_quality_v1';
+
+  static Future<CommercialQualityMode> load(String accountId) async {
+    if (accountId.isEmpty || AccountScope.id != accountId) return CommercialQualityMode.auto;
+    // Capture the scoped key before any await; never migrate a global value.
+    final key = scopedKey(_key);
+    try {
+      final value = await _storage.read(key: key);
+      return AccountScope.id == accountId
+          ? CommercialQualityMode.fromWire(value) : CommercialQualityMode.auto;
+    } catch (_) {
+      return CommercialQualityMode.auto;
+    }
+  }
+
+  static Future<void> save(String accountId, CommercialQualityMode mode) async {
+    if (accountId.isEmpty || AccountScope.id != accountId) {
+      throw StateError('Quality preference account changed');
+    }
+    final key = scopedKey(_key);
+    await _storage.write(key: key, value: mode.wireValue);
+  }
+}
+
+class CommercialQualitySnapshot {
+  const CommercialQualitySnapshot({
+    this.mode = CommercialQualityMode.auto,
+    this.qualityReduced = false,
+    this.videoPaused = false,
+  });
+  final CommercialQualityMode mode;
+  // Controller-confirmed adaptations only; camera-off is not videoPaused.
+  final bool qualityReduced, videoPaused;
+}
+
+/// The media slice implements this contract. setMode resolves only after the
+/// controller accepts the preference; snapshots describe applied media state.
+/// The controller loads CommercialQualityPreferences on session creation.
+abstract interface class CommercialQualityController
+    implements ValueListenable<CommercialQualitySnapshot> {
+  String get accountId;
+  Future<void> setMode(CommercialQualityMode mode);
+}
+
+/// Bridges the media controller's truthful applied state to the feature-level
+/// binding used by consultation/live widgets. The core controller stays free of
+/// marketplace imports, while every active SDK call gets one scoped adapter.
+class _StreamCommercialQualityController extends ChangeNotifier
+    implements CommercialQualityController {
+  _StreamCommercialQualityController(this._delegate) {
+    _delegate.addListener(_forward);
+  }
+  final StreamVideoQualityController _delegate;
+
+  @override
+  String get accountId => AccountScope.id ?? '';
+
+  @override
+  CommercialQualitySnapshot get value {
+    final requested = _delegate.requested;
+    final capture = _delegate.appliedCapture;
+    final incoming = _delegate.appliedIncoming;
+    return CommercialQualitySnapshot(
+      mode: switch (_delegate.policy.mode) {
+        VideoQualityMode.best => CommercialQualityMode.bestQuality,
+        VideoQualityMode.dataSaver => CommercialQualityMode.dataSaver,
+        VideoQualityMode.auto => CommercialQualityMode.auto,
+      },
+      qualityReduced: (capture != null && capture.index < requested.index) ||
+          (incoming != null && incoming.index < requested.index),
+      videoPaused: _delegate.serverPaused || _delegate.incomingPaused ||
+          _delegate.cameraPausedForQuality,
+    );
+  }
+
+  void _forward() => notifyListeners();
+
+  @override
+  Future<void> setMode(CommercialQualityMode mode) => _delegate.setMode(
+        switch (mode) {
+          CommercialQualityMode.bestQuality => VideoQualityMode.best,
+          CommercialQualityMode.dataSaver => VideoQualityMode.dataSaver,
+          CommercialQualityMode.auto => VideoQualityMode.auto,
+        },
+      );
+
+  void close() => _delegate.removeListener(_forward);
+}
+
+/// Attach the shared quality state to a single SDK call. The returned cleanup
+/// is safe after reconnect because it only removes its own adapter instance.
+VoidCallback attachCommercialQualityController(
+  Object call,
+  StreamVideoQualityController controller,
+) {
+  final adapter = _StreamCommercialQualityController(controller);
+  final detach = CommercialQualityBindings.attach(call, adapter);
+  return () {
+    adapter.close();
+    detach();
+  };
+}
+
+/// Session-scoped binding seam without adding quality methods to gateways or
+/// touching media controllers. Attach to the SDK Call on creation, detach on
+/// teardown, and attach again to the new Call after reconnect. No global user
+/// state is retained; stale teardown cannot detach a replacement controller.
+class CommercialQualityBindings {
+  CommercialQualityBindings._();
+  static final _calls = Expando<ValueNotifier<CommercialQualityController?>>();
+
+  static ValueNotifier<CommercialQualityController?> forCall(Object call) =>
+      _calls[call] ??= ValueNotifier<CommercialQualityController?>(null);
+
+  static VoidCallback attach(Object call, CommercialQualityController controller) {
+    final binding = forCall(call);
+    binding.value = controller;
+    return () {
+      if (identical(binding.value, controller)) binding.value = null;
+    };
+  }
+}
 
 enum LiveServerState {
   scheduled,

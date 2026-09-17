@@ -122,6 +122,16 @@ export interface PlatformConfig {
   commercialLiveStartGraceMin: number;
   commercialReplayEnabled: boolean;
   commercialRecordingEnabled: boolean;
+  // Media policy only: never used for entitlement, pricing or settlement.
+  // Version 1 ships disabled until the matching controllers are integrated.
+  commercialQualityEnabled: boolean;
+  commercialQualityPolicyVersion: number;
+  commercialQualityMaxVideoHeight: number;
+  commercialQualityDataSaverMaxVideoHeight: number;
+  commercialQualitySampleIntervalMs: number;
+  commercialQualityDowngradeSamples: number;
+  commercialQualityRecoverySamples: number;
+  commercialQualityCooldownMs: number;
   // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 audio/video calling. The pivot
   // (Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md §4) kills it:
   // Messenger keeps simple text messaging, and all paid session media moves to
@@ -2010,6 +2020,14 @@ const DEFAULTS: PlatformConfig = {
   commercialLiveStartGraceMin: 15,
   commercialReplayEnabled: false,
   commercialRecordingEnabled: false,
+  commercialQualityEnabled: false,
+  commercialQualityPolicyVersion: 1,
+  commercialQualityMaxVideoHeight: 2160,
+  commercialQualityDataSaverMaxVideoHeight: 480,
+  commercialQualitySampleIntervalMs: 3000,
+  commercialQualityDowngradeSamples: 3,
+  commercialQualityRecoverySamples: 8,
+  commercialQualityCooldownMs: 15000,
   messengerCallingEnabled: false,  // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 A/V is killed by the marketplace-first pivot. NOT streamCallsEnabled — see the interface comment.
   conferenceEnabled: true,         // group AUDIO calls (master kill switch)
   groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
@@ -2668,7 +2686,39 @@ export const PERMANENTLY_DISABLED_PAYMENT_FLAGS = Object.freeze({
 });
 
 export function enforcePermanentFreeCommunication(config: PlatformConfig): PlatformConfig {
-  return { ...config, ...PERMANENT_FREE_COMMUNICATION, ...PERMANENTLY_DISABLED_PAYMENT_FLAGS };
+  return { ...normalizeCommercialQualityPolicy(config), ...PERMANENT_FREE_COMMUNICATION, ...PERMANENTLY_DISABLED_PAYMENT_FLAGS };
+}
+
+// Keep the same defaults/bounds in RemoteConfig and the browser policy parser.
+// Reject malformed writes; sanitize old/manual KV overrides on every read.
+export const COMMERCIAL_QUALITY_BOUNDS = {
+  commercialQualityPolicyVersion: [1, 1],
+  commercialQualityMaxVideoHeight: [180, 2160],
+  commercialQualityDataSaverMaxVideoHeight: [144, 480],
+  commercialQualitySampleIntervalMs: [1000, 10000],
+  commercialQualityDowngradeSamples: [1, 10],
+  commercialQualityRecoverySamples: [3, 30],
+  commercialQualityCooldownMs: [5000, 60000],
+} as const;
+type CommercialQualityNumericKey = keyof typeof COMMERCIAL_QUALITY_BOUNDS;
+
+export function normalizeCommercialQualityPolicy(config: PlatformConfig): PlatformConfig {
+  const next = { ...config };
+  const supported = config.commercialQualityPolicyVersion === 1;
+  next.commercialQualityEnabled = supported && config.commercialQualityEnabled === true;
+  for (const key of Object.keys(COMMERCIAL_QUALITY_BOUNDS) as CommercialQualityNumericKey[]) {
+    const [min, max] = COMMERCIAL_QUALITY_BOUNDS[key];
+    const value = config[key];
+    next[key] = typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value)
+      ? Math.max(min, Math.min(max, value)) : DEFAULTS[key];
+  }
+  next.commercialQualityDataSaverMaxVideoHeight = Math.min(
+    next.commercialQualityDataSaverMaxVideoHeight, next.commercialQualityMaxVideoHeight,
+  );
+  next.commercialQualityRecoverySamples = Math.max(
+    next.commercialQualityRecoverySamples, next.commercialQualityDowngradeSamples + 1,
+  );
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -2763,6 +2813,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
+    ...Object.keys(COMMERCIAL_QUALITY_BOUNDS),
     "commercialCreatorFeePct", "commercialSettlementHoldHours",
     // [COMM-REFUND-POL-1] Integers → they MUST be here or putConfig stores them as
     // strings and `Number(policy.creator_cancel_refund_pct) === 100` quietly stops
@@ -2915,6 +2966,12 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     if (numericKeys.has(k) ? typeof v !== "number" : stringKeys.has(k) ? typeof v !== "string" : typeof v !== "boolean") {
       return json({ error: `bad type for ${k}` }, 400);
     }
+    if (Object.prototype.hasOwnProperty.call(COMMERCIAL_QUALITY_BOUNDS, k)) {
+      const [min, max] = COMMERCIAL_QUALITY_BOUNDS[k as CommercialQualityNumericKey];
+      if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) {
+        return json({ error: `${k} must be an integer ${min}-${max}` }, 400);
+      }
+    }
     if (k.startsWith("messenger") && numericKeys.has(k) && (!Number.isFinite(v as number) || (v as number) < 0)) {
       return json({ error: `${k} must be a non-negative finite number` }, 400);
     }
@@ -2963,6 +3020,15 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: `${k} must be a non-empty string of at most 64 characters` }, 400);
     }
     next[k] = v;
+  }
+  if (Object.keys(body).some(key => key.startsWith('commercialQuality'))) {
+    const proposed = { ...normalizeCommercialQualityPolicy({ ...DEFAULTS, ...current }), ...body } as PlatformConfig;
+    if (proposed.commercialQualityDataSaverMaxVideoHeight > proposed.commercialQualityMaxVideoHeight) {
+      return json({ error: 'Data saver height must not exceed maximum video height' }, 400);
+    }
+    if (proposed.commercialQualityRecoverySamples <= proposed.commercialQualityDowngradeSamples) {
+      return json({ error: 'Quality recovery samples must exceed downgrade samples' }, 400);
+    }
   }
   await env.TOKENS.put(KEY, JSON.stringify(next));
   // [AVA-CFG-CACHE-1] Bust this isolate's memo so the admin who just flipped the

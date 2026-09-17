@@ -37,7 +37,7 @@ import { UiText } from "../../lib/i18n/react";
  * yet, or the commercial lane's flags are off) falls back to today's
  * direct-join behaviour, with a console warning, rather than breaking.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
@@ -50,6 +50,7 @@ import { StartInApp } from '../../components/StartInApp';
 import { RoomSocket, type RosterMsg, type ChatMsg, type RoomEvent } from './RoomSocket';
 import type { ChatAttachment } from '../../lib/sessionUpload';
 import { capture, captureException } from '../../lib/analytics';
+import { API_BASE } from '../../lib/config';
 import { payAndJoinPath } from '../../lib/urls';
 import {
   joinCommercialSession,
@@ -77,6 +78,203 @@ interface JoinPrefs {
 
 const NOSHOW_CHECK_MS = 5000;
 const END_GRACE_MS = 2 * 60_000; // ends_at + 2 min, matches commercialConsultJoinLateMin's intent
+
+export type CommercialQualityMode = 'auto' | 'best' | 'data_saver';
+export interface CommercialQualityPolicy {
+  enabled: boolean;
+  version: 1;
+  maxVideoHeight: number;
+  dataSaverMaxVideoHeight: number;
+  sampleIntervalMs: number;
+  downgradeSamples: number;
+  recoverySamples: number;
+  cooldownMs: number;
+}
+
+/** Media limits only. Keep bounds/defaults aligned with Worker and Flutter. */
+export function parseCommercialQualityPolicy(value: unknown): CommercialQualityPolicy {
+  const cfg = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+  const bounded = (key: string, fallback: number, min: number, max: number) => {
+    const n = cfg[key];
+    return typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n)
+      ? Math.max(min, Math.min(max, n)) : fallback;
+  };
+  const maxVideoHeight = bounded('commercialQualityMaxVideoHeight', 2160, 180, 2160);
+  const downgradeSamples = bounded('commercialQualityDowngradeSamples', 3, 1, 10);
+  return {
+    enabled: cfg.commercialQualityEnabled === true && cfg.commercialQualityPolicyVersion === 1,
+    version: 1,
+    maxVideoHeight,
+    dataSaverMaxVideoHeight: Math.min(maxVideoHeight, bounded('commercialQualityDataSaverMaxVideoHeight', 480, 144, 480)),
+    sampleIntervalMs: bounded('commercialQualitySampleIntervalMs', 3000, 1000, 10000),
+    downgradeSamples,
+    recoverySamples: Math.max(downgradeSamples + 1, bounded('commercialQualityRecoverySamples', 8, 3, 30)),
+    cooldownMs: bounded('commercialQualityCooldownMs', 15000, 5000, 60000),
+  };
+}
+
+export interface CommercialQualitySnapshot {
+  mode: CommercialQualityMode;
+  // Adaptation confirmed by the controller; ordinary camera-off is not paused.
+  qualityReduced: boolean;
+  videoPaused: boolean;
+}
+
+/** The media slice owns implementation, applying policy, and lifecycle.
+ * getSnapshot must return a stable object until state changes (React store).
+ * setMode resolves after acceptance; it does not change camera/mic intent.
+ * accountId is the same authenticated account scope used for preferences. */
+export interface CommercialQualityController {
+  readonly accountId: string;
+  getSnapshot(): CommercialQualitySnapshot;
+  subscribe(listener: () => void): () => void;
+  setMode(mode: CommercialQualityMode): Promise<void>;
+}
+
+type QualityBinding = { controller: CommercialQualityController | null; listeners: Set<() => void> };
+const qualityBindings = new WeakMap<Call, QualityBinding>();
+function qualityBinding(call: Call): QualityBinding {
+  let binding = qualityBindings.get(call);
+  if (!binding) {
+    binding = { controller: null, listeners: new Set() };
+    qualityBindings.set(call, binding);
+  }
+  return binding;
+}
+
+/** Attach on Call creation, detach BEFORE controller disposal, and reattach
+ * after reconnect. Weak keys prevent departed sessions becoming a global store. */
+export function attachCommercialQualityController(call: Call, controller: CommercialQualityController): () => void {
+  const binding = qualityBinding(call);
+  binding.controller = controller;
+  binding.listeners.forEach(listener => listener());
+  return () => {
+    if (binding.controller !== controller) return;
+    binding.controller = null;
+    binding.listeners.forEach(listener => listener());
+  };
+}
+
+export function commercialQualityMode(value: unknown): CommercialQualityMode {
+  return value === 'best' || value === 'data_saver' ? value : 'auto';
+}
+
+// Match Flutter's existing per-account key convention; never read a global
+// fallback or persist an unauthenticated/unknown account's preference.
+const qualityPreferenceKey = (accountId: string) => `commercial_quality_v1_${accountId}`;
+export function loadCommercialQualityPreference(accountId: string): CommercialQualityMode {
+  if (!accountId) return 'auto';
+  try { return commercialQualityMode(localStorage.getItem(qualityPreferenceKey(accountId))); }
+  catch { return 'auto'; }
+}
+
+const defaultQualitySnapshot: CommercialQualitySnapshot = { mode: 'auto', qualityReduced: false, videoPaused: false };
+const noQualitySubscription = () => () => {};
+
+/** Shared by buyer consultation and receive-only live viewer. No SDK media
+ * methods are called here; controls cannot manufacture a controller or host. */
+export function CommercialQualityControls({ accountId, call, disabled = false }: {
+  accountId: string | null; call?: Call; disabled?: boolean;
+}) {
+  const { t: uiT } = useUiTranslation('web-consult-gs');
+  const [policy, setPolicy] = useState(() => parseCommercialQualityPolicy(null));
+  const [preference, setPreference] = useState<CommercialQualityMode>('auto');
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+  const savingRef = useRef(false);
+  const scopeRef = useRef(accountId);
+  scopeRef.current = accountId;
+  const qualityCallRef = useRef(call);
+  qualityCallRef.current = call;
+  const binding = call ? qualityBinding(call) : null;
+  const subscribeBinding = useCallback((listener: () => void) => {
+    if (!binding) return () => {};
+    binding.listeners.add(listener);
+    return () => { binding.listeners.delete(listener); };
+  }, [binding]);
+  const readBinding = useCallback(() => binding?.controller ?? null, [binding]);
+  const controller = useSyncExternalStore(subscribeBinding, readBinding, () => null);
+  const owned = controller?.accountId === accountId && !!accountId ? controller : null;
+  const subscribeController = useCallback((listener: () => void) =>
+    owned ? owned.subscribe(listener) : noQualitySubscription(), [owned]);
+  const readSnapshot = useCallback(() => owned?.getSnapshot() ?? defaultQualitySnapshot, [owned]);
+  const snapshot = useSyncExternalStore(subscribeController, readSnapshot, () => defaultQualitySnapshot);
+
+  useEffect(() => {
+    ++generation.current;
+    savingRef.current = false;
+    setSaving(false); setError(null);
+    setPreference(accountId ? loadCommercialQualityPreference(accountId) : 'auto');
+    setLoadedScope(accountId);
+    return () => { ++generation.current; };
+  }, [accountId, call]);
+
+  useEffect(() => {
+    let disposed = false;
+    let request: AbortController | null = null;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      request?.abort();
+      clearTimeout(deadline);
+      const pending = new AbortController();
+      request = pending;
+      deadline = setTimeout(() => pending.abort(), 10000);
+      try {
+        const response = await fetch(`${API_BASE}/api/config`, { signal: pending.signal });
+        if (!response.ok) throw new Error('quality policy unavailable');
+        const next: unknown = await response.json();
+        if (!disposed && request === pending) setPolicy(parseCommercialQualityPolicy(next));
+      } catch {
+        if (!disposed && request === pending) setPolicy(parseCommercialQualityPolicy(null));
+      } finally {
+        if (request === pending) clearTimeout(deadline);
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 60000);
+    return () => { disposed = true; clearInterval(timer); clearTimeout(deadline); request?.abort(); };
+  }, []);
+
+  const selectMode = async (mode: CommercialQualityMode) => {
+    if (!accountId || loadedScope !== accountId || savingRef.current || disabled || !policy.enabled || (call && !owned)) return;
+    const operation = generation.current;
+    savingRef.current = true;
+    setSaving(true); setError(null);
+    try {
+      if (owned) await owned.setMode(mode);
+      if (operation !== generation.current || scopeRef.current !== accountId || qualityCallRef.current !== call || (binding && binding.controller !== owned)) return;
+      localStorage.setItem(qualityPreferenceKey(accountId), mode);
+      setPreference(mode);
+    } catch {
+      if (operation === generation.current) setError(uiT('web-consult-gs.quality-save-error', 'Could not save quality preference. Try again.'));
+    } finally {
+      if (operation === generation.current) { savingRef.current = false; setSaving(false); }
+    }
+  };
+
+  if (!policy.enabled || !accountId) return null;
+  return <section className="flex flex-wrap items-center gap-3 px-3 py-2" aria-label={uiT('web-consult-gs.quality-label', 'Video quality')}>
+    <label className="flex min-w-0 items-center gap-2 font-body text-sm">
+      <span>{uiT('web-consult-gs.quality-label', 'Video quality')}</span>
+      <select className="min-w-0 rounded border border-ink bg-card px-2 py-1" value={owned ? snapshot.mode : loadedScope === accountId ? preference : 'auto'}
+        disabled={disabled || saving || loadedScope !== accountId || (!!call && !owned)}
+        onChange={event => void selectMode(commercialQualityMode(event.target.value))}>
+        <option value="auto">{uiT('web-consult-gs.quality-auto', 'Auto')}</option>
+        <option value="best">{uiT('web-consult-gs.quality-best', 'Best quality')}</option>
+        <option value="data_saver">{uiT('web-consult-gs.quality-data-saver', 'Data saver')}</option>
+      </select>
+    </label>
+    {(snapshot.videoPaused || snapshot.qualityReduced) && <p role="status" className="font-body text-sm">
+      {snapshot.videoPaused ? uiT('web-consult-gs.quality-paused', 'Video paused to keep audio connected')
+        : uiT('web-consult-gs.quality-reduced', 'Quality reduced to keep the session connected')}
+    </p>}
+    {call && !owned && <p className="font-body text-sm">{uiT('web-consult-gs.quality-unavailable', 'Quality controls are unavailable for this session.')}</p>}
+    {error && <p role="alert" className="font-body text-sm">{error}</p>}
+  </section>;
+}
 
 function fmtTime(ms: number): string {
   try {
@@ -958,6 +1156,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   if (phase === 'live' && call && creds && endsAt && jwt) {
     const role = creds.role === 'creator' ? 'creator' : 'buyer';
     return (
+      <>
+      <CommercialQualityControls key={user?.id ?? 'anonymous'} accountId={user?.id ?? null} call={call} />
       <CallStage
         call={call}
         bookingId={booking}
@@ -971,6 +1171,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         chat={chatLines}
         onSendChat={sendWaitingChat}
       />
+      </>
     );
   }
 
@@ -1041,6 +1242,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
           error={joinErr}
           onReady={onReadyFromPreJoin}
         />
+        <CommercialQualityControls key={user?.id ?? 'anonymous'} accountId={user?.id ?? null} disabled={phase === 'joining'} />
       </div>
     </Centered>
   );

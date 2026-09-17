@@ -1,4 +1,12 @@
 {
+  "web-consult-gs.quality-label": "Video quality",
+  "web-consult-gs.quality-auto": "Auto",
+  "web-consult-gs.quality-best": "Best quality",
+  "web-consult-gs.quality-data-saver": "Data saver",
+  "web-consult-gs.quality-paused": "Video paused to keep audio connected",
+  "web-consult-gs.quality-reduced": "Quality reduced to keep the session connected",
+  "web-consult-gs.quality-unavailable": "Quality controls are unavailable for this session.",
+  "web-consult-gs.quality-save-error": "Could not save quality preference. Try again.",
   "web-consult-gs.b6da650a6f31f571": "Connecting you to",
   "web-consult-gs.496a37e3a10b9755": "Extend",
   "web-consult-gs.fc6e4a408d56be96": "Leave",

@@ -15,6 +15,7 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/calls/stream_video_quality_controller.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/session_api.dart';
@@ -111,6 +112,9 @@ class _LiveReadinessScreenState extends State<LiveReadinessScreen> {
     try {
       final grant = await widget.gateway.prepareHost(widget.listingId);
       final session = await widget.connector.connect(grant.handoff);
+      if (session.quality != null) {
+        session.attachQualityBinding(attachCommercialQualityController(session.call, session.quality!));
+      }
       if (!mounted) {
         await session.leave();
         return;
@@ -254,7 +258,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   CallParticipantState? get _local => _call.state.value.localParticipant;
 
   bool get _cameraEnabled =>
-      _local?.publishedTracks.containsKey(SfuTrackType.video) == true;
+      _local?.publishedTracks[SfuTrackType.video]?.muted == false;
 
   bool get _microphoneEnabled =>
       _local?.publishedTracks.containsKey(SfuTrackType.audio) == true;
@@ -319,9 +323,12 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
     if (_mediaBusy || _starting) return;
     setState(() => _mediaBusy = true);
     try {
-      final result = await _call.setCameraEnabled(enabled: !_cameraEnabled);
+      final quality = widget.session.quality;
+      final success = quality != null
+          ? await quality.setCameraEnabled(!_cameraEnabled)
+          : (await _call.setCameraEnabled(enabled: !_cameraEnabled)).isSuccess;
       if (!mounted) return;
-      setState(() => _error = result.isSuccess
+      setState(() => _error = success
           ? null
           : 'Could not change camera. Check permissions and try again.');
     } catch (_) {
@@ -335,9 +342,12 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
     if (_mediaBusy || _starting) return;
     setState(() => _mediaBusy = true);
     try {
-      final result = await _call.flipCamera();
+      final quality = widget.session.quality;
+      final success = quality != null
+          ? await quality.flipCamera()
+          : (await _call.flipCamera()).isSuccess;
       if (!mounted) return;
-      setState(() => _error = result.isSuccess
+      setState(() => _error = success
           ? null
           : 'Could not switch camera. Try again.');
     } catch (_) {
@@ -469,6 +479,8 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
               ),
             ),
             const SizedBox(height: Msg.s4),
+            if (widget.session.quality case final quality?)
+              StreamVideoQualityControl(controller: quality),
             _BackstageDeviceControls(
               enabled: !_starting && !_mediaBusy,
               cameraEnabled: _cameraEnabled,
@@ -639,7 +651,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   void initState() {
     super.initState();
     _callState = _call.state.valueStream.listen((state) {
-      if (mounted) setState(() {});
+      if (mounted) setState(() {
+        _cameraOff = state.localParticipant?.publishedTracks[SfuTrackType.video]
+            ?.muted != false;
+      });
       // React to the SDK's own connection status immediately instead of
       // waiting up to 3 s for the next poll tick — the state poll remains the
       // source of truth for the deadline shown, this only shortens the delay.
@@ -750,8 +765,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   }
 
   Future<void> _toggleCamera() async {
-    final result = await _call.setCameraEnabled(enabled: _cameraOff);
-    if (mounted && result.isSuccess) setState(() => _cameraOff = !_cameraOff);
+    final enabled = _call.state.value.localParticipant
+        ?.publishedTracks[SfuTrackType.video]?.muted == false;
+    final quality = widget.session.quality;
+    final success = quality != null
+        ? await quality.setCameraEnabled(!enabled)
+        : (await _call.setCameraEnabled(enabled: !enabled)).isSuccess;
+    if (mounted && success) setState(() => _cameraOff = enabled);
   }
 
   Future<void> _report() async {
@@ -839,8 +859,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                               borderRadius: BorderRadius.circular(Msg.rLg),
                               child: Container(
                                 color: AD.card,
-                                child: p.publishedTracks
-                                        .containsKey(SfuTrackType.video)
+                                child: p.publishedTracks[SfuTrackType.video]?.muted == false &&
+                                        !p.pausedTracks.contains(SfuTrackType.video)
                                     ? StreamVideoRenderer(
                                         call: _call,
                                         participant: p,
@@ -891,9 +911,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           ),
           if (widget.capabilities.captions)
             const UiText(UiMessage.m_captions_available_e8482c3ad8, style: TextStyle(fontSize: 12)),
-          if (widget.capabilities.qualityControls)
-            const UiText(UiMessage.m_quality_controls_available_fffcbc89bb,
-                style: TextStyle(fontSize: 12)),
+          if (widget.session.quality case final quality?)
+            StreamVideoQualityControl(controller: quality),
           if (_error != null)
             Text(_error!, style: ADText.preview(c: AD.danger)),
           CommercialGetStreamRoomControls(
@@ -981,6 +1000,9 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     try {
       final grant = await widget.gateway.joinViewer(widget.listingId);
       final session = await widget.connector.connect(grant.handoff);
+      if (session.quality != null) {
+        session.attachQualityBinding(attachCommercialQualityController(session.call, session.quality!));
+      }
       if (!mounted) {
         await session.leave();
         return;
@@ -1147,8 +1169,8 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                                 borderRadius: BorderRadius.circular(Msg.rLg),
                                 child: Container(
                                   color: Colors.black,
-                                  child: p.publishedTracks
-                                          .containsKey(SfuTrackType.video)
+                                  child: p.publishedTracks[SfuTrackType.video]?.muted == false &&
+                                          !p.pausedTracks.contains(SfuTrackType.video)
                                       ? StreamVideoRenderer(
                                           call: session!.call,
                                           participant: p,
@@ -1205,6 +1227,8 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         ),
         if (widget.capabilities.captions)
           const UiText(UiMessage.m_captions_available_e8482c3ad8, style: TextStyle(fontSize: 12)),
+        if (session?.quality case final quality?)
+          StreamVideoQualityControl(controller: quality),
         TextButton.icon(
             onPressed: _leave,
             icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular)),

@@ -16,6 +16,7 @@ import { UiText } from "../../lib/i18n/react";
 // never requests a local camera or microphone — LiveStage only ever renders the
 // host's remote track.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { StreamVideo, StreamCall, type Call } from '@stream-io/video-react-sdk';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { livePath, payAndJoinPath } from '../../lib/urls';
@@ -33,6 +34,7 @@ import {
   type JoinRefusal,
 } from '../../lib/getstream';
 import { LiveStage, type LiveServerState } from './LiveStage';
+import { CommercialQualityControls } from '../consult-gs/ConsultRoomGS';
 
 export interface LiveGsViewerProps {
   listingId: string;
@@ -74,6 +76,7 @@ function reducer(s: State, a: Action): State {
 
 function Inner({ listingId, title, poster, price, creatorName, creatorHandle, creatorAvatar }: LiveGsViewerProps) {
   const {t:uiT}=useUiTranslation("web-live-gs");
+  const { user } = useUser();
 
   const [state, dispatch] = useReducer(reducer, { phase: 'idle', refusal: null, creds: null });
   const jwtRef = useRef<string | null>(null);
@@ -317,6 +320,7 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     return (
       <StreamVideo client={client as any}>
         <StreamCall call={call}>
+          <CommercialQualityControls key={user?.id ?? 'anonymous'} accountId={user?.id ?? null} call={call} />
           <LiveStage
             title={title ?? uiT("web-live-gs.b64ac05f17e64d03","Live")}
             creatorName={creatorName ?? null}

@@ -17,6 +17,49 @@ import 'feature_flags.dart';
 import 'money_api.dart';
 import 'net/ava_dns.dart';
 
+/// Versioned media limits; never a billing policy. Strict parsing deliberately
+/// avoids RemoteConfig's legacy bool-to-number conversion for these fields.
+class CommercialQualityPolicy {
+  const CommercialQualityPolicy({
+    this.enabled = false,
+    this.version = 1,
+    this.maxVideoHeight = 2160,
+    this.dataSaverMaxVideoHeight = 480,
+    this.sampleIntervalMs = 3000,
+    this.downgradeSamples = 3,
+    this.recoverySamples = 8,
+    this.cooldownMs = 15000,
+  });
+
+  final bool enabled;
+  final int version, maxVideoHeight, dataSaverMaxVideoHeight;
+  final int sampleIntervalMs, downgradeSamples, recoverySamples, cooldownMs;
+
+  factory CommercialQualityPolicy.fromConfig(Map<String, dynamic> config) {
+    int bounded(String key, int fallback, int min, int max) {
+      final value = config[key];
+      if (value is! num || !value.isFinite || value != value.roundToDouble()) {
+        return fallback;
+      }
+      return value.clamp(min, max).toInt();
+    }
+    final maxHeight = bounded('commercialQualityMaxVideoHeight', 2160, 180, 2160);
+    final saverHeight = bounded('commercialQualityDataSaverMaxVideoHeight', 480, 144, 480);
+    final downgrade = bounded('commercialQualityDowngradeSamples', 3, 1, 10);
+    final recovery = bounded('commercialQualityRecoverySamples', 8, 3, 30);
+    return CommercialQualityPolicy(
+      enabled: config['commercialQualityEnabled'] == true &&
+          config['commercialQualityPolicyVersion'] == 1,
+      maxVideoHeight: maxHeight,
+      dataSaverMaxVideoHeight: saverHeight > maxHeight ? maxHeight : saverHeight,
+      sampleIntervalMs: bounded('commercialQualitySampleIntervalMs', 3000, 1000, 10000),
+      downgradeSamples: downgrade,
+      recoverySamples: recovery <= downgrade ? downgrade + 1 : recovery,
+      cooldownMs: bounded('commercialQualityCooldownMs', 15000, 5000, 60000),
+    );
+  }
+}
+
 /// Remote kill switches (creator-marketplace Phase 1, audit A2). Mirrors the
 /// Worker's GET /api/config (KV `platform_config`). Fetched at app start and
 /// every 15 min; money/live UI must check the matching getter before
@@ -176,6 +219,10 @@ class RemoteConfig {
       _b('commercialConsultCheckoutEnabled', false);
   static bool get commercialConsultJoinEnabled =>
       _b('commercialConsultJoinEnabled', false);
+
+  /// Unsupported policy versions stay disabled, including cached snapshots.
+  static CommercialQualityPolicy get commercialQualityPolicy =>
+      CommercialQualityPolicy.fromConfig(_cfg);
   static int get commercialCreatorFeePct =>
       (_asNum(_cfg['commercialCreatorFeePct'])?.toInt()) ?? 80;
   static int get commercialSettlementHoldHours =>

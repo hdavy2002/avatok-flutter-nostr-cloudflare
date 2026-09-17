@@ -1,4 +1,12 @@
 {
+  "m_commercial_quality_label": "Video quality",
+  "m_commercial_quality_auto": "Auto",
+  "m_commercial_quality_best": "Best quality",
+  "m_commercial_quality_data_saver": "Data saver",
+  "m_commercial_quality_paused": "Video paused to keep audio connected",
+  "m_commercial_quality_reduced": "Quality reduced to keep the session connected",
+  "m_commercial_quality_unavailable": "Quality controls are unavailable for this session.",
+  "m_commercial_quality_save_error": "Could not save quality preference. Try again.",
   "m_0_bytes_exported_media_excluded_82f7c571a7": "] ?? 0} bytes exported (media excluded).",
   "m_0_free_entry_340eb3f79d": "₹0 · Free entry",
   "m_10_00_19_00_ist_217e850857": "10:00–19:00 IST",

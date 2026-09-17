@@ -22,6 +22,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
+import '../core/calls/stream_video_quality_controller.dart';
 
 import '../core/avatar.dart';
 import '../core/analytics.dart';
@@ -451,6 +452,7 @@ class StreamCallScreen extends StatefulWidget {
 
 class _StreamCallScreenState extends State<StreamCallScreen>
     with WidgetsBindingObserver {
+  late final StreamVideoQualityController _videoQuality;
   StreamSubscription<CallState>? _sub;
   StreamSubscription<StreamStatsBundle>? _statsSub;
   CallState? _state;
@@ -529,6 +531,10 @@ class _StreamCallScreenState extends State<StreamCallScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cameraOff = !widget.video;
+    _videoQuality = StreamVideoQualityController.forCall(
+      widget.call, videoAllowed: widget.video, canPublish: widget.video,
+    );
+    unawaited(_videoQuality.start());
     _connectedAt = DateTime.now();
     // verified: packages/stream_video/lib/src/state_emitter.dart +
     // packages/stream_video/lib/src/call/call.dart. `Call.state` is a
@@ -567,6 +573,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
     // like every other capture in this lane; skipped if media never flowed
     // (nothing to summarise).
     if (_everConnected) _emitQuality();
+    _videoQuality.dispose();
     // ignore: discarded_futures
     _tonePlayer?.dispose();
     super.dispose();
@@ -690,6 +697,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
     }
     if (!widget.outgoing) return;
     _avaHandingOff = true;
+    await _videoQuality.close();
     _avaHandoffTimer?.cancel();
     _connectWatchdog?.cancel();
     _peerGoneTimer?.cancel();
@@ -844,7 +852,11 @@ class _StreamCallScreenState extends State<StreamCallScreen>
 
   void _onState(CallState s) {
     if (!mounted) return;
-    setState(() => _state = s);
+    setState(() {
+      _state = s;
+      _cameraOff = s.localParticipant?.publishedTracks[SfuTrackType.video]
+          ?.muted != false;
+    });
 
     // In a 1:1 call, the remaining participant must not be stranded when the
     // other side leaves locally. The caller owns the server-authoritative
@@ -992,6 +1004,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
       widget.call,
       lastRawBundle: _lastStatsBundle,
     );
+    props.addAll(_videoQuality.telemetry);
     StreamCallService.instance.reportQuality(
       widget.call,
       props,
@@ -1007,6 +1020,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
   Future<void> _endAndPop(String reason) async {
     if (_hangingUp) return;
     _hangingUp = true;
+    await _videoQuality.close();
     _stopBillingPolling();
     if (widget.endForEveryone != null) {
       try {
@@ -1034,6 +1048,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
   Future<void> _hangUp() async {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
+    await _videoQuality.close();
     _stopBillingPolling();
     await _tonePlayer?.stop(reason: 'caller_cancelled');
     if (widget.outgoing && !_everConnected) {
@@ -1080,6 +1095,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
   /// holding the mic.
   Future<void> _closeAfterFailure() async {
     _hangingUp = true;
+    await _videoQuality.close();
     _stopBillingPolling();
     await _tonePlayer?.stop(reason: 'join_failed');
     if (widget.outgoing && !_everConnected) {
@@ -1173,8 +1189,9 @@ class _StreamCallScreenState extends State<StreamCallScreen>
 
   Future<void> _toggleCamera() async {
     try {
-      await widget.call.setCameraEnabled(enabled: _cameraOff);
-      if (mounted) setState(() => _cameraOff = !_cameraOff);
+      final enabled = _videoQuality.cameraEnabled;
+      final success = await _videoQuality.setCameraEnabled(!enabled);
+      if (mounted && success) setState(() => _cameraOff = enabled);
     } catch (_) {/* best-effort */}
   }
 
@@ -1182,7 +1199,7 @@ class _StreamCallScreenState extends State<StreamCallScreen>
   // is a direct method (not `call.camera.flip()`).
   Future<void> _flipCamera() async {
     try {
-      await widget.call.flipCamera();
+      await _videoQuality.flipCamera();
     } catch (_) {/* best-effort */}
   }
 
@@ -1250,13 +1267,12 @@ class _StreamCallScreenState extends State<StreamCallScreen>
                             widget.call.state.value.otherParticipants;
                         CallParticipantState? remote;
                         for (final p in others) {
-                          if (p.publishedTracks
-                              .containsKey(SfuTrackType.video)) {
+                          if (p.publishedTracks[SfuTrackType.video]?.muted == false &&
+                              !p.pausedTracks.contains(SfuTrackType.video)) {
                             remote = p;
                             break;
                           }
                         }
-                        remote ??= others.isNotEmpty ? others.first : null;
                         if (remote == null) return _avatarFallback();
                         return StreamVideoRenderer(
                           call: widget.call,
@@ -1362,6 +1378,17 @@ class _StreamCallScreenState extends State<StreamCallScreen>
                 child: _failurePanel(),
               ),
             // Control row.
+            if (widget.video && _phase != _Phase.failed)
+              Positioned(
+                left: Msg.s4,
+                right: Msg.s4,
+                bottom: Msg.s6 + 76,
+                child: Material(
+                  color: AD.bg,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  child: StreamVideoQualityControl(controller: _videoQuality),
+                ),
+              ),
             Positioned(
               left: 0,
               right: 0,

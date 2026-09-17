@@ -1,6 +1,14 @@
 // Generated from shared/i18n/source/app.json; preserve typed IDs when updating.
-const uiSourceHash = "42d35eb52a43b35fca43e747951d3a8ce2e917770c5d5de01212e59f3a7efe95";
+const uiSourceHash = "f168aab984654befb172b63a8d8df29c46c4bfb9b374d37ef38c48cab5420053";
 enum UiMessage {
+  m_commercial_quality_label,
+  m_commercial_quality_auto,
+  m_commercial_quality_best,
+  m_commercial_quality_data_saver,
+  m_commercial_quality_paused,
+  m_commercial_quality_reduced,
+  m_commercial_quality_unavailable,
+  m_commercial_quality_save_error,
   m_0_bytes_exported_media_excluded_82f7c571a7,
   m_0_free_entry_340eb3f79d,
   m_10_00_19_00_ist_217e850857,
@@ -3611,6 +3619,14 @@ enum UiMessage {
   m_zip_eaca4b3069,
 }
 const uiSourceMessages = <String, String>{
+  "m_commercial_quality_label": "Video quality",
+  "m_commercial_quality_auto": "Auto",
+  "m_commercial_quality_best": "Best quality",
+  "m_commercial_quality_data_saver": "Data saver",
+  "m_commercial_quality_paused": "Video paused to keep audio connected",
+  "m_commercial_quality_reduced": "Quality reduced to keep the session connected",
+  "m_commercial_quality_unavailable": "Quality controls are unavailable for this session.",
+  "m_commercial_quality_save_error": "Could not save quality preference. Try again.",
   "m_0_bytes_exported_media_excluded_82f7c571a7": "] ?? 0} bytes exported (media excluded).",
   "m_0_free_entry_340eb3f79d": "₹0 · Free entry",
   "m_10_00_19_00_ist_217e850857": "10:00–19:00 IST",

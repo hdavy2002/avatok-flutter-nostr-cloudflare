@@ -146,6 +146,9 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
               handoff, cameraEnabled: _cameraIntent, microphoneEnabled: _microphoneOn)
           : await widget.connector.connect(handoff);
       if (!mounted) { await session.leave(); return; }
+      if (session.quality != null) {
+        session.attachQualityBinding(attachCommercialQualityController(session.call, session.quality!));
+      }
       await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => CommercialConsultationRoomScreen(
           listingId: widget.listingId, bookingId: widget.bookingId, title: widget.title,
@@ -398,6 +401,9 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       _session = widget.connector is CommercialGetStreamMediaConnector
           ? await (widget.connector as CommercialGetStreamMediaConnector).connectWithMedia(handoff, cameraEnabled: _cameraOn, microphoneEnabled: _microphoneOn)
           : await widget.connector.connect(handoff);
+      if (_session.quality != null) {
+        _session.attachQualityBinding(attachCommercialQualityController(_session.call, _session.quality!));
+      }
       await _sub?.cancel();
       _sub = _call.state.valueStream.listen((_) { if (mounted) setState(() {}); });
       if (mounted) setState(() {});

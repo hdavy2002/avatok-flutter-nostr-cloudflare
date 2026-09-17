@@ -15,6 +15,7 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/calls/call_media_permissions.dart';
+import '../core/calls/stream_video_quality_controller.dart';
 import '../core/config.dart';
 import '../core/remote_config.dart';
 import '../features/avatok/call_billing/messenger_call_billing_models.dart';
@@ -697,6 +698,7 @@ class StreamCallService {
               // this call server-side — calling `getOrCreate(ringing: true)`
               // again here would ring the callee a second time. The client
               // only needs to join the media session.
+              StreamVideoQualityController.enableSubscriberPause(call);
               await call.join();
             } else {
               // Fallback for a worker that hasn't shipped the new contract
@@ -709,6 +711,7 @@ class StreamCallService {
               );
               // Without this the caller never joins — getOrCreate only
               // registers + rings; join() is what connects media.
+              StreamVideoQualityController.enableSubscriberPause(call);
               await call.join();
             }
           },
@@ -970,11 +973,13 @@ class StreamCallService {
         // permission to end a call for everybody.
         endForEveryone: cancelAttempt,
         connect: (_) async {
+          StreamVideoQualityController.enableSubscriberPause(call);
           await call.join(
             connectOptions: CallConnectOptions(
               microphone: TrackOption.enabled(),
               camera: video ? TrackOption.enabled() : TrackOption.disabled(),
               speakerDefaultOn: video,
+              targetResolution: const StreamTargetResolution(width: 1280, height: 720),
             ),
           );
         },
@@ -1034,6 +1039,7 @@ class StreamCallService {
     final callId = call.callCid.value;
     final state = call.state.value;
     final isVideo = state.custom['video'] == true;
+    StreamVideoQualityController.enableSubscriberPause(call);
     final caller = state.createdByUser;
     final resolvedPeerId = peerId ?? caller.id;
     final resolvedName = name ?? (caller.name.isEmpty ? null : caller.name);
