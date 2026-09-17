@@ -81,12 +81,10 @@ async function reconcileSmokeIntent(env: Env, db: D1Database, uid: string, reque
   if (!requested || requested.listing_id !== UPI_SMOKE_TEST_LISTING_ID) return requested?.status === "confirmed" ? "confirmed" : null;
   if (requested.status === "confirmed") return "confirmed";
   if (requested.status !== "pending") return null;
-  const alreadyConfirmed = await db.prepare(
-    "SELECT intent_id FROM hdfc_sms_payment_intents WHERE listing_id=?1 AND status='confirmed' LIMIT 1",
-  ).bind(UPI_SMOKE_TEST_LISTING_ID).first<any>();
-  if (alreadyConfirmed) return "confirmed";
-  const receipt = await db.prepare("SELECT message FROM hdfc_sms_receipts ORDER BY created_at DESC LIMIT 20").all<{ message: string }>();
-  const match = (receipt.results ?? []).find((r) => parseAmountPaise(String(r.message)) === Number(requested.amount_paise));
+  const receipt = await db.prepare("SELECT message,created_at FROM hdfc_sms_receipts ORDER BY created_at DESC LIMIT 20").all<{ message: string; created_at: number }>();
+  // A receipt from an earlier smoke test must never auto-confirm a new QR.
+  // It must have arrived after this intent was created.
+  const match = (receipt.results ?? []).find((r) => Number(r.created_at) >= Number(requested.created_at) && parseAmountPaise(String(r.message)) === Number(requested.amount_paise));
   if (!match) return null;
   const candidates = await db.prepare(
     "SELECT * FROM hdfc_sms_payment_intents WHERE uid=?1 AND listing_id=?2 AND status='pending' AND amount_paise=?3 ORDER BY created_at DESC LIMIT 10",
@@ -269,7 +267,7 @@ export async function hdfcSmsIncoming(req: Request, env: Env): Promise<Response>
     : intent.listing_id === UPI_SMOKE_TEST_LISTING_ID
       ? await confirmSmokeIntentFromVerifiedReceipt(db, intent, ref)
       : await confirmIntentFromVerifiedReceipt(env, db, intent, ref);
-  return json({ ok: true, status: result ?? "review_pending", intent_id: intent.intent_id });
+  return json({ ok: true, status: result ?? (duplicateReceipt ? "duplicate" : "review_pending"), intent_id: intent.intent_id });
 }
 
 /** Signed companion health check. */
