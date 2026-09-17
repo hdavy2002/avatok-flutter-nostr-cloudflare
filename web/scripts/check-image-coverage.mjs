@@ -17,6 +17,7 @@ function walk(dir) {
 function check(url, file) {
   url = url.replaceAll('&amp;', '&').trim();
   if (!url) return;
+  if (url.startsWith('#') || url.startsWith('%23')) return;
   // Font files are browser resources, not raster images, and are intentionally
   // served as immutable static assets rather than through image transforms.
   if (/\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i.test(url)) return;
