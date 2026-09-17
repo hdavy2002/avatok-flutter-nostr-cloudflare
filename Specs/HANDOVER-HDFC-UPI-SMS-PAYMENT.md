@@ -262,3 +262,29 @@ No companion changes or Android build are needed for this extension. Companion
 - PostHog deployment annotation returned HTTP 201. A separate operational deployment event with the owner email and test counts returned HTTP 200; it explicitly records `fresh_payment_verified=false` and contains no invitation, bank reference or SMS. Prior telemetry retrieval was unavailable due connector skill-scope restrictions. Graphiti tools were unavailable and its pre-push hook reported write failure; no memory-write success is claimed. Graphify AST update completed.
 - AC1–AC8 verified by the source reviews and GitHub Actions above. AC9 link issuance and live unauthenticated UI verified. The actual brother sign-in/payment/receipt/test-booking confirmation remains pending his real ₹1 transaction and exact 12-digit reference. No synthetic production receipt, payment, booking, commercial order, entitlement or wallet credit was created.
 - Astra-only pipeline: one audit/plan agent, two isolated implementation workers, and one independent bounded backend review. No local tests/builds/compiles were run. No companion change or additional Android build was needed.
+
+
+## Owner simplification — plain public QR (2026-09-18)
+
+The owner explicitly rejected the invitation/sign-in/booking UI and requested just
+a QR. `/test/upi` now shows “Scan to pay ₹1”, the payment QR and a same-phone UPI
+link. No login, invite, form or booking confirmation is required or shown. Old
+invitation fragments are discarded. The standalone page loads no Clerk or analytics.
+
+`GET /api/pay/hdfc-sms/qr` returns only the configured payee UPI URL for exactly
+₹1.00 INR when enabled. It creates no intent or booking and makes no receipt claim.
+Existing authenticated diagnostic/customer APIs and signed SMS authority remain
+unchanged; the earlier invitation UX is superseded on the public page.
+
+Runtime revision `76e6780b`. Worker release
+https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35287136920
+and web release
+https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35287139513
+both succeeded after approved production gates. Worker version:
+`b986baf2-354b-4792-8ee7-66c315cd5158`. Tests passed: 42 Worker, 16 Python, 18
+controller, 24 browser; no new/changed-file TypeScript diagnostics (76 prior
+diagnostics remain). Flag restored to true; live anonymous QR GET succeeded and
+a shareable PNG was generated from that exact response outside the repository.
+No migration or companion build was required. One Astra worker performed the
+bounded source audit/implementation; coordinator reviewed the diffs and corrected
+the test's DROP VIEW statement before CI. No local application builds/tests ran.
