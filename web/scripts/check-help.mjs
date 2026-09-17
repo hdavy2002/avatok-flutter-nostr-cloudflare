@@ -121,7 +121,7 @@ for (const file of helpHtmlFiles) {
   // No leftover placeholder text outside of HTML comments.
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
   assert.doesNotMatch(withoutComments, /TODO/i, 'Help page contains TODO: ' + file);
-  assert.doesNotMatch(withoutComments, /lorem/i, 'Help page contains lorem: ' + file);
+  assert.doesNotMatch(withoutComments, /\blorem\b/i, 'Help page contains lorem: ' + file);
   assert.doesNotMatch(withoutComments, /FIXME/i, 'Help page contains FIXME: ' + file);
 
   checkHelpLinks(file, html);
