@@ -37,7 +37,7 @@ class UiLanguageTile extends StatelessWidget {
                         title: Text(choice.nativeName,
                           textDirection: choice.rtl ? TextDirection.rtl : TextDirection.ltr),
                         subtitle: controller.available(choice.code)
-                            ? null : const UiText(UiMessage.m_translation_not_published_yet_c145f1c572),
+                            ? null : const UiText(UiMessage.m_not_available_right_now_64833438f3),
                         enabled: !controller.loading && controller.available(choice.code),
                         trailing: controller.selected.code == choice.code
                             ? const Icon(Icons.check) : null,
