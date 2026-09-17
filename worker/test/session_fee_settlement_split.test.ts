@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { sessionSplitFor, sessionFeeFor, MIN_PRICE_TOKENS_PER_HOUR } from "../src/lib/session_pricing";
+import { partialRefundSplit } from "../src/commercial_settlement";
 
 const root = resolve(import.meta.dirname, "..");
 const checkout = readFileSync(resolve(root, "src/routes/commercial_checkout.ts"), "utf8");
@@ -28,20 +29,7 @@ function authorityErrorFor(gross: number, creator: number, platform: number, pct
   return null;
 }
 
-/** Verbatim copy of commercial_settlement.ts partialRefundSplit() (it is not importable
- *  without standing up the whole worker module graph); the source-text test below pins
- *  the original so this copy cannot drift silently. */
-function partialRefundSplit(gross: number, gstAmount: number, creatorAmount: number, platformAmount: number, refundFraction: number) {
-  const fraction = Math.max(0, Math.min(1, refundFraction));
-  const refundGross = Math.round(gross * fraction);
-  const refundGst = Math.round(gstAmount * fraction);
-  const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * fraction);
-  const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);
-  const consumedGstAmount = gstAmount - refundGst;
-  return { refundGross, refundGst, refundable: refundGross + refundGst, consumedCreatorAmount, consumedPlatformAmount, consumedGstAmount };
-}
-
-describe("sessionSplitFor — the wizard's numbers, frozen into the snapshot", () => {
+describe("legacy sessionSplitFor compatibility — historical snapshots and listing displays", () => {
   it("₹600 / 60-min consult splits ₹140 platform / ₹460 creator (NOT the old 80/20 ₹480)", () => {
     const split = sessionSplitFor(600, 60);
     expect(split).toMatchObject({ grossAmount: 600, platformFeeAmount: 140, creatorAmount: 460 });
@@ -136,20 +124,17 @@ describe("settlement invariants hold for every price the split can produce", () 
 });
 
 describe("checkout wiring (source contract)", () => {
-  it("the snapshot insert is fed by sessionSplitFor, behind sessionFeeRuleEnabled", () => {
-    expect(checkout).toContain('import { sessionSplitFor } from "../lib/session_pricing"');
-    expect(checkout).toContain("const sessionFeeRuleEnabled = (config as unknown as Record<string, unknown>).sessionFeeRuleEnabled !== false;");
-    expect(checkout).toContain("const sessionSplit = useSessionFeeRule ? sessionSplitFor(price, listingDurationMin) : null;");
-    expect(checkout).toContain("const creatorFeePct = sessionSplit ? sessionSplit.creatorFeePct : configCreatorFeePct;");
-    // a ₹0 order never enters the new path
-    expect(checkout).toContain("sessionFeeRuleEnabled && price > 0");
-    // and the snapshot is still the only thing bound into the insert
+  it("new snapshots consume the frozen quote, with an explicit legacy percentage policy", () => {
+    expect(checkout).toContain("quoteCommercialPurchase");
+    expect(checkout).toContain('config.sessionFeeRuleEnabled === false ? "legacy_percentage" : "creator_subtotal_plus_fee"');
+    expect(checkout).toContain("const { creatorFeePct, creatorAmount, platformFeeAmount } = quote;");
+    expect(checkout).toContain("pricing: quote,");
     expect(checkout).toContain("creator_fee_pct,settlement_hold_hours,platform_fee_amount,creator_amount,cancellation_policy_json,");
   });
 
-  it("partialRefundSplit in settlement is still the formula copied above", () => {
-    expect(settlement).toContain("const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * fraction);");
-    expect(settlement).toContain("const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);");
-    expect(settlement).toContain("if (creator !== Math.round(gross * pct / 100)) return \"creator amount does not match percentage\";");
+  it("settlement validates integer snapshots and derives the final refund leg as a remainder", () => {
+    expect(settlement).toContain("const consumedPlatformAmount = remainingGross - consumedCreatorAmount;");
+    expect(settlement).toContain("commercialQuoteError(frozen)");
+    expect(settlement).toContain('if (creator !== Math.round(gross * pct / 100)) return "creator amount does not match percentage";');
   });
 });

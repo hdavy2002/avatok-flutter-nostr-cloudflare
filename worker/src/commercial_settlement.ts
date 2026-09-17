@@ -14,6 +14,7 @@ import { notifyCommercialUsers } from "./lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "./commercial_money_claim";
 import { executeCommercialRefund, finalizeCommercialRefund } from "./lib/commercial_refund_rail";
 import { readConfig } from "./routes/config";
+import { commercialQuoteError, type CommercialQuote } from "./lib/session_pricing";
 
 type SettlementJob = {
   settlement_job_id: string;
@@ -341,9 +342,10 @@ export async function insertNoShowStrike(env: Env, creatorId: string, orderId: s
 }
 
 function authorityError(value: SettlementAuthority): string | null {
-  const gross = Math.trunc(Number(value.gross_amount));
-  const creator = Math.trunc(Number(value.creator_amount));
-  const platform = Math.trunc(Number(value.platform_fee_amount));
+  const gross = Number(value.gross_amount);
+  const creator = Number(value.creator_amount);
+  const platform = Number(value.platform_fee_amount);
+  if (![gross, creator, platform, Number(value.order_amount)].every(Number.isSafeInteger)) return "non-integer money snapshot";
   const pct = Number(value.creator_fee_pct);
   const hold = Number(value.settlement_hold_hours);
   if (value.session_state !== "ended") return "session is not terminal";
@@ -356,8 +358,16 @@ function authorityError(value: SettlementAuthority): string | null {
   // [TAX-GST-1] Tax is validated but NOT folded into the split assertion above: the
   // creator + platform === gross identity is exactly what proves the creator is not being
   // paid out of tax money, and it must keep holding with tax switched on.
-  const gst = Math.trunc(Number(value.gst_amount ?? 0));
-  if (!Number.isInteger(gst) || gst < 0) return "gst snapshot invalid";
+  const gst = Number(value.gst_amount ?? 0);
+  if (!Number.isSafeInteger(gst) || gst < 0 || !Number.isSafeInteger(gross + gst)) return "gst snapshot invalid";
+  const frozen = safeJson(value.conversion_snapshot_json)?.pricing as CommercialQuote | undefined;
+  if (frozen) {
+    const error = commercialQuoteError(frozen);
+    if (error) return error;
+    if (frozen.grossAmount !== gross || frozen.creatorAmount !== creator
+      || frozen.platformFeeAmount !== platform || frozen.gstAmount !== gst
+      || frozen.currency !== value.currency) return "pricing snapshot authority mismatch";
+  }
   if (!["held", "free", "settled"].includes(value.order_status)) return "order is not settleable";
   return null;
 }
@@ -579,7 +589,13 @@ async function finishSettlement(
  * missing or non-positive (should not happen for a published live_event) is
  * a defensive 60-minute fallback, not a silent zero-refund.
  */
-async function slotMsForListing(env: Env, listingId: string): Promise<number> {
+async function slotMsForListing(env: Env, listingId: string, conversionSnapshot?: string | null): Promise<number> {
+  const quote = safeJson(conversionSnapshot ?? null)?.pricing as CommercialQuote | undefined;
+  if (quote) {
+    const error = commercialQuoteError(quote);
+    if (error) throw new Error(error);
+    return quote.bookedMinutes * 60_000;
+  }
   const row = await metaDb(env).prepare(
     "SELECT duration_min FROM listings WHERE id=?1",
   ).bind(listingId).first<{ duration_min: number | null }>();
@@ -676,11 +692,16 @@ export function partialRefundSplit(
   refundGross: number; refundGst: number; refundable: number;
   consumedCreatorAmount: number; consumedPlatformAmount: number; consumedGstAmount: number;
 } {
+  if (![gross, gstAmount, creatorAmount, platformAmount].every(x => Number.isSafeInteger(x) && x >= 0)
+    || creatorAmount + platformAmount !== gross || !Number.isSafeInteger(gross + gstAmount)
+    || !Number.isFinite(refundFraction)) throw new Error("invalid partial refund authority");
   const fraction = Math.max(0, Math.min(1, refundFraction));
   const refundGross = Math.round(gross * fraction);
   const refundGst = Math.round(gstAmount * fraction);
-  const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * fraction);
-  const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);
+  const remainingGross = gross - refundGross;
+  const consumedCreatorAmount = Math.max(0, remainingGross - platformAmount,
+    Math.min(creatorAmount - Math.round(creatorAmount * fraction), remainingGross));
+  const consumedPlatformAmount = remainingGross - consumedCreatorAmount;
   const consumedGstAmount = gstAmount - refundGst;
   return {
     refundGross, refundGst, refundable: refundGross + refundGst,
@@ -743,6 +764,27 @@ async function applyPartialCommercialSettlement(
   if (!claim.owned) {
     const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
     return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
+  }
+  // A retry must reuse the same split even if reconciliation adds later intervals.
+  await metaDb(env).prepare(
+    "INSERT OR IGNORE INTO commercial_settlement_money_plans(order_id,plan_json,created_at) VALUES (?1,?2,?3)",
+  ).bind(authority.order_id, JSON.stringify(parts), Date.now()).run();
+  const plan = await metaDb(env).prepare(
+    "SELECT plan_json FROM commercial_settlement_money_plans WHERE order_id=?1",
+  ).bind(authority.order_id).first<{ plan_json: string }>();
+  if (!plan) return await markReview(env, job.settlement_job_id, "settlement money plan missing");
+  const frozen = JSON.parse(plan.plan_json) as typeof parts;
+  const expectedClaim = parts.claimId;
+  parts = frozen;
+  if (parts.claimId !== expectedClaim
+    || ![parts.refundGross, parts.refundGst, parts.refundable, parts.consumedCreatorAmount,
+      parts.consumedPlatformAmount, parts.consumedGstAmount].every(x => Number.isSafeInteger(x) && x >= 0)
+    || parts.refundable !== parts.refundGross + parts.refundGst
+    || parts.refundGross + parts.consumedCreatorAmount + parts.consumedPlatformAmount !== Number(authority.gross_amount)
+    || parts.refundGst + parts.consumedGstAmount !== Number(authority.gst_amount ?? 0)
+    || parts.consumedCreatorAmount > Number(authority.creator_amount)
+    || parts.consumedPlatformAmount > Number(authority.platform_fee_amount)) {
+    return await markReview(env, job.settlement_job_id, "settlement money plan mismatch");
   }
   if (parts.refundable > 0) {
     const money = await executeCommercialRefund(env, {
@@ -807,7 +849,7 @@ async function settleLiveHostNoReturn(env: Env, job: SettlementJob, authority: S
   const reviewReason = await ensureFundsVerified(env, job, authority);
   if (reviewReason) return await markReview(env, job.settlement_job_id, reviewReason);
 
-  const slotMs = await slotMsForListing(env, authority.listing_id);
+  const slotMs = await slotMsForListing(env, authority.listing_id, authority.conversion_snapshot_json);
   const watchedMs = await watchedEligibleMs(env, job.commercial_session_id, authority.buyer_id, authority.scheduled_at, authority.scheduled_at + slotMs);
   const unwatchedFraction = slotMs > 0 ? (slotMs - watchedMs) / slotMs : 1;
   const parts = partialRefundSplit(
@@ -848,7 +890,7 @@ async function settleLiveOutageRefund(env: Env, job: SettlementJob, authority: S
   const reviewReason = await ensureFundsVerified(env, job, authority);
   if (reviewReason) return await markReview(env, job.settlement_job_id, reviewReason);
 
-  const slotMs = await slotMsForListing(env, authority.listing_id);
+  const slotMs = await slotMsForListing(env, authority.listing_id, authority.conversion_snapshot_json);
   const windowEnd = authority.scheduled_at + slotMs;
   const outageMs = await outageOverlapMs(env, job.commercial_session_id, authority.buyer_id, authority.scheduled_at, windowEnd);
   const outageFraction = slotMs > 0 ? outageMs / slotMs : 0;

@@ -31,10 +31,9 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
-import { taxFor } from "../lib/commercial_tax";
 import { commercialLaneState } from "../lib/commercial_lane";
 import { commercialEvent } from "../lib/commercial_telemetry";
-import { provisionFromGatewayPurchase, claimCheckoutAvailability, releaseCheckoutAvailability } from "./commercial_checkout";
+import { provisionFromGatewayPurchase, quoteCommercialPurchase, freezeCommercialPurchaseQuote, claimCheckoutAvailability, releaseCheckoutAvailability } from "./commercial_checkout";
 import { resolveGateway, listEnabledMethods, gatewayFlagOn } from "../lib/payments/registry";
 import type { GatewayAdapter } from "../lib/payments/types";
 import { track, trackException } from "../hooks";
@@ -125,7 +124,7 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
 
   const db = metaDb(env);
   const listing = await db.prepare(
-    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity FROM listings WHERE id=?1",
+    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity,currency_display,attrs,free_entry FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing || !["published", "live"].includes(String(listing.status))) {
     return json({ error: "listing not available" }, 404);
@@ -150,7 +149,7 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
 
   // THE PRICE IS COMPUTED HERE, FROM THE LISTING. The client sends no amount and could
   // not be believed if it did.
-  const listPrice = Math.trunc(Number(listing.price));
+  const listPrice = Number(listing.price);
   if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid price" }, 409);
 
   // [MKT-PROMO-GATEWAY-1 / M5] Promotions apply on this rail too, and the number quoted
@@ -189,8 +188,6 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
   // settled ₹0 on a deep discount and the platform silently keeps the whole sale.
   const priced = promoChargePrice(listPrice, promoPct);
   const base = priced.chargePrice;
-  const tax = taxFor(config, base);
-  if (!tax) return json({ error: "tax configuration invalid" }, 503);
   if (promoPct > 0) {
     commercialEvent(env, "checkout_promo", auth.uid, {
       kind, outcome: priced.clamped ? "floor_clamped" : "applied", listing_id: listing.id,
@@ -198,19 +195,9 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
       list_price: listPrice, charge_price: base, floor_clamped: priced.clamped, rail: adapter.id,
     });
   }
-  if (tax.buyerTotal <= 0) {
-    return json({ error: "free listings use the standard checkout" }, 400);
-  }
-
-  // Stripe is the international, non-INR lane (spec §1) — USD is the working default
-  // until a per-listing/per-buyer currency exists to derive this from.
-  const currency = adapter.id === "stripe" ? "USD" : "INR";
-  if (adapter.id === "stripe" && currency.toUpperCase() === "INR") {
-    // Belt and suspenders — the adapter itself also refuses this, per spec §1's "Stripe
-    // (international, non-INR only)". A currency var misconfigured to INR must not reach
-    // the adapter and get refused there LOUDLY only after a wasted round trip.
-    return json({ error: "stripe is for international buyers only" }, 400);
-  }
+  // No server-owned FX quote exists. Never label an INR amount as USD.
+  if (adapter.id === "stripe") return json({ error: "commercial FX quote unavailable" }, 503);
+  const currency = "INR";
 
   let slotStart: number | null = null;
   let slotEnd: number | null = null;
@@ -245,6 +232,24 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
       ]);
       if(Number(linked[0]?.meta?.changes??0)!==1||Number(linked[1]?.meta?.changes??0)!==1)return json({error:'hold_expired'},409);
     }catch{return json({error:'hold_already_used'},409);}
+  }
+
+  let purchaseQuote;
+  try {
+    const proposed = quoteCommercialPurchase({
+      buyerId: auth.uid, kind, listing, bookingId, rail: adapter.id, config,
+      sourcePrice: base, slotStart, slotEnd, promoPct,
+      promoId: promo?.id != null ? String(promo.id) : null, floorClamped: priced.clamped,
+    });
+    purchaseQuote = await freezeCommercialPurchaseQuote(env, `${adapter.id}-order:${orderId}`, proposed);
+  } catch {
+    await releaseCheckoutAvailability(env, auth.uid, availabilityHoldId);
+    return json({ error: "commercial quote unavailable" }, 409);
+  }
+  const tax = purchaseQuote.pricing;
+  if (tax.buyerTotal <= 0) {
+    await releaseCheckoutAvailability(env, auth.uid, availabilityHoldId);
+    return json({ error: "free listings use the standard checkout" }, 400);
   }
 
   // Row written BEFORE the gateway call, same reasoning as direct_purchases: if
@@ -302,6 +307,9 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
     amount_paise: created.amount_paise,
     currency: created.currency,
     client_payload: created.client_payload,
+    pricing: purchaseQuote.pricing,
+    creator_subtotal: tax.creatorSubtotal,
+    platform_fee_amount: tax.platformFeeAmount,
     base_amount: tax.taxableBase,
     gst_amount: tax.gstAmount,
     gst_rate_pct: tax.gstRatePct,
@@ -499,7 +507,10 @@ async function creditPaidGatewayOrder(
   // in the ledger, the commercial order id and commercial_refund_rail.ts (see [PAY-RAIL-2]
   // in this file's header) instead of being mislabeled "cashfree".
   const bridgeOrderId = `${adapter.id}-order:${row.order_id}`;
-  const totalTokens = Math.round(row.amount_paise / 100);
+  if (!Number.isSafeInteger(row.amount_paise) || row.amount_paise < 0 || row.amount_paise % 100 !== 0) {
+    return json({ error: "non-integer commercial payment", review_pending: true }, 409);
+  }
+  const totalTokens = row.amount_paise / 100;
   let provisioned: Response;
   const holdLink=row.kind==='consult_1to1'?await db.prepare('SELECT reservation_id FROM availability_gateway_holds WHERE order_id=?1 AND buyer_id=?2').bind(row.order_id,row.uid).first<{reservation_id:string}>():null;
   try {
@@ -555,11 +566,10 @@ async function creditPaidGatewayOrder(
   // Same affiliate-bounty behaviour as the Cashfree lane — fire-and-forget, never blocks
   // the ticket. [GUEST-AFFIL-BOUNTY-1]
   try {
-    const creatorPct = Math.trunc(Number((await readConfig(env)).commercialCreatorFeePct));
-    // gateway_orders has no separate base/tax split (unlike direct_purchases) — the
-    // platform's cut is approximated off the gross total. Acceptable for a bounty ceiling;
-    // not used anywhere money-authoritative.
-    const platformCut = totalTokens - Math.round(totalTokens * creatorPct / 100);
+    const snapshot = await db.prepare("SELECT platform_fee_amount FROM commercial_policy_snapshots WHERE order_id=?1")
+      .bind(bridgeOrderId).first<{ platform_fee_amount: number }>();
+    if (!snapshot) throw new Error("commercial policy unavailable");
+    const platformCut = Number(snapshot.platform_fee_amount);
     await payAffiliateBountyOnPurchase(env, {
       referredUid: row.uid,
       purchaseId: row.order_id,

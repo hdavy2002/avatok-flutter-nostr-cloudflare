@@ -20,6 +20,7 @@ import { armLiveGrace, clearLiveGrace } from "../lib/live_grace"; // [LIVE-GRACE
 // path below — it does not own or edit listings.ts.
 import { systemMarkListingCompleted, systemMarkListingLive } from "./listings";
 import { hold, refund } from "../ledger";
+import { commercialQuoteFor, commercialQuoteError, type CommercialQuote } from "../lib/session_pricing";
 import { notifyLiveAudience } from "../lib/commercial_notifications";
 import { refreshCreatorStats } from "../lib/creator_stats"; // [LIST-STATS-1]
 import {
@@ -55,7 +56,11 @@ type BookingRow = {
   title: string;
 };
 
+type ExtensionPricing = {
+  pricing: CommercialQuote; settlementHoldHours: number; cancellationPolicyJson: string;
+};
 type ExtensionRow = {
+  pricing_quote_json?: string | null;
   extension_id: string;
   commercial_session_id: string;
   booking_id: string;
@@ -873,9 +878,10 @@ async function commercialConsultJoinUnsafe(req: Request, env: Env): Promise<Resp
 }
 
 function extensionConfig(config: PlatformConfig): { minutes: number; rate: number } | null {
-  const minutes = Math.trunc(Number(config.commercialConsultExtensionMinutes));
-  const rate = Math.trunc(Number(config.commercialConsultExtensionRate));
-  return config.commercialConsultExtensionEnabled === true && minutes > 0 && rate > 0
+  const minutes = Number(config.commercialConsultExtensionMinutes);
+  const rate = Number(config.commercialConsultExtensionRate);
+  return config.commercialConsultExtensionEnabled === true && Number.isSafeInteger(minutes)
+    && Number.isSafeInteger(rate) && minutes > 0 && rate > 0
     ? { minutes, rate }
     : null;
 }
@@ -896,21 +902,35 @@ async function extensionBooking(env: Env, bookingId: string, uid: string): Promi
   const policy = await metaDb(env).prepare(
     `SELECT policy_snapshot_id,order_id,gross_amount,currency,creator_fee_pct,
        settlement_hold_hours,platform_fee_amount,creator_amount,
-       cancellation_policy_json,policy_version
+       cancellation_policy_json,policy_version,conversion_snapshot_json,gst_rate_pct
      FROM commercial_policy_snapshots WHERE order_id=?1 AND booking_id=?2 LIMIT 1`,
   ).bind(session.order_id, bookingId).first<any>();
   if (!policy) return json({ error: "immutable policy unavailable" }, 503);
   return { booking: bookingRow, session, policy };
 }
 
+function extensionPricing(row: ExtensionRow): ExtensionPricing | null {
+  if (!row.pricing_quote_json) return null; // Existing quotes keep their old money contract.
+  const frozen = JSON.parse(row.pricing_quote_json) as ExtensionPricing;
+  if (commercialQuoteError(frozen.pricing)
+    || frozen.pricing.grossAmount !== Number(row.amount)
+    || frozen.pricing.bookedMinutes !== Number(row.extension_minutes)
+    || frozen.pricing.paidSeats !== 1 || frozen.pricing.currency !== row.currency
+    || !Number.isSafeInteger(frozen.settlementHoldHours) || frozen.settlementHoldHours < 0
+    || frozen.settlementHoldHours > 365 * 24) throw new Error("extension pricing authority mismatch");
+  return frozen;
+}
+
 function extensionResponse(row: ExtensionRow): Record<string, unknown> {
+  const quote = extensionPricing(row)?.pricing;
   return {
     ok: true,
     extension_id: row.extension_id,
     booking_id: row.booking_id,
     session_id: row.commercial_session_id,
     extension_minutes: Number(row.extension_minutes),
-    amount: Number(row.amount),
+    amount: quote?.buyerTotal ?? Number(row.amount),
+    ...(quote ? { pricing: quote, creator_subtotal: quote.creatorSubtotal, platform_fee_amount: quote.platformFeeAmount, gst_amount: quote.gstAmount } : {}),
     currency: row.currency,
     policy_version: row.policy_version,
     base_ends_at: Number(row.base_ends_at),
@@ -957,19 +977,43 @@ export async function commercialConsultExtensionQuote(req: Request, env: Env): P
   const extensionOrderId = `commercial-extension-order:${bookingId}:${Number(bk.ends_at)}:${pricing.minutes}`;
   const now = Date.now();
   try {
+    // Returning a previously issued quote must not apply today's extension rate or tax.
+    const existing = await metaDb(env).prepare("SELECT * FROM commercial_consult_extensions WHERE extension_id=?1")
+      .bind(extensionId).first<ExtensionRow>();
+    if (existing) {
+      if (existing.buyer_id !== bk.buyer_id || existing.creator_id !== bk.creator_id
+        || existing.base_order_id !== session.order_id) return json({ error: "extension authority mismatch" }, 409);
+      return json(extensionResponse(existing));
+    }
+    const baseConversion = JSON.parse(String(policy.conversion_snapshot_json ?? "{}")) as { pricing?: CommercialQuote };
+    const basePricing = baseConversion.pricing;
+    if (basePricing && commercialQuoteError(basePricing)) return json({ error: "base pricing unavailable" }, 503);
+    const feePolicy = basePricing?.feePolicy
+      ?? (config.sessionFeeRuleEnabled === false ? "legacy_percentage" : "creator_subtotal_plus_fee");
+    const quote = commercialQuoteFor({
+      sourcePrice: feePolicy === "legacy_percentage" ? pricing.rate * pricing.minutes : pricing.rate * 60,
+      bookedMinutes: pricing.minutes, paidSeats: 1, feePolicy,
+      creatorFeePct: feePolicy === "legacy_percentage"
+        ? Number(basePricing?.policyCreatorFeePct ?? config.commercialCreatorFeePct) : undefined,
+      gstRatePct: Number(policy.gst_rate_pct ?? 0), currency: String(policy.currency),
+    });
+    const frozen: ExtensionPricing = {
+      pricing: quote, settlementHoldHours: Number(policy.settlement_hold_hours),
+      cancellationPolicyJson: policy.cancellation_policy_json,
+    };
     await metaDb(env).prepare(
       `INSERT OR IGNORE INTO commercial_consult_extensions
        (extension_id,commercial_session_id,booking_id,listing_id,base_order_id,extension_order_id,
-        buyer_id,creator_id,base_ends_at,extension_ends_at,extension_minutes,rate_per_minute,amount,currency,policy_version,state,created_at,updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'proposed',?16,?16)`,
+        buyer_id,creator_id,base_ends_at,extension_ends_at,extension_minutes,rate_per_minute,amount,currency,policy_version,state,created_at,updated_at,pricing_quote_json)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'proposed',?16,?16,?17)`,
     ).bind(extensionId, session.commercial_session_id, bookingId, bk.listing_id, session.order_id,
       extensionOrderId, bk.buyer_id, bk.creator_id, Number(bk.ends_at),
       Number(bk.ends_at) + pricing.minutes * 60_000, pricing.minutes, pricing.rate,
-      pricing.minutes * pricing.rate, String(policy.currency), `${policy.policy_version}:extension`, now).run();
+      quote.grossAmount, String(policy.currency), `${policy.policy_version}:extension`, now, JSON.stringify(frozen)).run();
     const row = await metaDb(env).prepare(
       `SELECT extension_id,commercial_session_id,booking_id,listing_id,base_order_id,extension_order_id,
        buyer_id,creator_id,base_ends_at,extension_ends_at,extension_minutes,rate_per_minute,amount,currency,policy_version,state,
-       creator_consented_at,buyer_consented_at FROM commercial_consult_extensions WHERE extension_id=?1`,
+       creator_consented_at,buyer_consented_at,pricing_quote_json FROM commercial_consult_extensions WHERE extension_id=?1`,
     ).bind(extensionId).first<ExtensionRow>();
     if (!row) return json({ error: "extension quote unavailable" }, 503);
     if (row.extension_id !== extensionId || row.commercial_session_id !== session.commercial_session_id
@@ -977,8 +1021,7 @@ export async function commercialConsultExtensionQuote(req: Request, env: Env): P
       || row.extension_order_id !== extensionOrderId || row.buyer_id !== bk.buyer_id || row.creator_id !== bk.creator_id
       || Number(row.base_ends_at) !== Number(bk.ends_at)
       || Number(row.extension_ends_at) !== Number(bk.ends_at) + pricing.minutes * 60_000
-      || Number(row.extension_minutes) !== pricing.minutes || Number(row.rate_per_minute) !== pricing.rate
-      || Number(row.amount) !== pricing.minutes * pricing.rate || row.currency !== String(policy.currency)
+      || Number(row.extension_minutes) !== pricing.minutes || row.currency !== String(policy.currency)
       || row.policy_version !== `${policy.policy_version}:extension`) {
       return json({ error: "extension quote authority mismatch" }, 503);
     }
@@ -1001,7 +1044,7 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
   const row0 = await metaDb(env).prepare(
     `SELECT extension_id,commercial_session_id,booking_id,listing_id,base_order_id,extension_order_id,
      buyer_id,creator_id,base_ends_at,extension_ends_at,extension_minutes,rate_per_minute,amount,currency,policy_version,state,
-     creator_consented_at,buyer_consented_at FROM commercial_consult_extensions
+     creator_consented_at,buyer_consented_at,pricing_quote_json FROM commercial_consult_extensions
      WHERE extension_id=?1 AND booking_id=?2`,
   ).bind(extensionId, bookingId).first<ExtensionRow>();
   if (!row0) return json({ error: "extension quote unavailable" }, 404);
@@ -1027,7 +1070,7 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
   let row = await metaDb(env).prepare(
     `SELECT extension_id,commercial_session_id,booking_id,listing_id,base_order_id,extension_order_id,
      buyer_id,creator_id,base_ends_at,extension_ends_at,extension_minutes,rate_per_minute,amount,currency,policy_version,state,
-     creator_consented_at,buyer_consented_at FROM commercial_consult_extensions WHERE extension_id=?1`,
+     creator_consented_at,buyer_consented_at,pricing_quote_json FROM commercial_consult_extensions WHERE extension_id=?1`,
   ).bind(extensionId).first<ExtensionRow>();
   if (!row) return json({ error: "extension quote unavailable" }, 404);
   if (row.state === "applied" || row.state === "held") return json(extensionResponse(row));
@@ -1056,22 +1099,30 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
       creator_amount,cancellation_policy_json,policy_version FROM commercial_policy_snapshots WHERE order_id=?1 LIMIT 1`,
   ).bind(row.base_order_id).first<any>();
   if (!policy) return json({ error: "immutable policy unavailable" }, 503);
+  let frozen: ExtensionPricing | null;
+  try { frozen = extensionPricing(row); }
+  catch { return json({ error: "extension pricing authority mismatch" }, 503); }
+  const quote = frozen?.pricing;
+  const creatorPct = quote?.creatorFeePct ?? Number(policy.creator_fee_pct);
+  const settlementHoldHours = frozen?.settlementHoldHours ?? Number(policy.settlement_hold_hours);
+  const cancellationPolicyJson = frozen?.cancellationPolicyJson ?? policy.cancellation_policy_json;
+  const chargedAmount = quote?.buyerTotal ?? Number(row.amount);
   const orderNow = Date.now();
-  const creatorAmount = Math.round(Number(row.amount) * Number(policy.creator_fee_pct) / 100);
-  const platformAmount = Number(row.amount) - creatorAmount;
+  const creatorAmount = quote?.creatorAmount ?? Math.round(Number(row.amount) * creatorPct / 100);
+  const platformAmount = quote?.platformFeeAmount ?? Number(row.amount) - creatorAmount;
   await metaDb(env).prepare(
     `INSERT OR IGNORE INTO orders
       (id,listing_id,buyer_id,creator_id,amount,status,created_at,updated_at,kind,fee_pct,escrow_account,booking_id)
      VALUES (?1,?2,?3,?4,?5,'pending',?6,?6,'consult_1to1',?7,?8,?9)`,
   ).bind(row.extension_order_id, row.listing_id, row.buyer_id, row.creator_id, row.amount, orderNow,
-    100 - Number(policy.creator_fee_pct), `escrow:${row.extension_order_id}`, row.booking_id).run();
+    100 - creatorPct, `escrow:${row.extension_order_id}`, row.booking_id).run();
   const persistedOrder = await metaDb(env).prepare(
     "SELECT id,listing_id,buyer_id,creator_id,amount,kind,fee_pct,escrow_account,booking_id FROM orders WHERE id=?1",
   ).bind(row.extension_order_id).first<any>();
   if (!persistedOrder || persistedOrder.id !== row.extension_order_id || persistedOrder.listing_id !== row.listing_id
     || persistedOrder.buyer_id !== row.buyer_id || persistedOrder.creator_id !== row.creator_id
     || Number(persistedOrder.amount) !== Number(row.amount) || persistedOrder.kind !== 'consult_1to1'
-    || Number(persistedOrder.fee_pct) !== 100 - Number(policy.creator_fee_pct)
+    || Number(persistedOrder.fee_pct) !== 100 - creatorPct
     || persistedOrder.escrow_account !== `escrow:${row.extension_order_id}` || persistedOrder.booking_id !== row.booking_id) {
     return json({ error: "extension order authority mismatch" }, 503);
   }
@@ -1079,25 +1130,28 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
     `INSERT OR IGNORE INTO commercial_policy_snapshots
       (policy_snapshot_id,order_id,listing_id,booking_id,buyer_id,creator_id,kind,gross_amount,currency,
        creator_fee_pct,settlement_hold_hours,platform_fee_amount,creator_amount,cancellation_policy_json,
-       conversion_snapshot_json,policy_version,created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,'consult_1to1',?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)`,
+       conversion_snapshot_json,policy_version,created_at,gst_rate_pct,gst_amount,taxable_base)
+     VALUES (?1,?2,?3,?4,?5,?6,'consult_1to1',?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)`,
   ).bind(`commercial-extension-policy:${row.extension_id}`, row.extension_order_id, row.listing_id, row.booking_id,
-    row.buyer_id, row.creator_id, row.amount, row.currency, Number(policy.creator_fee_pct),
-    Number(policy.settlement_hold_hours), platformAmount, creatorAmount, policy.cancellation_policy_json,
-    JSON.stringify({ base_order_id: row.base_order_id, extension_id: row.extension_id, base_ends_at: row.base_ends_at, extension_ends_at: row.extension_ends_at, rate_per_minute: row.rate_per_minute }),
-    row.policy_version, orderNow).run();
+    row.buyer_id, row.creator_id, row.amount, row.currency, creatorPct,
+    settlementHoldHours, platformAmount, creatorAmount, cancellationPolicyJson,
+    JSON.stringify({ ...(quote ? { pricing: quote } : {}), base_order_id: row.base_order_id, extension_id: row.extension_id, base_ends_at: row.base_ends_at, extension_ends_at: row.extension_ends_at, rate_per_minute: row.rate_per_minute }),
+    row.policy_version, orderNow, quote?.gstRatePct ?? 0, quote?.gstAmount ?? 0, Number(row.amount)).run();
   const persistedPolicy = await metaDb(env).prepare(
     `SELECT order_id,listing_id,booking_id,buyer_id,creator_id,kind,gross_amount,currency,
-      creator_fee_pct,platform_fee_amount,creator_amount,policy_version
+      creator_fee_pct,platform_fee_amount,creator_amount,policy_version,gst_rate_pct,gst_amount,taxable_base,conversion_snapshot_json
      FROM commercial_policy_snapshots WHERE order_id=?1`,
   ).bind(row.extension_order_id).first<any>();
   if (!persistedPolicy || persistedPolicy.order_id !== row.extension_order_id
     || persistedPolicy.listing_id !== row.listing_id || persistedPolicy.booking_id !== row.booking_id
     || persistedPolicy.buyer_id !== row.buyer_id || persistedPolicy.creator_id !== row.creator_id
     || persistedPolicy.kind !== 'consult_1to1' || Number(persistedPolicy.gross_amount) !== Number(row.amount)
-    || persistedPolicy.currency !== row.currency || Number(persistedPolicy.creator_fee_pct) !== Number(policy.creator_fee_pct)
+    || persistedPolicy.currency !== row.currency || Number(persistedPolicy.creator_fee_pct) !== creatorPct
     || Number(persistedPolicy.platform_fee_amount) !== platformAmount || Number(persistedPolicy.creator_amount) !== creatorAmount
-    || persistedPolicy.policy_version !== row.policy_version) {
+    || persistedPolicy.policy_version !== row.policy_version
+    || (quote && (Number(persistedPolicy.gst_amount) !== quote.gstAmount
+      || Number(persistedPolicy.taxable_base) !== quote.taxableBase
+      || JSON.parse(persistedPolicy.conversion_snapshot_json ?? "{}").pricing?.buyerTotal !== quote.buyerTotal))) {
     return json({ error: "extension policy authority mismatch" }, 503);
   }
   const newEnd = Number(row.extension_ends_at);
@@ -1105,7 +1159,7 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
     await metaDb(env).prepare("UPDATE commercial_consult_extensions SET state='consented',updated_at=?2 WHERE extension_id=?1 AND state='holding'").bind(row.extension_id, Date.now()).run();
     return json({ error: "extension schedule conflict", retryable: false }, 409);
   }
-  const money = await hold(env, row.buyer_id, row.extension_order_id, row.amount, {
+  const money = await hold(env, row.buyer_id, row.extension_order_id, chargedAmount, {
     opId: `commercial:extension:hold:${row.extension_id}`,
     title: "Consultation extension",
     app: "avaconsult",
@@ -1120,7 +1174,7 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
   // Re-check before applying the extension, then refund the same escrow hold
   // if a race or expiry made the original schedule unsafe.
   if (Date.now() >= Number(row.base_ends_at) || await extensionScheduleConflict(env, row, newEnd)) {
-    const reversed = await refund(env, row.extension_order_id, row.buyer_id, row.amount, {
+    const reversed = await refund(env, row.extension_order_id, row.buyer_id, chargedAmount, {
       opId: `commercial:extension:refund:${row.extension_id}`,
       reason: "extension schedule changed before apply",
     });
@@ -1147,7 +1201,7 @@ export async function commercialConsultExtensionConfirm(req: Request, env: Env):
   ).bind(row.booking_id, newEnd).first<{ count: number }>();
   if (!booked || Number(booked.ends_at) !== newEnd || booked.status !== 'confirmed'
     || Number(blocks?.count ?? 0) < 2 || Number(entitlements?.count ?? 0) < 2) {
-    const reversed = await refund(env, row.extension_order_id, row.buyer_id, row.amount, {
+    const reversed = await refund(env, row.extension_order_id, row.buyer_id, chargedAmount, {
       opId: `commercial:extension:refund:${row.extension_id}`,
       reason: "extension schedule update could not be verified",
     });

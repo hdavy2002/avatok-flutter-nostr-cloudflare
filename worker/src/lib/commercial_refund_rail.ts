@@ -38,7 +38,7 @@ import type { GatewayId } from "./payments/types";
 
 export type RefundRail =
   | { rail: "wallet" }
-  | { rail: "cashfree"; purchaseId: string; gatewayOrderId: string }
+  | { rail: "cashfree"; purchaseId: string; gatewayOrderId: string; purchaseTable?: "direct_purchases" | "gateway_orders" }
   | { rail: Exclude<GatewayId, "cashfree">; purchaseId: string; gatewayOrderId: string };
 
 // Matches the order-id shape `provisionFromGatewayPurchase` mints: `${gateway}-order:${purchaseId}`.
@@ -52,39 +52,41 @@ const GATEWAY_ORDER_ID_RE = /^([a-z]+)-order:(.+)$/;
  * absence IS the answer for every wallet-funded order — UNLESS another gateway's adapter
  * funded it through `gateway_orders` (checked second, see file header).
  *
- * Fails to "wallet" when a table is missing (a migration not yet applied), which is
- * correct: before that migration exists, no order can have been funded on that rail.
+ * External order ids fail closed if their funding record cannot be loaded. They
+ * must never fall through to a wallet credit when a table or provider is unavailable.
  */
 export async function refundRailFor(env: Env, orderId: string): Promise<RefundRail> {
   try {
     const row = await metaDb(env).prepare(
       `SELECT purchase_id, gateway_order_id FROM direct_purchases
-        WHERE order_id=?1 AND status IN ('credited','paid') LIMIT 1`,
+        WHERE order_id=?1 AND status IN ('credited','paid','refunded') LIMIT 1`,
     ).bind(orderId).first<{ purchase_id: string; gateway_order_id: string }>();
     if (row) return { rail: "cashfree", purchaseId: row.purchase_id, gatewayOrderId: row.gateway_order_id };
   } catch {
-    return { rail: "wallet" };
+    // A missing legacy table cannot turn an external payment into wallet money.
   }
 
   const match = GATEWAY_ORDER_ID_RE.exec(orderId);
   if (match) {
     const [, maybeGateway, purchaseId] = match;
-    if (isGatewayId(maybeGateway) && maybeGateway !== "cashfree") {
+    if (isGatewayId(maybeGateway)) {
       try {
         const row = await metaDb(env).prepare(
           `SELECT order_id, gateway_order_id FROM gateway_orders
-             WHERE order_id=?1 AND gateway=?2 AND status IN ('credited','paid') LIMIT 1`,
+             WHERE order_id=?1 AND gateway=?2 AND status IN ('credited','paid','refunded') LIMIT 1`,
         ).bind(purchaseId, maybeGateway).first<{ order_id: string; gateway_order_id: string }>();
         if (row) {
           return {
-            rail: maybeGateway as Exclude<GatewayId, "cashfree">,
+            rail: maybeGateway,
+            ...(maybeGateway === "cashfree" ? { purchaseTable: "gateway_orders" as const } : {}),
             purchaseId: row.order_id,
             gatewayOrderId: row.gateway_order_id,
           };
         }
       } catch {
-        return { rail: "wallet" };
+        throw new Error("external refund rail unavailable");
       }
+      throw new Error("external refund purchase missing");
     }
   }
   return { rail: "wallet" };
@@ -109,8 +111,33 @@ export async function executeCommercialRefund(env: Env, args: {
   reason: string;
   walletCredit?: boolean;
 }): Promise<RefundOutcome> {
-  if (!(args.amount > 0)) return { ok: true, state: "refunded", rail: "wallet" };
-  const rail = await refundRailFor(env, args.orderId);
+  if (!Number.isSafeInteger(args.amount) || args.amount < 0 || !Number.isSafeInteger(args.amount * 100)) {
+    return { ok: false, error: "invalid_refund_amount" };
+  }
+  if (args.amount === 0) return { ok: true, state: "refunded", rail: "wallet" };
+  let rail: RefundRail;
+  try { rail = await refundRailFor(env, args.orderId); }
+  catch { return { ok: false, error: "refund_rail_unavailable" }; }
+  const snapshot = await metaDb(env).prepare(
+    "SELECT buyer_id,gross_amount,gst_amount FROM commercial_policy_snapshots WHERE order_id=?1",
+  ).bind(args.orderId).first<{ buyer_id: string; gross_amount: number; gst_amount: number | null }>();
+  const gross = Number(snapshot?.gross_amount);
+  const gst = Number(snapshot?.gst_amount ?? 0);
+  if (!snapshot || snapshot.buyer_id !== args.buyerId
+    || ![gross, gst, gross + gst].every(x => Number.isSafeInteger(x) && x >= 0)
+    || args.amount > gross + gst) return { ok: false, error: "refund_snapshot_mismatch" };
+  const targetRail = args.walletCredit === true ? "wallet" : rail.rail;
+  // Refund op ids are per order. Pin the amount and destination before either rail
+  // sees that id so a retry can never acknowledge a different financial instruction.
+  await metaDb(env).prepare(
+    "INSERT OR IGNORE INTO commercial_refund_intents(order_id,buyer_id,amount,rail,created_at) VALUES (?1,?2,?3,?4,?5)",
+  ).bind(args.orderId, args.buyerId, args.amount, targetRail, Date.now()).run();
+  const intent = await metaDb(env).prepare(
+    "SELECT buyer_id,amount,rail FROM commercial_refund_intents WHERE order_id=?1",
+  ).bind(args.orderId).first<{ buyer_id: string; amount: number; rail: string }>();
+  if (!intent || intent.buyer_id !== args.buyerId || Number(intent.amount) !== args.amount || intent.rail !== targetRail) {
+    return { ok: false, error: "refund_intent_mismatch" };
+  }
 
   if (rail.rail === "wallet" || args.walletCredit === true) {
     const r = await refund(env, args.orderId, args.buyerId, args.amount, {
@@ -147,9 +174,15 @@ export async function executeCommercialRefund(env: Env, args: {
     });
     if (!reversed.ok) return { ok: false, error: `gateway_refund_failed:${reversed.error}` };
 
-    await metaDb(env).prepare(
-      "UPDATE direct_purchases SET status='refunded',updated_at=?2 WHERE purchase_id=?1",
-    ).bind(rail.purchaseId, Date.now()).run();
+    if (rail.purchaseTable === "gateway_orders") {
+      await metaDb(env).prepare(
+        "UPDATE gateway_orders SET status='refunded',updated_at=?2 WHERE order_id=?1 AND gateway='cashfree'",
+      ).bind(rail.purchaseId, Date.now()).run();
+    } else {
+      await metaDb(env).prepare(
+        "UPDATE direct_purchases SET status='refunded',updated_at=?2 WHERE purchase_id=?1",
+      ).bind(rail.purchaseId, Date.now()).run();
+    }
 
     // NOT "refunded". Cashfree has accepted, not completed.
     return { ok: true, state: "refund_pending", rail: "cashfree" };
@@ -204,6 +237,10 @@ export async function finalizeCommercialRefund(env: Env, args: {
   reason: string;
   actor: "buyer" | "creator" | "provider" | "system";
 }): Promise<string> {
+  if (![args.grossAmount, args.gstAmount, args.refundedAmount].every(x => Number.isSafeInteger(x) && x >= 0)
+    || args.refundedAmount !== args.grossAmount + args.gstAmount) {
+    throw new Error("full refund does not conserve snapshot money");
+  }
   const receiptId = `commercial-refund:${args.orderId}`;
   const now = Date.now();
   await metaDb(env).batch([

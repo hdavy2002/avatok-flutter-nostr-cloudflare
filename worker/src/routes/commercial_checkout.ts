@@ -32,7 +32,7 @@ import { queueCommercialConfirmation, COMMERCIAL_CONFIRMATION_VERSION } from "..
 import { rateLimit } from "../money";
 import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
 import { bookability } from "../lib/listing_schedule";
-import { sessionSplitFor, MIN_PRICE_TOKENS_PER_HOUR } from "../lib/session_pricing"; // [SETTLE-FEE-1]
+import { commercialQuoteFor, commercialQuoteError, type CommercialQuote, MIN_PRICE_TOKENS_PER_HOUR } from "../lib/session_pricing";
 // [MKT-PROMO-CHECKOUT-1] The SAME two helpers routes/listings.ts uses for the card
 // and the legacy book route. Shared so a discount can never apply on the card and
 // silently not apply at checkout.
@@ -103,6 +103,9 @@ type PolicyAuthority = {
   creator_amount: number;
   cancellation_policy_json: string;
   conversion_snapshot_json: string | null;
+  gst_rate_pct: number | null;
+  gst_amount: number | null;
+  taxable_base: number | null;
   policy_version: string;
 };
 
@@ -145,6 +148,86 @@ async function claimCommercialBlock(env: Env, args: {
   return claim.ok
     ? { ok: true, claim: { userId: args.userId, sourceRef: args.sourceRef, blockId: claim.id } }
     : { ok: false, conflict: claim.conflict as unknown as Record<string, unknown> };
+}
+
+/** Frozen before money moves; the same authority is consumed by every payment rail. */
+export type CommercialPurchaseQuote = {
+  buyerId: string; kind: CheckoutKind; listing: Listing; bookingId: string | null;
+  rail: PurchaseFunding["rail"]; policy: CheckoutPolicy; settlementHoldHours: number;
+  pricing: CommercialQuote; startsAt: number | null; endsAt: number | null;
+  slotStart: number | null; slotEnd: number | null;
+  listPrice: number; promoPct: number; promoId: string | null; floorClamped: boolean;
+};
+
+export function quoteCommercialPurchase(args: {
+  buyerId: string; kind: CheckoutKind; listing: Listing; bookingId: string | null;
+  rail: PurchaseFunding["rail"]; config: PlatformConfig; sourcePrice: number;
+  slotStart: number | null; slotEnd: number | null;
+  promoPct?: number; promoId?: string | null; floorClamped?: boolean;
+}): CommercialPurchaseQuote {
+  const { listing, config, kind } = args;
+  const policy = policyFor(kind, parseAttrs(listing.attrs), config);
+  if (!policy) throw new Error("commercial policy unavailable");
+  const duration = Number(listing.duration_min ?? 60);
+  const bookedMinutes = kind === "consult_1to1"
+    ? (Number(args.slotEnd) - Number(args.slotStart)) / 60_000 : duration;
+  // A seat buys the published interval, never a caller-selected shorter fee interval.
+  if (!Number.isSafeInteger(duration) || duration <= 0 || bookedMinutes !== duration) {
+    throw new Error("commercial duration mismatch");
+  }
+  const holdHours = Number(config.commercialSettlementHoldHours);
+  if (!Number.isSafeInteger(holdHours) || holdHours < 0 || holdHours > 365 * 24) {
+    throw new Error("commercial settlement configuration invalid");
+  }
+  const tax = taxFor(config, 0);
+  if (!tax) throw new Error("commercial tax configuration invalid");
+  const pricing = commercialQuoteFor({
+    sourcePrice: Number(listing.free_entry) === 1 ? 0 : args.sourcePrice,
+    bookedMinutes,
+    feePolicy: config.sessionFeeRuleEnabled === false ? "legacy_percentage" : "creator_subtotal_plus_fee",
+    creatorFeePct: Number(config.commercialCreatorFeePct), gstRatePct: tax.gstRatePct,
+    // Display currency is not an FX authority. All commercial ledgers are whole INR.
+    currency: "INR",
+  });
+  const startsAt = kind === "live_event" ? Number(listing.starts_at) : null;
+  const endsAt = startsAt === null ? null : startsAt + duration * 60_000;
+  return {
+    buyerId: args.buyerId, kind, listing: { ...listing, currency_display: "INR" },
+    bookingId: args.bookingId, rail: args.rail, policy, settlementHoldHours: holdHours, pricing,
+    startsAt, endsAt, slotStart: args.slotStart, slotEnd: args.slotEnd,
+    listPrice: Number(listing.price), promoPct: args.promoPct ?? 0, promoId: args.promoId ?? null,
+    floorClamped: args.floorClamped === true,
+  };
+}
+
+export async function loadCommercialPurchaseQuote(env: Env, orderId: string): Promise<CommercialPurchaseQuote | null> {
+  const row = await metaDb(env).prepare(
+    "SELECT buyer_id,listing_id,rail,quote_json FROM commercial_pricing_quotes WHERE order_id=?1",
+  ).bind(orderId).first<{ buyer_id: string; listing_id: string; rail: string; quote_json: string }>();
+  if (!row) return null;
+  const quote = JSON.parse(row.quote_json) as CommercialPurchaseQuote;
+  if (!quote || commercialQuoteError(quote.pricing) || quote.buyerId !== row.buyer_id
+    || quote.listing?.id !== row.listing_id || quote.rail !== row.rail
+    || !Number.isSafeInteger(quote.settlementHoldHours) || quote.settlementHoldHours < 0
+    || quote.settlementHoldHours > 365 * 24) throw new Error("commercial quote authority mismatch");
+  return quote;
+}
+
+export async function freezeCommercialPurchaseQuote(
+  env: Env, orderId: string, proposed: CommercialPurchaseQuote,
+): Promise<CommercialPurchaseQuote> {
+  if (commercialQuoteError(proposed.pricing)) throw new Error("commercial quote invalid");
+  await metaDb(env).prepare(
+    `INSERT OR IGNORE INTO commercial_pricing_quotes
+      (order_id,buyer_id,listing_id,rail,quote_json,created_at) VALUES (?1,?2,?3,?4,?5,?6)`,
+  ).bind(orderId, proposed.buyerId, proposed.listing.id, proposed.rail, JSON.stringify(proposed), Date.now()).run();
+  const frozen = await loadCommercialPurchaseQuote(env, orderId);
+  if (!frozen || frozen.buyerId !== proposed.buyerId || frozen.listing.id !== proposed.listing.id
+    || frozen.kind !== proposed.kind || frozen.bookingId !== proposed.bookingId || frozen.rail !== proposed.rail
+    || frozen.slotStart !== proposed.slotStart || frozen.slotEnd !== proposed.slotEnd) {
+    throw new Error("commercial quote authority mismatch");
+  }
+  return frozen;
 }
 
 const CHECKOUT_POLICY_VERSION = "commercial-policy-v1";
@@ -653,7 +736,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
 
   const policy = policyFor(route.kind, parseAttrs(listing.attrs), config);
   if (!policy) return json({ error: "commercial policy unavailable" }, 409);
-  const listPrice = Math.trunc(Number(listing.price));
+  const listPrice = Number(listing.price);
   if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid commercial price" }, 409);
 
   const startsAt = route.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
@@ -740,6 +823,28 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   if (operation.state === "failed") {
     commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "replay_failed" });
     return json({ ...(safeResponse(operation.response_json) ?? { error: "checkout failed" }), idempotent_replay: true }, 409);
+  }
+
+  let savedQuote: CommercialPurchaseQuote | null;
+  try { savedQuote = await loadCommercialPurchaseQuote(env, orderId); }
+  catch { return json({ error: "commercial quote unavailable" }, 503); }
+  if (!savedQuote && await metaDb(env).prepare("SELECT policy_snapshot_id FROM commercial_policy_snapshots WHERE order_id=?1")
+    .bind(orderId).first()) {
+    return json({ error: "legacy checkout requires reconciliation", review_pending: true }, 409);
+  }
+  if (savedQuote) {
+    if (savedQuote.buyerId !== auth.uid || savedQuote.listing.id !== listing.id
+      || savedQuote.bookingId !== bookingId || savedQuote.rail !== "wallet") {
+      return json({ error: "commercial quote authority mismatch" }, 409);
+    }
+    return await provisionCommercialPurchase(env, {
+      auth, route, listing: savedQuote.listing, config, policy: savedQuote.policy,
+      price: savedQuote.pricing.grossAmount, tax: savedQuote.pricing, purchaseQuote: savedQuote,
+      startsAt: savedQuote.startsAt, endsAt: savedQuote.endsAt,
+      slotStart: savedQuote.slotStart, slotEnd: savedQuote.slotEnd, availabilityHoldId,
+      orderId, operationId, bookingId, requestHash,
+      funding: walletPurchaseFunding(env, auth.uid, orderId, savedQuote.listing.title, route.kind),
+    });
   }
 
   // [MKT-PROMO-CHECKOUT-1 / M1] PROMO RESOLUTION SITS BELOW THE REPLAY BRANCHES, AND MUST
@@ -881,38 +986,23 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ error: route.kind === "live_event" ? "ticket already owned" : "consultation already booked" }, 409);
   }
 
-  // [TAX-GST-1 fix] Computed OUT here, not inside the try, because the failure path in
-  // the catch has to refund exactly what was charged. It previously refunded `price`
-  // while the hold took `tax.buyerTotal` — so with GST switched on, an aborted checkout
-  // would have returned the base and quietly kept the tax. Caught by reading the catch
-  // block; `gstEnabled` is false in production, so it never reached a real buyer.
-  const tax = taxFor(config, chargePrice);
-  if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
+  let purchaseQuote: CommercialPurchaseQuote;
+  try {
+    purchaseQuote = quoteCommercialPurchase({
+      buyerId: auth.uid, kind: route.kind, listing, bookingId, rail: "wallet", config,
+      sourcePrice: chargePrice, slotStart, slotEnd, promoPct,
+      promoId: promo?.id != null ? String(promo.id) : null, floorClamped: priced.clamped,
+    });
+  } catch { return json({ error: "commercial quote unavailable" }, 409); }
+  const tax: TaxBreakdown = purchaseQuote.pricing;
 
   return await provisionCommercialPurchase(env, {
-    auth, route, listing, config, policy, price: chargePrice, tax, startsAt, endsAt,
+    auth, route, listing, config, policy, price: purchaseQuote.pricing.grossAmount, tax, startsAt, endsAt,
+    purchaseQuote,
     listPrice, promoPct, promoId: promo?.id != null ? String(promo.id) : null,
     floorClamped: priced.clamped,
     slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash,
-    funding: {
-      rail: "wallet",
-      // The original behaviour, unchanged: debit the buyer's WalletDO balance.
-      async fund(amount) {
-        const r = await hold(env, auth.uid, orderId, amount, {
-          opId: `commercial:hold:${orderId}`,
-          title: listing.title,
-          app: route.kind === "live_event" ? "avalive" : "avaconsult",
-        });
-        return { ok: r.ok, status: r.status, duplicate: r.body?.duplicate === true };
-      },
-      async reverse(amount) {
-        await refund(env, orderId, auth.uid, amount, {
-          opId: `commercial:checkout-failure:${orderId}`,
-          reason: "commercial checkout failed",
-          title: listing.title,
-        });
-      },
-    },
+    funding: walletPurchaseFunding(env, auth.uid, orderId, listing.title, route.kind),
   });
 }
 
@@ -1019,6 +1109,24 @@ export type PurchaseFunding = {
   reverse(amount: number): Promise<void>;
 };
 
+function walletPurchaseFunding(env: Env, uid: string, orderId: string, title: string, kind: CheckoutKind): PurchaseFunding {
+  return {
+    rail: "wallet",
+    async fund(amount) {
+      const r = await hold(env, uid, orderId, amount, {
+        opId: `commercial:hold:${orderId}`, title, app: kind === "live_event" ? "avalive" : "avaconsult",
+      });
+      return { ok: r.ok, status: r.status, duplicate: r.body?.duplicate === true };
+    },
+    async reverse(amount) {
+      const r = await refund(env, orderId, uid, amount, {
+        opId: `commercial:checkout-failure:${orderId}`, reason: "commercial checkout failed", title,
+      });
+      if (!r.ok) throw new Error("checkout refund failed");
+    },
+  };
+}
+
 /**
  * [PAY-HANDOFF-1] Everything that turns MONEY IN ESCROW into A TICKET: the order row,
  * the immutable policy snapshot, the consult booking and calendar events, and both
@@ -1069,18 +1177,27 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
   bookingId: string | null;
   requestHash: string;
   funding: PurchaseFunding;
+  purchaseQuote: CommercialPurchaseQuote;
 }): Promise<Response> {
-  const {
-    auth, route, listing, config, policy, price, tax, startsAt, endsAt,
-    slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash, funding,
-  } = ctx;
+  const { auth, route, config, availabilityHoldId, orderId, operationId, requestHash, funding } = ctx;
+  let frozen: CommercialPurchaseQuote;
+  try { frozen = await freezeCommercialPurchaseQuote(env, orderId, ctx.purchaseQuote); }
+  catch { return json({ error: "commercial quote unavailable" }, 503); }
+  if (frozen.buyerId !== auth.uid || frozen.kind !== route.kind || frozen.rail !== funding.rail) {
+    return json({ error: "commercial quote authority mismatch" }, 409);
+  }
+  const { listing, policy, startsAt, endsAt, slotStart, slotEnd, bookingId } = frozen;
+  const quote = frozen.pricing;
+  const price = quote.grossAmount;
+  const tax: TaxBreakdown = quote;
   // [MKT-PROMO-CHECKOUT-1] Promo provenance. `price` above is ALREADY the discounted
   // amount and stays the single number every leg, invariant and ledger call uses.
-  const promoPct = Math.trunc(Number(ctx.promoPct ?? 0));
-  const promoId = promoPct > 0 ? (ctx.promoId ?? null) : null;
-  const listPrice = Math.trunc(Number(ctx.listPrice ?? price));
+  const promoPct = frozen.promoPct;
+  const promoId = promoPct > 0 ? frozen.promoId : null;
+  const listPrice = frozen.listPrice;
   const conversionSnapshotJson = JSON.stringify({
     request_sha256: requestHash,
+    pricing: quote,
     price_source: promoId ? "listing.price+promo" : "listing.price",
     list_price: listPrice,
     promo_pct: promoPct,
@@ -1088,7 +1205,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     // [M4] Added ONLY when it is true, so every snapshot written before this change and
     // every unclamped order after it keep a byte-identical JSON string. `price` above is
     // still the authority on what was charged; this only says which rule produced it.
-    ...(ctx.floorClamped === true ? { price_floor_clamped: true, price_floor: MIN_PRICE_TOKENS_PER_HOUR } : {}),
+    ...(frozen.floorClamped === true ? { price_floor_clamped: true, price_floor: MIN_PRICE_TOKENS_PER_HOUR } : {}),
   });
   let holdWasFresh = false;
   // [M2] Did THIS attempt bump the promotion's `used` counter? The abort path below has to
@@ -1171,46 +1288,9 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       if (!converted) throw new Error("availability hold expired");
     }
 
-    const configCreatorFeePct = Math.trunc(Number(config.commercialCreatorFeePct));
-    const settlementHoldHours = Math.trunc(Number(config.commercialSettlementHoldHours));
-    if (!Number.isInteger(configCreatorFeePct) || configCreatorFeePct < 0 || configCreatorFeePct > 100
-      || !Number.isInteger(settlementHoldHours) || settlementHoldHours < 0 || settlementHoldHours > 365 * 24) {
-      throw new Error("commercial settlement configuration invalid");
-    }
-    // [SETTLE-FEE-1] The snapshot is what settlement pays out of, so it must carry the
-    // SAME split the creator was shown in the listing wizard (₹25 flat per participant
-    // per hour + 20% of the remainder — lib/session_pricing.ts), not the older flat
-    // 80/20 `commercialCreatorFeePct`. A creator shown "you keep ₹460 of ₹600" was being
-    // settled ₹480 off a different rule; see memory note avatok-fee-not-wired-to-settlement.
-    //
-    // Scope, deliberately narrow: only PAID consult/live orders. A free (₹0) order keeps
-    // the old path byte-for-byte — both legs are 0 either way, and its stored
-    // creator_fee_pct stays the config value so nothing about free checkout moves. Rows
-    // written before this change are never revisited: the snapshot is immutable and
-    // settlement reads whatever its own order froze.
-    //
-    // `sessionFeeRuleEnabled` is the rollback switch. It is read defensively (absent ⇒
-    // true) because config.ts is another agent's file this slice may not edit; the
-    // DEFAULTS entry is in this commit's report for the coordinator to land.
-    const sessionFeeRuleEnabled = (config as unknown as Record<string, unknown>).sessionFeeRuleEnabled !== false;
-    const useSessionFeeRule = sessionFeeRuleEnabled && price > 0
-      && (route.kind === "consult_1to1" || route.kind === "live_event");
-    // The listing's own slot length, not the caller-supplied slot: the flat fee is a
-    // per-hour charge on what the creator published and priced, and a client must not be
-    // able to change the creator's fee by asking for a longer end_at.
-    const listingDurationMin = Math.max(1, Math.trunc(Number(listing.duration_min ?? 60)));
-    const sessionSplit = useSessionFeeRule ? sessionSplitFor(price, listingDurationMin) : null;
-    const creatorFeePct = sessionSplit ? sessionSplit.creatorFeePct : configCreatorFeePct;
-    const creatorAmount = sessionSplit ? sessionSplit.creatorAmount : Math.round(price * configCreatorFeePct / 100);
-    const platformFeeAmount = price - creatorAmount;
-    // Defence in depth: settlement's authorityError() refuses any snapshot whose legs do
-    // not add up to gross, or whose stored percentage does not reproduce creator_amount.
-    // Catch that here, where the order can still be failed cleanly, instead of at payout.
-    if (creatorAmount < 0 || platformFeeAmount < 0 || creatorAmount + platformFeeAmount !== price
-      || !Number.isFinite(creatorFeePct) || creatorFeePct < 0 || creatorFeePct > 100
-      || Math.round(price * creatorFeePct / 100) !== creatorAmount) {
-      throw new Error("commercial split authority invalid");
-    }
+    const settlementHoldHours = frozen.settlementHoldHours;
+    const { creatorFeePct, creatorAmount, platformFeeAmount } = quote;
+    if (commercialQuoteError(quote)) throw new Error("commercial split authority invalid");
     const policySnapshotId = `commercial-policy:${orderId}`;
     const policyJson = JSON.stringify(policy);
     const now = Date.now();
@@ -1265,7 +1345,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     const policyRow = await metaDb(env).prepare(
       `SELECT policy_snapshot_id,order_id,listing_id,booking_id,buyer_id,creator_id,kind,gross_amount,currency,
           creator_fee_pct,settlement_hold_hours,platform_fee_amount,creator_amount,cancellation_policy_json,
-          conversion_snapshot_json,policy_version
+          conversion_snapshot_json,policy_version,gst_rate_pct,gst_amount,taxable_base
          FROM commercial_policy_snapshots WHERE order_id=?1`,
     ).bind(orderId).first<PolicyAuthority>();
     if (!policyRow) throw new Error("policy snapshot missing");
@@ -1279,6 +1359,9 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       || Number(policyRow.platform_fee_amount) !== platformFeeAmount
       || Number(policyRow.creator_amount) !== creatorAmount
       || policyRow.cancellation_policy_json !== policyJson
+      || Number(policyRow.gst_rate_pct ?? 0) !== tax.gstRatePct
+      || Number(policyRow.gst_amount ?? 0) !== tax.gstAmount
+      || Number(policyRow.taxable_base) !== tax.taxableBase
       || policyRow.conversion_snapshot_json !== conversionSnapshot
       || policyRow.policy_version !== CHECKOUT_POLICY_VERSION) {
       throw new Error("policy snapshot authority mismatch");
@@ -1454,6 +1537,9 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       // same thing it always meant is why no settlement reader had to change its
       // interpretation of it.
       gross_amount: price,
+      pricing: quote,
+      creator_subtotal: quote.creatorSubtotal,
+      platform_fee_amount: quote.platformFeeAmount,
       taxable_base: tax.taxableBase,
       gst_rate_pct: tax.gstRatePct,
       gst_amount: tax.gstAmount,
@@ -1539,7 +1625,8 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     // gateway-funded purchase into a wallet the buyer never funded would invent a
     // balance out of nothing and leave the escrow leg unbalanced.
     if (!validEntitlement && tax.buyerTotal > 0) {
-      try { await funding.reverse(tax.buyerTotal); } catch { /* review via ledger */ }
+      try { await funding.reverse(tax.buyerTotal); }
+      catch { return json({ error: "checkout refund retryable", retryable: true }, 503); }
     }
     if (!validEntitlement && (holdWasFresh || tax.buyerTotal === 0 || collision || slotConflict || ticketRace || availabilityFailure)) {
       await metaDb(env).batch([
@@ -1584,12 +1671,9 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
 /**
  * [PAY-HANDOFF-1] The gateway lane's entry into the shared provisioning path.
  *
- * Called from a gateway webhook AFTER the payment is verified against the gateway.
- * Re-derives everything from the LISTING — policy, schedule, tax — rather than trusting
- * anything carried on the purchase row, so a listing that changed between order creation
- * and payment cannot provision a ticket on stale terms. The one thing it does trust is
- * `chargedTokens`, because that is what the buyer actually paid; if it disagrees with
- * what the listing now costs, the purchase is refused rather than silently reconciled.
+ * Called after payment verification. The pre-payment quote owns all prices, tax,
+ * duration and policy; only live availability is checked again. Missing legacy
+ * quotes require reconciliation rather than guessing a historical contract.
  *
  * `funding.fund` is holdExternal — money already taken at the gateway, credited into the
  * same escrow bucket the wallet lane uses, so release/split/settlement/refund all run
@@ -1623,123 +1707,44 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   gateway?: GatewayId;
 }): Promise<Response> {
   const gateway: GatewayId = args.gateway ?? "cashfree";
-  const config = await readConfig(env);
-  const listing = await metaDb(env).prepare(
-    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry
-       FROM listings WHERE id=?1`,
-  ).bind(args.listingId).first<Listing>();
-  if (!listing) return json({ error: "listing unavailable" }, 404);
-  if (listing.creator_id === args.uid) return json({ error: "cannot buy your own service" }, 400);
-
-  const policy = policyFor(args.kind, parseAttrs(listing.attrs), config);
-  if (!policy) return json({ error: "commercial policy unavailable" }, 409);
-  const listPrice = Math.trunc(Number(listing.price));
-  if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid commercial price" }, 409);
-
-  // [MKT-PROMO-GATEWAY-1 / M5] THE GATEWAY LANE IS NO LONGER PROMO-BLIND.
-  //
-  // It re-derived `price` straight off `listings.price` while the web checkout had already
-  // started preferring `effective_price` and cross-checking its own total against the
-  // server's — so any listing with a live early-bird BLOCKED card/UPI checkout outright,
-  // and anything that bypassed the drift check would have charged full price against a
-  // page advertising the discount.
-  //
-  // Resolved here, from the PRIMARY (M3), with NO code: a promo code cannot be carried
-  // across a gateway round trip — `gateway_orders` has no column for it — and a discount
-  // this function cannot reproduce from the listing alone is a discount it must not
-  // provision. `routes/pay.ts` refuses a code at order-creation time for the same reason,
-  // so the two ends always resolve the identical set of automatic promotions.
-  //
-  // [PROMO-DARK-1] WHY THIS LANE STILL RESOLVES PROMOTIONS WHILE THE SWITCH IS OFF.
-  //
-  // Every other lane quotes. This one PROVISIONS money that has already left a buyer's
-  // bank. Quoting and provisioning are separated by a gateway round trip that can span
-  // minutes, so the flag can be flipped in between: a buyer is quoted the promotional
-  // total while promotions are on, pays it, and the webhook arrives after the shelve.
-  // If this function refused to resolve promos, `charged` would match neither total,
-  // the 409 below would fire, and a paid buyer would be left with no ticket and a
-  // refund to chase — the switch would have eaten someone's purchase.
-  //
-  // So the resolution stays, and the discipline lives on the QUOTING side instead
-  // (routes/pay.ts refuses to price a new gateway order with a promotion when the flag
-  // is off). That makes the promotional branch here self-limiting: with the flag off no
-  // NEW promo-priced gateway order can be minted, so the only payments that can still
-  // take it are the in-flight ones. It is also not a way in for a forged discount —
-  // `charged` is compared against a total this function derives itself from the
-  // listing and the promo rows, never against anything the client or the gateway says.
-  //
-  // The list-total branch is unaffected and remains what a flag-off quote produces.
-  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
-  const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
-  const priced = promoChargePrice(listPrice, promoPct);
-  const promoTax = taxFor(config, priced.chargePrice);
-  const listTax = taxFor(config, listPrice);
-  if (!promoTax || !listTax) return json({ error: "commercial tax configuration invalid" }, 503);
-
-  // The buyer paid a specific number. If the listing no longer agrees, do NOT provision:
-  // an under-charge silently gifts the difference and an over-charge silently keeps it.
-  //
-  // TWO acceptable numbers, and both are server-derived — nothing here is taken from the
-  // client. The promotional total is what a promo-aware caller (routes/pay.ts) quoted; the
-  // LIST total is what a caller that predates this change quoted (routes/cashfree.ts still
-  // prices off `listings.price`). Matching the list total provisions exactly as before,
-  // with no promo provenance and no `used` bump — that lane genuinely did charge full
-  // price, and inventing a discount on it after the money moved would short the creator.
-  const charged = Math.trunc(args.chargedTokens);
-  const promotional = promoTax.buyerTotal === charged && promoTax.buyerTotal !== listTax.buyerTotal;
-  const matchesList = listTax.buyerTotal === charged;
-  if (!promotional && !matchesList) {
-    return json({
-      error: "price changed since payment",
-      charged: args.chargedTokens,
-      now: promoTax.buyerTotal,
-      list: listTax.buyerTotal,
-    }, 409);
+  const orderId = `${gateway}-order:${args.purchaseId}`;
+  const operationId = `commercial-checkout:${gateway}:${args.purchaseId}`;
+  const completed = await metaDb(env).prepare(
+    "SELECT response_json FROM commercial_checkout_operations WHERE operation_id=?1 AND account_id=?2 AND state='completed'",
+  ).bind(operationId, args.uid).first<{ response_json: string | null }>();
+  if (completed) return json({ ...(safeResponse(completed.response_json) ?? {}), idempotent_replay: true });
+  let purchaseQuote: CommercialPurchaseQuote | null;
+  try { purchaseQuote = await loadCommercialPurchaseQuote(env, orderId); }
+  catch { return json({ error: "commercial quote unavailable" }, 503); }
+  // Pre-migration in-flight payments without a snapshot require reconciliation.
+  // Never infer an old contract from today's listing, promotion, fee or tax.
+  if (!purchaseQuote) return json({ error: "commercial pricing snapshot missing", review_pending: true }, 409);
+  const { listing, policy, startsAt, endsAt, slotStart, slotEnd } = purchaseQuote;
+  const price = purchaseQuote.pricing.grossAmount;
+  const tax: TaxBreakdown = purchaseQuote.pricing;
+  if (purchaseQuote.buyerId !== args.uid || listing.id !== args.listingId
+    || purchaseQuote.kind !== args.kind || purchaseQuote.bookingId !== args.bookingId
+    || purchaseQuote.rail !== gateway || !Number.isSafeInteger(args.chargedTokens)
+    || tax.buyerTotal !== args.chargedTokens
+    || (args.kind === "consult_1to1"
+      && (slotStart !== args.slot?.start_at || slotEnd !== args.slot?.end_at))) {
+    return json({ error: "commercial quote authority mismatch" }, 409);
   }
-  const price = promotional ? priced.chargePrice : listPrice;
-  const tax = promotional ? promoTax : listTax;
-  if (promotional) {
-    commercialEvent(env, "checkout_promo", args.uid, {
-      kind: args.kind, outcome: priced.clamped ? "floor_clamped" : "applied", listing_id: listing.id,
-      promo_pct: promoPct, promo_kind: String(promo?.kind ?? ""),
-      list_price: listPrice, charge_price: price, floor_clamped: priced.clamped, rail: gateway,
-      // [PROMO-DARK-1] Says out loud that a promotional total was honoured while the
-      // switch was off — i.e. this is an in-flight purchase quoted before the shelve.
-      // It should be a trickle that stops within one payment window of the flip; a
-      // steady stream of these means something is still QUOTING discounts and needs
-      // finding, not that the grandfathering is wrong.
-      ...(config.listingPromotionsEnabled === true ? {} : { promotions_shelved_in_flight: true }),
-    });
+  // Availability is live, money is immutable. Cancellation/expiry can still refuse admission.
+  const current = await metaDb(env).prepare(
+    "SELECT status,starts_at,duration_min FROM listings WHERE id=?1",
+  ).bind(listing.id).first<{ status: string; starts_at: number | null; duration_min: number | null }>();
+  if (!current || !["published", "live"].includes(current.status)) {
+    return json({ error: "listing_unavailable" }, 410);
   }
-
-  const startsAt = args.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
-  const endsAt = args.kind === "live_event" && startsAt !== null
-    ? startsAt + Math.max(1, Math.trunc(Number(listing.duration_min ?? 60))) * 60_000
-    : null;
-  if (args.kind === "live_event"
-    && (startsAt === null || endsAt === null || !Number.isSafeInteger(startsAt) || startsAt <= 0 || endsAt <= startsAt)) {
-    return json({ error: "event schedule unavailable" }, 409);
-  }
-  // [LISTING-EXPIRY-1] The gateway lane is the one place a payment can land AFTER a
-  // show is over (the buyer sat on the payment page). Refuse to provision, with a 410
-  // the webhook recognises and turns into a provider refund — see routes/pay.ts.
-  // This also closes the old gap where this function never re-checked status at all.
   if (args.kind === "live_event") {
-    const sellable = bookability(listing, Date.now());
-    if (!sellable.ok) {
-      commercialEvent(env, "checkout", args.uid, { kind: args.kind, outcome: "refused", reason: sellable.reason, rail: gateway });
-      return json({ error: sellable.reason, reason: sellable.reason, message: sellable.message, schedule_state: sellable.state }, 410);
+    if (current.starts_at !== startsAt || Number(current.duration_min ?? 60) !== purchaseQuote.pricing.bookedMinutes) {
+      return json({ error: "event schedule changed" }, 410);
     }
-  } else if (!["published", "live"].includes(String(listing.status))) {
-    return json({ error: "listing_unavailable", reason: "listing_unavailable" }, 410);
+    const sellable = bookability(listing, Date.now());
+    if (!sellable.ok) return json({ error: sellable.reason }, 410);
   }
-  const slotStart = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.start_at)) : null;
-  const slotEnd = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.end_at)) : null;
-  if (args.kind === "consult_1to1"
-    && (slotStart === null || slotEnd === null || !Number.isSafeInteger(slotStart)
-      || !Number.isSafeInteger(slotEnd) || slotEnd <= slotStart)) {
-    return json({ error: "consultation slot required" }, 400);
-  }
+  const config = await readConfig(env);
 
   // Derived from the purchase, so a webhook redelivery lands on the same ids and the
   // whole path is idempotent exactly as the wallet lane's is. Prefixed with the ACTUAL
@@ -1747,8 +1752,6 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   // the checkout operation and the ledger source all carry the true rail — this is what
   // lets commercial_refund_rail.ts find a Razorpay/Paytm/Stripe purchase and reverse it on
   // the right adapter instead of falling through to a wallet credit.
-  const orderId = `${gateway}-order:${args.purchaseId}`;
-  const operationId = `commercial-checkout:${gateway}:${args.purchaseId}`;
   const requestHash = await sha256Hex(`${gateway}:${args.purchaseId}:${args.gatewayRef}`);
   if (!await assertCheckoutSchema(env)) return json({ error: "commercial checkout unavailable" }, 503);
   // finishOperation() UPDATEs this row; without it the outcome would be recorded nowhere.
@@ -1761,14 +1764,9 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   return await provisionCommercialPurchase(env, {
     auth: { uid: args.uid },
     route: { kind: args.kind },
-    listing, config, policy, price, tax,
-    // [M5] Provenance carried through so the gateway order records the same
-    // price_source/list_price/promo_id the wallet lane does — and so the `used` counter is
-    // bumped ONCE, here at provisioning, never at order creation.
-    listPrice,
-    promoPct: promotional ? promoPct : 0,
-    promoId: promotional && promo?.id != null ? String(promo.id) : null,
-    floorClamped: promotional ? priced.clamped : false,
+    listing, config, policy, price, tax, purchaseQuote,
+    listPrice: purchaseQuote.listPrice, promoPct: purchaseQuote.promoPct,
+    promoId: purchaseQuote.promoId, floorClamped: purchaseQuote.floorClamped,
     startsAt, endsAt, slotStart, slotEnd,
     orderId, operationId,
     bookingId: args.bookingId,
@@ -1790,13 +1788,14 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
         return { ok: r.ok, status: r.status, duplicate: false };
       },
       async reverse(amount) {
-        await refundExternal(env, orderId, amount, {
+        const reversed = await refundExternal(env, orderId, amount, {
           opId: `${gateway}:reverse:${args.gatewayRef}`,
           uid: args.uid,
           source: gateway,
           reason: "commercial provisioning failed",
           ref: args.gatewayRef,
         });
+        if (!reversed.ok) throw new Error("checkout refund failed");
       },
     },
   });

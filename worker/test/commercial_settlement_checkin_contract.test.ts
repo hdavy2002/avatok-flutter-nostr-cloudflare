@@ -117,7 +117,7 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
   });
 
   it("R5: the platform's consumed share is derived as the remainder, not an independently rounded fraction", () => {
-    expect(settlement).toContain("const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);");
+    expect(settlement).toContain("const consumedPlatformAmount = remainingGross - consumedCreatorAmount;");
   });
 
   it("R11: a normal live end with recorded outage rows refunds outage minutes instead of settling at full price", () => {
@@ -257,11 +257,11 @@ describe("partialRefundSplit + recordPartialRefundReceipt (node:sqlite)", () => 
     const { partialRefundSplit } = await import("../src/commercial_settlement");
     const cases: Array<[number, number, number, number, number]> = [
       [10000, 800, 8000, 2000, 0.3],   // RULEBOOK example amounts
-      [9999, 333, 7777, 1889, 1 / 3],  // odd amounts, a fraction that never rounds cleanly
+      [9999, 333, 7777, 2222, 1 / 3],  // odd amounts, a fraction that never rounds cleanly
       [1, 0, 0, 1, 0.5],               // a single-token order
       [12345, 617, 9000, 3345, 0.18],
-      [5000, 250, 4000, 750, 1],       // fully refunded
-      [5000, 250, 4000, 750, 0],       // fully consumed
+      [5000, 250, 4000, 1000, 1],       // fully refunded
+      [5000, 250, 4000, 1000, 0],       // fully consumed
     ];
     for (const [gross, gst, creator, platform, fraction] of cases) {
       const parts = partialRefundSplit(gross, gst, creator, platform, fraction);

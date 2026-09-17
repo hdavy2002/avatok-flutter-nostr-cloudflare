@@ -18,8 +18,8 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
-import { taxFor } from "../lib/commercial_tax";
-import { provisionFromGatewayPurchase } from "./commercial_checkout";
+import { provisionFromGatewayPurchase, quoteCommercialPurchase, freezeCommercialPurchaseQuote } from "./commercial_checkout";
+import { promosForCharging, activePromoPct, promoChargePrice } from "../lib/listing_promos";
 import { commercialLaneState } from "../lib/commercial_lane";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import {
@@ -88,12 +88,12 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
     listingId?: unknown; bookingId?: unknown; slot?: unknown;
   };
   const listingId = String(b.listingId || "");
-  const bookingId = b.bookingId ? String(b.bookingId) : null;
+  let bookingId = b.bookingId ? String(b.bookingId) : null;
   if (!listingId) return json({ error: "listingId required" }, 400);
 
   const db = metaDb(env);
   const listing = await db.prepare(
-    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity FROM listings WHERE id=?1",
+    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity,currency_display,attrs,free_entry FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing || !["published", "live"].includes(String(listing.status))) {
     return json({ error: "listing not available" }, 404);
@@ -108,17 +108,12 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
     return json({ error: "checkout unavailable", reason: "lane_not_open" }, 503);
   }
 
-  // THE PRICE IS COMPUTED HERE, FROM THE LISTING. The client sends no amount and could
-  // not be believed if it did.
-  const base = Math.trunc(Number(listing.price));
-  if (!Number.isSafeInteger(base) || base < 0) return json({ error: "invalid price" }, 409);
-  const tax = taxFor(config, base);
-  if (!tax) return json({ error: "tax configuration invalid" }, 503);
-  if (tax.buyerTotal <= 0) {
-    // Free listings do not belong on a payment rail; they go through the ordinary
-    // commercial checkout, which handles price === 0 correctly.
-    return json({ error: "free listings use the standard checkout" }, 400);
-  }
+  const listPrice = Number(listing.price);
+  if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid price" }, 409);
+  const promoRows = config.listingPromotionsEnabled === true
+    ? ((await promosForCharging(env, [listing.id])).get(listing.id) ?? []) : [];
+  const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
+  const priced = promoChargePrice(listPrice, promoPct);
 
   // A consult's slot is chosen HERE and stored, because the webhook arrives minutes
   // later with no request to read it from and cannot provision a booking without one.
@@ -139,6 +134,18 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
   const purchaseId = crypto.randomUUID();
   const gatewayOrderId = `avatok_${purchaseId.replace(/-/g, "").slice(0, 24)}`;
   const now = Date.now();
+
+  if (kind === "consult_1to1") bookingId = `cashfree-booking-${purchaseId}`;
+  let purchaseQuote;
+  try {
+    purchaseQuote = await freezeCommercialPurchaseQuote(env, `cashfree-order:${purchaseId}`, quoteCommercialPurchase({
+      buyerId: auth.uid, kind, listing, bookingId, rail: "cashfree", config,
+      sourcePrice: priced.chargePrice, slotStart, slotEnd, promoPct,
+      promoId: promo?.id != null ? String(promo.id) : null, floorClamped: priced.clamped,
+    }));
+  } catch { return json({ error: "commercial quote unavailable" }, 409); }
+  const tax = purchaseQuote.pricing;
+  if (tax.buyerTotal <= 0) return json({ error: "free listings use the standard checkout" }, 400);
 
   // Row written BEFORE the gateway call. If createCashfreeOrder times out after Cashfree
   // has already created the order, this row is the only evidence the attempt existed —
@@ -179,6 +186,9 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
     payment_session_id: created.payment_session_id,
     gateway_order_id: gatewayOrderId,
     // Itemised so the buyer sees exactly what they are paying, per [TAX-GST-1].
+    pricing: purchaseQuote.pricing,
+    creator_subtotal: tax.creatorSubtotal,
+    platform_fee_amount: tax.platformFeeAmount,
     base_amount: tax.taxableBase,
     gst_amount: tax.gstAmount,
     gst_rate_pct: tax.gstRatePct,
@@ -252,7 +262,10 @@ export async function cashfreeWebhook(req: Request, env: Env): Promise<Response>
   // lane uses. [PAY-HANDOFF-1] — funding without provisioning is what the old fence
   // existed to prevent, so the two are one call and one outcome.
   const orderId = `cashfree-order:${row.purchase_id}`;
-  const totalTokens = Math.round(row.total_paise / 100);
+  if (!Number.isSafeInteger(row.total_paise) || row.total_paise < 0 || row.total_paise % 100 !== 0) {
+    return json({ error: "non-integer commercial payment", review_pending: true }, 409);
+  }
+  const totalTokens = row.total_paise / 100;
   const provisioned = await provisionFromGatewayPurchase(env, {
     uid: row.uid,
     listingId: row.listing_id,
@@ -287,11 +300,11 @@ export async function cashfreeWebhook(req: Request, env: Env): Promise<Response>
   // their seat. The bounty row is keyed on the referred user, so a redelivered webhook
   // or a second purchase inserts nothing.
   try {
-    const creatorPct = Math.trunc(Number((await readConfig(env)).commercialCreatorFeePct));
-    const grossTokens = Math.round(row.total_paise / 100);
-    const baseTokens = Math.round(row.base_paise / 100);
-    // The platform's cut is a share of the BASE, never of the tax.
-    const platformCut = baseTokens - Math.round(baseTokens * creatorPct / 100);
+    const grossTokens = totalTokens;
+    const snapshot = await db.prepare("SELECT platform_fee_amount FROM commercial_policy_snapshots WHERE order_id=?1")
+      .bind(orderId).first<{ platform_fee_amount: number }>();
+    if (!snapshot) throw new Error("commercial policy unavailable");
+    const platformCut = Number(snapshot.platform_fee_amount);
     const paid = await payAffiliateBountyOnPurchase(env, {
       referredUid: row.uid,
       purchaseId: row.purchase_id,
