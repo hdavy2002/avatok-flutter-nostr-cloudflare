@@ -151,6 +151,7 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     <script>
       import { initAnalytics } from '../lib/analytics';
       import { initPerformance } from '../lib/performance';
+      import '../scripts/hover-prefetch';
       initPerformance();
       initAnalytics();
     </script>
