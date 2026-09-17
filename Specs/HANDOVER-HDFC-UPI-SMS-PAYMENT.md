@@ -53,8 +53,9 @@ Parent repository: `hdavy2002/avatok-flutter-nostr-cloudflare`
 - `5b3d73b3` — separate signed-in checkout email-gate fix.
 - Current fix — isolates smoke matching from commercial ₹1 intents, keeps one
   live smoke QR, and recovers a matching receipt for pending/expired smoke
-  intents. This fix still requires the production Worker deployment before it
-  affects the live page.
+  intents. Deployed to production in run
+  [35256433081](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35256433081)
+  from commit `864d0ab8`.
 
 Companion repository: `hdavy2002/upeo-sms-gateway`
 
@@ -143,6 +144,11 @@ listing.
 The source fix has passed `git diff --check`. Per project policy, no local
 Flutter/Worker build is run; GitHub Actions must build/deploy it.
 
+The production deployment completed successfully. The latest real receipt is
+still present in D1 and the newest smoke intent remains `pending` until its
+browser status request runs against the newly deployed Worker. Opening the
+smoke page and creating a fresh QR is the clean verification of the fix.
+
 After the production Worker deployment:
 
 1. Open the smoke page while signed in.
@@ -168,4 +174,3 @@ test. Do not reuse a screenshot of an old QR.
 - Before enabling real commercial HDFC checkout, add stronger order-to-payment
   correlation, operational review tooling, and an official payment provider or
   bank integration where available.
-
