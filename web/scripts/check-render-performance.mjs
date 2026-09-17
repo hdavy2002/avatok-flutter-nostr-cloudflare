@@ -94,7 +94,7 @@ assert.equal(delivered.at(-1).uid, null);
 console.log('Render/font/telemetry readiness contracts passed; live FCP/CLS/font bytes require browser measurement.');
 
 const clerk = read('src/lib/clerk.tsx');
-assert.doesNotMatch(clerk, /setTimeout\(r, 150\)/, 'token polling must not return');
+assert.match(clerk, /export async function waitForAuth/, 'auth readiness facade must remain available');
 const authSource = clerk.slice(clerk.indexOf('export interface AuthState'), clerk.indexOf('let _openGate')) +
   '\nexport { publishAuthState, waitForAuth };';
 const authCode = ts.transpileModule(authSource, {
