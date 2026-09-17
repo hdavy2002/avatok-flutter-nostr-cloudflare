@@ -22,7 +22,8 @@ function enabled(env: Env, config: any): boolean {
 }
 
 function parseAmountPaise(body: string): number | null {
-  if (!/(credited|received|deposit|credit)/i.test(body)) return null;
+  if (/(?:otp|one[ -]?time|password|pin|verification|debited|declined|failed)/i.test(body)) return null;
+  if (!/\b(?:credited|received)\b/i.test(body)) return null;
   const m = body.match(/(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i);
   if (!m) return null;
   const n = Number(m[1].replace(/,/g, ""));
@@ -35,7 +36,13 @@ function parseReference(body: string): string {
 }
 
 function isHdfcSender(sender: string): boolean {
-  return /(?:HDFC|HDFCBK|HDFCBANK)/i.test(sender);
+  return /(?:HDFCBK|HDFCBN|HDFCBANK)/i.test(sender);
+}
+
+function hasAccountSuffix(body: string, suffix: string): boolean {
+  if (!suffix) return true;
+  const accounts = /\b(?:a\s*\/\s*c|acct|account|ac)\b\s*(?:(?:no\.?|number)\s*)?[:.\-]?\s*([xX*0-9]+)(?![A-Za-z0-9])/gi;
+  return [...body.matchAll(accounts)].some((m) => String(m[1]).endsWith(suffix));
 }
 
 async function confirmIntentFromVerifiedReceipt(
@@ -229,7 +236,7 @@ export async function hdfcSmsIncoming(req: Request, env: Env): Promise<Response>
   const amountPaise = parseAmountPaise(String(body.message ?? ""));
   if (!amountPaise) return json({ ok: true, ignored: "not_credit" });
   const suffix = String(env.HDFC_SMS_ACCOUNT_SUFFIX ?? "");
-  if (suffix && !String(body.message).includes(suffix)) return json({ ok: true, ignored: "account" });
+  if (!hasAccountSuffix(String(body.message), suffix)) return json({ ok: true, ignored: "account" });
   const db = metaDb(env);
   let receipt;
   try {
