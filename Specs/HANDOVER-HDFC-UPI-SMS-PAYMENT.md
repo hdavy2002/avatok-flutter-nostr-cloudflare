@@ -288,3 +288,10 @@ a shareable PNG was generated from that exact response outside the repository.
 No migration or companion build was required. One Astra worker performed the
 bounded source audit/implementation; coordinator reviewed the diffs and corrected
 the test's DROP VIEW statement before CI. No local application builds/tests ran.
+
+
+## 2026-09-18 — App-specific ₹1 payment buttons
+
+Owner requested Paytm, Google Pay and PhonePe icons after the generic UPI link opened WhatsApp. The public QR page now preserves the server-provided payment query and targets the selected Android package through a user-tapped browser intent. Missing-app fallback returns to the QR page. Desktop choices point to the QR; iOS uses provider-documented app schemes. No payment is submitted or considered confirmed by clicking a button; native app confirmation remains required. No backend, migration or companion release is needed.
+
+Sources: [Chrome browser intents](https://developer.chrome.com/docs/android/intents), [Paytm Android package list](https://business.paytm.com/docs/upi-smart-intent/), [Google iOS route](https://developers.google.com/pay/india/api/ios/in-app-payments), [PayU iOS prefixes](https://docs.payu.in/docs/upi-intent-server-to-server). Paytm/PhonePe iOS prefixes are provider documented, not verified on a physical iPhone; Setu documentation lists different routes without a platform qualifier. Physical phone handoff and fresh payment remain unverified. Browser coverage checks the three app choices, exact packages, encoded payment parameters, iOS links, narrow layouts and retry behavior without launching a payment.
