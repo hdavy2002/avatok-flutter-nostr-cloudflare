@@ -91,8 +91,8 @@ const categories = [
     </div>
     <div class="original-mobile original-categories-mobile">
       <div class="original-category-mobile-title" aria-hidden="true">
-        <img src={`${root}categories-heading-top.webp`} width="488" height="48" alt="" loading="lazy" />
-        <img src={`${root}categories-heading-bottom.webp`} width="339" height="48" alt="" loading="lazy" />
+        <img src={publicImage(`${root}categories-heading-top.webp`, { width: 640, fit: 'scale-down', format: 'webp' })} width="488" height="48" alt="" loading="lazy" />
+        <img src={publicImage(`${root}categories-heading-bottom.webp`, { width: 420, fit: 'scale-down', format: 'webp' })} width="339" height="48" alt="" loading="lazy" />
       </div>
       <div class="original-category-grid">{categories.map(category => <a href="/global-ideas" aria-label={`Explore ${category.name} creator ideas`}><picture><source type="image/webp" srcset={publicImage(`${root}category-${category.name}.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}category-${category.name}.png`, { width: 1600, fit: 'scale-down' })} width={category.width} height="196" alt={category.name} loading="lazy" decoding="async" /></picture></a>)}</div>
     </div>
@@ -109,7 +109,7 @@ const categories = [
   <div class="original-mobile original-cta-mobile">
     <picture class="original-cta-mobile-title"><source type="image/webp" srcset={publicImage(`${root}cta-heading.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}cta-heading.png`, { width: 1600, fit: 'scale-down' })} width="532" height="58" alt="" loading="lazy" decoding="async" /></picture>
     <a data-india-i18n-attr="aria-label:web-common.60be9273c8e3a386" href={signup} aria-label="Create your free listing"><picture><source type="image/webp" srcset={publicImage(`${root}cta-button.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.60be9273c8e3a386" src={publicImage(`${root}cta-button.png`, { width: 1600, fit: 'scale-down' })} width="234" height="55" alt="Create your free listing" loading="lazy" decoding="async" /></picture></a>
-    <img class="original-cta-edge" src={`${root}cta-edge.webp`} width="1024" height="25" alt="" loading="lazy" />
+    <img class="original-cta-edge" src={publicImage(`${root}cta-edge.webp`, { width: 1280, fit: 'scale-down', format: 'webp' })} width="1024" height="25" alt="" loading="lazy" />
   </div>
 </section>}
 
