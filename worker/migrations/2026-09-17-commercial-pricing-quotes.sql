@@ -15,9 +15,9 @@ BEGIN
   SELECT RAISE(ABORT, 'commercial pricing quote is immutable');
 END;
 
--- NULL identifies an extension quoted before the authoritative pricing contract.
-ALTER TABLE commercial_consult_extensions ADD COLUMN pricing_quote_json TEXT
-  CHECK (pricing_quote_json IS NULL OR json_valid(pricing_quote_json));
+-- The pricing_quote_json column was added by the original production rollout.
+-- Keep this migration rerunnable: SQLite has no portable IF NOT EXISTS form for
+-- ALTER TABLE ADD COLUMN, and the production workflow may be retried.
 
 CREATE TRIGGER IF NOT EXISTS commercial_extension_pricing_immutable
 BEFORE UPDATE OF pricing_quote_json,amount,rate_per_minute,extension_minutes,currency,
