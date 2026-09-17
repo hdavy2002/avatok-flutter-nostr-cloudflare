@@ -52,7 +52,7 @@ class QrShare {
               pw.Text(number, style: const pw.TextStyle(fontSize: 13, color: PdfColors.blue800)),
             ],
             pw.SizedBox(height: 12),
-            pw.UiText(UiMessage.m_avatok_ai_6c26858205, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            pw.Text(uiCopy(UiMessage.m_avatok_ai_6c26858205), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
           ]),
         ),
       ),

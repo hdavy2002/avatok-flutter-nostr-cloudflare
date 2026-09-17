@@ -29,7 +29,7 @@ class UiLanguageTile extends StatelessWidget {
                   child: UiText(UiMessage.m_language_1287750a09, style: TextStyle(fontSize: 20))),
                 if (controller.fallback || !controller.frameworkSupported)
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: UiText(UiMessage.m_some_interface_text_is_shown_2fc750d6df)),
+                    child: UiText(UiMessage.m_language_1287750a09)),
                 Expanded(child: ListView(
                   children: [
                     for (final choice in uiLocales)
