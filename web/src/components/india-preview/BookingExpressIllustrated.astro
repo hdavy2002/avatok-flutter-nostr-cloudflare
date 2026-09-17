@@ -29,7 +29,7 @@ const steps = [
     </div>
     <ol class="express-steps">
       {steps.map(([title, body, image, alt], index) => <li>
-        <div class="express-step-art"><img src={`/assets/landing-steps-preview/${image}.png`} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
+        <div class="express-step-art"><img src={publicImage(`/assets/landing-steps-preview/${image}.png`, { width: 1254, fit: 'scale-down' })} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
         <div class="express-step-copy">
         <h4 data-india-i18n={title}>{copy[title]}</h4>
         <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Start your show on your app." : copy[body]}</p>
