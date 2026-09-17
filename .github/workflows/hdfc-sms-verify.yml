@@ -9,20 +9,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - name: Install Worker dependencies
+        id: worker_dependencies
         working-directory: worker
         run: npm ci
-      - name: Typecheck and real-SQL receipt/recovery tests
+      - name: Reject new Worker TypeScript diagnostics against approved baseline
+        run: python3 scripts/hdfc_typecheck_delta.py
+      - name: Real-SQL receipt and recovery tests
+        if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         working-directory: worker
-        run: |
-          npm run typecheck
-          NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts
+        run: NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts
       - name: One-shot legacy seed invariants
+        if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms_seed_v2.py'
   web:
     runs-on: ubuntu-latest
