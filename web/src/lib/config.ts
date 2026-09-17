@@ -59,7 +59,7 @@ function imageParams(opts: ImageOptions): string {
   const width = IMAGE_WIDTHS.find(value => value >= wanted) ?? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1];
   const quality = Number.isFinite(opts.quality) ? Math.max(1, Math.min(100, Math.round(opts.quality!))) : 60;
   const fit = ['cover', 'contain', 'scale-down', 'crop', 'pad'].includes(opts.fit ?? '') ? opts.fit : 'cover';
-  const format = ['auto', 'avif', 'webp', 'jpeg'].includes(opts.format ?? '') ? opts.format : 'auto';
+  const format = ['auto', 'avif', 'webp', 'jpeg'].includes(opts.format ?? '') ? opts.format : 'avif';
   return `format=${format},quality=${quality},width=${width},fit=${fit}`;
 }
 
