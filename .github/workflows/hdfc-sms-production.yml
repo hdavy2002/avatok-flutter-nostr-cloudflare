@@ -1,0 +1,65 @@
+name: Configure HDFC SMS payment rail (production)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+      - name: Apply HDFC SMS schema
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: prod
+        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-17-hdfc-sms-payments.sql
+      - name: Register production HDFC configuration
+        env:
+          HDFC_UPI_VPA: ${{ secrets.HDFC_UPI_VPA }}
+          HDFC_UPI_PAYEE_NAME: ${{ secrets.HDFC_UPI_PAYEE_NAME }}
+          HDFC_SMS_DEVICE_ID: ${{ secrets.HDFC_SMS_DEVICE_ID }}
+          HDFC_SMS_DEVICE_SECRET: ${{ secrets.HDFC_SMS_DEVICE_SECRET }}
+          HDFC_SMS_ACCOUNT_SUFFIX: ${{ secrets.HDFC_SMS_ACCOUNT_SUFFIX }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: prod
+        run: |
+          for pair in \
+            "HDFC_UPI_VPA=$HDFC_UPI_VPA" \
+            "HDFC_UPI_PAYEE_NAME=$HDFC_UPI_PAYEE_NAME" \
+            "HDFC_SMS_DEVICE_ID=$HDFC_SMS_DEVICE_ID" \
+            "HDFC_SMS_DEVICE_SECRET=$HDFC_SMS_DEVICE_SECRET" \
+            "HDFC_SMS_ACCOUNT_SUFFIX=$HDFC_SMS_ACCOUNT_SUFFIX"; do
+            name="${pair%%=*}"
+            value="${pair#*=}"
+            printf '%s' "$value" | scripts/cf.sh worker secret put "$name"
+          done
+      - name: Deploy production Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: prod
+        run: scripts/cf.sh worker deploy
+      - name: Enable HDFC SMS checkout
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: prod
+        run: scripts/flags.sh set hdfcSmsEnabled=true
