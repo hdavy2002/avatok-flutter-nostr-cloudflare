@@ -22,7 +22,7 @@ for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon
 }
 assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
 assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
-assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'No rendered language selectors');
+assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
  const href = match[1].replaceAll('&amp;', '&');
  if (href.startsWith('#') || href.startsWith('/#')) {
@@ -52,7 +52,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: approved hero, retained sections, no rendered language selectors, calculator, anchors and India redirects.');
+console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
