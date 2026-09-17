@@ -30,7 +30,7 @@ let currentUid: string | null = null;
 // dropped 100% of web events for an hour (2026-09-02). So: never touch the
 // bare key `token`; scrub the things that actually leak — auth/access/refresh
 // tokens, passwords, secrets, OTPs.
-const SENSITIVE_KEY_RE = /(^|_)(access|auth|refresh|id|session|api|bearer|jwt)_?token|password|passwd|secret|authorization|(^|_)otp($|_)/i;
+const SENSITIVE_KEY_RE = /(^|_)(access|auth|refresh|id|session|api|bearer|jwt)_?token|password|passwd|secret|authorization|(^|_)otp($|_)|(^|_)invite_?token($|_)/i;
 const POSTHOG_OWN_KEYS = new Set(['token']);
 // 7+ consecutive digits inside a string value (phone numbers, OTPs, long ids
 // that slipped into a free-text prop) get redacted rather than dropped, so
@@ -44,8 +44,14 @@ const LONG_DIGIT_RUN_RE = /\d{7,}/g;
 // runs on every string value before that key-based branching, so it can't be
 // bypassed by a property name starting with `$`.
 const JOIN_LINK_PATH_RE = /\/j\/[^/?#"'\s]+/g;
-function redactJoinLinkToken(v: unknown): unknown {
-  return typeof v === 'string' ? v.replace(JOIN_LINK_PATH_RE, '/j/[token]') : v;
+const INVITE_FRAGMENT_RE = /(#(?:[^#\s"']*&)?invite=)[^&\s"']*/gi;
+function redactPrivateUrl(v: unknown): unknown {
+  if (typeof v === 'string') return v.replace(JOIN_LINK_PATH_RE, '/j/[token]')
+    .replace(INVITE_FRAGMENT_RE, '$1[redacted]');
+  // Exceptions, referrers and SDK person properties may contain nested URLs.
+  if (Array.isArray(v)) return v.map(redactPrivateUrl);
+  if (v && typeof v === 'object') return scrubProps(v as Properties);
+  return v;
 }
 
 function scrubValue(v: unknown): unknown {
@@ -58,7 +64,7 @@ function scrubProps(props: Properties | undefined | null): Properties | undefine
   const out: Properties = {};
   for (const [k, v] of Object.entries(props)) {
     if (!POSTHOG_OWN_KEYS.has(k) && SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
-    const noToken = redactJoinLinkToken(v);
+    const noToken = redactPrivateUrl(v);
     // PostHog's own `$…` props, the git SHA and ids are not phone numbers —
     // redacting digit runs there broke `release` filtering on day one.
     out[k] = k.startsWith('$') || k === 'release' || k === 'token' || k.endsWith('_id') || k === 'distinct_id'
@@ -74,7 +80,8 @@ function scrubProps(props: Properties | undefined | null): Properties | undefine
 // init time (Astro is an MPA: every one of these pages is a fresh document
 // load, so a fresh `initAnalytics()` call always sees the real path).
 function isPrivacySensitivePath(pathname: string): boolean {
-  return pathname.startsWith('/j/') || pathname.startsWith('/talk/');
+  return pathname.startsWith('/j/') || pathname.startsWith('/talk/')
+    || pathname === '/test/upi' || pathname.startsWith('/test/upi/');
 }
 
 // ── §2.1 `app` derivation from the URL path — matches the Worker's app_name. ─
@@ -154,10 +161,10 @@ export function initAnalytics(): void {
     api_host: host,
     capture_pageview: 'history_change',
     capture_pageleave: true,
-    autocapture: true,
-    rageclick: true,
-    capture_dead_clicks: true,
-    capture_exceptions: true,
+    autocapture: !sensitivePage,
+    rageclick: !sensitivePage,
+    capture_dead_clicks: !sensitivePage,
+    capture_exceptions: !sensitivePage,
     disable_session_recording: sensitivePage,
     session_recording: {
       maskAllInputs: true,
@@ -167,7 +174,8 @@ export function initAnalytics(): void {
     // Replay is enabled here; the 20% sampling from the catalog (§1.2) is set
     // in the PostHog project settings (Session replay > sampling), same as
     // the app's server-controlled rollout — no client-side dice roll needed.
-    persistence: 'localStorage+cookie',
+    // Private invitation URLs must not be persisted by SDK referral tracking.
+    persistence: sensitivePage ? 'memory' : 'localStorage+cookie',
     cross_subdomain_cookie: false,
     loaded: (ph) => {
       registerResponsiveSuperProps();

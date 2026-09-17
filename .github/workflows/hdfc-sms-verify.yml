@@ -25,10 +25,10 @@ jobs:
       - name: Real-SQL receipt and recovery tests
         if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         working-directory: worker
-        run: NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts
-      - name: One-shot legacy seed invariants
+        run: NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts hdfc_sms_customer_test.test.ts
+      - name: Legacy seed and private invitation invariants
         if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
-        run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms_seed_v2.py'
+        run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms*.py'
   web:
     runs-on: ubuntu-latest
     steps:
@@ -43,14 +43,14 @@ jobs:
         run: npm ci
       - name: Payment controller regressions
         working-directory: web
-        run: node --experimental-strip-types --test test/upi_smoke_controller.test.ts
+        run: node --experimental-strip-types --test test/upi_smoke_controller.test.ts test/upi_customer_test_controller.test.ts
 
       - name: Install isolated browser test tooling
         working-directory: web
         run: |
           npm install --no-save --package-lock=false @playwright/test@1.56.1
           npx playwright install --with-deps chromium
-      - name: Real React payment recovery interactions
+      - name: Customer booking and admin recovery browser interactions
         working-directory: web
         run: npx playwright test --config=test/browser/playwright.config.ts
       - name: Save browser failure evidence

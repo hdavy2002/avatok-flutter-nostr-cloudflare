@@ -9,8 +9,9 @@ export interface Sqlite {exec(sql:string):void;prepare(sql:string):Statement;clo
 const {DatabaseSync}=createRequire(import.meta.url)('node:sqlite') as {DatabaseSync:new(path:string)=>Sqlite};
 export const baseSql=readFileSync(new URL('../migrations/2026-09-17-hdfc-sms-payments.sql',import.meta.url),'utf8');
 export const smokeSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-sms-smoke-v2.sql',import.meta.url),'utf8');
+export const customerSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-customer-test.sql',import.meta.url),'utf8');
 export function fixture(){
- const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON;');sql.exec(baseSql);sql.exec(smokeSql);
+ const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON;');sql.exec(baseSql);sql.exec(smokeSql);sql.exec(customerSql);
  const account=createHash('sha256').update('HDFC|1234|INR').digest('hex');
  sql.exec(`CREATE VIEW hdfc_sms_smoke_ready AS SELECT 2 protocol_version,0 cutover_ms,'${"a".repeat(64)}' seed_digest,'${account}' receiving_account_key;`);
  sql.exec(`CREATE TABLE admin_roles(uid TEXT PRIMARY KEY,role TEXT);

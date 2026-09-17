@@ -3,11 +3,11 @@ export const prerender = false;
 Astro.response.headers.set('Cache-Control','private, no-store');
 Astro.response.headers.set('Referrer-Policy','no-referrer');
 import Base from '../../layouts/Base.astro';
-import UpiSmokeCheckout from '../../islands/checkout/UpiSmokeCheckout';
+import UpiCustomerTestCheckout from '../../islands/checkout/UpiCustomerTestCheckout';
 ---
 
-<Base title="UPI payment test · avaTOK" description="Private avaTOK UPI and SMS payment pipeline test." chrome={false} headerAuth="static" navStatic={true} noindex={true}>
+<Base title="Invited customer booking test · avaTOK" description="Private invited customer test. A real ₹1 payment for a test-only booking." chrome={false} headerAuth="static" navStatic={true} noindex={true}>
   <main style="min-height:100vh; display:grid; place-items:center; padding:24px; background:#f5efe5;">
-    <UpiSmokeCheckout client:load />
+    <UpiCustomerTestCheckout client:load />
   </main>
 </Base>
