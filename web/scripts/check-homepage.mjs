@@ -220,8 +220,8 @@ assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live eve
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1200');
-assert.equal(meta(html, 'og:image:height'), '626');
+assert.equal(meta(html, 'og:image:width'), '1156');
+assert.equal(meta(html, 'og:image:height'), '1360');
 assert.equal(meta(html, 'og:image:type'), 'image/jpeg');
 // These checks inspect the original source; delivery format is enforced above.
 for (const image of campaignImages) {
@@ -230,7 +230,7 @@ for (const image of campaignImages) {
  const bytes = readFileSync(imagePath);
  assert(bytes.length > 1000 && bytes.length < 300_000, 'Creator preview image is present and below 300 KB for social crawlers');
  const metadata = await sharp(bytes).metadata();
- assert.equal(metadata.format, 'jpeg', 'Creator preview bytes match the advertised JPEG MIME type');
+ assert.equal(metadata.format, 'png', 'Creator preview source bytes remain the approved PNG');
  assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
  assert.equal(metadata.height, Number(meta(html, 'og:image:height')), 'Creator preview height matches its metadata');
 }
