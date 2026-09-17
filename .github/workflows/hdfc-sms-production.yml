@@ -27,6 +27,13 @@ jobs:
           ALLOW_PROD: '1'
           AVATOK_TARGET: prod
         run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-17-hdfc-sms-payments.sql
+      - name: Seed isolated ₹1 UPI smoke event
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: prod
+        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-17-upi-smoke-event.sql
       - name: Register production HDFC configuration
         env:
           HDFC_UPI_VPA: ${{ secrets.HDFC_UPI_VPA }}

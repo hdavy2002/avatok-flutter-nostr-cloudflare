@@ -1,0 +1,10 @@
+---
+import Base from '../../layouts/Base.astro';
+import UpiSmokeCheckout from '../../islands/checkout/UpiSmokeCheckout';
+---
+
+<Base title="UPI payment test · avaTOK" description="Private avaTOK UPI and SMS payment pipeline test." chrome={false} headerAuth="static" navStatic={true} noindex={true}>
+  <main style="min-height:100vh; display:grid; place-items:center; padding:24px; background:#f5efe5;">
+    <UpiSmokeCheckout client:load />
+  </main>
+</Base>

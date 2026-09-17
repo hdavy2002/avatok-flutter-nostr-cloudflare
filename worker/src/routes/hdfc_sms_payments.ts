@@ -5,10 +5,13 @@ import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { json } from "../util";
 import { readConfig } from "./config";
-import { taxFor } from "../lib/commercial_tax";
 import { bookability } from "../lib/listing_schedule";
 import { hmacSha256Hex, sha256Hex, constantTimeEqual } from "../lib/payments/types";
-import { provisionFromGatewayPurchase } from "./commercial_checkout";
+import { provisionFromGatewayPurchase, quoteCommercialPurchase, freezeCommercialPurchaseQuote } from "./commercial_checkout";
+
+// Deliberately isolated smoke-test listing. It exercises the real signed SMS
+// path with a ₹1 final charge without changing normal commercial pricing.
+export const UPI_SMOKE_TEST_LISTING_ID = "avatok-upi-smoke-2026";
 
 const APP = "avapay";
 
@@ -61,13 +64,30 @@ export async function hdfcSmsCreateOrder(req: Request, env: Env): Promise<Respon
   if (!listing || listing.kind !== "live_event" || !["published", "live"].includes(String(listing.status))) {
     return json({ error: "listing not available" }, 404);
   }
-  if (listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
+  const smokeTest = listing.id === UPI_SMOKE_TEST_LISTING_ID;
+  if (!smokeTest && listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
   const sellable = bookability(listing, Date.now());
   if (!sellable.ok) return json({ error: sellable.reason, message: sellable.message }, 410);
   const price = Math.trunc(Number(listing.price));
-  const tax = taxFor(config, price);
-  if (!tax || tax.buyerTotal <= 0) return json({ error: "invalid listing price" }, 409);
+  const pricingConfig = smokeTest
+    // The smoke event is explicitly fee-exempt. Keep the real production config
+    // untouched while the owner verifies QR scanning, SMS signing and polling.
+    ? { ...config, sessionFeeRuleEnabled: false, commercialCreatorFeePct: 100 }
+    : config;
+  let purchaseQuote;
+  try {
+    purchaseQuote = quoteCommercialPurchase({
+      buyerId: auth.uid, kind: "live_event", listing, bookingId: null,
+      rail: "hdfc_sms", config: pricingConfig, sourcePrice: price,
+      slotStart: null, slotEnd: null,
+    });
+  } catch { return json({ error: "invalid listing price" }, 409); }
+  const tax = purchaseQuote.pricing;
+  if (tax.buyerTotal <= 0) return json({ error: "invalid listing price" }, 409);
   const intentId = crypto.randomUUID();
+  const commercialOrderId = `hdfc_sms-order:${intentId}`;
+  try { await freezeCommercialPurchaseQuote(env, commercialOrderId, purchaseQuote); }
+  catch { return json({ error: "pricing snapshot unavailable" }, 503); }
   const now = Date.now();
   const expires = now + 30 * 60_000;
   await db.prepare(
@@ -84,6 +104,7 @@ export async function hdfcSmsCreateOrder(req: Request, env: Env): Promise<Respon
     ok: true, intent_id: intentId, listing_id: listing.id, status: "pending",
     amount_paise: tax.buyerTotal * 100, total_amount: tax.buyerTotal, expires_at: expires,
     upi_url: `upi://pay?${params.toString()}`, payee_name: String(env.HDFC_UPI_PAYEE_NAME ?? "AvaTOK"),
+    smoke_test: smokeTest,
   });
 }
 
