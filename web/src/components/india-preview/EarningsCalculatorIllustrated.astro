@@ -1,5 +1,6 @@
 ---
 import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+import { publicImage } from '../../lib/config';
 ---
 
 <section class="india-section india-calculator calculator-illustrated" aria-labelledby="addon-calculator-title" id="addon-calculator">
@@ -17,7 +18,7 @@ import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
 </p>
 </div>
 <div class="calculator-heading-art" aria-hidden="true">
-<img class="calculator-savings" src="/assets/landing-steps-preview/savings-original.png" alt="" width="150" height="150" loading="lazy" decoding="async" />
+<img class="calculator-savings" src={publicImage('/assets/landing-steps-preview/savings-original.png', { width: 300, fit: 'scale-down' })} alt="" width="150" height="150" loading="lazy" decoding="async" />
 </div>
 </div>
 <div class="india-calc-grid" data-india-calculator>

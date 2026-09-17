@@ -25,7 +25,7 @@ const steps = [
         <p data-i18n="web-landing.2bf54f09cc27116b" class="express-label">Your first booking express</p>
         <h3><span data-india-i18n="journeyTitle">{copy.journeyTitle}</span></h3>
       </div>
-      <div class="express-stamp" aria-hidden="true"><img src="/assets/landing-steps-preview/opportunities-original.png" alt="" width="112" height="112" loading="lazy" decoding="async" /></div>
+      <div class="express-stamp" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/opportunities-original.png', { width: 224, fit: 'scale-down' })} alt="" width="112" height="112" loading="lazy" decoding="async" /></div>
     </div>
     <ol class="express-steps">
       {steps.map(([title, body, image, alt], index) => <li>
