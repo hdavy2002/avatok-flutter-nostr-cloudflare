@@ -13,9 +13,8 @@ const guide = globalCreatorGuides[idea.slug];
 const guideNamespace = 'web-global-guide-' + idea.slug;
 const ideaIndex = globalCreatorIdeas.findIndex(item => item.slug === idea.slug);
 const related = [1, 2, 3].map(offset => globalCreatorIdeas[(ideaIndex + offset) % globalCreatorIdeas.length]);
-const image = `/assets/global-original/ideas-${idea.slug}.png`;
+const image = publicImage(`/assets/global-original/ideas-${idea.slug}.png`, { width: 768, fit: 'scale-down' });
 const imageWidth = [396, 376, 368, 396][ideaIndex % 4];
-const displayImage = publicImage(image, { width: imageWidth, fit: 'scale-down' });
 const imageHeight = ideaIndex < 4 ? 308 : 320;
 const imageAlt = `${idea.platform}: ${idea.title}. ${idea.description}`;
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').href;
@@ -36,7 +35,7 @@ const articleLd = {
       <div class="ge-article-top"><a data-i18n="web-blog.f14d673628e3deb1" class="ge-back" href="/global-ideas">← All global creator ideas</a><span class="ge-series"><ui-copy style="display:contents" data-i18n="web-blog.222788e12797185f">THE CREATOR PLAYBOOK / 0</ui-copy>{ideaIndex + 1}</span></div>
       <div class="ge-article-hero">
         <div class="ge-article-heading"><p class="ge-kicker">{idea.platform} · <ui-copy style="display:contents" data-i18n={`web-global-ideas.${idea.slug}.eyebrow`}>{idea.eyebrow}</ui-copy></p><h1><ui-copy style="display:contents" data-i18n={`web-global-ideas.${idea.slug}.title`}>{idea.title}</ui-copy><span aria-hidden="true">.</span></h1><p data-i18n={`${guideNamespace}.promise`} class="ge-lead">{guide.promise}</p><p data-i18n="web-blog.e6baaa3a7f145c22" class="ge-byline">A practical guide from avaTOK · Suggested session plan</p><a data-i18n="web-blog.07ebb568ff07334f" class="ge-button" href="#session-plan">Build your session ↓</a></div>
-        <figure class="ge-article-art"><img src={displayImage} alt={imageAlt} width={imageWidth} height={imageHeight} fetchpriority="high" loading="eager" decoding="async" /></figure>
+        <figure class="ge-article-art"><img src={image} alt={imageAlt} width={imageWidth} height={imageHeight} fetchpriority="high" loading="eager" decoding="async" /></figure>
       </div>
       <div class="ge-article-layout">
         <aside class="ge-at-a-glance" aria-labelledby="session-snapshot"><p data-i18n="web-blog.2fb53bea6a33703b" class="ge-kicker">THE SHORT VERSION</p><h2 data-i18n="web-blog.61ba0925589f4b7e" id="session-snapshot">One good session.</h2><dl><dt data-i18n="web-blog.9c58bdccfc523bd0">Suggested format</dt><dd data-i18n={`${guideNamespace}.duration`}>{guide.duration}</dd><dt data-i18n="web-blog.f05270150ac2faa0">Made for</dt><dd data-i18n={`${guideNamespace}.audience`}>{guide.audience}</dd><dt data-i18n="web-blog.7939a0e7c8f9a8c9">What you are selling</dt><dd data-i18n="web-blog.b283885b5b1e52f6">Your time, perspective and a clearly described experience.</dd></dl><nav data-india-i18n-attr="aria-label:web-blog.f16ac1eadb15d486" aria-label="In this guide"><a data-i18n="web-blog.c4f291ca460de8a4" href="#before-you-open-bookings">Get ready →</a><a data-i18n="web-blog.2409814abd428d3c" href="#session-plan">The session plan →</a><a data-i18n="web-blog.8373b5eba942fb13" href="#invitation">Your invitation →</a><a data-i18n="web-blog.ac5caa28ec4739de" href="#boundaries">Set boundaries →</a><a data-i18n="web-blog.694c482763ac2108" href="#payouts-and-pricing">Pricing & payouts →</a></nav></aside>

@@ -134,7 +134,7 @@ const easy = new Set(['Chai Pe Apni Bhasha Mein', 'Quiet Study Companion', 'Shaa
 export const creatorIdeas = rows.split('\n').map((row, index) => {
  const [format, topic, title, description, setting] = row.trim().split('|');
  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
- return { id: 'idea-' + (index + 1), slug, cardImage: '/assets/ideas/guides/' + slug + '-card.jpg', image: '/assets/ideas/guides/' + slug + '.jpg', href: '/blog/creator-ideas/' + slug + '/', format: format as keyof typeof formats, topic: topic as keyof typeof topics, title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
+ return { id: 'idea-' + (index + 1), slug, cardImage: publicImage('/assets/ideas/guides/' + slug + '-card.jpg', { width: 768, fit: 'cover' }), image: publicImage('/assets/ideas/guides/' + slug + '.jpg', { width: 1536, fit: 'cover' }), href: '/blog/creator-ideas/' + slug + '/', format: format as keyof typeof formats, topic: topic as keyof typeof topics, title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
 });
 
 // Open with a mix of formats and subjects, then preserve the full editorial list.
@@ -143,3 +143,4 @@ creatorIdeas.sort((a,b) => {
  const rank = (title: string) => { const n=openingTitles.indexOf(title); return n < 0 ? openingTitles.length : n; };
  return rank(a.title)-rank(b.title);
 });
+import { publicImage } from './config';

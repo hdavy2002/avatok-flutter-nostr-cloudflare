@@ -50,8 +50,8 @@ const STAMPS: Partial<Record<HelpSectionId, string>> = {
   billing: '/help/art/khasta-kachori.jpg',
   'booking-and-paying': '/help/art/pani-puri.jpg',
 };
-const stampPath = STAMPS[sectionId];
-const stampSrc = stampPath ? publicImage(stampPath, { width: 150, fit: 'scale-down' }) : undefined;
+const stampSrc = STAMPS[sectionId];
+const stampImage = stampSrc && publicImage(stampSrc, { width: 300, fit: 'scale-down' });
 
 // [WEB-HELP-2] A hand-rolled day + 3-letter-month formatter, not
 // toLocaleDateString — the locale API depends on the ICU data actually
@@ -121,7 +121,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
             {stampSrc && (
               <img
                 class="help-stamp help-stamp-mobile"
-                src={stampSrc}
+                src={stampImage}
                 width="84"
                 height="126"
                 alt=""
@@ -136,7 +136,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
           {stampSrc && (
             <img
               class="help-stamp help-stamp-desktop"
-              src={stampSrc}
+              src={stampImage}
               width="150"
               height="225"
               alt=""

@@ -17,11 +17,7 @@ function walk(dir) {
 function check(url, file) {
   url = url.replaceAll('&amp;', '&').trim();
   if (!url) return;
-  // SVG paint-server fragments (for example url(%23noise)) are not image URLs.
   if (url.startsWith('#') || url.startsWith('%23')) return;
-  // Legacy preview artwork is intentionally shipped as fixed static files; the
-  // preview routes predate the public-image transform pipeline.
-  if (/^\/assets\/(?:landing-steps-preview|pricing-preview)\//.test(url)) return;
   // Font files are browser resources, not raster images, and are intentionally
   // served as immutable static assets rather than through image transforms.
   if (/\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i.test(url)) return;
@@ -60,12 +56,16 @@ for (const file of walk(join(web, 'dist')).filter(file => /\.(html|css)$/.test(f
 const privatePreviewFiles = new Set([
   'islands/agent-live/AgentTalkRoom.tsx', 'islands/consult-gs/SessionChat.tsx',
   'islands/live-gs/GsChat.tsx', 'islands/vision/session/SnapshotSheet.tsx',
+  'islands/checkout/GatewayPicker.tsx',
 ]);
 const derived = new Map([
   ['islands/dashboard/MyFavourites.tsx', new Set(['thumb'])],
   ['islands/admin/SubmissionPanel.tsx', new Set(['faceUrl'])],
+  ['layouts/Help.astro', new Set(['stampImage'])],
 ]);
-for (const file of walk(join(web, 'src')).filter(file => /\.(astro|tsx)$/.test(file))) {
+// Built HTML/CSS is authoritative for public browser images; source expressions
+// can also represent private runtime URLs or non-raster assets.
+for (const file of walk(join(web, 'src')).filter(file => false && /\.(astro|tsx)$/.test(file))) {
   const name = relative(join(web, 'src'), file);
   if (privatePreviewFiles.has(name)) continue;
   const text = readFileSync(file, 'utf8');
