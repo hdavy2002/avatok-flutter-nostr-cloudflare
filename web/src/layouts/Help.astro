@@ -50,7 +50,8 @@ const STAMPS: Partial<Record<HelpSectionId, string>> = {
   billing: '/help/art/khasta-kachori.jpg',
   'booking-and-paying': '/help/art/pani-puri.jpg',
 };
-const stampSrc = STAMPS[sectionId];
+const stampPath = STAMPS[sectionId];
+const stampSrc = stampPath ? publicImage(stampPath, { width: 150, fit: 'scale-down' }) : undefined;
 
 // [WEB-HELP-2] A hand-rolled day + 3-letter-month formatter, not
 // toLocaleDateString — the locale API depends on the ICU data actually
