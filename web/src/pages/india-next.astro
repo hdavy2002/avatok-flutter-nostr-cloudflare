@@ -13,6 +13,7 @@ import EarningsCalculator from '../components/india-preview/EarningsCalculator.a
 
 const ideas = creatorIdeas.slice(0, 6);
 const heroImage = publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' });
+const flowerImage = publicImage('/ornament-flower.png', { width: 28, fit: 'scale-down' });
 
 ---
 <Base
@@ -77,7 +78,7 @@ const heroImage = publicImage('/assets/home/avatok-creator-constellation.png', {
     <BookingExpress />
 
     <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
-      <p class="rail-eyebrow rail-flowered"><img src="/ornament-flower.png" alt="" width="28" height="28" /> <ui-copy style="display:contents" data-i18n="web-landing.af29625174aed2ab">Kya offer karoge?</ui-copy> <img src="/ornament-flower.png" alt="" width="28" height="28" /></p>
+      <p class="rail-eyebrow rail-flowered"><img src={flowerImage} alt="" width="28" height="28" /> <ui-copy style="display:contents" data-i18n="web-landing.af29625174aed2ab">Kya offer karoge?</ui-copy> <img src={flowerImage} alt="" width="28" height="28" /></p>
       <h2 id="ideas-title"><ui-copy style="display:contents" data-i18n="web-landing.35013d916827ddd2">Socha hai, isse bhi</ui-copy> <span data-i18n="web-landing.6088e03833a8d3c7">kamaa sakte ho?</span></h2>
       <p data-i18n="web-landing.6193ee40538a4862" class="rail-section-copy">A few ideas to get your first listing started.</p>
       <div class="rail-idea-grid">
