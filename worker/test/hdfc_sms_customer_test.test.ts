@@ -249,3 +249,40 @@ describe('invited customer test / real SQLite transactions', () => {
   expect((await hdfcSmsCreateOrder(request('/order', {listingId: 'avatok-upi-smoke-2026', request_key: crypto.randomUUID()}), f.env)).status).toBe(200);
  });
 });
+
+// The public QR shares only configured payee details, never the receipt authority.
+import { hdfcSmsQr } from '../src/routes/hdfc_sms_qr';
+describe('plain public ₹1 QR', () => {
+ it('serves anonymous fixed amount without any payment state writes or receipt readiness', async () => {
+  f.sql.exec('DROP TABLE hdfc_sms_test_bookings; DROP TABLE hdfc_sms_test_invites; DROP VIEW hdfc_sms_smoke_ready;');
+  delete f.env.HDFC_SMS_DEVICE_SECRET;
+  const before = f.sql.prepare('SELECT total_changes() n').get()?.n;
+  const response = await hdfcSmsQr(request('/qr?amount_paise=999&pa=other@bank'), f.env);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  const value = await body(response);
+  expect(Object.keys(value).sort()).toEqual(['amount_paise', 'currency', 'upi_url']);
+  expect(value).toMatchObject({amount_paise: 100, currency: 'INR'});
+  const uri = new URL(value.upi_url);
+  expect(uri.protocol).toBe('upi:'); expect(uri.hostname).toBe('pay');
+  expect(Object.fromEntries(uri.searchParams)).toEqual({pa: 'smoke@bank', pn: 'Internal', am: '1.00', cu: 'INR', tn: 'AvaTOK test payment'});
+  expect(H.authCalls).toBe(0);
+  expect(f.sql.prepare('SELECT total_changes() n').get()?.n).toBe(before);
+  expect(count('hdfc_sms_smoke_intents')).toBe(0);
+  expect(count('hdfc_sms_smoke_receipts')).toBe(0);
+ });
+ it('does not expose a payable URL when paused or payee configuration is invalid', async () => {
+  H.enabled = false;
+  const paused = await hdfcSmsQr(request('/qr'), f.env);
+  expect(paused.status).toBe(503); expect(await body(paused)).toEqual({error: 'rail_paused'});
+  H.enabled = true;
+  for (const [vpa, payee] of [['', 'Payee'], ['bad-vpa', 'Payee'], ['valid@bank', ''], ['valid@bank', 'bad\nname']]) {
+   f.env.HDFC_UPI_VPA = vpa; f.env.HDFC_UPI_PAYEE_NAME = payee;
+   const response = await hdfcSmsQr(request('/qr'), f.env);
+   expect(response.status).toBe(503);
+   expect(await body(response)).toEqual({error: 'configuration_incomplete'});
+   expect(response.headers.get('cache-control')).toBe('private, no-store');
+  }
+ });
+});

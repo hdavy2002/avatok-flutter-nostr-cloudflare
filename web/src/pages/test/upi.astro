@@ -1,13 +1,22 @@
 ---
 export const prerender = false;
-Astro.response.headers.set('Cache-Control','private, no-store');
-Astro.response.headers.set('Referrer-Policy','no-referrer');
-import Base from '../../layouts/Base.astro';
-import UpiCustomerTestCheckout from '../../islands/checkout/UpiCustomerTestCheckout';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+import UpiPlainQr from '../../islands/checkout/UpiPlainQr';
 ---
-
-<Base title="Invited customer booking test · avaTOK" description="Private invited customer test. A real ₹1 payment for a test-only booking." chrome={false} headerAuth="static" navStatic={true} noindex={true}>
-  <main style="min-height:100vh; display:grid; place-items:center; padding:24px; background:#f5efe5;">
-    <UpiCustomerTestCheckout client:load />
-  </main>
-</Base>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Pay ₹1 · avaTOK</title>
+    <script is:inline>history.replaceState(null, '', location.pathname);</script>
+  </head>
+  <body style="margin:0;background:#fff;color:#171717;">
+    <main style="min-height:100svh;display:grid;place-items:center;padding:24px;box-sizing:border-box;">
+      <UpiPlainQr client:load />
+    </main>
+  </body>
+</html>

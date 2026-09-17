@@ -69,6 +69,7 @@ import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminE
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
+import { hdfcSmsQr } from "./routes/hdfc_sms_qr";
 import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
 import { hdfcCustomerRedeem, hdfcCustomerCurrent, hdfcCustomerOrder, hdfcCustomerStatus, hdfcCustomerClaim, hdfcCustomerRecheck } from "./routes/hdfc_sms_customer_test";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
@@ -1251,8 +1252,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
       if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
-      // [PAY-HDFC-SMS-1] Private, single-account UPI QR rail. Browser routes are
-      // user-authenticated; the SMS/heartbeat routes authenticate the companion HMAC.
+      // Public QR exposes only the fixed payment address; stateful browser routes
+      // retain authentication and SMS/heartbeat retain companion HMAC checks.
+      if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);
       if (p === "/api/pay/hdfc-sms/customer/redeem" && req.method === "POST") return await hdfcCustomerRedeem(req, env);
       if (p === "/api/pay/hdfc-sms/customer/current" && req.method === "GET") return await hdfcCustomerCurrent(req, env);
       if (p === "/api/pay/hdfc-sms/customer/order" && req.method === "POST") return await hdfcCustomerOrder(req, env);
