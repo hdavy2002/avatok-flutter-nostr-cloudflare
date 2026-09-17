@@ -85,7 +85,7 @@ const flowerImage = publicImage('/ornament-flower.png', { width: 28, fit: 'scale
         {ideas.map((idea) => (
           <article class="idea-card rail-article-card">
             <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
-              <div class="idea-picture"><img src={idea.cardImage} srcset={`${idea.cardImage} 768w, ${idea.image} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-picture"><img src={publicImage(idea.cardImage, { width: 768, fit: 'cover' })} srcset={`${publicImage(idea.cardImage, { width: 768, fit: 'cover' })} 768w, ${publicImage(idea.image, { width: 1536, fit: 'cover' })} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
               <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span data-i18n="web-landing.50fb1f69cb64b60d">From home</span>}</div><h3 id={`${idea.id}-title`}>{idea.title}</h3><p>{idea.description}</p><span class="idea-read-guide"><ui-copy style="display:contents" data-i18n="web-landing.83b3b277abbf82ba">Read the guide</ui-copy> <span aria-hidden="true">↗</span></span></div>
             </a>
           </article>
