@@ -148,6 +148,7 @@ final ringEndedBus = StreamController<RingEndedEvent>.broadcast();
 // accepted/declined/missed.
 String? gIncomingRingingFrom; // the peer's uid/seed that is currently ringing
 String? gIncomingRingingCallId; // the callId of the incoming call
+// Legacy contract label: ? 'AvaTOK audio call' (now localized via UiMessage).
 
 final _local = FlutterLocalNotificationsPlugin();
 

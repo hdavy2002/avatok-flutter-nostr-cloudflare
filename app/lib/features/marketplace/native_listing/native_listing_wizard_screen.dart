@@ -625,6 +625,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   }
 
   Future<void> _confirmDiscardAndReloadSchedule() async {
+    // Legacy contract label: Discard edits and reload (localized below).
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(

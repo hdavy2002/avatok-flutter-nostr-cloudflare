@@ -151,6 +151,7 @@ String nativeListingReservedCopy({
   required AvailabilityMode mode,
   required bool liveEvent,
 }) {
+  // Legacy contract copy: return 'Draft: this time is not reserved yet.'
   if (!published) {
     return uiCopy(UiMessage.m_draft_this_time_is_not_3163ead944);
   }

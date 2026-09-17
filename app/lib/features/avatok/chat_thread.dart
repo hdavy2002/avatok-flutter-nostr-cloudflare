@@ -1,5 +1,4 @@
 import '../../core/localization/ui_text.dart';
-import '../../../../../../../../tmp/avatok-i18n-implementation-20260916/app/app/lib/core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';

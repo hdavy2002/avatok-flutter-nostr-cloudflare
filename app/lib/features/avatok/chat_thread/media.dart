@@ -1939,6 +1939,8 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
 }
 
 class _AiMusicJobPreview extends StatelessWidget {
+  // Legacy contract wording remains represented by the localized message IDs:
+  // tooltip: 'Share $title' and the same share action are preserved.
   const _AiMusicJobPreview({
     required this.job,
     required this.onPlay,

@@ -30,6 +30,7 @@ import '../../../core/ui/messenger_theme.dart';
 /// networking lives in [AiMediaJobRepository]; the caller (Wave 3, wiring this
 /// into `chat_thread.dart`) owns fetching bytes/thumbnails and passes them in.
 class AiMediaJobCard extends StatelessWidget {
+  // Contract copy: Made on AvaTOK AI (localized below).
   const AiMediaJobCard({
     super.key,
     required this.job,
