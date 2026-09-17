@@ -35,8 +35,8 @@ import { UiText } from "../../lib/i18n/react";
  * exact moment someone is deciding whether to pay, and an account-enumeration
  * oracle. Try sign-up, fall back to sign-in. One email box, one code, either way.
  */
-import { useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth, useSignIn, useSignUp } from '@clerk/clerk-react';
 import { capture } from '../../lib/analytics';
 import { useFormReady } from './AuthKit';
 import { Button } from '../../components/Button';
@@ -57,6 +57,7 @@ export interface EmailCodeSignInProps {
 export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInProps) {
   const {t:uiT}=useUiTranslation("web-auth");
 
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { isLoaded: signUpLoaded, signUp } = useSignUp();
   const { isLoaded: signInLoaded, signIn, setActive } = useSignIn();
 
@@ -68,8 +69,18 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
   const [error, setError] = useState<string | null>(null);
 
   const ready = signUpLoaded && signInLoaded;
+  const authedRef = useRef(false);
   useFormReady(ready, 'checkout');
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  // Checkout can render this gate after Clerk has restored an existing session.
+  // Do not ask a signed-in customer for an email code; Clerk rejects that with
+  // "You're already signed in" and the customer is stranded at checkout.
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn || authedRef.current) return;
+    authedRef.current = true;
+    onAuthed();
+  }, [authLoaded, isSignedIn, onAuthed]);
 
   const resources = () => ({
     signUp: signUp as unknown as PwlSignUp,
@@ -134,7 +145,7 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
     } finally { setBusy(false); }
   }
 
-  if (!ready) return <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-auth.ba3bbbe10d8bef66" source="Loading…" /></p>;
+  if (!ready || !authLoaded || isSignedIn) return <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-auth.ba3bbbe10d8bef66" source="Loading…" /></p>;
 
   return (
     <div className="flex flex-col gap-4">
