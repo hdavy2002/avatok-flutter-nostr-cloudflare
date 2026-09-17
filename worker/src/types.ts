@@ -382,6 +382,14 @@ export interface Env {
   CASHFREE_ENV?: string;           // "sandbox" | "production"
   CASHFREE_RETURN_URL?: string;    // where the browser lands after paying
 
+  // [PAY-HDFC-SMS-1] Single-account, staging-first UPI QR rail. The companion phone
+  // signs incoming HDFC SMS with this secret; the Worker never accepts browser payment claims.
+  HDFC_UPI_VPA?: string;
+  HDFC_UPI_PAYEE_NAME?: string;
+  HDFC_SMS_DEVICE_ID?: string;
+  HDFC_SMS_DEVICE_SECRET?: string;
+  HDFC_SMS_ACCOUNT_SUFFIX?: string;
+
   // [PAY-RAIL-1] The generic multi-gateway layer (lib/payments/*, routes/pay.ts).
   // Absent ⇒ that adapter's `configured(env)` is false and it simply does not appear in
   // `/api/pay/methods` — same "half-configured is off, not degraded" discipline as

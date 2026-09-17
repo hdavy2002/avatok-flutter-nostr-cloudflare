@@ -115,6 +115,7 @@ aab/
 
 # Separate public repo (own .git) — not part of this monorepo
 avatok-app/
+sms-companion/
 
 # Internal scrub checklist — contains the live reviewer password + key; keep local only.
 /PUBLIC-REPO-SCRUB.md

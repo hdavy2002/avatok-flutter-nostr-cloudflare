@@ -11,7 +11,7 @@
 // every field name as a claim to be checked against a real sandbox run, not a fact.
 import type { Env } from "../../types";
 
-export type GatewayId = "razorpay" | "paytm" | "stripe" | "cashfree";
+export type GatewayId = "razorpay" | "paytm" | "stripe" | "cashfree" | "hdfc_sms";
 
 export interface GatewayOrder {
   gateway: GatewayId;

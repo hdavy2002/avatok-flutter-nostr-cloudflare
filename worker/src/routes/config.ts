@@ -106,6 +106,7 @@ export interface PlatformConfig {
   paytmEnabled: boolean;
   stripeIntlEnabled: boolean;
   payGatewayPickerEnabled: boolean;
+  hdfcSmsEnabled: boolean;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   /** [WAITROOM-1] Minutes after starts_at the creator has to check in
@@ -1994,6 +1995,7 @@ const DEFAULTS: PlatformConfig = {
   paytmEnabled: false,
   stripeIntlEnabled: false,
   payGatewayPickerEnabled: false,
+  hdfcSmsEnabled: false,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // [WAITROOM-1] Prepaid waiting-room model (RULEBOOK-PAID-SESSIONS.md v2 §2/§3).

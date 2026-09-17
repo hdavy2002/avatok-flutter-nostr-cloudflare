@@ -6,12 +6,14 @@ import { razorpayAdapter } from "./razorpay";
 import { paytmAdapter } from "./paytm";
 import { stripeIntlAdapter } from "./stripe_intl";
 import { cashfreeAdapter } from "./cashfree_adapter";
+import { hdfcSmsAdapter } from "./hdfc_sms_adapter";
 
 const ADAPTERS: Record<GatewayId, GatewayAdapter> = {
   razorpay: razorpayAdapter,
   paytm: paytmAdapter,
   stripe: stripeIntlAdapter,
   cashfree: cashfreeAdapter,
+  hdfc_sms: hdfcSmsAdapter,
 };
 
 const VALID_IDS: ReadonlySet<string> = new Set(Object.keys(ADAPTERS));
@@ -31,6 +33,7 @@ const FLAG_FOR: Record<GatewayId, keyof PlatformConfig> = {
   paytm: "paytmEnabled",
   stripe: "stripeIntlEnabled",
   cashfree: "cashfreeEnabled",
+  hdfc_sms: "hdfcSmsEnabled",
 };
 
 export type GatewayMethod = {
@@ -47,13 +50,14 @@ const LABELS: Record<GatewayId, { label: string; sub: string }> = {
   paytm: { label: "Paytm", sub: "Paytm wallet · UPI" },
   stripe: { label: "Stripe", sub: "International cards" },
   cashfree: { label: "Cashfree", sub: "UPI · Cards" },
+  hdfc_sms: { label: "UPI QR", sub: "Scan with PhonePe or any UPI app" },
 };
 
 // Order matters: this is the order the buyer sees them in. Cashfree is deliberately last
 // and, per spec §2.1, only ever appears if cashfreeEnabled is separately turned on — it is
 // wired as a fourth adapter (commercial_refund_rail.ts already reverses to it) but is not
 // part of the buyer-facing picker by default.
-const PICKER_ORDER: readonly GatewayId[] = ["razorpay", "paytm", "stripe", "cashfree"];
+const PICKER_ORDER: readonly GatewayId[] = ["razorpay", "paytm", "stripe", "cashfree", "hdfc_sms"];
 
 /**
  * GET /api/pay/methods payload. `payGatewayPickerEnabled` gates the picker as a whole —
