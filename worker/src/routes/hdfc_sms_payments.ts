@@ -38,6 +38,54 @@ function isHdfcSender(sender: string): boolean {
   return /(?:HDFC|HDFCBK|HDFCBANK)/i.test(sender);
 }
 
+async function confirmIntentFromVerifiedReceipt(
+  env: Env, db: D1Database, intent: any, reference: string,
+): Promise<"confirmed" | "duplicate" | "review_pending"> {
+  const claimed = await db.prepare(
+    "UPDATE hdfc_sms_payment_intents SET status='payment_received',bank_reference=?2,updated_at=?3 WHERE intent_id=?1 AND status='pending'",
+  ).bind(intent.intent_id, reference, Date.now()).run();
+  if (Number(claimed.meta?.changes ?? 0) !== 1) return "duplicate";
+  const provisioned = await provisionFromGatewayPurchase(env, {
+    uid: intent.uid, listingId: intent.listing_id, bookingId: null, kind: "live_event",
+    chargedTokens: Math.round(Number(intent.amount_paise) / 100), purchaseId: intent.intent_id,
+    gatewayRef: reference, gateway: "hdfc_sms",
+  });
+  if (!provisioned.ok) {
+    await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error=?2,updated_at=?3 WHERE intent_id=?1").bind(intent.intent_id, `provision:${provisioned.status}`, Date.now()).run();
+    return "review_pending";
+  }
+  const commercialOrderId = `hdfc_sms-order:${intent.intent_id}`;
+  await db.prepare("UPDATE hdfc_sms_payment_intents SET status='confirmed',commercial_order_id=?2,updated_at=?3 WHERE intent_id=?1").bind(intent.intent_id, commercialOrderId, Date.now()).run();
+  return "confirmed";
+}
+
+/** Recover a verified receipt that arrived while multiple smoke intents were open. */
+async function reconcileSmokeIntent(env: Env, db: D1Database, uid: string, requestedIntentId: string): Promise<string | null> {
+  const requested = await db.prepare("SELECT * FROM hdfc_sms_payment_intents WHERE intent_id=?1 AND uid=?2").bind(requestedIntentId, uid).first<any>();
+  if (!requested || requested.listing_id !== UPI_SMOKE_TEST_LISTING_ID) return requested?.status === "confirmed" ? "confirmed" : null;
+  if (requested.status === "confirmed") return "confirmed";
+  if (requested.status !== "pending") return null;
+  const alreadyConfirmed = await db.prepare(
+    "SELECT intent_id FROM hdfc_sms_payment_intents WHERE listing_id=?1 AND status='confirmed' LIMIT 1",
+  ).bind(UPI_SMOKE_TEST_LISTING_ID).first<any>();
+  if (alreadyConfirmed) return "confirmed";
+  const receipt = await db.prepare("SELECT message FROM hdfc_sms_receipts ORDER BY created_at DESC LIMIT 20").all<{ message: string }>();
+  const match = (receipt.results ?? []).find((r) => parseAmountPaise(String(r.message)) === Number(requested.amount_paise));
+  if (!match) return null;
+  const candidates = await db.prepare(
+    "SELECT * FROM hdfc_sms_payment_intents WHERE uid=?1 AND listing_id=?2 AND status='pending' AND amount_paise=?3 ORDER BY created_at DESC LIMIT 10",
+  ).bind(uid, UPI_SMOKE_TEST_LISTING_ID, requested.amount_paise).all<any>();
+  candidates.results.sort((a: any, b: any) => Number(b.created_at) - Number(a.created_at));
+  const chosen = candidates.results?.[0];
+  if (!chosen) return null;
+  if (candidates.results.length > 1) {
+    for (const other of candidates.results.slice(1)) {
+      await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(other.intent_id, Date.now()).run();
+    }
+  }
+  return await confirmIntentFromVerifiedReceipt(env, db, chosen, parseReference(String(match.message)));
+}
+
 /** GET /api/pay/hdfc-sms/method — separate from the retired generic picker gate. */
 export async function hdfcSmsMethod(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
@@ -117,6 +165,13 @@ export async function hdfcSmsStatus(req: Request, env: Env): Promise<Response> {
     "SELECT intent_id,uid,listing_id,status,amount_paise,commercial_order_id,expires_at,updated_at FROM hdfc_sms_payment_intents WHERE intent_id=?1",
   ).bind(id).first<any>();
   if (!row || row.uid !== auth.uid) return json({ error: "not found" }, 404);
+  if (row.status === "pending") {
+    const recovered = await reconcileSmokeIntent(env, metaDb(env), auth.uid, id);
+    if (recovered === "confirmed") {
+      row.status = "confirmed";
+      row.commercial_order_id = `hdfc_sms-order:${id}`;
+    }
+  }
   if (row.status === "pending" && Number(row.expires_at ?? 0) <= Date.now()) {
     await metaDb(env).prepare("UPDATE hdfc_sms_payment_intents SET status='expired',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(id, Date.now()).run();
     row.status = "expired";
@@ -158,28 +213,28 @@ export async function hdfcSmsIncoming(req: Request, env: Env): Promise<Response>
        VALUES (?1,?2,?3,?4,?5,?6,?7)`,
     ).bind(String(body.message_hash), String(body.device_id), String(body.sender), String(body.message), String(body.received_at), String(body.nonce), Date.now()).run();
   } catch { return json({ error: "receipt storage unavailable" }, 503); }
-  if (Number(receipt.meta?.changes ?? 0) === 0) return json({ ok: true, status: "duplicate" });
+  const duplicateReceipt = Number(receipt.meta?.changes ?? 0) === 0;
   const pending = await db.prepare(
     `SELECT * FROM hdfc_sms_payment_intents
        WHERE status='pending' AND amount_paise=?1 AND expires_at>?2
        ORDER BY created_at ASC LIMIT 2`,
   ).bind(amountPaise, Date.now()).all<any>();
-  if (pending.results.length !== 1) return json({ ok: true, status: "review_pending", reason: pending.results.length ? "ambiguous_intent" : "no_matching_intent" });
-  const intent = pending.results[0];
-  const ref = parseReference(String(body.message));
-  const claimed = await db.prepare("UPDATE hdfc_sms_payment_intents SET status='payment_received',bank_reference=?2,updated_at=?3 WHERE intent_id=?1 AND status='pending'").bind(intent.intent_id, ref, Date.now()).run();
-  if (Number(claimed.meta?.changes ?? 0) !== 1) return json({ ok: true, status: "duplicate" });
-  const provisioned = await provisionFromGatewayPurchase(env, {
-    uid: intent.uid, listingId: intent.listing_id, bookingId: null, kind: "live_event",
-    chargedTokens: Math.round(amountPaise / 100), purchaseId: intent.intent_id, gatewayRef: ref, gateway: "hdfc_sms",
-  });
-  if (!provisioned.ok) {
-    await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error=?2,updated_at=?3 WHERE intent_id=?1").bind(intent.intent_id, `provision:${provisioned.status}`, Date.now()).run();
-    return json({ ok: true, status: "review_pending" });
+  if (pending.results.length !== 1) {
+    const smoke = pending.results.length > 0 && pending.results.every((x: any) => x.listing_id === UPI_SMOKE_TEST_LISTING_ID);
+    if (!smoke) return json({ ok: true, status: "review_pending", reason: pending.results.length ? "ambiguous_intent" : "no_matching_intent" });
   }
-  const commercialOrderId = `hdfc_sms-order:${intent.intent_id}`;
-  await db.prepare("UPDATE hdfc_sms_payment_intents SET status='confirmed',commercial_order_id=?2,updated_at=?3 WHERE intent_id=?1").bind(intent.intent_id, commercialOrderId, Date.now()).run();
-  return json({ ok: true, status: "confirmed", intent_id: intent.intent_id });
+  const intent = pending.results[0];
+  if (pending.results.length > 1) {
+    pending.results.sort((a: any, b: any) => Number(b.created_at) - Number(a.created_at));
+    for (const other of pending.results.slice(1)) {
+      await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(other.intent_id, Date.now()).run();
+    }
+  }
+  const ref = parseReference(String(body.message));
+  const result = duplicateReceipt
+    ? await reconcileSmokeIntent(env, db, intent.uid, intent.intent_id)
+    : await confirmIntentFromVerifiedReceipt(env, db, intent, ref);
+  return json({ ok: true, status: result ?? "review_pending", intent_id: intent.intent_id });
 }
 
 /** Signed companion health check. */
