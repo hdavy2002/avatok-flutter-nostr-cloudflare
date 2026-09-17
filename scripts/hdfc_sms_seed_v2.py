@@ -125,10 +125,13 @@ def seed_sql(m, schema_text):
     # A migration rerun must not overwrite a v2 claim or quietly relabel a row.
     parts.append(guard('(SELECT count(*) FROM hdfc_sms_smoke_intents)=0'))
     for r in m['seed_rows']:
-        columns = ','.join(r)
-        values = ','.join(literal(v) for v in r.values())
+        # Canonical JSON sorts object keys; use the same order before and after
+        # loading the immutable manifest so its SQL sidecar stays byte-identical.
+        keys = sorted(r)
+        columns = ','.join(keys)
+        values = ','.join(literal(r[key]) for key in keys)
         parts.append(f"INSERT INTO hdfc_sms_smoke_receipts({columns},disposition) VALUES({values},'legacy') ON CONFLICT(message_hash) DO NOTHING;")
-        predicates = [f'{c} IS {literal(v)}' for c, v in r.items()]
+        predicates = [f'{key} IS {literal(r[key])}' for key in keys]
         predicates += ["disposition='legacy'", 'claimed_intent_id IS NULL', 'claimed_at IS NULL']
         parts.append(guard('EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE ' + ' AND '.join(predicates) + ')'))
     parts.append(guard(f"(SELECT count(*) FROM hdfc_sms_smoke_receipts)={len(m['seed_rows'])}"))

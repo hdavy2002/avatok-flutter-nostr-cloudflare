@@ -100,6 +100,22 @@ class SeedTests(unittest.TestCase):
         self.assertNotIn('BEGIN', seed.seed_sql(self.m, SCHEMA))
         self.assertNotIn('COMMIT', seed.seed_sql(self.m, SCHEMA))
 
+    def test_sql_is_byte_identical_after_canonical_manifest_roundtrip(self):
+        # make_manifest constructs insertion-ordered receipt/reservation dictionaries;
+        # canonical JSON changes their key order when read by the separate apply run.
+        self.assertNotEqual(list(self.m['seed_rows'][0]), sorted(self.m['seed_rows'][0]))
+        reloaded = json.loads(seed.canonical(self.m))
+        self.assertEqual(list(reloaded['seed_rows'][0]), sorted(self.m['seed_rows'][0]))
+        before = seed.seed_sql(self.m, SCHEMA)
+        after = seed.seed_sql(reloaded, SCHEMA)
+        self.assertEqual(before.encode('utf-8'), after.encode('utf-8'))
+        with tempfile.TemporaryDirectory() as directory:
+            sidecar = Path(directory) / 'private.json.sql'
+            seed.write_once(sidecar, before)
+            seed.write_once(sidecar, after)
+        transactional_sql(self.db, after)
+        self.assertEqual(self.db.execute('SELECT seed_digest FROM hdfc_sms_smoke_ready').fetchone()[0], self.m['seed_digest'])
+
     def test_ambiguous_account_and_multiple_references_abort_preflight(self):
         for message in ['Rs.1 credited (UPI 000123456789)', 'Rs.1 credited A/c XX9999 (UPI 000123456789)', 'Rs.1 credited A/c XX1234 (UPI 000123456789) UTR 000123456788']:
             inventory = dict(receipts=[dict(old_receipt('ambiguous'), message=message)], intents=[])
