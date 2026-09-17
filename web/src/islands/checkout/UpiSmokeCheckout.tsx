@@ -49,7 +49,7 @@ function UpiSmokeCheckoutInner() {
     {state === 'ready' || state === 'loading' || state === 'error' ? <button onClick={() => void start()} disabled={state === 'loading'} style={{ width:'100%', padding:'14px 18px', border:0, borderRadius:14, background:'#0b6bff', color:'#fff', fontWeight:900, fontSize:16 }}>{state === 'loading' ? 'Preparing QR…' : 'Create ₹1 UPI QR'}</button> : null}
     {error ? <p style={{ color:'#a40000', fontWeight:800 }}>{error}</p> : null}
     {qr && intent && state === 'waiting' ? <div style={{ textAlign:'center', marginTop:20 }}><img src={qr} alt="₹1 UPI payment QR code" style={{ width:320, maxWidth:'100%', imageRendering:'pixelated' }} /><p style={{ fontWeight:900 }}>Scan with PhonePe, Paytm or any UPI app.</p><p>Waiting for the signed HDFC SMS…</p></div> : null}
-    {state === 'confirmed' ? <div style={{ marginTop:20, padding:20, borderRadius:16, background:'#d9f8df', border:'2px solid #167a2c' }}><h2 style={{ marginTop:0 }}>Payment received ✓</h2><p style={{ marginBottom:0 }}>Thank you. Your seat is booked for the AvaTOK UPI ₹1 Smoke Test.</p></div> : null}
+    {state === 'confirmed' ? <div style={{ marginTop:20, padding:20, borderRadius:16, background:'#d9f8df', border:'2px solid #167a2c' }}><h2 style={{ marginTop:0 }}>Payment received ✓</h2><p style={{ marginBottom:0 }}>Thank you. The ₹1 test payment was received and the dummy seat is confirmed.</p><p style={{ marginBottom:0 }}>Dummy event: AvaTOK UPI Smoke Test · Future date · 1 seat</p></div> : null}
   </section>;
 }
 

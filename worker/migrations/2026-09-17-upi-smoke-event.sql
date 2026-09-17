@@ -1,6 +1,6 @@
 -- [UPI-SMOKE-1] One explicitly labelled production smoke-test event.
--- The HDFC route recognizes this id and applies a fee-exempt ₹1 quote only for
--- this row. It is not included in normal marketplace discovery by the attrs flag.
+-- The HDFC route recognizes this id as a non-commercial acknowledgement test.
+-- It is not included in normal marketplace discovery by the attrs flag.
 INSERT OR IGNORE INTO listings
   (id,creator_id,kind,title,description,category,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry,status,created_at,updated_at)
 VALUES

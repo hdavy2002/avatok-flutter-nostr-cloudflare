@@ -59,6 +59,15 @@ async function confirmIntentFromVerifiedReceipt(
   return "confirmed";
 }
 
+async function confirmSmokeIntentFromVerifiedReceipt(
+  db: D1Database, intent: any, reference: string,
+): Promise<"confirmed" | "duplicate" | "review_pending"> {
+  const claimed = await db.prepare(
+    "UPDATE hdfc_sms_payment_intents SET status='confirmed',bank_reference=?2,updated_at=?3 WHERE intent_id=?1 AND status='pending'",
+  ).bind(intent.intent_id, reference, Date.now()).run();
+  return Number(claimed.meta?.changes ?? 0) === 1 ? "confirmed" : "duplicate";
+}
+
 /** Recover a verified receipt that arrived while multiple smoke intents were open. */
 async function reconcileSmokeIntent(env: Env, db: D1Database, uid: string, requestedIntentId: string): Promise<string | null> {
   const requested = await db.prepare("SELECT * FROM hdfc_sms_payment_intents WHERE intent_id=?1 AND uid=?2").bind(requestedIntentId, uid).first<any>();
@@ -83,7 +92,7 @@ async function reconcileSmokeIntent(env: Env, db: D1Database, uid: string, reque
       await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(other.intent_id, Date.now()).run();
     }
   }
-  return await confirmIntentFromVerifiedReceipt(env, db, chosen, parseReference(String(match.message)));
+  return await confirmSmokeIntentFromVerifiedReceipt(db, chosen, parseReference(String(match.message)));
 }
 
 /** GET /api/pay/hdfc-sms/method — separate from the retired generic picker gate. */
@@ -117,11 +126,28 @@ export async function hdfcSmsCreateOrder(req: Request, env: Env): Promise<Respon
   const sellable = bookability(listing, Date.now());
   if (!sellable.ok) return json({ error: sellable.reason, message: sellable.message }, 410);
   const price = Math.trunc(Number(listing.price));
-  const pricingConfig = smokeTest
-    // The smoke event is explicitly fee-exempt. Keep the real production config
-    // untouched while the owner verifies QR scanning, SMS signing and polling.
-    ? { ...config, sessionFeeRuleEnabled: false, commercialCreatorFeePct: 100 }
-    : config;
+  if (smokeTest) {
+    const now = Date.now();
+    const expires = now + 30 * 60_000;
+    const intentId = crypto.randomUUID();
+    await db.prepare(
+      `INSERT INTO hdfc_sms_payment_intents
+        (intent_id,uid,listing_id,kind,amount_paise,status,expires_at,created_at,updated_at)
+       VALUES (?1,?2,?3,'live_event',100,'pending',?4,?5,?5)`,
+    ).bind(intentId, auth.uid, listing.id, expires, now).run();
+    const ref = `AV${intentId.replace(/-/g, "").slice(0, 24)}`;
+    const params = new URLSearchParams({
+      pa: String(env.HDFC_UPI_VPA), pn: String(env.HDFC_UPI_PAYEE_NAME ?? "AvaTOK"),
+      am: "1.00", cu: "INR", tr: ref, tn: `AvaTOK smoke ${ref}`,
+    });
+    return json({
+      ok: true, intent_id: intentId, listing_id: listing.id, status: "pending",
+      amount_paise: 100, total_amount: 1, expires_at: expires,
+      upi_url: `upi://pay?${params.toString()}`, payee_name: String(env.HDFC_UPI_PAYEE_NAME ?? "AvaTOK"),
+      smoke_test: true,
+    });
+  }
+  const pricingConfig = config;
   let purchaseQuote;
   try {
     purchaseQuote = quoteCommercialPurchase({
@@ -233,7 +259,9 @@ export async function hdfcSmsIncoming(req: Request, env: Env): Promise<Response>
   const ref = parseReference(String(body.message));
   const result = duplicateReceipt
     ? await reconcileSmokeIntent(env, db, intent.uid, intent.intent_id)
-    : await confirmIntentFromVerifiedReceipt(env, db, intent, ref);
+    : intent.listing_id === UPI_SMOKE_TEST_LISTING_ID
+      ? await confirmSmokeIntentFromVerifiedReceipt(db, intent, ref)
+      : await confirmIntentFromVerifiedReceipt(env, db, intent, ref);
   return json({ ok: true, status: result ?? "review_pending", intent_id: intent.intent_id });
 }
 
