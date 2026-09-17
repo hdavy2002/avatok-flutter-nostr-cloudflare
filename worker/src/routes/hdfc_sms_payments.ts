@@ -70,7 +70,7 @@ async function confirmSmokeIntentFromVerifiedReceipt(
   db: D1Database, intent: any, reference: string,
 ): Promise<"confirmed" | "duplicate" | "review_pending"> {
   const claimed = await db.prepare(
-    "UPDATE hdfc_sms_payment_intents SET status='confirmed',bank_reference=?2,updated_at=?3 WHERE intent_id=?1 AND status='pending'",
+    "UPDATE hdfc_sms_payment_intents SET status='confirmed',bank_reference=?2,updated_at=?3 WHERE intent_id=?1 AND status IN ('pending','expired')",
   ).bind(intent.intent_id, reference, Date.now()).run();
   return Number(claimed.meta?.changes ?? 0) === 1 ? "confirmed" : "duplicate";
 }
@@ -80,24 +80,16 @@ async function reconcileSmokeIntent(env: Env, db: D1Database, uid: string, reque
   const requested = await db.prepare("SELECT * FROM hdfc_sms_payment_intents WHERE intent_id=?1 AND uid=?2").bind(requestedIntentId, uid).first<any>();
   if (!requested || requested.listing_id !== UPI_SMOKE_TEST_LISTING_ID) return requested?.status === "confirmed" ? "confirmed" : null;
   if (requested.status === "confirmed") return "confirmed";
-  if (requested.status !== "pending") return null;
+  if (!['pending', 'expired'].includes(String(requested.status))) return null;
   const receipt = await db.prepare("SELECT message,created_at FROM hdfc_sms_receipts ORDER BY created_at DESC LIMIT 20").all<{ message: string; created_at: number }>();
   // A receipt from an earlier smoke test must never auto-confirm a new QR.
   // It must have arrived after this intent was created.
   const match = (receipt.results ?? []).find((r) => Number(r.created_at) >= Number(requested.created_at) && parseAmountPaise(String(r.message)) === Number(requested.amount_paise));
   if (!match) return null;
-  const candidates = await db.prepare(
-    "SELECT * FROM hdfc_sms_payment_intents WHERE uid=?1 AND listing_id=?2 AND status='pending' AND amount_paise=?3 ORDER BY created_at DESC LIMIT 10",
-  ).bind(uid, UPI_SMOKE_TEST_LISTING_ID, requested.amount_paise).all<any>();
-  candidates.results.sort((a: any, b: any) => Number(b.created_at) - Number(a.created_at));
-  const chosen = candidates.results?.[0];
-  if (!chosen) return null;
-  if (candidates.results.length > 1) {
-    for (const other of candidates.results.slice(1)) {
-      await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(other.intent_id, Date.now()).run();
-    }
-  }
-  return await confirmSmokeIntentFromVerifiedReceipt(db, chosen, parseReference(String(match.message)));
+  // The status request already identifies the intent. Do not choose another
+  // user's open smoke intent here: that made the browser which paid remain
+  // pending when another stale tab had the older intent.
+  return await confirmSmokeIntentFromVerifiedReceipt(db, requested, parseReference(String(match.message)));
 }
 
 /** GET /api/pay/hdfc-sms/method — separate from the retired generic picker gate. */
@@ -135,6 +127,12 @@ export async function hdfcSmsCreateOrder(req: Request, env: Env): Promise<Respon
     const now = Date.now();
     const expires = now + 30 * 60_000;
     const intentId = crypto.randomUUID();
+    // This is a single-account smoke harness, not a multi-order checkout.
+    // Keep exactly one live QR so a later test cannot be claimed by an older
+    // browser tab or by a stale test session.
+    await db.prepare(
+      "UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?1 WHERE listing_id=?2 AND status='pending'",
+    ).bind(now, listing.id).run();
     await db.prepare(
       `INSERT INTO hdfc_sms_payment_intents
         (intent_id,uid,listing_id,kind,amount_paise,status,expires_at,created_at,updated_at)
@@ -196,7 +194,7 @@ export async function hdfcSmsStatus(req: Request, env: Env): Promise<Response> {
     "SELECT intent_id,uid,listing_id,status,amount_paise,commercial_order_id,expires_at,updated_at FROM hdfc_sms_payment_intents WHERE intent_id=?1",
   ).bind(id).first<any>();
   if (!row || row.uid !== auth.uid) return json({ error: "not found" }, 404);
-  if (row.status === "pending") {
+  if (row.listing_id === UPI_SMOKE_TEST_LISTING_ID && ['pending', 'expired'].includes(String(row.status))) {
     const recovered = await reconcileSmokeIntent(env, metaDb(env), auth.uid, id);
     if (recovered === "confirmed") {
       row.status = "confirmed";
@@ -245,22 +243,32 @@ export async function hdfcSmsIncoming(req: Request, env: Env): Promise<Response>
     ).bind(String(body.message_hash), String(body.device_id), String(body.sender), String(body.message), String(body.received_at), String(body.nonce), Date.now()).run();
   } catch { return json({ error: "receipt storage unavailable" }, 503); }
   const duplicateReceipt = Number(receipt.meta?.changes ?? 0) === 0;
-  const pending = await db.prepare(
+  // Smoke tests are deliberately isolated from commercial intents. A generic
+  // amount-only query could see an unrelated ₹1 order and suppress the smoke
+  // confirmation as ambiguous.
+  const smokePending = await db.prepare(
     `SELECT * FROM hdfc_sms_payment_intents
-       WHERE status='pending' AND amount_paise=?1 AND expires_at>?2
-       ORDER BY created_at ASC LIMIT 2`,
-  ).bind(amountPaise, Date.now()).all<any>();
-  if (pending.results.length !== 1) {
-    const smoke = pending.results.length > 0 && pending.results.every((x: any) => x.listing_id === UPI_SMOKE_TEST_LISTING_ID);
-    if (!smoke) return json({ ok: true, status: "review_pending", reason: pending.results.length ? "ambiguous_intent" : "no_matching_intent" });
-  }
-  const intent = pending.results[0];
-  if (pending.results.length > 1) {
-    pending.results.sort((a: any, b: any) => Number(b.created_at) - Number(a.created_at));
-    for (const other of pending.results.slice(1)) {
+       WHERE listing_id=?1 AND status='pending' AND amount_paise=?2 AND expires_at>?3
+       ORDER BY created_at DESC LIMIT 10`,
+  ).bind(UPI_SMOKE_TEST_LISTING_ID, amountPaise, Date.now()).all<any>();
+  if (smokePending.results.length) {
+    const intent = smokePending.results[0];
+    for (const other of smokePending.results.slice(1)) {
       await db.prepare("UPDATE hdfc_sms_payment_intents SET status='review_pending',last_error='superseded_smoke_test_intent',updated_at=?2 WHERE intent_id=?1 AND status='pending'").bind(other.intent_id, Date.now()).run();
     }
+    const result = duplicateReceipt
+      ? await reconcileSmokeIntent(env, db, intent.uid, intent.intent_id)
+      : await confirmSmokeIntentFromVerifiedReceipt(db, intent, parseReference(String(body.message)));
+    return json({ ok: true, status: result ?? (duplicateReceipt ? "duplicate" : "review_pending"), intent_id: intent.intent_id });
   }
+
+  const pending = await db.prepare(
+    `SELECT * FROM hdfc_sms_payment_intents
+       WHERE listing_id != ?1 AND status='pending' AND amount_paise=?2 AND expires_at>?3
+       ORDER BY created_at ASC LIMIT 2`,
+  ).bind(UPI_SMOKE_TEST_LISTING_ID, amountPaise, Date.now()).all<any>();
+  if (pending.results.length !== 1) return json({ ok: true, status: "review_pending", reason: pending.results.length ? "ambiguous_intent" : "no_matching_intent" });
+  const intent = pending.results[0];
   const ref = parseReference(String(body.message));
   const result = duplicateReceipt
     ? await reconcileSmokeIntent(env, db, intent.uid, intent.intent_id)
