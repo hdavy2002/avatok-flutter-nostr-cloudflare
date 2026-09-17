@@ -15,7 +15,7 @@ class UiLanguageTile extends StatelessWidget {
       final controller = UiLocaleController.instance;
       return ListTile(
         leading: const Icon(Icons.language),
-        title: const UiText(UiMessage.m_app_language_b8352b44a5),
+        title: const UiText(UiMessage.m_language_1287750a09),
         subtitle: Text(controller.selected.nativeName),
         trailing: controller.loading
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator())
@@ -26,7 +26,7 @@ class UiLanguageTile extends StatelessWidget {
             child: ListenableBuilder(listenable: controller, builder: (context, _) =>
               Column(children: [
                 const Padding(padding: EdgeInsets.all(16),
-                  child: UiText(UiMessage.m_app_language_b8352b44a5, style: TextStyle(fontSize: 20))),
+                  child: UiText(UiMessage.m_language_1287750a09, style: TextStyle(fontSize: 20))),
                 if (controller.fallback || !controller.frameworkSupported)
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16),
                     child: UiText(UiMessage.m_some_interface_text_is_shown_2fc750d6df)),

@@ -4,6 +4,7 @@ import 'core/localization/ui_text.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/localization/ui_locale_controller.dart';
+import 'core/localization/ui_locales.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -384,7 +385,7 @@ class AvaTalkApp extends StatelessWidget {
       listenable: UiLocaleController.instance,
       builder: (context, _) => UiLocaleScope(child: MaterialApp(
       locale: UiLocaleController.instance.frameworkLocale,
-      supportedLocales: GlobalMaterialLocalizations.supportedLocales,
+      supportedLocales: uiLocales.map((entry) => entry.locale).toList(growable: false),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

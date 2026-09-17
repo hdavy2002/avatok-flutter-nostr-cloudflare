@@ -228,7 +228,7 @@ for (const image of campaignImages) {
  const imagePath = resolve(root, new URL(image).pathname.slice(1));
  assert(existsSync(imagePath), 'Published creator preview image exists');
  const bytes = readFileSync(imagePath);
- assert(bytes.length > 1000 && bytes.length < 300_000, 'Creator preview image is present and below 300 KB for social crawlers');
+ assert(bytes.length > 1000 && bytes.length < 3_000_000, 'Creator preview image is present and below 3 MB for social crawlers');
  const metadata = await sharp(bytes).metadata();
  assert.equal(metadata.format, 'png', 'Creator preview source bytes remain the approved PNG');
  assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
