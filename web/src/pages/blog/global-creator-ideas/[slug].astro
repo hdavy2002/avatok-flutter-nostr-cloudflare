@@ -5,6 +5,7 @@ import SiteHeader from '../../../components/SiteHeader.astro';
 import SiteFooter from '../../../components/SiteFooter.astro';
 import GlobalIdeaCard from '../../../components/GlobalIdeaCard.astro';
 import { globalCreatorIdeas, globalCreatorGuides } from '../../../lib/globalCreatorIdeas';
+import { publicImage } from '../../../lib/config';
 import '../../../styles/global-editorial.css';
 export function getStaticPaths(){ return globalCreatorIdeas.map(idea => ({ params: { slug: idea.slug }, props: { idea } })); }
 const { idea } = Astro.props;
@@ -12,7 +13,7 @@ const guide = globalCreatorGuides[idea.slug];
 const guideNamespace = 'web-global-guide-' + idea.slug;
 const ideaIndex = globalCreatorIdeas.findIndex(item => item.slug === idea.slug);
 const related = [1, 2, 3].map(offset => globalCreatorIdeas[(ideaIndex + offset) % globalCreatorIdeas.length]);
-const image = `/assets/global-original/ideas-${idea.slug}.png`;
+const image = publicImage(`/assets/global-original/ideas-${idea.slug}.png`, { width: 768, fit: 'scale-down' });
 const imageWidth = [396, 376, 368, 396][ideaIndex % 4];
 const imageHeight = ideaIndex < 4 ? 308 : 320;
 const imageAlt = `${idea.platform}: ${idea.title}. ${idea.description}`;
