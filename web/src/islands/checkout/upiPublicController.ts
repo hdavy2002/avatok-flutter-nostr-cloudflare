@@ -36,6 +36,16 @@ function persist(saved: Session) {
   try { localStorage.setItem(STORAGE_KEY, value); } catch { /* storage can be unavailable in private mode */ }
 }
 function session(): Session {
+  const params = new URLSearchParams(window.location.search);
+  const resumeBearer = params.get('resume');
+  const resumeRequest = params.get('request');
+  const resumeIntent = params.get('intent');
+  if (resumeBearer && resumeRequest && /^[0-9a-f]{64}$/.test(resumeBearer) && UUID.test(resumeRequest)
+    && (!resumeIntent || UUID.test(resumeIntent))) {
+    const resumed = {bearer: resumeBearer, request_key: resumeRequest, ...(resumeIntent ? {intent_id: resumeIntent} : {})};
+    persist(resumed);
+    return resumed;
+  }
   let raw: string | null = null;
   try { raw = sessionStorage.getItem(STORAGE_KEY); } catch { /* continue */ }
   if (!raw) try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* continue */ }
@@ -83,6 +93,15 @@ export class UpiPublicController {
     if (this.stopped) return;
     this.state = {...this.state, ...patch};
     this.notify(this.state);
+  }
+  resumeUrl() {
+    const saved = this.saved ?? session();
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('resume', saved.bearer);
+    url.searchParams.set('request', saved.request_key);
+    if (saved.intent_id) url.searchParams.set('intent', saved.intent_id);
+    return url.toString();
   }
   async start() {
     try {

@@ -14,13 +14,13 @@ export function upiPlatform(userAgent: string, touchPoints = 0): UpiPlatform {
   return 'desktop';
 }
 
-export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform): string {
+export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform, fallbackUrl = 'https://avatok.ai/test/upi'): string {
   // Keep the server's complete encoded payment query, including payee and amount.
   const query = new URL(upiUrl).search;
   if (platform === 'android') {
     // Chrome only launches this after a tap. An unavailable app returns to the QR;
     // never fall back to generic upi://, which can open a different payment app.
-    const fallback = encodeURIComponent('https://avatok.ai/test/upi');
+    const fallback = encodeURIComponent(fallbackUrl);
     return `intent://pay${query}#Intent;scheme=upi;package=${app.packageName};S.browser_fallback_url=${fallback};end`;
   }
   if (platform === 'ios' && app.iosPrefix) return `${app.iosPrefix}${query}`;

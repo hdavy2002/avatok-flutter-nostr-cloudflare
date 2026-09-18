@@ -25,14 +25,15 @@ export default function UpiPlainQr() {
 
   useEffect(() => {
     setPlatform(upiPlatform(navigator.userAgent, navigator.maxTouchPoints));
-    window.history.replaceState(null, '', window.location.pathname);
     const current = new UpiPublicController(API_BASE, setState);
     controller.current = current;
     const refresh = () => { setNow(Date.now()); void current.refresh(); };
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', visible);
-    void current.start();
+    const starting = current.start();
+    window.history.replaceState(null, '', window.location.pathname);
+    void starting;
     return () => {
       current.stop();
       window.removeEventListener('focus', refresh);
@@ -85,7 +86,7 @@ export default function UpiPlainQr() {
     {upi && <>
       <p>Pay {amount} with</p>
       <nav aria-label="Payment apps" style={{display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10}}>
-        {UPI_APPS.map(app => <a key={app.id} href={upiAppHref(app, upi, platform)} aria-label={`Pay ${amount} with ${app.name}`}
+        {UPI_APPS.map(app => <a key={app.id} href={upiAppHref(app, upi, platform, controller.current?.resumeUrl())} aria-label={`Pay ${amount} with ${app.name}`}
           aria-describedby="payment-app-help" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             gap: 8, minHeight: 96, minWidth: 44, boxSizing: 'border-box', padding: '12px 4px', border: '1px solid #d4d4d4',
             borderRadius: 12, background: '#fff', color: '#171717', fontSize: 14, fontWeight: 600, textDecoration: 'none'}}>
