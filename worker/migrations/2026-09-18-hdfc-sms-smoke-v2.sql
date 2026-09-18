@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS hdfc_sms_smoke_intents (
  CHECK(expires_at>created_at AND recover_until=expires_at+86400000)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS hdfc_sms_smoke_one_active
- ON hdfc_sms_smoke_intents(receiving_account_key) WHERE active=1;
+ ON hdfc_sms_smoke_intents(receiving_account_key,uid) WHERE active=1;
 CREATE TABLE IF NOT EXISTS hdfc_sms_smoke_receipts (
  message_hash TEXT PRIMARY KEY,
  receiving_account_key TEXT NOT NULL,

@@ -11,8 +11,9 @@ export const baseSql=readFileSync(new URL('../migrations/2026-09-17-hdfc-sms-pay
 export const smokeSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-sms-smoke-v2.sql',import.meta.url),'utf8');
 export const customerSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-customer-test.sql',import.meta.url),'utf8');
 export const publicVpaSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-sms-public-vpa.sql',import.meta.url),'utf8');
+export const publicConcurrentSql=readFileSync(new URL('../migrations/2026-09-18-hdfc-sms-public-concurrent.sql',import.meta.url),'utf8');
 export function fixture(){
- const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON;');sql.exec(baseSql);sql.exec(smokeSql);sql.exec(customerSql);sql.exec(publicVpaSql);
+ const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON;');sql.exec(baseSql);sql.exec(smokeSql);sql.exec(customerSql);sql.exec(publicVpaSql);sql.exec(publicConcurrentSql);
  const account=createHash('sha256').update('HDFC|1234|INR').digest('hex');
  sql.exec(`CREATE VIEW hdfc_sms_smoke_ready AS SELECT 2 protocol_version,0 cutover_ms,'${"a".repeat(64)}' seed_digest,'${account}' receiving_account_key;`);
  sql.exec(`CREATE TABLE admin_roles(uid TEXT PRIMARY KEY,role TEXT);
