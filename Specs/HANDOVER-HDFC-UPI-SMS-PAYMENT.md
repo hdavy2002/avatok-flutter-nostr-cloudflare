@@ -316,3 +316,14 @@ The owner approved asking for payer VPA and phone before generating the ₹1 QR,
 Each payment is a separate attempt with creation, expiry, recovery and confirmation timestamps. Refresh resumes the same attempt. After confirmation, Make another payment creates a fresh request key and attempt while allowing reuse of the payer details. Different VPAs may pay identical amounts concurrently. A still-unresolved attempt reserves its VPA/amount through the recovery window, including after QR expiry. The bank reference remains the duplicate-payment/receipt identity; never match by a two-minute delay alone. Existing legacy/admin/customer exact-UTR behavior is retained separately, and old receipt rows are not backfilled into automatic VPA attribution.
 
 Limit: the signed Android SMS receipt time is not an exact bank transaction timestamp. An unreported extra transfer from the same VPA/amount can remain ambiguous. This is a controlled test integration, not proof of payer-account ownership or demonstrated suitability for millions of daily transactions. No commercial booking or wallet settlement is introduced.
+
+### Verified production rollout — VPA confirmation
+
+- Release commit: `bb36a2cc459a9a0b4076d479c4c55870c27add5a` (implementation `75d7f99a`, narrow public-envelope compatibility fix `bb36a2cc`).
+- Worker workflow: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35296446659 — success. Worker version `7b0c5bdc-dc98-44fb-a7d0-e37fe1fadf14`.
+- Web workflow: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35296448679 — success. Pages deployment https://bf9f2525.avatok-app.pages.dev.
+- CI: 57 real-SQL Worker tests, 16 migration/invitation tests, 18 controller tests, 37 browser tests = 128 passed. Zero new TypeScript diagnostics; 76 pre-existing baseline diagnostics remain.
+- Applied `2026-09-18-hdfc-sms-public-vpa.sql` once to production `avatok-meta` while matching was paused. Readback verified both intent payer columns, receipt payer VPA, four intended indexes, unchanged protocol 2/cutover `1789676007000`, and two historical receipts still without VPA. No seed rerun or historical backfill.
+- Re-enabled only `hdfcSmsEnabled=true` after Worker, migration and web deployment succeeded. Live browser shows VPA/phone form and Generate QR, with no normal-flow UTR field. Live read-only probes: QR 200 / INR 100 paise; unauthenticated status 401; capability-scoped unknown attempt 404, confirming schema readiness.
+- No Android rebuild needed. Fresh physical-phone payment and companion SMS delivery remain unverified; CI uses synthetic signed receipts and this rollout made no real payment or fabricated production receipt.
+- Graphify refreshed by commit hook. Graphiti write unavailable (pre-push hook failed without blocking push).
