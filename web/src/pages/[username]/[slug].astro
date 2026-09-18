@@ -40,6 +40,9 @@ const og = listingOg(listing);
 // [LISTING-EXPIRY-1] A finished or cancelled show keeps a readable page for anyone
 // holding the link, but is no longer something to rank in search.
 const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf(listing));
+// [WEB-GATEWAY-FIX3 2026-09-19] A badged example is real, published copy but never a
+// real transaction — keep it out of search the same way a closed show is kept out.
+const isExampleListing = Boolean(listing.is_example);
 // [LISTING-SEO-1 2026-09-06] Same Event + breadcrumb graph as /l/<id>.
 // All three listing URLs render the same component, so they must carry the
 // same structured data — a listing that describes itself differently
@@ -53,12 +56,19 @@ const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 
-<Base title={og.title} description={og.description} image={og.image} noindex={closedListing}>
+<Base title={og.title} description={og.description} image={og.image} noindex={closedListing || isExampleListing}>
   <Fragment slot="head">
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
     <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />
     <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
   </Fragment>
+
+  {isExampleListing && (
+    <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase;">
+      <span data-i18n="web-l.5f2a7c19be3d4e0a" style="display:inline-block; padding:4px 10px; border:2px solid #0e1116; border-radius:999px; background:#fdf1d3;">Example listing</span>
+      <span data-i18n="web-l.7c6d0a2f915e4b3c" style="text-transform:none; letter-spacing:0; font-size:13px; font-weight:700;">This shows what creators will offer on avaTOK. Booking opens at launch.</span>
+    </div>
+  )}
 
   {isOwner && (
     <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">

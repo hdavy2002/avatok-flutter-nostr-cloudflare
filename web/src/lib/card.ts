@@ -359,7 +359,7 @@ export function timePillLabel(startsAt: number | null, opts: { prefixNext?: bool
 
 /**
  * The status pill per §2's per-type ladder:
- *   live/free — LIVE · N DEKH RAHE → SOLD OUT (seats_left=0) → the time pill →
+ *   live/free — LIVE · N WATCHING → SOLD OUT (seats_left=0) → the time pill →
  *               NEW (<48h, no date at all)
  *   consult   — ON REQUEST (schedule_mode) → AVAILABLE NOW (no starts_at) →
  *               NEXT <day> <time> from starts_at
@@ -494,6 +494,10 @@ export function uniformChips(lane: ListingLane, card: Card, c: CardView): [strin
     availability = card.response_time_min != null
       ? responseTime(card.response_time_min)
       : card.schedule_mode === 'on_request' ? pillExtra.ON_REQUEST : laneBadge.SLOTS_OPEN;
+  } else if (card.is_example) {
+    // [WEB-GATEWAY-FIX3] An example card is never actually bookable — BOOKING
+    // OPEN / ENTRY OPEN would claim otherwise.
+    availability = laneBadge.EXAMPLE;
   } else {
     availability = lane === 'free' ? laneBadge.ENTRY_OPEN : laneBadge.BOOKING_OPEN;
   }
