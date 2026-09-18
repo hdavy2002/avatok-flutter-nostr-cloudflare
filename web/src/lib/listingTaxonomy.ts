@@ -37,6 +37,9 @@ export interface SubCategory {
   sort: number;
   /** Hide the blip while this platform flag is off. */
   requiresFlag?: string;
+  /** Hidden from pickers/chips (subCategoriesFor excludes it). The id still
+   *  resolves via SUB_CATEGORIES.find for display on an existing listing. */
+  hidden?: boolean;
 }
 
 export const GROUPS: Group[] = [
@@ -90,18 +93,18 @@ export const SUB_CATEGORIES: SubCategory[] = [
   { id: "live_art", label: "Art & craft", emoji: "🎨", group: "india_goes_live", sort: 120, },
   { id: "live_satsang", label: "Satsang & sermons", emoji: "📿", group: "india_goes_live", sort: 130, },
   { id: "live_everyday", label: "Everyday life", emoji: "☕", group: "india_goes_live", sort: 140, },
-  { id: "listener", label: "Listener", emoji: "👂", group: "find_your_people", sort: 210, },
-  { id: "home_friend", label: "Home friend", emoji: "🏠", group: "find_your_people", sort: 220, },
-  { id: "late_night_friend", label: "Late-night friend", emoji: "🌙", group: "find_your_people", sort: 230, },
-  { id: "quiet_company", label: "Quiet company", emoji: "🤍", group: "find_your_people", sort: 240, },
-  { id: "chat_buddy", label: "Chat buddy", emoji: "💬", group: "find_your_people", sort: 250, },
-  { id: "walk_talk", label: "Walk & talk", emoji: "🚶", group: "find_your_people", sort: 260, },
-  { id: "language_buddy", label: "Language buddy", emoji: "🗣️", group: "find_your_people", sort: 270, },
-  { id: "college_friends", label: "College circle", emoji: "🎓", group: "find_your_people", sort: 280, },
-  { id: "senior_company", label: "Senior company", emoji: "🌻", group: "find_your_people", sort: 290, },
-  { id: "queer_friendly", label: "Queer-friendly space", emoji: "🏳️‍🌈", group: "find_your_people", sort: 300, },
-  { id: "live_friends", label: "Live friends", emoji: "👥", group: "find_your_people", sort: 310, },
-  { id: "adda_rooms", label: "Adda rooms", emoji: "☕", group: "find_your_people", sort: 320, requiresFlag: "conferenceEnabled", },
+  { id: "listener", label: "Listener", emoji: "👂", group: "find_your_people", sort: 210, hidden: true, },
+  { id: "home_friend", label: "Home friend", emoji: "🏠", group: "find_your_people", sort: 220, hidden: true, },
+  { id: "late_night_friend", label: "Late-night friend", emoji: "🌙", group: "find_your_people", sort: 230, hidden: true, },
+  { id: "quiet_company", label: "Quiet company", emoji: "🤍", group: "find_your_people", sort: 240, hidden: true, },
+  { id: "chat_buddy", label: "Chat buddy", emoji: "💬", group: "find_your_people", sort: 250, hidden: true, },
+  { id: "walk_talk", label: "Walk & talk", emoji: "🚶", group: "find_your_people", sort: 260, hidden: true, },
+  { id: "language_buddy", label: "Language buddy", emoji: "🗣️", group: "find_your_people", sort: 270, hidden: true, },
+  { id: "college_friends", label: "College circle", emoji: "🎓", group: "find_your_people", sort: 280, hidden: true, },
+  { id: "senior_company", label: "Senior company", emoji: "🌻", group: "find_your_people", sort: 290, hidden: true, },
+  { id: "queer_friendly", label: "Queer-friendly space", emoji: "🏳️‍🌈", group: "find_your_people", sort: 300, hidden: true, },
+  { id: "live_friends", label: "Live friends", emoji: "👥", group: "find_your_people", sort: 310, hidden: true, },
+  { id: "adda_rooms", label: "Adda rooms", emoji: "☕", group: "find_your_people", sort: 320, requiresFlag: "conferenceEnabled", hidden: true, },
   { id: "group_language_practice", label: "Language practice", emoji: "🗣️", group: "find_your_people", sort: 330, },
   { id: "group_fitness_batch", label: "Fitness & yoga batch", emoji: "🧘", group: "find_your_people", sort: 340, },
   { id: "group_exam_revision", label: "Exam revision", emoji: "📖", group: "find_your_people", sort: 350, },
@@ -145,9 +148,10 @@ export const MEDIA_MODES: { id: MediaMode; label: string; help: string }[] = [
 ];
 export const MEDIA_MODE_DEFAULT: MediaMode = "audio_video";
 
-/** Sub-categories in one group, in display order. */
+/** Sub-categories in one group, in display order. Hidden categories are
+ *  excluded — look them up directly in SUB_CATEGORIES for display. */
 export function subCategoriesFor(group: GroupId): SubCategory[] {
-  return SUB_CATEGORIES.filter((c) => c.group === group).sort((a, b) => a.sort - b.sort);
+  return SUB_CATEGORIES.filter((c) => c.group === group && !c.hidden).sort((a, b) => a.sort - b.sort);
 }
 
 /** The groups a wizard step-1 kind can file a listing into.

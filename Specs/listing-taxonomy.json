@@ -172,7 +172,9 @@
       "emoji": "👂",
       "group": "find_your_people",
       "new": true,
-      "sort": 210
+      "sort": 210,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "home_friend",
@@ -180,7 +182,9 @@
       "emoji": "🏠",
       "group": "find_your_people",
       "new": true,
-      "sort": 220
+      "sort": 220,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "late_night_friend",
@@ -188,7 +192,9 @@
       "emoji": "🌙",
       "group": "find_your_people",
       "new": true,
-      "sort": 230
+      "sort": 230,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "quiet_company",
@@ -196,7 +202,9 @@
       "emoji": "🤍",
       "group": "find_your_people",
       "new": true,
-      "sort": 240
+      "sort": 240,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "chat_buddy",
@@ -204,7 +212,9 @@
       "emoji": "💬",
       "group": "find_your_people",
       "new": true,
-      "sort": 250
+      "sort": 250,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "walk_talk",
@@ -212,7 +222,9 @@
       "emoji": "🚶",
       "group": "find_your_people",
       "new": true,
-      "sort": 260
+      "sort": 260,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "language_buddy",
@@ -220,7 +232,9 @@
       "emoji": "🗣️",
       "group": "find_your_people",
       "new": true,
-      "sort": 270
+      "sort": 270,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "college_friends",
@@ -228,7 +242,9 @@
       "emoji": "🎓",
       "group": "find_your_people",
       "new": true,
-      "sort": 280
+      "sort": 280,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "senior_company",
@@ -236,7 +252,9 @@
       "emoji": "🌻",
       "group": "find_your_people",
       "new": true,
-      "sort": 290
+      "sort": 290,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "queer_friendly",
@@ -244,7 +262,9 @@
       "emoji": "🏳️‍🌈",
       "group": "find_your_people",
       "new": true,
-      "sort": 300
+      "sort": 300,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_friends",
@@ -252,7 +272,9 @@
       "emoji": "👥",
       "group": "find_your_people",
       "new": false,
-      "sort": 310
+      "sort": 310,
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "adda_rooms",
@@ -262,7 +284,8 @@
       "new": false,
       "sort": 320,
       "requires_flag": "conferenceEnabled",
-      "_note": "conferenceEnabled is FALSE in production (read from the live config 2026-09-05). Hide this blip while the flag is off — an always-empty blip is indistinguishable from 'nobody has listed one yet', and only one of those is a bug."
+      "hidden": true,
+      "_note": "[WEB-GATEWAY-FIX5 2026-09-19] Hidden from pickers/chips — legacy paid-companionship framing (Specs/WEBGW-FIX5-BRIEF.md), on top of the pre-existing conferenceEnabled gate (FALSE in production, read from the live config 2026-09-05). Stays in the JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "group_language_practice",

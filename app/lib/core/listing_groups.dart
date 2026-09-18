@@ -47,6 +47,10 @@ class ListingSubCategory {
   final int sort;
   /// Hide the blip while this platform flag is off.
   final String? requiresFlag;
+  /// Hidden from pickers/chips (listingSubCategoriesForGroup excludes it).
+  /// The id still resolves via listingSubCategoryById for display on an
+  /// existing listing.
+  final bool hidden;
 
   const ListingSubCategory({
     required this.id,
@@ -55,6 +59,7 @@ class ListingSubCategory {
     required this.group,
     required this.sort,
     this.requiresFlag,
+    this.hidden = false,
   });
 }
 
@@ -125,18 +130,18 @@ const List<ListingSubCategory> kListingSubCategories = [
   ListingSubCategory(id: 'live_art', label: 'Art & craft', emoji: '🎨', group: 'india_goes_live', sort: 120,),
   ListingSubCategory(id: 'live_satsang', label: 'Satsang & sermons', emoji: '📿', group: 'india_goes_live', sort: 130,),
   ListingSubCategory(id: 'live_everyday', label: 'Everyday life', emoji: '☕', group: 'india_goes_live', sort: 140,),
-  ListingSubCategory(id: 'listener', label: 'Listener', emoji: '👂', group: 'find_your_people', sort: 210,),
-  ListingSubCategory(id: 'home_friend', label: 'Home friend', emoji: '🏠', group: 'find_your_people', sort: 220,),
-  ListingSubCategory(id: 'late_night_friend', label: 'Late-night friend', emoji: '🌙', group: 'find_your_people', sort: 230,),
-  ListingSubCategory(id: 'quiet_company', label: 'Quiet company', emoji: '🤍', group: 'find_your_people', sort: 240,),
-  ListingSubCategory(id: 'chat_buddy', label: 'Chat buddy', emoji: '💬', group: 'find_your_people', sort: 250,),
-  ListingSubCategory(id: 'walk_talk', label: 'Walk & talk', emoji: '🚶', group: 'find_your_people', sort: 260,),
-  ListingSubCategory(id: 'language_buddy', label: 'Language buddy', emoji: '🗣️', group: 'find_your_people', sort: 270,),
-  ListingSubCategory(id: 'college_friends', label: 'College circle', emoji: '🎓', group: 'find_your_people', sort: 280,),
-  ListingSubCategory(id: 'senior_company', label: 'Senior company', emoji: '🌻', group: 'find_your_people', sort: 290,),
-  ListingSubCategory(id: 'queer_friendly', label: 'Queer-friendly space', emoji: '🏳️‍🌈', group: 'find_your_people', sort: 300,),
-  ListingSubCategory(id: 'live_friends', label: 'Live friends', emoji: '👥', group: 'find_your_people', sort: 310,),
-  ListingSubCategory(id: 'adda_rooms', label: 'Adda rooms', emoji: '☕', group: 'find_your_people', sort: 320, requiresFlag: 'conferenceEnabled',),
+  ListingSubCategory(id: 'listener', label: 'Listener', emoji: '👂', group: 'find_your_people', sort: 210, hidden: true,),
+  ListingSubCategory(id: 'home_friend', label: 'Home friend', emoji: '🏠', group: 'find_your_people', sort: 220, hidden: true,),
+  ListingSubCategory(id: 'late_night_friend', label: 'Late-night friend', emoji: '🌙', group: 'find_your_people', sort: 230, hidden: true,),
+  ListingSubCategory(id: 'quiet_company', label: 'Quiet company', emoji: '🤍', group: 'find_your_people', sort: 240, hidden: true,),
+  ListingSubCategory(id: 'chat_buddy', label: 'Chat buddy', emoji: '💬', group: 'find_your_people', sort: 250, hidden: true,),
+  ListingSubCategory(id: 'walk_talk', label: 'Walk & talk', emoji: '🚶', group: 'find_your_people', sort: 260, hidden: true,),
+  ListingSubCategory(id: 'language_buddy', label: 'Language buddy', emoji: '🗣️', group: 'find_your_people', sort: 270, hidden: true,),
+  ListingSubCategory(id: 'college_friends', label: 'College circle', emoji: '🎓', group: 'find_your_people', sort: 280, hidden: true,),
+  ListingSubCategory(id: 'senior_company', label: 'Senior company', emoji: '🌻', group: 'find_your_people', sort: 290, hidden: true,),
+  ListingSubCategory(id: 'queer_friendly', label: 'Queer-friendly space', emoji: '🏳️‍🌈', group: 'find_your_people', sort: 300, hidden: true,),
+  ListingSubCategory(id: 'live_friends', label: 'Live friends', emoji: '👥', group: 'find_your_people', sort: 310, hidden: true,),
+  ListingSubCategory(id: 'adda_rooms', label: 'Adda rooms', emoji: '☕', group: 'find_your_people', sort: 320, requiresFlag: 'conferenceEnabled', hidden: true,),
   ListingSubCategory(id: 'group_language_practice', label: 'Language practice', emoji: '🗣️', group: 'find_your_people', sort: 330,),
   ListingSubCategory(id: 'group_fitness_batch', label: 'Fitness & yoga batch', emoji: '🧘', group: 'find_your_people', sort: 340,),
   ListingSubCategory(id: 'group_exam_revision', label: 'Exam revision', emoji: '📖', group: 'find_your_people', sort: 350,),
@@ -184,9 +189,10 @@ const List<MediaModeOption> kMediaModes = [
 ];
 const String kMediaModeDefault = 'audio_video';
 
-/// Sub-categories in one group, in display order.
+/// Sub-categories in one group, in display order. Hidden categories are
+/// excluded — look them up directly with [listingSubCategoryById] for display.
 List<ListingSubCategory> listingSubCategoriesForGroup(String group) {
-  final out = kListingSubCategories.where((c) => c.group == group).toList();
+  final out = kListingSubCategories.where((c) => c.group == group && !c.hidden).toList();
   out.sort((a, b) => a.sort.compareTo(b.sort));
   return out;
 }

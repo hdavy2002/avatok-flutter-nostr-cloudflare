@@ -62,6 +62,9 @@ export interface SubCategory {
   sort: number;
   /** Hide the blip while this platform flag is off. */
   requiresFlag?: string;
+  /** Hidden from pickers/chips (subCategoriesFor excludes it). The id still
+   *  resolves via SUB_CATEGORIES.find for display on an existing listing. */
+  hidden?: boolean;
 }
 """
 
@@ -76,9 +79,10 @@ export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(%s);
 """
 
 HELPERS = """
-/** Sub-categories in one group, in display order. */
+/** Sub-categories in one group, in display order. Hidden categories are
+ *  excluded — look them up directly in SUB_CATEGORIES for display. */
 export function subCategoriesFor(group: GroupId): SubCategory[] {
-  return SUB_CATEGORIES.filter((c) => c.group === group).sort((a, b) => a.sort - b.sort);
+  return SUB_CATEGORIES.filter((c) => c.group === group && !c.hidden).sort((a, b) => a.sort - b.sort);
 }
 
 /** The groups a wizard step-1 kind can file a listing into.
@@ -134,8 +138,9 @@ def render_ts(data):
     out.append("export const SUB_CATEGORIES: SubCategory[] = [")
     for c in data["categories"]:
         flag = (" requiresFlag: %s," % js(c["requires_flag"])) if c.get("requires_flag") else ""
-        out.append("  { id: %s, label: %s, emoji: %s, group: %s, sort: %d,%s }," % (
-            js(c["id"]), js(c["label"]), js(c["emoji"]), js(c["group"]), c["sort"], flag))
+        hidden = " hidden: true," if c.get("hidden") else ""
+        out.append("  { id: %s, label: %s, emoji: %s, group: %s, sort: %d,%s%s }," % (
+            js(c["id"]), js(c["label"]), js(c["emoji"]), js(c["group"]), c["sort"], flag, hidden))
     out.append("];")
     p = data["pricing"]
     out.append("""
@@ -216,6 +221,10 @@ class ListingSubCategory {
   final int sort;
   /// Hide the blip while this platform flag is off.
   final String? requiresFlag;
+  /// Hidden from pickers/chips (listingSubCategoriesForGroup excludes it).
+  /// The id still resolves via listingSubCategoryById for display on an
+  /// existing listing.
+  final bool hidden;
 
   const ListingSubCategory({
     required this.id,
@@ -224,6 +233,7 @@ class ListingSubCategory {
     required this.group,
     required this.sort,
     this.requiresFlag,
+    this.hidden = false,
   });
 }
 """
@@ -251,9 +261,10 @@ bool listingSectionVisible(String section) {
 """
 
 DART_HELPERS = """
-/// Sub-categories in one group, in display order.
+/// Sub-categories in one group, in display order. Hidden categories are
+/// excluded — look them up directly with [listingSubCategoryById] for display.
 List<ListingSubCategory> listingSubCategoriesForGroup(String group) {
-  final out = kListingSubCategories.where((c) => c.group == group).toList();
+  final out = kListingSubCategories.where((c) => c.group == group && !c.hidden).toList();
   out.sort((a, b) => a.sort.compareTo(b.sort));
   return out;
 }
@@ -372,8 +383,9 @@ def render_dart(data):
     out.append("const List<ListingSubCategory> kListingSubCategories = [")
     for c in data["categories"]:
         flag = (" requiresFlag: %s," % dart_str(c["requires_flag"])) if c.get("requires_flag") else ""
-        out.append("  ListingSubCategory(id: %s, label: %s, emoji: %s, group: %s, sort: %d,%s)," % (
-            dart_str(c["id"]), dart_str(c["label"]), dart_str(c["emoji"]), dart_str(c["group"]), c["sort"], flag))
+        hidden = " hidden: true," if c.get("hidden") else ""
+        out.append("  ListingSubCategory(id: %s, label: %s, emoji: %s, group: %s, sort: %d,%s%s)," % (
+            dart_str(c["id"]), dart_str(c["label"]), dart_str(c["emoji"]), dart_str(c["group"]), c["sort"], flag, hidden))
     out.append("];")
     p = data["pricing"]
     out.append("""

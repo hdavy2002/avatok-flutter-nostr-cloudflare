@@ -345,11 +345,11 @@ function ExploreGridInner({
                   clearAll();
                 }}
                 className="flex-none font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-              ><UiText id="web-marketplace.178eae80f69580f8" source="Sab hatao" />{" "}</button>
+              ><UiText id="web-marketplace.178eae80f69580f8" source="Clear all" />{" "}</button>
             )}
             <span className="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-ink">
               {loaded
-                ? uiT("web-marketplace.e464441e0b11cb75","{value0} {value1} · Pura bazaar",{value0:String(items.length),value1:String(items.length === 1 ? 'listing' : 'listings')})
+                ? uiT("web-marketplace.e464441e0b11cb75","{value0} {value1} · full bazaar",{value0:String(items.length),value1:String(items.length === 1 ? 'listing' : 'listings')})
                 : uiT("web-marketplace.72077f6d13c05345","Loading the bazaar…")}
             </span>
             <span className="h-0.5 min-w-[60px] flex-1 bg-ink/20" />

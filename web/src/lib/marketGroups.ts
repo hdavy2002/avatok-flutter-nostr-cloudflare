@@ -10,7 +10,7 @@
  * group (heading/eyebrow/zone), which group a card belongs to, and which
  * blips a group shows.
  */
-import { GROUPS, subCategoriesFor, type GroupId, type SubCategory } from './listingTaxonomy';
+import { GROUPS, subCategoriesFor, SUB_CATEGORIES, type GroupId, type SubCategory } from './listingTaxonomy';
 import type { Card } from './types';
 
 export type { GroupId };
@@ -139,6 +139,15 @@ export interface Blip {
   emoji?: string | null;
 }
 
+/** [WEB-GATEWAY-FIX5] Ids marked `hidden` in Specs/listing-taxonomy.json — the
+ *  legacy paid-companionship sub-categories. Computed from the full
+ *  (unfiltered) mirror, not `subCategoriesFor`, because it must also strip a
+ *  hidden id out of the SERVER's answer below: `GET /api/explore/categories`
+ *  still returns these as active until the migration in
+ *  worker/migrations/2026-09-19-webgw-hide-companionship-categories.sql is
+ *  applied, and this picker must not show them in the meantime. */
+const HIDDEN_CATEGORY_IDS = new Set(SUB_CATEGORIES.filter((c) => c.hidden).map((c) => c.id));
+
 /**
  * The sub-category "blips" for one group (spec §2). The server's own answer —
  * GET /api/explore/categories, which now carries `group_id` [MKT-3GROUP-1] —
@@ -147,8 +156,10 @@ export interface Blip {
  *
  * Either way, a blip whose sub-category is flag-gated (`adda_rooms` /
  * `conferenceEnabled`, false in production) is hidden while that flag reads
- * false. An always-empty blip is indistinguishable on screen from "nobody has
- * listed one yet", and only one of those is a bug.
+ * false, and a blip marked `hidden` (HIDDEN_CATEGORY_IDS) is hidden
+ * regardless of what the server sends. An always-empty blip is
+ * indistinguishable on screen from "nobody has listed one yet", and only one
+ * of those is a bug.
  */
 export function blipsForGroup(
   group: GroupId,
@@ -158,7 +169,9 @@ export function blipsForGroup(
   const gated = new Set(
     subCategoriesFor(group).filter((sc) => sc.requiresFlag && !conferenceEnabled).map((sc) => sc.id),
   );
-  const fromServer = categories.filter((c) => c.group_id === group && !gated.has(c.id));
+  const fromServer = categories.filter(
+    (c) => c.group_id === group && !gated.has(c.id) && !HIDDEN_CATEGORY_IDS.has(c.id),
+  );
   if (fromServer.length) return fromServer;
   return subCategoriesFor(group).filter((sc) => !gated.has(sc.id));
 }

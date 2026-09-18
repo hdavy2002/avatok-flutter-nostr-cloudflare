@@ -5,7 +5,7 @@ import { GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups
 
 /** Price buckets, in tokens (₹1 = 1 token). `max: null` means "and up". */
 export const PRICE_BANDS: { id: string; label: string; min: number; max: number | null }[] = [
-  { id: 'all', label: 'Sab', min: 0, max: null },
+  { id: 'all', label: 'All', min: 0, max: null },
   { id: 'under100', label: 'Under ₹100', min: 0, max: 99 },
   { id: '100_199', label: '₹100–199', min: 100, max: 199 },
   { id: '200plus', label: '₹200+', min: 200, max: null },
@@ -53,7 +53,7 @@ export interface FilterRailProps {
   /** Catalogue total, for the "Everything" row. */
   total: number;
   onClear: () => void;
-  /** True when anything is actually narrowed — drives SAB HATAO. */
+  /** True when anything is actually narrowed — drives the CLEAR ALL button. */
   narrowed: boolean;
   /** Drawer visibility. The rail is closed by default at every width. */
   open: boolean;
@@ -170,7 +170,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                 type="button"
                 onClick={onClear}
                 className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-              ><UiText id="web-marketplace.178eae80f69580f8" source="Sab hatao" />{" "}</button>
+              ><UiText id="web-marketplace.178eae80f69580f8" source="Clear all" />{" "}</button>
             )}
             <button
               type="button"
@@ -226,7 +226,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
               type="button"
               onClick={() => set({ date: undefined })}
               className="mt-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-            ><UiText id="web-marketplace.44389908474085f2" source="Koi bhi din" />{" "}</button>
+            ><UiText id="web-marketplace.44389908474085f2" source="Any day" />{" "}</button>
           )}
         </div>
 
