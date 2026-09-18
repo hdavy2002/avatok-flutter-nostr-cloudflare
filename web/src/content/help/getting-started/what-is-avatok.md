@@ -4,7 +4,7 @@ description: "avaTOK is an India-focused creator marketplace for paid live strea
 section: getting-started
 order: 1
 updated: 2026-09-11
-keywords: ["avatok", "what is avatok", "avatok kya hai", "creator marketplace", "live streaming", "1:1 sessions", "paid consultation"]
+keywords: ["avatok", "what is avatok", "creator marketplace", "live streaming", "1:1 sessions", "paid consultation"]
 audience: both
 faq:
   - q: "What exactly is avaTOK?"
@@ -18,7 +18,7 @@ draft: false
 
 ## The short version
 
-avaTOK is a global creator marketplace built around two things: paid live streaming and paid 1:1 video sessions. A creator publishes a listing — a live event, a private session, a conversation, or a skill they can teach — and people browse the [marketplace](/marketplace), book or join it, and pay for the creator's time. The brand is spelled **avaTOK** — lower-case *ava*, upper-case *TOK*.
+avaTOK is a global creator marketplace built around two things: paid live streaming and paid 1:1 video sessions. A creator publishes a listing — a live event, a 1:1 session, a conversation, or a skill they can teach — and people browse the [marketplace](/marketplace), book or join it, and pay for the creator's time. The brand is spelled **avaTOK** — lower-case *ava*, upper-case *TOK*.
 
 ## Not to be confused with
 
@@ -26,18 +26,18 @@ A few unrelated products share the name. avaTOK at avatok.ai is not connected to
 
 ## Two things you can do
 
-**Earn.** Create a free listing and get paid to host live streams, run 1:1 video consultations, be a home friend, listen, or teach something you know. Listing is free — avaTOK only takes a platform fee once you actually get paid.
+**Earn.** Create a free listing and get paid to host live streams, run 1:1 video consultations, or teach something you know. Listing is free — avaTOK only takes a platform fee once you actually get paid.
 
 **Book.** Browse the [marketplace](/marketplace), join a live event, or book a creator's time in a slot they've opened on their calendar.
 
 ## Who's behind it
 
-avaTOK was founded by three friends in India and is built and operated by that founding team, working out of Mumbai. It's currently an unregistered business at the ideation and testing stage — no Indian company has been incorporated yet, and the site says so plainly rather than implying otherwise. Because the platform is still being tested, access is invite-only, features can change or be paused, and prices and token values shown are indicative during this period. Read more on the [About](/about) page.
+avaTOK is operated by Ava Global International, Inc., a Delaware corporation. An Indian subsidiary is being incorporated in Mumbai; its details will be published here once registered. Because the platform is still being tested, access is invite-only, features can change or be paused, and prices and token values shown are indicative during this period. Read more on the [About](/about) page.
 
 ## How a booking actually works
 
 1. A creator sets up a listing with a category, a description and a price in tokens. The internal accounting anchor is 100 Tokens = $1.
-2. A buyer finds it on the marketplace, and either joins a live event or books a private 1:1 slot.
+2. A buyer finds it on the marketplace, and either joins a live event or books a 1:1 slot.
 3. The session itself happens inside avaTOK, so nobody needs to swap phone numbers to get it done.
 4. After the session, the creator's share is recorded in their avaTOK wallet. Withdrawal semantics are not yet available — see [Withdrawing your earnings](/help/billing/withdrawing-your-earnings).
 

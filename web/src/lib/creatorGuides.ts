@@ -39,7 +39,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
   },
   "idea-4": {
     "audience": "Existing followers of a spiritual teacher who want a focused live gathering",
-    "offer": "Organise a ticketed satsang with the teacher’s permission, a clear theme and a moderator. The value is an uninterrupted talk and thoughtfully selected questions, not a promise that every viewer gets a private answer.",
+    "offer": "Organise a ticketed satsang with the teacher’s permission, a clear theme and a moderator. The value is an uninterrupted talk and thoughtfully selected questions, not a promise that every viewer gets a personal answer.",
     "steps": [
       "Agree the teacher’s topic, permission and appearance arrangements",
       "Collect questions in advance and moderate the live talk",
@@ -67,7 +67,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "steps": [
       "Agree which family moments may be shown",
       "Explain the decorations, food and one central tradition",
-      "Pause for questions and close before private family time"
+      "Pause for questions and close before family time"
     ],
     "equipment": "A phone, simple stand and Wi-Fi. A movable grip helps switch between the kitchen and decorated corner.",
     "returnReason": "Offer distinct celebrations through the year and explain how your family’s customs change. Familiar details help viewers connect with your household.",
@@ -119,7 +119,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     ],
     "equipment": "A phone, weather protection and non-slip footwear. Keep the stream stationary when conditions make walking unsafe.",
     "returnReason": "Return as crops and weather change. Small recurring landmarks create continuity across the season.",
-    "promotion": "Share a rain-soaked lane photo and name what viewers will discover, without revealing anyone’s private address."
+    "promotion": "Share a rain-soaked lane photo and name what viewers will discover, without revealing anyone’s home address."
   },
   "idea-11": {
     "audience": "Former residents, curious travellers and people interested in rural culture",
@@ -293,7 +293,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "audience": "Followers curious about how your creative work gets made",
     "offer": "Open a carefully chosen part of your preparation process. Explain decisions about a shoot, exhibition or performance that a finished post cannot show.",
     "steps": [
-      "Select one stage without exposing private client material",
+      "Select one stage without exposing confidential client material",
       "Walk through your setup and explain the tradeoffs",
       "Show the next version and answer process questions"
     ],
@@ -337,18 +337,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "Curate different themes and line-ups. A dependable show gives people a reason to watch emerging talent again.",
     "promotion": "Introduce the confirmed performers and a short approved sample from each."
   },
-  "idea-29": {
-    "audience": "Adults looking for an attentive, everyday conversation",
-    "offer": "Offer a clearly bounded listening appointment where one person gets your full attention. This is adult companionship, not counselling, diagnosis or crisis care.",
-    "steps": [
-      "Agree the session length and conversational boundaries",
-      "Let the other person choose what to talk about and listen without rushing to advice",
-      "Close gently at the agreed time and ask what felt useful"
-    ],
-    "equipment": "A phone with a camera, earphones, reliable internet and a private, quiet room. A laptop is optional; nobody else should be listening off-camera.",
-    "returnReason": "People may return because you remember their preferences and give them a respectful space. Keep professional boundaries and avoid creating pressure or dependence.",
-    "promotion": "Describe your language, availability and listening style. Never share someone’s story as a promotional example without their explicit permission."
-  },
   "idea-30": {
     "audience": "People who relax more easily in a familiar Indian language",
     "offer": "Offer a chai-length conversation in a language you speak naturally. Everyday humour, expressions and shared cultural references are the experience.",
@@ -360,18 +348,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "equipment": "A camera phone, earphones and a quiet room. Your cup of chai is atmosphere, not required equipment.",
     "returnReason": "Use fresh prompts and dependable availability. Familiar language can make the next conversation feel welcoming.",
     "promotion": "Record a short introduction in the language you offer so people can hear your style before booking."
-  },
-  "idea-31": {
-    "audience": "Indians abroad who miss everyday conversation about home",
-    "offer": "Create a warm appointment for talking about festivals, food and the small differences of life overseas. Listen to the person’s experience rather than assuming all NRIs feel the same.",
-    "steps": [
-      "Ask about their hometown and preferred language",
-      "Use a memory or current festival as a gentle starting point",
-      "Let them lead the conversation and finish with a pleasant shared topic"
-    ],
-    "equipment": "A phone, earphones and a quiet space. Offer time slots that actually overlap with the audience abroad.",
-    "returnReason": "Remember interests with the guest’s agreement and bring a fresh hometown or seasonal conversation next time.",
-    "promotion": "Introduce your region and languages, with availability in the target time zone. Keep the offer about companionship."
   },
   "idea-32": {
     "audience": "Learners who know some English but hesitate to speak",
@@ -589,30 +565,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "A follow-up can review the next attempt or tackle another family recipe.",
     "promotion": "Describe the regional dishes you know and show a texture or technique you can explain."
   },
-  "idea-50": {
-    "audience": "Someone preparing to wear a saree for a specific occasion",
-    "offer": "Offer live draping guidance with patient corrections. Clarify the drape and required garments before the appointment.",
-    "steps": [
-      "Confirm the style and send a preparation list",
-      "Demonstrate one stage at a time while the participant practises",
-      "Check comfort, pleats and movement, then repeat a difficult step"
-    ],
-    "equipment": "A phone on a stable stand, full-length mirror, saree and the underlayers or pins needed for that drape.",
-    "returnReason": "Another session can cover a different regional drape or a faster everyday version.",
-    "promotion": "Show the finished drape and explain the beginner level. Keep the participant’s camera framing and privacy under their control."
-  },
-  "idea-51": {
-    "audience": "People who want to use their existing clothes more confidently",
-    "offer": "Help build a few outfits for a real occasion using what is already in the wardrobe. The benefit is practical combinations, not pressure to buy.",
-    "steps": [
-      "Ask about the occasion, comfort and available pieces",
-      "Compare a few combinations on camera or laid flat",
-      "Choose complete outfits and explain why they work together"
-    ],
-    "equipment": "A phone, mirror and the person’s existing clothes. Good light helps show colours accurately.",
-    "returnReason": "Return sessions can address a different season or occasion with the same wardrobe.",
-    "promotion": "Share a few combinations from your own wardrobe and explain the practical approach."
-  },
   "idea-52": {
     "audience": "Beginners whose mehendi practice needs specific feedback",
     "offer": "Review technique rather than simply showing elaborate finished designs. Help the learner identify one thing to improve next.",
@@ -719,7 +671,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     ],
     "equipment": "A phone and quiet space; recording is optional and must be agreed. Family photos can prompt memories.",
     "returnReason": "Create a series around childhood, work or family traditions, with the storyteller choosing the pace.",
-    "promotion": "Share example prompts rather than a client’s private memories."
+    "promotion": "Share example prompts rather than a client’s personal memories."
   },
   "idea-61": {
     "audience": "Learners who want regular speaking time with peers",
@@ -985,18 +937,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "Add new pattern families and review how learners combine earlier skills.",
     "promotion": "Share a clear practice sample and the expected experience level."
   },
-  "idea-83": {
-    "audience": "People learning a regional or occasion-specific saree drape",
-    "offer": "Offer a small group demonstration with individual troubleshooting. Keep the class focused on one drape.",
-    "steps": [
-      "Send the garments and accessories required",
-      "Demonstrate each stage with time for participants to follow",
-      "Review pleats, comfort and movement with voluntary camera sharing"
-    ],
-    "equipment": "A phone on a stand, mirror and the clothing required for the chosen drape.",
-    "returnReason": "Teach a different drape or an easier everyday variation next time.",
-    "promotion": "Show the finished style and explain that participants choose their own camera framing."
-  },
   "idea-84": {
     "audience": "Dance beginners wanting an enjoyable guided routine",
     "offer": "Teach a short routine at a stated level using music you may use. The value is instruction, repetition and feedback.",
@@ -1106,7 +1046,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "promotion": "Explain the language and rules, with no need to promise prizes."
   },
   "idea-93": {
-    "audience": "Film fans who enjoy a hosted quiz",
+    "audience": "Movie lovers who enjoy a hosted quiz",
     "offer": "Write original questions and make a lively evening with clear scoring. Avoid relying on unlicensed film clips or music.",
     "steps": [
       "Prepare balanced rounds and explain scoring",
@@ -1139,7 +1079,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     ],
     "equipment": "A phone and the writer’s own text; a shared document is optional with permission.",
     "returnReason": "Review revisions or new pieces, letting writers see how their craft develops.",
-    "promotion": "Share the feedback format and a sample prompt, never private submissions."
+    "promotion": "Share the feedback format and a sample prompt, never someone else's submission."
   },
   "idea-96": {
     "audience": "Players who enjoy guided games or chess discussion",
@@ -1209,7 +1149,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
       "Introduce the setting and repeat brief context for new arrivals",
       "Close at a natural pause and announce your next planned window"
     ],
-    "equipment": "A phone, stable support and a charged battery. Keep private rooms and other people off-camera unless they agree.",
+    "equipment": "A phone, stable support and a charged battery. Keep other rooms and other people off-camera unless they agree.",
     "returnReason": "Familiar places and small seasonal changes give viewers a reason to follow your calendar.",
     "promotion": "Share a short view of the morning setting and a realistic start time."
   },
@@ -1243,7 +1183,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "steps": [
       "Prepare the phone before handling food",
       "Introduce the meal and chat at safe pauses",
-      "Show the result and close before private mealtime"
+      "Show the result and close before mealtime"
     ],
     "equipment": "A phone, stand and ordinary kitchen equipment. Keep cables clear of heat and water.",
     "returnReason": "Regular viewers can follow your weekday meals and seasonal ingredients.",
@@ -1251,7 +1191,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
   },
   "idea-105": {
     "audience": "Students who relate to hostel routines",
-    "offer": "Share selected parts of your own space and routine, such as desk organisation or a study break. Keep roommates and their belongings private.",
+    "offer": "Share selected parts of your own space and routine, such as desk organisation or a study break. Keep roommates and their belongings out of frame.",
     "steps": [
       "Choose a corner you are allowed to film",
       "Introduce the task and talk through your routine",
@@ -1269,7 +1209,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
       "Work quietly with brief scheduled breaks",
       "Recap your progress and the next planned session"
     ],
-    "equipment": "A phone, charger, quiet desk and timer. Keep private documents out of frame.",
+    "equipment": "A phone, charger, quiet desk and timer. Keep personal documents out of frame.",
     "returnReason": "A dependable schedule and calm atmosphere can become a useful routine.",
     "promotion": "State how much of the session is quiet and when check-ins happen."
   },
@@ -1287,7 +1227,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
   },
   "idea-108": {
     "audience": "People who enjoy the atmosphere and craft of a chai stall",
-    "offer": "Show tea-making and the rhythm of the stall with the owner’s permission. Frame the work rather than customers’ private conversations.",
+    "offer": "Show tea-making and the rhythm of the stall with the owner’s permission. Frame the work rather than customers’ conversations.",
     "steps": [
       "Agree filming boundaries with the owner",
       "Show brewing, pouring and preparation during a manageable period",
@@ -1303,7 +1243,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "steps": [
       "Choose a task outside busy customer service",
       "Show the work and explain a merchandising decision",
-      "Recap the change and close before private business activity"
+      "Recap the change and close before other business activity"
     ],
     "equipment": "A phone and stand positioned away from payment screens and customer records.",
     "returnReason": "Let viewers follow seasonal displays, new stock arrangements or the changing daily routine.",
@@ -1311,7 +1251,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
   },
   "idea-110": {
     "audience": "Followers who like seeing products made and packed",
-    "offer": "Open a selected part of your home business process. Explain materials and decisions while keeping customer information private.",
+    "offer": "Open a selected part of your home business process. Explain materials and decisions while keeping customer information confidential.",
     "steps": [
       "Prepare an address-free work area",
       "Show making, finishing or packing stages",
@@ -1319,7 +1259,7 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     ],
     "equipment": "A phone, stand, good light and your existing business tools.",
     "returnReason": "Follow a product from early making to finished batch, with a different stage each time.",
-    "promotion": "Share a close-up of materials or packaging without names, labels or private orders."
+    "promotion": "Share a close-up of materials or packaging without names, labels or customer order details."
   },
   "idea-111": {
     "audience": "People interested in practical travel routines",
@@ -1357,29 +1297,17 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "Alternate food, household habits and seasonal experiences so the diary keeps developing.",
     "promotion": "Preview one specific comparison and say where your personal experience comes from."
   },
-  "idea-114": {
-    "audience": "Adults who enjoy a relaxed evening community",
-    "offer": "Open a hosted chat window with a light theme and clear boundaries. Your warmth and moderation make the space easier to join.",
-    "steps": [
-      "Choose a topic and welcoming opening",
-      "Repeat the topic for newcomers and keep conversation inclusive",
-      "Close at the stated time and mention the next theme"
-    ],
-    "equipment": "A phone, earphones, quiet room and simple front lighting.",
-    "returnReason": "A regular slot and fresh prompts help familiar faces reconnect without pressure to attend.",
-    "promotion": "Share the evening’s theme and language, keeping the invitation friendly rather than making companionship promises."
-  },
   "idea-115": {
     "audience": "Followers interested in your particular everyday perspective",
     "offer": "Choose the parts of your day that tell a story you want to share. A live diary works best with a recognisable theme, even when moments are ordinary.",
     "steps": [
       "Pick a task or short window instead of filming everything",
       "Explain what is happening for people arriving midway",
-      "End deliberately and keep private moments outside the stream"
+      "End deliberately and keep personal moments outside the stream"
     ],
     "equipment": "A phone, stand or safe grip and reliable internet. Start with the equipment you already have.",
     "returnReason": "Consistency of voice and small evolving stories give people a reason to follow your next session.",
-    "promotion": "Introduce the theme of your diary and what viewers can expect to see, without exposing private routines."
+    "promotion": "Introduce the theme of your diary and what viewers can expect to see, without exposing personal routines."
   }
 };
 

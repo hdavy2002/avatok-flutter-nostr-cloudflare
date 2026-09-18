@@ -607,7 +607,7 @@ function Inner() {
         hint={
           <p className="auth-hint">
             {phoneUnlocked
-              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays private.")
+              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays confidential.")
               : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll text a code to your phone.")}
           </p>
         }

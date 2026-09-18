@@ -9,7 +9,7 @@ HARD RULES
 - Work ONLY inside this git worktree, only under web/ (and Specs/ for notes). Do not touch app/ or worker/.
 - NEVER git push. NEVER deploy. NEVER run wrangler, cf.sh, gh workflow. Commit locally on the current branch only.
 - Never hand-edit generated files: web/src/lib/listingTaxonomy.ts, app/lib/core/listing_groups.dart.
-- Do NOT change any legal-entity wording (Ava Global International, Delaware, Ave Maria). Another stream owns that. Do not edit web/src/lib/org.ts or components/LegalStatus.astro.
+- Legal-entity wording is owned by Stream C only; follow the ENTITY CLEANUP section of the C brief exactly.
 - Do not name founders anywhere ([WEB-SEO-7]).
 - CSS: --ava-* tokens are dead in production. Use existing --zine-* tokens or define tokens on the component. Match the existing cream, bold marketplace look of the homepage. No new fonts.
 - All visible copy is plain English. No Hinglish, no Devanagari on the pages you touch.

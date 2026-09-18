@@ -27,7 +27,7 @@ interface Props {
   /** Group from the URL (?group=), set by the category tiles.
    *  [MKT-3GROUP-WEB-1] Was `?vertical=`. */
   group?: string;
-  /** Show the marketing "for fans / for creators" block (public only). */
+  /** Show the marketing "for customers / for creators" block (public only). */
   showSplit?: boolean;
   /** Show the big bazaar hero (public only; the dashboard has its own header). */
   showHero?: boolean;
@@ -157,7 +157,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     <section class="pb-20">
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
-          <span data-i18n="web-common.a8e0c5b0a376c055" class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">For fans</span>
+          <span data-i18n="web-common.a8e0c5b0a376c055" class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">For customers</span>
           <h3 data-i18n="web-common.39e925f4243514c1" class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Browse right here</h3>
           <p data-i18n="web-common.e854620b9a0d829c" class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">Everything works in your browser — explore, book and watch without downloading a thing.</p>
           <div class="pt-1"><a data-i18n="web-common.b042b5609ceabfc6" href="#listings" class={ctaLime}>Start browsing</a></div>
