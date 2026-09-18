@@ -68,7 +68,7 @@ export const hdfcPublicOrder = scoped(async (req, env, uid) => {
  // same capability bearer. Recover that capability's existing attempt instead
  // of trying to create a second payment and returning intent_busy forever.
  const owned = await currentIntent(db, uid);
- if (owned) return json(envelope(owned, env, p));
+ if (owned && owned.claimed_at === null && owned.superseded_by === null) return json(envelope(owned, env, p));
  if (!p.enabled) return failure(p.reason ?? 'rail_paused');
  const intent = await createIntent(db, uid, body.request_key, null, p);
  if (intent) return json(envelope(intent, env, p));
