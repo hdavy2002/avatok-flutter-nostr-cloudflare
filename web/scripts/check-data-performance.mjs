@@ -39,6 +39,8 @@ assert.ok(calls[0][1].timeoutMs > 0);
 await getMarketplaceSeed('  singing lessons  ');
 assert.equal(calls[1][0], '/api/explore/search');
 assert.deepEqual(calls[1][1].query, { limit: 24, examples: 1, q: 'singing lessons' });
+await getMarketplaceSeed(undefined, { timeoutMs: 15000 });
+assert.equal(calls[2][1].timeoutMs, 15000, '[WEB-GATEWAY-FIX4] build-time Featured rail must pass its own timeout through');
 const cards = [{ id: 'listing', title: 'A real result' }];
 globalThis.__performanceRequest = async () => ({ listings: cards, cursor: 'page-2', section_counts: { live_streams: 1 } });
 assert.equal((await getMarketplaceSeed()).page.cursor, 'page-2');

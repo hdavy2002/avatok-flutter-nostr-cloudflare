@@ -13,11 +13,11 @@ export interface MarketplaceSeed { page?: CardPage; error?: string }
  * turned examples off at launch. The Flutter app never sends this param, so it
  * never sees them regardless of this switch.
  */
-export async function getMarketplaceSeed(q?: string): Promise<MarketplaceSeed> {
+export async function getMarketplaceSeed(q?: string, opts?: { timeoutMs?: number }): Promise<MarketplaceSeed> {
   const query = q?.trim() ?? '';
   try {
     const page = await request<CardPage>(query ? '/api/explore/search' : '/api/explore', {
-      query: { limit: 24, examples: 1, ...(query ? { q: query } : {}) }, timeoutMs: 1800,
+      query: { limit: 24, examples: 1, ...(query ? { q: query } : {}) }, timeoutMs: opts?.timeoutMs ?? 1800,
     });
     return { page };
   } catch {

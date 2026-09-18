@@ -7,9 +7,16 @@
 // own note on this).
 import { ListingTile } from '../../components';
 import { getMarketplaceSeed } from '../../lib/marketplaceSeed';
+import { API_BASE } from '../../lib/config';
 
-const seed = await getMarketplaceSeed();
+// [WEB-GATEWAY-FIX4] This runs at BUILD time only (index.astro is prerender = true) —
+// no visitor waits on it — so it can afford a much longer timeout than the SSR
+// marketplace page's 1800ms, which is tuned for a live visitor's TTFB.
+const seed = await getMarketplaceSeed(undefined, { timeoutMs: 15000 });
 const items = (seed.page?.listings ?? []).slice(0, 8);
+if (items.length === 0) {
+  console.warn(`[FeaturedSessions] no listings at build time from ${API_BASE}/api/explore (${seed.error ?? 'empty result'}) — rail will render nothing`);
+}
 ---
 
 {items.length > 0 && (
