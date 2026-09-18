@@ -28,7 +28,7 @@ export function SearchBox({
   value,
   onChange,
   debounce = 350,
-  placeholder = 'Dhoondo: tarot, adda, rizz, shayari, antakshari…',
+  placeholder = 'Search: yoga, guitar, exam revision, live puja…',
 }: SearchBoxProps) {
   const [local, setLocal] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
