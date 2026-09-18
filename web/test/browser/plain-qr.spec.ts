@@ -29,6 +29,14 @@ test('refresh resumes the same attempt and never creates another order',async({p
  await page.goto('/plain-qr'); await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible(); await page.reload(); await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible();
  expect(orders).toBe(1); expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
 });
+test('reopens from shared recovery storage after a payment-app handoff',async({page})=>{
+ let orders=0;
+ await route(page,r=>{if(r.request().url().endsWith('/order'))orders++;return r.fulfill({json:{ok:true,enabled:true,intent:pending()}})});
+ await page.goto('/plain-qr'); await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible();
+ await page.evaluate(()=>sessionStorage.removeItem('hdfc-public-payment-v1'));
+ await page.reload(); await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible();
+ expect(orders).toBe(1);
+});
 test('late SMS leaves a waiting message and does not report failure',async({page})=>{
  await route(page,r=>r.fulfill({json:{ok:true,enabled:true,intent:pending({reason_code:'awaiting_sms'})}})); await page.goto('/plain-qr');
  await expect(page.getByText('Waiting for your payment.',{exact:false})).toBeVisible(); await expect(page.getByRole('heading',{name:'Payment received'})).toHaveCount(0); await expect(page.getByText('If the SMS is delayed, this page will keep waiting.',{exact:false})).toBeVisible();

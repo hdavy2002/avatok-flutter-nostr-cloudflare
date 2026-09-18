@@ -63,7 +63,7 @@ export default function UpiPlainQr() {
     <p>We have received your payment.</p>
     <p style={{fontSize: 24, fontWeight: 700}}>{amount}</p>
     <p>Payment reference</p>
-    <p style={{overflowWrap: 'anywhere'}}>{intent.intent_id}</p>
+    <p style={{overflowWrap: 'anywhere'}}>{state.reference || 'Recorded by the bank'}</p>
     {state.error && <p role="alert">{state.error}</p>}
     <button type="button" onClick={() => controller.current?.anotherPayment()}>Make another payment</button>
   </section>;

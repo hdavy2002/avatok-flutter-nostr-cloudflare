@@ -30,9 +30,15 @@ export function paymentAmount(paise: number): string {
   return new Intl.NumberFormat('en-IN', {style: 'currency', currency: 'INR',
     minimumFractionDigits: paise % 100 === 0 ? 0 : 2, maximumFractionDigits: 2}).format(paise / 100);
 }
-function persist(saved: Session) { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved)); }
+function persist(saved: Session) {
+  const value = JSON.stringify(saved);
+  try { sessionStorage.setItem(STORAGE_KEY, value); } catch { /* continue with local recovery */ }
+  try { localStorage.setItem(STORAGE_KEY, value); } catch { /* storage can be unavailable in private mode */ }
+}
 function session(): Session {
-  const raw = sessionStorage.getItem(STORAGE_KEY);
+  let raw: string | null = null;
+  try { raw = sessionStorage.getItem(STORAGE_KEY); } catch { /* continue */ }
+  if (!raw) try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* continue */ }
   if (raw) {
     const saved = JSON.parse(raw) as Session;
     if (!/^[0-9a-f]{64}$/.test(saved.bearer) || !UUID.test(saved.request_key)
