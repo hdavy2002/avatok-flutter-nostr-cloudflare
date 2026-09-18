@@ -25,7 +25,7 @@ jobs:
       - name: Real-SQL receipt and recovery tests
         if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         working-directory: worker
-        run: NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts hdfc_sms_customer_test.test.ts
+        run: NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts hdfc_sms_customer_test.test.ts hdfc_sms_public.test.ts
       - name: Legacy seed and private invitation invariants
         if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms*.py'

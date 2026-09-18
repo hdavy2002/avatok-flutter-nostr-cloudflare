@@ -70,6 +70,7 @@ import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/com
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
 import { hdfcSmsQr } from "./routes/hdfc_sms_qr";
+import { hdfcPublicOrder, hdfcPublicStatus, hdfcPublicClaim, hdfcPublicRecheck } from "./routes/hdfc_sms_public";
 import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
 import { hdfcCustomerRedeem, hdfcCustomerCurrent, hdfcCustomerOrder, hdfcCustomerStatus, hdfcCustomerClaim, hdfcCustomerRecheck } from "./routes/hdfc_sms_customer_test";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
@@ -1252,9 +1253,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
       if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
-      // Public QR exposes only the fixed payment address; stateful browser routes
-      // retain authentication and SMS/heartbeat retain companion HMAC checks.
+      // Anonymous test state is capability-scoped; customer/admin routes retain
+      // their account gates and SMS/heartbeat retain companion HMAC checks.
       if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);
+      if (p === "/api/pay/hdfc-sms/public/order" && req.method === "POST") return await hdfcPublicOrder(req, env);
+      if (p === "/api/pay/hdfc-sms/public/status" && req.method === "GET") return await hdfcPublicStatus(req, env);
+      if (p === "/api/pay/hdfc-sms/public/claim" && req.method === "POST") return await hdfcPublicClaim(req, env);
+      if (p === "/api/pay/hdfc-sms/public/recheck" && req.method === "POST") return await hdfcPublicRecheck(req, env);
       if (p === "/api/pay/hdfc-sms/customer/redeem" && req.method === "POST") return await hdfcCustomerRedeem(req, env);
       if (p === "/api/pay/hdfc-sms/customer/current" && req.method === "GET") return await hdfcCustomerCurrent(req, env);
       if (p === "/api/pay/hdfc-sms/customer/order" && req.method === "POST") return await hdfcCustomerOrder(req, env);
