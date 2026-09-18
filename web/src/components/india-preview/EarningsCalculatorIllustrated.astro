@@ -30,7 +30,8 @@ import { publicImage } from '../../lib/config';
 <span data-india-i18n="calcLiveLabel">{copy.calcLiveLabel}</span>
 </span>
 <output data-calc-live-price>₹100</output>
-<input data-calc="livePrice" type="range" min="100" max="50000" step="100" value="100" />
+<small class="calculator-price-help" id="illustrated-live-price-help">₹100 platform fee per participant. Add your earnings on top to set the final price.</small>
+<input data-calc="livePrice" aria-describedby="illustrated-live-price-help" type="range" min="100" max="50000" step="100" value="100" />
 </label>
 <label>
 <span>
@@ -51,7 +52,8 @@ import { publicImage } from '../../lib/config';
 <span data-india-i18n="calcOneLabel">{copy.calcOneLabel}</span>
 </span>
 <output data-calc-one-price>₹1,500</output>
-<input data-calc="onePrice" type="range" min="100" max="50000" step="100" value="1500" />
+<small class="calculator-price-help" id="illustrated-one-price-help">₹100 platform fee per participant. Add your earnings on top to set the final price.</small>
+<input data-calc="onePrice" aria-describedby="illustrated-one-price-help" type="range" min="100" max="50000" step="100" value="1500" />
 </label>
 <label>
 <span>
@@ -96,6 +98,7 @@ import { publicImage } from '../../lib/config';
 </section>
 
 <style>
+.india-calc-form .calculator-price-help { grid-column:1/-1; font-size:14px; line-height:1.5; font-weight:400; }
 :global(.india-additions) .calculator-illustrated .calculator-heading { display:grid; grid-template-columns:minmax(0,1fr) 260px; align-items:center; gap:32px; }
 :global(.india-additions) .calculator-illustrated .calculator-heading-copy { min-width:0; }
 :global(.india-additions) .calculator-illustrated .india-kicker { font-size:16px; }
