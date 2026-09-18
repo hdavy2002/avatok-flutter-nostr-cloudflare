@@ -1,11 +1,18 @@
 import { describe, it, expect } from 'vitest';
+// This spec sits beside the source it covers, so `tsc --project worker/tsconfig.json`
+// checks it with the Worker lib set (`types: ["@cloudflare/workers-types"]`, no node
+// types). Under vitest both `node:fs` and `import.meta.url` are real; the compiler
+// simply cannot see them, and widening the Worker's type surface to prove a test
+// right would let production code import node built-ins too.
+// @ts-expect-error node:fs is provided by the vitest runtime, not by workers-types
 import { readFileSync } from 'node:fs';
 import { catalogObjectKey, validManifest, validCatalog, LOCALES } from './ui_catalogs';
 const release = 'a'.repeat(64);
 describe('UI catalog public boundary', () => {
   it('keeps the public route and catalog schema aligned with the shared Indian registry', () => {
-    const registry = JSON.parse(readFileSync(new URL('../../../shared/i18n/locales.json', import.meta.url), 'utf8')) as Array<{ code: string }>;
-    const schema = JSON.parse(readFileSync(new URL('../../../shared/i18n/catalog.schema.json', import.meta.url), 'utf8'));
+    const here = (import.meta as ImportMeta & { url: string }).url;
+    const registry = JSON.parse(readFileSync(new URL('../../../shared/i18n/locales.json', here), 'utf8')) as Array<{ code: string }>;
+    const schema = JSON.parse(readFileSync(new URL('../../../shared/i18n/catalog.schema.json', here), 'utf8'));
     const codes = registry.map(item => item.code).sort();
     expect([...LOCALES].sort()).toEqual(codes);
     expect([...schema.properties.locale.enum].sort()).toEqual(codes);

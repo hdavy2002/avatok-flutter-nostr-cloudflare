@@ -11,7 +11,7 @@ describe('catalog HTTP caching', () => {
     const get = vi.fn(async () => ({ size: 400, text: async () => JSON.stringify(envelope), httpEtag: '"catalog"' }));
     const env = { ENVIRONMENT_NAME: 'prod', BLOBS: { get } } as unknown as Env;
     const pending: Promise<unknown>[] = [];
-    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p) } as ExecutionContext;
+    const ctx = { waitUntil: (p: Promise<unknown>) => { pending.push(p); } } as unknown as ExecutionContext;
     const url = `https://api.avatok.ai/i18n/v1/${release}/hi/common.json`;
     const first = await uiLocalization(new Request(url, { headers: { Cookie: 'private=secret', Authorization: 'Bearer private' } }), env, ctx);
     expect(first.headers.get('Cache-Control')).toContain('immutable');

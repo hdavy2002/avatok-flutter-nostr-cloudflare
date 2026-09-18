@@ -13,6 +13,21 @@ import { json } from "./util";
 
 const IDEM_TTL_S = 86_400; // 24 h
 
+/** [PAY-OFF] Money-in rails (Stripe, Cashfree, Play billing) were retired on
+ * 2026-09-17; their handlers refuse with 503 while the provider code is kept for
+ * historical records and webhook-schema compatibility.
+ *
+ * Those refusals MUST read this flag rather than `return` unconditionally. An
+ * unconditional return makes everything after it unreachable, and TypeScript
+ * abandons control-flow narrowing inside unreachable code — which is exactly how
+ * the retained code produced 76 phantom diagnostics ('uid' does not exist on
+ * 'UserCtx | AuthFail', 'row' is possibly null) and blocked every Worker deploy
+ * between 2026-09-14 and 2026-09-18.
+ *
+ * Keep the `: boolean` annotation. It stops TS narrowing the value to the literal
+ * `true`, which is what keeps the code below each refusal reachable. */
+export const MONEY_IN_DISABLED: boolean = true;
+
 export async function withIdempotency(req: Request, env: Env, uid: string, fn: () => Promise<Response>): Promise<Response> {
   const key = req.headers.get("idempotency-key");
   if (!key || key.length > 128) {

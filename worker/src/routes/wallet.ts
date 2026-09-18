@@ -18,7 +18,7 @@ import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
-import { withIdempotency, rateLimit, RL } from "../money";
+import { withIdempotency, rateLimit, RL, MONEY_IN_DISABLED } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
 import { payAffiliateOnTopup, reverseAffiliate } from "./affiliate";
 import { readConfig } from "./config";
@@ -357,7 +357,7 @@ function topupEnabled(env: Env): boolean {
 export async function walletTopup(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
+  if (MONEY_IN_DISABLED) return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
   if (limited) return limited;
   return withIdempotency(req, env, ctx.uid, () => topupCore(req, env, ctx.uid));
@@ -434,7 +434,7 @@ async function stripeApi(
 export async function walletTopupIntent(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
+  if (MONEY_IN_DISABLED) return json({ error: "top-up unavailable", reason: "payments_disabled" }, 503);
   const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
   if (limited) return limited;
 
@@ -512,7 +512,7 @@ export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Res
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
-  return json({ ok: false, error: "top-up unavailable", reason: "payments_disabled" }, 503);
+  if (MONEY_IN_DISABLED) return json({ ok: false, error: "top-up unavailable", reason: "payments_disabled" }, 503);
 
   // Killable master switch (KV): independent of subscription billing.
   try {
@@ -682,7 +682,7 @@ export async function runPlayVoidedPurchaseSweep(env: Env): Promise<{ scanned: n
 // PaymentSheet (payment_intent.succeeded). Either way the credit funnels through
 // `creditTopup`, which is idempotent on the topup record + a deterministic op_id.
 export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
-  return json({ received: false, error: "payments disabled", reason: "payments_disabled" }, 503);
+  if (MONEY_IN_DISABLED) return json({ received: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   const payload = await req.text();
   const sig = req.headers.get("stripe-signature");
   // Fail closed: a missing signing secret means we cannot trust this webhook, so
