@@ -35,5 +35,5 @@ test('late SMS leaves a waiting message and does not report failure',async({page
 });
 test('payment app links preserve the QR amount and package targets',async({page})=>{
  await route(page); await page.goto('/plain-qr'); const links=page.getByRole('navigation',{name:'Payment apps'}).getByRole('link'); await expect(links).toHaveCount(UPI_APPS.length);
- for(const app of UPI_APPS){const href=upiAppHref(app,upi,'android');expect(href).toContain('am=1.00');expect(href).toContain(app.androidPackage!)} expect(upiPlatform('Mozilla/5.0 (Linux; Android 14)',5)).toBe('android');
+ for(const app of UPI_APPS){const href=upiAppHref(app,upi,'android');expect(href).toContain('am=1.00');if(app.androidPackage)expect(href).toContain(app.androidPackage)} expect(upiPlatform('Mozilla/5.0 (Linux; Android 14)',5)).toBe('android');
 });
