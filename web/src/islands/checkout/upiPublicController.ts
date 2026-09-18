@@ -16,18 +16,15 @@ export interface PublicPaymentState {
   enabled: boolean;
   busy: boolean;
   error: string;
-  payer_vpa: string;
-  payer_phone: string;
+  reference: string;
   started: boolean;
 }
-interface Session { bearer: string; request_key: string; intent_id?: string;
-  payer_vpa?: string; payer_phone?: string; started?: boolean }
+interface Session { bearer: string; request_key: string; intent_id?: string; reference?: string; started?: boolean }
 const STORAGE_KEY = 'hdfc-public-payment-v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VPA = /^[a-z0-9][a-z0-9._-]{0,198}[a-z0-9]@[a-z][a-z0-9.-]{0,78}[a-z0-9]$/;
 const POLL_MS = 3000;
 export const initialPaymentState: PublicPaymentState = {intent: null, enabled: false, busy: false,
-  error: '', payer_vpa: '', payer_phone: '', started: false};
+  error: '', reference: '', started: false};
 
 export function paymentAmount(paise: number): string {
   return new Intl.NumberFormat('en-IN', {style: 'currency', currency: 'INR',
@@ -40,8 +37,7 @@ function session(): Session {
     const saved = JSON.parse(raw) as Session;
     if (!/^[0-9a-f]{64}$/.test(saved.bearer) || !UUID.test(saved.request_key)
       || (saved.intent_id !== undefined && !UUID.test(saved.intent_id))
-      || (saved.payer_vpa !== undefined && typeof saved.payer_vpa !== 'string')
-      || (saved.payer_phone !== undefined && typeof saved.payer_phone !== 'string')
+      || (saved.reference !== undefined && typeof saved.reference !== 'string')
       || (saved.started !== undefined && typeof saved.started !== 'boolean')) throw new Error('session');
     return saved;
   }
@@ -85,31 +81,13 @@ export class UpiPublicController {
   async start() {
     try {
       this.saved = session();
-      this.publish({payer_vpa: this.saved.payer_vpa || '', payer_phone: this.saved.payer_phone || '',
-        started: Boolean(this.saved.started || this.saved.intent_id), busy: false, error: ''});
+      this.saved = {...this.saved, started: true};
+      persist(this.saved);
+      this.publish({reference: this.saved.reference || '', started: true, busy: false, error: ''});
     } catch {
       this.publish({error: 'This browser could not restore the payment session. Keep any payment receipt and do not pay again.'});
       return;
     }
-    await this.refresh();
-  }
-  async generate(vpa: string, phone: string) {
-    if (!this.saved || this.stopped || this.request || this.state.started) return;
-    const payer_vpa = vpa.trim().toLowerCase();
-    const cleaned = phone.replace(/[\s()-]/g, '');
-    const payer_phone = /^[6-9]\d{9}$/.test(cleaned) ? '+91' + cleaned : cleaned;
-    if (payer_vpa.length > 280 || payer_vpa.includes('..') || !VPA.test(payer_vpa)) {
-      this.publish({error: 'Enter a valid UPI ID, such as name@bank.'}); return;
-    }
-    if (!/^\+[1-9]\d{7,14}$/.test(payer_phone)) {
-      this.publish({error: 'Enter a 10-digit Indian mobile number or a phone number with its country code.'}); return;
-    }
-    const next = {...this.saved, payer_vpa, payer_phone, started: true};
-    try { persist(next); } catch {
-      this.publish({error: 'Allow session storage in this browser before generating your QR.'}); return;
-    }
-    this.saved = next;
-    this.publish({payer_vpa, payer_phone, started: true, error: ''});
     await this.refresh();
   }
   anotherPayment() {
@@ -119,20 +97,25 @@ export class UpiPublicController {
       this.publish({error: 'Could not save a new payment session. Please keep this payment receipt.'}); return;
     }
     this.saved = next;
-    this.publish({intent: null, enabled: false, started: false, error: ''});
+    this.publish({intent: null, enabled: false, started: true, reference: '', error: ''});
+    void this.refresh();
   }
   async refresh(recheck = false) {
     if (!this.saved || this.stopped || this.request || this.state.intent?.status === 'confirmed') return;
     const id = this.saved.intent_id;
     if (!id && !this.saved.started) return;
     await this.perform(id ? (recheck ? '/recheck' : '/status?intent_id=' + encodeURIComponent(id)) : '/order',
-      id ? (recheck ? {intent_id: id} : undefined) : {request_key: this.saved.request_key,
-        payer_vpa: this.saved.payer_vpa, payer_phone: this.saved.payer_phone});
+      id ? (recheck ? {intent_id: id} : undefined) : {request_key: this.saved.request_key});
   }
   async claim(reference: string) {
     const intent = this.state.intent;
     if (!intent || intent.matching_mode !== 'bank_reference' || this.request || intent.status === 'confirmed' || intent.recover_until <= Date.now()) return;
-    await this.perform('/claim', {intent_id: intent.intent_id, bank_reference: reference.trim(),
+    const value = reference.trim();
+    if (!/^\d{12}$/.test(value)) { this.publish({error: 'Enter the 12-digit UPI payment reference shown by your payment app.'}); return; }
+    this.saved = {...this.saved!, reference: value};
+    persist(this.saved);
+    this.publish({reference: value, error: ''});
+    await this.perform('/claim', {intent_id: intent.intent_id, bank_reference: value,
       expected_reference_revision: intent.reference_revision});
   }
   private async perform(path: string, body?: object) {
@@ -153,11 +136,8 @@ export class UpiPublicController {
       const value = await response.json();
       if (!response.ok) {
         const messages: Record<string, string> = {
-          intent_busy: 'A payment from this UPI ID for this amount is still unresolved. Return to its payment page or contact support with your receipt. Do not pay again.',
-          request_key_conflict: 'This payment attempt already has different payer details. Return to its original payment page or contact support. Do not pay again.',
-          payer_details_conflict: 'An earlier payment is still unresolved. Return to its original payment page or contact support. Do not pay again.',
-          invalid_payer_vpa: 'Enter a valid UPI ID, such as name@bank.',
-          invalid_payer_phone: 'Enter a 10-digit Indian mobile number or a phone number with its country code.',
+          intent_busy: 'Another payment attempt is still unresolved. Return to its payment page or contact support with your receipt. Do not pay again.',
+          reference_must_be_12_digits: 'Enter the 12-digit UPI payment reference shown by your payment app.',
           reference_conflict: 'The payment reference changed. Check again before resubmitting.',
           invalid_reference: 'Enter the UTR or bank reference shown on your payment receipt.',
           rail_paused: 'Payments are temporarily unavailable. If you paid, keep your receipt and do not pay again.',

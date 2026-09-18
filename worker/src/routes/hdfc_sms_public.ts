@@ -4,7 +4,7 @@ import { metaDb } from '../db/shard';
 import { json } from '../util';
 import { rateLimit } from '../money';
 import { sha256Hex } from '../lib/payments/types';
-import { UUID, boundedBody, policy, publicIntent, createPublicIntent, currentIntent, normalizePayerVpa, normalizePayerPhone, readIntent, saveReference, normalizeReference, matchIntent, type Intent, type Policy } from '../lib/hdfc_sms_smoke';
+import { UUID, boundedBody, policy, publicIntent, createIntent, readIntent, saveReference, normalizeReference, matchIntent, type Intent, type Policy } from '../lib/hdfc_sms_smoke';
 
 const failure = (error: string, status = 503) => json({error, retryable: status === 503 || status === 429}, status);
 const uuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
@@ -46,17 +46,14 @@ function envelope(intent: Intent, env: Env, p: Policy) {
   visible.upi_url = url.toString();
  }
  return {ok: true, enabled: p.enabled, intent: {
-  ...visible, currency: 'INR', matching_mode: intent.payer_vpa ? 'payer_vpa' : 'bank_reference',
+  ...visible, currency: 'INR', matching_mode: 'bank_reference',
   confirmed_at: visible.status === 'confirmed' ? intent.claimed_at : null,
  }};
 }
 
 export const hdfcPublicOrder = scoped(async (req, env, uid) => {
  const body = await boundedBody(req, 1024);
- if (!body || !exactKeys(body, ['request_key', 'payer_vpa', 'payer_phone']) || !uuid(body.request_key)) return failure('invalid_request', 400);
- const vpa = normalizePayerVpa(body.payer_vpa), phone = normalizePayerPhone(body.payer_phone);
- if (!vpa || !phone) return failure(!vpa ? 'invalid_payer_vpa' : 'invalid_payer_phone', 400);
- const samePayer = (i: Intent) => i.payer_vpa === vpa && i.payer_phone === phone;
+ if (!body || !exactKeys(body, ['request_key']) || !uuid(body.request_key)) return failure('invalid_request', 400);
  const throttle = await limited(req, env, uid, 'order', 10, 40); if (throttle) return throttle;
  const db = metaDb(env), p = await policy(env);
  if (!p.ready) return failure('schema_not_ready');
@@ -65,20 +62,12 @@ export const hdfcPublicOrder = scoped(async (req, env, uid) => {
   .bind(uid, body.request_key).first<{intent_id: string}>();
  if (prior) {
   const intent = await readIntent(db, prior.intent_id, uid);
-  if (intent) return samePayer(intent) ? json(envelope(intent, env, p)) : failure('request_key_conflict', 409);
+  if (intent) return json(envelope(intent, env, p));
  }
  if (!p.enabled) return failure(p.reason ?? 'rail_paused');
- const current = await currentIntent(db, uid);
- // A changed request key alone must not silently replace an unconfirmed attempt.
- if (current && publicIntent(current, env, p).status !== 'confirmed') {
-  return samePayer(current) ? json(envelope(current, env, p)) : failure('payer_details_conflict', 409);
- }
- const intent = await createPublicIntent(db, uid, body.request_key, vpa, phone, p);
+ const intent = await createIntent(db, uid, body.request_key, null, p);
  if (intent) return json(envelope(intent, env, p));
- // A concurrent request by this browser may have won the guarded INSERT.
- const winner = await currentIntent(db, uid);
- return winner && samePayer(winner) && publicIntent(winner, env, p).status !== 'confirmed'
-  ? json(envelope(winner, env, p)) : failure('intent_busy', 409);
+ return failure('intent_busy', 409);
 });
 
 export const hdfcPublicStatus = scoped(async (req, env, uid) => {
@@ -105,7 +94,6 @@ function claimOrRecheck(recheck: boolean): Action {
   if (!p.ready) return failure('schema_not_ready');
   const intent = await readIntent(db, body.intent_id, uid);
   if (!intent) return failure('not_found', 404);
-  if (reference && intent.payer_vpa) return failure('automatic_match_only', 400);
   if (!p.enabled) return failure(p.reason ?? 'rail_paused');
   if (reference && !await saveReference(db, intent, reference, Number(body.expected_reference_revision))) return failure('reference_conflict', 409);
   const result = await matchIntent(db, intent.intent_id, uid, p);
