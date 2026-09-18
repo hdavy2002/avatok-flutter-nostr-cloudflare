@@ -109,7 +109,7 @@ export function publicIntent(i:Intent,env:Env,p:Policy,now=Date.now()) {
  const status=i.superseded_by?'superseded':conflict?'review_pending':confirmed?'confirmed':i.expires_at<=now?'expired':'pending';
  const reason=i.superseded_by?'superseded':conflict?'evidence_conflict':confirmed?null:i.payer_vpa?'awaiting_sms':i.relevant_count?(i.payer_reference?'no_match':'reference_required'):i.unsupported_count?'unsupported_reference':'awaiting_sms';
  const canPay=p.enabled&&status==='pending';
- return {protocol_version:2,matching_mode:i.payer_vpa?'payer_vpa':'bank_reference',intent_id:i.intent_id,status,reason_code:reason,amount_paise:100,created_at:i.created_at,expires_at:i.expires_at,recover_until:i.recover_until,updated_at:Math.max(i.updated_at,i.claimed_at??0),claim_submitted:Boolean(i.payer_reference),reference_revision:i.reference_revision,smoke_test:true,order_id:null,
+ return {protocol_version:2,intent_id:i.intent_id,status,reason_code:reason,amount_paise:100,created_at:i.created_at,expires_at:i.expires_at,recover_until:i.recover_until,updated_at:Math.max(i.updated_at,i.claimed_at??0),claim_submitted:Boolean(i.payer_reference),reference_revision:i.reference_revision,smoke_test:true,order_id:null,
  ...(canPay?{upi_url:`upi://pay?${new URLSearchParams({pa:env.HDFC_UPI_VPA!,pn:env.HDFC_UPI_PAYEE_NAME??'AvaTOK',am:'1.00',cu:'INR',tr:`AV${i.intent_id.replace(/-/g,'')}`,tn:'AvaTOK internal smoke test'})}`}:{})};
 }
 export async function legacyIntent(db:D1Database,id:string,uid:string) {

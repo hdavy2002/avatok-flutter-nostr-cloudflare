@@ -46,7 +46,7 @@ function envelope(intent: Intent, env: Env, p: Policy) {
   visible.upi_url = url.toString();
  }
  return {ok: true, enabled: p.enabled, intent: {
-  ...visible, currency: 'INR',
+  ...visible, currency: 'INR', matching_mode: intent.payer_vpa ? 'payer_vpa' : 'bank_reference',
   confirmed_at: visible.status === 'confirmed' ? intent.claimed_at : null,
  }};
 }
