@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { exampleFilter, hiddenListingFilter } from "../src/routes/listings";
+import { exampleFilter, hiddenListingFilter, HIDDEN_LISTING_SQL } from "../src/routes/listings";
 import type { PlatformConfig } from "../src/routes/config";
 
 const root = resolve(import.meta.dirname, "..");
@@ -148,7 +148,9 @@ describe("[WEB-GATEWAY-FIX1] closing the remaining example-listing gaps", () => 
     it("always pushes the json_extract fragment", () => {
       const where: string[] = [];
       hiddenListingFilter(where);
-      expect(where).toContain("COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0");
+      expect(where).toContain(HIDDEN_LISTING_SQL);
+      expect(HIDDEN_LISTING_SQL).toContain("json_valid(l.attrs)=0 THEN 1");
+      expect(HIDDEN_LISTING_SQL).toContain("json_extract(l.attrs,'$.hide_from_marketplace')");
     });
   });
 

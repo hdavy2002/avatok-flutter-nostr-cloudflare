@@ -3644,8 +3644,13 @@ export function exampleFilter(req: Request, config: PlatformConfig, where: strin
  * resolving a hidden listing by direct id/link.
  */
 export function hiddenListingFilter(where: string[]): void {
-  where.push("COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0");
+  // CASE, not a bare json_extract: SQLite's json_extract RAISES on malformed
+  // JSON, so one bad attrs write would take down every browse/search query.
+  // CASE is evaluated lazily, so the json_valid guard genuinely protects it.
+  where.push(HIDDEN_LISTING_SQL);
 }
+export const HIDDEN_LISTING_SQL =
+  "(CASE WHEN l.attrs IS NULL OR json_valid(l.attrs)=0 THEN 1 ELSE COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0 END)";
 
 /** WHERE fragment hiding listings from creators the (authed) caller blocked. */
 function blockFilter(uid: string | null, binds: unknown[], where: string[]): void {
