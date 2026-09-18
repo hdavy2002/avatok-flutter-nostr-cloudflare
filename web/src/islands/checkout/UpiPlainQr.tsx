@@ -111,7 +111,6 @@ export default function UpiPlainQr() {
         <button disabled={state.busy || !/^[0-9]{12}$/.test(reference)}>Check payment reference</button>
         <p>We verify this reference against the signed bank SMS. If the SMS is delayed, this page will keep waiting.</p>
       </form>}
-      </>}
       <p><button type="button" disabled={state.busy} onClick={() => void controller.current?.refresh(true)}>Check again</button></p>
     </>}
     {intent && !recoverable && <p>The recovery window has ended. Keep your receipt and payment reference for support. Do not pay again.</p>}
