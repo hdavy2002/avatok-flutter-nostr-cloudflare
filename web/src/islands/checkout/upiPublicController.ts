@@ -88,6 +88,7 @@ export class UpiPublicController {
   private stopped = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private request: AbortController | null = null;
+  private autoReplaced: string | null = null;
   constructor(private apiBase: string, private notify: (state: PublicPaymentState) => void) {}
   private publish(patch: Partial<PublicPaymentState>) {
     if (this.stopped) return;
@@ -115,9 +116,16 @@ export class UpiPublicController {
     }
     await this.refresh();
   }
+  /** Anything that is not a live QR can be replaced: confirmed, under review, or
+   * expired. Repeat payments from one browser must never be blocked by a dead
+   * attempt — the expired one stays readable by its intent id until recover_until. */
+  private replaceable(): boolean {
+    const intent = this.state.intent;
+    return Boolean(intent && (intent.status !== 'pending' || intent.expires_at <= Date.now()));
+  }
   anotherPayment() {
-    if (!this.saved || this.request || this.state.intent?.status !== 'confirmed') return;
-    const next = {...this.saved, request_key: crypto.randomUUID(), intent_id: undefined, started: false};
+    if (!this.saved || this.request || !this.replaceable()) return;
+    const next = {...this.saved, request_key: crypto.randomUUID(), intent_id: undefined, reference: '', started: true};
     try { persist(next); } catch {
       this.publish({error: 'Could not save a new payment session. Please keep this payment receipt.'}); return;
     }
@@ -192,6 +200,17 @@ export class UpiPublicController {
       if (!this.stopped) {
         this.publish({busy: false});
         const intent = this.state.intent;
+        // A dead QR with nothing submitted is not evidence of anything, so roll
+        // straight into a fresh attempt instead of parking on it for 24h. Once a
+        // reference is in (or the bank is reviewing) we keep waiting, and the
+        // guard stops a server that still returns the dead id from looping.
+        if (intent && intent.status !== 'confirmed' && intent.status !== 'review_pending'
+          && intent.expires_at <= Date.now() && intent.reference_revision === 0 && !this.state.reference
+          && this.autoReplaced !== intent.intent_id) {
+          this.autoReplaced = intent.intent_id;
+          this.anotherPayment();
+          return;
+        }
         if (intent && intent.status !== 'confirmed' && intent.recover_until > Date.now()) {
           this.timer = setTimeout(() => { this.timer = null; void this.refresh(); }, POLL_MS);
         }

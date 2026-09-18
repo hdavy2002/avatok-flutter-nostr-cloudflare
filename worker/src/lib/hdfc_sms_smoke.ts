@@ -146,8 +146,15 @@ export async function createPublicConcurrentIntent(db:D1Database,uid:string,key:
  const open=await db.prepare('SELECT intent_id FROM hdfc_sms_smoke_intents WHERE uid=? AND receiving_account_key=? AND payer_vpa IS NULL AND active=1 AND expires_at>? ORDER BY created_at DESC LIMIT 1').bind(uid,p.account,now).first<{intent_id:string}>();
  if(open)return readIntent(db,open.intent_id,uid);
  const id=crypto.randomUUID();
- await db.prepare(`INSERT INTO hdfc_sms_smoke_intents(intent_id,uid,request_key,receiving_account_key,created_at,expires_at,recover_until,updated_at)
-  SELECT ?1,?2,?3,?4,?5,?6,?7,?5 WHERE NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?2 AND request_key=?3)`).bind(id,uid,key,p.account,now,now+1800000,now+88200000).run();
+ // hdfc_sms_smoke_one_active is UNIQUE(receiving_account_key,uid) WHERE active=1.
+ // This capability's OWN expired attempt still carries active=1, so the INSERT
+ // below would violate that index and surface as a 503 — the repeat-test wedge.
+ // Retire only our own expired rows; other capabilities' attempts are untouched.
+ await db.batch([
+  db.prepare('UPDATE hdfc_sms_smoke_intents SET active=0,updated_at=?3 WHERE uid=?1 AND receiving_account_key=?2 AND payer_vpa IS NULL AND active=1 AND expires_at<=?3').bind(uid,p.account,now),
+  db.prepare(`INSERT INTO hdfc_sms_smoke_intents(intent_id,uid,request_key,receiving_account_key,created_at,expires_at,recover_until,updated_at)
+  SELECT ?1,?2,?3,?4,?5,?6,?7,?5 WHERE NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?2 AND request_key=?3)`).bind(id,uid,key,p.account,now,now+1800000,now+88200000),
+ ]);
  const saved=await db.prepare('SELECT intent_id FROM hdfc_sms_smoke_intents WHERE uid=? AND request_key=?').bind(uid,key).first<{intent_id:string}>();
  return saved?readIntent(db,saved.intent_id,uid):null;
 }

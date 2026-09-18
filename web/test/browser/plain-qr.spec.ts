@@ -41,6 +41,26 @@ test('late SMS leaves a waiting message and does not report failure',async({page
  await route(page,r=>r.fulfill({json:{ok:true,enabled:true,intent:pending({reason_code:'awaiting_sms'})}})); await page.goto('/plain-qr');
  await expect(page.getByText('Waiting for your payment.',{exact:false})).toBeVisible(); await expect(page.getByRole('heading',{name:'Payment received'})).toHaveCount(0); await expect(page.getByText('If the SMS is delayed, this page will keep waiting.',{exact:false})).toBeVisible();
 });
+test('an expired attempt with nothing submitted rolls into a fresh QR, repeatedly',async({page})=>{
+ const keys:string[]=[]; let served=0;
+ await route(page,r=>{if(r.request().url().endsWith('/order')){keys.push(r.request().postDataJSON().request_key);served++;
+  // First QR comes back already dead; every later order is a live one.
+  return r.fulfill({json:{ok:true,enabled:true,intent:pending({intent_id:'96a2a16d-aee0-409f-a8b1-673f9831'+String(served).padStart(4,'0'),
+   ...(served===1?{status:'expired',expires_at:Date.now()-1000,upi_url:undefined}:{})})}})}
+  return r.fulfill({json:{ok:true,enabled:true,intent:pending()}})});
+ await page.goto('/plain-qr');
+ await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible();
+ expect(keys.length).toBe(2); expect(keys[0]).not.toBe(keys[1]);
+});
+test('an expired attempt that already carries a reference keeps waiting and offers a new payment',async({page})=>{
+ let orders=0;
+ await route(page,r=>{if(r.request().url().endsWith('/order'))orders++;
+  return r.fulfill({json:{ok:true,enabled:true,intent:pending({status:'expired',expires_at:Date.now()-1000,reference_revision:1,upi_url:undefined})}})});
+ await page.goto('/plain-qr');
+ await expect(page.getByText('The QR expired.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Start a new payment'})).toBeVisible();
+ expect(orders).toBe(1);
+});
 test('payment app links preserve the QR amount and package targets',async({page})=>{
  await route(page); await page.goto('/plain-qr'); const links=page.getByRole('navigation',{name:'Payment apps'}).getByRole('link'); await expect(links).toHaveCount(UPI_APPS.length);
  for(const app of UPI_APPS){const href=upiAppHref(app,upi,'android');expect(href).toContain('am=1.00');if(app.androidPackage)expect(href).toContain(app.androidPackage)} expect(upiPlatform('Mozilla/5.0 (Linux; Android 14)',5)).toBe('android');

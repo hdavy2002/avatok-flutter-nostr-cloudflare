@@ -67,8 +67,11 @@ export const hdfcPublicOrder = scoped(async (req, env, uid) => {
  // A browser handoff can lose the locally stored intent id while retaining the
  // same capability bearer. Recover that capability's existing attempt instead
  // of trying to create a second payment and returning intent_busy forever.
+ // Only while it is still LIVE: an expired attempt recovered here left the page
+ // waiting on a dead QR for the whole 24h recovery window with no way to start
+ // a new one. An expired attempt stays reachable by intent_id via status/recheck.
  const owned = await currentIntent(db, uid);
- if (owned && owned.claimed_at === null && owned.superseded_by === null) return json(envelope(owned, env, p));
+ if (owned && owned.claimed_at === null && owned.superseded_by === null && owned.expires_at > Date.now()) return json(envelope(owned, env, p));
  if (!p.enabled) return failure(p.reason ?? 'rail_paused');
  const intent = await createPublicConcurrentIntent(db, uid, body.request_key, p);
  if (intent) return json(envelope(intent, env, p));

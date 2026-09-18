@@ -114,6 +114,8 @@ export default function UpiPlainQr() {
       </form>}
       <p><button type="button" disabled={state.busy} onClick={() => void controller.current?.refresh(true)}>Check again</button></p>
     </>}
+    {intent && !confirmed && (expired || intent.status === 'review_pending') &&
+      <p><button type="button" disabled={state.busy} onClick={() => controller.current?.anotherPayment()}>Start a new payment</button></p>}
     {intent && !recoverable && <p>The recovery window has ended. Keep your receipt and payment reference for support. Do not pay again.</p>}
     {intent && <p style={{fontSize: 12, overflowWrap: 'anywhere'}}>Payment attempt: {intent.intent_id}</p>}
     {!intent && state.started && state.error && <button disabled={state.busy} onClick={() => void controller.current?.refresh()}>Try again</button>}
