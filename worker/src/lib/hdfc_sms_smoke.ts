@@ -125,6 +125,9 @@ export async function createIntent(db:D1Database,uid:string,key:string,replace:s
  if(active&&!replace)return active.uid===uid?readIntent(db,active.intent_id,uid):null;
  if(active&&(active.uid!==uid||replace!==active.intent_id))return null;
  const id=crypto.randomUUID();
+ const concurrencyGuard=allowConcurrent
+  ? '1=1'
+  : 'NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND payer_vpa IS NULL AND active=1)';
  await db.batch([
   db.prepare('UPDATE hdfc_sms_smoke_intents SET active=0,updated_at=? WHERE receiving_account_key=? AND payer_vpa IS NULL AND active=1 AND expires_at<=?').bind(now,p.account,now),
   db.prepare(`UPDATE hdfc_sms_smoke_intents SET active=0,superseded_by=?1,updated_at=?2 WHERE intent_id=?3 AND uid=?4 AND receiving_account_key=?5 AND superseded_by IS NULL
@@ -133,9 +136,9 @@ export async function createIntent(db:D1Database,uid:string,key:string,replace:s
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?4 AND request_key=?6)`).bind(id,now,replace,uid,p.account,key),
   db.prepare(`INSERT INTO hdfc_sms_smoke_intents(intent_id,uid,request_key,receiving_account_key,created_at,expires_at,recover_until,updated_at)
    SELECT ?1,?2,?3,?4,?5,?6,?7,?5
-   WHERE (?8=1 OR NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND payer_vpa IS NULL AND active=1))
+   WHERE ${concurrencyGuard}
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?2 AND request_key=?3)
-   AND (?9 IS NULL OR EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE intent_id=?9 AND uid=?2 AND superseded_by=?1))`).bind(id,uid,key,p.account,now,now+1800000,now+88200000,allowConcurrent?1:0,replace),
+   AND (?8 IS NULL OR EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE intent_id=?8 AND uid=?2 AND superseded_by=?1))`).bind(id,uid,key,p.account,now,now+1800000,now+88200000,replace),
  ]);
  const saved=await db.prepare('SELECT intent_id FROM hdfc_sms_smoke_intents WHERE uid=? AND request_key=?').bind(uid,key).first<{intent_id:string}>();
  return saved?readIntent(db,saved.intent_id,uid):null;
