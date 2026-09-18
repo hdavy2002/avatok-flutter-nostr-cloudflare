@@ -10,25 +10,13 @@
 -- refuses a row with is_example=1 before any ledger or gateway call — see
 -- Specs/WEBGW-E-REPORT.md for the exact guard list.
 --
--- BEFORE RUNNING — substitute the owner placeholder
--- --------------------------------------------------
--- This repo has NO existing "official/admin/system" account convention (see
--- the report). Replace EVERY occurrence of the literal token
---
---     :OWNER_USER_ID
---
--- below with a real `users.uid` (Clerk uid) BEFORE applying this file — D1
--- does not do bind-parameter substitution against a --file, so this is a
--- textual find/replace, e.g.:
---
---     sed -i '' 's/:OWNER_USER_ID/user_xxxxxxxxxxxxxxxxxxxx/g' scripts/seed_example_listings.sql
---
--- How to find/create that uid: see "SEED — owner placeholder" in
--- Specs/WEBGW-E-REPORT.md. In short — pick (or create) ONE Clerk account to
--- be the public face of every example listing (a real "avaTOK" creator
--- profile reads far better to a reviewer than the owner's personal account),
--- then look its uid up with:
---     SELECT uid, handle, display_name FROM users WHERE handle = '<its handle>';
+-- OWNER — the existing official account
+-- --------------------------------------
+-- [WEB-GATEWAY-FIX1] Every row below is owned by `avatok_team` / "avaTOK
+-- Team", uid `user_3GMM0uFG84V20RTmbY1MypELJhD` — the coordinator verified
+-- this is the existing official account in production D1. This is the
+-- account's public face for every example listing, so a reviewer sees a
+-- real "avaTOK" creator profile rather than a personal account.
 --
 -- APPLY (staging first, then prod — never applies itself; NOT run by this task)
 --     scripts/cf.sh worker d1 execute DB_META --remote --file=scripts/seed_example_listings.sql
@@ -59,8 +47,24 @@
 -- CATEGORY MAPPING — two of the eight briefs named a category with no existing
 -- id in Specs/listing-taxonomy.json. Mapped to the closest real id rather than
 -- inventing one (see Specs/WEBGW-E-REPORT.md for the full reasoning):
---   "exam and study help"  -> teachers        (Tutors & teachers)
+--   "exam and study help"  -> teachers        (Tutors & teachers) — but see
+--                              [WEB-GATEWAY-FIX1] below: this row's own
+--                              category was then changed to a group_classes one.
 --   "games and quizzes"    -> live_everyday   (Everyday life)
+--
+-- [WEB-GATEWAY-FIX1] GROUP-CLASS SECTION — the three multi-seat "group class"
+-- rows (ex-examrev-1, ex-spokenenglish-1, ex-yoga-1) were originally seeded
+-- with section='consulting' and a 1:1 category, which put them under the
+-- "1:1 consultations" marketplace chip despite being capacity>1 group
+-- sessions. Stream F added a dedicated group_classes section
+-- (Specs/listing-taxonomy.json, worker/src/lib/listing_section.ts,
+-- worker/migrations/2026-09-18-webgw-taxonomy.sql) with categories
+-- group_exam_revision / group_language_practice / group_fitness_batch — these
+-- three rows now use section='group_classes' and the matching group_*
+-- category, so they surface under "Group classes" instead. Guitar
+-- (ex-guitar-1, category music, capacity 1) and career mentoring
+-- (ex-careermentor-1, category career_coach, capacity 1) are genuine 1:1s and
+-- stay section='consulting'.
 --
 -- SCHEDULE — never expires. The three `live_event` rows carry a real
 -- (SQLite-computed, always "today + N days") future `starts_at` so the card
@@ -85,7 +89,7 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-havan-1', ':OWNER_USER_ID', 'live_event',
+  ('ex-havan-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'live_event',
    'Ganga-side havan in Haridwar, live with recording',
    'A havan performed on the banks of the Ganga at Haridwar, with your name and sankalp read out during the ceremony.
 
@@ -109,17 +113,17 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-examrev-1', ':OWNER_USER_ID', 'consult',
+  ('ex-examrev-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'consult',
    'Exam revision sprint: Class 12 Physics with a professor',
    'A focused revision session on Class 12 Physics, led by a professor, covering the topics students find hardest before the board exam.
 
 Students get worked examples, a chance to ask questions live, and a short set of practice problems to try afterwards.',
-   'teachers', 299, 'INR', 'IN', 0, NULL,
+   'group_exam_revision', 299, 'INR', 'IN', 0, NULL,
    '[{"type":"image","url":"/seed/exam-revision-physics-class12.jpg"}]',
    NULL, 90, 30, 'published', 0,
    NULL, 0, (CAST(strftime('%s','now') AS INTEGER)*1000), (CAST(strftime('%s','now') AS INTEGER)*1000),
    'commerce', NULL, NULL, 1, 1, 1,
-   'consulting', 'exam-revision-physics-class12',
+   'group_classes', 'exam-revision-physics-class12',
    'Class 12 Physics revision with a professor, live before the board exam.',
    'always_on', NULL, NULL, 'Asia/Kolkata', NULL, 0, 4, NULL, NULL, NULL,
    1);
@@ -133,7 +137,7 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-biryani-1', ':OWNER_USER_ID', 'live_event',
+  ('ex-biryani-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'live_event',
    'My grandmother''s secret biryani, cook-along',
    'A live cook-along for a family biryani recipe, passed down and cooked step by step alongside the host.
 
@@ -157,7 +161,7 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-quiznight-1', ':OWNER_USER_ID', 'live_event',
+  ('ex-quiznight-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'live_event',
    'Friday quiz night: Bollywood and cricket',
    'A live quiz night with rounds on Bollywood trivia and cricket history, hosted for a mixed group of players.
 
@@ -181,17 +185,17 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-spokenenglish-1', ':OWNER_USER_ID', 'consult',
+  ('ex-spokenenglish-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'consult',
    'Spoken English practice circle (max 8)',
    'A small group practice circle for spoken English, capped at eight people so everyone gets time to talk.
 
 The host guides the conversation, corrects gently, and keeps the group moving through everyday topics — built for confidence, not grammar drills.',
-   'language', 149, 'INR', 'IN', 0, NULL,
+   'group_language_practice', 149, 'INR', 'IN', 0, NULL,
    '[{"type":"image","url":"/seed/spoken-english-practice-circle.jpg"}]',
    NULL, 60, 8, 'published', 0,
    NULL, 0, (CAST(strftime('%s','now') AS INTEGER)*1000), (CAST(strftime('%s','now') AS INTEGER)*1000),
    'commerce', NULL, NULL, 1, 1, 1,
-   'consulting', 'spoken-english-practice-circle',
+   'group_classes', 'spoken-english-practice-circle',
    'A small spoken-English practice circle, capped at eight people.',
    'always_on', NULL, NULL, 'Asia/Kolkata', NULL, 0, 4, NULL, NULL, NULL,
    1);
@@ -205,7 +209,7 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-guitar-1', ':OWNER_USER_ID', 'consult',
+  ('ex-guitar-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'consult',
    'Beginner guitar: your first three songs',
    'A 45-minute 1:1 guitar session for complete beginners, built around learning your first three songs.
 
@@ -229,17 +233,17 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-yoga-1', ':OWNER_USER_ID', 'consult',
+  ('ex-yoga-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'consult',
    'Morning yoga batch, 7 am',
    'A live morning yoga session at 7 am, run as a small batch so the instructor can watch everyone''s form.
 
 Bring your own mat and a bit of floor space — the session covers stretching, breathing and a short guided practice to start the day.',
-   'fitness', 99, 'INR', 'IN', 0, NULL,
+   'group_fitness_batch', 99, 'INR', 'IN', 0, NULL,
    '[{"type":"image","url":"/seed/morning-yoga-batch-7am.jpg"}]',
    NULL, 45, 20, 'published', 0,
    NULL, 0, (CAST(strftime('%s','now') AS INTEGER)*1000), (CAST(strftime('%s','now') AS INTEGER)*1000),
    'commerce', NULL, NULL, 1, 1, 1,
-   'consulting', 'morning-yoga-batch-7am',
+   'group_classes', 'morning-yoga-batch-7am',
    'A live 7am yoga batch, kept small so the instructor can watch your form.',
    'always_on', NULL, NULL, 'Asia/Kolkata', NULL, 0, 4, NULL, NULL, NULL,
    1);
@@ -253,7 +257,7 @@ INSERT OR REPLACE INTO listings
    billing_unit, free_entry, max_per_booking, response_time_min, vibe_tags, credential,
    is_example)
 VALUES
-  ('ex-careermentor-1', ':OWNER_USER_ID', 'consult',
+  ('ex-careermentor-1', 'user_3GMM0uFG84V20RTmbY1MypELJhD', 'consult',
    'Career mentoring: CV review and mock interview',
    'A 45-minute 1:1 mentoring session covering a CV review and a mock interview, run by an experienced mentor.
 
