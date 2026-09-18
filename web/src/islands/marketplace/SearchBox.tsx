@@ -11,7 +11,7 @@ export interface SearchBoxProps {
 
 /**
  * The bazaar search strip: a pill field with a hard ink border and offset
- * shadow, and a coral KHOJO button.
+ * shadow, and a coral SEARCH button.
  *
  * [MARKET-BAZAAR-1 2026-08-31] Restyled from the plain zine <Field> to the
  * comp's search strip (design/marketplace/avaTOK Marketplace.dc.html). The
@@ -70,7 +70,7 @@ export function SearchBox({
       <button
         type="submit"
         className="flex-none rounded-full border-zine border-ink bg-coral px-6 py-2.5 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-      ><UiText id="web-marketplace.1207f81e54d27b74" source="Khojo" />{" "}</button>
+      ><UiText id="web-marketplace.1207f81e54d27b74" source="Search" />{" "}</button>
     </form>
   );
 }

@@ -55,12 +55,12 @@ const {
 
 const CATS = {
   stream: { label: 'LIVE STREAMING & SHOWS', eyebrow: '01 · GROUP SHOWS · TICKETED · WEEKLY', kind: 'jhalar' as const, photo: '#1e5f66' },
-  friends: { label: 'LIVE FRIENDS', eyebrow: '02 · PRIVATE 1:1 · DIL SE', kind: 'chai' as const, photo: '#8a5a3a' },
-  adda: { label: 'ADDA ROOMS', eyebrow: '03 · STRANGERS WELCOME · GROUP', kind: 'lotus' as const, photo: '#7a6244' },
-  astro: { label: 'ASTRO & TAROT', eyebrow: 'KISMAT DESK · READINGS', kind: 'eyes' as const, photo: '#a4352a' },
+  friends: { label: '1:1 CONSULTATIONS', eyebrow: '02 · ONE-ON-ONE · BOOKED TIME', kind: 'chai' as const, photo: '#8a5a3a' },
+  adda: { label: 'GROUP CLASSES', eyebrow: '03 · SMALL GROUP · OPEN SEATS', kind: 'lotus' as const, photo: '#7a6244' },
+  astro: { label: 'ASTROLOGY & TAROT', eyebrow: 'READINGS · LIVE SESSIONS', kind: 'eyes' as const, photo: '#a4352a' },
   ai: { label: 'AI VOICE AGENTS', eyebrow: '04 · 24/7 · CLEARLY LABELLED AI', kind: 'auto' as const, photo: '#2d4f66' },
   consult: { label: 'CONSULTING DESK', eyebrow: '05 · EXPERTISE ON DEMAND', kind: 'eyes' as const, photo: '#5a5a38' },
-  glow: { label: 'GLOW-UP STUDIO', eyebrow: 'FULL MAKEOVER SCENE', kind: 'lotus' as const, photo: '#8a3a5a' },
+  glow: { label: 'STYLE & GROOMING', eyebrow: 'CONSULTATIONS · BOOKED TIME', kind: 'lotus' as const, photo: '#8a3a5a' },
 };
 type CatKey = keyof typeof CATS;
 
@@ -546,7 +546,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     <div class="hero__player">
       <div class="nazar">
         <img data-india-i18n-attr="alt:web-common.08b399f0d2b213bd" src={publicImage('/assets/lol-sticker.png', { width: 900, fit: 'scale-down' })} alt="LOL sticker" class="nazar__img" />
-        <span data-i18n="web-common.dd4a48fbce9370b2" class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
+        <span data-i18n="web-common.dd4a48fbce9370b2" class="nazar__text">NO EVIL EYE HERE · DIM YOUR LIGHTS AT NIGHT</span>
         <img data-india-i18n-attr="alt:web-common.28f62d6ed88328fa" src={publicImage('/assets/luv-it-sticker.png', { width: 900, fit: 'scale-down' })} alt="I luv it sticker" class="nazar__img" />
       </div>
 
@@ -1097,7 +1097,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.be3398565992e357">Browse more</ui-copy> <span data-i18n="web-common.9faa09a3e4bdccca" class="section-title__accent">events.</span></h2>
       {masala && (
         <div class="browse__quote">
-          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">Ek show se kya hoga?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Scroll karte raho…</ui-copy></div>
+          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">One session isn't enough?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Keep scrolling…</ui-copy></div>
           <img data-india-i18n-attr="alt:web-common.7140148ccc44276e" src={publicImage('/assets/chill-uncle.png', { width: 900, fit: 'scale-down' })} alt="Chill uncle with coconut" />
         </div>
       )}

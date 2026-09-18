@@ -52,9 +52,13 @@ assert(!existsSync(resolve(root, 'india/index.html')), 'Retired India URL has no
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m, 'India URL permanently redirects home');
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL permanently redirects home');
-const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
-assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
-assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
+// [WEB-GATEWAY-INT 2026-09-18] These were Hinglish/companionship-flavored
+// preview and archive pages, not product pages — each is now an SSR
+// Astro.redirect(301) stub (see Specs/WEBGW-INT-REPORT.md), so none of them
+// emit a static file any more.
+for (const stale of ['archive/home-2026-09-09/index.html', 'india-next/index.html', 'landing-steps-preview/index.html', 'global-next/index.html']) {
+ assert(!existsSync(resolve(root, stale)), 'Retired preview/archive page has no static output: ' + stale);
+}
 console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
@@ -71,7 +75,7 @@ for (const image of globalIdeas.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\
 assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
 assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
 const globalLinks = [...globalIdeas.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
-assert.equal(new Set(globalLinks).size, 8, 'Eight distinct global guides');
+assert.equal(new Set(globalLinks).size, 7, 'Seven distinct global guides');
 const globalImageHashes = new Set();
 for (const href of globalLinks) {
  const slug = href.split('/').filter(Boolean).at(-1);
@@ -90,10 +94,17 @@ for (const href of globalLinks) {
 }
 
 // Owner-approved pixels must remain literal crops, not regenerated lookalikes.
+// [WEB-GATEWAY-INT 2026-09-18] Crop position is keyed by slug against the
+// ORIGINAL 8-slot sprite grid, not by array/display position — 'close-friends-studio'
+// (grid slot 2) was removed as unsafe (see Specs/WEBGW-INT-REPORT.md), so the
+// remaining slugs no longer sit at contiguous array indices matching their crop.
 const originalIdeas = resolve(root, 'assets/global-original/ideas-source.png');
 const cropEdges = [0, 396, 772, 1140, 1536];
-for (const [index, href] of globalLinks.entries()) {
+const globalIdeaGridOrder = ['creator-watch-party', 'trend-breakdown-live', 'close-friends-studio', 'channel-coaching', 'learn-the-move', 'ask-me-anything-1-1', 'launch-night-live', 'taste-of-your-world'];
+for (const href of globalLinks) {
  const slug = href.split('/').filter(Boolean).at(-1);
+ const index = globalIdeaGridOrder.indexOf(slug);
+ assert(index !== -1, 'Global guide has a known sprite grid position: ' + slug);
  const column = index % 4;
  const expected = await sharp(originalIdeas).extract({left:cropEdges[column], top:index < 4 ? 228 : 536, width:cropEdges[column + 1] - cropEdges[column], height:index < 4 ? 308 : 320}).removeAlpha().raw().toBuffer();
  const actual = await sharp(resolve(root, 'assets/global-original/ideas-' + slug + '.png')).removeAlpha().raw().toBuffer();

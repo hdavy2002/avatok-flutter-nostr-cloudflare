@@ -100,7 +100,7 @@ export const ORG: OrgConstants = {
   },
   description:
     'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
-  slogan: 'Apna hunar. Apni kamaai.',
+  slogan: 'Turn your skill into income.',
   foundersDescription: 'Founded by American and Indian founders',
   foundingDate: '2025',
   email: 'support@avatok.ai',

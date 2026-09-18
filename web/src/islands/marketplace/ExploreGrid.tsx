@@ -358,24 +358,24 @@ function ExploreGridInner({
           )}
 
           {/* [MARKET-BAZAAR-1] Two empty states, not one. The comp only draws the
-              filtered case ("Koi nahi mila, boss" + "Sab dikhao"). But with
+              filtered case ("Nothing matched" + "Show all"). But with
               nothing published, the state a real visitor lands on is the
-              UNFILTERED one — where "Sab dikhao" clears nothing and reloads the
+              UNFILTERED one — where "Show all" clears nothing and reloads the
               same emptiness, which reads as a broken page. */}
           {empty && (
             <div className="flex flex-wrap items-center justify-center gap-6 rounded-[22px] border-zine border-dashed border-ink bg-card px-7 py-10 text-center">
               <div className="grid h-[104px] w-[104px] flex-none -rotate-[8deg] place-items-center rounded-full border-zine border-dashed border-coral">
                 <span className="font-label text-[0.6875rem] font-extrabold uppercase leading-[1.7] tracking-[0.06em] text-coral">
-                  {narrowed ? (<><UiText id="web-marketplace.b5b9eb055f3f31f8" source="Buri nazar" /><br /><UiText id="web-marketplace.6c1c6e85669fb48c" source="lag gayi" /><br />· 404 ·</>) : (<><UiText id="web-marketplace.4e6b8f6a7f14abf9" source="Bazaar" /><br /><UiText id="web-marketplace.50be7504b658cd6f" source="khul raha" /><br /><UiText id="web-marketplace.739b9d664d77db3e" source="hai" /></>)}
+                  {narrowed ? (<><UiText id="web-marketplace.b5b9eb055f3f31f8" source="No" /><br /><UiText id="web-marketplace.6c1c6e85669fb48c" source="matches" /><br />· 404 ·</>) : (<><UiText id="web-marketplace.4e6b8f6a7f14abf9" source="Bazaar" /><br /><UiText id="web-marketplace.50be7504b658cd6f" source="opening" /><br /><UiText id="web-marketplace.739b9d664d77db3e" source="soon" /></>)}
                 </span>
               </div>
               <div className="max-w-[40ch] text-left">
                 <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                  {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Koi nahi mila, boss.") : uiT("web-marketplace.b35908a94a11f32d","Abhi dukaan saj rahi hai.")}
+                  {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Nothing matched.") : uiT("web-marketplace.b35908a94a11f32d","The stalls are still being set up.")}
                 </p>
                 <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
                   {narrowed
-                    ? uiT("web-marketplace.81deae8ffc16e5d4","Is filter combination mein full sannata hai. Thoda filter loosen karo.")
+                    ? uiT("web-marketplace.81deae8ffc16e5d4","No listings match this filter combination. Try loosening a filter.")
                     : uiT("web-marketplace.4b46fe3be22fa4ef","No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.")}
                 </p>
                 <div className="mt-4">
@@ -384,7 +384,7 @@ function ExploreGridInner({
                       type="button"
                       onClick={clearAll}
                       className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-                    ><UiText id="web-marketplace.0fda15a3954fb235" source="Sab dikhao" />{" "}</button>
+                    ><UiText id="web-marketplace.0fda15a3954fb235" source="Show all" />{" "}</button>
                   ) : (
                     <a
                       href="/sign-up"

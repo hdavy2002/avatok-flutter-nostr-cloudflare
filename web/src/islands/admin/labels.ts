@@ -41,12 +41,13 @@ const KIND: Record<string, string> = {
 };
 
 const SECTION: Record<string, string> = {
-  live_streaming: 'India goes live',
-  live_friends: 'Find your people',
-  adda_rooms: 'Adda rooms',
-  consulting: 'Book their time',
-  astro_tarot: 'Astrology & tarot',
-  glow_up: 'Style & glow-up',
+  live_streaming: 'Live events',
+  live_friends: 'Live friends (hidden)',
+  adda_rooms: 'Adda rooms (hidden)',
+  consulting: '1:1 consultations',
+  astro_tarot: 'Astrology & tarot (hidden)',
+  glow_up: 'Style & glow-up (hidden)',
+  group_classes: 'Group classes',
   ai_voice_agents: 'AI voice agents',
   other: 'Other',
 };
