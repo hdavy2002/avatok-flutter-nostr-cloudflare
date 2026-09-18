@@ -181,6 +181,11 @@ function ExploreGridInner({
         sort: rail.sort || undefined,
         limit: pageSize,
         cursor: nextCursor ?? undefined,
+        // [WEB-GATEWAY-FIX1] Keep badged examples in view across pagination,
+        // group switches and search from inside the already-loaded marketplace
+        // page — only the SSR seed carried this before, so it disappeared the
+        // moment a reviewer interacted with the grid.
+        examples: true,
       };
 
       try {

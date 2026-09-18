@@ -26,6 +26,8 @@ export interface SearchParams {
   section?: string;
   limit?: number;
   cursor?: string;
+  /** [WEB-GATEWAY-FIX1] See ExploreParams.examples in apiClient.ts — same gate, same caution. */
+  examples?: boolean;
 }
 
 /** A category as returned by GET /api/explore/categories (has an emoji). */
@@ -42,7 +44,8 @@ export interface MarketCategory {
 
 /** GET /api/explore/search — public faceted search (no auth). */
 export function searchListings(params: SearchParams = {}, signal?: AbortSignal): Promise<CardPage> {
-  return request<CardPage>('/api/explore/search', { query: { ...params }, signal });
+  const { examples, ...rest } = params;
+  return request<CardPage>('/api/explore/search', { query: { ...rest, ...(examples ? { examples: 1 } : {}) }, signal });
 }
 
 /** GET /api/explore/categories — public category list (cached 300s upstream). */

@@ -168,11 +168,20 @@ export interface ExploreParams {
   to?: number;
   /** '' | newest | cheapest | popular | rating — the worker's vocabulary. */
   sort?: string;
+  /**
+   * [WEB-GATEWAY-FIX1] Ask the worker to mix in badged EXAMPLE listings
+   * (`?examples=1`). Only the marketplace grid's own fetches should set this —
+   * the listing-detail "browse more" rails (listingCompanions.ts,
+   * ListingDetailView.astro, BrowseMore.astro) must not, or examples would
+   * start showing up as "more like this" on every real listing's page.
+   */
+  examples?: boolean;
 }
 
 /** GET /api/explore — public marketplace browse (no auth). */
 export function getExplore(params: ExploreParams = {}, signal?: AbortSignal): Promise<CardPage> {
-  return request<CardPage>('/api/explore', { query: { ...params }, signal });
+  const { examples, ...rest } = params;
+  return request<CardPage>('/api/explore', { query: { ...rest, ...(examples ? { examples: 1 } : {}) }, signal });
 }
 
 /** GET /api/explore/live-now — currently-live listings (each `joinable: true`). */
@@ -248,9 +257,12 @@ export async function getCreator(id: string, auth?: string | null, signal?: Abor
   // `avatar`, `stats`. Nothing translated between the two, so every /c/<handle>
   // page rendered "@undefined" with no avatar and no listings. Same idempotent
   // unwrap as getListing above: an already-flat body passes through unchanged.
+  // [WEB-GATEWAY-FIX1] examples=1 so the avaTOK Team creator page keeps
+  // listing its badged examples now that the worker gates this route the
+  // same way as explore/browse/search.
   const raw = await request<Record<string, unknown> & { creator?: Record<string, unknown> }>(
     `/api/creators/${encodeURIComponent(id)}`,
-    { auth, signal },
+    { auth, signal, query: { examples: 1 } },
   );
   const inner = raw?.creator && typeof raw.creator === 'object' ? raw.creator : null;
   if (!inner) return raw as unknown as Creator;
