@@ -3,9 +3,9 @@
   "groups": [
     {
       "id": "india_goes_live",
-      "heading": "India goes live",
-      "emphasis": "live.",
-      "blurb": "Temple tours, skills, journeys and moments happening right now.",
+      "heading": "Live events",
+      "emphasis": "events.",
+      "blurb": "Ticketed live shows, pujas, classes and tours — happening right now, streamed online.",
       "kinds": [
         "live_event"
       ],
@@ -15,34 +15,36 @@
     },
     {
       "id": "find_your_people",
-      "heading": "Find your people",
-      "emphasis": "people.",
-      "blurb": "Real people you can pay for their time — someone to listen, or simply good company.",
+      "heading": "Group classes",
+      "emphasis": "classes.",
+      "blurb": "Small-group classes and practice sessions, taught live by an expert.",
       "kinds": [
         "consult"
       ],
       "sections": [
-        "live_friends",
-        "adda_rooms"
+        "group_classes"
       ]
     },
     {
       "id": "book_their_time",
-      "heading": "Book their time",
-      "emphasis": "time.",
-      "blurb": "Choose a professional, check their calendar and book a private session.",
+      "heading": "1:1 consultations",
+      "emphasis": "consultations.",
+      "blurb": "Choose an expert, check their calendar and book a time-boxed video consultation.",
       "kinds": [
         "consult"
       ],
       "sections": [
         "consulting",
-        "astro_tarot",
-        "glow_up",
         "ai_voice_agents"
       ]
     }
   ],
-  "_hidden_sections": {},
+  "_hidden_sections": {
+    "live_friends": "[WEB-GATEWAY-F 2026-09-18] Reads as paid companionship (Specs/WEBGW-C-REPORT.md), which a payment-gateway reviewer must not see. Category live_friends marked inactive in the same migration.",
+    "adda_rooms": "[WEB-GATEWAY-F 2026-09-18] Same companionship concern as live_friends, plus already gated on conferenceEnabled (false in production). Category adda_rooms marked inactive in the same migration.",
+    "astro_tarot": "[WEB-GATEWAY-F 2026-09-18] Astrology/divination-adjacent category the owner asked purged from public marketing copy (Specs/WEBGW-C-REPORT.md). Category astrologers marked inactive in the same migration.",
+    "glow_up": "[WEB-GATEWAY-F 2026-09-18] Styling/dating-adjacent category flagged in ListingDetailsComp.astro's 'FULL MAKEOVER SCENE' eyebrow (Specs/WEBGW-C-REPORT.md). Category glow_up marked inactive in the same migration."
+  },
   "categories": [
     {
       "id": "live_cooking",
@@ -261,6 +263,47 @@
       "sort": 320,
       "requires_flag": "conferenceEnabled",
       "_note": "conferenceEnabled is FALSE in production (read from the live config 2026-09-05). Hide this blip while the flag is off — an always-empty blip is indistinguishable from 'nobody has listed one yet', and only one of those is a bug."
+    },
+    {
+      "id": "group_language_practice",
+      "label": "Language practice",
+      "emoji": "🗣️",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 330,
+      "_note": "[WEB-GATEWAY-F 2026-09-18] Resolves to the group_classes SECTION (worker/src/lib/listing_section.ts SECTION_CATEGORIES), not consulting — a group practice session, not a 1:1."
+    },
+    {
+      "id": "group_fitness_batch",
+      "label": "Fitness & yoga batch",
+      "emoji": "🧘",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 340
+    },
+    {
+      "id": "group_exam_revision",
+      "label": "Exam revision",
+      "emoji": "📖",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 350
+    },
+    {
+      "id": "group_music_class",
+      "label": "Music class",
+      "emoji": "🎵",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 360
+    },
+    {
+      "id": "group_cooking_class",
+      "label": "Cooking class",
+      "emoji": "🍳",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 370
     },
     {
       "id": "astrologers",

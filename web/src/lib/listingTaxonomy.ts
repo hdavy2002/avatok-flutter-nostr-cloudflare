@@ -42,27 +42,27 @@ export interface SubCategory {
 export const GROUPS: Group[] = [
   {
     id: "india_goes_live",
-    heading: "India goes live",
-    emphasis: "live.",
-    blurb: "Temple tours, skills, journeys and moments happening right now.",
+    heading: "Live events",
+    emphasis: "events.",
+    blurb: "Ticketed live shows, pujas, classes and tours — happening right now, streamed online.",
     kinds: ["live_event"],
     sections: ["live_streaming"],
   },
   {
     id: "find_your_people",
-    heading: "Find your people",
-    emphasis: "people.",
-    blurb: "Real people you can pay for their time — someone to listen, or simply good company.",
+    heading: "Group classes",
+    emphasis: "classes.",
+    blurb: "Small-group classes and practice sessions, taught live by an expert.",
     kinds: ["consult"],
-    sections: ["live_friends", "adda_rooms"],
+    sections: ["group_classes"],
   },
   {
     id: "book_their_time",
-    heading: "Book their time",
-    emphasis: "time.",
-    blurb: "Choose a professional, check their calendar and book a private session.",
+    heading: "1:1 consultations",
+    emphasis: "consultations.",
+    blurb: "Choose an expert, check their calendar and book a time-boxed video consultation.",
     kinds: ["consult"],
-    sections: ["consulting", "astro_tarot", "glow_up", "ai_voice_agents"],
+    sections: ["consulting", "ai_voice_agents"],
   },
 ];
 
@@ -72,7 +72,7 @@ export const GROUPS: Group[] = [
  * it simply maps to no group. Do not "tidy up" by deleting a value, and do not
  * hand-edit this set: it was hand-edited once and the next regeneration threw
  * the change away. Change the JSON. */
-export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set([]);
+export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['adda_rooms', 'astro_tarot', 'glow_up', 'live_friends']);
 
 export const SUB_CATEGORIES: SubCategory[] = [
   { id: "live_cooking", label: "Cooking", emoji: "🍳", group: "india_goes_live", sort: 10, },
@@ -102,6 +102,11 @@ export const SUB_CATEGORIES: SubCategory[] = [
   { id: "queer_friendly", label: "Queer-friendly space", emoji: "🏳️‍🌈", group: "find_your_people", sort: 300, },
   { id: "live_friends", label: "Live friends", emoji: "👥", group: "find_your_people", sort: 310, },
   { id: "adda_rooms", label: "Adda rooms", emoji: "☕", group: "find_your_people", sort: 320, requiresFlag: "conferenceEnabled", },
+  { id: "group_language_practice", label: "Language practice", emoji: "🗣️", group: "find_your_people", sort: 330, },
+  { id: "group_fitness_batch", label: "Fitness & yoga batch", emoji: "🧘", group: "find_your_people", sort: 340, },
+  { id: "group_exam_revision", label: "Exam revision", emoji: "📖", group: "find_your_people", sort: 350, },
+  { id: "group_music_class", label: "Music class", emoji: "🎵", group: "find_your_people", sort: 360, },
+  { id: "group_cooking_class", label: "Cooking class", emoji: "🍳", group: "find_your_people", sort: 370, },
   { id: "astrologers", label: "Astrologers", emoji: "🔮", group: "book_their_time", sort: 410, },
   { id: "teachers", label: "Tutors & teachers", emoji: "📚", group: "book_their_time", sort: 420, },
   { id: "professors", label: "Professors", emoji: "🎓", group: "book_their_time", sort: 430, },

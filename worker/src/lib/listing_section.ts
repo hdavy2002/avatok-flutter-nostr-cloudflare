@@ -23,6 +23,7 @@ export const SECTIONS = [
   "ai_voice_agents",
   "consulting",
   "glow_up",
+  "group_classes",
 ] as const;
 
 export type Section = (typeof SECTIONS)[number];
@@ -92,6 +93,14 @@ const SECTION_CATEGORIES: Record<string, Section> = {
   live_friends: "live_friends",
   adda_rooms: "adda_rooms",
   glow_up: "glow_up",
+  // [WEB-GATEWAY-F 2026-09-18] Group-class categories (Specs/listing-taxonomy.json)
+  // all resolve to the one group_classes section — a scheduled, multi-seat class,
+  // not a 1:1 consult, regardless of subject.
+  group_language_practice: "group_classes",
+  group_fitness_batch: "group_classes",
+  group_exam_revision: "group_classes",
+  group_music_class: "group_classes",
+  group_cooking_class: "group_classes",
 };
 
 /**
@@ -139,34 +148,36 @@ export type Group = (typeof GROUPS)[number];
 /** Display metadata mirrored verbatim from Specs/listing-taxonomy.json `groups`. */
 export const GROUP_META: Readonly<Record<Group, { heading: string; emphasis: string; blurb: string }>> = {
   india_goes_live: {
-    heading: "India goes live",
-    emphasis: "live.",
-    blurb: "Temple tours, skills, journeys and moments happening right now.",
+    heading: "Live events",
+    emphasis: "events.",
+    blurb: "Ticketed live shows, pujas, classes and tours — happening right now, streamed online.",
   },
   find_your_people: {
-    heading: "Find your people",
-    emphasis: "people.",
-    blurb: "Real people you can pay for their time — someone to listen, or simply good company.",
+    heading: "Group classes",
+    emphasis: "classes.",
+    blurb: "Small-group classes and practice sessions, taught live by an expert.",
   },
   book_their_time: {
-    heading: "Book their time",
-    emphasis: "time.",
-    blurb: "Choose a professional, check their calendar and book a private session.",
+    heading: "1:1 consultations",
+    emphasis: "consultations.",
+    blurb: "Choose an expert, check their calendar and book a time-boxed video consultation.",
   },
 };
 
 /**
  * Section -> group. `ai_voice_agents` maps to `book_their_time`
  * ([AGENT-LIVE-1] D1, BUILD SPEC §0/§9) — AI voice agents are booked private
- * sessions like consults and astro/tarot, so they render in the same group.
+ * sessions like consults, so they render in the same group.
+ *
+ * [WEB-GATEWAY-F 2026-09-18] `live_friends`, `adda_rooms`, `astro_tarot` and
+ * `glow_up` are deliberately ABSENT — hidden sections (Specs/listing-taxonomy.json
+ * `_hidden_sections`) map to no group, per the contract on `groupFor` below. The
+ * value stays alive in SECTIONS above because published rows still carry it.
  */
 const GROUP_FOR_SECTION: Readonly<Partial<Record<Section, Group>>> = {
   live_streaming: "india_goes_live",
-  live_friends: "find_your_people",
-  adda_rooms: "find_your_people",
+  group_classes: "find_your_people",
   consulting: "book_their_time",
-  astro_tarot: "book_their_time",
-  glow_up: "book_their_time",
   ai_voice_agents: "book_their_time",
 };
 

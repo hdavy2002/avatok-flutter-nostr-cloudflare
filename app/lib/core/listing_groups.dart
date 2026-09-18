@@ -61,27 +61,27 @@ class ListingSubCategory {
 const List<ListingGroup> kListingGroups = [
   ListingGroup(
     id: 'india_goes_live',
-    heading: 'India goes live',
-    emphasis: 'live.',
-    blurb: 'Temple tours, skills, journeys and moments happening right now.',
+    heading: 'Live events',
+    emphasis: 'events.',
+    blurb: 'Ticketed live shows, pujas, classes and tours — happening right now, streamed online.',
     kinds: ['live_event'],
     sections: ['live_streaming'],
   ),
   ListingGroup(
     id: 'find_your_people',
-    heading: 'Find your people',
-    emphasis: 'people.',
-    blurb: 'Real people you can pay for their time — someone to listen, or simply good company.',
+    heading: 'Group classes',
+    emphasis: 'classes.',
+    blurb: 'Small-group classes and practice sessions, taught live by an expert.',
     kinds: ['consult'],
-    sections: ['live_friends', 'adda_rooms'],
+    sections: ['group_classes'],
   ),
   ListingGroup(
     id: 'book_their_time',
-    heading: 'Book their time',
-    emphasis: 'time.',
-    blurb: 'Choose a professional, check their calendar and book a private session.',
+    heading: '1:1 consultations',
+    emphasis: 'consultations.',
+    blurb: 'Choose an expert, check their calendar and book a time-boxed video consultation.',
     kinds: ['consult'],
-    sections: ['consulting', 'astro_tarot', 'glow_up', 'ai_voice_agents'],
+    sections: ['consulting', 'ai_voice_agents'],
   ),
 ];
 
@@ -91,17 +91,14 @@ const List<ListingGroup> kListingGroups = [
 /// it simply maps to no group. Do not "tidy up" by deleting a value, and do not
 /// hand-edit this set: it was hand-edited once and the next regeneration threw
 /// the change away. Change the JSON.
-const Set<String> kHiddenListingSections = {};
+const Set<String> kHiddenListingSections = {'adda_rooms', 'astro_tarot', 'glow_up', 'live_friends'};
 
 /// Which group a SECTION belongs to. The inverse of `ListingGroup.sections`,
 /// flattened for lookup. Generated — see the note above.
 const Map<String, String> kGroupForSection = {
   'live_streaming': 'india_goes_live',
-  'live_friends': 'find_your_people',
-  'adda_rooms': 'find_your_people',
+  'group_classes': 'find_your_people',
   'consulting': 'book_their_time',
-  'astro_tarot': 'book_their_time',
-  'glow_up': 'book_their_time',
   'ai_voice_agents': 'book_their_time',
 };
 
@@ -140,6 +137,11 @@ const List<ListingSubCategory> kListingSubCategories = [
   ListingSubCategory(id: 'queer_friendly', label: 'Queer-friendly space', emoji: '🏳️‍🌈', group: 'find_your_people', sort: 300,),
   ListingSubCategory(id: 'live_friends', label: 'Live friends', emoji: '👥', group: 'find_your_people', sort: 310,),
   ListingSubCategory(id: 'adda_rooms', label: 'Adda rooms', emoji: '☕', group: 'find_your_people', sort: 320, requiresFlag: 'conferenceEnabled',),
+  ListingSubCategory(id: 'group_language_practice', label: 'Language practice', emoji: '🗣️', group: 'find_your_people', sort: 330,),
+  ListingSubCategory(id: 'group_fitness_batch', label: 'Fitness & yoga batch', emoji: '🧘', group: 'find_your_people', sort: 340,),
+  ListingSubCategory(id: 'group_exam_revision', label: 'Exam revision', emoji: '📖', group: 'find_your_people', sort: 350,),
+  ListingSubCategory(id: 'group_music_class', label: 'Music class', emoji: '🎵', group: 'find_your_people', sort: 360,),
+  ListingSubCategory(id: 'group_cooking_class', label: 'Cooking class', emoji: '🍳', group: 'find_your_people', sort: 370,),
   ListingSubCategory(id: 'astrologers', label: 'Astrologers', emoji: '🔮', group: 'book_their_time', sort: 410,),
   ListingSubCategory(id: 'teachers', label: 'Tutors & teachers', emoji: '📚', group: 'book_their_time', sort: 420,),
   ListingSubCategory(id: 'professors', label: 'Professors', emoji: '🎓', group: 'book_their_time', sort: 430,),
