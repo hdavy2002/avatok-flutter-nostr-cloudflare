@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {UPI_APPS,upiAppHref,upiPlatform} from '../../src/islands/checkout/upiAppLinks';
 const upi='upi://pay?pa=synthetic%40example&pn=AvaTOK&am=1.00&cu=INR&tn=AvaTOK+test+payment';
 const intentId='96a2a16d-aee0-409f-a8b1-673f98315bda';
-function pending(overrides:Record<string,unknown>={}){return {intent_id:intentId,status:'pending',matching_mode:'bank_reference',reason_code:null,amount_paise:100,currency:'INR',expires_at:Date.now()+120000,recover_until:Date.now()+1800000,reference_revision:0,upi_url:upi,...overrides}}
+function pending(overrides:Record<string,unknown>={}){return {intent_id:intentId,status:'pending',matching_mode:'bank_reference',reason_code:null,amount_paise:100,currency:'INR',created_at:Date.now(),expires_at:Date.now()+120000,recover_until:Date.now()+1800000,reference_revision:0,upi_url:upi,...overrides}}
 async function route(page:any,handler?:any){await page.route('**/api/pay/hdfc-sms/public/**',handler??(r=>r.fulfill({json:{ok:true,enabled:true,intent:pending()}})))}
 test('public visitor receives QR immediately and is asked for the payment reference',async({page})=>{
  const calls:any[]=[];
