@@ -163,7 +163,8 @@ export async function createPublicIntent(db:D1Database,uid:string,key:string,vpa
 export async function saveReference(db:D1Database,i:Intent,reference:string,revision:number,now=Date.now()):Promise<boolean> {
  await db.prepare(`UPDATE hdfc_sms_smoke_intents SET payer_reference=?3,reference_revision=reference_revision+1,updated_at=?5
  WHERE intent_id=?1 AND uid=?2 AND payer_vpa IS NULL AND reference_revision=?4 AND payer_reference IS NOT ?3 AND superseded_by IS NULL AND recover_until>=?5
- AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE claimed_intent_id=?1)`).bind(i.intent_id,i.uid,reference,revision,now).run();
+  AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE claimed_intent_id=?1)
+  AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE bank_reference=?3 AND claimed_intent_id IS NOT NULL AND claimed_intent_id<>?1)`).bind(i.intent_id,i.uid,reference,revision,now).run();
  return (await readIntent(db,i.intent_id,i.uid))?.payer_reference===reference;
 }
 /** Both association modes share the same atomic authority and ambiguity count.
