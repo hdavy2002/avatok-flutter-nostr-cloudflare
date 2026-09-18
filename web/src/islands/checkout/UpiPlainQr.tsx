@@ -3,18 +3,20 @@ import QRCode from 'qrcode';
 import { API_BASE } from '../../lib/config';
 import { UPI_APPS, upiAppHref, upiPlatform } from './upiAppLinks';
 import type { UpiPlatform } from './upiAppLinks';
-import { paymentAmount, UpiPublicController } from './upiPublicController';
+import { initialPaymentState, paymentAmount, UpiPublicController } from './upiPublicController';
 import type { PublicPaymentState } from './upiPublicController';
 
 export default function UpiPlainQr() {
   const controller = useRef<UpiPublicController | null>(null);
-  const [state, setState] = useState<PublicPaymentState>({intent: null, enabled: false, busy: true, error: ''});
+  const [state, setState] = useState<PublicPaymentState>(initialPaymentState);
   const [qr, setQr] = useState<string | null>(null);
   const [qrError, setQrError] = useState('');
   const [platform, setPlatform] = useState<UpiPlatform>('desktop');
   const [now, setNow] = useState(Date.now);
   const [showRecovery, setShowRecovery] = useState(false);
   const [reference, setReference] = useState('');
+  const [vpa, setVpa] = useState('');
+  const [phone, setPhone] = useState('');
   const intent = state.intent;
   const confirmed = intent?.status === 'confirmed';
   const expired = Boolean(intent && (intent.status === 'expired' || intent.expires_at <= now));
@@ -41,9 +43,8 @@ export default function UpiPlainQr() {
       controller.current = null;
     };
   }, []);
-  useEffect(() => {
-    if (intent?.reason_code === 'reference_required') setShowRecovery(true);
-  }, [intent?.reason_code]);
+  useEffect(() => { setVpa(state.payer_vpa); setPhone(state.payer_phone); }, [state.payer_vpa, state.payer_phone]);
+  useEffect(() => { setShowRecovery(false); setReference(''); }, [intent?.intent_id]);
   useEffect(() => {
     setNow(Date.now());
     if (!intent || confirmed) return;
@@ -67,16 +68,32 @@ export default function UpiPlainQr() {
     <p style={{fontSize: 24, fontWeight: 700}}>{amount}</p>
     <p>Payment reference</p>
     <p style={{overflowWrap: 'anywhere'}}>{intent.intent_id}</p>
+    {state.error && <p role="alert">{state.error}</p>}
+    <button type="button" onClick={() => controller.current?.anotherPayment()}>Make another payment</button>
   </section>;
 
   return <section style={sectionStyle}>
-    <h1 style={{fontSize: 28}}>{payable ? 'Scan to pay ' + amount : intent ? 'Waiting for payment confirmation' : 'Preparing your payment'}</h1>
+    <h1 style={{fontSize: 28}}>{payable ? 'Scan to pay ' + amount : intent ? 'Waiting for payment confirmation' : state.started ? 'Preparing your payment' : 'Pay with UPI'}</h1>
+    {!intent && !state.started && <form onSubmit={event => {event.preventDefault(); void controller.current?.generate(vpa, phone);}}
+      style={{textAlign: 'left'}}>
+      <p>We use your UPI ID and phone number to identify your payment and generate your QR.</p>
+      <label htmlFor="payer-vpa">UPI ID (VPA)</label>
+      <input id="payer-vpa" value={vpa} onChange={event => setVpa(event.target.value)} required
+        autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={280} style={inputStyle} />
+      <p style={{fontSize: 14}}>Use the UPI ID of the account you will pay from.</p>
+      <label htmlFor="payer-phone">Phone number</label>
+      <input id="payer-phone" type="tel" value={phone} onChange={event => setPhone(event.target.value)} required
+        autoComplete="tel" maxLength={24} style={inputStyle} />
+      <p style={{fontSize: 14}}>10-digit Indian mobile number, or include your country code.</p>
+      <button disabled={state.busy}>Generate QR</button>
+    </form>}
+    {state.started && state.payer_vpa && <p style={{overflowWrap: 'anywhere'}}>Pay using {state.payer_vpa}. Use the same UPI account in your payment app.</p>}
     {intent && <p role="status" aria-live="polite">
       {!recoverable ? 'The payment recovery window has ended. Keep your receipt for support. Do not pay again.'
         : expired ? 'The QR expired. If you already paid, we will keep checking this payment. Do not pay again.'
         : intent.status === 'review_pending' ? 'Your payment needs review. Keep your receipt and do not pay again.'
         : intent.reference_revision > 0 ? 'Checking your payment receipt. Do not pay again.'
-        : 'Waiting for your payment. This page will update when the bank receipt is verified.'}
+        : 'Waiting for your payment. This page will update automatically when the bank SMS confirms your payment.'}
     </p>}
     {payable && qr && <img id="payment-qr" src={qr} alt="UPI payment QR code" width={320} height={320} style={{maxWidth: '100%', height: 'auto'}} />}
     {payable && !qr && !qrError && <p role="status">Loading QR…</p>}
@@ -101,11 +118,12 @@ export default function UpiPlainQr() {
     {intent && !payable && <p>Amount: {amount}</p>}
     {intent && !state.enabled && <p>Payments are temporarily unavailable. If you already paid, keep your receipt and do not pay again.</p>}
     {recoverable && <>
+      {intent?.matching_mode === 'bank_reference' && <>
       <button type="button" onClick={() => setShowRecovery(value => !value)} aria-expanded={showRecovery}
         aria-controls="payment-recovery">Paid but still waiting?</button>
       {showRecovery && <form id="payment-recovery" onSubmit={event => {event.preventDefault(); void controller.current?.claim(reference);}}
         style={{marginTop: 16, textAlign: 'left'}}>
-        <p>Enter the 12-digit UPI transaction reference to confirm this payment.</p>
+        <p>Optional recovery: enter your 12-digit UPI transaction reference if automatic confirmation is still missing.</p>
         <label htmlFor="payment-reference">UPI transaction reference (UTR)</label>
         <input id="payment-reference" value={reference} onChange={event => setReference(event.target.value)} required
           inputMode="numeric" pattern="[0-9]{12}" minLength={12} maxLength={12} autoComplete="off"
@@ -113,12 +131,15 @@ export default function UpiPlainQr() {
         <button disabled={state.busy || !/^[0-9]{12}$/.test(reference)}>Check payment reference</button>
         <p>Entering a reference does not confirm payment. We verify it against the bank receipt.</p>
       </form>}
+      </>}
       <p><button type="button" disabled={state.busy} onClick={() => void controller.current?.refresh(true)}>Check again</button></p>
     </>}
     {intent && !recoverable && <p>The recovery window has ended. Keep your receipt and payment reference for support. Do not pay again.</p>}
     {intent && <p style={{fontSize: 12, overflowWrap: 'anywhere'}}>Payment reference: {intent.intent_id}</p>}
-    {!intent && state.error && <button disabled={state.busy} onClick={() => void controller.current?.start()}>Try again</button>}
+    {!intent && state.started && state.error && <button disabled={state.busy} onClick={() => void controller.current?.refresh()}>Try again</button>}
   </section>;
 }
 
 const sectionStyle = {textAlign: 'center', width: 'min(100%, 360px)', fontFamily: 'system-ui, sans-serif'} as const;
+
+const inputStyle = {display: 'block', width: '100%', boxSizing: 'border-box', margin: '8px 0', padding: 10} as const;

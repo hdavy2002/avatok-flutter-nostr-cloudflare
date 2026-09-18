@@ -77,12 +77,12 @@ export async function createCustomerTestBooking(db: D1Database, inviteId: string
  if (existing) return existing;
  const intentId = crypto.randomUUID(), bookingId = crypto.randomUUID();
  await db.batch([
-  db.prepare('UPDATE hdfc_sms_smoke_intents SET active=0,updated_at=? WHERE receiving_account_key=? AND active=1 AND expires_at<=?').bind(now, p.account, now),
+  db.prepare('UPDATE hdfc_sms_smoke_intents SET active=0,updated_at=? WHERE receiving_account_key=? AND payer_vpa IS NULL AND active=1 AND expires_at<=?').bind(now, p.account, now),
   db.prepare(`INSERT INTO hdfc_sms_smoke_intents(intent_id,uid,request_key,receiving_account_key,created_at,expires_at,recover_until,updated_at)
    SELECT ?1,?2,?3,?4,?5,?6,?7,?5
    WHERE EXISTS(SELECT 1 FROM hdfc_sms_test_invites WHERE invite_id=?8 AND bound_uid=?2 AND expires_at>?5)
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_test_bookings WHERE invite_id=?8)
-   AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND active=1)
+   AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND payer_vpa IS NULL AND active=1)
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?2 AND request_key=?3)`)
    .bind(intentId, uid, key, p.account, now, now + 1800000, now + 88200000, inviteId),
   db.prepare(`INSERT INTO hdfc_sms_test_bookings(booking_id,invite_id,intent_id,uid,service_id,created_at)

@@ -5,7 +5,7 @@ import { json } from '../util';
 import { rateLimit } from '../money';
 import { requireAdmin } from './admin_money';
 import { hmacSha256Hex,sha256Hex,constantTimeEqual } from '../lib/payments/types';
-import { SMOKE_LISTING,UUID,policy,currentIntent,readIntent,legacyIntent,publicIntent,createIntent,saveReference,normalizeReference,parseReference,parseAmountPaise,isHdfcSender,hasAccountSuffix,matchIntent,boundedBody,timestampInterval,storeEvidence } from '../lib/hdfc_sms_smoke';
+import { SMOKE_LISTING,UUID,policy,currentIntent,readIntent,legacyIntent,publicIntent,createIntent,saveReference,normalizeReference,parseReference,parsePayerVpa,receiptCandidates,parseAmountPaise,isHdfcSender,hasAccountSuffix,matchIntent,boundedBody,timestampInterval,storeEvidence } from '../lib/hdfc_sms_smoke';
 export const UPI_SMOKE_TEST_LISTING_ID=SMOKE_LISTING;
 const failure=(error:string,status=503)=>json({error,retryable:status===503||status===429},status);
 async function limited(env:Env,bucket:string,max:number):Promise<Response|null>{
@@ -82,16 +82,16 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
   const p=await policy(env);if(!p.ready)return failure('schema_not_ready');
   if(!p.configured)return failure('configuration_incomplete');
   const throttle=await limited(env,`incoming:${device}`,120);if(throttle)return throttle;
-  const amount=parseAmountPaise(message),reference=parseReference(message);
+  const amount=parseAmountPaise(message),reference=parseReference(message),payerVpa=parsePayerVpa(message);
   // Never retain unrelated raw messages, OTPs or password notifications.
   if(!isHdfcSender(sender)||!amount)return ack(null,'ignored','unmatched',!isHdfcSender(sender)?'sender_not_allowed':'not_supported_credit');
   const reason=!hasAccountSuffix(message,env.HDFC_SMS_ACCOUNT_SUFFIX??'')?'account_mismatch':window.start<p.cutover?'pre_cutover':window.start>now+60000?'future_receipt':!reference?'unsupported_reference':null;
   const db=metaDb(env);
-  let receipt=await storeEvidence(db,{message_hash:hash,receiving_account_key:p.account,bank_reference:reference,amount_paise:amount,received_at_ms:window.start,received_at_end_ms:window.end,ingested_at:now,disposition:reason?'review_required':'accepted',reason_code:reason,claimed_intent_id:null},{device,sender,message,received,nonce});
+  let receipt=await storeEvidence(db,{message_hash:hash,receiving_account_key:p.account,bank_reference:reference,payer_vpa:payerVpa,amount_paise:amount,received_at_ms:window.start,received_at_end_ms:window.end,ingested_at:now,disposition:reason?'review_required':'accepted',reason_code:reason,claimed_intent_id:null},{device,sender,message,received,nonce});
   // A nonce collision is not acknowledgement of an unstored message.
   if(!receipt)return failure('nonce_conflict');
   if(receipt.disposition==='accepted'&&!receipt.claimed_intent_id&&p.enabled&&receipt.bank_reference){
-   const candidates=await db.prepare('SELECT intent_id,uid FROM hdfc_sms_smoke_intents WHERE receiving_account_key=? AND payer_reference=? AND superseded_by IS NULL AND recover_until>=? AND amount_paise=? AND created_at<=? AND expires_at>=?').bind(p.account,receipt.bank_reference,now,receipt.amount_paise,receipt.received_at_end_ms,receipt.received_at_ms).all<{intent_id:string;uid:string}>();
+   const candidates=await receiptCandidates(db,receipt.message_hash,now);
    // The shared SQL helper rejects all ambiguous eligible pairs atomically.
    if(candidates.results.length){const i=candidates.results[0];await matchIntent(db,i.intent_id,i.uid,p,now);}
    receipt=await db.prepare('SELECT * FROM hdfc_sms_smoke_receipts WHERE message_hash=?').bind(receipt.message_hash).first<typeof receipt>();
@@ -100,7 +100,7 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
   if(receipt.disposition==='legacy')return ack(receipt.message_hash,'review_pending','unmatched','legacy_unverified');
   if(receipt.disposition!=='accepted')return ack(receipt.message_hash,'review_pending','unmatched',receipt.reason_code);
   if(receipt.claimed_intent_id)return ack(receipt.message_hash,'accepted','confirmed',null);
-  const unassigned=await db.prepare(`SELECT intent_id FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?1 AND payer_reference IS NULL AND superseded_by IS NULL AND recover_until>=?2
+  const unassigned=await db.prepare(`SELECT intent_id FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?1 AND payer_vpa IS NULL AND payer_reference IS NULL AND superseded_by IS NULL AND recover_until>=?2
    AND amount_paise=?3 AND created_at<=?4 AND expires_at>=?5 AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE claimed_intent_id=hdfc_sms_smoke_intents.intent_id) LIMIT 1`).bind(p.account,now,receipt.amount_paise,receipt.received_at_end_ms,receipt.received_at_ms).first();
   return ack(receipt.message_hash,'accepted',unassigned?'awaiting_reference':'unmatched',unassigned?'reference_required':'no_match');
  }catch{return failure('receipt_storage_or_match_unavailable');}
