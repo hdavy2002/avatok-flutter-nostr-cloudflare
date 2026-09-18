@@ -4,7 +4,7 @@ import { metaDb } from '../db/shard';
 import { json } from '../util';
 import { rateLimit } from '../money';
 import { sha256Hex } from '../lib/payments/types';
-import { UUID, boundedBody, policy, publicIntent, createIntent, readIntent, saveReference, normalizeReference, matchIntent, type Intent, type Policy } from '../lib/hdfc_sms_smoke';
+import { UUID, boundedBody, policy, publicIntent, createIntent, currentIntent, readIntent, saveReference, normalizeReference, matchIntent, type Intent, type Policy } from '../lib/hdfc_sms_smoke';
 
 const failure = (error: string, status = 503) => json({error, retryable: status === 503 || status === 429}, status);
 const uuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
@@ -64,6 +64,11 @@ export const hdfcPublicOrder = scoped(async (req, env, uid) => {
   const intent = await readIntent(db, prior.intent_id, uid);
   if (intent) return json(envelope(intent, env, p));
  }
+ // A browser handoff can lose the locally stored intent id while retaining the
+ // same capability bearer. Recover that capability's existing attempt instead
+ // of trying to create a second payment and returning intent_busy forever.
+ const owned = await currentIntent(db, uid);
+ if (owned) return json(envelope(owned, env, p));
  if (!p.enabled) return failure(p.reason ?? 'rail_paused');
  const intent = await createIntent(db, uid, body.request_key, null, p);
  if (intent) return json(envelope(intent, env, p));
