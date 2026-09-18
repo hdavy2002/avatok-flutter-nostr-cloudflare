@@ -2,9 +2,9 @@
 /*
  * LegalStatus — the single source of truth for who operates avaTOK.
  *
- * This component is the single source of truth for the registered Delaware
- * corporation behind avaTOK. Every legal page imports it so the disclosure
- * stays consistent across the site.
+ * This component is the single source of truth for the companies behind
+ * avaTOK. Every legal page imports it so the disclosure stays consistent
+ * across the site.
  *
  * `variant`:
  *   'full'  — who we are + current status + address. Use on terms, privacy,
@@ -38,13 +38,18 @@ const { variant = 'full', heading } = Astro.props;
       <p>
         <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong> <ui-copy style="display:contents" data-i18n="web-common.b47db0c3cd5c3c93">avaTOK is the platform brand of</ui-copy>
         <strong>{ORG.legalName}</strong><ui-copy style="display:contents" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation founded by
-        American and Indian founders.</ui-copy>
+        American and Indian founders, and the global headquarters of avaTOK.</ui-copy>
       </p>
       <p style="margin-top:12px">
         <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong> {ORG.legalName} <ui-copy style="display:contents" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.
         The public registered-agent address is</ui-copy> {ORG.address.street}, {ORG.address.locality},
         {ORG.address.region} {ORG.address.postalCode}<ui-copy style="display:contents" data-i18n="web-common.12a81824123d9b3a">. For general and investor enquiries,
         write to</ui-copy> <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
+      </p>
+      <p style="margin-top:12px">
+        <strong data-i18n="web-common.4a9f7bc8b5d34e21">Our Indian operating entity.</strong> {ORG.indianEntity.name}
+        <ui-copy style="display:contents" data-i18n="web-common.7b8c6d5e4f3a2910">is avaTOK's Indian operating entity, based in Mumbai. It leads Indian legal,
+        regulatory, customer-support and local operational matters. Its registered-office details will be published once finalized.</ui-copy>
       </p>
 
       {variant === 'full' && (

@@ -37,6 +37,14 @@ export interface ParentOrg {
   country: string;
 }
 
+export interface OperatingEntity {
+  /** Indian operating entity; publish an address only once it is finalized. */
+  name: string;
+  locality: string;
+  country: string;
+  registeredOffice: string | null;
+}
+
 export interface SameAs {
   youtube: string | null;
   /** Company Page (not a personal profile — founders stay anonymous, [WEB-SEO-7]). */
@@ -71,6 +79,7 @@ export interface OrgConstants {
   email: string;
   address: PostalAddress;
   parent: ParentOrg;
+  indianEntity: OperatingEntity;
   sameAs: SameAs;
   languages: string[];
   contactUrl: string;
@@ -105,6 +114,12 @@ export const ORG: OrgConstants = {
     name: 'Ava Global International, Inc.',
     region: 'Delaware',
     country: 'US',
+  },
+  indianEntity: {
+    name: 'Ave Maria International Pvt Ltd',
+    locality: 'Mumbai',
+    country: 'IN',
+    registeredOffice: null,
   },
   sameAs: {
     youtube: 'https://www.youtube.com/@avatok',
