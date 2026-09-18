@@ -116,10 +116,12 @@ export async function legacyIntent(db:D1Database,id:string,uid:string) {
  const i=await db.prepare('SELECT intent_id,status,amount_paise,expires_at,updated_at,commercial_order_id,listing_id FROM hdfc_sms_payment_intents WHERE intent_id=? AND uid=?').bind(id,uid).first<{intent_id:string;status:string;amount_paise:number;expires_at:number;updated_at:number;commercial_order_id:string|null;listing_id:string}>();
  return i?{protocol_version:1,intent_id:i.intent_id,status:i.status,reason_code:'legacy_unverified',amount_paise:i.amount_paise,expires_at:i.expires_at,recover_until:null,updated_at:i.updated_at,claim_submitted:false,reference_revision:0,smoke_test:i.listing_id===SMOKE_LISTING,order_id:i.listing_id===SMOKE_LISTING?null:i.commercial_order_id}:null;
 }
-export async function createIntent(db:D1Database,uid:string,key:string,replace:string|null,p:Policy,now=Date.now()):Promise<Intent|null> {
+export async function createIntent(db:D1Database,uid:string,key:string,replace:string|null,p:Policy,now=Date.now(),allowConcurrent=false):Promise<Intent|null> {
  const prior=await db.prepare('SELECT intent_id FROM hdfc_sms_smoke_intents WHERE uid=? AND request_key=?').bind(uid,key).first<{intent_id:string}>();
  if(prior)return readIntent(db,prior.intent_id,uid);
- const active=await db.prepare('SELECT intent_id,uid FROM hdfc_sms_smoke_intents WHERE receiving_account_key=? AND payer_vpa IS NULL AND active=1 AND expires_at>?').bind(p.account,now).first<{intent_id:string;uid:string}>();
+ const active=allowConcurrent
+  ? await db.prepare('SELECT intent_id,uid FROM hdfc_sms_smoke_intents WHERE receiving_account_key=? AND payer_vpa IS NULL AND uid=? AND active=1 AND expires_at>?').bind(p.account,uid,now).first<{intent_id:string;uid:string}>()
+  : await db.prepare('SELECT intent_id,uid FROM hdfc_sms_smoke_intents WHERE receiving_account_key=? AND payer_vpa IS NULL AND active=1 AND expires_at>?').bind(p.account,now).first<{intent_id:string;uid:string}>();
  if(active&&!replace)return active.uid===uid?readIntent(db,active.intent_id,uid):null;
  if(active&&(active.uid!==uid||replace!==active.intent_id))return null;
  const id=crypto.randomUUID();
@@ -130,9 +132,10 @@ export async function createIntent(db:D1Database,uid:string,key:string,replace:s
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?5 AND payer_vpa IS NULL AND active=1 AND intent_id<>?3)
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?4 AND request_key=?6)`).bind(id,now,replace,uid,p.account,key),
   db.prepare(`INSERT INTO hdfc_sms_smoke_intents(intent_id,uid,request_key,receiving_account_key,created_at,expires_at,recover_until,updated_at)
-   SELECT ?1,?2,?3,?4,?5,?6,?7,?5 WHERE NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND payer_vpa IS NULL AND active=1)
+   SELECT ?1,?2,?3,?4,?5,?6,?7,?5
+   WHERE (?8=1 OR NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?4 AND payer_vpa IS NULL AND active=1))
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE uid=?2 AND request_key=?3)
-   AND (?8 IS NULL OR EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE intent_id=?8 AND uid=?2 AND superseded_by=?1))`).bind(id,uid,key,p.account,now,now+1800000,now+88200000,replace),
+   AND (?9 IS NULL OR EXISTS(SELECT 1 FROM hdfc_sms_smoke_intents WHERE intent_id=?9 AND uid=?2 AND superseded_by=?1))`).bind(id,uid,key,p.account,now,now+1800000,now+88200000,allowConcurrent?1:0,replace),
  ]);
  const saved=await db.prepare('SELECT intent_id FROM hdfc_sms_smoke_intents WHERE uid=? AND request_key=?').bind(uid,key).first<{intent_id:string}>();
  return saved?readIntent(db,saved.intent_id,uid):null;

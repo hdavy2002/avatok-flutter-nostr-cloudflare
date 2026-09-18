@@ -70,7 +70,7 @@ export const hdfcPublicOrder = scoped(async (req, env, uid) => {
  const owned = await currentIntent(db, uid);
  if (owned && owned.claimed_at === null && owned.superseded_by === null) return json(envelope(owned, env, p));
  if (!p.enabled) return failure(p.reason ?? 'rail_paused');
- const intent = await createIntent(db, uid, body.request_key, null, p);
+ const intent = await createIntent(db, uid, body.request_key, null, p, Date.now(), true);
  if (intent) return json(envelope(intent, env, p));
  return failure('intent_busy', 409);
 });
