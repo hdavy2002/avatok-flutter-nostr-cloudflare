@@ -218,11 +218,19 @@ const scheduleState = scheduleStateOf(listing);
 const showEnded = scheduleState === 'ended' || scheduleState === 'expired';
 const showCancelled = scheduleState === 'cancelled';
 const showStarting = scheduleState === 'starting' && !isLive;
-const bookingOpen = listing.booking_open ?? !(showEnded || showCancelled);
-const closedTitle = showCancelled ? 'This show was cancelled.'
+// [WEB-GATEWAY-E 2026-09-18] A badged example is never bookable, at any point
+// in its schedule — the server refuses every checkout/hold/booking entry
+// point for it with 409 `example_listing` regardless of what `booking_open`
+// says, so the CTA area must agree unconditionally rather than trust it.
+const isExampleListing = Boolean(listing.is_example);
+const bookingOpen = isExampleListing ? false : (listing.booking_open ?? !(showEnded || showCancelled));
+const closedTitle = isExampleListing ? 'Example listing'
+  : showCancelled ? 'This show was cancelled.'
   : showEnded ? 'This show has ended.'
     : 'Booking has closed.';
-const closedLine = showCancelled
+const closedLine = isExampleListing
+  ? 'This shows what creators will offer on avaTOK. Booking opens at launch.'
+  : showCancelled
   ? 'Everyone who booked is refunded automatically — nothing to do on your side.'
   : showEnded
     ? 'If the host did not go live, everyone who booked is refunded automatically.'
@@ -521,7 +529,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   {(showEnded || showCancelled || showStarting || !bookingOpen) && !isLive ? (
     <div class="ticker ticker--countdown">
       <div class="ticker__inner">
-        <span class="ticker__lead"><span class="ticker__dot"></span>{showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
+        <span class="ticker__lead"><span class="ticker__dot"></span>{isExampleListing ? 'EXAMPLE LISTING — BOOKING OPENS AT LAUNCH' : showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
         {listing.starts_at && <span class="ticker__sub">{timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' })}</span>}
       </div>
     </div>
@@ -818,7 +826,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 <div class="show-closed" role="status">
                   <p class="show-closed__title">{closedTitle}</p>
                   <p class="show-closed__line">{closedLine}</p>
-                  {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
+                  {/* [WEB-GATEWAY-E 2026-09-18] No price checkout link here — a disabled
+                      button, never an <a>, so there is nothing to click through to a
+                      purchase. "More from <host>" is skipped for an example: the host
+                      is the official avaTOK account, not a creator to browse. */}
+                  {isExampleListing
+                    ? <button type="button" class="btn btn--cta btn--block show-closed__cta" disabled aria-disabled="true" style={`background:${ctaColor}; opacity:.55; cursor:not-allowed;`} data-i18n="web-l.9a1c4f6083b25d7e">Booking opens at launch</button>
+                    : hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
                   <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
                 </div>
               )}

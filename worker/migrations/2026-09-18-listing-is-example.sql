@@ -1,0 +1,24 @@
+-- [WEB-GATEWAY-E] Badged EXAMPLE listings for the payment-gateway reviewer.
+-- DB: avatok-meta (DB_META). ALTER only — mixing a CREATE in here would break
+-- scripts/d1_apply_alters.py, which parses ALTERs and ONLY ALTERs (see
+-- 2026-07-18-listings-taxonomy-columns.sql:70-75 for why that split is load-bearing).
+--
+-- `is_example=1` marks a listing as a non-bookable, non-payable sample owned by
+-- an official avaTOK account, published purely so a reviewer (or a visitor
+-- before real creators onboard) can see what the marketplace sells. Every
+-- money/booking entry point (worker/src/routes/listings.ts bookListing,
+-- commercial_checkout.ts commercialHold/commercialCheckout, pay.ts
+-- payCreateOrder, cashfree.ts cashfreeCreateOrder) refuses these rows with 409
+-- `example_listing` BEFORE any ledger or gateway call, and every cron sweep
+-- that closes/expires/refunds listings by the clock (expireEndedEventListings,
+-- runCommercialOrphanNoShowSweep) skips them outright.
+--
+-- APPLY (idempotent, resumable, staging by default, prod fail-closed):
+--   python3 scripts/d1_apply_alters.py worker/migrations/2026-09-18-listing-is-example.sql --binding DB_META --dry-run
+--   python3 scripts/d1_apply_alters.py worker/migrations/2026-09-18-listing-is-example.sql --binding DB_META
+--   ALLOW_PROD=1 python3 scripts/d1_apply_alters.py worker/migrations/2026-09-18-listing-is-example.sql --binding DB_META
+--
+-- NOT EXECUTED BY CREATING THIS FILE. Not applied by this change — see the
+-- report for the exact ordered rollout.
+
+ALTER TABLE listings ADD COLUMN is_example INTEGER NOT NULL DEFAULT 0; -- 1 = badged sample, never bookable/payable

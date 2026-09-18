@@ -484,6 +484,16 @@ export function ListingTile({
 
           {/* [LIST-TRUST-1 §H.5] The favourite heart — top-right, per the comp. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+            {/* [WEB-GATEWAY-E 2026-09-18] Badged sample — same sticker shape as
+                the 18+ chip below, so a new badge type reads as "part of the
+                design system" rather than a bolt-on warning. */}
+            {c.isExample && (
+              <span style={{
+                fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+                background: CREAM, color: INK, border: `1.5px solid ${INK}`,
+                borderRadius: 16, padding: '5px 9px', flex: 'none', letterSpacing: '.06em', // [UI-COMFORTAA-1] chip tier
+              }}><UiText id="web-common.d18f4dbe0e7f2a1c" source="EXAMPLE" /></span>
+            )}
             {c.adultsOnly && (
               <span style={{
                 fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',

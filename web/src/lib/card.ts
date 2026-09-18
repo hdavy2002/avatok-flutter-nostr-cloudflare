@@ -170,6 +170,8 @@ export function toCardView(card: Card): CardView {
     location: (card.location ?? null) as string | null,
     country: card.country ?? null,
     adultsOnly: Boolean(card.adults_only),
+    // [WEB-GATEWAY-E]
+    isExample: Boolean(card.is_example),
     // null vs 0 is load-bearing: "sold out" and "we could not count" must not render
     // the same way on a card someone is deciding to buy from.
     seatsLeft: card.seats_left == null ? null : num(card.seats_left),

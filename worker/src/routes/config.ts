@@ -1913,6 +1913,21 @@ export interface PlatformConfig {
   // and the read shape. Boolean -> NOT in numericKeys.
   listingMaxPerBookingEnabled: boolean;
 
+  // [WEB-GATEWAY-E 2026-09-18] Owner switch for the badged EXAMPLE listings
+  // (`listings.is_example=1`) — 8 non-bookable sample listings, owned by an
+  // official account, published so a payment-gateway reviewer (and any visitor
+  // before real creators onboard) can see what the marketplace sells. This
+  // flag does NOT gate the money-safety refusal — every checkout/booking/hold
+  // entry point refuses an is_example row with 409 `example_listing` no matter
+  // what this flag says, because a launch-day operator error must never turn
+  // an example into something payable. It only gates VISIBILITY: with this
+  // false, exploreBrowse/exploreSearch never return is_example rows even when
+  // the caller sends `?examples=1`, so the owner can hide every sample in one
+  // place at launch without deleting the seeded rows. Default TRUE — see the
+  // brief's rollout note in Specs/WEBGW-E-REPORT.md. Boolean → NOT in
+  // numericKeys.
+  exampleListingsEnabled: boolean;
+
   // [FREE-ENTRY-GATE-1 2026-09-04] free_entry listings (freeSessionsEnabled)
   // are metered by a creator-declared attendee cap with no mid-session
   // cut-off (lib/free_session.ts checks headcount only at admission and
@@ -2640,6 +2655,10 @@ const DEFAULTS: PlatformConfig = {
   // comment above. Flip true in KV to bring the per-person cap back:
   //   ALLOW_PROD=1 scripts/flags.sh set listingMaxPerBookingEnabled=true
   listingMaxPerBookingEnabled: false,
+  // [WEB-GATEWAY-E 2026-09-18] Visibility switch for badged example listings —
+  // see the interface comment above. Flip false in KV to hide every example at
+  // launch: ALLOW_PROD=1 scripts/flags.sh set exampleListingsEnabled=false
+  exampleListingsEnabled: true,
   // [FREE-ENTRY-GATE-1 2026-09-04] fail closed — see interface comment above.
   freeEntryAllowlistOnly: true,
   // [AGENT-LIVE-1] ship dark — flip in KV per Specs/SPEC-2026-09-12-
