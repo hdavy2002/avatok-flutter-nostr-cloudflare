@@ -124,11 +124,14 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
 
   const db = metaDb(env);
   const listing = await db.prepare(
-    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity,currency_display,attrs,free_entry FROM listings WHERE id=?1",
+    "SELECT id,creator_id,kind,title,price,status,starts_at,duration_min,capacity,currency_display,attrs,free_entry,is_example FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing || !["published", "live"].includes(String(listing.status))) {
     return json({ error: "listing not available" }, 404);
   }
+  // [WEB-GATEWAY-E 2026-09-18] A badged example never gets a Razorpay/HDFC/etc.
+  // gateway order — refused before the gateway_orders row or any adapter call.
+  if (listing.is_example) return json({ error: "example_listing" }, 409);
   if (listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
 
   const kind = listing.kind === "live_event" ? "live_event" : "consult_1to1";

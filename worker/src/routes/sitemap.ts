@@ -24,6 +24,7 @@ export async function sitemapListings(env: Env): Promise<Response> {
     `SELECT l.id, u.handle AS handle, l.slug, l.updated_at
        FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
       WHERE l.status IN ('published','live')
+        AND l.is_example=0 -- [WEB-GATEWAY-E] badged examples carry their own noindex meta instead
         AND (l.expires_at IS NULL OR l.expires_at > ?1)
         AND ${notEndedSql("l", "?1")} -- [LISTING-EXPIRY-1] no ended shows in the sitemap
       ORDER BY l.updated_at DESC

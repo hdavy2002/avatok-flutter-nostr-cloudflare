@@ -875,6 +875,8 @@ export async function runCommercialOrphanNoShowSweep(
   const authorities = await loadAuthorityRows(env,
     `o.status IN ('held','free')
       AND l.status <> 'live'
+      AND l.is_example=0 -- [WEB-GATEWAY-E 2026-09-18] belt-and-suspenders: a badged
+                          -- example can never have an order, but never sweep one anyway
       AND NOT EXISTS (SELECT 1 FROM commercial_lifecycle_operations op
                        WHERE op.order_id=o.id AND op.operation_type='cancel')
       AND (

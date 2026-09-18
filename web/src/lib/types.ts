@@ -84,6 +84,14 @@ export interface Card {
   /** Comma-separated, e.g. "Hindi,English". */
   spoken_lang?: string | null;
   adults_only?: boolean;
+  /**
+   * [WEB-GATEWAY-E 2026-09-18] A badged, non-bookable sample listing owned by
+   * an official avaTOK account — shown so a visitor (and a payment-gateway
+   * reviewer) can see what the marketplace sells before real creators
+   * onboard. Never renders a real checkout/booking CTA. Optional because a
+   * client built before the 2026-09-18 worker deploy will not see it.
+   */
+  is_example?: boolean;
   favorited?: boolean;
   /** How the price should read: per_minute | per_hour | per_month | from | asking | none. */
   price_semantics?: string | null;
@@ -273,6 +281,8 @@ export interface CardView {
   location: string | null;
   country: string | null;
   adultsOnly: boolean;
+  /** [WEB-GATEWAY-E] See Card.is_example. */
+  isExample: boolean;
   seatsLeft: number | null;
   watching: number | null;
   status: string | null;
