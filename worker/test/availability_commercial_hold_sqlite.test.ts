@@ -62,7 +62,8 @@ function setup() {
     CREATE TABLE listings (
       id TEXT PRIMARY KEY, creator_id TEXT NOT NULL, kind TEXT NOT NULL,
       title TEXT NOT NULL, status TEXT NOT NULL, duration_min INTEGER,
-      starts_at INTEGER, ends_at INTEGER, attrs TEXT, price INTEGER DEFAULT 0
+      starts_at INTEGER, ends_at INTEGER, attrs TEXT, price INTEGER DEFAULT 0,
+      is_example INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE listing_slots (
       id TEXT PRIMARY KEY, listing_id TEXT NOT NULL, starts_at INTEGER NOT NULL,

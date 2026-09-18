@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { exampleFilter } from "../src/routes/listings";
+import { exampleFilter, hiddenListingFilter } from "../src/routes/listings";
 import type { PlatformConfig } from "../src/routes/config";
 
 const root = resolve(import.meta.dirname, "..");
@@ -12,6 +12,7 @@ const cashfreeRoute = readFileSync(resolve(root, "src/routes/cashfree.ts"), "utf
 const lifecycleRoute = readFileSync(resolve(root, "src/routes/commercial_lifecycle.ts"), "utf8");
 const sitemapRoute = readFileSync(resolve(root, "src/routes/sitemap.ts"), "utf8");
 const configRoute = readFileSync(resolve(root, "src/routes/config.ts"), "utf8");
+const liveRoute = readFileSync(resolve(root, "src/routes/live.ts"), "utf8");
 const migration = readFileSync(resolve(root, "migrations/2026-09-18-listing-is-example.sql"), "utf8");
 
 function cfg(overrides: Partial<PlatformConfig> = {}): PlatformConfig {
@@ -120,5 +121,58 @@ describe("[WEB-GATEWAY-E] badged example listings", () => {
   it("ships the migration unapplied, additive, idempotent-tooling-friendly", () => {
     expect(migration).toContain("ALTER TABLE listings ADD COLUMN is_example INTEGER NOT NULL DEFAULT 0;");
     expect(migration).not.toContain("CREATE TABLE");
+  });
+});
+
+describe("[WEB-GATEWAY-FIX1] closing the remaining example-listing gaps", () => {
+  it("refuses a live donation before the donation() ledger call", () => {
+    const fn = liveRoute.slice(liveRoute.indexOf("export async function liveDonate"), liveRoute.indexOf("export async function liveMod"));
+    expect(fn).toContain('if (l.is_example) return json({ error: "example_listing" }, 409);');
+    const guardAt = fn.indexOf("example_listing");
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(fn.indexOf("await donation("));
+  });
+
+  it("loadListing selects is_example so liveDonate's guard has data to check", () => {
+    const fn = liveRoute.slice(liveRoute.indexOf("async function loadListing"), liveRoute.indexOf("export async function liveStart"));
+    expect(fn).toContain("is_example");
+  });
+
+  it("applies exampleFilter and hiddenListingFilter to the creator profile listings query", () => {
+    const fn = listingsRoute.slice(listingsRoute.indexOf("export async function getCreator"), listingsRoute.length);
+    expect(fn).toContain("exampleFilter(req, await readConfig(env), creatorWhere)");
+    expect(fn).toContain("hiddenListingFilter(creatorWhere)");
+  });
+
+  describe("hiddenListingFilter (attrs.hide_from_marketplace gate)", () => {
+    it("always pushes the json_extract fragment", () => {
+      const where: string[] = [];
+      hiddenListingFilter(where);
+      expect(where).toContain("COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0");
+    });
+  });
+
+  it("wires hiddenListingFilter into exploreBrowse", () => {
+    const fn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreBrowse"), listingsRoute.indexOf("export async function exploreLiveNow"));
+    expect(fn).toContain("hiddenListingFilter(where)");
+  });
+
+  it("wires hiddenListingFilter into exploreSearch", () => {
+    const fn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreSearch"), listingsRoute.indexOf("export async function getListing"));
+    expect(fn).toContain("hiddenListingFilter(where)");
+  });
+
+  it("wires hiddenListingFilter into sectionCountsFor", () => {
+    const fn = listingsRoute.slice(listingsRoute.indexOf("async function sectionCountsFor"), listingsRoute.indexOf("export async function exploreSearch"));
+    expect(fn).toContain("hiddenListingFilter(where)");
+  });
+
+  it("wires hiddenListingFilter into sitemapListings", () => {
+    expect(sitemapRoute).toContain("hiddenListingFilter(where)");
+  });
+
+  it("never touches getListing (listing detail) or the HDFC/gateway smoke routes", () => {
+    const fn = listingsRoute.slice(listingsRoute.indexOf("export async function getListing"), listingsRoute.indexOf("export async function getListing") + 800);
+    expect(fn).not.toContain("hiddenListingFilter");
   });
 });

@@ -3632,6 +3632,21 @@ export function exampleFilter(req: Request, config: PlatformConfig, where: strin
   if (!(wantsExamples && config.exampleListingsEnabled === true)) where.push("l.is_example=0");
 }
 
+/**
+ * [WEB-GATEWAY-FIX1] WHERE fragment honouring the pre-existing
+ * `attrs.hide_from_marketplace` flag (set e.g. by
+ * `worker/migrations/2026-09-17-upi-smoke-event.sql` on the production
+ * `avatok-upi-smoke-2026` smoke-test listing). Nothing read this flag before,
+ * so a listing marked hidden still surfaced on every browse/search/creator
+ * surface. Unconditional — unlike exampleFilter there is no opt-in param;
+ * a hidden listing stays hidden for everyone. Does NOT apply to the listing
+ * detail page (/api/listings/:id) or the HDFC smoke routes, which must keep
+ * resolving a hidden listing by direct id/link.
+ */
+export function hiddenListingFilter(where: string[]): void {
+  where.push("COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0");
+}
+
 /** WHERE fragment hiding listings from creators the (authed) caller blocked. */
 function blockFilter(uid: string | null, binds: unknown[], where: string[]): void {
   if (!uid) return;
@@ -3654,6 +3669,8 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // [WEB-GATEWAY-E 2026-09-18] Badged example listings only reach a caller that
   // explicitly asked for them — see exampleFilter's own doc comment.
   exampleFilter(req, await readConfig(env), where);
+  // [WEB-GATEWAY-FIX1] Listings marked hide_from_marketplace never reach browse.
+  hiddenListingFilter(where);
   // [AVA-MKT-VERT-1] §2.0 — the cross-vertical rule, on the main browse. Defaults to
   // commerce, so today's callers (which send no ?vertical) see today's rows.
   const vertical = verticalFilter(req, binds, where);
@@ -3740,6 +3757,8 @@ async function sectionCountsFor(env: Env, req: Request, uid: string | null): Pro
     // [WEB-GATEWAY-E 2026-09-18] Counts match the grid here too — a sidebar
     // chip must not advertise examples the grid itself is hiding.
     exampleFilter(req, await readConfig(env), where);
+    // [WEB-GATEWAY-FIX1] Same reasoning: a hidden listing must not inflate a count chip.
+    hiddenListingFilter(where);
     verticalFilter(req, binds, where);
     blockFilter(uid, binds, where);
     const rs = await metaSession(env).prepare(
@@ -3793,6 +3812,8 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   // [WEB-GATEWAY-E 2026-09-18] Same gate as exploreBrowse — a search hit on a
   // badged example must not reach a caller (the app) that never asked for one.
   exampleFilter(req, await readConfig(env), where);
+  // [WEB-GATEWAY-FIX1] Same gate as exploreBrowse for hide_from_marketplace.
+  hiddenListingFilter(where);
 
   // -------------------------------------------------------------------------
   // [AVA-MKT-VERT-1] §2.0 — "search (ftsSync included)" is vertical-scoped, and this
@@ -4094,9 +4115,18 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   // not surface the latter (that is the §2.6 case, not a tidiness one). Not named in the
   // spec's list, but "a filter on every query" is the rule and the same default applies.
   const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
+  // [WEB-GATEWAY-FIX1] Creator profile is a public read like explore/browse —
+  // apply the same example-listing and hide_from_marketplace gates so example
+  // rows and hidden listings don't leak to the Flutter app / web creator page
+  // via this route. examples=1 (web's getCreator) still opts back in.
+  const creatorWhere = [
+    "l.creator_id=?1", "l.vertical=?2", "l.status IN ('published','live')",
+    notEndedSql("l", "?3"),
+  ];
+  exampleFilter(req, await readConfig(env), creatorWhere);
+  hiddenListingFilter(creatorWhere);
   const ls = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 AND l.status IN ('published','live')
-        AND ${notEndedSql("l", "?3")}
+    `${CARD_SELECT} WHERE ${creatorWhere.join(" AND ")}
       ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC LIMIT 50`,
   ).bind(id, vertical, Date.now()).all();
   const lrows = (ls.results ?? []) as any[];
