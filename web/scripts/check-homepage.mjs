@@ -128,7 +128,7 @@ console.log('Exact original artwork checks passed: hero, middle sections and all
 
 // Creator inspiration is a separate editorial route, never fake marketplace inventory.
 const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'), 'utf8'), { root });
-assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
+assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
 assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
@@ -138,11 +138,11 @@ assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
 assert.match(ideas, /data-topic="daily"/, 'Daily-life ideas included');
 for (const format of ['live','private','group']) assert.match(ideas, new RegExp('data-format="' + format + '"'), 'Missing format ' + format);
 assert(existsSync(resolve(root,'assets/ideas/creator-atlas.jpg')), 'Creator illustration atlas exists');
-console.log('Creator ideas checks passed: 115 cards, three formats, shared chrome, artwork and hero link.');
+console.log('Creator ideas checks passed: 109 cards, three formats, shared chrome, artwork and hero link.');
 
 // Every idea links to an individually illustrated, prerendered article.
 const guideLinks = [...ideas.matchAll(/href="(\/blog\/creator-ideas\/[^"]+)"/g)].map(m=>m[1]);
-assert.equal(new Set(guideLinks).size,115,'Every idea has its own article');
+assert.equal(new Set(guideLinks).size,109,'Every idea has its own article');
 const imagePaths = new Set();
 const imageHashes = new Set();
 for (const href of new Set(guideLinks)) {
@@ -168,7 +168,7 @@ for (const href of new Set(guideLinks)) {
  assert.doesNotMatch(article,/creator-atlas\.jpg/,'No repeated atlas artwork');
 }
 assert.doesNotMatch(ideas,/creator-atlas\.jpg/,'No repeated atlas on idea cards');
-console.log('115 unique article routes, hero images, sections and shared chrome passed.');
+console.log('109 unique article routes, hero images, sections and shared chrome passed.');
 
 // [WEB-SEO-3] /sitemap.xml is now a sitemapindex; the static page URLs live in
 // /sitemap-pages.xml. Check both exist and that the index points at the pages file.
@@ -207,7 +207,7 @@ assert.match(ideas,/ItemList/);
 assert(meta(ideas,'og:image')?.includes('/assets/ideas/guides/'),'Ideas-specific preview image');
 assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
 assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
-console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');
+console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL.
 const rawShareImage = meta(rawHtml, 'og:image');

@@ -82,7 +82,7 @@ const {
   navStatic = false,
   noindex = false,
   hideNavCtas = false,
-  keywords = 'avaTOK, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions',
+  keywords = 'avaTOK, Ava Global International, creator marketplace, paid live streaming, 1:1 video sessions',
   lang = 'en',
   dir = 'ltr',
   indiaLandingLanguage = true,
@@ -102,11 +102,10 @@ const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.a
 
 // [WEB-SEO-5 2026-09-10] Organization/WebSite/WebPage JSON-LD now built from
 // the single source of truth in `../lib/org.ts` (`ORG` + `orgJsonLd()`)
-// instead of being defined inline here. To change a brand fact — add the
-// Pvt Ltd legal name once registered, add an Instagram URL, a street
-// address, etc. — edit `org.ts`, not this file. All of the original
-// reasoning (naming rule, sameAs policy, knowledge-panel field notes) now
-// lives as comments on `org.ts`.
+// instead of being defined inline here. To change a brand fact — add an
+// Instagram URL, a street address, etc. — edit `org.ts`, not this file. All
+// of the original reasoning (naming rule, sameAs policy, knowledge-panel
+// field notes) now lives as comments on `org.ts`.
 const orgLd = orgJsonLd({ canonical, title, description, ogImage });
 ---
 
