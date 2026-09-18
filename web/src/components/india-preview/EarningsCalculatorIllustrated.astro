@@ -1,5 +1,8 @@
 ---
-import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+// [WEB-GATEWAY-A 2026-09-18] Heading and all labels translated to plain
+// English per Specs/WEBGW-A-BRIEF.md §3h. No `data-india-i18n` keys on the
+// changed text (see the note in BookingExpressIllustrated.astro for why).
+// Calculator logic/markup structure is unchanged.
 import { publicImage } from '../../lib/config';
 ---
 
@@ -7,58 +10,42 @@ import { publicImage } from '../../lib/config';
 <div class="india-wrap">
 <div class="calculator-heading">
 <div class="calculator-heading-copy">
-<p class="india-kicker">
-<span data-india-i18n="calcEyebrow">{copy.calcEyebrow}</span>
-</p>
-<h2 id="addon-calculator-title">
-<span data-india-i18n="calcTitle">{copy.calcTitle}</span>
-</h2>
-<p class="india-section-lede">
-<span data-india-i18n="calcBody">{copy.calcBody}</span>
-</p>
+<p class="india-kicker">The math, clearly</p>
+<h2 id="addon-calculator-title">Estimate your gross earnings</h2>
+<p class="india-section-lede">Change the inputs to see what ticketed events or 1:1 bookings could gross.</p>
 </div>
 <div class="calculator-heading-art" aria-hidden="true">
 <img class="calculator-savings" src={publicImage('/assets/landing-steps-preview/savings-original.png', { width: 256, fit: 'scale-down' })} alt="" width="150" height="150" loading="lazy" decoding="async" />
 </div>
 </div>
 <div class="india-calc-grid" data-india-calculator>
-<form class="india-calc-form" aria-label={copy.ariaCalculator} data-india-i18n-attr="aria-label:ariaCalculator">
+<form class="india-calc-form" aria-label="Gross earnings estimate calculator">
 <span class="calculator-corner calculator-corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
 <span class="calculator-corner calculator-corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
 <label>
-<span>
-<span data-india-i18n="calcLiveLabel">{copy.calcLiveLabel}</span>
-</span>
+<span>Live ticket price per participant</span>
 <output data-calc-live-price>₹100</output>
 <small class="calculator-price-help" id="illustrated-live-price-help">₹100 platform fee per participant. Add your earnings on top to set the final price.</small>
 <input data-calc="livePrice" aria-describedby="illustrated-live-price-help" type="range" min="100" max="50000" step="100" value="100" />
 </label>
 <label>
-<span>
-<span data-india-i18n="calcAudienceLabel">{copy.calcAudienceLabel}</span>
-</span>
+<span>Audience per event</span>
 <output data-calc-audience>100</output>
 <input data-calc="audience" type="range" min="0" max="10000" step="1" value="100" />
 </label>
 <label>
-<span>
-<span data-india-i18n="calcEventsLabel">{copy.calcEventsLabel}</span>
-</span>
+<span>Events per month</span>
 <output data-calc-events>2</output>
 <input data-calc="events" type="range" min="0" max="31" step="1" value="2" />
 </label>
 <label>
-<span>
-<span data-india-i18n="calcOneLabel">{copy.calcOneLabel}</span>
-</span>
+<span>1:1 or group price per participant</span>
 <output data-calc-one-price>₹1,500</output>
 <small class="calculator-price-help" id="illustrated-one-price-help">₹100 platform fee per participant. Add your earnings on top to set the final price.</small>
 <input data-calc="onePrice" aria-describedby="illustrated-one-price-help" type="range" min="100" max="50000" step="100" value="1500" />
 </label>
 <label>
-<span>
-<span data-india-i18n="calcBookingsLabel">{copy.calcBookingsLabel}</span>
-</span>
+<span>Bookings per month</span>
 <output data-calc-bookings>5</output>
 <input data-calc="bookings" type="range" min="0" max="1000" step="1" value="5" />
 </label>
@@ -67,30 +54,20 @@ import { publicImage } from '../../lib/config';
 <span class="calculator-corner calculator-corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
 <span class="calculator-corner calculator-corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
 <div>
-<span>
-<span data-india-i18n="calcLiveTotal">{copy.calcLiveTotal}</span>
-</span>
+<span>Live event gross</span>
 <strong data-calc-live-total>₹20,000</strong>
 </div>
 <div>
-<span>
-<span data-india-i18n="calcOneTotal">{copy.calcOneTotal}</span>
-</span>
+<span>1:1 gross</span>
 <strong data-calc-one-total>₹7,500</strong>
 </div>
 <div class="india-calc-total">
-<span>
-<span data-india-i18n="calcTotal">{copy.calcTotal}</span>
-</span>
+<span>Combined gross estimate</span>
 <strong data-calc-total>₹27,500</strong>
 </div>
+<p>Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.</p>
 <p>
-<span data-india-i18n="calcDisclaimer">{copy.calcDisclaimer}</span>
-</p>
-<p>
-<span>
-<span data-india-i18n="calcPricingNote">{copy.calcPricingNote}</span>
-</span> <a href="/pricing-fees" data-india-i18n="chrome.pricing">Pricing guide</a>
+<span>Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.</span> <a href="/pricing-fees">Pricing guide</a>
 </p>
 </div>
 </div>

@@ -59,6 +59,8 @@ export interface Props {
   /** Optional document language metadata; defaults preserve existing pages. */
   lang?: string;
   dir?: 'ltr' | 'rtl';
+  /** og:locale override; defaults preserve existing pages. */
+  ogLocale?: string;
   /** Opt-in India chrome language selector/localization. */
   indiaLandingLanguage?: boolean;
 }
@@ -85,6 +87,7 @@ const {
   keywords = 'avaTOK, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions',
   lang = 'en',
   dir = 'ltr',
+  ogLocale = 'en_US',
   indiaLandingLanguage = true,
 } = Astro.props;
 
@@ -132,7 +135,7 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="avaTOK" />
-    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale" content={ogLocale} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />

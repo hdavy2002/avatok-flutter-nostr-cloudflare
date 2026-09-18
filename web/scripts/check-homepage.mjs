@@ -11,20 +11,21 @@ validateBuiltImageSources(root);
 const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
-assert.match(html, /Apna hunar\./, 'Approved hero headline remains');
-assert.match(html, /Apni kamaai\./, 'Approved hero accent remains');
+assert.match(html, /Turn your skill into income\./, 'Approved hero headline remains');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/data-home-idea="/g) || []).length, 6, 'Six original creator idea cards');
-assert.equal((html.match(/<article\b[^>]*class="[^"]*\bindia-idea-card\b/g) || []).length, 4, 'Four additional creator ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon-ideas', 'addon-calculator']) {
+// [WEB-GATEWAY-A 2026-09-18] Homepage rebuilt for the payment-gateway review
+// (Specs/WEBGW-A-BRIEF.md): plain-English marketplace copy, no language
+// picker, no ideas teaser. 'live-streaming'/'how-it-works' share one
+// <section> (the reused BookingExpressIllustrated ticket band) — see that
+// file's header comment for why.
+for (const id of ['featured', 'live-streaming', 'how-it-works', 'puja-darshan', 'categories', 'trust-safety', 'how-payments-work', 'addon-calculator']) {
  assert(ids.has(id), 'Approved homepage section exists: ' + id);
 }
-assert.match(html, /<section\b[^>]*class="[^"]*\bbooking-illustrated\b[^"]*"[^>]*id="consultations"/, 'Booking Express retains the approved illustrated section');
+assert.match(html, /<section\b[^>]*class="[^"]*\bbooking-illustrated\b[^"]*"[^>]*id="live-streaming"/, 'Booking Express retains the approved illustrated section');
 assert.match(html, /<section\b[^>]*class="[^"]*\bcalculator-illustrated\b[^"]*"[^>]*id="addon-calculator"/, 'Earnings calculator retains the approved illustrated section');
-assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
 assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
-assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
+assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Homepage renders no language selector — locale switching is stopped site-wide');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
  const href = match[1].replaceAll('&amp;', '&');
  if (href.startsWith('#') || href.startsWith('/#')) {
@@ -131,7 +132,6 @@ const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
@@ -217,8 +217,8 @@ assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
 assert.match(campaignImages[0], /^https:\/\/avatok\.ai\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
-assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
-assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
+assert.equal(meta(html, 'og:title'), 'avaTOK: live puja, online classes, 1:1 consultations and ticketed live events');
+assert.equal(meta(html, 'og:description'), 'Book live pujas, online classes, 1:1 video consultations and ticketed live events from verified creators. Pay securely in rupees.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));

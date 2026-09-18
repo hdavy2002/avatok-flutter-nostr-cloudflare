@@ -32,6 +32,11 @@ const { variant = 'india', indiaLandingLanguage = true } = Astro.props;
 
 const year = new Date().getFullYear();
 
+// [WEB-GATEWAY-A 2026-09-18] Tagline, columns and truck-art copy rewritten to
+// plain English for the payment-gateway review — see Specs/WEBGW-A-BRIEF.md
+// §4. `legalLinks` (the slim compliance row) is UNCHANGED: "Tokens & Wallet"
+// was already last, satisfying the brief's "keep as last legal link" option.
+//
 // [WEB-FOOTER-4] Slim compliance link row — see note above. Keep in this
 // order; it's the order the owner specified.
 const legalLinks = [
@@ -57,11 +62,13 @@ const legalLinks = [
 
 const columns = [
   {
-    title: 'Bazaar',
+    title: 'Marketplace',
     links: [
-      { href: '/#live-streaming', label: 'Live streaming' },
-      { href: '/#live-friends', label: 'Find your people' },
-      { href: '/marketplace', label: 'Explore marketplace' },
+      { href: '/#live-streaming', label: 'Live events' },
+      { href: '/marketplace?group=find_your_people', label: '1:1 consultations' },
+      { href: '/marketplace?group=book_their_time', label: 'Group classes' },
+      { href: '/#puja-darshan', label: 'Puja & darshan' },
+      { href: '/marketplace', label: 'All categories' },
     ],
   },
   {
@@ -70,19 +77,35 @@ const columns = [
       { href: '/sign-up', label: 'Start selling' },
       { href: '/dashboard', label: 'Creator dashboard' },
       { href: '/payouts', label: 'Payouts' },
-      { href: '/community-guidelines', label: 'Safety' },
+      { href: '/pricing-fees', label: 'Pricing and fees' },
+    ],
+  },
+  {
+    title: 'Trust',
+    links: [
+      { href: '/#trust-safety', label: 'Trust and safety' },
+      { href: '/community-guidelines', label: 'Community guidelines' },
+      { href: '/acceptable-use', label: 'Acceptable use' },
+      { href: '/child-safety', label: 'Child safety' },
+      { href: '/grievance', label: 'Grievance redressal' },
+      { href: '/recording', label: 'Recording & consent' },
     ],
   },
   {
     title: 'Company',
     links: [
       { href: '/about', label: 'About' },
-      // [WEB-HELP-1 2026-09-11] Help centre listed right after About per plan §8.
+      { href: '/contact', label: 'Contact' },
       { href: '/help', label: 'Help centre' },
       { href: '/careers', label: 'Careers' },
-      { href: '/contact', label: 'Contact' },
-      { href: '/terms', label: 'Terms of Service' },
-      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/terms', label: 'Terms' },
+      { href: '/privacy', label: 'Privacy' },
+      { href: '/refunds', label: 'Refunds' },
+      { href: '/cookies', label: 'Cookies' },
+      { href: '/marketplace-terms', label: 'Marketplace terms' },
+      { href: '/consultation-terms', label: 'Consultation terms' },
+      { href: '/dmca', label: 'DMCA' },
+      { href: '/biometric-retention', label: 'Biometric data' },
     ],
   },
 ];
@@ -108,8 +131,8 @@ const chromeKey = (value: string) => ({
   <div class="bf-main">
     <div class="bf-brand">
       <a class="bf-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}><span>ava</span><span>TOK</span></a>
-      <p class="bf-tag" data-india-i18n={indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo."}</p>
-      <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Aapki awaaz, duniya tak.'}</span>
+      <p class="bf-tag">{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : 'A marketplace for paid live events, 1:1 video consultations and group classes from verified creators.'}</p>
+      <span class="bf-script">{variant === 'global' ? 'Made for creators everywhere.' : 'Your skill. Your income.'}</span>
     </div>
 
     {footerColumns.map((col) => (
@@ -122,8 +145,8 @@ const chromeKey = (value: string) => ({
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
       <img data-india-i18n-attr="alt:web-common.bc1848dfbe79762d" src={publicImage('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
-      <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
-      <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
+      <span class="bf-art-line">{variant === 'global' ? 'CREATORS EVERYWHERE' : 'SEE YOU SOON'}</span>
+      <span class="bf-art-hi">{variant === 'global' ? 'See you worldwide!' : 'Come back soon!'}</span>
     </div>
   </div>
 
@@ -146,8 +169,8 @@ const chromeKey = (value: string) => ({
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
-      <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
-      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">AVATOK ·</ui-copy> <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'VERIFIED CREATORS · SECURE PAYMENTS'}</span>
+      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">AVATOK ·</ui-copy> <span>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ FOR CREATORS'}</span></span>
     </div>
   </div>
 

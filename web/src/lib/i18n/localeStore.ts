@@ -24,7 +24,14 @@ export function setDomNamespaces(values:string[]) {domNamespaces.clear();domName
 export function t(key:string,fallback:string,params:Record<string,string|number>={}) {return (messages[key]??sources[key]??fallback).replace(/\{([a-zA-Z0-9_]+)\}/g,(token,name)=>Object.hasOwn(params,name)?String(params[name]):token);}
 function notify(){revision++;listeners.forEach(fn=>fn());}
 export async function setUiLocale(requested:string,persist=true) {
- const chosen=locales.find(value=>value.code===requested)||locales.find(value=>value.code==='en')!;
+ // [WEB-GATEWAY-A] Locale switching is stopped site-wide: every visitor sees
+ // English source strings regardless of `requested` (cookie, query param,
+ // stored preference or Accept-Language never reach here — this is the one
+ // choke point every caller in this module routes through). `requested` is
+ // intentionally ignored rather than removed from the signature, so every
+ // existing call site keeps compiling.
+ void requested;
+ const chosen=locales.find(value=>value.code==='en')!;
  pendingLocale=chosen.code;
  if(persist)try {localStorage.setItem(key(),chosen.code);}catch {}
  const token=++epoch,start=performance.now(),active=[...new Set([...domNamespaces,...islandNamespaces.keys()])];

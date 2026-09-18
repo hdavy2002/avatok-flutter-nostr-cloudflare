@@ -1,0 +1,70 @@
+---
+// [WEB-GATEWAY-A 2026-09-18] "How money moves." Two changes from the brief's
+// literal wording, both required by what the linked policy pages actually
+// say — see the stream report:
+//   - Dropped "payment held until the session takes place": refunds.astro
+//     describes tokens as consumed at spend time with case-by-case returns,
+//     not a stated escrow/hold-and-release model.
+//   - Renamed "Verified payouts only" to "Payouts": payouts.astro states
+//     plainly that withdrawals are not yet available and no payout method is
+//     currently promised — "verified" would assert a live mechanism that
+//     does not exist yet.
+const steps = [
+  { title: 'Customer books and pays', body: 'In rupees, through our payment gateway. avaTOK does not see or store your card details.' },
+  { title: 'Booking is confirmed', body: 'You get a receipt and a join link by email.' },
+  { title: 'Session is delivered', body: 'The session happens inside avaTOK, from the app.' },
+  { title: 'Creator is paid', body: 'For delivered sessions, less the platform fee on our pricing page.' },
+];
+---
+
+<section class="rail-wrap money-band" id="how-payments-work" aria-labelledby="money-band-title" data-home-section="how-payments-work">
+  <p class="rail-eyebrow">How money moves</p>
+  <h2 id="money-band-title">How money moves</h2>
+  <ol class="money-band__steps">
+    {steps.map((step, i) => (
+      <li>
+        <span class="money-band__num" aria-hidden="true">0{i + 1}</span>
+        <h3>{step.title}</h3>
+        <p>{step.body}</p>
+      </li>
+    ))}
+  </ol>
+  <div class="money-band__blocks">
+    <div class="money-band__block">
+      <h3>Refunds</h3>
+      <p>Tokens spent on a delivered session aren't refundable except where required by law. If a creator misses a booked session, we may return your tokens.</p>
+      <a href="/refunds" data-home-cta="money-refunds">Refund policy →</a>
+    </div>
+    <div class="money-band__block">
+      <h3>Receipts</h3>
+      <p>Every booking gets an emailed receipt with the exact amount charged.</p>
+    </div>
+    <div class="money-band__block">
+      <h3>Payouts</h3>
+      <p>Creator payouts are being rolled out. Any future payout flow may include identity verification.</p>
+      <a href="/payouts" data-home-cta="money-payouts">Payouts policy →</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .money-band { padding-block: 20px 12px; }
+  .money-band__steps {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; list-style: none;
+    margin: 28px 0 34px; padding: 28px 0; border-block: 1px dashed #b58539;
+  }
+  .money-band__steps li { position: relative; padding: 18px 18px 20px; background: #fff7e8; border: 1px solid #ccbb9f; border-radius: var(--zine-rSm, 16px); }
+  .money-band__num { display: inline-block; margin-bottom: 10px; font-family: 'Kalam', cursive; font-size: 26px; color: var(--rail-red, #d92d20); }
+  .money-band__steps h3 { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; text-transform: none; font-size: 18px; line-height: 1.3; margin: 0 0 8px; }
+  .money-band__steps p { font-size: 15px; line-height: 1.5; margin: 0; }
+  .money-band__blocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .money-band__block { padding: 20px 22px; background: var(--zine-paper2, #efdcc2); border: 1px solid #ccbb9f; border-radius: var(--zine-rLg, 24px); }
+  .money-band__block h3 { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; text-transform: none; font-size: 18px; margin: 0 0 8px; }
+  .money-band__block p { font-size: 15px; line-height: 1.55; margin: 0 0 10px; }
+  .money-band__block a { font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 900px) {
+    .money-band__steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .money-band__blocks { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) { .money-band__steps { grid-template-columns: 1fr; } }
+</style>

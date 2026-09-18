@@ -11,7 +11,6 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import IndiaLanguageSelector from '../components/IndiaLanguageSelector.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost, publicImage } from '../lib/config';
@@ -64,7 +63,6 @@ const clerkHost = clerkFapiHost();
              which would take the ornaments with it. -->
         <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
         <div class="auth-card">
-          <div class="auth-language"><IndiaLanguageSelector id="auth-language" /></div>
           <header class="auth-head">
             <a data-india-i18n-attr="aria-label:web-auth.394186beed5b531d" class="auth-wordmark" href="/" aria-label="avaTOK home">
               <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
