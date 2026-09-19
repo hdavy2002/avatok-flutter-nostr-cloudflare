@@ -78,22 +78,22 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     howItWorks: [
       { label: 'Join', body: 'Hop into the room at start time — link lands in your inbox 10 min before.' },
       { label: 'Warm-up', body: 'We start with a quick antakshari round to get everyone’s energy up.' },
-      { label: 'The main set', body: 'Song requests, sing-alongs, and a few surprises — bring your favourite gaana.' },
+      { label: 'The main set', body: 'Song requests, sing-alongs, and a few surprises — bring your favourite song.' },
       { label: 'Wrap', body: 'We close with a group singalong. Replay stays up if you enable it.' },
     ],
-    houseRulesIntro: 'Ek chhota sa adda — sur bigde toh koi baat nahi, bas maza aana chahiye.',
+    houseRulesIntro: 'A small get-together — if your pitch wavers, no worries, the goal is just to have fun.',
     houseRules: [
       { heading: 'Mic on for your turn', body: 'Keep yourself muted otherwise so the sound stays clean for everyone.' },
-      { heading: 'No song is a wrong song', body: 'Bollywood, Sufi, indie — sab chalega. Just keep it 18+ friendly.' },
+      { heading: 'No song is a wrong song', body: 'Bollywood, Sufi, indie — anything goes. Just keep it 18+ friendly.' },
       { heading: 'Be on time', body: 'We start sharp — latecomers can join but the antakshari round won’t wait.' },
       { heading: 'Respect the stage', body: 'One singer at a time. Cheer in chat, not over the mic.' },
     ],
     whatYouGet: ['A live singing session, not a recording', 'Song requests taken live', 'A fun antakshari warm-up round', 'Replay access if enabled'],
-    whoFor: ['Anyone who loves singing, even a little off-key', 'Bollywood and indie music fans', 'People who want a fun evening adda'],
+    whoFor: ['Anyone who loves singing, even a little off-key', 'Bollywood and indie music fans', 'People who want a fun evening hangout'],
     notFor: ['Silent listeners who don’t want to sing along', 'Anyone expecting a professional concert recording'],
     faq: [
-      { q: 'Do I need to sing well?', a: 'Bilkul nahi — this is for fun, not a competition. Sur kaisa bhi ho, maza guaranteed.' },
-      { q: 'Can I just watch?', a: 'Haan, you can keep your mic off and enjoy — but singing along is more fun.' },
+      { q: 'Do I need to sing well?', a: 'Not at all — this is for fun, not a competition. However your voice sounds, a good time is guaranteed.' },
+      { q: 'Can I just watch?', a: 'Yes, you can keep your mic off and enjoy — but singing along is more fun.' },
       { q: 'What if I join late?', a: 'You can still join mid-session — you’ll just miss the warm-up round.' },
     ],
   },
@@ -104,7 +104,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Crowd work', body: 'Chat stays open — the best lines usually come from your replies.' },
       { label: 'Encore', body: 'A short Q&A or an extra bit if the room’s got the energy for it.' },
     ],
-    houseRulesIntro: 'Comedy show hai, roast bhi ho sakta hai — thodi thick skin le aana.',
+    houseRulesIntro: "It's a comedy show, and some roasting may happen — bring a bit of thick skin.",
     houseRules: [
       { heading: 'Heckling is welcome, hate isn’t', body: 'Banter in chat is part of the show. Personal attacks get you muted.' },
       { heading: 'No recording without asking', body: 'Bits are unreleased material — don’t clip and post without permission.' },
@@ -127,7 +127,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Answer live', body: 'Drop your answers in chat before the timer runs out.' },
       { label: 'Winners announced', body: 'Scores tallied live — bragging rights (and sometimes prizes) at the end.' },
     ],
-    houseRulesIntro: 'Fair khel, full masti — Google karna allowed nahi hai!',
+    houseRulesIntro: 'Fair play, full fun — no Googling allowed!',
     houseRules: [
       { heading: 'No searching answers', body: 'It’s an honesty-based quiz — Googling takes the fun out of it.' },
       { heading: 'One answer per round', body: 'Submit before the timer ends; edits after the buzzer don’t count.' },
@@ -138,7 +138,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     whoFor: ['Trivia and quiz lovers', 'Friend groups who want to compete together', 'Anyone who enjoys a bit of friendly competition'],
     notFor: ['Anyone looking for a passive, watch-only session'],
     faq: [
-      { q: 'Can I play with friends?', a: 'Haan, form a team in chat before we start — squads are welcome.' },
+      { q: 'Can I play with friends?', a: 'Yes, form a team in chat before we start — squads are welcome.' },
       { q: 'What if I don’t know an answer?', a: 'Skip it, no penalty — just answer the next round.' },
       { q: 'Are there prizes?', a: 'Check the listing details — some sessions run for bragging rights only.' },
     ],
@@ -150,7 +150,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Cool-down', body: 'Stretching and breathing to bring the heart rate back down.' },
       { label: 'Form check', body: 'Ask questions live — I’ll call out corrections as we go.' },
     ],
-    houseRulesIntro: 'Apni body sunna — push karo, lekin apni limit ke andar.',
+    houseRulesIntro: 'Listen to your body — push yourself, but stay within your limits.',
     houseRules: [
       { heading: 'Clear your space', body: 'Make sure you’ve got room to move safely before we start.' },
       { heading: 'Modify if needed', body: 'Injuries or beginner? Say so in chat — I’ll give you an easier version.' },
@@ -162,7 +162,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     notFor: ['Anyone with an injury who hasn’t cleared exercise with a doctor', 'Those wanting a pre-recorded, self-paced video'],
     faq: [
       { q: 'What equipment do I need?', a: 'Just a mat and water — most moves use bodyweight unless the listing says otherwise.' },
-      { q: 'I’m a total beginner, is that okay?', a: 'Bilkul — every move has an easier variation, just call it out in chat.' },
+      { q: 'I’m a total beginner, is that okay?', a: 'Absolutely — every move has an easier variation, just call it out in chat.' },
       { q: 'What if I have an injury?', a: 'Mention it before we start and I’ll suggest a safe modification, or sit that block out.' },
     ],
   },
@@ -173,7 +173,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Plate up', body: 'Final plating tips and easy swaps for what’s in your kitchen.' },
       { label: 'Taste & talk', body: 'Show off your dish in chat — I’ll answer questions as everyone finishes.' },
     ],
-    houseRulesIntro: 'Kitchen thodi messy ho sakti hai — bas maza aana chahiye, perfection nahi.',
+    houseRulesIntro: 'The kitchen might get a little messy — the goal is fun, not perfection.',
     houseRules: [
       { heading: 'Prep before we start', body: 'Chop and measure ahead so you’re not scrambling mid-recipe.' },
       { heading: 'Substitutions are fine', body: 'Don’t have an ingredient? Ask in chat — most things have a swap.' },
@@ -187,8 +187,8 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     notFor: ['Anyone without basic kitchen access', 'Those wanting a professional culinary class'],
     faq: [
       { q: 'What if I don’t have an ingredient?', a: 'Ask in chat — I’ll suggest a substitute that still works.' },
-      { q: 'Do I need fancy equipment?', a: 'Nahi, a basic kitchen setup is enough — the recipe is written for home cooks.' },
-      { q: 'Can I join without cooking?', a: 'Haan, you can just watch and cook it later — the session stays useful either way.' },
+      { q: 'Do I need fancy equipment?', a: 'No, a basic kitchen setup is enough — the recipe is written for home cooks.' },
+      { q: 'Can I join without cooking?', a: 'Yes, you can just watch and cook it later — the session stays useful either way.' },
     ],
   },
   astro: {
@@ -198,7 +198,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Your questions', body: 'Bring specific questions — the reading is more useful when it’s focused.' },
       { label: 'Remedies (if any)', body: 'If something needs attention, I’ll suggest simple remedies — no pressure to buy anything.' },
     ],
-    houseRulesIntro: 'Khula dil se aana — sawal jo bhi ho, judgment nahi milega.',
+    houseRulesIntro: 'Come with an open mind — whatever your question, there is no judgment here.',
     houseRules: [
       { heading: 'Accurate birth details matter', body: 'A wrong birth time changes the whole chart — double-check before you send it.' },
       // [LIST-DEFAULTS-LEN-1] 32 chars max — was 'This is guidance, not a
@@ -212,7 +212,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     notFor: ['Anyone seeking a medical or legal opinion instead of astrology', 'Those wanting a guaranteed prediction'],
     faq: [
       { q: 'What details do I need to send?', a: 'Your date, exact time and place of birth — the more accurate, the better the reading.' },
-      { q: 'What if I don’t know my exact birth time?', a: 'Bata dena — we can still do a reading, just a little less precise on timing-based questions.' },
+      { q: 'What if I don’t know my exact birth time?', a: 'Just let me know — we can still do a reading, just a little less precise on timing-based questions.' },
       { q: 'Is this a one-time session or ongoing?', a: 'This listing is one session — book again any time for a follow-up.' },
     ],
   },
@@ -223,7 +223,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Clear next steps', body: 'You leave with a specific action plan, not just general advice.' },
       { label: 'Follow-up notes', body: 'A short written summary after the call, if you need one for your records.' },
     ],
-    houseRulesIntro: 'Seedhi baat, koi jargon nahi — bas aapke numbers samajhna hai.',
+    houseRulesIntro: 'Straight talk, no jargon — just understanding your numbers.',
     houseRules: [
       { heading: 'Share documents in advance', body: 'Send relevant statements or numbers ahead of time for a focused session.' },
       { heading: 'This is guidance, not filing', body: 'I’ll advise on strategy — actual filing is a separate service if needed.' },
@@ -236,7 +236,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     faq: [
       { q: 'What should I bring to the call?', a: 'Any relevant income/expense statements — the more specific, the better the advice.' },
       { q: 'Will you file my taxes for me?', a: 'This session is advice and strategy — filing itself can be arranged separately if needed.' },
-      { q: 'Is my information kept private?', a: 'Haan, completely confidential — nothing discussed here goes anywhere else.' },
+      { q: 'Is my information kept private?', a: 'Yes, completely confidential — nothing discussed here goes anywhere else.' },
     ],
     sampleQa: [
       { q: 'Can freelancers claim home office expenses?', a: 'In most cases yes, proportionally — we’ll go through what applies to your setup on the call.' },
@@ -254,7 +254,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       // creator the same way the cooking default blocked the owner.
       { label: 'Resume/LinkedIn notes', body: 'Quick feedback on your resume or profile if it’s part of your goal.' },
     ],
-    houseRulesIntro: 'Honest feedback doonga — kabhi thoda kadwa lag sakta hai, but useful hoga.',
+    houseRulesIntro: "I'll give honest feedback — it might sting a little sometimes, but it will be useful.",
     houseRules: [
       { heading: 'Come with a specific goal', body: 'A focused question ("should I switch to product?") beats "help me with my career".' },
       { heading: 'Share your resume in advance', body: 'If relevant, send it ahead so we can spend the call on strategy, not reading.' },
@@ -265,7 +265,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     whoFor: ['Anyone considering a career switch', 'People preparing for interviews or promotions', 'Early-career professionals wanting direction'],
     notFor: ['Anyone wanting a guaranteed job placement', 'Those looking for legal employment advice'],
     faq: [
-      { q: 'Should I send my resume beforehand?', a: 'Haan, please — it helps us use the call time on strategy instead of a read-through.' },
+      { q: 'Should I send my resume beforehand?', a: 'Yes, please — it helps us use the call time on strategy instead of a read-through.' },
       { q: 'Can we do more than one session?', a: 'Of course — book again any time for a follow-up on your progress.' },
       { q: 'Do you guarantee results?', a: 'No consultant can guarantee an offer — what I guarantee is a clear, honest plan.' },
     ],
@@ -282,7 +282,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Get a perspective', body: 'Thoughtful replies, not generic ones — trained to actually listen.' },
       { label: 'Come back anytime', body: 'Pick up the conversation whenever — it remembers your last chat.' },
     ],
-    houseRulesIntro: 'Ek dost jo hamesha available hai — but kuch cheezein yeh nahi kar sakta.',
+    houseRulesIntro: "Always available to talk — but there are a few things it can't do.",
     houseRules: [
       { heading: 'Not a medical or legal service', body: 'For real emergencies or diagnoses, please talk to a real professional.' },
       { heading: 'Be respectful', body: 'The AI will disengage from abusive or harmful requests.' },
@@ -293,8 +293,8 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     whoFor: ['Anyone who wants to vent or think out loud', 'People who want a friendly chat at 3 AM', 'Those easing into talking about their feelings'],
     notFor: ['Anyone in a medical or safety emergency (please call a real helpline)', 'Those needing a licensed therapist or doctor'],
     faq: [
-      { q: 'Is this a real person?', a: 'Nahi, this is an AI companion — friendly and responsive, but not a human.' },
-      { q: 'Is it available at night?', a: 'Haan, 24/7 — that’s the whole point of a bestie who never sleeps.' },
+      { q: 'Is this a real person?', a: 'No, this is an AI assistant — friendly and responsive, but not a human.' },
+      { q: 'Is it available at night?', a: 'Yes, 24/7 — that’s the whole point of an assistant who never sleeps.' },
       { q: 'Can it help in an emergency?', a: 'No — for a real emergency, please contact a licensed professional or helpline immediately.' },
     ],
     sampleChat: [
@@ -313,7 +313,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Your questions', body: 'Ask anything relevant along the way.' },
       { label: 'Wrap-up', body: 'A quick close and next steps if there are any.' },
     ],
-    houseRulesIntro: 'Ek simple si guideline — respect sabke liye, maza sabke liye.',
+    houseRulesIntro: 'A simple guideline — respect for everyone, fun for everyone.',
     houseRules: [
       { heading: 'Be on time', body: 'We start promptly — try to join a few minutes early.' },
       { heading: 'Be respectful', body: 'Keep the chat and mic friendly for everyone in the room.' },

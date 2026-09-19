@@ -60,7 +60,7 @@ const columns = [
     title: 'Bazaar',
     links: [
       { href: '/#live-streaming', label: 'Live streaming' },
-      { href: '/#live-friends', label: 'Find your people' },
+      { href: '/#live-friends', label: '1:1 consultations' },
       { href: '/marketplace', label: 'Explore marketplace' },
     ],
   },
@@ -94,7 +94,7 @@ const globalColumns = [
 const footerColumns = variant === 'global' ? globalColumns : columns;
 const chromeKey = (value: string) => ({
   Bazaar:'chrome.bazaar', Creators:'chrome.creators', Company:'chrome.company', Explore:'chrome.explore',
-  'Live streaming':'chrome.liveStreaming', 'Find your people':'chrome.findPeople', 'Explore marketplace':'chrome.exploreMarketplace',
+  'Live streaming':'chrome.liveStreaming', '1:1 consultations':'chrome.findPeople', 'Explore marketplace':'chrome.exploreMarketplace',
   'Start selling':'chrome.startSelling', 'Creator dashboard':'chrome.creatorDashboard', Payouts:'chrome.payouts', Safety:'chrome.safety',
   About:'chrome.about', 'Help centre':'chrome.help', Careers:'chrome.careers', Contact:'chrome.contact', 'Terms of Service':'chrome.terms', 'Privacy Policy':'chrome.privacy',
   Terms:'chrome.terms', Privacy:'chrome.privacy', Cookies:'chrome.cookies', Refunds:'chrome.refunds',
@@ -108,8 +108,8 @@ const chromeKey = (value: string) => ({
   <div class="bf-main">
     <div class="bf-brand">
       <a class="bf-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}><span>ava</span><span>TOK</span></a>
-      <p class="bf-tag" data-india-i18n={indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo."}</p>
-      <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Aapki awaaz, duniya tak.'}</span>
+      <p class="bf-tag" data-india-i18n={indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Book your seat, pull up a chair, take your time."}</p>
+      <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>
     </div>
 
     {footerColumns.map((col) => (
@@ -122,8 +122,8 @@ const chromeKey = (value: string) => ({
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
       <img data-india-i18n-attr="alt:web-common.bc1848dfbe79762d" src={publicImage('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
-      <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
-      <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
+      <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · SEE YOU SOON' : 'BYE FOR NOW · SEE YOU SOON'}</span>
+      <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'Come back soon!'}</span>
     </div>
   </div>
 
@@ -146,7 +146,7 @@ const chromeKey = (value: string) => ({
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
-      <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
+      <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
       <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">AVATOK ·</ui-copy> <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>

@@ -337,18 +337,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "Curate different themes and line-ups. A dependable show gives people a reason to watch emerging talent again.",
     "promotion": "Introduce the confirmed performers and a short approved sample from each."
   },
-  "idea-29": {
-    "audience": "Adults looking for an attentive, everyday conversation",
-    "offer": "Offer a clearly bounded listening appointment where one person gets your full attention. This is adult companionship, not counselling, diagnosis or crisis care.",
-    "steps": [
-      "Agree the session length and conversational boundaries",
-      "Let the other person choose what to talk about and listen without rushing to advice",
-      "Close gently at the agreed time and ask what felt useful"
-    ],
-    "equipment": "A phone with a camera, earphones, reliable internet and a private, quiet room. A laptop is optional; nobody else should be listening off-camera.",
-    "returnReason": "People may return because you remember their preferences and give them a respectful space. Keep professional boundaries and avoid creating pressure or dependence.",
-    "promotion": "Describe your language, availability and listening style. Never share someone’s story as a promotional example without their explicit permission."
-  },
   "idea-30": {
     "audience": "People who relax more easily in a familiar Indian language",
     "offer": "Offer a chai-length conversation in a language you speak naturally. Everyday humour, expressions and shared cultural references are the experience.",
@@ -360,18 +348,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "equipment": "A camera phone, earphones and a quiet room. Your cup of chai is atmosphere, not required equipment.",
     "returnReason": "Use fresh prompts and dependable availability. Familiar language can make the next conversation feel welcoming.",
     "promotion": "Record a short introduction in the language you offer so people can hear your style before booking."
-  },
-  "idea-31": {
-    "audience": "Indians abroad who miss everyday conversation about home",
-    "offer": "Create a warm appointment for talking about festivals, food and the small differences of life overseas. Listen to the person’s experience rather than assuming all NRIs feel the same.",
-    "steps": [
-      "Ask about their hometown and preferred language",
-      "Use a memory or current festival as a gentle starting point",
-      "Let them lead the conversation and finish with a pleasant shared topic"
-    ],
-    "equipment": "A phone, earphones and a quiet space. Offer time slots that actually overlap with the audience abroad.",
-    "returnReason": "Remember interests with the guest’s agreement and bring a fresh hometown or seasonal conversation next time.",
-    "promotion": "Introduce your region and languages, with availability in the target time zone. Keep the offer about companionship."
   },
   "idea-32": {
     "audience": "Learners who know some English but hesitate to speak",
@@ -588,30 +564,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "equipment": "A phone with a camera and normal kitchen tools. The cook should position the phone before handling heat.",
     "returnReason": "A follow-up can review the next attempt or tackle another family recipe.",
     "promotion": "Describe the regional dishes you know and show a texture or technique you can explain."
-  },
-  "idea-50": {
-    "audience": "Someone preparing to wear a saree for a specific occasion",
-    "offer": "Offer live draping guidance with patient corrections. Clarify the drape and required garments before the appointment.",
-    "steps": [
-      "Confirm the style and send a preparation list",
-      "Demonstrate one stage at a time while the participant practises",
-      "Check comfort, pleats and movement, then repeat a difficult step"
-    ],
-    "equipment": "A phone on a stable stand, full-length mirror, saree and the underlayers or pins needed for that drape.",
-    "returnReason": "Another session can cover a different regional drape or a faster everyday version.",
-    "promotion": "Show the finished drape and explain the beginner level. Keep the participant’s camera framing and privacy under their control."
-  },
-  "idea-51": {
-    "audience": "People who want to use their existing clothes more confidently",
-    "offer": "Help build a few outfits for a real occasion using what is already in the wardrobe. The benefit is practical combinations, not pressure to buy.",
-    "steps": [
-      "Ask about the occasion, comfort and available pieces",
-      "Compare a few combinations on camera or laid flat",
-      "Choose complete outfits and explain why they work together"
-    ],
-    "equipment": "A phone, mirror and the person’s existing clothes. Good light helps show colours accurately.",
-    "returnReason": "Return sessions can address a different season or occasion with the same wardrobe.",
-    "promotion": "Share a few combinations from your own wardrobe and explain the practical approach."
   },
   "idea-52": {
     "audience": "Beginners whose mehendi practice needs specific feedback",
@@ -985,18 +937,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "returnReason": "Add new pattern families and review how learners combine earlier skills.",
     "promotion": "Share a clear practice sample and the expected experience level."
   },
-  "idea-83": {
-    "audience": "People learning a regional or occasion-specific saree drape",
-    "offer": "Offer a small group demonstration with individual troubleshooting. Keep the class focused on one drape.",
-    "steps": [
-      "Send the garments and accessories required",
-      "Demonstrate each stage with time for participants to follow",
-      "Review pleats, comfort and movement with voluntary camera sharing"
-    ],
-    "equipment": "A phone on a stand, mirror and the clothing required for the chosen drape.",
-    "returnReason": "Teach a different drape or an easier everyday variation next time.",
-    "promotion": "Show the finished style and explain that participants choose their own camera framing."
-  },
   "idea-84": {
     "audience": "Dance beginners wanting an enjoyable guided routine",
     "offer": "Teach a short routine at a stated level using music you may use. The value is instruction, repetition and feedback.",
@@ -1356,18 +1296,6 @@ export const creatorGuides: Record<string, CreatorGuide> = {
     "equipment": "A phone and reliable connection. Use a home setup when shop filming is not permitted.",
     "returnReason": "Alternate food, household habits and seasonal experiences so the diary keeps developing.",
     "promotion": "Preview one specific comparison and say where your personal experience comes from."
-  },
-  "idea-114": {
-    "audience": "Adults who enjoy a relaxed evening community",
-    "offer": "Open a hosted chat window with a light theme and clear boundaries. Your warmth and moderation make the space easier to join.",
-    "steps": [
-      "Choose a topic and welcoming opening",
-      "Repeat the topic for newcomers and keep conversation inclusive",
-      "Close at the stated time and mention the next theme"
-    ],
-    "equipment": "A phone, earphones, quiet room and simple front lighting.",
-    "returnReason": "A regular slot and fresh prompts help familiar faces reconnect without pressure to attend.",
-    "promotion": "Share the evening’s theme and language, keeping the invitation friendly rather than making companionship promises."
   },
   "idea-115": {
     "audience": "Followers interested in your particular everyday perspective",

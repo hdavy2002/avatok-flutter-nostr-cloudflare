@@ -24,7 +24,7 @@ Before you join a live show or 1:1 session, both on the web and in the app, you 
 - **Microphone level** — a live meter shows whether your mic is actually picking up sound, with a visible bar and a "No microphone input detected yet" / "Microphone input detected" status, so a muted or wrong device is obvious before you're on the call.
 - **Speaker test** — a button plays a short test tone; you confirm you heard it. If it fails to play, you're told to check your browser's audio permissions.
 
-Running these checks first means a device problem shows up on your side, privately, rather than as a customer wondering why they can't hear or see you.
+Running these checks first means a device problem shows up on your side quietly, rather than as a customer wondering why they can't hear or see you.
 
 ## The waiting room
 

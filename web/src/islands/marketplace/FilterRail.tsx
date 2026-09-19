@@ -282,9 +282,9 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
       >
         {/* No count on this button: `total` is the CATALOGUE total, not the
             filtered result count, so printing it here would promise a number
-            the grid is about to contradict. */}<UiText id="web-marketplace.32bd23ba198a8a0b" source="Dikhao" />{" "}</button>
+            the grid is about to contradict. */}<UiText id="web-marketplace.32bd23ba198a8a0b" source="Show" />{" "}</button>
 
-      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral"><UiText id="web-marketplace.9815199a23c38cbe" source="Jo dhoondoge, wahi milega." />{" "}<br /><UiText id="web-marketplace.96be40e233fa62a0" source="— Bazaar rule #1" />{" "}</p>
+      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral"><UiText id="web-marketplace.9815199a23c38cbe" source="Whatever you're looking for, you'll find it." />{" "}<br /><UiText id="web-marketplace.96be40e233fa62a0" source="— Bazaar rule #1" />{" "}</p>
       </aside>
     </div>
   );

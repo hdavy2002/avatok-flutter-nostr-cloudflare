@@ -28,7 +28,7 @@ export function SearchBox({
   value,
   onChange,
   debounce = 350,
-  placeholder = 'Dhoondo: tarot, adda, rizz, shayari, antakshari…',
+  placeholder = 'Search: tarot, astrology, comedy, poetry, singing…',
 }: SearchBoxProps) {
   const [local, setLocal] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,7 +70,7 @@ export function SearchBox({
       <button
         type="submit"
         className="flex-none rounded-full border-zine border-ink bg-coral px-6 py-2.5 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-      ><UiText id="web-marketplace.1207f81e54d27b74" source="Khojo" />{" "}</button>
+      ><UiText id="web-marketplace.1207f81e54d27b74" source="Search" />{" "}</button>
     </form>
   );
 }

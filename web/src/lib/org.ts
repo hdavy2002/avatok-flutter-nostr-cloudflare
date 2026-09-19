@@ -98,9 +98,9 @@ export const ORG: OrgConstants = {
     height: 256,
   },
   description:
-    'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
-  slogan: 'Apna hunar. Apni kamaai.',
-  foundersDescription: 'Founded by American and Indian founders',
+    'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, operated by Ava Global International, Inc., a Delaware corporation.',
+  slogan: 'Turn your skill into income.',
+  foundersDescription: 'Founded in 2025',
   foundingDate: '2025',
   email: 'support@avatok.ai',
   address: {
@@ -116,7 +116,7 @@ export const ORG: OrgConstants = {
     country: 'US',
   },
   indianEntity: {
-    name: 'Ave Maria International Pvt Ltd',
+    name: '',
     locality: 'Mumbai',
     country: 'IN',
     registeredOffice: null,

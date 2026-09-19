@@ -28,7 +28,7 @@ const { variant = 'full', heading } = Astro.props;
 <div class="note" id={heading ? undefined : 'status'}>
   {variant === 'short' ? (
     <p>
-      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated by American and Indian founders through</ui-copy>{' '}
+      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated through</ui-copy>{' '}
       <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.c8dc98e3e76b237a">, a Delaware corporation. The service is
       being developed and expanded globally. Contact:</ui-copy>
       <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
@@ -37,8 +37,8 @@ const { variant = 'full', heading } = Astro.props;
     <Fragment>
       <p>
         <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline" data-i18n="web-common.b47db0c3cd5c3c93">avaTOK is the platform brand of</ui-copy>{' '}
-        <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation founded by
-        American and Indian founders, and the global headquarters of avaTOK.</ui-copy>
+        <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation,
+        and the global headquarters of avaTOK.</ui-copy>
       </p>
       <p style="margin-top:12px">
         <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong>{' '}{ORG.legalName}{' '}<ui-copy style="display:inline" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.
@@ -47,9 +47,8 @@ const { variant = 'full', heading } = Astro.props;
         write to</ui-copy>{' '}<a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
       </p>
       <p style="margin-top:12px">
-        <strong data-i18n="web-common.4a9f7bc8b5d34e21">Our Indian operating entity.</strong>{' '}{ORG.indianEntity.name}{' '}
-        <ui-copy style="display:inline" data-i18n="web-common.7b8c6d5e4f3a2910">is avaTOK's Indian operating entity, based in Mumbai. It leads Indian legal,
-        regulatory, customer-support and local operational matters. Its registered-office details will be published once finalized.</ui-copy>
+        <strong data-i18n="web-common.4a9f7bc8b5d34e21">India.</strong>{' '}{ORG.indianEntity.name}{' '}
+        <ui-copy style="display:inline" data-i18n="web-common.7b8c6d5e4f3a2910">An Indian subsidiary is being incorporated in Mumbai; its details will be published here once registered.</ui-copy>
       </p>
 
       {variant === 'full' && (

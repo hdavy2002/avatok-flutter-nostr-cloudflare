@@ -11,8 +11,8 @@ validateBuiltImageSources(root);
 const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
-assert.match(html, /Apna hunar\./, 'Approved hero headline remains');
-assert.match(html, /Apni kamaai\./, 'Approved hero accent remains');
+assert.match(html, /Turn your skill/, 'Approved hero headline remains');
+assert.match(html, /into income\./, 'Approved hero accent remains');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.equal((html.match(/data-home-idea="/g) || []).length, 6, 'Six original creator idea cards');
 assert.equal((html.match(/<article\b[^>]*class="[^"]*\bindia-idea-card\b/g) || []).length, 4, 'Four additional creator ideas');
@@ -128,7 +128,7 @@ console.log('Exact original artwork checks passed: hero, middle sections and all
 
 // Creator inspiration is a separate editorial route, never fake marketplace inventory.
 const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'), 'utf8'), { root });
-assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
+assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
 assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
@@ -138,11 +138,11 @@ assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
 assert.match(ideas, /data-topic="daily"/, 'Daily-life ideas included');
 for (const format of ['live','private','group']) assert.match(ideas, new RegExp('data-format="' + format + '"'), 'Missing format ' + format);
 assert(existsSync(resolve(root,'assets/ideas/creator-atlas.jpg')), 'Creator illustration atlas exists');
-console.log('Creator ideas checks passed: 115 cards, three formats, shared chrome, artwork and hero link.');
+console.log('Creator ideas checks passed: 109 cards, three formats, shared chrome, artwork and hero link.');
 
 // Every idea links to an individually illustrated, prerendered article.
 const guideLinks = [...ideas.matchAll(/href="(\/blog\/creator-ideas\/[^"]+)"/g)].map(m=>m[1]);
-assert.equal(new Set(guideLinks).size,115,'Every idea has its own article');
+assert.equal(new Set(guideLinks).size,109,'Every idea has its own article');
 const imagePaths = new Set();
 const imageHashes = new Set();
 for (const href of new Set(guideLinks)) {
@@ -168,7 +168,7 @@ for (const href of new Set(guideLinks)) {
  assert.doesNotMatch(article,/creator-atlas\.jpg/,'No repeated atlas artwork');
 }
 assert.doesNotMatch(ideas,/creator-atlas\.jpg/,'No repeated atlas on idea cards');
-console.log('115 unique article routes, hero images, sections and shared chrome passed.');
+console.log('109 unique article routes, hero images, sections and shared chrome passed.');
 
 // [WEB-SEO-3] /sitemap.xml is now a sitemapindex; the static page URLs live in
 // /sitemap-pages.xml. Check both exist and that the index points at the pages file.
@@ -207,7 +207,7 @@ assert.match(ideas,/ItemList/);
 assert(meta(ideas,'og:image')?.includes('/assets/ideas/guides/'),'Ideas-specific preview image');
 assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
 assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
-console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');
+console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL.
 const rawShareImage = meta(rawHtml, 'og:image');
@@ -217,8 +217,8 @@ assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
 assert.match(campaignImages[0], /^https:\/\/avatok\.ai\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
-assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
-assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
+assert.equal(meta(html, 'og:title'), 'Turn your skill into income. · avaTOK');
+assert.equal(meta(html, 'og:description'), 'avaTOK is a marketplace where verified creators sell tickets to live online events, 1:1 video consultations and small-group classes. Customers book and pay in rupees.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));

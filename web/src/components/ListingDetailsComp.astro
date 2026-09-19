@@ -157,7 +157,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const listingCount = newHost
     ? '1 ACTIVE LISTING — THIS ONE'
     : `${otherListings.length + 1} ACTIVE LISTING${otherListings.length === 0 ? '' : 'S'}`;
-  const hostChip1 = newHost ? 'NAYA HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
+  const hostChip1 = newHost ? 'NEW HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
   const hostChip2 = newHost ? 'FIRST SHOW: SCHEDULING' : `${trust?.shows_hosted ?? 0} SHOWS`;
   const followers = l.creator?.follower_count ?? l.joined_count ?? 0;
   const watchStat = isLive ? String(l.watching ?? 0) : followers >= 1000 ? `${(followers / 1000).toFixed(1)}K` : String(followers);
@@ -775,11 +775,11 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <>
           <div class="masala-quote">
             <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Desi swag" />
-            <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
+            <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Whoever wins, that's the real scene." — a regular</div>
           </div>
           <div class="masala-stickers">
-            <img data-india-i18n-attr="alt:web-common.9bfbfece25ac0ea5" src={publicImage('/assets/vadapav-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
-            <img data-india-i18n-attr="alt:web-common.9eac0cf0199ac810" src={publicImage('/assets/dekho-pyar-se.png', { width: 900, fit: 'scale-down' })} alt="Dekho magar pyar se" class="masala-stickers__b" />
+            <img data-india-i18n-attr="alt:web-common.9bfbfece25ac0ea5" src={publicImage('/assets/vadapav-uncle.png', { width: 900, fit: 'scale-down' })} alt="You're like my child, have some vada pav" class="masala-stickers__a" />
+            <img data-india-i18n-attr="alt:web-common.9eac0cf0199ac810" src={publicImage('/assets/dekho-pyar-se.png', { width: 900, fit: 'scale-down' })} alt="Look, but with love" class="masala-stickers__b" />
           </div>
         </>
       )}
@@ -875,7 +875,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </div>
       </div>
       {masala && (
-        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Seat gayi toh scene bhi gaya.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
+        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Lose the seat, lose the scene.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
       )}
     </aside>
 
@@ -936,7 +936,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {newHost ? (
               <div class="newhost-box">
                 <div class="newhost-box__head">
-                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NAYA HOST</span>
+                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NEW HOST</span>
                   <span data-i18n="web-common.b817d19e4de3f60b" class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
                 </div>
                 <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
@@ -1049,7 +1049,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 ))}
               </div>
             </div>
-            {masala && <img data-india-i18n-attr="alt:web-common.17390c00587887c1" src={publicImage('/assets/baccha-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
+            {masala && <img data-india-i18n-attr="alt:web-common.17390c00587887c1" src={publicImage('/assets/baccha-uncle.png', { width: 900, fit: 'scale-down' })} alt="You're like my child, why worry so much" class="reviews-summary__sticker" />}
           </div>
           <div class="reviews-list-wrap">
             {/* [REVIEW-MOD-1 2026-09-06] The empty middle the owner pointed at.
@@ -1097,7 +1097,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.be3398565992e357">Browse more</ui-copy> <span data-i18n="web-common.9faa09a3e4bdccca" class="section-title__accent">events.</span></h2>
       {masala && (
         <div class="browse__quote">
-          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">Ek show se kya hoga?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Scroll karte raho…</ui-copy></div>
+          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">One show won't be enough.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Keep scrolling…</ui-copy></div>
           <img data-india-i18n-attr="alt:web-common.7140148ccc44276e" src={publicImage('/assets/chill-uncle.png', { width: 900, fit: 'scale-down' })} alt="Chill uncle with coconut" />
         </div>
       )}
