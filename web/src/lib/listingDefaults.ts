@@ -100,7 +100,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
   comedy: {
     howItWorks: [
       { label: 'Doors open', body: 'Join 5 minutes early — we start with some crowd banter before the set.' },
-      { label: 'The set', body: 'A tight set of stand-up, built fresh for this room — desi observations, everyday chaos.' },
+      { label: 'The set', body: 'A tight set of stand-up, built fresh for this room — everyday Indian observations, everyday chaos.' },
       { label: 'Crowd work', body: 'Chat stays open — the best lines usually come from your replies.' },
       { label: 'Encore', body: 'A short Q&A or an extra bit if the room’s got the energy for it.' },
     ],
@@ -112,7 +112,7 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { heading: 'Stay for the whole set', body: 'Leaving mid-bit throws off the room’s energy for everyone else.' },
     ],
     whatYouGet: ['A live stand-up set, not a rerun', 'Crowd-work moments built from live chat', 'A relaxed, informal room', 'Bonus Q&A if time allows'],
-    whoFor: ['Anyone who wants a laugh after a long day', 'Fans of desi observational comedy', 'People who enjoy interactive shows'],
+    whoFor: ['Anyone who wants a laugh after a long day', 'Lovers of observational comedy', 'People who enjoy interactive shows'],
     notFor: ['Anyone easily offended by edgy jokes', 'Those wanting a squeaky-clean, family-friendly set'],
     faq: [
       { q: 'Is this appropriate for everyone?', a: 'It’s an 18+ friendly room with some adult humour — not for younger viewers.' },

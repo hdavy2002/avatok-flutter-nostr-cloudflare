@@ -29,7 +29,7 @@ live|faith|Guruji Ka Private Satsang|A spiritual teacher or baba hosts an exclus
 live|faith|Bhajan Ki Mehfil|Create an intimate devotional music gathering with songs you have permission to perform and stream.|home
 live|faith|Ghar Ka Festival|Share your household's Ganesh Chaturthi, Navratri, Onam or Pongal traditions with everyone's consent.|home
 live|faith|NRI Festival Connection|Host a festival broadcast timed for Indians abroad, explaining rituals and inviting questions.|home
-live|travel|Ladakh Ride Diaries|Share mountain stops and road-trip stories. Use a mounted camera for ride footage and chat with viewers while parked.|out
+live|travel|Ladakh Ride Diaries|Share mountain stops and road-trip stories. Use a mounted camera for ride footage and talk to viewers while parked.|out
 live|travel|Pahadon Se Sunrise|Host a sunrise from a hill station or campsite, with local stories and a quiet moment to enjoy the view.|out
 live|travel|Monsoon Village Walk|Show rain-soaked lanes, fields and everyday rural life on a walk through your neighbourhood.|out
 live|travel|Apne Gaon Ki Sair|Introduce your village through its landmarks, crafts, food and residents who are happy to be on camera.|out
@@ -125,7 +125,7 @@ private|conversation|Family History Interview|Help someone or a consenting relat
 live|daily|Gaon Ki Subah|Let viewers drop into your morning chai, household chores and village routine.|home
 live|daily|Pahadon Mein Mera Din|Share the ordinary moments of living in a mountain town, from breakfast to evening views.|home
 live|daily|Khet Ka Roz Ka Kaam|Show your regular farm routine and explain the work as viewers come and go.|out
-live|daily|Meri Rasoi|Go live while preparing everyday meals and chat with viewers between kitchen tasks.|home
+live|daily|Meri Rasoi|Go live while preparing everyday meals and talk to viewers between kitchen tasks.|home
 live|daily|Hostel Diaries|Share cooking, studying and decorating your own space, keeping roommates' privacy in mind.|home
 live|daily|Quiet Study Companion|Let viewers drop in and study alongside you in a calm, mostly quiet live session.|home
 live|daily|Artist's Workday|Share your working process as you paint, embroider, sculpt or make something at your desk.|home

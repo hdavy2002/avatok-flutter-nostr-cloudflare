@@ -55,12 +55,12 @@ const {
 
 const CATS = {
   stream: { label: 'LIVE STREAMING & SHOWS', eyebrow: '01 · GROUP SHOWS · TICKETED · WEEKLY', kind: 'jhalar' as const, photo: '#1e5f66' },
-  friends: { label: 'LIVE FRIENDS', eyebrow: '02 · PRIVATE 1:1 · DIL SE', kind: 'chai' as const, photo: '#8a5a3a' },
-  adda: { label: 'ADDA ROOMS', eyebrow: '03 · STRANGERS WELCOME · GROUP', kind: 'lotus' as const, photo: '#7a6244' },
-  astro: { label: 'ASTRO & TAROT', eyebrow: 'KISMAT DESK · READINGS', kind: 'eyes' as const, photo: '#a4352a' },
+  friends: { label: '1:1 CONSULTATIONS', eyebrow: '02 · ONE-ON-ONE · BOOKED TIME', kind: 'chai' as const, photo: '#8a5a3a' },
+  adda: { label: 'GROUP CLASSES', eyebrow: '03 · SMALL GROUP · OPEN SEATS', kind: 'lotus' as const, photo: '#7a6244' },
+  astro: { label: 'ASTROLOGY & TAROT', eyebrow: 'READINGS · LIVE SESSIONS', kind: 'eyes' as const, photo: '#a4352a' },
   ai: { label: 'AI VOICE AGENTS', eyebrow: '04 · 24/7 · CLEARLY LABELLED AI', kind: 'auto' as const, photo: '#2d4f66' },
   consult: { label: 'CONSULTING DESK', eyebrow: '05 · EXPERTISE ON DEMAND', kind: 'eyes' as const, photo: '#5a5a38' },
-  glow: { label: 'GLOW-UP STUDIO', eyebrow: 'FULL MAKEOVER SCENE', kind: 'lotus' as const, photo: '#8a3a5a' },
+  glow: { label: 'STYLE & GROOMING', eyebrow: 'CONSULTATIONS · BOOKED TIME', kind: 'lotus' as const, photo: '#8a3a5a' },
 };
 type CatKey = keyof typeof CATS;
 
@@ -774,7 +774,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {masala && (
         <>
           <div class="masala-quote">
-            <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Desi swag" />
+            <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Swag sticker" />
             <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Whoever wins, that's the real scene." — a regular</div>
           </div>
           <div class="masala-stickers">

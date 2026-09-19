@@ -372,7 +372,7 @@ export function Rail() {
   return <span className="auth-rail" aria-hidden="true"><UiText id="web-auth.1ffe0e40e1c3005e" source="Creator Marketplace" /></span>;
 }
 export function Stamp() {
-  return <span className="auth-stamp" aria-hidden="true"><UiText id="web-auth.1dbccd09995a56ce" source="Desi · Dil Se · Global" /></span>;
+  return <span className="auth-stamp" aria-hidden="true"><UiText id="web-auth.1dbccd09995a56ce" source="Homegrown · Heartfelt · Global" /></span>;
 }
 
 /* ── Validation helpers (README §Validation) ──────────────────────────── */
