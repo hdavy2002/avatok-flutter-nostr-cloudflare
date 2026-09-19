@@ -236,3 +236,137 @@ that are now 301-redirected pages. When the images exist, run the Phase 4 brief 
   12:07 at SHA `76003bb2` (= current origin/main, i.e. nothing new). Dispatching ours on main will
   cancel it via the workflow's concurrency group.
 
+
+## Restore (owner instruction 2026-09-19: "revert back to what it was and only change the texts")
+
+Times local (Asia/Kolkata), 2026-09-19. BASELINE = `76003bb2` (origin/main before the rollout).
+
+### Step 1 — look restored (deploy 1)
+
+- 07:18 Phase 4b images work CANCELLED: worktree `webgw-20260918/images` + branch `webgw/images`
+  (5 local commits, never pushed — `git ls-remote` showed no `webgw/*` refs) removed.
+- 07:18 New worktree `webgw-20260918/restore`, branch `webgw/restore`, off `origin/main` = `35f73467`.
+  `git checkout 76003bb2 -- web/`; the 14 files added since BASELINE deleted (8 seed covers, the 5
+  `components/home/*` sections, `close-friends-studio.astro`); the 2 files deleted since BASELINE
+  restored (`IndiaLanguageSelector.astro`, `indiaLandingLocales.ts`). One exception kept at main:
+  `web/src/lib/listingTaxonomy.ts` (generated; `gen_listing_taxonomy.py --check` up to date). Nothing
+  under `worker/`, `migrations/`, `app/`, `Specs/listing-taxonomy.json` or D1 touched.
+  `git diff --stat 76003bb2 HEAD -- web/` = that one file.
+- BASELINE check scripts pass unchanged on the restored tree (`check-homepage`, `check-help`,
+  `check-image-urls`, `check-performance`, all exit 0), so no `check-*.mjs` change was needed.
+- Structural proof: built BASELINE (`/tmp/webgw-baseline`, detached at `76003bb2`) and the restored
+  tree with the same production env. All 177 prerendered HTML files are byte-identical; the client
+  `_astro/` asset list is identical by name except the hash cascade from `listingTaxonomy` (its 6
+  importers: ExploreGrid, ListingWizard, ListingPublish, CreateListing, EmbeddedCreateListing).
+- Commit `c3f7344b` `[WEB-GATEWAY-RESTORE]`; 07:22 pushed `35f73467..c3f7344b` to `main` (fast-forward,
+  no force). 07:22 `gh workflow run web-deploy.yml --ref main -f publish=true` → run `35413971534`
+  (SHA `c3f7344b`); hdfc-safety + build + all gate scripts green in CI; production gate approved by the
+  coordinator 07:27 (owner's restore brief); deploy job success 07:28 (`01:58:34Z`).
+- Flag: `exampleListingsEnabled=false` written to **prod** KV (`ab462ef0…`) at 07:24 with
+  `AVATOK_TARGET=prod ALLOW_PROD=1 scripts/flags.sh set …`; live via cache-busted `/api/config` at
+  07:27; `/api/explore?examples=1` → 0 rows. ⚠️ Coordinator slip, corrected: the first `set` (07:21)
+  went to STAGING KV because the fresh worktree had no `.avatok-target` and its branch is not `main`
+  (`cf.sh` resolves branch≠main → staging even with `ALLOW_PROD=1`). Staging override was `unset`
+  again at 07:25; prod was never touched by the wrong call. `.avatok-target` now says `prod` in the
+  restore worktree.
+- Live checks 07:29 (curl, cache-busted):
+  - `/` — diff against the BASELINE `dist/index.html` shows ONLY Cloudflare edge injections
+    (Cloudflare Fonts inlining `@font-face` in place of the Google Fonts `<link>`s, a `cdn-cgi/content`
+    bot-trap anchor) and script chunk hashes. H1 "Apna hunar. / Apni kamaai." back, ids
+    `formats / how-it-works / ideas-catalogue / addon-ideas / addon-calculator / payouts` present,
+    language selector back, none of `featured / puja-darshan / categories / trust-safety /
+    how-payments-work`, no "SEE EXAMPLE".
+  - `/marketplace` 200 — BASELINE chrome ("India goes live / Find your people / Book their time",
+    "For fans", "Khojo", "Pawri"), zero `is_example` rows in the SSR seed.
+  - `/ideas` 200 — 115 cards (all guides back, incl. dil-ki-baat → 200 again, as at BASELINE).
+  - `/sign-in` 200 — BASELINE aside ("Chai ho jaye?"), Clerk key `pk_live_Y2xlcmsuYXZhdG9rLmFpJA` in the
+    live `config.BE-wn0_P.js` chunk imported by `clerk.*.js` ← `LoginIsland.*.js`.
+  - `/l/avatok-upi-smoke-2026` 200 — BASELINE listing page, no "PEHLA"/"Paisa" strings (those were
+    never on this page; they live on cards/`ListingDetailsComp` copy, see Step 2).
+
+### Step 2 — text-only safety pass (deploys 2 and 3)
+
+- 07:30 Sonnet implementer launched with `Specs/WEBGW-RESTORE-TEXT-BRIEF.md`; done 08:18 as
+  `827f9304` (report `Specs/WEBGW-RESTORE-TEXT-REPORT.md`, 51 files). Coordinator review:
+  - Diff method: a skeleton compare of every changed `web/src` file (all quoted strings, text nodes
+    and comments blanked, then old vs new) plus a line-by-line read of the flagged files. Every
+    `-`/`+` pair differs only inside a string literal, a text node, an `alt`/`title`/meta value or a
+    comment. The non-string diffs are exactly the allowed ones: `creatorIdeas.ts` (six ideas filtered
+    out + English display titles, as in `a42f2a41`), `creatorGuides.ts` (six guide bodies deleted),
+    `localeStore.ts` (the one-line `t()` fallback fix only — `setUiLocale` untouched, so the language
+    picker still works), `public/_redirects` (+6 lines), `scripts/check-homepage.mjs` (assertions).
+  - Structural identity (BASELINE build vs Step 2 build, text/attribute values stripped):
+    `/` differs only in the six ideas cards (Dil Ki Baat removed, cards shift up one, `idea-44`
+    fills slot 6 — same section, same card markup); `/ideas` only by the six removed `<article>`s;
+    `/about` only by an `authoredKey` hash that is derived from the text; `/contact`, `/pricing`,
+    `/payouts` identical; `/marketplace`, `/sign-in`, `/l/<id>` (SSR, via `astro dev` on both trees)
+    identical apart from dev-server artefacts. JSON-LD key sets identical.
+  - **Sent back (FIX1, `Specs/WEBGW-RESTORE-TEXT-FIX1-BRIEF.md`, 08:22):** the rendered-page scan still
+    found Hinglish/banned words the sweep missed — `LoginIsland.tsx`/`SignUpIsland.tsx`/`AuthKit.tsx`
+    ("Ya phir", "Chai ho jaye? Woh bhi ho jayega.", "Desi · Dil Se · Global" — the island copies of
+    the keys fixed in the pages, so `/sign-in` reverted after hydration), the `ListingDetailsComp`
+    `CATS` map ("LIVE FRIENDS · PRIVATE 1:1 · DIL SE", "ADDA ROOMS", "KISMAT DESK", "GLOW-UP
+    STUDIO"), `BazaarHero` ("adda rooms … glow-ups"), "Dance adda", "115 desi ideas", "chat with"
+    ×4, ~17 "private" in guide prose, "Fans of desi …", the live-viewer "Sab spots bhar gaye", two
+    alt texts, and the two noindex preview pages sharing the homepage keys. Done 08:41 as `deda9215`
+    (report `Specs/WEBGW-RESTORE-TEXT-FIX1-REPORT.md`); re-reviewed the same way — text only.
+    `verticals.ts` still holds Hinglish strings but is provably dead (no importer uses its exports).
+- Gates on `deda9215` (coordinator's own run): build green; `check-homepage`, `check-help`,
+  `check-image-urls`, `check-performance` exit 0; `gen_listing_taxonomy.py --check` up to date;
+  `dist/_redirects` carries the 6 idea redirects and `dist/_routes.json` has 99 exclude entries
+  (Cloudflare cap 100 — same as the a42f2a41 deploy; do not add a 7th `_redirects` line without
+  freeing one). Render scan on `astro dev` (tags stripped, language-picker menu excluded): `/`,
+  `/marketplace`, `/sign-in`, `/sign-up`, `/about`, `/ideas`, `/pricing`, `/payouts`, `/contact`,
+  `/careers`, `/blog`, `/help`, a guide page, `/india-next` → zero banned words, zero Hinglish, zero
+  Devanagari. Only hits: "private" on `/l/avatok-upi-smoke-2026` (the D1 row's own description —
+  data, not web copy) and "founders" in the `/terms` liability/indemnity clause (a legal clause,
+  no one named — left, per "do not change governing clauses").
+- 08:43 pushed `c3f7344b..deda9215` to `main` (fast-forward). Web-deploy run `35417866829`, gate
+  approved 08:46, deploy success 08:47 (`03:17:06Z`).
+- Live 08:48: H1 "Turn your skill / into income."; kicker "Creator marketplace · India"; CTAs "Start
+  selling, free" / "Browse sessions" (hrefs unchanged: `/sign-up`, `/ideas`); chips Live events →
+  `india_goes_live`, Group classes → `find_your_people`, 1:1 consultations → `book_their_time`
+  (labels follow the hrefs' current taxonomy; anchors not reordered); ideas eyebrow/H2 English;
+  `rail-note` present and empty; language selector present (×2, as BASELINE); 109 idea cards; six
+  removed slugs → 301 `/ideas`; `/terms` carries the exact India sentence; no Pvt Ltd / Ave Maria
+  anywhere; listing page "NEW HOST"; sign-in aside "Time for chai? / That's sorted too." with the
+  Clerk key still in the shipped `config.BE-wn0_P.js`.
+- **FIX2 (coordinator, trivial, `aaed1991`):** the `/marketplace` group tiles still read "India goes
+  live" / "Book their time" (plain English, but not the format names). Two label/title strings in
+  `marketGroups.ts` + the matching sentence in `help/creators/create-a-listing.md`. Gates green.
+  Pushed `deda9215..aaed1991`; web-deploy `35418219374`, gate approved 08:53, deploy success 08:55
+  (`03:25:33Z`). Live 08:56: tiles "Live events / Group classes / 1:1 consultations", no old labels.
+
+### What is live now
+
+- `origin/main` = `aaed1991` (+ this report commit). Prod web = run `35418219374` (SHA `aaed1991`).
+- `web/` = BASELINE `76003bb2` structure with: the generated `listingTaxonomy.ts` from main; text-only
+  copy changes (`c3f7344b..aaed1991`); six idea guides unpublished + 301s; the `t()` fallback fix;
+  English catalog values updated in `shared/i18n/source/` for the changed keys.
+- Prod worker: unchanged since run `35401971383` (SHA `f21fd5ad`). Prod D1: unchanged since the
+  rollout. Flags: `exampleListingsEnabled=false` (KV override, written this session).
+
+### Deliberately left in place server-side — and how to undo each
+
+| Item | Where | Effect today | Undo |
+|---|---|---|---|
+| Worker example guards (`is_example` filters, 409 `example_listing` on money routes, cron/sweep skips) | `worker/src/**` on `main`, deployed | Dormant: flag off → explore/search/creators/sitemap never return example rows; guards only fire for `is_example=1` rows | Revert the E-stream worker commits on `main` and redeploy `worker-deploy.yml`; or leave — harmless |
+| `hide_from_marketplace` filter (FIX1) | worker, deployed | The UPI smoke listing stays out of explore/search/sitemap (it is still reachable by URL) | Same as above; or clear the attr on that row |
+| 8 seeded example rows (`ex-*`, owner `avatok_team`) | prod D1 `listings`, `is_example=1` | Invisible everywhere the flag is read; **still reachable by direct URL** (`/avatok_team/<slug>` and `/l/<id>` render the BASELINE listing page with a Book button — the server's 409 stops any payment). Not linked from anywhere, `noindex` is gone with the BASELINE page. | `UPDATE listings SET status='draft' WHERE is_example=1` (no deletion), or `DELETE` if the owner wants them gone; re-enable with `flags.sh set exampleListingsEnabled=true` |
+| `listings.is_example` column | prod D1 | Inert | Leave (additive) |
+| Taxonomy migration: 5 `group_*` categories under `find_your_people`; `live_friends`, `adda_rooms`, `glow_up`, `astrologers` and 10 companionship categories `active=0` | prod D1 `listing_categories` + `Specs/listing-taxonomy.json` + generated files | Pickers/chips hide them; existing listings keep their category and label | `UPDATE listing_categories SET active=1 WHERE id IN (…)`, drop `hidden: true` in the JSON, regenerate |
+| `exampleListingsEnabled=false` | prod KV override | Examples hidden | `AVATOK_TARGET=prod ALLOW_PROD=1 scripts/flags.sh unset exampleListingsEnabled` |
+| The rollout's `components/home/*`, seed covers, `close-friends-studio.astro` | deleted from `main` in `c3f7344b` | Gone from the site | `git checkout a42f2a41 -- <paths>` when the owner wants the new sections back |
+
+### Notes for the owner
+
+1. The homepage `lang="hi-Latn"` attribute and the sign-in `lang="hi"` on the "We've been waiting
+   for you" line are unchanged (attributes are out of scope for a text-only pass); harmless for
+   readers, slightly off for screen readers. One-line fixes when you want them.
+2. "Browse sessions" still links to `/ideas` (the BASELINE href of that CTA) — change the target
+   when you decide where it should go.
+3. The non-English translations for the changed keys are now stale (reviewed translations only
+   apply when the English source matches), so a visitor picking Hindi sees English for those
+   strings until the catalogs are regenerated.
+4. Graphiti was unreachable again this session; the file memory has a note about the `cf.sh`
+   worktree/branch → staging trap.
