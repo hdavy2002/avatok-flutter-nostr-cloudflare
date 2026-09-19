@@ -10,7 +10,7 @@ faq:
   - q: "Can I message a creator on the website?"
     a: "No — avatok.ai has no messaging. A listing page shows the creator's avaTOK number and a link to the app, where messaging happens."
   - q: "Do I need the app to watch a live show or join a session I've booked?"
-    a: "No — you can watch and join right in your browser at avatok.ai; the app is for the full experience, including messaging the creator."
+    a: "No — you can watch and join right in your browser at avatok.ai; the app is for the full experience, including chat with the creator."
   - q: "Where do I choose my avaTOK number?"
     a: "In the app. Signing up on the website only creates your account — your avaTOK number and the rest of onboarding happen the first time you open the app."
 draft: false

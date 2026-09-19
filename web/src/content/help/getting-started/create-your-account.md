@@ -4,14 +4,14 @@ description: "How web sign-up works on avatok.ai — an email code plus an India
 section: getting-started
 order: 2
 updated: 2026-09-11
-keywords: ["sign up", "signup", "create account", "otp", "email code", "verification", "phone number", "avatok number"]
+keywords: ["sign up", "signup", "create account", "otp", "email code", "verification", "account banao", "phone number", "avatok number"]
 audience: both
 faq:
   - q: "What do I need to sign up on the website?"
     a: "Your name, an email address you can check, and an Indian mobile number (+91) — you'll verify both with a one-time code before your account opens."
   - q: "Do I get my avaTOK number when I sign up on the web?"
     a: "No. Web sign-up creates your account; choosing your avaTOK number and the rest of onboarding happen the first time you open the avaTOK app."
-  - q: "Why does avaTOK need my real phone number if it stays confidential?"
+  - q: "Why does avaTOK need my real phone number if it stays private?"
     a: "It's used to verify you're a real person and to secure your account — everyone else only ever sees your avaTOK number, never your real one."
 draft: false
 ---
@@ -29,7 +29,7 @@ To [create an account](/sign-up) on avatok.ai you need three things: your first 
 
 You can also start with **Google** — it fills in your name and email, and you still verify a phone number afterwards.
 
-## Why the phone number, if it stays confidential?
+## Why the phone number, if it stays private?
 
 Verifying a real mobile number is how avaTOK confirms you're a genuine person and secures your account against takeover. It is never shown to anyone else. Once you're through onboarding in the app, your public identity to other users is a separate **avaTOK number** that keeps your real one masked.
 

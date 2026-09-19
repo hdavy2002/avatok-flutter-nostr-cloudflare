@@ -7,7 +7,7 @@ import {
   toCardView, languageLabel, priceLabel,
   laneFor, pillLabel, uniformChips, cardBlurb, bottomRightForLane, buttonsForLane,
 } from '../lib/card';
-import { statusPill, ctaExtra, cta } from '../lib/copy';
+import { statusPill, ctaExtra } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
 import type { Listing } from '../lib/types';
 // [WEB-POSTHOG-1] Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.3.
@@ -484,16 +484,6 @@ export function ListingTile({
 
           {/* [LIST-TRUST-1 §H.5] The favourite heart — top-right, per the comp. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-            {/* [WEB-GATEWAY-E 2026-09-18] Badged sample — same sticker shape as
-                the 18+ chip below, so a new badge type reads as "part of the
-                design system" rather than a bolt-on warning. */}
-            {c.isExample && (
-              <span style={{
-                fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
-                background: CREAM, color: INK, border: `1.5px solid ${INK}`,
-                borderRadius: 16, padding: '5px 9px', flex: 'none', letterSpacing: '.06em', // [UI-COMFORTAA-1] chip tier
-              }}><UiText id="web-common.d18f4dbe0e7f2a1c" source="EXAMPLE" /></span>
-            )}
             {c.adultsOnly && (
               <span style={{
                 fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
@@ -698,7 +688,7 @@ export function ListingTile({
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
             border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
-          }}>{c.isExample ? cta.SEE_EXAMPLE : buttons.primaryLabel}</span>
+          }}>{buttons.primaryLabel}</span>
           <span data-cta={buttons.secondaryCta} style={{
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier

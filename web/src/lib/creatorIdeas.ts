@@ -13,19 +13,11 @@ export const topics = {
  lifestyle: { label: 'Home & wellbeing', art: 10 },
  business: { label: 'Small business', art: 11 },
 };
-export const formats = { live: 'Live events', private: '1:1 consultations', group: 'Group classes' };
-// Each row's title is the idea's stable working title: it is the source for the
-// idea's slug/URL and image filenames, so it must never change even when the
-// displayed English title below does. [WEB-GATEWAY-C] removed the "Dil Ki
-// Baat" listening-session idea and two draping/wardrobe-styling ideas
-// (companionship- and styling-session-adjacent), plus "NRI Homesick Adda" and
-// "Shaam Ka Adda" (open-ended companionship-style chat sessions) — see the
-// `excluded` set below. They stay in this list only so every other idea keeps
-// its original id/slug.
+export const formats = { live: 'Live stream', private: '1:1 session', group: 'Group session' };
 const rows = `live|faith|Mandir Se Live Darshan|Take viewers on a temple visit. Share the atmosphere and traditions from areas where filming is permitted.|out
 live|faith|Subah Ki Aarti|Bring a morning aarti to people far from home, from your home shrine or a temple that permits streaming.|home
 live|faith|Ganga Ghat Se Shaam|Share an evening by the ghats, local stories and permitted ceremony coverage with a distant audience.|out
-live|faith|Guruji Ka Private Satsang|A spiritual teacher or baba hosts an exclusive live talk for followers, with a moderator gathering questions.|home
+live|faith|Guruji Ka Private Satsang|A spiritual teacher or baba hosts a private live talk for followers, with a moderator gathering questions.|home
 live|faith|Bhajan Ki Mehfil|Create an intimate devotional music gathering with songs you have permission to perform and stream.|home
 live|faith|Ghar Ka Festival|Share your household's Ganesh Chaturthi, Navratri, Onam or Pongal traditions with everyone's consent.|home
 live|faith|NRI Festival Connection|Host a festival broadcast timed for Indians abroad, explaining rituals and inviting questions.|home
@@ -131,80 +123,24 @@ live|daily|Quiet Study Companion|Let viewers drop in and study alongside you in 
 live|daily|Artist's Workday|Share your working process as you paint, embroider, sculpt or make something at your desk.|home
 live|daily|Chai Stall Chronicles|Show the rhythm of a chai stall, keeping customers and conversations off-camera unless they consent.|out
 live|daily|Dukaan Ka Din|Share opening the shop, arranging displays and packing orders without exposing customer details.|out
-live|daily|Small Business Behind the Scenes|Let people watch you make products and prepare deliveries, keeping names and addresses confidential.|home
+live|daily|Small Business Behind the Scenes|Let people watch you make products and prepare deliveries, keeping names and addresses private.|home
 live|daily|Van Life / Travel Diaries|Share campsite routines, cooking and travel updates while safely parked.|out
 live|daily|Balcony Garden Time|Water, repot and tend your plants while chatting with viewers who share the interest.|home
 live|daily|My Indian Life Abroad|Share cooking, groceries and everyday cultural differences from your life outside India.|home
 live|daily|Shaam Ka Adda|Open an informal evening chat from home, with space for familiar faces and new visitors.|home
-live|daily|Mera Din, Meri Kahani|Share selected everyday moments on your terms. Go live when you choose and keep personal moments to yourself.|home`;
-// Working title -> the plain-English title actually shown on the site.
-// Anything not listed here was already plain English and is unchanged.
-const english: Record<string, string> = {
- 'Mandir Se Live Darshan': 'Temple Darshan, Live',
- 'Subah Ki Aarti': 'Morning Aarti From Home',
- 'Ganga Ghat Se Shaam': 'An Evening By The Ganga Ghats',
- 'Guruji Ka Private Satsang': "A Spiritual Teacher's Exclusive Satsang",
- 'Bhajan Ki Mehfil': 'An Evening Of Bhajans',
- 'Ghar Ka Festival': 'A Festival At Home',
- 'Pahadon Se Sunrise': 'Sunrise From The Hills',
- 'Apne Gaon Ki Sair': 'A Tour Of Your Village',
- 'Purani Galiyon Ki Kahani': 'Stories From The Old City Lanes',
- 'Bazaar Live': 'Market Tour, Live',
- 'Rail Yatra Window Seat': 'Train Journey, Window Seat',
- 'Mela Mere Saath': 'A Local Fair With Me',
- 'Farm Se Live': 'Live From The Farm',
- 'Maa Ki Rasoi Live': "Mum's Kitchen, Live",
- 'Achaar Aur Papad Day': 'Pickle And Papad Day',
- 'Original Music Baithak': 'Original Music Evening',
- 'Shayari Aur Kahani': 'Poetry And Storytelling',
- 'Ghar Ka Stand-Up Show': 'A Home Stand-Up Show',
- 'Chai Pe Apni Bhasha Mein': 'A Chat In Your Own Language',
- 'English Bolo, Bindass': 'Speak English With Confidence',
- 'College Senior Se Baat': 'Ask A College Senior',
- 'Phone Se Reel Bana': 'Make Reels On Your Phone',
- 'Apni Dukaan Online': 'Take Your Shop Online',
- 'Parents Ka Tech Saathi': 'A Tech Helper For Parents',
- 'Plant Care Adda': 'Plant Care Chat',
- 'English Practice Adda': 'English Practice Circle',
- 'Apni Pehli Listing': 'Your First Listing',
- 'Festival Mithai Class': 'Festival Sweets Class',
- 'Music Riyaaz Circle': 'Music Practice Circle',
- 'Bhajan Seekho': 'Learn Bhajans Together',
- 'Antakshari Adda': 'Antakshari Singing Circle',
- 'Gaon Ki Subah': 'Morning In The Village',
- 'Pahadon Mein Mera Din': 'A Day In The Mountains',
- 'Khet Ka Roz Ka Kaam': "A Day's Work On The Farm",
- 'Meri Rasoi': 'My Kitchen, Live',
- 'Quiet Study Companion': 'Quiet Study Session',
- 'Dukaan Ka Din': 'A Day At The Shop',
- 'Mera Din, Meri Kahani': 'My Day, My Story',
-};
-// Working titles removed as unsafe or off-strategy: companionship/listening/
-// loneliness sessions ("Dil Ki Baat", "NRI Homesick Adda", "Shaam Ka Adda")
-// and styling/draping sessions ("Saree Draping Help", "Saree Draping Circle",
-// "Style Your Own Wardrobe"). ids and slugs of every other idea are preserved.
-const excluded = new Set([
- 'Dil Ki Baat',
- 'NRI Homesick Adda',
- 'Saree Draping Help',
- 'Style Your Own Wardrobe',
- 'Saree Draping Circle',
- 'Shaam Ka Adda',
-]);
-const featured = new Set(['Mandir Se Live Darshan', 'Guruji Ka Private Satsang', 'Ladakh Ride Diaries', 'English Practice Adda', 'Gaon Ki Subah']);
-const easy = new Set(['Chai Pe Apni Bhasha Mein', 'Quiet Study Companion', 'Study With Me Club', 'Family History Interview']);
-const parsed = rows.split('\n').map((row, index) => {
+live|daily|Mera Din, Meri Kahani|Share selected everyday moments on your terms. Go live when you choose and keep private moments private.|home`;
+const featured = new Set(['Mandir Se Live Darshan', 'Guruji Ka Private Satsang', 'Ladakh Ride Diaries', 'Dil Ki Baat', 'English Practice Adda', 'Gaon Ki Subah']);
+const easy = new Set(['Chai Pe Apni Bhasha Mein', 'Quiet Study Companion', 'Shaam Ka Adda', 'Study With Me Club', 'Family History Interview']);
+export const creatorIdeas = rows.split('\n').map((row, index) => {
  const [format, topic, title, description, setting] = row.trim().split('|');
  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
- return { id: 'idea-' + (index + 1), slug, cardImage: publicImage('/assets/ideas/guides/' + slug + '-card.jpg', { width: 768, fit: 'cover' }), image: publicImage('/assets/ideas/guides/' + slug + '.jpg', { width: 1536, fit: 'cover' }), href: '/blog/creator-ideas/' + slug + '/', format: format as keyof typeof formats, topic: topic as keyof typeof topics, origTitle: title, title: english[title] ?? title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
+ return { id: 'idea-' + (index + 1), slug, cardImage: publicImage('/assets/ideas/guides/' + slug + '-card.jpg', { width: 768, fit: 'cover' }), image: publicImage('/assets/ideas/guides/' + slug + '.jpg', { width: 1536, fit: 'cover' }), href: '/blog/creator-ideas/' + slug + '/', format: format as keyof typeof formats, topic: topic as keyof typeof topics, title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
 });
 
 // Open with a mix of formats and subjects, then preserve the full editorial list.
-const openingTitles = ['Mandir Se Live Darshan','Ladakh Ride Diaries','English Practice Adda','Gaon Ki Subah','Maa Ki Rasoi Live','Phone Se Reel Bana','Warli / Madhubani Art Class','Guruji Ka Private Satsang','Original Music Baithak','Small Business Behind the Scenes','Plant Care Adda'];
-const ordered = parsed.filter(item => !excluded.has(item.origTitle));
-ordered.sort((a,b) => {
+const openingTitles = ['Mandir Se Live Darshan','Ladakh Ride Diaries','Dil Ki Baat','English Practice Adda','Gaon Ki Subah','Maa Ki Rasoi Live','Phone Se Reel Bana','Warli / Madhubani Art Class','Guruji Ka Private Satsang','Original Music Baithak','Small Business Behind the Scenes','Plant Care Adda'];
+creatorIdeas.sort((a,b) => {
  const rank = (title: string) => { const n=openingTitles.indexOf(title); return n < 0 ? openingTitles.length : n; };
- return rank(a.origTitle)-rank(b.origTitle);
+ return rank(a.title)-rank(b.title);
 });
-export const creatorIdeas = ordered.map(({ origTitle, ...idea }) => idea);
 import { publicImage } from './config';

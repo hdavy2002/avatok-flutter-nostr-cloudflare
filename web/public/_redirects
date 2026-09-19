@@ -22,20 +22,3 @@
 # [WEB-INDIA-HOME-1] One canonical creator homepage.
 /india                        /              301
 /india/                       /              301
-
-# [WEB-GATEWAY-C] Creator-idea guides removed as unsafe (companionship/listening/
-# loneliness sessions, or styling/draping sessions) — see Specs/WEBGW-C-REPORT.md.
-/blog/creator-ideas/dil-ki-baat            /ideas   301
-/blog/creator-ideas/nri-homesick-adda      /ideas   301
-/blog/creator-ideas/saree-draping-help     /ideas   301
-/blog/creator-ideas/style-your-own-wardrobe /ideas  301
-/blog/creator-ideas/saree-draping-circle   /ideas   301
-/blog/creator-ideas/shaam-ka-adda          /ideas   301
-
-# [WEB-GATEWAY-INT] The close-friends-studio redirect is NOT here on purpose —
-# this file's exclude entries in dist/_routes.json are already at Cloudflare's
-# 100-rule cap, so a new literal entry here gets silently dropped at build
-# time and the URL falls through to the Worker (200, not 301). See
-# src/pages/blog/global-creator-ideas/close-friends-studio.astro instead —
-# a literal sibling page that redirects via Astro.redirect, which needs no
-# _routes.json slot. Specs/WEBGW-INT-REPORT.md has the full story.

@@ -5,29 +5,26 @@ import Base from '../layouts/Base.astro';
 import Fonts from '../components/Fonts.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import { creatorIdeas, formats, topics } from '../lib/creatorIdeas';
 import '../styles/railway-home.css';
 import '../styles/india-additions.css';
-import FeaturedSessions from '../components/home/FeaturedSessions.astro';
+import CreatorIdeas from '../components/india-preview/CreatorIdeas.astro';
 import BookingExpress from '../components/india-preview/BookingExpressIllustrated.astro';
-import PujaBand from '../components/home/PujaBand.astro';
-import CategoriesGrid from '../components/home/CategoriesGrid.astro';
-import TrustSafetyBand from '../components/home/TrustSafetyBand.astro';
-import HowMoneyMoves from '../components/home/HowMoneyMoves.astro';
 import EarningsCalculator from '../components/india-preview/EarningsCalculatorIllustrated.astro';
 
+const ideas = creatorIdeas.slice(0, 6);
 const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.png', [420, 640, 900, 1280], { fit: 'scale-down' });
+
 ---
 <Base
-  title="avaTOK: live puja, online classes, 1:1 consultations and ticketed live events"
-  description="Book live pujas, online classes, 1:1 video consultations and ticketed live events from verified creators. Pay securely in rupees."
+  title="Apna hunar. Apni kamaai. · avaTOK"
+  description="Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people."
   image={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="Creators hosting live events, group classes and 1:1 video consultations."
+  imageAlt="Creators hosting live events, group sessions and private one-to-one video meetups."
   imageWidth={1156}
   imageHeight={1360}
   chrome={false}
-  lang="en-IN"
-  ogLocale="en_IN"
-  keywords="online puja booking, online classes, expert consultations, ticketed live events, creator marketplace India"
+  lang="hi-Latn"
 >
   <Fragment slot="head">
     <Fonts india />
@@ -35,7 +32,7 @@ const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.
     <meta name="theme-color" content="#f7ead5" />
     <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
   </Fragment>
-  <a class="rail-skip" href="#main-content">Skip to main content</a>
+  <a data-i18n="web-landing.e4fa98b15a1e147a" class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader indiaLandingLanguage={true} />
   <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
     <section class="station-hero creator-hero" aria-labelledby="rail-title">
@@ -53,50 +50,62 @@ const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.
             at opacity:0. */}
         <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
         <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
-          <p class="station-kicker creator-hero__kicker"><span aria-hidden="true"></span> Creator marketplace · India</p>
-          <h1 id="rail-title" class="t-stagger-line">Turn your skill into income.</h1>
-          <p class="t-stagger-line t-stagger-line--2">avaTOK is a marketplace where verified creators sell tickets to live online events, 1:1 video consultations and small-group classes. Customers book and pay in rupees. Creators are paid to their bank account.</p>
+          <p class="station-kicker creator-hero__kicker"><span aria-hidden="true"></span> <ui-copy style="display:contents" data-i18n="web-landing.b9d43bd06fbe8631">A global creator marketplace</ui-copy></p>
+          <h1 id="rail-title" class="t-stagger-line"><span data-i18n="web-landing.0528be3d426aff53" class="creator-hero__line">Apna hunar.</span><span data-i18n="web-landing.92f4118799fbcf80" class="creator-hero__line creator-hero__line--accent">Apni kamaai.</span></h1>
+          <p class="t-stagger-line t-stagger-line--2"><ui-copy style="display:contents" data-i18n="web-landing.d0082f5d7ac7dd8b">Jo aata hai, usse kamao. Host a live event, offer your time 1:1, or teach a small group—</ui-copy><strong data-i18n="web-landing.721cb60fc48386d6">on your terms, at your price.</strong></p>
           <div class="station-actions">
-            <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Start selling, free</a>
-            <a class="station-outline" href="/marketplace" data-home-cta="hero-browse">Browse sessions</a>
+            <a data-i18n="web-landing.c54a63bb77c61e9d" class="rail-button" href="/sign-up" data-home-cta="hero-create">Start earning free</a>
+            <a data-i18n="web-landing.87423590f6bd3088" class="station-outline" href="/ideas" data-home-cta="hero-ideas">Explore ideas</a>
           </div>
-          <ul class="creator-hero__checks" aria-label="Why book on avaTOK">
-            <li>Liveness-verified creators</li>
-            <li>Secure payments in ₹</li>
-            <li>Clear refund policy</li>
-          </ul>
-          <div class="creator-hero__formats" aria-label="Ways to earn on avaTOK">
-            <a href="/marketplace?group=india_goes_live" data-home-cta="hero-live">Live events</a>
-            <a href="/marketplace?group=book_their_time" data-home-cta="hero-1to1">1:1 consultations</a>
-            <a href="/marketplace?group=find_your_people" data-home-cta="hero-group">Group classes</a>
+          <div data-india-i18n-attr="aria-label:web-landing.eed4e047041fb536" class="creator-hero__formats" aria-label="Ways to earn on AvaTOK">
+            <a data-i18n="web-landing.b7a9f5518da78e1f" href="/marketplace?group=india_goes_live" data-home-cta="hero-live">Live events</a>
+            <a data-i18n="web-landing.451c573451f6721a" href="/marketplace?group=find_your_people" data-home-cta="hero-private">Private 1:1</a>
+            <a data-i18n="web-landing.84d0be67f5ca32a2" href="/marketplace?group=book_their_time" data-home-cta="hero-group">Group sessions</a>
           </div>
         </div>
         {/* closes the merged .station-copy.t-stagger div opened above (it used
             to close a plain .station-copy). */}
         <div class="station-art creator-hero__art">
-          <img src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one video consultation." fetchpriority="high" decoding="async" />
-          <p class="creator-hero__share"><strong>80%</strong><span>of every booking goes to the creator</span></p>
+            <span data-i18n="web-landing.f675ebf648fc78c6" class="creator-hero__live" aria-hidden="true">● Live around the world</span>
+          <img data-india-i18n-attr="alt:web-landing.7c72ea27bba5af71" src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
+          <p class="creator-hero__share"><strong>80%</strong><span data-i18n="web-landing.6785ce181ad9bfd9">you keep</span></p>
         </div>
       </div>
+      <a class="rail-next" href="#ideas-catalogue"><ui-copy style="display:contents" data-i18n="web-landing.ceae9c3f4625186e">Find your first earning idea</ui-copy> <span aria-hidden="true">↓</span></a>
     </section>
-
-    <FeaturedSessions />
 
     <BookingExpress />
 
-    <PujaBand />
+    <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
+      <p class="rail-eyebrow rail-flowered"><img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /> <ui-copy style="display:contents" data-i18n="web-landing.af29625174aed2ab">Kya offer karoge?</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /></p>
+      <h2 id="ideas-title"><ui-copy style="display:contents" data-i18n="web-landing.35013d916827ddd2">Socha hai, isse bhi</ui-copy> <span data-i18n="web-landing.6088e03833a8d3c7">kamaa sakte ho?</span></h2>
+      <p data-i18n="web-landing.6193ee40538a4862" class="rail-section-copy">A few ideas to get your first listing started.</p>
+      <div class="rail-idea-grid">
+        {ideas.map((idea) => (
+          <article class="idea-card rail-article-card">
+            <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
+              <div class="idea-picture"><img src={publicImage(idea.cardImage, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(idea.cardImage, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-card-copy"><div class="idea-chips"><span data-i18n={`web-ideas.format.${idea.format}`} class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span data-i18n={`web-ideas.topic.${idea.topic}`}>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span data-i18n="web-landing.50fb1f69cb64b60d">From home</span>}</div><h3 data-i18n={`web-ideas.${idea.id}.title`} id={`${idea.id}-title`}>{idea.title}</h3><p data-i18n={`web-ideas.${idea.id}.description`}>{idea.description}</p><span class="idea-read-guide"><ui-copy style="display:contents" data-i18n="web-landing.83b3b277abbf82ba">Read the guide</ui-copy> <span aria-hidden="true">↗</span></span></div>
+            </a>
+          </article>
+        ))}
+      </div>
+      {/* [WEB-HOME-EXPLORE-BTN 2026-09-10] A real button, not a text link —
+          the only way on from the six sample ideas is the full /ideas page. */}
+      <a class="rail-button rail-button--ink rail-explore-button" href="/ideas" data-home-cta="explore-ideas"><ui-copy style="display:contents" data-i18n="web-landing.fb4c2e13ffc8a351">Explore more ideas</ui-copy> <span aria-hidden="true">↗</span></a>
+      <p data-i18n="web-landing.e7b786bad9689075" class="rail-note">Listening sessions: adults 18+ · Companionship, not therapy or emergency support.</p>
+    </section>
 
-    <CategoriesGrid />
 
-    <TrustSafetyBand />
-
-    <HowMoneyMoves />
-
+    {/* Creator homepage: each additional section is an independently editable component.
+        The original hero and ideas remain; BookingExpress combines the approved format and onboarding sections. */}
     <div class="india-additions">
       <div class="india-page" data-india-page>
+        <CreatorIdeas />
         <EarningsCalculator />
       </div>
     </div>
+
 
   </main>
   <div class="station-footer" id="payouts"><SiteFooter indiaLandingLanguage={true} /></div>
@@ -105,15 +114,3 @@ const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.
     import '../lib/indiaCreators';
   </script>
 </Base>
-
-<style>
-  .creator-hero__checks {
-    display: flex; flex-wrap: wrap; gap: 10px; list-style: none; margin: 20px 0 0; padding: 0;
-  }
-  .creator-hero__checks li {
-    padding: 7px 12px; border: 1.5px solid var(--rail-ink, #141410); border-radius: 999px;
-    background: #fff; font-size: 13px; font-weight: 700;
-  }
-  .creator-hero__checks li::before { content: '✓ '; }
-  @media (max-width: 699px) { .creator-hero__checks { justify-content: center; } }
-</style>

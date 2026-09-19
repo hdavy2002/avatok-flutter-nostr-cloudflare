@@ -59,8 +59,6 @@ export interface Props {
   /** Optional document language metadata; defaults preserve existing pages. */
   lang?: string;
   dir?: 'ltr' | 'rtl';
-  /** og:locale override; defaults preserve existing pages. */
-  ogLocale?: string;
   /** Opt-in India chrome language selector/localization. */
   indiaLandingLanguage?: boolean;
 }
@@ -69,10 +67,11 @@ const {
   title = 'AvaTok',
   titleMessageKey,
   descriptionMessageKey,
-  // [WEB-SEO-1 2026-08-27] Every page that does not set its own description
-  // inherits this, so it is worth getting right: a marketplace for paid live
-  // streaming, 1:1 consultations and group classes, not a companionship app.
-  description = 'avaTOK is a creator marketplace where customers book and pay for live events, 1:1 consultations and group classes. Create a free listing, publish your calendar, and get paid securely in rupees.',
+  // [WEB-SEO-1 2026-08-27] The old default described the receptionist/private
+  // number product. What avaTOK actually sells today is: earn from home by
+  // listening, chatting, being a home friend or live streaming. Every page that
+  // does not set its own description inherits this, so it is worth getting right.
+  description = 'avaTOK is a free platform to earn from home — create a free listing and get paid to listen, chat, be a home friend, host private sessions or live stream. People subscribe to your calendar and book you.',
   image,
   imageAlt = title,
   imageWidth,
@@ -83,10 +82,9 @@ const {
   navStatic = false,
   noindex = false,
   hideNavCtas = false,
-  keywords = 'avaTOK, Ava Global International, creator marketplace, paid live streaming, 1:1 video sessions',
+  keywords = 'avaTOK, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions',
   lang = 'en',
   dir = 'ltr',
-  ogLocale = 'en_US',
   indiaLandingLanguage = true,
 } = Astro.props;
 
@@ -104,10 +102,11 @@ const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.a
 
 // [WEB-SEO-5 2026-09-10] Organization/WebSite/WebPage JSON-LD now built from
 // the single source of truth in `../lib/org.ts` (`ORG` + `orgJsonLd()`)
-// instead of being defined inline here. To change a brand fact — add an
-// Instagram URL, a street address, etc. — edit `org.ts`, not this file. All
-// of the original reasoning (naming rule, sameAs policy, knowledge-panel
-// field notes) now lives as comments on `org.ts`.
+// instead of being defined inline here. To change a brand fact — add the
+// Pvt Ltd legal name once registered, add an Instagram URL, a street
+// address, etc. — edit `org.ts`, not this file. All of the original
+// reasoning (naming rule, sameAs policy, knowledge-panel field notes) now
+// lives as comments on `org.ts`.
 const orgLd = orgJsonLd({ canonical, title, description, ogImage });
 ---
 
@@ -133,7 +132,7 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="avaTOK" />
-    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />

@@ -28,7 +28,7 @@ const { variant = 'full', heading } = Astro.props;
 <div class="note" id={heading ? undefined : 'status'}>
   {variant === 'short' ? (
     <p>
-      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated by</ui-copy>{' '}
+      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated by American and Indian founders through</ui-copy>{' '}
       <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.c8dc98e3e76b237a">, a Delaware corporation. The service is
       being developed and expanded globally. Contact:</ui-copy>
       <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
@@ -37,9 +37,29 @@ const { variant = 'full', heading } = Astro.props;
     <Fragment>
       <p>
         <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline" data-i18n="web-common.b47db0c3cd5c3c93">avaTOK is the platform brand of</ui-copy>{' '}
-        <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation and the
-        global headquarters of avaTOK.</ui-copy>{' '}<ui-copy style="display:inline" data-i18n="web-common.4a9f7bc8b5d34e21">{ORG.indiaSubsidiaryNote}</ui-copy>
+        <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation founded by
+        American and Indian founders, and the global headquarters of avaTOK.</ui-copy>
       </p>
+      <p style="margin-top:12px">
+        <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong>{' '}{ORG.legalName}{' '}<ui-copy style="display:inline" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.
+        The public registered-agent address is</ui-copy>{' '}{ORG.address.street}, {ORG.address.locality},
+        {ORG.address.region}{' '}{ORG.address.postalCode}<ui-copy style="display:inline" data-i18n="web-common.12a81824123d9b3a">. For general and investor enquiries,
+        write to</ui-copy>{' '}<a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
+      </p>
+      <p style="margin-top:12px">
+        <strong data-i18n="web-common.4a9f7bc8b5d34e21">Our Indian operating entity.</strong>{' '}{ORG.indianEntity.name}{' '}
+        <ui-copy style="display:inline" data-i18n="web-common.7b8c6d5e4f3a2910">is avaTOK's Indian operating entity, based in Mumbai. It leads Indian legal,
+        regulatory, customer-support and local operational matters. Its registered-office details will be published once finalized.</ui-copy>
+      </p>
+
+      {variant === 'full' && (
+        <p style="margin-top:12px">
+          <strong data-i18n="web-common.10e95e374afe1262">The site is evolving.</strong>{' '}<ui-copy style="display:inline" data-i18n="web-common.9293a402b5bac613">Features may change, be paused, or be
+          removed as we expand the service. Prices, fees and token values shown on the
+          site are subject to the applicable product terms.</ui-copy>
+        </p>
+      )}
+
       <p style="margin-top:12px">
         <strong data-i18n="web-common.fe2a3ce339afe0a0">Registered office.</strong>{' '}{ORG.address.street}, {ORG.address.locality},
         {ORG.address.region}{' '}{ORG.address.postalCode}<ui-copy style="display:inline" data-i18n="web-common.6ce614f2ee8cbd80">, United States.</ui-copy><br />

@@ -2,14 +2,8 @@
 // that feed structured data (and, gradually, the visible chrome) across the
 // site. Before this file, the Organization/WebSite/WebPage JSON-LD graph was
 // defined inline in Base.astro's frontmatter — correct, but it meant "add the
-// Instagram link" required understanding and editing a raw schema.org object.
-// Now those are one field each, here.
-//
-// [WEB-GATEWAY-C 2026-09-18] The ONLY legal entity named on the site is the
-// one below, Ava Global International, Inc. (Delaware). A second "Indian
-// operating entity" ("Ave Maria International Pvt Ltd") used to be listed
-// here; it did not exist and has been removed. Do not reintroduce a second
-// named entity — use `indiaSubsidiaryNote` for the India disclosure.
+// Pvt Ltd name" or "add the Instagram link" required understanding and
+// editing a raw schema.org object. Now those are one field each, here.
 //
 // Everything below carries forward the reasoning that used to live as a
 // comment above Base.astro's `orgLd` ([WEB-SEO-1]/[WEB-SEO-2]) — read it
@@ -41,6 +35,14 @@ export interface ParentOrg {
   name: string;
   region: string;
   country: string;
+}
+
+export interface OperatingEntity {
+  /** Indian operating entity; publish an address only once it is finalized. */
+  name: string;
+  locality: string;
+  country: string;
+  registeredOffice: string | null;
 }
 
 export interface SameAs {
@@ -77,10 +79,7 @@ export interface OrgConstants {
   email: string;
   address: PostalAddress;
   parent: ParentOrg;
-  /** [WEB-GATEWAY-C 2026-09-18] Fixed disclosure sentence for the pending
-   * India subsidiary. Do not name a second entity — see the ENTITY CLEANUP
-   * section of Specs/WEBGW-C-BRIEF.md. */
-  indiaSubsidiaryNote: string;
+  indianEntity: OperatingEntity;
   sameAs: SameAs;
   languages: string[];
   contactUrl: string;
@@ -100,7 +99,7 @@ export const ORG: OrgConstants = {
   },
   description:
     'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
-  slogan: 'Turn your skill into income.',
+  slogan: 'Apna hunar. Apni kamaai.',
   foundersDescription: 'Founded by American and Indian founders',
   foundingDate: '2025',
   email: 'support@avatok.ai',
@@ -116,7 +115,12 @@ export const ORG: OrgConstants = {
     region: 'Delaware',
     country: 'US',
   },
-  indiaSubsidiaryNote: 'An Indian subsidiary is being incorporated in Mumbai; its details will be published here once registered.',
+  indianEntity: {
+    name: 'Ave Maria International Pvt Ltd',
+    locality: 'Mumbai',
+    country: 'IN',
+    registeredOffice: null,
+  },
   sameAs: {
     youtube: 'https://www.youtube.com/@avatok',
     // [WEB-SEO-8 2026-09-10] Company Page created from the owner's LinkedIn.

@@ -11,6 +11,7 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import IndiaLanguageSelector from '../components/IndiaLanguageSelector.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost, publicImage } from '../lib/config';
@@ -23,7 +24,7 @@ const clerkHost = clerkFapiHost();
 
 <Base
   title="Log in · avaTOK"
-  description="Log in to avaTOK — a global creator marketplace for live events, 1:1 consultations and AI voice."
+  description="Log in to avaTOK — a global creator marketplace for live events, private sessions and AI voice."
   chrome={false}
 >
   <Fragment slot="head">
@@ -52,8 +53,8 @@ const clerkHost = clerkFapiHost();
       <aside class="auth-panel auth-panel--marigold" aria-hidden="true">
         <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
         <img src={publicImage('/auth/horn-ok-please.png', { width: 996, fit: 'scale-down' })} alt="" width="996" height="354" />
-        <p class="auth-aside"><ui-copy style="display:contents" data-i18n="web-auth.147f03f49b15afba">Ready for a break?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-auth.eef3540404312d17">We'll have you set up in a moment.</ui-copy></p>
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+        <p class="auth-aside"><ui-copy style="display:contents" data-i18n="web-auth.147f03f49b15afba">Chai ho jaye?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-auth.eef3540404312d17">Woh bhi ho jayega.</ui-copy></p>
+        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Desi · Dil Se · Global</span>
       </aside>
 
       <main class="auth-main">
@@ -63,16 +64,17 @@ const clerkHost = clerkFapiHost();
              which would take the ornaments with it. -->
         <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
         <div class="auth-card">
+          <div class="auth-language"><IndiaLanguageSelector id="auth-language" /></div>
           <header class="auth-head">
             <a data-india-i18n-attr="aria-label:web-auth.394186beed5b531d" class="auth-wordmark" href="/" aria-label="avaTOK home">
               <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
             </a>
             <img src={publicImage('/auth/horn-ok-please.png', { width: 996, fit: 'scale-down' })} alt="" width="996" height="354" fetchpriority="high" />
-            <p class="auth-hindi">We've been expecting you</p>
+            <p class="auth-hindi" lang="hi">आपका इंतज़ार था</p>
           </header>
           <LoginIsland client:load />
         </div>
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Desi · Dil Se · Global</span>
       </main>
     </div>
   </div>

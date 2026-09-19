@@ -24,8 +24,8 @@
  *  fixed vocabulary §2 reuses across every listing type. */
 export const statusPill = {
   LIVE: 'LIVE',
-  /** SOLD OUT status pill — §5 badge list. */
-  SOLD_OUT: 'SOLD OUT',
+  /** "SOLD OUT" in the site's voice — §5 badge list, trucker-plate energy. */
+  SOLD_OUT: 'FULL HO GAYA',
   FREE: 'FREE',
   ALWAYS_ON: 'ALWAYS ON',
   ON_REQUEST: 'ON REQUEST',
@@ -34,8 +34,8 @@ export const statusPill = {
 
 /** Proof-chip copy — the fact stays plain, the flavour rides on it (§5). */
 export const chips = {
-  /** `8 SEATS LEFT` — seats remaining, urgency without inventing scarcity. */
-  seatsLeft: (n: number): string => `${n} SEATS LEFT`,
+  /** `8 SEATS BAAKI` — seats remaining, urgency without inventing scarcity. */
+  seatsLeft: (n: number): string => `${n} SEATS BAAKI`,
   /** `300 REGULARS` — followers, the come-back signal from §1 row 2. */
   regulars: (n: number): string => `${n.toLocaleString('en-IN')} REGULARS`,
   /** `★ 4.9 · 620` — rating + count, only ever printed when both are real
@@ -52,59 +52,56 @@ export const cta = {
   TALK_NOW: 'TALK NOW',
   RESERVE_FREE: 'RESERVE · FREE',
   SHARE_WHATSAPP: 'SHARE ON WHATSAPP',
-  /** [WEB-GATEWAY-FIX3] Primary CTA on an `is_example` card — it opens the
-   *  same listing page, but must never claim a real booking is possible. */
-  SEE_EXAMPLE: 'SEE EXAMPLE',
 } as const;
 
 /** The AvaTOK guarantee band (§1 rows 9–10, §5 "promises band" motif). */
 export const promises = {
   /** The escrow guarantee — money held until the session actually happens. */
-  escrow: 'Payment is held until the session is delivered',
+  escrow: 'Paisa escrow mein — session khatam tak',
   /** The number-masking promise — never show a buyer's or host's real number. */
-  numberMasking: 'Your real number is never shown to anyone',
-  /** `link arrives 15 min before` — when the join link/reminder actually lands. */
-  joinLead: (minutes: number): string => `link arrives ${minutes} min before`,
+  numberMasking: 'Tumhara real number kabhi kisi ko nahi dikhta',
+  /** `link 15 min pehle aayega` — when the join link/reminder actually lands. */
+  joinLead: (minutes: number): string => `link ${minutes} min pehle aayega`,
 } as const;
 
 /**
- * [LIST-PAGE-2] The trust-guarantee promises band on the details page
+ * [LIST-PAGE-2] The SEEDHI BAAT NO CHAKKAR promises band on the details page
  * (design/live-streaming/avaTOK Listing Details.dc.html). Six fixed platform
  * guarantees — the two that vary per-listing (refund window, cancel window)
  * are composed by the caller from the listing's own commercial policy attrs,
  * not hardcoded here (§9 of the trust ladder: these must stay honest).
  */
 export const promiseBand = {
-  title: 'STRAIGHT TALK, NO CATCH',
-  escrowTitle: 'PAYMENT PROTECTED',
-  escrowBody: 'Payment is held until the session is delivered',
+  title: 'SEEDHI BAAT, NO CHAKKAR',
+  escrowTitle: 'PAISA SAFE',
+  escrowBody: 'Paisa escrow mein rehta hai — session khatam hone tak',
   numberTitle: 'NUMBER SAFE',
-  numberBody: 'Your real number is never shown to anyone',
+  numberBody: 'Tumhara real number kabhi kisi ko nahi dikhta',
   hostTitle: 'HOST VERIFIED',
-  hostBody: 'Every host completes a liveness check',
+  hostBody: 'Har host ki pehchaan check hoti hai — fake profile ka koi chance nahi',
   supportTitle: 'REAL SUPPORT',
-  supportBody: 'Something wrong? Report it and we will look into it',
-  reviewsTitle: 'VERIFIED REVIEWS',
-  reviewsBody: 'Only people who actually attended can write a review',
-  refund: (hours: number): string => `Refund if you cancel ${hours} hours before`,
-  cancel: (hours: number): string => `Cancel window: up to ${hours} hours before`,
+  supportBody: 'Kuch galat laga? Report karo, hum dekhenge',
+  reviewsTitle: 'SACCHE REVIEWS',
+  reviewsBody: 'Sirf woh log likh sakte hain jo actually aaye the',
+  refund: (hours: number): string => `Refund milta hai agar ${hours} ghante pehle cancel karo`,
+  cancel: (hours: number): string => `Cancel window: ${hours} ghante pehle tak`,
 } as const;
 
 /** House-rules box — platform baseline shown under the creator's own rules. */
 export const houseRules = {
   title: 'HOUSE RULES',
-  platformBaseline: 'The platform rule is the same for everyone: respect everyone, zero tolerance for harassment.',
-  empty: 'This host has not added any rules yet — normal courtesy applies.',
+  platformBaseline: 'Platform ka rule sabke liye same hai: respect sabko, harassment ko zero tolerance.',
+  empty: 'Is host ne abhi tak koi rule nahi likha — normal sharaafat chalegi.',
 } as const;
 
 /** Reviews section — empty state and pagination labels. */
 export const reviewsCopy = {
-  title: 'REVIEWS',
-  empty: 'No reviews yet — be the first.',
+  title: 'PUBLIC KI RAI',
+  empty: 'Abhi koi review nahi — pehla tum likho?',
   verifiedTag: 'VERIFIED ATTENDEE',
-  hostReply: 'HOST REPLY',
+  hostReply: 'HOST KA JAWAB',
   helpful: (n: number): string => (n > 0 ? `Helpful (${n})` : 'Helpful'),
-  loadMore: 'SHOW MORE',
+  loadMore: 'AUR DIKHAO',
 } as const;
 
 /** Share box — WhatsApp-first, per §1 row 15. */
@@ -125,19 +122,19 @@ export const shareCopy = {
  *  never a phone number (server-side `maskContact` strips them either way). */
 export const askHost = {
   caption: (hostFirstName: string): string => `Ask ${hostFirstName} a question · 1 per listing · no phone numbers`,
-  placeholder: 'Type your question…',
+  placeholder: 'Apna sawaal likho…',
   submit: 'ASK',
-  submitting: 'Sending…',
+  submitting: 'Bhej rahe hain…',
   /** 200 — the question was recorded. */
-  success: 'Sent! The answer will come by email',
+  success: 'Bheja! Jawab email pe aayega',
   /** 409 already_asked. */
-  alreadyAsked: 'You have already asked a question on this listing — only one is allowed.',
+  alreadyAsked: 'Tumne is listing pe pehle hi sawaal poocha hai — ek hi allowed hai.',
   /** 429 rate limit (5/day, worker `rateLimit`). */
-  rateLimited: "You have reached today's question limit — try again tomorrow.",
+  rateLimited: 'Aaj ke liye sawaal poochne ki limit ho gayi — kal try karo.',
   /** 400 — the text was rejected (too long, empty, or the host's own listing). */
-  masked: 'This question could not be sent — phone numbers or links are not allowed here.',
-  error: 'Something went wrong — please try again in a moment.',
-  signInPrompt: 'Sign in to ask a question.',
+  masked: 'Yeh sawaal bhej nahi paaye — phone number ya link yahan allowed nahi hai.',
+  error: 'Kuch gadbad ho gaya — thodi der mein phir try karo.',
+  signInPrompt: 'Sawaal poochne ke liye sign in karo.',
   signIn: 'SIGN IN',
 } as const;
 
@@ -180,9 +177,9 @@ export const freeBox = {
   /** Replaces the price breakdown entirely on a free listing's booking box. */
   hostPays: 'Host is paying for this one — show up and say thanks',
   /** The free session hit its cap (`content_free_cap_tokens` / 409 `free_session_full`). */
-  full: 'This free session is full',
-  /** `12 spots left` — the free-lane seats-left line, cap-derived. */
-  spotsLeft: (n: number): string => `${n} spots left`,
+  full: 'Yeh free session full ho gaya',
+  /** `12 spots baaki` — the free-lane seats-left line, cap-derived. */
+  spotsLeft: (n: number): string => `${n} spots baaki`,
   /** 403 `free_sessions_disabled` — the lane itself is off, not this one session. */
   disabled: 'Free reservations are not open for this one right now',
 } as const;
@@ -201,17 +198,17 @@ export const pillExtra = {
   ON_REQUEST: 'ON REQUEST',
 } as const;
 
-/** `LIVE · 340 WATCHING` — live viewer count on the status pill (§2.1). */
+/** `LIVE · 340 DEKH RAHE` — live viewer count on the status pill (§2.1). */
 export function liveWatching(n: number): string {
-  return `LIVE · ${n.toLocaleString('en-IN')} WATCHING`;
+  return `LIVE · ${n.toLocaleString('en-IN')} DEKH RAHE`;
 }
 
 /** Chip fallback badges shared across §2's per-type ladders — each is the
  *  HONEST terminal rung, printed only once the earlier data-backed rungs have
  *  nothing to show (rule zero, §1: never fake a badge to look full). */
 export const laneBadge = {
-  PEHLA_SHOW: 'FIRST SHOW',
-  NAYA_AGENT: 'NEW AGENT',
+  PEHLA_SHOW: 'PEHLA SHOW',
+  NAYA_AGENT: 'NAYA AGENT',
   NEW_EXPERT: 'NEW EXPERT',
   NEW_LISTING: 'NEW LISTING',
   JUST_ADDED: 'JUST ADDED',
@@ -222,9 +219,6 @@ export const laneBadge = {
   BOOKING_OPEN: 'BOOKING OPEN',
   ENTRY_OPEN: 'ENTRY OPEN',
   SLOTS_OPEN: 'SLOTS OPEN',
-  /** [WEB-GATEWAY-FIX3] Availability rung for an `is_example` card — never
-   *  claims a real booking is open on a listing nobody can actually book. */
-  EXAMPLE: 'EXAMPLE',
 } as const;
 
 /** [CARD-UNIFORM-1] The lane's own name, used as the third chip's terminal
@@ -235,7 +229,7 @@ export const laneName = {
   free: 'FREE ENTRY',
   consult: '1-ON-1',
   agent: 'AI AGENT',
-  adda: 'GROUP ROOM',
+  adda: 'ADDA ROOM',
 } as const;
 
 /**
@@ -261,15 +255,15 @@ export function responseTime(min: number): string {
   return `⚡ ${min} MIN RESPONSE`;
 }
 
-/** `🎟 40 SPOTS LEFT` — free-lane chip 1 (§2.4): like `chips.seatsLeft` above
+/** `🎟 40 SPOTS BAAKI` — free-lane chip 1 (§2.4): like `chips.seatsLeft` above
  *  but "spots", the free lane's own noun, with the ticket glyph the comp uses. */
 export function spotsLeft(n: number): string {
-  return `🎟 ${n} SPOTS LEFT`;
+  return `🎟 ${n} SPOTS BAAKI`;
 }
 
-/** `🔥 8 SEATS LEFT` — live chip 2 once seats are at or below 20% (§2.1). */
+/** `🔥 8 SEATS BAAKI` — live chip 2 once seats are at or below 20% (§2.1). */
 export function seatsBaakiUrgent(n: number): string {
-  return `🔥 ${n} SEATS LEFT`;
+  return `🔥 ${n} SEATS BAAKI`;
 }
 
 /** `EARLY BIRD −20%` — live chip 2's last rung, from an active promo (§2.1). */
@@ -308,6 +302,6 @@ export function billingUnitLabel(unit?: string | null): string | null {
  *  icon button and §2.3's sample-voice preview. */
 export const ctaExtra = {
   CALENDAR: 'CALENDAR',
-  SUNO: '▶ LISTEN',
+  SUNO: '▶ SUNO',
   DETAILS: 'DETAILS',
 } as const;

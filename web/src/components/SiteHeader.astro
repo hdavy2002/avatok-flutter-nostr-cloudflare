@@ -29,6 +29,7 @@ import { publicImage } from '../lib/config';
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 import GlobalHeader from './GlobalHeader.astro';
+import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
@@ -69,16 +70,17 @@ interface Props {
 }
 
 // The site menu. Every entry points at something that exists — checked.
-// [WEB-GATEWAY-A 2026-09-18] Nav rebuilt for the payment-gateway review: a
-// risk reviewer needs to reach How it works, Pricing and Trust & safety from
-// the bar in one click. "Wiki" renamed to "Help" (still /help — the label was
-// the confusing part, not the destination).
 const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/marketplace', label: 'Marketplace' },
-  { href: '/#how-it-works', label: 'How it works' },
+  // [WEB-HELP-3 2026-09-11] Wiki menu item: links the site-wide help centre
+  // (/help) into the main nav, both the desktop bar and the mobile stacked
+  // panel share this one array. Placed right after Marketplace/Explore and
+  // ahead of the rest of the nav so it reads as core navigation, not a CTA —
+  // the auth/sign-in controls are a separate array (.avh-right / the mobile
+  // auth Fragment below) and are unaffected either way.
+  { href: '/help', label: 'Wiki' },
   { href: '/pricing-fees', label: 'Pricing' },
-  { href: '/#trust-safety', label: 'Trust & safety' },
-  { href: '/help', label: 'Help' },
+  { href: 'https://avatok.ai/ideas', label: 'Ideas' },
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
@@ -140,11 +142,9 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   </nav>
 
   <div class="avh-right">
-    {/* [WEB-GATEWAY-A 2026-09-18] Language picker removed site-wide — locale
-        switching is stopped in lib/i18n/localeStore.ts, so every visitor sees
-        English regardless of any stored preference. */}
+    {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-desktop" />}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
-        Browsing is reachable via the Marketplace link. */}
+        Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
         See lib/authState.ts for why. In short: the old three-way `auth` prop made
         each PAGE assert whether its visitor was signed in, so a signed-out
@@ -182,6 +182,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
+  {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
   {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every

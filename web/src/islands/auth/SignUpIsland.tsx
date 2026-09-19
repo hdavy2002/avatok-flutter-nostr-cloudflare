@@ -607,7 +607,7 @@ function Inner() {
         hint={
           <p className="auth-hint">
             {phoneUnlocked
-              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays confidential.")
+              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays private.")
               : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll text a code to your phone.")}
           </p>
         }
@@ -665,7 +665,7 @@ function Inner() {
 
       {!resume && (
         <>
-          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Ya phir")} />
           <GoogleButton onClick={() => void google()} disabled={stalled || submitting || emailLocked} />
           <div className="auth-foot">
             <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>

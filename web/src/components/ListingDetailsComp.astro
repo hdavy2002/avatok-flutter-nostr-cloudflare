@@ -55,12 +55,12 @@ const {
 
 const CATS = {
   stream: { label: 'LIVE STREAMING & SHOWS', eyebrow: '01 · GROUP SHOWS · TICKETED · WEEKLY', kind: 'jhalar' as const, photo: '#1e5f66' },
-  friends: { label: '1:1 CONSULTATIONS', eyebrow: '02 · ONE-ON-ONE · BOOKED TIME', kind: 'chai' as const, photo: '#8a5a3a' },
-  adda: { label: 'GROUP CLASSES', eyebrow: '03 · SMALL GROUP · OPEN SEATS', kind: 'lotus' as const, photo: '#7a6244' },
-  astro: { label: 'ASTROLOGY & TAROT', eyebrow: 'READINGS · LIVE SESSIONS', kind: 'eyes' as const, photo: '#a4352a' },
+  friends: { label: 'LIVE FRIENDS', eyebrow: '02 · PRIVATE 1:1 · DIL SE', kind: 'chai' as const, photo: '#8a5a3a' },
+  adda: { label: 'ADDA ROOMS', eyebrow: '03 · STRANGERS WELCOME · GROUP', kind: 'lotus' as const, photo: '#7a6244' },
+  astro: { label: 'ASTRO & TAROT', eyebrow: 'KISMAT DESK · READINGS', kind: 'eyes' as const, photo: '#a4352a' },
   ai: { label: 'AI VOICE AGENTS', eyebrow: '04 · 24/7 · CLEARLY LABELLED AI', kind: 'auto' as const, photo: '#2d4f66' },
   consult: { label: 'CONSULTING DESK', eyebrow: '05 · EXPERTISE ON DEMAND', kind: 'eyes' as const, photo: '#5a5a38' },
-  glow: { label: 'STYLE & GROOMING', eyebrow: 'CONSULTATIONS · BOOKED TIME', kind: 'lotus' as const, photo: '#8a3a5a' },
+  glow: { label: 'GLOW-UP STUDIO', eyebrow: 'FULL MAKEOVER SCENE', kind: 'lotus' as const, photo: '#8a3a5a' },
 };
 type CatKey = keyof typeof CATS;
 
@@ -157,7 +157,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const listingCount = newHost
     ? '1 ACTIVE LISTING — THIS ONE'
     : `${otherListings.length + 1} ACTIVE LISTING${otherListings.length === 0 ? '' : 'S'}`;
-  const hostChip1 = newHost ? 'NEW HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
+  const hostChip1 = newHost ? 'NAYA HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
   const hostChip2 = newHost ? 'FIRST SHOW: SCHEDULING' : `${trust?.shows_hosted ?? 0} SHOWS`;
   const followers = l.creator?.follower_count ?? l.joined_count ?? 0;
   const watchStat = isLive ? String(l.watching ?? 0) : followers >= 1000 ? `${(followers / 1000).toFixed(1)}K` : String(followers);
@@ -218,19 +218,11 @@ const scheduleState = scheduleStateOf(listing);
 const showEnded = scheduleState === 'ended' || scheduleState === 'expired';
 const showCancelled = scheduleState === 'cancelled';
 const showStarting = scheduleState === 'starting' && !isLive;
-// [WEB-GATEWAY-E 2026-09-18] A badged example is never bookable, at any point
-// in its schedule — the server refuses every checkout/hold/booking entry
-// point for it with 409 `example_listing` regardless of what `booking_open`
-// says, so the CTA area must agree unconditionally rather than trust it.
-const isExampleListing = Boolean(listing.is_example);
-const bookingOpen = isExampleListing ? false : (listing.booking_open ?? !(showEnded || showCancelled));
-const closedTitle = isExampleListing ? 'Example listing'
-  : showCancelled ? 'This show was cancelled.'
+const bookingOpen = listing.booking_open ?? !(showEnded || showCancelled);
+const closedTitle = showCancelled ? 'This show was cancelled.'
   : showEnded ? 'This show has ended.'
     : 'Booking has closed.';
-const closedLine = isExampleListing
-  ? 'This shows what creators will offer on avaTOK. Booking opens at launch.'
-  : showCancelled
+const closedLine = showCancelled
   ? 'Everyone who booked is refunded automatically — nothing to do on your side.'
   : showEnded
     ? 'If the host did not go live, everyone who booked is refunded automatically.'
@@ -529,7 +521,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   {(showEnded || showCancelled || showStarting || !bookingOpen) && !isLive ? (
     <div class="ticker ticker--countdown">
       <div class="ticker__inner">
-        <span class="ticker__lead"><span class="ticker__dot"></span>{isExampleListing ? 'EXAMPLE LISTING — BOOKING OPENS AT LAUNCH' : showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
+        <span class="ticker__lead"><span class="ticker__dot"></span>{showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
         {listing.starts_at && <span class="ticker__sub">{timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' })}</span>}
       </div>
     </div>
@@ -554,7 +546,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     <div class="hero__player">
       <div class="nazar">
         <img data-india-i18n-attr="alt:web-common.08b399f0d2b213bd" src={publicImage('/assets/lol-sticker.png', { width: 900, fit: 'scale-down' })} alt="LOL sticker" class="nazar__img" />
-        <span data-i18n="web-common.dd4a48fbce9370b2" class="nazar__text">NO EVIL EYE HERE · DIM YOUR LIGHTS AT NIGHT</span>
+        <span data-i18n="web-common.dd4a48fbce9370b2" class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
         <img data-india-i18n-attr="alt:web-common.28f62d6ed88328fa" src={publicImage('/assets/luv-it-sticker.png', { width: 900, fit: 'scale-down' })} alt="I luv it sticker" class="nazar__img" />
       </div>
 
@@ -782,12 +774,12 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {masala && (
         <>
           <div class="masala-quote">
-            <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Illustration of a street snack stall" />
-            <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Whoever wins is the real deal." — a regular</div>
+            <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Desi swag" />
+            <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
           </div>
           <div class="masala-stickers">
-            <img data-india-i18n-attr="alt:web-common.9bfbfece25ac0ea5" src={publicImage('/assets/vadapav-uncle.png', { width: 900, fit: 'scale-down' })} alt="Illustration of an uncle offering a vada pav" class="masala-stickers__a" />
-            <img data-india-i18n-attr="alt:web-common.9eac0cf0199ac810" src={publicImage('/assets/dekho-pyar-se.png', { width: 900, fit: 'scale-down' })} alt="Illustration of a friendly street character" class="masala-stickers__b" />
+            <img data-india-i18n-attr="alt:web-common.9bfbfece25ac0ea5" src={publicImage('/assets/vadapav-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
+            <img data-india-i18n-attr="alt:web-common.9eac0cf0199ac810" src={publicImage('/assets/dekho-pyar-se.png', { width: 900, fit: 'scale-down' })} alt="Dekho magar pyar se" class="masala-stickers__b" />
           </div>
         </>
       )}
@@ -826,13 +818,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 <div class="show-closed" role="status">
                   <p class="show-closed__title">{closedTitle}</p>
                   <p class="show-closed__line">{closedLine}</p>
-                  {/* [WEB-GATEWAY-E 2026-09-18] No price checkout link here — a disabled
-                      button, never an <a>, so there is nothing to click through to a
-                      purchase. "More from <host>" is skipped for an example: the host
-                      is the official avaTOK account, not a creator to browse. */}
-                  {isExampleListing
-                    ? <button type="button" class="btn btn--cta btn--block show-closed__cta" disabled aria-disabled="true" style={`background:${ctaColor}; opacity:.55; cursor:not-allowed;`} data-i18n="web-l.9a1c4f6083b25d7e">Booking opens at launch</button>
-                    : hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
+                  {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
                   <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
                 </div>
               )}
@@ -889,7 +875,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </div>
       </div>
       {masala && (
-        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Once the seats are gone, so is the fun.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
+        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Seat gayi toh scene bhi gaya.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
       )}
     </aside>
 
@@ -950,7 +936,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {newHost ? (
               <div class="newhost-box">
                 <div class="newhost-box__head">
-                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NEW HOST</span>
+                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NAYA HOST</span>
                   <span data-i18n="web-common.b817d19e4de3f60b" class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
                 </div>
                 <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
@@ -1044,7 +1030,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
       <section>
         <div class="section-head">
-          <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.970aedbbe6b1e180">Reviews</ui-copy><span data-i18n="web-common.00e2d45ff7f2662c" class="section-title__accent">.</span></h2>
+          <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.970aedbbe6b1e180">Public ki</ui-copy> <span data-i18n="web-common.00e2d45ff7f2662c" class="section-title__accent">Rai.</span></h2>
           <span data-i18n="web-common.4742c883453d6588" class="section-head__note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
         </div>
         <div class="divider"><TruckBorder kind="chai" /></div>
@@ -1063,7 +1049,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 ))}
               </div>
             </div>
-            {masala && <img data-india-i18n-attr="alt:web-common.17390c00587887c1" src={publicImage('/assets/baccha-uncle.png', { width: 900, fit: 'scale-down' })} alt="Illustration of a reassuring uncle character" class="reviews-summary__sticker" />}
+            {masala && <img data-india-i18n-attr="alt:web-common.17390c00587887c1" src={publicImage('/assets/baccha-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
           </div>
           <div class="reviews-list-wrap">
             {/* [REVIEW-MOD-1 2026-09-06] The empty middle the owner pointed at.
@@ -1111,7 +1097,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.be3398565992e357">Browse more</ui-copy> <span data-i18n="web-common.9faa09a3e4bdccca" class="section-title__accent">events.</span></h2>
       {masala && (
         <div class="browse__quote">
-          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">One session isn't enough?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Keep scrolling…</ui-copy></div>
+          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">Ek show se kya hoga?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Scroll karte raho…</ui-copy></div>
           <img data-india-i18n-attr="alt:web-common.7140148ccc44276e" src={publicImage('/assets/chill-uncle.png', { width: 900, fit: 'scale-down' })} alt="Chill uncle with coconut" />
         </div>
       )}

@@ -1,4 +1,5 @@
 ---
+import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 interface Props { compact?: boolean; }
 const { compact = false } = Astro.props;
 ---
@@ -12,6 +13,7 @@ const { compact = false } = Astro.props;
       <small data-i18n="web-common.82abb7ff5ecb8983">More country experiences are on the way.</small>
     </div>
   </details>
+  <IndiaLanguageSelector id={compact ? "global-language-compact" : "global-language"} />
 </div>
 <script>
   document.querySelectorAll<HTMLDetailsElement>('.global-selector').forEach((selector) => {

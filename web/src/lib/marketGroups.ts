@@ -10,7 +10,7 @@
  * group (heading/eyebrow/zone), which group a card belongs to, and which
  * blips a group shows.
  */
-import { GROUPS, subCategoriesFor, SUB_CATEGORIES, type GroupId, type SubCategory } from './listingTaxonomy';
+import { GROUPS, subCategoriesFor, type GroupId, type SubCategory } from './listingTaxonomy';
 import type { Card } from './types';
 
 export type { GroupId };
@@ -41,31 +41,31 @@ const TAXONOMY_BLURB: Record<GroupId, string> = Object.fromEntries(
 export const GROUP_DISPLAY: Record<GroupId, GroupDisplay> = {
   india_goes_live: {
     id: 'india_goes_live',
-    label: 'Live events',
-    eyebrow: 'Live streaming · ticketed',
-    title: 'Live',
-    title2: 'events.',
-    zone: 'Live now',
-    punch: 'Live, right now.',
+    label: 'India goes live',
+    eyebrow: 'Live streaming · लाइव अभी',
+    title: 'India goes',
+    title2: 'live.',
+    zone: 'Pawri zone',
+    punch: 'Ye hamari pawri ho rahi hai!',
     blurb: TAXONOMY_BLURB.india_goes_live,
   },
   find_your_people: {
     id: 'find_your_people',
-    label: 'Group classes',
-    eyebrow: 'Small groups · live practice',
-    title: 'Group',
-    title2: 'classes.',
-    zone: 'Group sessions',
+    label: 'Find your people',
+    eyebrow: 'One-on-one · real company',
+    title: 'Find your',
+    title2: 'people.',
+    zone: 'Dil ka scene',
     blurb: TAXONOMY_BLURB.find_your_people,
   },
   book_their_time: {
     id: 'book_their_time',
-    label: '1:1 consultations',
-    eyebrow: 'Experts · booked time',
-    title: '1:1',
-    title2: 'consultations.',
-    zone: 'Consultations',
-    punch: 'Book an expert, on your schedule.',
+    label: 'Book their time',
+    eyebrow: 'Experts · booked',
+    title: 'Book their',
+    title2: 'time.',
+    zone: 'Gyaan desk',
+    punch: 'Jo dhoondoge, wahi milega.',
     blurb: TAXONOMY_BLURB.book_their_time,
   },
 };
@@ -139,15 +139,6 @@ export interface Blip {
   emoji?: string | null;
 }
 
-/** [WEB-GATEWAY-FIX5] Ids marked `hidden` in Specs/listing-taxonomy.json — the
- *  legacy paid-companionship sub-categories. Computed from the full
- *  (unfiltered) mirror, not `subCategoriesFor`, because it must also strip a
- *  hidden id out of the SERVER's answer below: `GET /api/explore/categories`
- *  still returns these as active until the migration in
- *  worker/migrations/2026-09-19-webgw-hide-companionship-categories.sql is
- *  applied, and this picker must not show them in the meantime. */
-const HIDDEN_CATEGORY_IDS = new Set(SUB_CATEGORIES.filter((c) => c.hidden).map((c) => c.id));
-
 /**
  * The sub-category "blips" for one group (spec §2). The server's own answer —
  * GET /api/explore/categories, which now carries `group_id` [MKT-3GROUP-1] —
@@ -156,10 +147,8 @@ const HIDDEN_CATEGORY_IDS = new Set(SUB_CATEGORIES.filter((c) => c.hidden).map((
  *
  * Either way, a blip whose sub-category is flag-gated (`adda_rooms` /
  * `conferenceEnabled`, false in production) is hidden while that flag reads
- * false, and a blip marked `hidden` (HIDDEN_CATEGORY_IDS) is hidden
- * regardless of what the server sends. An always-empty blip is
- * indistinguishable on screen from "nobody has listed one yet", and only one
- * of those is a bug.
+ * false. An always-empty blip is indistinguishable on screen from "nobody has
+ * listed one yet", and only one of those is a bug.
  */
 export function blipsForGroup(
   group: GroupId,
@@ -169,9 +158,7 @@ export function blipsForGroup(
   const gated = new Set(
     subCategoriesFor(group).filter((sc) => sc.requiresFlag && !conferenceEnabled).map((sc) => sc.id),
   );
-  const fromServer = categories.filter(
-    (c) => c.group_id === group && !gated.has(c.id) && !HIDDEN_CATEGORY_IDS.has(c.id),
-  );
+  const fromServer = categories.filter((c) => c.group_id === group && !gated.has(c.id));
   if (fromServer.length) return fromServer;
   return subCategoriesFor(group).filter((sc) => !gated.has(sc.id));
 }

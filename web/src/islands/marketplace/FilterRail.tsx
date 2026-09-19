@@ -5,7 +5,7 @@ import { GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups
 
 /** Price buckets, in tokens (₹1 = 1 token). `max: null` means "and up". */
 export const PRICE_BANDS: { id: string; label: string; min: number; max: number | null }[] = [
-  { id: 'all', label: 'All', min: 0, max: null },
+  { id: 'all', label: 'Sab', min: 0, max: null },
   { id: 'under100', label: 'Under ₹100', min: 0, max: 99 },
   { id: '100_199', label: '₹100–199', min: 100, max: 199 },
   { id: '200plus', label: '₹200+', min: 200, max: null },
@@ -53,7 +53,7 @@ export interface FilterRailProps {
   /** Catalogue total, for the "Everything" row. */
   total: number;
   onClear: () => void;
-  /** True when anything is actually narrowed — drives the CLEAR ALL button. */
+  /** True when anything is actually narrowed — drives SAB HATAO. */
   narrowed: boolean;
   /** Drawer visibility. The rail is closed by default at every width. */
   open: boolean;
@@ -170,7 +170,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                 type="button"
                 onClick={onClear}
                 className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-              ><UiText id="web-marketplace.178eae80f69580f8" source="Clear all" />{" "}</button>
+              ><UiText id="web-marketplace.178eae80f69580f8" source="Sab hatao" />{" "}</button>
             )}
             <button
               type="button"
@@ -226,7 +226,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
               type="button"
               onClick={() => set({ date: undefined })}
               className="mt-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-            ><UiText id="web-marketplace.44389908474085f2" source="Any day" />{" "}</button>
+            ><UiText id="web-marketplace.44389908474085f2" source="Koi bhi din" />{" "}</button>
           )}
         </div>
 
@@ -282,9 +282,9 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
       >
         {/* No count on this button: `total` is the CATALOGUE total, not the
             filtered result count, so printing it here would promise a number
-            the grid is about to contradict. */}<UiText id="web-marketplace.32bd23ba198a8a0b" source="Show results" />{" "}</button>
+            the grid is about to contradict. */}<UiText id="web-marketplace.32bd23ba198a8a0b" source="Dikhao" />{" "}</button>
 
-      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral"><UiText id="web-marketplace.9815199a23c38cbe" source="Find exactly what you're looking for." />{" "}<br /><UiText id="web-marketplace.96be40e233fa62a0" source="— Bazaar rule #1" />{" "}</p>
+      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral"><UiText id="web-marketplace.9815199a23c38cbe" source="Jo dhoondoge, wahi milega." />{" "}<br /><UiText id="web-marketplace.96be40e233fa62a0" source="— Bazaar rule #1" />{" "}</p>
       </aside>
     </div>
   );
