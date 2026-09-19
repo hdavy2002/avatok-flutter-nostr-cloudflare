@@ -370,3 +370,135 @@ Times local (Asia/Kolkata), 2026-09-19. BASELINE = `76003bb2` (origin/main befor
    strings until the catalogs are regenerated.
 4. Graphiti was unreachable again this session; the file memory has a note about the `cf.sh`
    worktree/branch → staging trap.
+
+## Homepage creator copy (owner brief `COORDINATOR-HOME-CREATOR-BRIEF.md`, 2026-09-19)
+
+Text-only repositioning of the front page for YouTube / Instagram / Facebook creators selling paid
+live streams and 1:1 video calls. Worktree `home-creator`, branch `webgw/home-creator` off
+`origin/main` `0cf3fedb`. Implementer: Sonnet (`Specs/WEBGW-HOME-CREATOR-BRIEF.md` →
+`Specs/WEBGW-HOME-CREATOR-REPORT.md`, commit `de95dd3f`). Coordinator reviewed, shipped and checked.
+
+### Before / after — every changed string
+
+| Slot (file · key) | Before | After |
+|---|---|---|
+| `<title>` / og:title (index.astro `<Base title>`) | Turn your skill into income. · avaTOK | avaTOK: paid live streams and 1:1 video calls with your favourite creators |
+| meta description / og:description | avaTOK is a marketplace where verified creators sell tickets to live online events, 1:1 video consultations and small-group classes. Customers book and pay in rupees. | YouTube, Instagram and Facebook creators sell tickets to live streams and 1:1 video calls on avaTOK. Pay securely in rupees. |
+| meta keywords (new `keywords=` prop; was the Base default) | avaTOK, Ava Global International, creator marketplace, paid live streaming, 1:1 video sessions | paid live stream, creator live stream tickets, 1:1 video call with creators, YouTube creators India, Instagram creators India |
+| og:image:alt (`imageAlt`) | Creators hosting live events, group classes and one-to-one video consultations. | Creators hosting a paid live stream and taking 1:1 video calls with their audience. |
+| hero kicker `web-landing.b9d43bd06fbe8631` | Creator marketplace · India | For YouTube and Instagram creators · India |
+| H1 span 1 `0528be3d426aff53` | Turn your skill | Your audience is ready |
+| H1 span 2 (accent) `92f4118799fbcf80` | into income. | to pay for you. |
+| hero lede `<ui-copy>` `d0082f5d7ac7dd8b` | avaTOK is a marketplace where verified creators sell tickets to live online events, 1:1 video consultations and small-group classes. Customers book and pay in rupees. | avaTOK lets YouTube, Instagram and Facebook creators sell tickets to live streams and booked 1:1 video calls. Your audience pays in rupees. |
+| hero lede `<strong>` `721cb60fc48386d6` | Creators are paid to their bank account. | You are paid to your bank account. |
+| hero CTA 2 `87423590f6bd3088` | Browse sessions → `/ideas` | Browse creators → `/marketplace` (href fix) |
+| hero formats `aria-label` `eed4e047041fb536` | Ways to earn on AvaTOK | Ways to earn on avaTOK |
+| hero chip 1 `b7a9f5518da78e1f` (`india_goes_live`) | Live events | Paid live streams |
+| hero chip 2 `451c573451f6721a` (`find_your_people`) | Group classes | Group live sessions |
+| hero chip 3 `84d0be67f5ca32a2` (`book_their_time`) | 1:1 consultations | 1:1 video calls |
+| hero image `alt` `7c72ea27bba5af71` | Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online. | Creators hosting a paid live stream and taking 1:1 video calls with their audience. |
+| formats H2 `e38ba82f0a13cc39` (BookingExpressIllustrated) | One platform. Three ways. | One platform. Three ways to earn from your audience. |
+| tile 1 h3 `b7a9f5518da78e1f` / p `982acdf78125b594` | Live events / Sell tickets to your stream. | Paid live streams / Sell tickets to your live stream. |
+| tile 2 h3 `f34fb6b7a6f51b9d` / p `7480d0ba273e2df7` | 1:1 consultations / Offer your undivided time. | 1:1 video calls / Booked, paid, one follower at a time. |
+| tile 3 h3 `84d0be67f5ca32a2` / p `bf94bce3c2953bed` | Group classes / Teach or advise a small group. (href `book_their_time`) | Group live sessions / Host a small paid group live. (href → `find_your_people`, fix) |
+| step alts (BookingExpressIllustrated `steps` array) | A creator preparing a page and a new offer. / A creator choosing a ticket or session price. / Sharing an invitation with a community of customers. / A creator welcoming people to an online session. | A creator setting up their creator page. / A creator choosing a ticket or call price. / Sharing an avaTOK link with an audience. / A creator going live from the avaTOK app. |
+| `journeyTitle` (landing) | From poster to booking — four easy moves. | From channel to first booking in four steps. |
+| `stepOneBody` | Write your creator page and offer. | Create your creator page. |
+| `stepTwoBody` | Choose your ticket or session price. | Set your ticket or call price. |
+| `stepThreeBody` | Send the link to your community. | Share your avaTOK link with your audience. |
+| `stepFour` / `stepFourBody` (+ the hardcoded step-4 literal) | Host / Open the room, give your time, run your show. (literal: Start your show on your app.) | Go live / Go live from the avaTOK app. |
+| ideas eyebrow `af29625174aed2ab` | What will you offer? | Ideas for your channel |
+| ideas H2 `35013d916827ddd2` + `6088e03833a8d3c7` | Ideas you can / earn from. | What could you offer / your audience? |
+| ideas lede `6193ee40538a4862` | A few ideas to get your first listing started. | A few ideas to get your first paid stream or call started. |
+| `ideasEyebrow` / `ideasTitle` (niche tiles) | FROM CONTENT TO OFFER / What will you host? | CREATORS WHO FIT AVATOK / Which creator are you? |
+| `ideaOneTitle` / `ideaOneBody` (folk-dance image) | Dance class / Choreography, feedback, practice room. | Dance creators / Choreography breakdowns, live practice, feedback calls. |
+| `ideaTwoTitle` / `ideaTwoBody` (chai-stall image) | Home flavours / Recipe live, regional thali, kitchen hacks. | Food & chai creators / Recipe live streams, street-food stories, kitchen hacks. |
+| `ideaThreeTitle` / `ideaThreeBody` (study image) | Study buddy / Revision sprint, language practice, exam pep talk. | Study & exam creators / Revision sprints, language practice, exam pep talks. |
+| `ideaFourTitle` / `ideaFourBody` (saree-draping image) | Style desk / Look breakdowns, draping, thrift finds. | Saree & fashion creators / Draping tutorials, outfit ideas, live styling streams. |
+| `calcTitle` | See your gross estimate. | Estimate your gross earnings |
+| `calcBody` | Change the inputs to see what ticketed events or 1:1 bookings could gross. | Change the inputs to see what paid live streams or 1:1 video calls could gross. |
+| `calcLiveLabel` | Live Ticket price per participant | Ticket price per viewer |
+| `calcAudienceLabel` | Audience per event | Viewers per stream |
+| `calcEventsLabel` | Events per month | Streams per month |
+| `calcOneLabel` | 1:1 or 1:many Price per participant | 1:1 video call price |
+| `calcBookingsLabel` | Bookings per month | Calls per month |
+| `calcLiveTotal` / `calcOneTotal` | Live event gross / 1:1 gross | Live stream gross / 1:1 call gross |
+| footer tagline `chrome.tagline` (SiteFooter, india variant — site-wide) | India's live creator bazaar. Book your seat, pull up a chair, take your time. | Paid live streams and 1:1 video calls from creators you already follow. |
+| `<html lang>` (index.astro `<Base lang>`) | hi-Latn | en (attribute removed; the page is English) |
+
+Unchanged on purpose: CTA "Start selling, free", "● Live around the world", "80% you keep", "Find your
+first earning idea", "Skip to earning ideas", "Your first booking express", "Create your free listing",
+"Small beginnings / make big stories.", the calculator disclaimer and pricing note, the two "₹100
+platform fee per participant" help lines, `calcTotal`, the six idea cards (titles/links/format chips
+come from `creatorIdeas.ts`, shared with `/ideas` and 109 guides — out of scope), header, every other
+footer string, entity text, language picker.
+
+### Review
+
+- Skeleton diff (`git diff 0cf3fedb..de95dd3f -- web/src web/scripts`, every `-`/`+` line read): only
+  string literals / text nodes / attribute values changed, plus exactly the three allowed non-string
+  edits (hero CTA href `/ideas`→`/marketplace`; group tile href `book_their_time`→`find_your_people`;
+  `lang="hi-Latn"` prop removed) and the `check-homepage.mjs` assertions (hero H1 spans, and the
+  `og:title` / `og:description` literal asserts — a necessary consequence of the authorised
+  `<Base>` prop change; script is not shipped).
+- Catalogs: `landing.json` 84→84 keys, `web-landing.json` 36→36 keys, every changed key paired
+  old→new, no key added/removed/renamed. Pre-existing shared key `web-landing.84d0be67f5ca32a2`
+  (hero chip 3 and group tile h3) holds the hero value "1:1 video calls"; harmless for `en` because
+  `t()` prefers live markup.
+- Gates on `de95dd3f` (coordinator's own run, prod env): build green; `check-homepage`, `check-help`,
+  `check-image-urls`, `check-performance` all exit 0.
+- Structural identity: built `main` (`0cf3fedb`) to `/tmp/webgw-main-dist` and diffed `dist/index.html`
+  text-stripped (tags, classes, ids, hrefs, data-* kept; text nodes and alt/aria/title/content/
+  placeholder/data-i18n-meta values blanked) → exactly 3 lines differ: `<html lang>`, the hero CTA
+  href, the group-tile href. All other prerendered pages differ ONLY by the footer tagline text and
+  the i18n chunk hashes (the catalogs are bundled), except the two `noindex` previews `india-next` /
+  `landing-steps-preview` which share the `landing` keys and pick up the new step/calculator copy.
+- Banned-word scan of the built `/` (visible text + alt/aria/title/content, picker excluded):
+  0 hits for tiktok / fan(s) / fanbase / meetup / meeting / private / find your people / friend(s) /
+  companion / lonely / dating / chat with / verified; 0 Devanagari; 0 Hinglish tokens.
+- Links: all 36 internal hrefs on the live homepage → 200; 3 `#` anchors (`#ideas-catalogue`,
+  `/#live-friends`, `/#live-streaming`) have matching ids.
+- Hydration: executed the shipped `t()` body in node over all 72 `data-i18n`/`data-india-i18n` keys on
+  the built homepage with the new catalogs as `sources` and `messages={}` (locale `en`) → 0 mismatches
+  vs the live markup.
+
+### Ship
+
+- 09:19 `git push origin HEAD:main` → `0cf3fedb..b61753de` (fast-forward, no force; `de95dd3f` copy +
+  `b61753de` brief). No build auto-fired.
+- 09:19 `gh workflow run web-deploy.yml --ref main -f publish=true` → run `35419643806` (SHA
+  `b61753de`); hdfc-safety ×2 + build green; production gate approved by the coordinator 09:23 (env
+  `17866973083`); deploy success 09:24 (`03:54:31Z`).
+- Live 09:25 (cache-busted curl of `https://avatok.ai/`): `<html lang="en">`; title, description,
+  keywords as above; H1 "Your audience is ready / to pay for you."; kicker, lede and strong as above;
+  CTAs Start selling, free → `/sign-up`, Browse creators → `/marketplace`; chips Paid live streams →
+  `india_goes_live`, Group live sessions → `find_your_people`, 1:1 video calls → `book_their_time`;
+  format tiles the same three with the group tile now on `find_your_people`; steps, niche tiles,
+  calculator labels and footer tagline present; disclaimer present; 0 banned words, 0 Devanagari, 0
+  Hinglish outside the picker; both language selectors present; every internal link 200.
+- After-hydration: the deployed English catalog chunks `landing.CbDgO1yr.js` and
+  `web-landing.CD2p8WIV.js` contain the new strings and none of the old ones, so `t()` returns the
+  new copy from either path.
+
+### Notes
+
+1. The marketplace still labels the `find_your_people` group "Group classes" while the homepage now
+   says "Group live sessions" (marketplace is out of this brief's scope; a one-string change in
+   `marketGroups.ts` if the owner wants them to match).
+2. Format chips on the six idea cards still read "Live events / 1:1 consultations / Group classes"
+   (`creatorIdeas.ts` `formats`, shared with `/ideas` and the guides — deliberately untouched).
+3. Non-English translations for the changed `landing` / `web-landing` keys are stale again (they
+   only apply when the English source matches), so a visitor picking Hindi sees English for them.
+4. `web/src/lib/publicImageManifest.json` is regenerated by every local build; it was reset before
+   committing and is not part of the change.
+
+### Summary (8 lines)
+
+1. Homepage re-pitched, text only, for YouTube/Instagram/Facebook creators selling paid live streams and 1:1 video calls; no TikTok, fans, meetup, private, verified.
+2. 40-odd strings changed across hero, formats, steps, ideas, niche tiles, calculator, meta/OG/keywords and the site-wide footer tagline.
+3. Three non-string fixes only: hero "Browse creators" → `/marketplace`, group tile → `find_your_people`, `<html lang>` hi-Latn → en.
+4. Structural diff of the built homepage against main: those three lines and nothing else; other pages differ only by the footer tagline.
+5. All four check scripts green; 0 banned words / Hinglish; 36 links 200; 3 anchors resolve; 72 i18n keys hydrate to the new text.
+6. Pushed `0cf3fedb..b61753de` to main; web-deploy `35419643806` approved and green; live at 09:24 IST.
+7. Left alone on purpose: idea-card format chips and the marketplace "Group classes" label (shared strings outside the front page).
+8. Nothing server-side changed; rollback = `git revert de95dd3f` + re-run `web-deploy.yml`.
