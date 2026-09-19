@@ -2,19 +2,19 @@
 import { publicImage } from '../../lib/config';
 import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
 const steps = [
-  ['stepOne', 'stepOneBody', 'create', 'A creator preparing a page and a new offer.'],
-  ['stepTwo', 'stepTwoBody', 'price', 'A creator choosing a ticket or session price.'],
-  ['stepThree', 'stepThreeBody', 'share', 'Sharing an invitation with a community of customers.'],
-  ['stepFour', 'stepFourBody', 'host', 'A creator welcoming people to an online session.'],
+  ['stepOne', 'stepOneBody', 'create', 'A creator setting up their creator page.'],
+  ['stepTwo', 'stepTwoBody', 'price', 'A creator choosing a ticket or call price.'],
+  ['stepThree', 'stepThreeBody', 'share', 'Sharing an avaTOK link with an audience.'],
+  ['stepFour', 'stepFourBody', 'host', 'A creator going live from the avaTOK app.'],
 ] as const;
 ---
 <section class="booking-express booking-illustrated rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
   <span id="formats" aria-hidden="true"></span>
-  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> <ui-copy style="display:contents" data-i18n="web-landing.e38ba82f0a13cc39">One platform. Three ways.</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> <ui-copy style="display:contents" data-i18n="web-landing.e38ba82f0a13cc39">One platform. Three ways to earn from your audience.</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
       <div class="rail-format-grid">
-        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/live-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.b7a9f5518da78e1f">Live events</h3><p data-i18n="web-landing.982acdf78125b594">Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/one-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.f34fb6b7a6f51b9d">1:1 consultations</h3><p data-i18n="web-landing.7480d0ba273e2df7">Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.84d0be67f5ca32a2">Group classes</h3><p data-i18n="web-landing.bf94bce3c2953bed">Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/live-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.b7a9f5518da78e1f">Paid live streams</h3><p data-i18n="web-landing.982acdf78125b594">Sell tickets to your live stream.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/one-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.f34fb6b7a6f51b9d">1:1 video calls</h3><p data-i18n="web-landing.7480d0ba273e2df7">Booked, paid, one follower at a time.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="group-sessions" href="/marketplace?group=find_your_people" data-home-cta="format-group"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 160, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3 data-i18n="web-landing.84d0be67f5ca32a2">Group live sessions</h3><p data-i18n="web-landing.bf94bce3c2953bed">Host a small paid group live.</p></span><span aria-hidden="true">↗</span></a>
       </div>
 
   <div class="express-ticket" id="how-avatok-works">
@@ -32,7 +32,7 @@ const steps = [
         <div class="express-step-art"><img src={publicImage(`/assets/landing-steps-preview/${image}.png`, { width: 1280, fit: 'scale-down' })} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
         <div class="express-step-copy">
         <h4 data-india-i18n={title}>{copy[title]}</h4>
-        <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Start your show on your app." : copy[body]}</p>
+        <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Go live from the avaTOK app." : copy[body]}</p>
         </div>
       </li>)}
     </ol>
