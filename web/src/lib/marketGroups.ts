@@ -41,10 +41,10 @@ const TAXONOMY_BLURB: Record<GroupId, string> = Object.fromEntries(
 export const GROUP_DISPLAY: Record<GroupId, GroupDisplay> = {
   india_goes_live: {
     id: 'india_goes_live',
-    label: 'India goes live',
+    label: 'Live events',
     eyebrow: 'Live streaming · happening now',
-    title: 'India goes',
-    title2: 'live.',
+    title: 'Live',
+    title2: 'events.',
     zone: 'Live zone',
     punch: 'The show is live right now!',
     blurb: TAXONOMY_BLURB.india_goes_live,
@@ -60,10 +60,10 @@ export const GROUP_DISPLAY: Record<GroupId, GroupDisplay> = {
   },
   book_their_time: {
     id: 'book_their_time',
-    label: 'Book their time',
+    label: '1:1 consultations',
     eyebrow: 'Experts · booked',
-    title: 'Book their',
-    title2: 'time.',
+    title: '1:1',
+    title2: 'consultations.',
     zone: 'Expert desk',
     punch: "Whatever you're looking for, you'll find it.",
     blurb: TAXONOMY_BLURB.book_their_time,
