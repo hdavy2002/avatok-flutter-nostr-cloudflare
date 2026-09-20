@@ -305,8 +305,11 @@ export default {
 
 // --- email consumer (Brevo / Sendinblue transactional API) ---
 // Parses an optional "Name <addr@host>" sender into Brevo's {name,email} shape.
+// [SAATHUM-EMAIL-1] Dead code — superseded by email_provider.ts's parseSender
+// (2026-09-11 provider-abstraction migration); kept in sync anyway so a revival
+// doesn't resurrect the old brand/domain.
 function parseSender(from?: string): { name: string; email: string } {
-  const def = { name: "AvaTok", email: "noreply@avatok.ai" };
+  const def = { name: "Saathum", email: "noreply@saathum.com" };
   if (!from) return def;
   const m = from.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
   if (m) return { name: (m[1] || def.name).trim(), email: m[2].trim() };

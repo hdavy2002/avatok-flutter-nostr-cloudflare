@@ -26,8 +26,12 @@ export interface OutboundEmail {
   subject: string;
   html: string;
   text?: string;
-  // "Name <addr>" or a bare address; default "AvaTok <noreply@avatok.ai>"
+  // "Name <addr>" or a bare address; default "Saathum <noreply@saathum.com>"
   // (env.EMAIL_FROM_DEFAULT overrides the default, msg.from overrides both).
+  // [SAATHUM-EMAIL-1] This fallback only fires if EMAIL_FROM_DEFAULT is unset -
+  // see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md before deploying
+  // any change here: saathum.com must be onboarded to Cloudflare Email Sending
+  // AND verified as a Brevo sender before this address can actually deliver.
   from?: string;
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string; type?: string }[]; // content = base64
@@ -45,7 +49,7 @@ export function resolvePolicy(env: Env): ProviderPolicy {
 
 /** Parses "Name <addr>" / a bare address; falls back to the account default. */
 export function parseSender(from: string | undefined, env: Env): { name: string; email: string } {
-  const fallback = { name: "AvaTok", email: "noreply@avatok.ai" };
+  const fallback = { name: "Saathum", email: "noreply@saathum.com" };
   const configured = (env.EMAIL_FROM_DEFAULT ?? "").trim();
   const base = configured ? parseSenderString(configured, fallback) : fallback;
   if (!from) return base;

@@ -157,7 +157,7 @@ async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> 
         to,
         subject: `${tag} Wallet recon ${isDrill ? "drill" : "mismatch"} — ${date} (${diffs.length})`,
         html,
-        from: "AvaTok Ops <noreply@avatok.ai>",
+        from: "Saathum Ops <noreply@saathum.com>",
       },
       env,
     );

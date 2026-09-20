@@ -22,12 +22,12 @@ function shell(title: string, bodyHtml: string, cta?: { label: string; url: stri
     <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
     ${bodyHtml}
     ${cta ? `<p style="margin:20px 0"><a href="${escapeHtml(cta.url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${escapeHtml(cta.label)}</a></p>` : ""}
-    <p style="color:#999;font-size:12px;margin-top:20px">AvaTOK · AI voice agent session · times shown in your timezone.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saathum · AI voice agent session · times shown in your timezone.</p>
   </div>`;
 }
 
 function webBase(env: Env): string {
-  return String(env.WEB_BASE_URL || "https://avatok.ai").replace(/\/+$/, "");
+  return String(env.WEB_BASE_URL || "https://saathum.com").replace(/\/+$/, "");
 }
 
 function fmtInTz(ms: number, tz: string | null | undefined): string {

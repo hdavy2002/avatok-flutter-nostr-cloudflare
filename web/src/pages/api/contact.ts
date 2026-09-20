@@ -1,11 +1,17 @@
 import type { APIRoute } from 'astro';
 import { sendMail } from '../../lib/sendMail';
+import { ORG } from '../../lib/org';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
-// edge. Receives the /contact form and sends the message to support@avatok.ai via
+// edge. Receives the /contact form and sends the message to support@saathum.com via
 // sendMail() — Cloudflare Email Service REST API first, Brevo as fallback (see
 // Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md §3.4). Requires
 // CF_EMAIL_API_TOKEN and/or BREVO_API_KEY on the avatok-app Pages project.
+// [SAATHUM-EMAIL-1] support@saathum.com also needs an inbound Email Routing
+// rule (separate from Email Sending) before this address can receive anything
+// - see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md §Inbound routing.
+// Brand name comes from ORG per SPEC hard rule 3; only the sender/reply
+// addresses stay literal (this lane's own domain-cutover fact).
 export const prerender = false;
 
 const json = (data: unknown, status = 200) =>
@@ -64,14 +70,14 @@ export const POST: APIRoute = async (context) => {
   if (!env.BREVO_API_KEY && !env.CF_EMAIL_API_TOKEN) {
     // Don't fail silently in a way that loses the message; surface a clear error.
     return json(
-      { ok: false, error: 'Email is not configured yet. Please email support@avatok.ai directly.' },
+      { ok: false, error: 'Email is not configured yet. Please email support@saathum.com directly.' },
       503,
     );
   }
 
-  const subjectLine = `[avaTOK ${category || 'Support'}] ${subject || 'New message'} — from ${name}`;
+  const subjectLine = `[${ORG.name} ${category || 'Support'}] ${subject || 'New message'} — from ${name}`;
   const textContent = [
-    'New avaTOK contact form submission',
+    `New ${ORG.name} contact form submission`,
     `Name: ${name}`,
     `Email: ${email}`,
     `Category: ${category || 'Support'}`,
@@ -89,17 +95,17 @@ export const POST: APIRoute = async (context) => {
       <p><strong>Message:</strong></p>
       <p style="white-space:pre-wrap;border-left:3px solid #007d7f;padding-left:12px">${esc(message)}</p>
       <hr style="margin:20px 0;border:none;border-top:1px solid #ddd">
-      <p style="color:#777;font-size:13px">Sent from the avatok.ai contact form.</p>
+      <p style="color:#777;font-size:13px">Sent from the saathum.com contact form.</p>
     </div>`;
 
   try {
     const out = await sendMail(
       {
-        to: 'support@avatok.ai',
+        to: 'support@saathum.com',
         subject: subjectLine,
         html: htmlContent,
         text: textContent,
-        from: { name: env.BREVO_SENDER_NAME || 'avaTOK Website', email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai' },
+        from: { name: env.BREVO_SENDER_NAME || `${ORG.name} Website`, email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com' },
         replyTo: { email, name },
         tags: ['website-contact'],
       },

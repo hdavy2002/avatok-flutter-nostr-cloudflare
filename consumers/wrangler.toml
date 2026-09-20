@@ -307,7 +307,17 @@ ALERT_EMAIL = "hdavy2005@gmail.com"
 # "brevo" | "cloudflare" | "cloudflare_then_brevo". Stays "brevo" until a later
 # deploy flips prod to "cloudflare_then_brevo" per the phased rollout (§4).
 EMAIL_PROVIDER = "cloudflare_then_brevo"
-EMAIL_FROM_DEFAULT = "AvaTok <noreply@avatok.ai>"
+# 🚨 [SAATHUM-EMAIL-1] DO NOT deploy this value as "noreply@saathum.com" until
+# Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md Phase 0 is DONE:
+# saathum.com onboarded + verified in Cloudflare Email Sending AND verified as
+# a Brevo sender. Every transactional email this account sends - including the
+# passwordless sign-in OTP - goes out under this address. Deploying the new
+# domain before both providers verify it means every send in BOTH the primary
+# and fallback path fails closed (E_SENDER_NOT_VERIFIED / Brevo sender-not-
+# verified), and nobody can sign in. Flip this the same way EMAIL_PROVIDER was
+# phased in - as its own deliberate, sequenced deploy, not bundled with the
+# rest of the Saathum rename merge.
+EMAIL_FROM_DEFAULT = "Saathum <noreply@saathum.com>"
 # AVA CORE (Phase 0, AVA-CORE-4): the ONE reasoner slot behind avaReason()
 # (src/ava_reason.ts). Per-call overrides (BRAIN_EXTRACT_MODEL etc.) still WIN.
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
@@ -568,7 +578,12 @@ ALERT_EMAIL = "hdavy2005@gmail.com"
 # Email provider policy — staging cuts over to Cloudflare right away (owner-only
 # destination cap above); prod stays "brevo" until a later deploy flips it.
 EMAIL_PROVIDER = "cloudflare_then_brevo"
-EMAIL_FROM_DEFAULT = "AvaTok <noreply@avatok.ai>"
+# [SAATHUM-EMAIL-1] Staging can only ever mail the owner-only allowlisted
+# address above, so this is the safe place to prove saathum.com sends before
+# touching the prod value — see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
+# Until saathum.com is onboarded in Cloudflare Email Sending + verified in
+# Brevo, sends with this value will fail closed (by design — see prod comment).
+EMAIL_FROM_DEFAULT = "Saathum <noreply@saathum.com>"
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])
 AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
