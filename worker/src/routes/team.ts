@@ -48,6 +48,13 @@ const clip = (s: unknown, n: number) => String(s ?? "").trim().slice(0, n);
 // (see app/lib/core/team_api.dart TeamApi.status()), so this is compatible.
 async function flagOff(env: Env): Promise<Response | null> {
   const cfg = await readConfig(env);
+  // [SAATHUM-FLAGS-1 2026-09-20] teamsEnabled is the Saathum product-scope
+  // gate (Teams are not part of the devotional consultations/live-events
+  // product); teamIvrEnabled stays the separate engineering-readiness gate.
+  // Either false darkens every /api/team/* handler below.
+  if ((cfg as any).teamsEnabled === false) {
+    return json({ enabled: false, error: "team feature disabled", flag: "teamsEnabled", role: null, team: null }, 200);
+  }
   return (cfg as any).teamIvrEnabled === false
     ? json({ enabled: false, error: "team feature disabled", flag: "teamIvrEnabled", role: null, team: null }, 200) : null;
 }

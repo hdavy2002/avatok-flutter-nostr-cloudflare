@@ -20,6 +20,7 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { teamTierOf } from "../team_billing";
 import { MONEY_IN_DISABLED } from "../money";
+import { readConfig } from "./config";
 
 const KEY = "plan_config";
 
@@ -232,6 +233,10 @@ export async function setSub(
 export async function getPlans(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!(cfg as any).subscriptionPlansEnabled) {
+    return json({ ok: false, error: "subscription plans disabled", reason: "subscription_plans_disabled" }, 503);
+  }
   if (MONEY_IN_DISABLED) return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
   const plans = await readPlans(env);
   const sub = await getSub(env, ctx.uid);

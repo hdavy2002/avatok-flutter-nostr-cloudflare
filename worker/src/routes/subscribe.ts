@@ -37,6 +37,10 @@ async function billingOn(env: Env): Promise<boolean> {
 export async function subscribeCheckout(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!(cfg as any).subscriptionPlansEnabled) {
+    return json({ ok: false, error: "subscription plans disabled", reason: "subscription_plans_disabled" }, 503);
+  }
   return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
 }
 
@@ -46,6 +50,10 @@ export async function subscribeCheckout(req: Request, env: Env): Promise<Respons
 export async function subscribeAndroidVerify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const cfg = await readConfig(env);
+  if (!(cfg as any).subscriptionPlansEnabled) {
+    return json({ ok: false, error: "subscription plans disabled", reason: "subscription_plans_disabled" }, 503);
+  }
   if (!(await billingOn(env))) return json({ ok: false, error: "payments disabled", reason: "payments_disabled" }, 503);
 
   let body: { productId?: string; purchaseToken?: string };
