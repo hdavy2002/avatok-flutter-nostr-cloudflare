@@ -358,6 +358,8 @@ flutter:
     - assets/stickers/ava_hearts/
     - assets/stickers/ava_reactions/
     - assets/stickers/ava_paws/
+    # Saathum mobile-app diya sticker; intentionally separate from the website logo artwork.
+    - assets/stickers/saathum/
     # Liveness V3 (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1): English Ava
     # voice clips bundled in the APK so a check always works offline. Non-English
     # packs download from the CDN at runtime (kVoicePackCdnBase). Filenames MUST

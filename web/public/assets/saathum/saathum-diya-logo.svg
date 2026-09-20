@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 180" role="img" aria-labelledby="title desc">
+  <title id="title">Saathum logo with a lit diya</title><desc id="desc">A warm lit diya beside the Saathum wordmark.</desc>
+  <defs><linearGradient id="flame" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#e43d25"/><stop offset="1" stop-color="#ffd45d"/></linearGradient></defs>
+  <g transform="translate(20 20)"><path d="M16 94c8 30 38 43 74 43s66-13 74-43H16Z" fill="#d93426" stroke="#171713" stroke-width="6"/><path d="M30 94h120c-6 16-25 25-60 25S36 110 30 94Z" fill="#f8c85f"/><path d="M90 91c-29-29 5-49 7-72 28 30 29 51-7 72Z" fill="url(#flame)" stroke="#171713" stroke-width="5"/><path d="M90 85c-12-17 3-26 7-39 13 17 13 29-7 39Z" fill="#fff4b0"/><circle cx="34" cy="80" r="5" fill="#f8c85f"/><circle cx="146" cy="80" r="5" fill="#f8c85f"/></g>
+  <text x="205" y="108" font-family="Comfortaa, sans-serif" font-size="66" font-weight="600" letter-spacing="2" fill="#171713">Saathum</text>
+  <path d="M208 126h265" stroke="#d93426" stroke-width="6" stroke-linecap="round"/><circle cx="483" cy="126" r="6" fill="#f8c85f"/>
+</svg>

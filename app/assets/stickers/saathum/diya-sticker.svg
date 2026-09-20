@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <path d="M120 8c65 0 111 43 111 105s-46 119-111 119S9 175 9 113 55 8 120 8Z" fill="#fff7dd" stroke="#171713" stroke-width="6" stroke-dasharray="7 7"/>
+  <path d="M56 135h128c-8 36-31 51-64 51s-56-15-64-51Z" fill="#d93426" stroke="#171713" stroke-width="6"/>
+  <path d="M70 135h100c-8 16-24 24-50 24s-42-8-50-24Z" fill="#f8c85f"/>
+  <path d="M120 133c-28-29 1-44 4-76 25 27 27 54-4 76Z" fill="#e43d25" stroke="#171713" stroke-width="5"/>
+  <path d="M120 123c-11-17 3-30 6-44 12 20 12 32-6 44Z" fill="#ffe27b"/>
+  <text x="120" y="214" text-anchor="middle" font-family="Kalam, cursive" font-size="25" fill="#171713">light the moment</text>
+</svg>
