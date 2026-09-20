@@ -366,6 +366,18 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _error = 'Could not load this listing. Try again.';
       }
     }
+    // [SAATHUM] Companionship ("Find your people") is out of scope for the
+    // Saathum narrowing (plan/SPEC.md) — a NEW listing must not be filed under
+    // it even for the brief window before the server-side category list
+    // catches up. Filtered here (not in the fetched/offline data itself) so
+    // this holds regardless of which lane's work has landed. Runs AFTER
+    // `_category` is known so editing an EXISTING listing that already carries
+    // a hidden category still shows it — dropping it here would leave the
+    // dropdown's `value` unmatched to any `item`.
+    _categories = [
+      for (final c in _categories)
+        if (c.resolvedGroupId != 'find_your_people' || c.id == _category) c,
+    ];
     if (mounted) setState(() => _loading = false);
     // [CAL-GCAL-1] Readiness is read once on open so the creator sees the
     // publish blocker on the Time step instead of after pressing Submit.
@@ -2218,11 +2230,14 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // fails closed. This hides an affordance that cannot work; the Worker
           // gate is still the only gate.
           //
-          // `|| _freeEntry` keeps the switch reachable on a listing that ALREADY
-          // has free entry, so its owner can turn it off. Without that, an account
-          // whose allowlisting was revoked would be left with a listing it can
-          // never save again.
-          if (_freeEntryAllowed || _freeEntry)
+          // `_freeEntry` alone (not `_freeEntryAllowed || _freeEntry`) keeps the
+          // switch reachable ONLY on a listing that ALREADY has free entry, so
+          // its owner can still turn it off — dropping `_freeEntryAllowed` here
+          // is the Saathum narrowing (plan/SPEC.md: freeSessionsEnabled -> off):
+          // the toggle is never offered as a fresh option, even to an
+          // allowlisted/admin account, but an account whose allowlisting was
+          // revoked is not left with a listing it can never save again.
+          if (_freeEntry)
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const UiText(UiMessage.m_this_is_a_free_show_6a3d36b0cc), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
         ]);
       case 1:
