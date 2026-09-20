@@ -257,6 +257,7 @@ class StreamVideoQualityController extends ChangeNotifier {
       // A remembered SFU pause cannot trap our own audio-only subscription:
       // after we disable video there may be no SFU resume event until recovery.
       videoPaused: serverPaused && !incomingPaused,
+    ));
     unawaited(refresh());
   }
 
