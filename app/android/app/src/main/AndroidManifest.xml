@@ -132,7 +132,7 @@
          gone. -->
 
     <application
-        android:label="AvaTOK"
+        android:label="Saathum"
         android:name=".AvaTokApplication"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
