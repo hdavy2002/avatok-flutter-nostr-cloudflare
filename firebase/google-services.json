@@ -42,6 +42,38 @@
           "other_platform_oauth_client": []
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1098288797441:android:1df297ba98e2a8a5126d00",
+        "android_client_info": {
+          "package_name": "com.saathum.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2wFlqW1U602YI_VLe8efN1CxYKzuUhm4"
+        },
+        {
+          "current_key": "AIzaSyDIzZa-rvMN8zEEX45m7gK2oWd25v9hYLs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
