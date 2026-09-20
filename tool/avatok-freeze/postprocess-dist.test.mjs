@@ -28,7 +28,7 @@ assert.equal(isDeadHref('/pricing-fees'), false);
 // Unrelated hrefs untouched.
 assert.equal(isDeadHref('/about'), false);
 assert.equal(isDeadHref('#pricing'), false);
-assert.equal(isDeadHref('https://play.google.com/store/apps/details?id=ai.avatok.avatok_call'), false);
+assert.equal(isDeadHref('https://play.google.com/store/apps/details?id=com.saathum.app'), false);
 assert.equal(isDeadHref('mailto:hello@avatok.ai'), false);
 
 console.log('isDeadHref: OK');

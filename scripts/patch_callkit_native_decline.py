@@ -27,7 +27,7 @@ LEGACY_REPLACEMENT = """                    callkitNotificationManager?.clearInc
                     // app is killed. Persist the signed decline natively before the
                     // plugin attempts its best-effort Flutter event.
                     try {
-                        val bridge = Class.forName(\"ai.avatok.avatok_call.NativeCallDeclineBridge\")
+                        val bridge = Class.forName(\"com.saathum.app.NativeCallDeclineBridge\")
                         bridge.getMethod(\"enqueue\", Context::class.java, Bundle::class.java)
                             .invoke(null, context, data)
                     } catch (error: Throwable) {
@@ -41,7 +41,7 @@ REPLACEMENT = """                    callkitNotificationManager?.clearIncomingNo
                     // any Dart isolate as apparent user intent.
                     var suppressSyntheticDecline = false
                     try {
-                        val bridge = Class.forName("ai.avatok.avatok_call.NativeCallDeclineBridge")
+                        val bridge = Class.forName("com.saathum.app.NativeCallDeclineBridge")
                         suppressSyntheticDecline = bridge.getMethod(
                             "shouldSuppressProgrammaticDecline", Context::class.java, Bundle::class.java
                         ).invoke(null, context, data) == true
@@ -63,7 +63,7 @@ PROGRAMMATIC_END_REPLACEMENT = """                    if (currentCall != null &&
                         // manufactured action before broadcasting so AvaTOK's
                         // killed-process decline worker cannot treat it as a tap.
                         try {
-                            val bridge = Class.forName("ai.avatok.avatok_call.NativeCallDeclineBridge")
+                            val bridge = Class.forName("com.saathum.app.NativeCallDeclineBridge")
                             bridge.getMethod("markProgrammaticEnd", Context::class.java, String::class.java)
                                 .invoke(null, context, currentCall.id)
                         } catch (error: Throwable) {
@@ -79,7 +79,7 @@ PROGRAMMATIC_END_ALL_REPLACEMENT = """                    calls.forEach {
                         // [CALL-NATIVE-PROGRAMMATIC-END-1] endAllCalls() has the
                         // same unaccepted-call decline mapping as endCall().
                         try {
-                            val bridge = Class.forName("ai.avatok.avatok_call.NativeCallDeclineBridge")
+                            val bridge = Class.forName("com.saathum.app.NativeCallDeclineBridge")
                             bridge.getMethod("markProgrammaticEnd", Context::class.java, String::class.java)
                                 .invoke(null, context, it.id)
                         } catch (error: Throwable) {

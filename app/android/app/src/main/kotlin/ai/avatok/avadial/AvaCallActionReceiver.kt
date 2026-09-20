@@ -60,7 +60,7 @@ class AvaCallActionReceiver : BroadcastReceiver() {
                     // answered from this notification action — so it lands on the ACTIVE
                     // call UI instead of the ringing screen (which would be stuck: the call
                     // is already answered by the time Flutter boots on a cold start).
-                    val activityIntent = Intent(context, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
+                    val activityIntent = Intent(context, Class.forName("com.saathum.app.MainActivity")).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         putExtra("route", "avadial/incoming")
                         putExtra("call_id", callId)

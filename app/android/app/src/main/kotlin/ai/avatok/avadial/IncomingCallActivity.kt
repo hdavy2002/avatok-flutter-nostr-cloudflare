@@ -29,8 +29,8 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
-// R is generated under the module namespace (ai.avatok.avatok_call), not this package.
-import ai.avatok.avatok_call.R
+// R is generated under the module namespace (com.saathum.app), not this package.
+import com.saathum.app.R
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -323,7 +323,7 @@ class IncomingCallActivity : Activity() {
             } catch (_: Throwable) { /* fall through to the Flutter path below */ }
         }
         try {
-            val i = Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
+            val i = Intent(this, Class.forName("com.saathum.app.MainActivity")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra("route", "avadial/incoming")
                 putExtra("call_id", callId)

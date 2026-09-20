@@ -28,7 +28,7 @@ import { UiText } from "../../lib/i18n/react";
 import { useRef, useState } from 'react';
 import { capture } from '../../lib/analytics';
 
-const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avatok_call';
+const PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.saathum.app';
 
 export interface MessageHostProps {
   listingId: string;

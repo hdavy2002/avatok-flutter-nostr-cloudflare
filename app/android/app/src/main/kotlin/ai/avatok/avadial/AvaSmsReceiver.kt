@@ -263,7 +263,7 @@ class AvaSmsReceiver : BroadcastReceiver() {
         }
         // Tap → open the compose/thread route in the Flutter shell.
         val intent = Intent().apply {
-            setClassName(ctx, "ai.avatok.avatok_call.MainActivity")
+            setClassName(ctx, "com.saathum.app.MainActivity")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra("route", "avadial/compose")
             putExtra("number", address)

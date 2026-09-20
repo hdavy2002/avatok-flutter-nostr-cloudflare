@@ -20,8 +20,8 @@ spike is on a user path until the flag is flipped in KV (staging first).
   VoIP only (see `ava_phone_screen.dart` header) and never touches the SIM.
 - Therefore Phase 2b is a from-scratch Android telecom integration. The Flutter
   side is a thin bridge; the product lives in Kotlin services the OS binds to.
-- Package: `ai.avatok.avatok_call` (staging suffix `.staging`). New native code
-  lives in `ai.avatok.avadial`.
+- Package: `com.saathum.app` (staging suffix `.staging`; renamed from
+  `ai.avatok.avatok_call`, see `REPORT.md`). New native code lives in `ai.avatok.avadial`.
 
 ---
 

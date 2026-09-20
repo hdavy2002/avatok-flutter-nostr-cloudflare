@@ -119,7 +119,7 @@ class CallForegroundService : Service() {
         // extras so Dart can route straight back to the active call screen instead of
         // just landing on whatever the last route was. MainActivity forwards these via
         // the avatok/voice_audio method channel as onNotificationTapReturnToCall(callId).
-        val launchIntent = Intent(this, ai.avatok.avatok_call.MainActivity::class.java).apply {
+        val launchIntent = Intent(this, com.saathum.app.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("callId", callId)
             putExtra("from", "call_notification")
@@ -161,7 +161,7 @@ class CallForegroundService : Service() {
                 )
                 .setCategory(android.app.Notification.CATEGORY_CALL)
                 .setContentText("Tap to return to the call")
-                .setSmallIcon(ai.avatok.avatok_call.R.drawable.ic_avadial_phone)
+                .setSmallIcon(com.saathum.app.R.drawable.ic_avadial_phone)
                 .setContentIntent(launchPendingIntent)
                 .setUsesChronometer(true)
                 .setWhen(startTimeMs)
@@ -173,7 +173,7 @@ class CallForegroundService : Service() {
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setContentTitle("Call with $peerName")
                 .setContentText("Tap to return to the call")
-                .setSmallIcon(ai.avatok.avatok_call.R.drawable.ic_avadial_phone)
+                .setSmallIcon(com.saathum.app.R.drawable.ic_avadial_phone)
                 .setContentIntent(launchPendingIntent)
                 .addAction(
                     android.R.drawable.ic_menu_close_clear_cancel,

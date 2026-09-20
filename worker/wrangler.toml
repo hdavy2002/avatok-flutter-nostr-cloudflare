@@ -117,7 +117,7 @@ LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 # AvaAffiliate /a/:linkId web preview — Play badge package id (the Android
 # applicationId from app/android/app/build.gradle.kts). APP_STORE_ID is
 # deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
-PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
+PLAY_PACKAGE_ID = "com.saathum.app"
 
 # State Sync Engine flags (worker/src/do/inbox.ts).
 # SYNC_OPS_V2: per-conversation sequence stamping + op_appended telemetry. Default ON
@@ -738,7 +738,7 @@ STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPt
 CLERK_JWKS_URL = "https://sterling-termite-79.clerk.accounts.dev/.well-known/jwks.json"
 CLERK_ISSUER = "https://sterling-termite-79.clerk.accounts.dev"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
-PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
+PLAY_PACKAGE_ID = "com.saathum.app"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
 # Mirrored from prod (2026-07-01) so staging is a true clone: AI Gateway routing,
 # the CF account id the receptionist CF-STT (Deepgram Nova) needs, and LiveKit.
 AI_GATEWAY_ID = "avatok-ai"

@@ -60,7 +60,7 @@ APK builds (used for side-load testing) are unchanged and keep using the debug k
 ## 5. Watch for these gotchas
 
 - **versionCode collision** — the workflow builds with `versionCode = 10000 + GITHUB_RUN_NUMBER`. If you ever upload a build with a lower versionCode than one already on the track (rejected or not), Play Console will reject it. Bump and rebuild.
-- **applicationId mismatch** — Play Console locks the listing to `ai.avatok.avatok_call`. Don't change `applicationId` in the gradle file.
+- **applicationId mismatch** — Play Console locks the listing to `com.saathum.app` (changed from `ai.avatok.avatok_call` — this is now a separate Play Store listing). Don't change `applicationId` in the gradle file.
 - **First-time signing key choice** — when you upload the first `.aab`, Play Console will ask whether to enroll in Play App Signing. **Say yes** (default). It means Google holds the *signing* key, you hold the *upload* key — if you ever lose `secrets/avatok-upload.jks` you can request a reset. Without Play App Signing there's no recovery.
 - **Firebase / Google sign-in** — Play App Signing changes the SHA1 that runs in production. After your first upload, go to Play Console → Setup → App integrity, copy the **App signing key certificate** SHA1, and add it to Firebase (`firebase_options.dart` consumers don't care, but any SHA1-pinned API does).
 

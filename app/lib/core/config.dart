@@ -18,7 +18,7 @@ const String kClerkPublishableKey = kAvatokEnv == 'staging'
 /// project as the app's google-services.json — after the old `avatok` project
 /// (#604131207750) was deleted and its restored clients no longer minted tokens
 /// (Android 12500 SIGN_IN_FAILED). avatok-e19ef hosts this web client plus two
-/// Android clients (package ai.avatok.avatok_call, Play app-signing + upload
+/// Android clients (package com.saathum.app, Play app-signing + upload
 /// SHA-1s); consent screen is published to Production. The Worker ALLOWED_AUD
 /// accepts both this and the old id during rollout.
 const String kGoogleServerClientId =
@@ -198,7 +198,7 @@ const String kDownloadUrl = 'https://avatok.ai/download';
 /// Download button only appears once the tester is signed into Play with an
 /// email registered in the selected Closed Alpha tester list.
 const String kClosedTestUrl =
-    'https://play.google.com/apps/testing/ai.avatok.avatok_call';
+    'https://play.google.com/apps/testing/com.saathum.app';
 
 /// Device address-book sync + "who's on AvaTok" matching (NIP-98).
 const String kContactsSyncUrl = 'https://$kSignalingHost/api/contacts/sync';   // POST

@@ -9,7 +9,7 @@
 // Setup (owner): create a Google Cloud service account, grant it access in the
 // Play Console (Users & permissions → "View financial data" + the app), download
 // its JSON key, and set it as the Worker secret PLAY_SERVICE_ACCOUNT_JSON. Also
-// set the var PLAY_PACKAGE_ID (defaults to ai.avatok.avatok_call).
+// set the var PLAY_PACKAGE_ID (defaults to com.saathum.app).
 
 import type { Env } from "./types";
 import { MONEY_IN_DISABLED } from "./money";
@@ -106,7 +106,7 @@ async function getAccessToken(env: Env): Promise<string> {
 }
 
 export function playPackageId(env: Env): string {
-  return (env as any).PLAY_PACKAGE_ID || "ai.avatok.avatok_call";
+  return (env as any).PLAY_PACKAGE_ID || "com.saathum.app";
 }
 
 // Verify a SUBSCRIPTION purchase token via purchases.subscriptionsv2.

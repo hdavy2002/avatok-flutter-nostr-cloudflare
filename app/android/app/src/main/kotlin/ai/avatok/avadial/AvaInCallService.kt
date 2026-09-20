@@ -725,7 +725,7 @@ class AvaInCallService : InCallService() {
         val name = displayNameFor(number) ?: cnapName
         val who = name ?: number ?: "Unknown number"
         val tapIntent = try {
-            Intent(this, Class.forName("ai.avatok.avatok_call.MainActivity")).apply {
+            Intent(this, Class.forName("com.saathum.app.MainActivity")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra("route", "avadial/openDial")
                 putExtra("number", number)

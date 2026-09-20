@@ -27,7 +27,7 @@ android {
             }
         }
     }
-    namespace = "ai.avatok.avatok_call"
+    namespace = "com.saathum.app"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -43,12 +43,13 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "ai.avatok.avatok_call"
+        applicationId = "com.saathum.app"
         // Staging builds (AVATOK_ENV=staging) install side-by-side with the prod app
-        // as ai.avatok.avatok_call.staging. NOTE: FCM push won't register on staging
-        // until ai.avatok.avatok_call.staging is a real app in the avatok-e19ef Firebase
-        // project (google-services.json currently has a duplicate client entry just so
-        // the gms plugin's package check passes).
+        // as com.saathum.app.staging. NOTE: FCM push won't register on staging (or on
+        // prod) until com.saathum.app / com.saathum.app.staging are registered as real
+        // apps in a Firebase project and a fresh google-services.json is dropped in —
+        // see REPORT.md. The committed google-services.json still registers the OLD
+        // ai.avatok.avatok_call package and was deliberately left untouched.
         if ((System.getenv("AVATOK_ENV") ?: "prod") == "staging") {
             applicationIdSuffix = ".staging"
             versionNameSuffix = "-staging"

@@ -141,7 +141,7 @@ jobs:
           # burned a full Gradle build before saying so.
           if [ "$PLAY_TRACK" != "none" ]; then
             if [ "$ENV" != "prod" ]; then
-              echo "::error::play_track=$PLAY_TRACK needs environment=prod. Staging and prod share the applicationId ai.avatok.avatok_call, so publishing a staging build would ride the SAME Play listing every real user auto-updates from and silently repoint them at the staging backend. Re-run with environment=prod (from main), or set play_track=none for a staging artifact."
+              echo "::error::play_track=$PLAY_TRACK needs environment=prod. Staging and prod share the applicationId com.saathum.app, so publishing a staging build would ride the SAME Play listing every real user auto-updates from and silently repoint them at the staging backend. Re-run with environment=prod (from main), or set play_track=none for a staging artifact."
               exit 1
             fi
             if [ "$BUILD_AAB" != "true" ]; then
@@ -189,7 +189,7 @@ jobs:
 
       - name: Generate android/ platform files
         working-directory: app
-        run: flutter create --platforms=android --org ai.avatok --project-name avatok_call .
+        run: flutter create --platforms=android --org com.saathum --project-name app .
 
       - name: Configure Android (permissions, minSdk)
         working-directory: app
@@ -454,7 +454,7 @@ jobs:
         if: env.PLAY_TRACK != 'none'
         run: |
           # A staging build MUST NEVER reach Play. postcreate.py sets no
-          # applicationIdSuffix, so staging and prod share ai.avatok.avatok_call —
+          # applicationIdSuffix, so staging and prod share com.saathum.app —
           # uploading a staging build (which talks to api-staging.avatok.ai) would
           # push it down the SAME listing every real user auto-updates from, and
           # silently repoint the whole user base at the staging backend. This is the
@@ -478,9 +478,9 @@ jobs:
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          # Matches `flutter create --org ai.avatok --project-name avatok_call`
+          # Matches `flutter create --org com.saathum --project-name app`
           # in the Prepare step above. If that ever changes, change this too.
-          packageName: ai.avatok.avatok_call
+          packageName: com.saathum.app
           releaseFiles: dist/avatok-call.aab
           track: ${{ env.PLAY_TRACK }}
           status: completed
