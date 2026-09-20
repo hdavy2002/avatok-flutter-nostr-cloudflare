@@ -24,7 +24,7 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
   `livestream_host/viewer`; auth via Worker secret `CF_API_TOKEN`). **Superseded — kept as dead code only.**
 
 ## Clerk (existing avatok.ai tenant)
-- Publishable key (public): `pk_live_Y2xlcmsuYXZhdG9rLmFpJA`
+- Publishable key (public): `pk_live_Y2xlcmsuc2FhdGh1bS5jb20k`
 
 ## Firebase / FCM
 - Project: `avatok-e19ef` · Android package: `ai.avatok.avatok_call`

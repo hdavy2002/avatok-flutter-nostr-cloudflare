@@ -106,8 +106,8 @@ STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPt
 # Clerk JWT verification (public values, not secrets). Enabling these lets the
 # Worker read the signed-in Clerk user id, which links the account to its Nostr
 # key (clerk_nostr_link) and powers cross-device restore via GET /api/me.
-CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
-CLERK_ISSUER = "https://clerk.avatok.ai"
+CLERK_JWKS_URL = "https://clerk.saathum.com/.well-known/jwks.json"
+CLERK_ISSUER = "https://clerk.saathum.com"
 # Admins allowed to PUT /api/admin/config (remote kill switches, Phase 1 A2).
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 # AvaTalk group conferencing (Phase 10 — LiveKit ≤25). LIVEKIT_URL is a var;
@@ -731,7 +731,7 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model
 WALLET_TOPUP_ENABLED = "0"   # Money-in providers retired; kept for old clients/config shape.
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"  # public; must match sk_test mode
-# [STAGING-ISOLATION-1] Was pointed at prod's Clerk tenant (clerk.avatok.ai), so a
+# [STAGING-ISOLATION-1] Was pointed at prod's Clerk tenant (clerk.saathum.com), so a
 # staging JWT verified against the SAME tenant prod users are in. Now verifies
 # against the owner's Clerk DEVELOPMENT instance for AvaTOK, so staging signups
 # never land in the prod Clerk tenant. Public values, not secrets.
