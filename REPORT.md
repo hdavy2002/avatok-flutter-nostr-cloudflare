@@ -1,5 +1,22 @@
 # REPORT — Lane 05-email
 
+## Commit / push status
+
+Committed locally on `saathum/05-email` via `scripts/git_safe_commit.py`
+(commit `d28c521e`, `[SAATHUM-EMAIL-1] New Saathum sender domain across
+transactional templates, draft the domain-cutover plan`). **Not pushed.**
+`scripts/git_safe_push.py --dry-run` fails at its own `git fetch origin
+saathum/05-email` step with "couldn't find remote ref" — confirmed via
+`git ls-remote origin 'refs/heads/saathum/*'` that **no lane branch in this
+batch has been pushed to origin yet** (not a lane-specific problem, and not
+a network/auth issue — `git fetch origin main` succeeds fine). The wrapper's
+push logic assumes `remote/branch` already exists so it can diff
+`remote/branch..branch`; it has no path for a brand-new branch's first push.
+Per CLAUDE.md I did not bypass it with a direct `git push`. The commit is
+safe and correctly scoped on the branch; someone with the ability to fix or
+step around that specific wrapper gap (or the coordinator's own integration
+push) needs to get it to origin.
+
 Batch: `saathum-20260920` · Branch: `saathum/05-email` · Scope per BRIEFS.md:
 sender domain and templates, Cloudflare Email + Brevo fallback.
 
