@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { sendMail } from '../../lib/sendMail';
+import { ORG } from '../../lib/org';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
 // edge. POST /api/waitlist adds the email to Brevo (list via BREVO_LIST_ID) and
@@ -7,6 +8,11 @@ import { sendMail } from '../../lib/sendMail';
 // API first, Brevo as fallback (Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-
 // BREVO-FALLBACK.md §3.4). The Brevo contacts list-add is unchanged and out of
 // scope for the email-provider migration — only the thank-you email moved.
+//
+// [SAATHUM-EMAIL-1] Brand/legal facts (name, domain, legal entity) come from
+// ORG (web/src/lib/org.ts) rather than being hand-typed here, per SPEC hard
+// rule 3 — this also means the footer's entity line follows whatever org.ts
+// says rather than this file guessing at a live legal-identity question.
 export const prerender = false;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -18,35 +24,37 @@ const json = (obj: unknown, status = 200) =>
   });
 
 function welcomeHtml(): string {
+  const host = new URL(ORG.url).host;
+  const entityLine = ORG.legalName ? `${ORG.name} · ${ORG.legalName}` : ORG.name;
   return `<!doctype html><html><body style="margin:0;background:#f7f3ea;">
   <div style="background:#f7f3ea;padding:30px 16px;font-family:Arial,Helvetica,sans-serif;color:#25211b;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border:2px solid #25211b;border-radius:20px;overflow:hidden;">
-      <img src="https://avatok.ai/og.jpg" alt="avaTOK" width="520" style="display:block;width:100%;height:auto;border-bottom:2px solid #25211b;" />
+      <img src="${ORG.logo.url}" alt="${ORG.name}" width="520" style="display:block;width:100%;height:auto;border-bottom:2px solid #25211b;" />
       <div style="padding:30px 32px;">
         <h1 style="margin:0 0 12px;font-size:26px;color:#25211b;">You're on the list 🎉</h1>
-        <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">Thanks for joining the <b>avaTOK</b> waitlist — a global creator platform for paid live streaming and 1:1 video sessions. Publish a listing, open your calendar, get paid.</p>
+        <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">Thanks for joining the <b>${ORG.name}</b> waitlist — a global creator platform for paid live streaming and 1:1 video sessions. Publish a listing, open your calendar, get paid.</p>
         <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">We're letting people in gradually. We'll email you the moment your spot opens so you can claim your <b>@handle</b> before it's gone.</p>
         <p style="margin:0 0 4px;font-size:16px;line-height:1.55;">Until then — real people only, 44+ apps and counting, and an AI that works for you. 💚</p>
-        <p style="margin:24px 0 0;font-size:14px;color:#6e6c5c;">— The avaTOK team</p>
+        <p style="margin:24px 0 0;font-size:14px;color:#6e6c5c;">— The ${ORG.name} team</p>
       </div>
     </div>
-    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">avaTOK · Ava Global International, Inc., Delaware.<br/>You received this because you joined the waitlist at avatok.ai.</p>
+    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">${entityLine}.<br/>You received this because you joined the waitlist at ${host}.</p>
   </div></body></html>`;
 }
 
 async function sendWelcome(env: Record<string, string | undefined>, email: string) {
   const sender = {
-    name: env.BREVO_SENDER_NAME || 'AvaTOK Joinlist',
-    email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai',
+    name: env.BREVO_SENDER_NAME || `${ORG.name} Joinlist`,
+    email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com',
   };
   try {
     const out = await sendMail(
       {
         to: email,
-        subject: "You're on the avaTOK waitlist 🎉",
+        subject: `You're on the ${ORG.name} waitlist 🎉`,
         html: welcomeHtml(),
         from: sender,
-        replyTo: { email: 'hello@avatok.ai', name: 'avaTOK' },
+        replyTo: { email: 'hello@saathum.com', name: ORG.name },
       },
       env,
     );

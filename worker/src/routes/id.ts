@@ -225,7 +225,7 @@ function sixDigitCode(): string {
 function emailOtpHtml(code: string): string {
   return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
     <h2 style="color:#0F1115;margin:0 0 8px">Verify your email</h2>
-    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in AvaTOK to finish setting up your account. It expires in 10 minutes.</p>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in Saathum to finish setting up your account. It expires in 10 minutes.</p>
     <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
     <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email.</p>
   </div>`;
@@ -261,9 +261,9 @@ export async function idEmailStart(req: Request, env: Env): Promise<Response> {
   try {
     await env.Q_EMAIL.send({
       to: email,
-      subject: "Your AvaTOK verification code",
+      subject: "Your Saathum verification code",
       html: emailOtpHtml(code),
-      from: "AvaTOK <noreply@avatok.ai>",
+      from: "Saathum <noreply@saathum.com>",
     });
   } catch {
     metric(env, "email_otp_enqueue_error", [1]);
@@ -374,8 +374,8 @@ async function clerkPrimaryEmail(env: Env, uid: string): Promise<string | null> 
 
 function passwordOtpHtml(code: string): string {
   return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
-    <h2 style="color:#0F1115;margin:0 0 8px">Set your AvaTOK password</h2>
-    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in AvaTOK to set or change your password. It expires in 10 minutes.</p>
+    <h2 style="color:#0F1115;margin:0 0 8px">Set your Saathum password</h2>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in Saathum to set or change your password. It expires in 10 minutes.</p>
     <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
     <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email — your password won't change.</p>
   </div>`;
@@ -406,9 +406,9 @@ export async function idPasswordStart(req: Request, env: Env): Promise<Response>
   try {
     await env.Q_EMAIL.send({
       to: email,
-      subject: "Your AvaTOK password code",
+      subject: "Your Saathum password code",
       html: passwordOtpHtml(code),
-      from: "AvaTOK <noreply@avatok.ai>",
+      from: "Saathum <noreply@saathum.com>",
     });
   } catch {
     metric(env, "password_otp_enqueue_error", [1]);

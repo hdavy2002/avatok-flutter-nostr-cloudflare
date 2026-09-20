@@ -1,6 +1,10 @@
 import type { APIRoute } from 'astro';
 import { sendMail } from '../../lib/sendMail';
+import { ORG } from '../../lib/org';
 
+// [SAATHUM-EMAIL-1] Brand name comes from ORG (web/src/lib/org.ts) per SPEC
+// hard rule 3 — only the sender/reply addresses stay literal here, since the
+// verified sending domain is this lane's own fact, not a brand fact.
 export const prerender = false;
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -34,9 +38,9 @@ const acknowledgementHtml = (name: string, role: string) => `
   <div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#231b14;max-width:620px">
     <h2 style="margin:0 0 18px;color:#4d5cff">We received your application</h2>
     <p>Hi ${esc(name)},</p>
-    <p>Thank you for applying for the <strong>${esc(role)}</strong> role at avaTOK. We’ve received your resume and our team will review it carefully.</p>
+    <p>Thank you for applying for the <strong>${esc(role)}</strong> role at ${esc(ORG.name)}. We’ve received your resume and our team will review it carefully.</p>
     <p>If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.</p>
-    <p style="margin-top:24px">Warmly,<br /><strong>The avaTOK team</strong></p>
+    <p style="margin-top:24px">Warmly,<br /><strong>The ${esc(ORG.name)} team</strong></p>
   </div>`;
 
 export const POST: APIRoute = async (context) => {
@@ -47,7 +51,7 @@ export const POST: APIRoute = async (context) => {
 
   const env = ((context.locals as any)?.runtime?.env ?? {}) as Record<string, string | undefined>;
   if (!env.BREVO_API_KEY && !env.CF_EMAIL_API_TOKEN) {
-    return json({ ok: false, error: 'Applications are temporarily unavailable. Please email support@avatok.ai.' }, 503);
+    return json({ ok: false, error: 'Applications are temporarily unavailable. Please email support@saathum.com.' }, 503);
   }
 
   let form: FormData;
@@ -62,7 +66,7 @@ export const POST: APIRoute = async (context) => {
 
   const name = clean(form.get('name'), 120);
   const email = clean(form.get('email'), 200).toLowerCase();
-  const role = clean(form.get('role'), 160) || 'AvaTOK role';
+  const role = clean(form.get('role'), 160) || `${ORG.name} role`;
   const portfolio = clean(form.get('portfolio'), 300);
   const note = clean(form.get('note'), 2000);
   const resume = form.get('resume');
@@ -78,13 +82,13 @@ export const POST: APIRoute = async (context) => {
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   const attachment = { filename: safeFilename(resume.name), content: btoa(binary), type: resume.type };
   const sender = {
-    name: env.BREVO_SENDER_NAME || 'avaTOK Careers',
-    email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai',
+    name: env.BREVO_SENDER_NAME || `${ORG.name} Careers`,
+    email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com',
   };
 
   const internalHtml = `
     <div style="font-family:Arial,sans-serif;font-size:15px;color:#231b14">
-      <h2>New avaTOK careers application</h2>
+      <h2>New ${esc(ORG.name)} careers application</h2>
       <p><strong>Role:</strong> ${esc(role)}</p>
       <p><strong>Name:</strong> ${esc(name)}</p>
       <p><strong>Email:</strong> ${esc(email)}</p>
@@ -95,8 +99,8 @@ export const POST: APIRoute = async (context) => {
   try {
     const internal = await sendMail(
       {
-        to: 'support@avatok.ai',
-        subject: `[avaTOK Careers] ${role} — ${name}`,
+        to: 'support@saathum.com',
+        subject: `[${ORG.name} Careers] ${role} — ${name}`,
         html: internalHtml,
         text: `New application for ${role}\n\nName: ${name}\nEmail: ${email}\nPortfolio: ${portfolio || '(none)'}\n\n${note || ''}`,
         from: sender,
@@ -114,11 +118,11 @@ export const POST: APIRoute = async (context) => {
     const acknowledgement = await sendMail(
       {
         to: email,
-        subject: 'We received your avaTOK application',
+        subject: `We received your ${ORG.name} application`,
         html: acknowledgementHtml(name, role),
-        text: `Hi ${name},\n\nThank you for applying for the ${role} role at avaTOK. We’ve received your resume and our team will review it carefully. If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.\n\nWarmly,\nThe avaTOK team`,
+        text: `Hi ${name},\n\nThank you for applying for the ${role} role at ${ORG.name}. We’ve received your resume and our team will review it carefully. If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.\n\nWarmly,\nThe ${ORG.name} team`,
         from: sender,
-        replyTo: { email: 'support@avatok.ai', name: 'avaTOK Careers' },
+        replyTo: { email: 'support@saathum.com', name: `${ORG.name} Careers` },
         tags: ['website-careers-acknowledgement'],
       },
       env,

@@ -321,12 +321,12 @@ export async function verseStatement(req: Request, env: Env): Promise<Response> 
     if (email) {
       const tbl = items.map((i) => `<tr><td>${i.date}</td><td>${i.type}</td><td>${i.listing}</td><td align="right">₹${inr(i.gross)}</td><td align="right">₹${inr(i.platform_fee)}</td><td align="right">₹${inr(i.net)}</td></tr>`).join("");
       const html = `<div style="font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:24px">
-        <h2>AvaTok earnings statement — ${month}</h2>
+        <h2>Saathum earnings statement — ${month}</h2>
         <table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">
           <tr><th>Date</th><th>Type</th><th>Listing</th><th>Gross</th><th>Fee</th><th>Net</th></tr>${tbl}
           <tr><th colspan="3">Total</th><th align="right">₹${inr(totals.gross)}</th><th align="right">₹${inr(totals.fee)}</th><th align="right">₹${inr(totals.net)}</th></tr>
         </table></div>`;
-      try { await env.Q_EMAIL.send({ to: email, subject: `Your AvaTok earnings statement — ${month}`, html }); } catch { /* best-effort */ }
+      try { await env.Q_EMAIL.send({ to: email, subject: `Your Saathum earnings statement — ${month}`, html }); } catch { /* best-effort */ }
       return json({ ok: true, emailed: true, month, items: items.length, totals });
     }
     return json({ error: "no email on file" }, 404);

@@ -329,16 +329,16 @@ export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purcha
   const rows = opts.lines.map((l) => `<tr><td style="padding:6px 12px 6px 0;color:#444">${l.label}</td><td style="padding:6px 0;text-align:right">${inr(l.amount)}</td></tr>`).join("");
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-    <h2 style="margin:0 0 4px">AvaTok receipt</h2>
+    <h2 style="margin:0 0 4px">Saathum receipt</h2>
     <p style="color:#666;margin:0 0 16px">${kind === "topup" ? "Wallet top-up" : "Purchase"} — ${when}</p>
     <p style="margin:0 0 16px;font-weight:600">${opts.title}</p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">${rows}
       <tr><td style="padding:10px 12px 0 0;font-weight:700;border-top:1px solid #eee">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eee">${inr(opts.total)}</td></tr>
     </table>
-    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "AvaTok wallet"} · Order ${opts.orderId}<br>1 Token = $0.01</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "Saathum wallet"} · Order ${opts.orderId}<br>1 Token = $0.01</p>
   </div>`;
   try {
-    await env.Q_EMAIL.send({ to: email, subject: `Your AvaTok receipt — ${opts.title}`, html });
+    await env.Q_EMAIL.send({ to: email, subject: `Your Saathum receipt — ${opts.title}`, html });
     return true;
   } catch { return false; }
 }
