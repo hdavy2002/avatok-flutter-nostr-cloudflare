@@ -1,22 +1,9 @@
 ---
+// [TAKEDOWN-HDFC-SMOKE-1 2026-09-20] This page fronted the internal ₹1 HDFC UPI SMS
+// smoke harness (worker/src/routes/hdfc_sms_*.ts), which is now unregistered from the
+// Worker router — not the commercial rail, and must not be reachable during a payment
+// gateway review. Kept as a 404 rather than deleted so the harness can be restored by
+// reverting this file and the Worker route registrations together.
 export const prerender = false;
-Astro.response.headers.set('Cache-Control', 'private, no-store');
-Astro.response.headers.set('Referrer-Policy', 'no-referrer');
-import UpiPlainQr from '../../islands/checkout/UpiPlainQr';
+return new Response('Not found', { status: 404 });
 ---
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex,nofollow" />
-    <meta name="referrer" content="no-referrer" />
-    <title>Pay ₹1 · avaTOK</title>
-    <script is:inline>history.replaceState(null, '', location.pathname);</script>
-  </head>
-  <body style="margin:0;background:#fff;color:#171717;">
-    <main style="min-height:100svh;display:grid;place-items:center;padding:24px;box-sizing:border-box;">
-      <UpiPlainQr client:load />
-    </main>
-  </body>
-</html>

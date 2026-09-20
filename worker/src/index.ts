@@ -69,10 +69,14 @@ import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminE
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
-import { hdfcSmsQr } from "./routes/hdfc_sms_qr";
-import { hdfcPublicOrder, hdfcPublicStatus, hdfcPublicClaim, hdfcPublicRecheck } from "./routes/hdfc_sms_public";
-import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
-import { hdfcCustomerRedeem, hdfcCustomerCurrent, hdfcCustomerOrder, hdfcCustomerStatus, hdfcCustomerClaim, hdfcCustomerRecheck } from "./routes/hdfc_sms_customer_test";
+// [TAKEDOWN-HDFC-SMOKE-1 2026-09-20] The ₹1 HDFC UPI SMS smoke harness (routes/hdfc_sms_*.ts)
+// is an internal test rail, not the commercial rail — it must not be reachable during a
+// payment gateway review. Route registrations removed below; handler files are left in
+// place (unimported, uncompiled into the router) rather than deleted, so the harness can be
+// re-wired later if ever needed. Its Android companion is a separate repo (upeo-sms-gateway,
+// see Specs/HANDOVER-HDFC-UPI-SMS-PAYMENT.md) with no code in this repo to remove; withdrawing
+// it (unpublishing from Play, rotating HDFC_SMS_DEVICE_SECRET) is a follow-up outside this
+// worktree — see REPORT.md.
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -220,7 +224,7 @@ import { createReview, replyReview, helpfulReview, listReviews, reviewEligibilit
 // [REVIEW-MOD-1] Reviews are held for admin approval before they are published.
 import { adminReviews, adminReviewAction } from "./routes/admin_reviews";
 // [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
-import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
+import { askQuestion, answerQuestion, listMyQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
   createListing, updateListing, publishListing, submitListingForApproval, listingBlockersRoute, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
@@ -1253,27 +1257,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
       if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
-      // Anonymous test state is capability-scoped; customer/admin routes retain
-      // their account gates and SMS/heartbeat retain companion HMAC checks.
-      if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);
-      if (p === "/api/pay/hdfc-sms/public/order" && req.method === "POST") return await hdfcPublicOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/public/status" && req.method === "GET") return await hdfcPublicStatus(req, env);
-      if (p === "/api/pay/hdfc-sms/public/claim" && req.method === "POST") return await hdfcPublicClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/public/recheck" && req.method === "POST") return await hdfcPublicRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/redeem" && req.method === "POST") return await hdfcCustomerRedeem(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/current" && req.method === "GET") return await hdfcCustomerCurrent(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/order" && req.method === "POST") return await hdfcCustomerOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/status" && req.method === "GET") return await hdfcCustomerStatus(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/claim" && req.method === "POST") return await hdfcCustomerClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/recheck" && req.method === "POST") return await hdfcCustomerRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/current" && req.method === "GET") return await hdfcSmsCurrent(req, env);
-      if (p === "/api/pay/hdfc-sms/claim" && req.method === "POST") return await hdfcSmsClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/recheck" && req.method === "POST") return await hdfcSmsRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/order" && req.method === "POST") return await hdfcSmsCreateOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/method" && req.method === "GET") return await hdfcSmsMethod(req, env);
-      if (p === "/api/pay/hdfc-sms/status" && req.method === "GET") return await hdfcSmsStatus(req, env);
-      if (p === "/api/sms/incoming" && req.method === "POST") return await hdfcSmsIncoming(req, env);
-      if (p === "/api/sms/heartbeat" && req.method === "POST") return await hdfcSmsHeartbeat(req, env);
+      // [TAKEDOWN-HDFC-SMOKE-1 2026-09-20] The whole /api/pay/hdfc-sms/* and /api/sms/*
+      // family (public QR, anonymous smoke, customer-test, admin smoke, and the
+      // companion's incoming/heartbeat webhooks) is deliberately unregistered — it is an
+      // internal ₹1 test harness, not the commercial rail, and must 404 during a payment
+      // gateway review. See REPORT.md and the import-site comment above.
       // [PAY-RAIL-1] Generic multi-gateway routes — Razorpay, Paytm, Stripe (intl), and
       // Cashfree wired for completeness (lib/payments/registry.ts). Placed AFTER the
       // literal /api/pay/cashfree/* checks above, so those keep taking priority for that
@@ -1541,7 +1529,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (act === "promote" && req.method === "POST") return await promoteToFaq(req, env, qid);
         }
         if (p === "/api/questions/mine" && req.method === "GET") return await listMyQuestions(req, env);
-        if (p === "/api/questions/inbox" && req.method === "GET") return await listCreatorQuestions(req, env);
+        // [TAKEDOWN-LISTQ-INBOX-1 2026-09-20] Unregistered: nothing on any surface (web or
+        // app) ever reads this inbox — see web/src/islands/listing/MessageHost.tsx's header
+        // comment. Dark on the server rather than deleted; listCreatorQuestions stays
+        // implemented in routes/listing_questions.ts if a creator-facing client is ever built.
       }
 
       // --- in-app notifications feed ---
