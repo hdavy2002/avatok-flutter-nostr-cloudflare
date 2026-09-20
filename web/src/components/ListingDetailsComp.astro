@@ -87,11 +87,11 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const handle = l.creator?.handle?.trim();
   const slug = l.slug?.trim();
   const showPath = handle && slug ? `/${handle}/${slug}` : `/l/${l.id}`;
-  const SHOW_URL = new URL(showPath, 'https://avatok.ai').toString();
-  const hostName = (l.creator?.name || l.creator?.handle || 'avaTOK creator').trim();
+  const SHOW_URL = new URL(showPath, 'https://saathum.com').toString();
+  const hostName = (l.creator?.name || l.creator?.handle || 'Saathum creator').trim();
   // Possessive for section titles: "Sunny's house rules" / "Host's house rules" when nameless.
   const hostPoss = (l.creator?.name || l.creator?.handle) ? `${hostName.split(' ')[0]}'s` : 'Host\u2019s';
-  const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — avaTOK" allow="autoplay" loading="lazy"></iframe>`;
+  const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — Saathum" allow="autoplay" loading="lazy"></iframe>`;
 
   const rules = (l.attrs?.content_house_rules ?? []).map((r, i) => ({ n: String(i + 1), head: r.heading, text: r.body }));
   const rulesIntro = l.attrs?.content_house_rules_intro ?? null;
@@ -320,7 +320,7 @@ const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').s
 const hostAvatar = listing.creator?.avatar_url ?? null;
 const hostHandle = listing.creator?.handle ?? null;
 const hostHref = hostHandle ? `/c/${encodeURIComponent(hostHandle)}` : null;
-// [WEB-MSG-HANDOFF-1] The creator's AvaTOK number — their public identity, and
+// [WEB-MSG-HANDOFF-1] The creator's Saathum number — their public identity, and
 // the whole point of the messaging handoff. Already on the wire since
 // [PIVOT-NUMBER-PRIVACY-1]; `shapeCard` emits it as `creator.avatok_number`.
 // Their REAL phone number is never here and never should be.
@@ -584,10 +584,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 <p class="player-card__lettering-tag">{posterCopy?.tagline ?? listing.blurb}</p>
               )}
               {/* [POSTER-MARK-1 2026-09-06] On the overlay path the artwork was
-                  generated with NO text at all, so the painted avatok.ai mark
+                  generated with NO text at all, so the painted saathum.com mark
                   does not exist — this draws it. On the normal path this whole
                   block is not rendered and the mark is inside the image. */}
-              <span data-i18n="web-common.6c268582050557ce" class="player-card__mark">avatok.ai</span>
+              <span data-i18n="web-common.6c268582050557ce" class="player-card__mark">saathum.com</span>
             </div>
           )}
           {/* [POSTER-CLEAN-1 2026-09-06] The diagonal-stripe scrim is GONE.
@@ -819,7 +819,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                   <p class="show-closed__title">{closedTitle}</p>
                   <p class="show-closed__line">{closedLine}</p>
                   {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
-                  <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
+                  <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on Saathum →</a>
                 </div>
               )}
               <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
@@ -921,7 +921,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span class="chip">~{repliesIn} <ui-copy style="display:contents" data-i18n="web-common.62302617f488f75a">REPLY</ui-copy></span>
             </div>
             <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.1e1fc50ea76d2183">✉ Message</ui-copy> {hostName.split(' ')[0]}</button>
-            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE AVATOK APP · NO PHONE NUMBERS SHARED</span>
+            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE SAATHUM APP · NO PHONE NUMBERS SHARED</span>
             <div id="ask-host-panel" style="display:none;">
               <MessageHostIsland client:visible listingId={listing.id} hostName={hostName} hostNumber={hostNumber} />
             </div>
@@ -939,10 +939,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                   <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NEW HOST</span>
                   <span data-i18n="web-common.b817d19e4de3f60b" class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
                 </div>
-                <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
+                <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what Saathum has checked instead:</p>
                 <div class="newhost-box__grid">
                   <div class="newhost-box__item"><span>{idVerified ? '✓' : '○'} <ui-copy style="display:contents" data-i18n="web-common.73db772917e59e19">ID VERIFIED</ui-copy></span><p data-i18n="web-common.c01b879972f0d561">Government ID matched to the payout account.</p></div>
-                  <div class="newhost-box__item"><span data-i18n="web-common.3bfd30fd24ad95fe">✓ INTRO CALL DONE</span><p data-i18n="web-common.2a68a53615bf6fc3">A live onboarding call with the avaTOK team.</p></div>
+                  <div class="newhost-box__item"><span data-i18n="web-common.3bfd30fd24ad95fe">✓ INTRO CALL DONE</span><p data-i18n="web-common.2a68a53615bf6fc3">A live onboarding call with the Saathum team.</p></div>
                   <div class="newhost-box__item"><span data-i18n="web-common.90216d4770f413b9">✓ RULES TRAINING</span><p data-i18n="web-common.86a323d2974519af">Completed conduct and safety training.</p></div>
                 </div>
                 <div class="newhost-box__promise">
@@ -1021,7 +1021,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               ))}
             </div>
             <div class="rules-card__footer">
-              <span data-i18n="web-common.8963edc36a16271e">AVATOK BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
+              <span data-i18n="web-common.8963edc36a16271e">SAATHUM BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
               <a data-i18n="web-common.4160a94d053eff1a" href="/community-guidelines" class="rules-card__footer-link">READ PLATFORM RULES</a>
             </div>
           </div>
@@ -1404,7 +1404,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   };
   document.getElementById('share-wa').onclick = () => {
     document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'whatsapp' } }));
-    window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on avaTOK — ' + CONFIG.showUrl), '_blank');
+    window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on Saathum — ' + CONFIG.showUrl), '_blank');
   };
   document.getElementById('share-fb').onclick = () => window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(CONFIG.showUrl), '_blank');
   document.getElementById('share-yt').onclick = () => window.open('https://www.youtube.com/@avatok', '_blank');
@@ -1480,7 +1480,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <p class="browse-card__blurb">${c.blurb}</p>
           <div class="browse-card__foot">
             <span class="browse-card__ini">${c.ini}</span>
-            <span class="browse-card__name">${c.name || 'avaTOK creator'}${c.verified ? ' ✓' : ''}</span>
+            <span class="browse-card__name">${c.name || 'Saathum creator'}${c.verified ? ' ✓' : ''}</span>
             <span class="browse-card__dur">${c.dur}</span>
           </div>
         </div>
@@ -1750,7 +1750,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     font-size: clamp(.875rem, 1.5vw, 1.125rem); letter-spacing: .05em;
     color: #fdf1d3; text-shadow: 2px 2px 0 #161614;
   }
-  /* [POSTER-MARK-1 2026-09-06] The avatok.ai mark, drawn only on the textless
+  /* [POSTER-MARK-1 2026-09-06] The saathum.com mark, drawn only on the textless
      artwork path. Small and quiet on purpose — it is a maker's mark, not a
      badge, and the painted version inside a normal poster is the same idea. */
   .player-card__mark {

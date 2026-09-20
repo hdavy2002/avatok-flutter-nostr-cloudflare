@@ -88,20 +88,25 @@ export interface OrgConstants {
 }
 
 export const ORG: OrgConstants = {
-  name: 'avaTOK',
-  alternateNames: ['AvaTOK', 'AvaTok', 'Avatok', 'avatok.ai'],
+  name: 'Saathum',
+  alternateNames: ['Saathum.com'],
   legalName: 'Ava Global International, Inc.',
-  url: 'https://avatok.ai/',
+  url: 'https://saathum.com/',
   logo: {
-    url: 'https://avatok.ai/app-logo2.png',
+    url: 'https://saathum.com/app-logo2.png',
     width: 251,
     height: 256,
   },
   description:
-    'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, operated by Ava Global International, Inc., a Delaware corporation.',
-  slogan: 'Turn your skill into income.',
-  foundersDescription: 'Founded in 2025',
+    'Saathum is a live streaming and 1:1 video consultation platform for devotional and spiritual life — puja, darshan, temple tours, satsang and astrology — built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
+  slogan: 'Apna hunar. Apni kamaai.',
+  foundersDescription: 'Founded by American and Indian founders',
   foundingDate: '2025',
+  // [SAATHUM-BRAND-1 2026-09-20] Left as the avatok.ai mailbox on purpose —
+  // per the rename's hard rule, existing @avatok.ai mailboxes stay working
+  // and are not renamed as part of this sweep. Point this at a saathum.com
+  // mailbox once one exists and is verified (see
+  // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md).
   email: 'support@avatok.ai',
   address: {
     locality: 'Newark',
@@ -122,13 +127,17 @@ export const ORG: OrgConstants = {
     registeredOffice: null,
   },
   sameAs: {
-    youtube: 'https://www.youtube.com/@avatok',
-    // [WEB-SEO-8 2026-09-10] Company Page created from the owner's LinkedIn.
-    linkedin: 'https://www.linkedin.com/company/avatok',
-    // Set when the owner creates these (see marketing/avatok-entity-anchors.md).
+    // [SAATHUM-BRAND-1 2026-09-20] These four profiles (youtube/@avatok,
+    // linkedin/company/avatok, the AvaTOK Wikidata item) were the avaTOK
+    // brand's real, resolving accounts — `sameAs` must only list profiles
+    // that resolve TODAY (see the file header), and none of them are
+    // Saathum's. Nulled rather than repointed at a guessed Saathum handle;
+    // set each once a real Saathum profile exists. avatok.ai keeps its own
+    // accounts as the frozen snapshot's brand facts (lane 06).
+    youtube: null,
+    linkedin: null,
     crunchbase: null,
-    // [WEB-SEO-8] Created 2026-09-10 from the AvaTOK Wikidata account.
-    wikidata: 'https://www.wikidata.org/wiki/Q141409718',
+    wikidata: null,
     // Set once a real, resolving Instagram profile exists.
     instagram: null,
     // Closed Alpha — 404s publicly today. Set once the Play listing is public.
@@ -136,7 +145,7 @@ export const ORG: OrgConstants = {
   },
   languages: ['en'],
   contactUrl: '/contact',
-  searchUrlTemplate: 'https://avatok.ai/marketplace?q={search_term_string}',
+  searchUrlTemplate: 'https://saathum.com/marketplace?q={search_term_string}',
 };
 
 /** Filters `ORG.sameAs` down to the profiles that are actually set. */
@@ -153,7 +162,7 @@ export interface PageLdInput {
 
 /**
  * Builds the site-wide Organization/WebSite/WebPage JSON-LD graph from ORG.
- * Answer engines read this to decide what avaTOK *is*; keep it consistent
+ * Answer engines read this to decide what Saathum *is*; keep it consistent
  * with the visible copy on /about. This is the same graph shape Base.astro
  * used to build inline ([WEB-SEO-1]/[WEB-SEO-2]) — same @ids, same nodes —
  * just sourced from ORG so one field edit here reaches every page.
@@ -189,14 +198,14 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     },
     image: { '@id': logoId },
     description: ORG.description,
-    // [WEB-SEO-6] Google's AI Overview for "avatok" conflates this brand with
-    // avatok.tech (industrial conductors) and an old avatar-video app. This
-    // field exists in schema.org for exactly that: tell the Knowledge Graph
-    // which one we are — and which we are not. Mirrors the visible FAQ on
-    // /about (components/EntityFaq.astro).
+    // [SAATHUM-BRAND-1 2026-09-20] [WEB-SEO-6]'s original disambiguation
+    // ("avatok" collided with avatok.tech and an avatar-video app) no longer
+    // applies under the Saathum name — no known collision exists, so this is
+    // now a plain entity description rather than a "not to be confused with"
+    // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'The global creator platform for paid live streaming and 1:1 video sessions at avatok.ai. Not related to avatok.tech (industrial power equipment) or to avatar/selfie-video creation apps that share the name.',
-    knowsAbout: ['live streaming', 'creator economy', 'paid 1:1 video consultations'],
+      'A live streaming and 1:1 video consultation platform for devotional and spiritual life at saathum.com — puja and darshan, temple tours, satsang and festivals, and astrology and spiritual-guidance sessions.',
+    knowsAbout: ['live streaming', 'devotional events', 'astrology consultations', 'paid 1:1 video consultations'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     parentOrganization: {
@@ -240,7 +249,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     '@id': websiteId,
     url: ORG.url,
     name: ORG.name,
-    alternateName: 'avatok.ai',
+    alternateName: 'saathum.com',
     description,
     inLanguage: 'en-US',
     publisher: { '@id': orgId },

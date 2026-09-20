@@ -1,7 +1,7 @@
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
 import { useEffect } from 'react';
-import { GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups';
+import { PUBLIC_GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups';
 
 /** Price buckets, in tokens (₹1 = 1 token). `max: null` means "and up". */
 export const PRICE_BANDS: { id: string; label: string; min: number; max: number | null }[] = [
@@ -77,7 +77,7 @@ export function activeFilterCount(value: RailState): number {
 
 /**
  * The bazaar FILTERS rail — the comp's left sidebar
- * (design/marketplace/avaTOK Marketplace.dc.html).
+ * (design/marketplace/Saathum Marketplace.dc.html).
  *
  * [MARKET-BAZAAR-2 2026-08-31, owner decision] This REPLACES the three rows of
  * Type / Category / Sort chips. The page was saying the same thing twice: 25
@@ -195,8 +195,12 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
             {/* [MKT-3GROUP-WEB-1] Three groups, not seven sections (spec §1).
                 Every group is reachable — the one gated sub-category
                 (adda_rooms) is hidden at the BLIP level inside its section,
-                not here, so there is no "Soon" row any more. */}
-            {GROUP_ORDER.map((id) => (
+                not here, so there is no "Soon" row any more.
+                [SAATHUM-WEB-UI 2026-09-20] PUBLIC_GROUP_ORDER, not the raw
+                GROUP_ORDER: `find_your_people` has zero visible sub-categories
+                under Saathum's devotional scope, so it would sit here as a
+                filter that always returns nothing. See marketGroups.ts. */}
+            {PUBLIC_GROUP_ORDER.map((id) => (
               <RailRadio
                 key={id}
                 label={GROUP_DISPLAY[id].label}

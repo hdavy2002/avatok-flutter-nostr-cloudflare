@@ -1,7 +1,7 @@
 ---
 import { publicImage } from '../lib/config';
 /*
- * SiteHeader — the standard avaTOK header, site-wide.
+ * SiteHeader — the standard Saathum header, site-wide.
  *
  * [WEB-HEADER-1 2026-08-26] Replaces two things at once:
  *   1. The nav that was PAINTED INTO the home page poster. Those words were
@@ -80,7 +80,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
   // auth Fragment below) and are unaffected either way.
   { href: '/help', label: 'Wiki' },
   { href: '/pricing-fees', label: 'Pricing' },
-  { href: 'https://avatok.ai/ideas', label: 'Ideas' },
+  { href: 'https://saathum.com/ideas', label: 'Ideas' },
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
@@ -133,8 +133,8 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 <header class:list={['avh', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
-  <a class="avh-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    <img src={publicImage('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="avaTOK" width="231" height="90" />
+  <a class="avh-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
+    <img src={publicImage('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="Saathum" width="231" height="90" />
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -178,7 +178,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
 <dialog data-india-i18n-attr="aria-label:web-common.3f9abc8733ba366a" class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    <img src={publicImage('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="avaTOK" width="154" height="60" />
+    <img src={publicImage('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="Saathum" width="154" height="60" />
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>

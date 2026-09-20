@@ -34,7 +34,7 @@ class _CallsScreenState extends State<CallsScreen> {
   final _store = CallLogStore();
   List<CallEntry> _calls = [];
   Map<String, String> _avatars = {}; // uid → photo URL (from contacts)
-  // [ISSUE-CALLS-SEARCH-1] uid → digits of that contact's AvaTOK number + phone.
+  // [ISSUE-CALLS-SEARCH-1] uid → digits of that contact's Saathum number + phone.
   // CallEntry itself stores NO number (only name/seed/dir/ts), so number search
   // is resolved through the contact book, which _load() already reads for avatars.
   Map<String, String> _numberDigits = {};

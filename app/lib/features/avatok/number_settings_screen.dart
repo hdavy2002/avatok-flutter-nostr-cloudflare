@@ -172,7 +172,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       final newDisplay = res.display ?? n.display;
       // Rich telemetry: who got which number, country, free/paid, and — for a
       // paid CHANGE — their previous number. `$set` writes person properties so a
-      // user becomes findable in PostHog by their AvaTOK number.
+      // user becomes findable in PostHog by their Saathum number.
       Analytics.capture('number_assigned', {
         'country': _country!.iso2,
         'number': newDisplay,
@@ -538,7 +538,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
   List<Widget> _content() {
     final me = _me!;
     if (!me.featureOn) {
-      return [_infoCard('Not available', 'AvaTOK numbers aren’t available right now. Check back soon.')];
+      return [_infoCard('Not available', 'Saathum numbers aren’t available right now. Check back soon.')];
     }
     final widgets = <Widget>[];
     if (widget.gate) {
@@ -651,7 +651,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ];
     }
 
-    // Picker — generate a fresh AvaTOK number. (Bringing your own number is a
+    // Picker — generate a fresh Saathum number. (Bringing your own number is a
     // premium feature reserved for later; for now everyone gets a generated one.)
     widgets.addAll([
       _card(

@@ -19,7 +19,7 @@ import 'team_ivr_screen.dart';
 /// TeamHomeScreen — manager dashboard for the Team Receptionist (IVR).
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md. Shows the team number, greeting,
 /// monthly pools, and the staff list (which IS the press-1/press-2 menu). The
-/// manager adds staff by {name, role, voice, greeting, AvaTOK number}.
+/// manager adds staff by {name, role, voice, greeting, Saathum number}.
 class TeamHomeScreen extends StatefulWidget {
   const TeamHomeScreen({super.key});
   @override
@@ -346,7 +346,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
           ),
           const SizedBox(height: Msg.s4),
           _benefit(PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
-              'Unlimited staff seats', 'Add your whole team to the call menu — each with their own AvaTOK number, voice and greeting.'),
+              'Unlimited staff seats', 'Add your whole team to the call menu — each with their own Saathum number, voice and greeting.'),
           _benefit(PhosphorIcons.phoneCall(PhosphorIconsStyle.regular),
               'One business number', 'Callers reach a single team line; Ava answers 24/7 and warm-transfers to whoever is free.'),
           _benefit(PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
@@ -488,7 +488,7 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
     final role = _role.text.trim();
     final number = _number.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (name.isEmpty || role.isEmpty || number.isEmpty) {
-      setState(() => _error = 'Name, role and AvaTOK number are required');
+      setState(() => _error = 'Name, role and Saathum number are required');
       return;
     }
     setState(() { _saving = true; _error = null; });

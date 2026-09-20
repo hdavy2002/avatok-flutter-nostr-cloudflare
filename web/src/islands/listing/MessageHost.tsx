@@ -1,11 +1,11 @@
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
 // [WEB-MSG-HANDOFF-1 2026-09-05] The web does NOT send messages. It hands the
-// visitor the creator's AvaTOK number and sends them to the app.
+// visitor the creator's Saathum number and sends them to the app.
 //
 // Owner decision: "I don't want users to send messages to creators using the
-// web. If a user accesses this on the web, just show him the creator's AvaTOK
-// number and ask him to message on that. If the user has the AvaTOK app
+// web. If a user accesses this on the web, just show him the creator's Saathum
+// number and ask him to message on that. If the user has the Saathum app
 // installed, then you can open the message box."
 //
 // That is not a workaround for missing web messaging — it IS the product move.
@@ -33,7 +33,7 @@ const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avat
 export interface MessageHostProps {
   listingId: string;
   hostName: string;
-  /** The creator's AvaTOK number, as it should be READ ALOUD. Null when they
+  /** The creator's Saathum number, as it should be READ ALOUD. Null when they
    *  have not claimed one — see the fallback copy below. */
   hostNumber: string | null;
 }
@@ -45,7 +45,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
   const first = hostName.split(' ')[0] || hostName;
   // [UI-MOTION-1 2026-09-10] "card-tilt" (transitions.dev, `.t-tilt*` in
   // styles/motion.css) — the ONE tilt card on this page: the host's paid
-  // AvaTOK number. Pointer-only by design (mouse only, guarded below) and
+  // Saathum number. Pointer-only by design (mouse only, guarded below) and
   // flattens under prefers-reduced-motion via the CSS file itself; the vars
   // are set directly on the DOM node rather than through React state so a
   // fast mousemove doesn't trigger a re-render per pixel.
@@ -113,7 +113,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
       <div style={wrap} data-section="message_host">
         <p style={caption}><UiText id="web-listing.b194d92018d60742" source="MESSAGE" />{" "}{first.toUpperCase()}</p>
         <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34' }}>
-          {first}{" "}<UiText id="web-listing.33f64ad76fb76bf5" source="has not set up their AvaTOK number yet. Book a seat and you will be able to reach them from the app." />{" "}</p>
+          {first}{" "}<UiText id="web-listing.33f64ad76fb76bf5" source="has not set up their Saathum number yet. Book a seat and you will be able to reach them from the app." />{" "}</p>
         <a href={PLAY_STORE} target="_blank" rel="noreferrer" data-cta="get_app"
           style={{
             alignSelf: 'flex-start', textDecoration: 'none', fontWeight: 900, fontSize: '0.75rem',
@@ -126,7 +126,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
 
   return (
     <div style={wrap} data-section="message_host">
-      <p style={caption}><UiText id="web-listing.b194d92018d60742" source="MESSAGE" />{" "}{first.toUpperCase()}{" "}<UiText id="web-listing.8dabef32222158db" source="ON AVATOK" /></p>
+      <p style={caption}><UiText id="web-listing.b194d92018d60742" source="MESSAGE" />{" "}{first.toUpperCase()}{" "}<UiText id="web-listing.8dabef32222158db" source="ON SAATHUM" /></p>
 
       <div
         className="t-tilt"
@@ -169,7 +169,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
         ><UiText id="web-listing.4bf3f054bc40b282" source="Number copied" />{" "}</span>
       </div>
 
-      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34', lineHeight: 1.5 }}><UiText id="web-listing.958118278d44c163" source="Messages happen in the AvaTOK app. Open it and send" />{" "}{first}{" "}<UiText id="web-listing.58c67ea31bcc77e8" source="a message on this number — neither of you ever sees the other's real phone number." />{" "}</p>
+      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34', lineHeight: 1.5 }}><UiText id="web-listing.958118278d44c163" source="Messages happen in the Saathum app. Open it and send" />{" "}{first}{" "}<UiText id="web-listing.58c67ea31bcc77e8" source="a message on this number — neither of you ever sees the other's real phone number." />{" "}</p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <a
@@ -181,7 +181,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
             padding: '11px 20px', borderRadius: 100, border: '2px solid #161614',
             background: '#161614', color: '#fdf1d3',
           }}
-        ><UiText id="web-listing.539d6a4198b6e1c7" source="OPEN IN AVATOK" />{" "}</a>
+        ><UiText id="web-listing.539d6a4198b6e1c7" source="OPEN IN SAATHUM" />{" "}</a>
         <a
           href={PLAY_STORE}
           target="_blank"

@@ -1,8 +1,8 @@
 // Team Receptionist (IVR / auto-attendant) — Specs/TEAM-RECEPTIONIST-IVR-SPEC.md.
 //
 // A manager subscribes to a Team plan, then adds staff by {name, role, voice,
-// greeting, AvaTOK number}. The ordered staff list IS the "press 1 / press 2" menu
-// on the team's AvaTOK number. Caller taps an entry → 1:1 call to that staffer
+// greeting, Saathum number}. The ordered staff list IS the "press 1 / press 2" menu
+// on the team's Saathum number. Caller taps an entry → 1:1 call to that staffer
 // (existing CallRoom path) → no answer → that staffer's Ava takes a message →
 // message card fans out to the dialed staffer + the manager. All staff usage bills
 // to the team wallet (see team_billing.ts); staff get Pro for free while on the team.
@@ -48,6 +48,13 @@ const clip = (s: unknown, n: number) => String(s ?? "").trim().slice(0, n);
 // (see app/lib/core/team_api.dart TeamApi.status()), so this is compatible.
 async function flagOff(env: Env): Promise<Response | null> {
   const cfg = await readConfig(env);
+  // [SAATHUM-FLAGS-1 2026-09-20] teamsEnabled is the Saathum product-scope
+  // gate (Teams are not part of the devotional consultations/live-events
+  // product); teamIvrEnabled stays the separate engineering-readiness gate.
+  // Either false darkens every /api/team/* handler below.
+  if ((cfg as any).teamsEnabled === false) {
+    return json({ enabled: false, error: "team feature disabled", flag: "teamsEnabled", role: null, team: null }, 200);
+  }
   return (cfg as any).teamIvrEnabled === false
     ? json({ enabled: false, error: "team feature disabled", flag: "teamIvrEnabled", role: null, team: null }, 200) : null;
 }
@@ -61,7 +68,7 @@ interface TeamRow {
   status: string;
 }
 
-// Resolve an AvaTOK number (digits, no '+') to its owner uid, if any.
+// Resolve a Saathum number (digits, no '+') to its owner uid, if any.
 async function uidForNumber(env: Env, number: string): Promise<string | null> {
   if (!number) return null;
   const r = await metaSession(env)
@@ -171,7 +178,7 @@ export async function teamUpdate(req: Request, env: Env): Promise<Response> {
   const greeting = b.greeting_text == null ? t.greeting_text : clip(b.greeting_text, 200);
   const clipKey = b.greeting_clip == null ? t.greeting_clip : clip(b.greeting_clip, 256);
   const number = b.team_number == null ? t.team_number : (digits(b.team_number) || null);
-  // Guard: the team number must belong to the manager (it's their AvaTOK number).
+  // Guard: the team number must belong to the manager (it's their Saathum number).
   if (number && number !== t.team_number) {
     const owner = await uidForNumber(env, number);
     if (owner && owner !== ctx.uid) return json({ error: "number_not_yours" }, 403);
@@ -312,7 +319,7 @@ export async function teamInviteAccept(req: Request, env: Env): Promise<Response
   const off = await flagOff(env); if (off) return off;
   const b = (await req.json().catch(() => ({}))) as any;
   const teamId = clip(b.team_id, 64);
-  // Match the pending entry by this user's AvaTOK number.
+  // Match the pending entry by this user's Saathum number.
   const me = await metaSession(env).prepare("SELECT avatok_number FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null }>();
   const myNum = digits(me?.avatok_number);
   const t = await metaSession(env).prepare("SELECT * FROM teams WHERE id=?1 AND status='active'").bind(teamId).first<TeamRow>();

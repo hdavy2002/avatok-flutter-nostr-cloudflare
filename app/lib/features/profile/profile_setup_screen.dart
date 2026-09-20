@@ -41,7 +41,7 @@ class ProfileSetupScreen extends StatefulWidget {
   /// The email the user signed in with (from Clerk) — shown locked, and used to
   /// satisfy the required-email validation so "Save & continue" enables.
   final String? email;
-  /// The AvaTOK number the user just picked in the compulsory number gate, handed
+  /// The Saathum number the user just picked in the compulsory number gate, handed
   /// straight through so this screen shows it LOCKED without waiting on
   /// [AvaNumber.me] (cache/replica) to land — the deterministic fix for the
   /// "Assigned just now" blank. Falls back to [AvaNumber.me] when absent (e.g. an
@@ -86,7 +86,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   DateTime? _birthDate;
   TimeOfDay? _birthTime;
   // Personal (real) phone — collected + OTP-verified here, then locked. Distinct
-  // from the AvaTOK number. Optional (owner decision: sign-in runs on email).
+  // from the Saathum number. Optional (owner decision: sign-in runs on email).
   String _privatePhone = '';
   bool _privatePhoneVerified = false;
   String _gender = ''; // 'male' | 'female' | 'other' — mandatory (Ava's pronouns)
@@ -350,7 +350,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       // kick off AI gender detection so it can lock without the user retyping.
       if (_first.text.trim().isNotEmpty && _gender.isEmpty) _maybeDetectGender();
     });
-    // The AvaTOK number was picked in the gate just before this screen — show it
+    // The Saathum number was picked in the gate just before this screen — show it
     // (locked) in place of an editable phone field. AvaNumber.me() reads the
     // per-account, cache-first `me` blob that AvaNumber.assign() write-through
     // populated in the gate, so the number the user just chose is already there.
@@ -374,7 +374,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _resolveEmailInto();
       _retryIdentityHydration();
-      // [PROFILE-DISPLAY-2] Diagnostic: did the locked email + AvaTOK number
+      // [PROFILE-DISPLAY-2] Diagnostic: did the locked email + Saathum number
       // actually populate on this onboarding screen? Tagged with the email so a
       // future pull can tell whose device left either field blank.
       Analytics.capture('profile_setup_prefill', {
@@ -749,9 +749,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       if (!accepted) { if (mounted) setState(() { _saving = false; _holdMsg = null; }); return; }
     }
     final existing = await _store.load();
-    // The visible "phone" field shows the AvaTOK number (locked) and is NOT the
+    // The visible "phone" field shows the Saathum number (locked) and is NOT the
     // user's real phone — preserve any previously-stored real phone instead of
-    // overwriting it with the AvaTOK number.
+    // overwriting it with the Saathum number.
     final phone = existing.phone;
     // A PRIOR 422 (e.g. server name/photo vetting reject) latches the profile
     // endpoint's ApiBackoffState into isPermanentlyFailed, after which every

@@ -257,6 +257,9 @@ const ADMIN_EDITABLE = new Set([
   "timezone", "capacity", "max_per_booking", "response_time_min",
   "location", "country", "video_url", "spoken_lang", "adults_only",
   "credential", "media_mode",
+  // [LISTING-PERFORMER-1 2026-09-20] a reviewer correcting/asking for a missing
+  // performer disclosure is exactly this route's use case — see listing_blockers.ts.
+  "performed_by", "facilitated_by", "at_temple",
 ]);
 
 /**

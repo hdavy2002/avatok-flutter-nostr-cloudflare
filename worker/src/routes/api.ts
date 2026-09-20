@@ -2700,7 +2700,7 @@ export function normalizeHandle(h: string): string {
 }
 
 // GET /api/handle/check — DEPRECATED. Handles are retired site-wide
-// (Specs/AVATOK-NUMBER-FEATURE-SPEC.md). The network identity is the AvaTOK number;
+// (Specs/AVATOK-NUMBER-FEATURE-SPEC.md). The network identity is the Saathum number;
 // search is by number / phone (if public) / email. Kept so old clients get a clear
 // signal instead of a 404.
 //
@@ -2709,9 +2709,9 @@ export function normalizeHandle(h: string): string {
 // /<handle>/<slug>, creator pages /c/<handle>, the creators sitemap). Every
 // user is now auto-assigned a handle server-side — see lib/handles.ts. This
 // endpoint stays deprecated/410; the app's in-app identity is still the
-// AvaTOK number, unchanged by the above.
+// Saathum number, unchanged by the above.
 export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
-  return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your AvaTOK number, phone, or email." }, 410);
+  return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your Saathum number, phone, or email." }, 410);
 }
 
 // P11: real-name plausibility via gemini-2.5-flash-lite. Returns {plausible,reason}.
@@ -3221,7 +3221,7 @@ function profOut(r: any) {
 }
 
 // Resolve a query → uid + profile. Handles are retired; the network keys are the
-// AvaTOK number (exact), the real phone (exact, only if the owner made it public),
+// Saathum number (exact), the real phone (exact, only if the owner made it public),
 // and email (exact, only if the owner allows email discovery).
 // Read-through KV cache for the people-directory (resolve + search). Popular
 // queries (an influencer/business searched thousands of times) return from edge
@@ -3274,7 +3274,7 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
   }
   const digits = q.replace(/[^0-9]/g, "");
   if (digits.length >= 6) {
-    // 1) exact AvaTOK number (canonical E.164 digits). ALSO match a user's
+    // 1) exact Saathum number (canonical E.164 digits). ALSO match a user's
     // EXPLICITLY-exposed private number (show_private_number=1) so dialing it on
     // the AvaTOK dialpad rings their app (owner request 2026-06-29). This is
     // OPT-IN only — a private phone never resolves by default (the 2026-06-27
@@ -3297,7 +3297,7 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
     // private_number=?1`, which resolved an account from a RAW REAL phone
     // number — anyone who knew (or guessed) someone's real number could turn it
     // into their AvaTOK identity. The marketplace-first pivot (2026-08-27) makes
-    // the AvaTOK number the ONLY public identity: the real number is collected
+    // the Saathum number the ONLY public identity: the real number is collected
     // for signup, stored as sha256(E.164), and shown to nobody.
     //
     // `privateNumberSet` in routes/number.ts now hard-writes show_private_number=0
@@ -3319,7 +3319,7 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
 // set "who can add me = nobody" are excluded from discovery.
 //
 // DISCOVERY IS EXACT-KEY ONLY (owner decision 2026-07-01): email (via /api/resolve)
-// and AvaTOK number. NAME SEARCH IS INTENTIONALLY REMOVED — at millions of users a
+// and Saathum number. NAME SEARCH IS INTENTIONALLY REMOVED — at millions of users a
 // name matches thousands of people (useless), and name matching is a scan/cost with
 // no product value. So this endpoint only resolves an AvaTOK NUMBER; a non-numeric
 // query returns nothing.
@@ -3355,7 +3355,7 @@ export async function search(req: Request, env: Env): Promise<Response> {
 // to their identity (the phone branch wasn't even gated by phone_discoverable).
 // They now intentionally return NOTHING regardless of the request body, so even a
 // modified client cannot probe. Discovery is allowed ONLY via the exact,
-// owner-controlled keys in `resolve` (AvaTOK number, or email when the owner
+// owner-controlled keys in `resolve` (Saathum number, or email when the owner
 // enabled email discovery). The phone book stays on-device, used solely for the
 // user's own invites.
 export async function contactsSync(req: Request, env: Env): Promise<Response> {

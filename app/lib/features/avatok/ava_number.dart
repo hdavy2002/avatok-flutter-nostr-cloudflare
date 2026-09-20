@@ -97,7 +97,7 @@ class AddCard {
   final String firstName;
   final String lastName;
   final String email;
-  // [PIVOT-NUMBER-MASK-1] Always the sharer's AvaTOK number — the server
+  // [PIVOT-NUMBER-MASK-1] Always the sharer's Saathum number — the server
   // (worker/src/routes/number.ts shareCardPut) resolves this itself from the
   // account's own avatok_number row and never trusts client input, for paid
   // AND free accounts alike. The real phone number is never returned here.
@@ -105,7 +105,7 @@ class AddCard {
   final String plan;    // 'paid' | 'free' — informational only; no longer selects which number is shared.
   const AddCard({required this.uid, required this.name, this.avatarUrl = '', this.firstName = '', this.lastName = '', this.email = '', this.number = '', this.plan = 'free'});
   // [PIVOT-NUMBER-MASK-1] Retained only so any remaining caller compiles;
-  // `number` is now always the AvaTOK number regardless of plan, so this is
+  // `number` is now always the Saathum number regardless of plan, so this is
   // always false. Prefer reading `number` directly.
   bool get sharesRealNumber => false;
 }
@@ -248,7 +248,7 @@ class AvaNumber {
       if (r.statusCode == 200 && j['ok'] == true) {
         // Conversion event — country chosen + the number now bound to this account
         // (the signed-in person's email/phone are attached as person properties via
-        // Analytics.setUserKeys, so PostHog ties email ↔ this AvaTOK number).
+        // Analytics.setUserKeys, so PostHog ties email ↔ this Saathum number).
         Analytics.capture('number_assigned', {
           'country': country, 'nsn': nsn,
           'number': (j['number'] ?? '').toString(),
@@ -276,7 +276,7 @@ class AvaNumber {
 
   /// "Use my own number" — bind a real number the user types (e.g. a business
   /// that doesn't need privacy) as their AvaTOK identity. Format-validated on the
-  /// server; not ownership-verified (owner decision 2026-06-27). AvaTOK numbers
+  /// server; not ownership-verified (owner decision 2026-06-27). Saathum numbers
   /// are in-app only and never touch the PSTN. Pass the full number or NSN.
   static Future<({bool ok, String? number, String? display, String? error})> assignOwn(String country, String number) async {
     try {
@@ -431,7 +431,7 @@ class AvaNumber {
     } catch (_) { return null; }
   }
 
-  /// Resolve a contact by their PUBLIC AvaTOK number (a scanned/clicked `?n=`
+  /// Resolve a contact by their PUBLIC Saathum number (a scanned/clicked `?n=`
   /// link, e.g. from a contact's shared QR). Returns their add card, or null.
   static Future<AddCard?> addResolveByNumber(String number) async {
     final digits = number.replaceAll(RegExp(r'[^0-9]'), '');

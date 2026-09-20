@@ -55,7 +55,7 @@ export function inrWithTokens(tokens: number): string {
  * too many, so when the server rate changes this constant changes with it — and until
  * checkout exists there is nothing for them to disagree about.
  *
- * ⚠️ THIS IS A QUOTE, NOT A TAX INVOICE. avaTOK has no GSTIN yet, so nothing rendered
+ * ⚠️ THIS IS A QUOTE, NOT A TAX INVOICE. Saathum has no GSTIN yet, so nothing rendered
  * from this may be labelled a GST invoice or carry a registration number. Have an
  * accountant confirm the rate, the place-of-supply treatment and the invoice format
  * before a single rupee of it is collected.

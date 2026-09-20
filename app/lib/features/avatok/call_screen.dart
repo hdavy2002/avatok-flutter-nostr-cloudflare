@@ -391,7 +391,7 @@ class _CallScreenState extends State<CallScreen> {
       if (widget.avatarUrl.isNotEmpty) return; // launch site already knew
       final contacts = await ContactsStore().load();
       // Match on uid first (the seed IS the peer uid for an in-network call),
-      // then on the phone/AvaTOK number for a dialer-originated one. Digits are
+      // then on the phone/Saathum number for a dialer-originated one. Digits are
       // compared bare so "+1 786 436 3270" matches "17864363270".
       final seedDigits = seed.replaceAll(RegExp(r'[^0-9]'), '');
       Contact? hit;

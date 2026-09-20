@@ -20,7 +20,7 @@ import '../../core/ui/messenger_theme.dart';
 /// (`local: true`), which the Contacts tab injects alongside the device book
 /// (owner decision 2026-07-13).
 ///
-/// Fields (owner spec, pic 2): display name, number, AvaTOK number, personal
+/// Fields (owner spec, pic 2): display name, number, Saathum number, personal
 /// email, business email, LinkedIn, plus a "+" that adds arbitrary custom fields
 /// (field name + value).
 class ContactEditScreen extends StatefulWidget {
@@ -145,7 +145,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     return t.isEmpty ? null : t;
   }
 
-  /// Extras that have no first-class OS-contact slot (AvaTOK number + custom
+  /// Extras that have no first-class OS-contact slot (Saathum number + custom
   /// fields) are stored in the contact's Note so the phone's address book keeps
   /// them too. Returns null when there's nothing extra to store.
   String? _buildNote(String? avatok, List<ContactField> fields) {
@@ -286,8 +286,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                             style: AvaDialTheme.value(size: 16, color: AvaDialTheme.text)),
                       ),
                 const SizedBox(height: 16),
-                _label('AvaTOK number'),
-                _field(_avatokCtrl, 'Their AvaTOK number or @handle',
+                _label('Saathum number'),
+                _field(_avatokCtrl, 'Their Saathum number or @handle',
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.bold),
                     accent: AD.primaryBadge),
                 const SizedBox(height: 16),

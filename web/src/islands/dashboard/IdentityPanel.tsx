@@ -68,7 +68,7 @@ function Inner() {
           );
         })}
       </div>
-      <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.849649ed4d0c63fb" source="Document KYC unlocks creator payouts. The liveness selfie check uses your camera, so it runs in the AvaTOK phone app." /></p>
+      <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.849649ed4d0c63fb" source="Document KYC unlocks creator payouts. The liveness selfie check uses your camera, so it runs in the Saathum phone app." /></p>
     </div>
   );
 }

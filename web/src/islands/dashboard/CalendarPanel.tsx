@@ -1046,7 +1046,7 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
     const selected = calendars.filter((item) => item.selected).map((item) => item.id);
     const writable = calendars.filter((item) => item.selected && (!item.access_role || item.access_role === 'writer' || item.access_role === 'owner')).map((item) => item.id);
     if (!selected.length) { setError('Choose at least one calendar that should block your time.'); return; }
-    if (!destination || !selected.includes(destination) || !writable.includes(destination)) { setError('Choose a selected writable calendar as the AvaTOK event destination.'); return; }
+    if (!destination || !selected.includes(destination) || !writable.includes(destination)) { setError('Choose a selected writable calendar as the Saathum event destination.'); return; }
     setBusy('save'); setError(null); setNotice(null);
     try {
       const result = await withCalendarAuth((auth) => saveGoogleCalendarSelection(auth, { read_calendar_ids: selected, destination_calendar_id: destination }));
@@ -1074,7 +1074,7 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
         </div>
         <StatusBadge status={readiness.label} />
       </div>
-      <p className="calendar-muted"><UiText id="web-dashboard.ce991ed3f1d4ae75" source="Selected Google calendars contribute busy time. Private titles and guest details never reach customers. AvaTOK bookings stay authoritative if Google is unavailable." />{" "}</p>
+      <p className="calendar-muted"><UiText id="web-dashboard.ce991ed3f1d4ae75" source="Selected Google calendars contribute busy time. Private titles and guest details never reach customers. Saathum bookings stay authoritative if Google is unavailable." />{" "}</p>
       <p className="calendar-muted"><UiText id="web-dashboard.e4fe7d7e1414cd03" source="Bookings are only accepted while this reads" />{" "}<b><UiText id="web-dashboard.5fa7aac5375c5815" source="Ready" /></b>{" "}<UiText id="web-dashboard.a18a4b42cbf643b3" source="— that is the same rule the booking engine applies before it takes a reservation. Not connected, Syncing and Needs attention all refuse new bookings." />{" "}</p>
       <p className="calendar-muted" role="status">{readiness.detail}</p>
 
@@ -1114,7 +1114,7 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
           {calendars.length > 0 && (
             <div className="calendar-card" style={{ marginTop: '1rem' }}>
               <p className="calendar-eyebrow"><UiText id="web-dashboard.5f3fee23a8fbc51a" source="Availability sources" /></p>
-              <p className="calendar-muted"><UiText id="web-dashboard.3cfb0168649b2506" source="Choose which calendars block slots, then choose where AvaTOK bookings are written. CalendarList permission may require reconnecting an older connection." /></p>
+              <p className="calendar-muted"><UiText id="web-dashboard.3cfb0168649b2506" source="Choose which calendars block slots, then choose where Saathum bookings are written. CalendarList permission may require reconnecting an older connection." /></p>
               {calendars.map((item) => {
                 const source = readiness.sources.find((entry) => entry.id === item.id);
                 return (
@@ -1122,7 +1122,7 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
                     <label className="calendar-source-main">
                       <input type="checkbox" checked={item.selected} onChange={() => toggleCalendar(item.id)} />
                       <span>{item.summary}{item.primary ? uiT("web-dashboard.940bbab2b1839a27"," · primary") : ''}</span>
-                      {item.destination && <span className="calendar-badge calendar-badge-reserved"><UiText id="web-dashboard.f351ca0b2b77bd4a" source="AvaTOK events" /></span>}
+                      {item.destination && <span className="calendar-badge calendar-badge-reserved"><UiText id="web-dashboard.f351ca0b2b77bd4a" source="Saathum events" /></span>}
                     </label>
                     <span className="calendar-source-meta">
                       <StatusBadge status={source?.state === 'ready' ? uiT("web-dashboard.5fa7aac5375c5815","Ready") : source?.state === 'attention' ? uiT("web-dashboard.c1ebc7817870e5be","Needs attention") : source?.state === 'syncing' ? uiT("web-dashboard.5c8b9e1ce0a2bc31","Syncing") : uiT("web-dashboard.dccafe55abe3dd98","Not used")} />
@@ -1131,7 +1131,7 @@ function ConnectedCalendars({ token, status, onStatus, onReload }: {
                   </div>
                 );
               })}
-              <label className="calendar-destination"><UiText id="web-dashboard.e368d753c861712f" source="AvaTOK event destination" />{" "}<select className={CONTROL} value={destination} onChange={(event) => setDestination(event.target.value)}>
+              <label className="calendar-destination"><UiText id="web-dashboard.e368d753c861712f" source="Saathum event destination" />{" "}<select className={CONTROL} value={destination} onChange={(event) => setDestination(event.target.value)}>
                   {calendars.filter((item) => item.selected && (!item.access_role || item.access_role === 'writer' || item.access_role === 'owner')).map((item) => <option key={item.id} value={item.id}>{item.summary}</option>)}
                 </select>
               </label>

@@ -1,0 +1,115 @@
+---
+export const prerender = true;
+import Content from '../layouts/Content.astro';
+import { ORG } from '../lib/org';
+---
+
+<Content
+  kicker="Policy"
+  title="Prohibited Services"
+  description={`What creators may not claim, promise, or sell through ${ORG.name}, applied the same way across every religious and spiritual tradition offered on the platform.`}
+  lead="The claims, practices, and services we do not allow — one standard, applied the same way to every tradition."
+  updated="2026-09-20"
+>
+  <p>
+    {ORG.name} hosts paid live streaming and paid one-to-one consultations in a defined set of
+    categories: puja and darshan, temple tours, satsang and religious sermons, and festival
+    broadcasts as live events; and astrology, palmistry, tarot reading, numerology, kundli
+    matching, vastu, pandit consultation, and meditation as one-to-one consultations. This page
+    sets out what a listing in any of these categories may not do. It applies the same way to
+    every religious tradition, spiritual practice, and belief system offered on the platform.
+    None is exempt, and none is treated as more or less legitimate than another — every listing is
+    judged only against the rules below.
+  </p>
+
+  <h2>1. Guaranteed outcomes</h2>
+  <p>
+    A listing may not promise a specific real-world result as a guaranteed or assured consequence
+    of paying for the service. This includes guaranteeing: wealth or financial gain; marriage or a
+    specific relationship outcome; conception or the birth of a child; success in an examination;
+    or approval of a visa or immigration application. A listing may describe the guidance,
+    reading, or ritual on offer, and may describe what it is traditionally intended to achieve,
+    but it may not state or imply that any of these outcomes is certain, guaranteed, or assured.
+  </p>
+
+  <h2>2. Medical claims</h2>
+  <p>
+    A listing may not claim to cure, treat, diagnose, or prevent any physical or mental illness,
+    disease, disability, or medical condition, including infertility. A listing may not advise a
+    customer to delay, reduce, or stop medical treatment, medication, or a doctor's advice in
+    favor of the service being offered.
+  </p>
+
+  <h2>3. Fear-based sales practices</h2>
+  <p>
+    A listing may not tell a customer, or imply, that they or their family are currently
+    suffering harm from a curse, evil eye, black magic, planetary affliction, ancestral
+    displeasure, or any other unseen force, and then offer a paid service to remove or reverse
+    it. A listing may not claim that a specific danger is imminent in a customer's chart,
+    horoscope, or reading. A listing may not require a purchase within a short deadline — for
+    example, "within 24 hours" — to avert a claimed danger. A listing may not price a remedy
+    according to how afraid, wealthy, or desperate a customer appears to be, rather than at a
+    fixed, published price.
+  </p>
+
+  <h2>4. Harm</h2>
+  <p>
+    A listing may not involve killing, injuring, or sacrificing an animal, living or otherwise,
+    as part of the service performed or described. A listing may not involve fire, flame, or
+    chemical substances used in a way that creates a foreseeable risk of injury or property
+    damage to the customer or anyone else. No minor may participate as a paid party to any
+    listing — as the person performing the service, the person being read or consulted, or in
+    any other capacity connected to the transaction.
+  </p>
+
+  <h2>5. Pressure tactics</h2>
+  <p>
+    A listing, and the session delivered under it, may not use high-pressure sales tactics to
+    convert a browsing customer into a paying one — for example, escalating claims of urgency or
+    danger mid-conversation, refusing to answer a direct question about price, or continuing to
+    solicit payment after a customer has declined.
+  </p>
+
+  <h2>6. Who actually performs the service</h2>
+  <p>
+    Every listing must accurately state who performs the service. Where the person publishing the
+    listing is not the person performing the ritual, reading, or ceremony, the listing must name
+    who does perform it, name anyone who facilitates the session on the creator's behalf, and name
+    the temple or site where the event takes place, if it takes place at one. A listing that
+    misrepresents who performs the service is treated the same as a listing that violates any
+    other rule on this page.
+  </p>
+
+  <h2>7. One standard for every tradition</h2>
+  <p>
+    These rules describe conduct, not belief. They apply equally to every religious, spiritual,
+    and cultural tradition available on {ORG.name}. We do not treat any tradition as more valid,
+    more legitimate, or safer than another, and we do not use language on this page, in reviews,
+    or in enforcement to characterize any tradition or its practices. A listing is judged only
+    against the rules above, whichever tradition it belongs to.
+  </p>
+
+  <h2>8. Enforcement</h2>
+  <p>
+    These rules are enforced automatically when a creator submits a listing for review, and again
+    before it is published — a listing that fails any rule above cannot go live. Listings are also
+    reviewed after publication, and one that is found to violate this page is removed, whether or
+    not it was caught at submission. Repeated violations, or a single violation involving a
+    guaranteed medical claim or a threat tied to a purchase, can result in removal of the
+    creator's account.
+  </p>
+
+  <h2>9. Reporting a listing</h2>
+  <p>
+    Anyone can report a listing that appears to break these rules from inside the app, or by
+    emailing <a href={`mailto:${ORG.email}`}>{ORG.email}</a>. Include a link to the listing, or
+    the creator's handle, and what you saw. We review reports and act where a violation is
+    confirmed.
+  </p>
+
+  <p>
+    See also our <a href="/acceptable-use">Acceptable Use Policy</a> and
+    <a href="/community-guidelines">Community Guidelines</a>, which apply alongside this page to
+    everything on {ORG.name}.
+  </p>
+</Content>

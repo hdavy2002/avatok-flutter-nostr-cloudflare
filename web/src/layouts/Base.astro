@@ -16,7 +16,7 @@ import '../styles/motion.css';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
-import { orgJsonLd } from '../lib/org';
+import { ORG, orgJsonLd } from '../lib/org';
 
 export interface Props {
   title?: string;
@@ -64,14 +64,14 @@ export interface Props {
 }
 
 const {
-  title = 'AvaTok',
+  title = ORG.name,
   titleMessageKey,
   descriptionMessageKey,
   // [WEB-SEO-1 2026-08-27] The old default described the receptionist/private
-  // number product. What avaTOK actually sells today is: earn from home by
+  // number product. What Saathum actually sells today is: earn from home by
   // listening, chatting, being a home friend or live streaming. Every page that
   // does not set its own description inherits this, so it is worth getting right.
-  description = 'avaTOK is a free platform to earn from home — create a free listing and get paid to listen, chat, be a home friend, host private sessions or live stream. People subscribe to your calendar and book you.',
+  description = `${ORG.name} is a free platform to earn from home — create a free listing and get paid to listen, chat, be a home friend, host private sessions or live stream. People subscribe to your calendar and book you.`,
   image,
   imageAlt = title,
   imageWidth,
@@ -82,23 +82,23 @@ const {
   navStatic = false,
   noindex = false,
   hideNavCtas = false,
-  keywords = 'avaTOK, Ava Global International, creator marketplace, paid live streaming, 1:1 video sessions',
+  keywords = `${ORG.name}, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions`,
   lang = 'en',
   dir = 'ltr',
   indiaLandingLanguage = true,
 } = Astro.props;
 
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
-// [WEB-SEO-2] See the <title> note below. Case-insensitive so "AvaTOK",
-// "avatok.ai" and "AvaTok" all count as already branded.
-const pageTitle = /avatok/i.test(title) ? title : `${title} · avaTOK`;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? ORG.url).toString();
+// [WEB-SEO-2] See the <title> note below. Case-insensitive so any casing of
+// the brand name counts as already branded.
+const pageTitle = new RegExp(ORG.name, 'i').test(title) ? title : `${title} · ${ORG.name}`;
 // og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
 // drop a relative path, which is why shared links used to render with no card.
 //
 // [WEB-SEO-1 2026-08-27] It also now DEFAULTS to the brand card instead of being
 // undefined. Before this, any page that forgot to pass `image` emitted no
 // og:image at all and shared as a bare grey link with `twitter:card=summary`.
-const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.ai').toString();
+const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? ORG.url).toString();
 
 // [WEB-SEO-5 2026-09-10] Organization/WebSite/WebPage JSON-LD now built from
 // the single source of truth in `../lib/org.ts` (`ORG` + `orgJsonLd()`)
@@ -124,14 +124,14 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     {/* [WEB-SEO-2] Every title carries the brand once. Sitelinks (the row of
         page links under the main result) are built from titles; "Contact us"
         or "Tokens & Wallet" with no brand read as generic and get dropped. A
-        page that already names avaTOK keeps its title untouched. */}
+        page that already names the brand keeps its title untouched. */}
     <title data-i18n-meta={titleMessageKey ?? authoredKey(pageTitle)}>{pageTitle}</title>
     <meta data-i18n-meta={descriptionMessageKey ?? authoredKey(description)} name="description" content={description} />
     <meta name="keywords" content={keywords} />
 
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
     <meta property="og:type" content={ogType} />
-    <meta property="og:site_name" content="avaTOK" />
+    <meta property="og:site_name" content={ORG.name} />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />

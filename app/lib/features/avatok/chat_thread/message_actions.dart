@@ -396,7 +396,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
             me: _meId)));
   }
 
-  /// [AVA-GRP-UI] Open the full profile popup — photo, name, AvaTOK number and
+  /// [AVA-GRP-UI] Open the full profile popup — photo, name, Saathum number and
   /// the QR "add me" share card — for a tapped avatar (a group member's bubble
   /// avatar, or a 1:1 peer). Reuses the existing `ContactProfileScreen`, whose
   /// own header carries a back button that returns to the chat; we do not build

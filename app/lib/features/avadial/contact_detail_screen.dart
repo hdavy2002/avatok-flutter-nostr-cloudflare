@@ -141,7 +141,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
       MaterialPageRoute<void>(builder: (_) => SmsThreadScreen(address: widget.number)));
 
   /// Open the AvaTOK message thread with this contact. Seeds the thread by their
-  /// AvaTOK number/@handle when set, otherwise falls back to the phone number —
+  /// Saathum number/@handle when set, otherwise falls back to the phone number —
   /// same identifier-seeded open the chat list already uses for a not-yet-resolved
   /// peer.
   void _avatok() {

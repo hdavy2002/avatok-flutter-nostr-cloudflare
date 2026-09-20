@@ -73,6 +73,18 @@ export const GROUP_DISPLAY: Record<GroupId, GroupDisplay> = {
 /** Same order the taxonomy declares the three groups in. */
 export const GROUP_ORDER: GroupId[] = GROUPS.map((g) => g.id);
 
+/**
+ * [SAATHUM-WEB-UI 2026-09-20] Groups Saathum actually shows as filters/tiles.
+ * `find_your_people` (companionship) has every one of its sub-categories
+ * hidden per SPEC.md — it can never hold a published listing, so offering it
+ * as a filter option or a marketplace/homepage tile is a dead end, not a
+ * choice. The group is NOT removed from GROUP_ORDER/GROUPS (nothing is
+ * deleted — it can come back), this is a display-only allowlist for the
+ * chrome this lane owns: FilterRail's category list, MarketplaceBrowse's
+ * tiles and the homepage shelves.
+ */
+export const PUBLIC_GROUP_ORDER: GroupId[] = GROUP_ORDER.filter((id) => id !== 'find_your_people');
+
 const KNOWN_GROUPS = new Set<string>(GROUP_ORDER);
 
 function groupForCategoryFallback(category: string | null): GroupId | null {

@@ -29,7 +29,7 @@ export const SECTIONS: Record<
   'getting-started': {
     label: 'Getting started',
     order: 1,
-    blurb: 'What avaTOK is, how to sign up, and what happens on web versus in the app.',
+    blurb: 'What Saathum is, how to sign up, and what happens on web versus in the app.',
     tone: 'cream',
   },
   'booking-and-paying': {

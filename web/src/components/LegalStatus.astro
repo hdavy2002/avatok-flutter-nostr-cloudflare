@@ -1,9 +1,9 @@
 ---
 /*
- * LegalStatus — the single source of truth for who operates avaTOK.
+ * LegalStatus — the single source of truth for who operates Saathum.
  *
  * This component is the single source of truth for the companies behind
- * avaTOK. Every legal page imports it so the disclosure stays consistent
+ * Saathum. Every legal page imports it so the disclosure stays consistent
  * across the site.
  *
  * `variant`:
@@ -28,7 +28,7 @@ const { variant = 'full', heading } = Astro.props;
 <div class="note" id={heading ? undefined : 'status'}>
   {variant === 'short' ? (
     <p>
-      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated through</ui-copy>{' '}
+      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">Saathum is built and operated through</ui-copy>{' '}
       <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.c8dc98e3e76b237a">, a Delaware corporation. The service is
       being developed and expanded globally. Contact:</ui-copy>
       <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
@@ -36,9 +36,9 @@ const { variant = 'full', heading } = Astro.props;
   ) : (
     <Fragment>
       <p>
-        <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline" data-i18n="web-common.b47db0c3cd5c3c93">avaTOK is the platform brand of</ui-copy>{' '}
+        <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline" data-i18n="web-common.b47db0c3cd5c3c93">Saathum is the platform brand of</ui-copy>{' '}
         <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation,
-        and the global headquarters of avaTOK.</ui-copy>
+        and the global headquarters of Saathum.</ui-copy>
       </p>
       <p style="margin-top:12px">
         <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong>{' '}{ORG.legalName}{' '}<ui-copy style="display:inline" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.

@@ -67,7 +67,7 @@ class PhoneTheme {
         child: child,
       );
 
-  /// A small pill chip (e.g. the "AvaTOK number" / "true" markers in the refs).
+  /// A small pill chip (e.g. the "Saathum number" / "true" markers in the refs).
   static Widget chip(String label, {Color color = teal, IconData? icon}) => Container(
         padding: EdgeInsets.fromLTRB(icon == null ? 9 : 7, Msg.s1, Msg.s3, Msg.s1),
         decoration: BoxDecoration(

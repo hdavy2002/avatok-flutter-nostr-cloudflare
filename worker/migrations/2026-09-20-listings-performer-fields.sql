@@ -1,0 +1,62 @@
+-- [LISTING-PERFORMER-1 2026-09-20] Saathum listing content rules, lane
+-- 03-listing-rules. DB: avatok-meta (DB_META). ALTERs only — mixing a CREATE
+-- in here would break scripts/d1_apply_alters.py, which parses ALTERs and
+-- ONLY ALTERs (see 2026-07-18-listings-taxonomy-columns.sql for why that
+-- split is load-bearing).
+--
+-- WHY — Specs/../saathum-brand/plan/BRIEFS.md, lane 03-listing-rules:
+-- "The creator is often NOT the priest — the listing must say who does
+-- what." A Saathum creator lists a puja, a satsang, a temple tour or a
+-- pandit consultation, but the person who actually performs it — the
+-- officiant — is frequently someone else: a temple's own priest, a partner
+-- organisation, a pandit the creator books on the buyer's behalf. A buyer
+-- paying for a devotional service is entitled to know that before they pay,
+-- not discover it on arrival. Three columns, not one, because "who does it"
+-- and "who arranges it" and "is it at a temple" are three different facts a
+-- listing can independently need to state:
+--
+--   performed_by    — who actually performs the ritual/service (a name or
+--                      role: "Pandit Ramesh Sharma", "in-house priest team").
+--                      Free text: there is no fixed roster to pick from.
+--   facilitated_by  — who facilitates/arranges it if that's a third party
+--                      (a partner org, a temple committee) rather than the
+--                      creator or the performer themselves.
+--   at_temple       — whether this happens at a temple, as a plain 0/1
+--                      disclosure flag. The actual venue name/address still
+--                      lives in the EXISTING `listings.location` column
+--                      (2026-07-18-listings-drift-columns.sql or earlier) —
+--                      this does not duplicate it, it only tags what kind of
+--                      place `location` names.
+--
+-- ENFORCEMENT — worker/src/lib/listing_blockers.ts requires at least one of
+-- performed_by/facilitated_by to be set before a live_event/consult listing
+-- can publish (code `performer_disclosure_required`), and the same file's
+-- new content-policy scan (`contentPolicyBlockers`) reads these three
+-- columns nowhere near a banned-claim check — they are disclosure fields,
+-- not marketing copy, and are validated for LENGTH only
+-- (routes/listings.ts `listingContentFieldsError`), never for content.
+--
+-- IDEMPOTENCY — same hazard as every ALTER-only file here: SQLite/D1 has no
+-- `ADD COLUMN IF NOT EXISTS`, so a raw re-run aborts at the first duplicate
+-- and silently leaves the rest missing. Both TEXT columns are nullable with
+-- no default (absent = "not stated yet", which is the honest value for
+-- every row today and is exactly what the publish blocker above catches).
+-- `at_temple` is NOT NULL DEFAULT 0 so every existing row reads as "not at a
+-- temple" rather than "unknown" — the safer default for a disclosure flag a
+-- buyer will see, and the same posture `free_entry`/`adults_only` already
+-- use on this table.
+--
+-- APPLY (idempotent, resumable, staging by default, prod fail-closed):
+--   python3 scripts/d1_apply_alters.py worker/migrations/2026-09-20-listings-performer-fields.sql --binding DB_META --dry-run
+--   python3 scripts/d1_apply_alters.py worker/migrations/2026-09-20-listings-performer-fields.sql --binding DB_META
+--   ALLOW_PROD=1 python3 scripts/d1_apply_alters.py worker/migrations/2026-09-20-listings-performer-fields.sql --binding DB_META
+--
+-- RAW (only ever correct on a known-fresh DB; aborts on first duplicate elsewhere):
+--   scripts/cf.sh worker d1 execute DB_META --remote --file=worker/migrations/2026-09-20-listings-performer-fields.sql
+--
+-- NOT EXECUTED BY CREATING THIS FILE. Per SPEC.md's HARD RULE 8 this lane
+-- does not run migrations against any database — the coordinator applies it.
+
+ALTER TABLE listings ADD COLUMN performed_by TEXT;                    -- who actually performs the ritual/service, e.g. "Pandit Ramesh Sharma"
+ALTER TABLE listings ADD COLUMN facilitated_by TEXT;                  -- who facilitates/arranges it, if a third party
+ALTER TABLE listings ADD COLUMN at_temple INTEGER NOT NULL DEFAULT 0; -- 0|1, whether this happens at a temple; venue name/address stays in `location`

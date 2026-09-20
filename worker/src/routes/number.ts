@@ -259,7 +259,7 @@ export async function assign(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   await ensureNumberSourceCol(env); // [PIVOT-NUMBER-PRIVACY-1]
   const tier = await tierOf(env, ctx.uid);
-  // Generating an AvaTOK number is FREE for everyone, but a FREE account gets
+  // Generating a Saathum number is FREE for everyone, but a FREE account gets
   // exactly ONE number. Paid accounts regenerate without limit. A free account
   // that already used its free generation (or already holds a number) must
   // upgrade to change (owner request 2026-06-27).
@@ -350,7 +350,7 @@ export async function assign(req: Request, env: Env): Promise<Response> {
 // user supplies a real number they want to represent them (e.g. a business that
 // doesn't need privacy). Per owner decision (2026-06-27) this is NOT ownership-
 // verified — it is format-validated only and bound as the user's AvaTOK identity.
-// AvaTOK numbers never touch the PSTN, so this is an in-app label, not a carrier
+// Saathum numbers never touch the PSTN, so this is an in-app label, not a carrier
 // claim. In-network uniqueness is still enforced. Unlike minting, this does NOT
 // hide the real phone (a business sharing its own number WANTS it visible).
 export async function assignOwn(req: Request, env: Env): Promise<Response> {
@@ -430,7 +430,7 @@ export async function assignOwn(req: Request, env: Env): Promise<Response> {
 
 // POST /api/number/purchase {country, nsn|number} — auth. [PIVOT-PAID-NUMBER-1]
 //
-// Lets a FREE-TIER account buy a SPECIFIC vanity/short AvaTOK number with
+// Lets a FREE-TIER account buy a SPECIFIC vanity/short Saathum number with
 // tokens (1 token = ₹1), without a subscription — a path that runs ALONGSIDE
 // the existing tier-gated reserve()/assign() flow above (that path is
 // untouched; a paid-tier account should keep using assign() directly, which
@@ -593,18 +593,18 @@ export async function me(req: Request, env: Env): Promise<Response> {
 // server-side.
 //
 // [PIVOT-NUMBER-MASK-1] (2026-08-28) This used to read "Paid users share their
-// AvaTOK number; free users their real number" and trust whatever `number` the
+// Saathum number; free users their real number" and trust whatever `number` the
 // CLIENT posted — free-tier clients were sending the user's raw real phone
 // number here, so the "opposite" branch was really just "the server never
 // checked, and one client path filled in the real number for free users."
 // That is the marketplace-pivot's highest-severity leak: it publishes the real
 // phone number of every free user via the share card / QR.
 //
-// Fix: the AvaTOK number is the public identity for EVERYONE, paid or free.
+// Fix: the Saathum number is the public identity for EVERYONE, paid or free.
 // The server now resolves the number ITSELF from the account's own
 // avatok_number row and ignores any `number` the client posts — a client can
 // no longer smuggle a real number onto the public card. If the account has no
-// AvaTOK number yet, this fails CLOSED (409) rather than falling back to the
+// Saathum number yet, this fails CLOSED (409) rather than falling back to the
 // real number. `plan` is kept in the response for wire compatibility (older
 // clients read it) but no longer selects which number gets shared.
 export async function shareCardPut(req: Request, env: Env): Promise<Response> {
@@ -622,7 +622,7 @@ export async function shareCardPut(req: Request, env: Env): Promise<Response> {
     "SELECT avatok_number, avatok_number_display FROM users WHERE uid=?1",
   ).bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null }>();
   if (!acct?.avatok_number) {
-    // Fail CLOSED: no AvaTOK number assigned yet → no share card, never the
+    // Fail CLOSED: no Saathum number assigned yet → no share card, never the
     // real number as a fallback.
     return json({ error: "no_avatok_number" }, 409);
   }
@@ -776,7 +776,7 @@ export async function privacySet(req: Request, env: Env): Promise<Response> {
 // dialpad resolve (`SELECT uid FROM users WHERE show_private_number=1 AND
 // private_number=?1`) and the share card treated as permission to expose the
 // RAW real number publicly. Under the marketplace-pivot rule every real number
-// is masked behind the AvaTOK number and shown to NOBODY, with no opt-out —
+// is masked behind the Saathum number and shown to NOBODY, with no opt-out —
 // so `private_number` must be permanently NON-EXPOSABLE regardless of what the
 // client asks for. The column and field name are kept (dropping them is a
 // separate migration, out of scope, and would break shipped clients reading

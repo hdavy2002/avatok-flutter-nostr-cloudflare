@@ -344,7 +344,7 @@ export function validateStep(
         // with nothing, which is why the server refuses it too. Surface the
         // reason here rather than let it round-trip as a 400.
         if (p < PRICING.minPriceTokensPerHour) {
-          return { field: 'price', message: `The lowest price is ₹${PRICING.minPriceTokensPerHour}/hour — below that, avaTOK’s flat fee leaves you with nothing.` };
+          return { field: 'price', message: `The lowest price is ₹${PRICING.minPriceTokensPerHour}/hour — below that, Saathum’s flat fee leaves you with nothing.` };
         }
       }
       // [PROMO-SHELVE-1 2026-09-13] OFF THE ACTIVE PATH while promotions are

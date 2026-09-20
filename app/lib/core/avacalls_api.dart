@@ -159,7 +159,7 @@ class AvaCallsNumberNormalizer {
           _countryDialCodes[(region ?? _deviceRegion()).toUpperCase()];
       if (dialCode != null) digits = '$dialCode${digits.substring(1)}';
     } else if (!isInternational) {
-      // Keep AvaTOK numbers and already-complete national numbers intact. The
+      // Keep Saathum numbers and already-complete national numbers intact. The
       // exact resolver decides whether the value is an AvaTOK identity.
       final dialCode =
           _countryDialCodes[(region ?? _deviceRegion()).toUpperCase()];
@@ -281,7 +281,7 @@ class AvaCallsApi {
             countryIso2: '${j['country_iso2'] ?? ''}'.toUpperCase(),
             countryName: '${j['country_name'] ?? ''}',
             contact: contact,
-            message: 'AvaTOK number · free in-network call',
+            message: 'Saathum number · free in-network call',
           );
         }
         final country =
@@ -355,7 +355,7 @@ class AvaCallsApi {
             rawInput: raw,
             canonicalNumber: canonical,
             contact: hit,
-            message: 'AvaTOK number · free in-network call');
+            message: 'Saathum number · free in-network call');
       }
     } catch (_) {/* staged fallback is best effort */}
     return AvaCallsDestination(

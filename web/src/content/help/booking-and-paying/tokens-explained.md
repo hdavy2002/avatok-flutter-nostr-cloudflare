@@ -1,6 +1,6 @@
 ---
 title: "Tokens, explained"
-description: "How avaTOK tokens use an internal value anchor, how local-currency quotes work, and what tokens can and cannot do."
+description: "How Saathum tokens use an internal value anchor, how local-currency quotes work, and what tokens can and cannot do."
 section: booking-and-paying
 order: 4
 updated: 2026-09-11
@@ -8,15 +8,15 @@ keywords: ["tokens", "wallet", "top up", "balance", "paise", "withdraw", "UPI", 
 audience: buyer
 faq:
   - q: "How much is one token worth?"
-    a: "100 Tokens = $1 as avaTOK's internal accounting anchor. Checkout may be shown in local currency using a server-owned FX quote captured with the payment."
+    a: "100 Tokens = $1 as Saathum's internal accounting anchor. Checkout may be shown in local currency using a server-owned FX quote captured with the payment."
   - q: "Can I get my unused tokens back as cash?"
-    a: "Withdrawal semantics are not yet available. If a refund or reversal applies, avaTOK uses the exact token amount recorded for the original transaction."
+    a: "Withdrawal semantics are not yet available. If a refund or reversal applies, Saathum uses the exact token amount recorded for the original transaction."
 draft: false
 ---
 
 ## The internal anchor: 100 Tokens = $1
 
-Tokens are the unit you pay with everywhere on avaTOK — booking a session, buying a ticket to a live show, or using an AI feature. **100 Tokens = $1** is the internal accounting anchor. It is not a promise that checkout or any future payout uses USD.
+Tokens are the unit you pay with everywhere on Saathum — booking a session, buying a ticket to a live show, or using an AI feature. **100 Tokens = $1** is the internal accounting anchor. It is not a promise that checkout or any future payout uses USD.
 
 ## Topping up
 
@@ -32,8 +32,8 @@ Your current balance and your recent activity are visible in the app at all time
 
 ## Refunds and reversals
 
-Unused tokens remain in your wallet as tokens. If a refund or reversal applies, avaTOK returns the exact token amount recorded in the original transaction snapshot, without repricing it at a later FX rate. See [Refunds & Cancellations](/refunds).
+Unused tokens remain in your wallet as tokens. If a refund or reversal applies, Saathum returns the exact token amount recorded in the original transaction snapshot, without repricing it at a later FX rate. See [Refunds & Cancellations](/refunds).
 
 ## Payments are still being tested
 
-avaTOK uses a server-owned FX quote for local-currency checkout. If a refund or reversal is approved, it returns the exact token amount in the immutable transaction snapshot — see [Refunds & Cancellations](/refunds) for the details.
+Saathum uses a server-owned FX quote for local-currency checkout. If a refund or reversal is approved, it returns the exact token amount in the immutable transaction snapshot — see [Refunds & Cancellations](/refunds) for the details.

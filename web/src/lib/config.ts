@@ -51,7 +51,9 @@ export function clerkFapiHost(): string | undefined {
 /** Bounded variants keep the image cache from fragmenting per CSS pixel. */
 export const IMAGE_WIDTHS = [48, 96, 160, 256, 420, 640, 900, 1280, 1600, 2048] as const;
 export interface ImageOptions { width?: number; quality?: number; fit?: string; format?: string }
-const imageHost = (host: string) => host === 'avatok.ai' || host.endsWith('.avatok.ai');
+const imageHost = (host: string) =>
+  host === 'saathum.com' || host.endsWith('.saathum.com') ||
+  host === 'avatok.ai' || host.endsWith('.avatok.ai');
 const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
 const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
 function imageParams(opts: ImageOptions): string {
@@ -81,12 +83,12 @@ export function publicImage(path: string, opts: ImageOptions = {}): string {
   if (!path || import.meta.env.DEV || import.meta.env.PUBLIC_DISABLE_IMAGE_TRANSFORMS === '1') return path;
   try {
     const absolute = /^[a-z][a-z0-9+.-]*:|^\/\//i.test(path);
-    const u = new URL(path, 'https://avatok.ai');
+    const u = new URL(path, 'https://saathum.com');
     if (!['https:', 'http:'].includes(u.protocol) || !imageHost(u.hostname) || u.username || u.password) return path;
     if (u.search || u.hash || privateImagePath(u.pathname) || !rasterPath(u.pathname)) return path;
     if (u.pathname.startsWith('/cdn-cgi/image/')) return path;
     const origin = absolute ? u.origin : '';
-    const source = (!absolute || u.hostname === 'avatok.ai') ? (publicImageManifest as Record<string, string>)[u.pathname] ?? u.pathname : u.pathname;
+    const source = (!absolute || u.hostname === 'saathum.com') ? (publicImageManifest as Record<string, string>)[u.pathname] ?? u.pathname : u.pathname;
     return `${origin}/cdn-cgi/image/${imageParams(opts)}${source}`;
   } catch { return path; }
 }

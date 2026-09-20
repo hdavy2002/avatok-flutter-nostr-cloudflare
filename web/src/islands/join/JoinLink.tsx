@@ -108,7 +108,7 @@ function Inner({ token }: { token: string }) {
           { status?: string | null; createdSessionId?: string | null };
         if (!attempt.createdSessionId) throw new Error(`ticket_status_${attempt.status ?? 'unknown'}`);
         await setActive?.({ session: attempt.createdSessionId });
-        // Same tail as the email-code gate: make sure the avaTOK-side row exists
+        // Same tail as the email-code gate: make sure the Saathum-side row exists
         // before the room asks the Worker anything. Never throws.
         await bootstrapAccount();
       } catch (e) {

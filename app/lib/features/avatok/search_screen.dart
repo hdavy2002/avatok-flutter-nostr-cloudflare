@@ -82,11 +82,11 @@ class _SearchScreenState extends State<SearchScreen> {
     if (q.length < 2) { setState(() => _directory = []); return; }
     setState(() => _searchingDir = true);
     // PARITY WITH "ADD A NEW CHAT" (owner report 2026-07-01): the header search
-    // used to come back empty for an exact email or AvaTOK number — only the
+    // used to come back empty for an exact email or Saathum number — only the
     // private-number path resolved. Mirror the add-contact sheet's rule exactly:
     // resolve a complete email OR an AvaTOK/phone number to the account, and merge
     // that hit with any directory matches. Same `Directory.resolve` the new-chat
-    // sheet uses, so both surfaces now find people by email + AvaTOK number.
+    // sheet uses, so both surfaces now find people by email + Saathum number.
     final isEmail = Directory.isCompleteEmail(q);
     // [SEARCH-PHONE-RESTORE 2026-07-12] Phone-number search restored alongside
     // email (owner request). Search by AvaTOK/phone number resolves a directory
@@ -285,7 +285,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ]),
               // [DIALPAD-BIZ-CALLS] Channel-split hint: email is the friend
-              // channel; the AvaTOK number/dialpad is the business channel.
+              // channel; the Saathum number/dialpad is the business channel.
               // Flag-gated — invisible while businessCallUx is off.
               if (RemoteConfig.businessCallUx) ...[
                 const SizedBox(height: 8),
@@ -362,7 +362,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
-                          text: 'No matches.\nFind people by their full email address or AvaTOK number.'))),
+                          text: 'No matches.\nFind people by their full email address or Saathum number.'))),
                 if (_q.isEmpty && _device.isEmpty)
                   Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(

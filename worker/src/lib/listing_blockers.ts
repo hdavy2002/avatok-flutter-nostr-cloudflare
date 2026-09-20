@@ -66,6 +66,136 @@ function parse<T>(raw: unknown, fallback: T): T {
   try { const v = JSON.parse(raw); return (v ?? fallback) as T; } catch { return fallback; }
 }
 
+// ---- content policy: claims that must never reach publish (2026-09-20) ----
+//
+// Saathum lists devotional and astrology services to real people making real
+// decisions — a "guaranteed" marriage or a "24-hour curse removal" is not
+// colourful marketing here, it is the exact pitch a predatory operator uses
+// to extract money from someone scared or desperate. These five categories
+// mirror the public Prohibited Services page (lane 04) and are the first
+// thing a payment-gateway underwriter will look for.
+//
+// THIS IS A KEYWORD/PHRASE SCAN, NOT A CLASSIFIER — and that is deliberate,
+// not a shortcut. Every other rule in this file runs synchronously with no
+// network call because it "cannot be wrong and cannot be unavailable"
+// (routes/listing_review.ts's header, describing this exact file) — a model
+// call would make this layer occasionally unavailable, and an unavailable
+// hard-block layer is worse than a keyword scan that sometimes misses a
+// cleverly worded claim or flags an innocent sentence. A model-based SECOND
+// pass belongs in listing_review.ts's "warn" layer, alongside the existing
+// AI review, precisely because that layer is allowed to be unavailable.
+// Tune the phrase lists below as real listings surface gaps; do not "fix"
+// a miss by reaching for an API call here.
+type ContentPolicyRule = {
+  code: string;
+  message: string;
+  /** Any one pattern matching is enough to trigger the rule. */
+  patterns: RegExp[];
+};
+
+const CONTENT_POLICY_RULES: ContentPolicyRule[] = [
+  {
+    code: "guaranteed_outcome",
+    message: "Remove promises of a guaranteed outcome (marriage, wealth, children, exam results, visas). Describe the service, not a promised result.",
+    patterns: [
+      /\bguarantee(d|s)?\b[^.!?\n]{0,40}\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b/i,
+      /\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b[^.!?\n]{0,40}\bguarantee(d|s)?\b/i,
+      /\b100\s*%\s*(guarantee(d)?|result|success|sure)\b/i,
+      /\bsure[- ]shot\b/i,
+      /\bno[- ]fail\b/i,
+      /\bassured (result|success|marriage|job|visa)\b/i,
+    ],
+  },
+  {
+    code: "medical_claim",
+    message: "Remove medical claims. This service cannot promise to cure, treat or heal an illness or medical condition.",
+    patterns: [
+      /\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b[^.!?\n]{0,40}\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b/i,
+      /\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b[^.!?\n]{0,40}\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b/i,
+    ],
+  },
+  {
+    code: "fear_selling",
+    message: "Remove fear-based claims (curses, black magic removal, danger predictions, urgent remedies). Offer the service without predicting harm to the buyer.",
+    patterns: [
+      /\bblack magic\b/i,
+      /\bkala\s*jadu\b/i,
+      /\bcurse removal\b/i,
+      /\bremove (your |the )?curse\b/i,
+      /\bvashikaran\b/i,
+      /\bevil eye removal\b/i,
+      /\bburi\s*nazar\b/i,
+      /\bdanger in your (chart|kundli|horoscope)\b/i,
+      /\byour life is in danger\b/i,
+      /\burgent remedy\b/i,
+      /\bimmediate danger\b/i,
+      /\b24[- ]hour(s)? remedy\b/i,
+      /\bremedy within 24 hours\b/i,
+      /\bwithout this remedy\b/i,
+    ],
+  },
+  {
+    code: "harm_risk",
+    message: "Remove anything describing animal sacrifice, dangerous fire or chemicals, or a minor participating in the ritual — these cannot be offered here.",
+    patterns: [
+      /\banimal sacrifice\b/i,
+      /\bsacrific(e|ing)\b[^.!?\n]{0,20}\b(goat|chicken|animal|hen)\b/i,
+      /\bbali\s*pratha\b/i,
+      /\bopen flame ritual\b/i,
+      /\bfire walking\b/i,
+      /\bhandle (burning|hot) (coals|iron)\b/i,
+      /\bhazardous chemical\b/i,
+      /\btoxic chemical\b/i,
+      /\b(child|children|kid|kids|minor|minors)\b[^.!?\n]{0,30}\b(will |can |may )?(participate|perform|assist|join)\b/i,
+    ],
+  },
+  {
+    code: "pressure_tactics",
+    message: "Remove pressure tactics (\"act now or\", threats of what happens if the buyer doesn't book). Let buyers decide without urgency or threats.",
+    patterns: [
+      /\bact now or\b/i,
+      /\bbook now or (face|suffer)\b/i,
+      /\blast chance before\b/i,
+      /\bhurry before it'?s too late\b/i,
+      /\byour fate depends on booking\b/i,
+      /\bbook immediately or\b/i,
+    ],
+  },
+];
+
+/** Every free-text surface a creator controls: the card fields plus the
+ *  details-page `attrs` blob (how-it-works, house rules, FAQ, sample Q&A —
+ *  see routes/listings.ts contentAttrsError), scanned as one JSON blob so
+ *  this list does not need to track every attrs key by name. */
+function policyScanSources(l: Record<string, any>): Array<{ field: string; text: string }> {
+  const attrsText = (() => {
+    try { return JSON.stringify(parse<Record<string, unknown>>(l?.attrs, {})); } catch { return ""; }
+  })();
+  return [
+    { field: "title", text: String(l?.title ?? "") },
+    { field: "blurb", text: String(l?.blurb ?? "") },
+    { field: "description", text: String(l?.description ?? "") },
+    { field: "attrs", text: attrsText },
+  ];
+}
+
+function contentPolicyBlockers(l: Record<string, any>): ListingBlocker[] {
+  const out: ListingBlocker[] = [];
+  const sources = policyScanSources(l);
+  for (const rule of CONTENT_POLICY_RULES) {
+    const hit = sources.find((s) => s.text && rule.patterns.some((re) => re.test(s.text)));
+    if (hit) {
+      out.push({
+        code: rule.code,
+        field: hit.field,
+        message: rule.message,
+        legacy: { status: 400, body: { error: rule.code, field: hit.field, message: rule.message } },
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Every reason this listing cannot go live, in the order publish would have hit
  * them. Empty array = publishable as far as its own content is concerned.
@@ -114,11 +244,34 @@ export async function listingBlockers(
     });
   }
 
+  // [LISTING-CONTENT-POLICY-1] Applies to every kind, including marketplace —
+  // a predatory claim is exactly as much of a problem in a "sell" listing's
+  // description as in a live_event's, and there is no reason a buy/sell/social
+  // listing should be exempt from a rule about not lying or frightening a buyer.
+  out.push(...contentPolicyBlockers(l));
+
   // Marketplace listings stop here on purpose: no schedule, no capacity, no
   // category-id check and photos optional, so the buy/sell flow stays testable.
   if (isMarket) return out;
 
   // ---- creator services: live_event and consult ----
+
+  // [LISTING-PERFORMER-1 2026-09-20] The creator posting this is often not the
+  // one performing it — a coordinator lists a visiting priest, or a platform
+  // partner arranges the pandit. A buyer paying for a devotional service needs
+  // to know who is actually doing it before they pay, so at least one of
+  // performed_by / facilitated_by must be set before publish.
+  if (!String(l?.performed_by ?? "").trim() && !String(l?.facilitated_by ?? "").trim()) {
+    out.push({
+      code: "performer_disclosure_required",
+      field: "performed_by",
+      message: "Say who actually performs this — you, a priest, or a partner — so buyers know who they're booking.",
+      legacy: {
+        status: 400,
+        body: { error: "performer_disclosure_required", message: "performed_by or facilitated_by is required" },
+      },
+    });
+  }
 
   if (l?.title && !l?.category) {
     out.push({

@@ -14,7 +14,7 @@ export function upiPlatform(userAgent: string, touchPoints = 0): UpiPlatform {
   return 'desktop';
 }
 
-export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform, fallbackUrl = 'https://avatok.ai/test/upi'): string {
+export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform, fallbackUrl = 'https://saathum.com/test/upi'): string {
   // Keep the server's complete encoded payment query, including payee and amount.
   const query = new URL(upiUrl).search;
   if (platform === 'android') {

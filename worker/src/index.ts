@@ -69,6 +69,12 @@ import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminE
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
+// [TAKEDOWN-HDFC-DARK-1 2026-09-20] The ₹1 HDFC UPI SMS smoke harness (routes/hdfc_sms_*.ts)
+// is an internal test rail, not the commercial rail. Routes are registered below but gated
+// behind the hdfcSmsRailEnabled flag (default false, see routes/config.ts): every request
+// 410s before any handler runs while the flag is off. This is the sms-companion Android
+// app's server counterpart (see Specs/HANDOVER-HDFC-UPI-SMS-PAYMENT.md); its repo is
+// `sms-companion/` inside THIS worktree, not a separate repo — see REPORT.md.
 import { hdfcSmsQr } from "./routes/hdfc_sms_qr";
 import { hdfcPublicOrder, hdfcPublicStatus, hdfcPublicClaim, hdfcPublicRecheck } from "./routes/hdfc_sms_public";
 import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
@@ -220,7 +226,7 @@ import { createReview, replyReview, helpfulReview, listReviews, reviewEligibilit
 // [REVIEW-MOD-1] Reviews are held for admin approval before they are published.
 import { adminReviews, adminReviewAction } from "./routes/admin_reviews";
 // [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
-import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
+import { askQuestion, answerQuestion, listMyQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
   createListing, updateListing, publishListing, submitListingForApproval, listingBlockersRoute, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
@@ -975,7 +981,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/reserve" && req.method === "POST") return await num.reserve(req, env);
       if (p === "/api/number/assign" && req.method === "POST") return await num.assign(req, env);
       if (p === "/api/number/assign-own" && req.method === "POST") return await num.assignOwn(req, env);
-      // [PIVOT-PAID-NUMBER-1] Buy a vanity/short AvaTOK number with tokens.
+      // [PIVOT-PAID-NUMBER-1] Buy a vanity/short Saathum number with tokens.
       // Without this line purchaseVanity is unreachable dead code — the endpoint
       // equivalent of the fake-flag problem CLAUDE.md documents, where a feature
       // is fully built, looks correct in review, and can never actually fire.
@@ -989,7 +995,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/add" && req.method === "GET") return await cached(req, ctx, () => num.addResolve(req, env), 30);
 
       // AvaCalls universal classifier and Virtual Numbers multi-line domain.
-      // These are separate from the legacy singular AvaTOK number routes above.
+      // These are separate from the legacy singular Saathum number routes above.
       if (p === "/api/avacalls/resolve" && req.method === "POST") return await avacallsResolve(req, env);
       if (p === "/api/virtual-lines" || p.startsWith("/api/virtual-lines/")) return await virtualLinesRoute(req, env, p);
 
@@ -1253,27 +1259,38 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
       if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
-      // Anonymous test state is capability-scoped; customer/admin routes retain
-      // their account gates and SMS/heartbeat retain companion HMAC checks.
-      if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);
-      if (p === "/api/pay/hdfc-sms/public/order" && req.method === "POST") return await hdfcPublicOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/public/status" && req.method === "GET") return await hdfcPublicStatus(req, env);
-      if (p === "/api/pay/hdfc-sms/public/claim" && req.method === "POST") return await hdfcPublicClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/public/recheck" && req.method === "POST") return await hdfcPublicRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/redeem" && req.method === "POST") return await hdfcCustomerRedeem(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/current" && req.method === "GET") return await hdfcCustomerCurrent(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/order" && req.method === "POST") return await hdfcCustomerOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/status" && req.method === "GET") return await hdfcCustomerStatus(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/claim" && req.method === "POST") return await hdfcCustomerClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/customer/recheck" && req.method === "POST") return await hdfcCustomerRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/current" && req.method === "GET") return await hdfcSmsCurrent(req, env);
-      if (p === "/api/pay/hdfc-sms/claim" && req.method === "POST") return await hdfcSmsClaim(req, env);
-      if (p === "/api/pay/hdfc-sms/recheck" && req.method === "POST") return await hdfcSmsRecheck(req, env);
-      if (p === "/api/pay/hdfc-sms/order" && req.method === "POST") return await hdfcSmsCreateOrder(req, env);
-      if (p === "/api/pay/hdfc-sms/method" && req.method === "GET") return await hdfcSmsMethod(req, env);
-      if (p === "/api/pay/hdfc-sms/status" && req.method === "GET") return await hdfcSmsStatus(req, env);
-      if (p === "/api/sms/incoming" && req.method === "POST") return await hdfcSmsIncoming(req, env);
-      if (p === "/api/sms/heartbeat" && req.method === "POST") return await hdfcSmsHeartbeat(req, env);
+      // [TAKEDOWN-HDFC-DARK-1 2026-09-20] The whole /api/pay/hdfc-sms/* and /api/sms/*
+      // family (public QR, anonymous smoke, customer-test, admin smoke, and the
+      // companion's incoming/heartbeat webhooks) is an internal ₹1 test harness, never
+      // the commercial rail. Gated behind hdfcSmsRailEnabled (default false): every
+      // request 410s before any handler — including requireAdmin/HMAC checks — runs.
+      // Flip the flag to restore; nothing below was deleted. See REPORT.md.
+      if (p.startsWith("/api/pay/hdfc-sms/") || p === "/api/sms/incoming" || p === "/api/sms/heartbeat") {
+        const hdfcCfg = await readConfig(env);
+        if (!hdfcCfg.hdfcSmsRailEnabled) return json({ error: "gone", reason: "hdfc_sms_rail_disabled" }, 410);
+        // Anonymous test state is capability-scoped; customer/admin routes retain
+        // their account gates and SMS/heartbeat retain companion HMAC checks.
+        if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);
+        if (p === "/api/pay/hdfc-sms/public/order" && req.method === "POST") return await hdfcPublicOrder(req, env);
+        if (p === "/api/pay/hdfc-sms/public/status" && req.method === "GET") return await hdfcPublicStatus(req, env);
+        if (p === "/api/pay/hdfc-sms/public/claim" && req.method === "POST") return await hdfcPublicClaim(req, env);
+        if (p === "/api/pay/hdfc-sms/public/recheck" && req.method === "POST") return await hdfcPublicRecheck(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/redeem" && req.method === "POST") return await hdfcCustomerRedeem(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/current" && req.method === "GET") return await hdfcCustomerCurrent(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/order" && req.method === "POST") return await hdfcCustomerOrder(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/status" && req.method === "GET") return await hdfcCustomerStatus(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/claim" && req.method === "POST") return await hdfcCustomerClaim(req, env);
+        if (p === "/api/pay/hdfc-sms/customer/recheck" && req.method === "POST") return await hdfcCustomerRecheck(req, env);
+        if (p === "/api/pay/hdfc-sms/current" && req.method === "GET") return await hdfcSmsCurrent(req, env);
+        if (p === "/api/pay/hdfc-sms/claim" && req.method === "POST") return await hdfcSmsClaim(req, env);
+        if (p === "/api/pay/hdfc-sms/recheck" && req.method === "POST") return await hdfcSmsRecheck(req, env);
+        if (p === "/api/pay/hdfc-sms/order" && req.method === "POST") return await hdfcSmsCreateOrder(req, env);
+        if (p === "/api/pay/hdfc-sms/method" && req.method === "GET") return await hdfcSmsMethod(req, env);
+        if (p === "/api/pay/hdfc-sms/status" && req.method === "GET") return await hdfcSmsStatus(req, env);
+        if (p === "/api/sms/incoming" && req.method === "POST") return await hdfcSmsIncoming(req, env);
+        if (p === "/api/sms/heartbeat" && req.method === "POST") return await hdfcSmsHeartbeat(req, env);
+        return json({ error: "not found" }, 404);
+      }
       // [PAY-RAIL-1] Generic multi-gateway routes — Razorpay, Paytm, Stripe (intl), and
       // Cashfree wired for completeness (lib/payments/registry.ts). Placed AFTER the
       // literal /api/pay/cashfree/* checks above, so those keep taking priority for that
@@ -1364,7 +1381,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/listings" && req.method === "GET") return await adminListings(req, env);
       // [WEB-ACCOUNT-1] The row a web signup never created, plus the phone.
       // Idempotent; safe to call repeatedly. [WEB-APP-ONBOARD-1] It no longer
-      // assigns an AvaTOK number — the app's gate does, so the free number
+      // assigns a Saathum number — the app's gate does, so the free number
       // survives for the user to actually choose.
       if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
       // [WEB-PHONE-OTP-1 2026-09-10] SMS OTP (2Factor) for web sign-up phone verification.
@@ -1541,7 +1558,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (act === "promote" && req.method === "POST") return await promoteToFaq(req, env, qid);
         }
         if (p === "/api/questions/mine" && req.method === "GET") return await listMyQuestions(req, env);
-        if (p === "/api/questions/inbox" && req.method === "GET") return await listCreatorQuestions(req, env);
+        // [TAKEDOWN-LISTQ-INBOX-1 2026-09-20] Unregistered: nothing on any surface (web or
+        // app) ever reads this inbox — see web/src/islands/listing/MessageHost.tsx's header
+        // comment. Dark on the server rather than deleted; listCreatorQuestions stays
+        // implemented in routes/listing_questions.ts if a creator-facing client is ever built.
       }
 
       // --- in-app notifications feed ---

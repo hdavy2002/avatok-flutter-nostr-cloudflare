@@ -5,7 +5,7 @@
 // the authed shell (so cards and category tiles link to /dashboard/l/<id> etc).
 //
 // [MARKET-BAZAAR-1 2026-08-31, owner decision] The shell is the bazaar comp
-// (design/marketplace/avaTOK Marketplace.dc.html): terracotta hero, truck-art
+// (design/marketplace/Saathum Marketplace.dc.html): terracotta hero, truck-art
 // category tiles, section rules. What it is NOT is the comp's DATA. The comp
 // hardcodes eight cards per section with invented counts, ratings and
 // followings, all linking to one demo listing — that is what [DEMO-MARKET-1]
@@ -18,7 +18,7 @@ import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
 import BazaarHero from './BazaarHero.astro';
 import BazaarSearchStrip from './BazaarSearchStrip.astro';
 import TruckBorder from './TruckBorder.astro';
-import { GROUP_ORDER, GROUP_DISPLAY } from '../lib/marketGroups';
+import { PUBLIC_GROUP_ORDER, GROUP_DISPLAY } from '../lib/marketGroups';
 
 interface Props {
   hrefBase?: string;
@@ -44,7 +44,12 @@ const mpBase = `${hrefBase}/marketplace`;
 // returns. "Voices with character" (ai_voice_agents) is removed entirely —
 // there is no fourth tile and no "Coming soon" marker, because every one of
 // the three groups is reachable.
-const visibleTiles = GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
+//
+// [SAATHUM-WEB-UI 2026-09-20] PUBLIC_GROUP_ORDER, not GROUP_ORDER — only two
+// tiles render. `find_your_people` has zero visible sub-categories under
+// Saathum's devotional scope (SPEC.md), so a tile for it would be a dead end
+// every time someone taps it. See marketGroups.ts.
+const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
 // at random) keeps a tile's strip stable across renders — a tile that changes

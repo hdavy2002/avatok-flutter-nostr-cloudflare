@@ -15,7 +15,7 @@ import '../../core/account_key.dart';
 import '../../identity/identity.dart' show AccountScope, Identity;
 
 /// A saved AvaTok contact. `uid` holds the routing id (Clerk uid). Handles are
-/// retired — the network identity shown is the AvaTOK number (or real phone).
+/// retired — the network identity shown is the Saathum number (or real phone).
 @immutable
 class Contact {
   final String uid;
@@ -24,13 +24,13 @@ class Contact {
   final String email;
   final String avatarUrl; // canonical blossom URL of their photo ('' = initials)
   final String phone; // E.164 (WhatsApp-style phone contacts) — '' if unknown
-  final String number; // AvaTOK number display, e.g. '+233 24 555 0148' — '' if none
+  final String number; // Saathum number display, e.g. '+233 24 555 0148' — '' if none
   const Contact({required this.uid, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = '', this.number = ''});
 
   /// [ISSUE-CONTACT-AVATAR-1] Field-preserving copy. Rebuilding a Contact with the
   /// positional-ish `Contact(uid:…, name:…, avatarUrl:…)` form silently DROPS every
   /// field the caller forgot — `phone` and `number` both default to ''. That is how
-  /// the avatar backfill was erasing AvaTOK numbers (see refreshMissingAvatars).
+  /// the avatar backfill was erasing Saathum numbers (see refreshMissingAvatars).
   /// Always copyWith when you mean "same contact, one field changed".
   Contact copyWith({String? uid, String? name, String? handle, String? email,
           String? avatarUrl, String? phone, String? number}) =>
@@ -89,7 +89,7 @@ class Contact {
   /// A phone-only caller saved from the AI Receptionist — keyed by a synthetic
   /// `tel:<E.164>` id because they have no AvaTOK account / uid yet.
   bool get isPhoneOnly => uid.startsWith('tel:');
-  /// Human-friendly subtitle — AvaTOK number first, then phone, then email.
+  /// Human-friendly subtitle — Saathum number first, then phone, then email.
   String get subtitle => number.isNotEmpty ? number : (phone.isNotEmpty ? phone : email);
 
   Map<String, dynamic> toJson() => {'uid': uid, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone, 'number': number};

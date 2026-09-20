@@ -1,11 +1,11 @@
-# avaTOK
+# Saathum
 
-> avaTOK is an India-focused creator marketplace for live events and booked sessions. Its creator idea library helps people explore independent side-business ideas, including activities they can host from home.
+> Saathum is an India-focused creator marketplace for live events and booked sessions. Its creator idea library helps people explore independent side-business ideas, including activities they can host from home.
 
 ## Creator ideas
-- [115 creator ideas](https://avatok.ai/ideas/): Live streams, 1:1 conversations, group-session ideas and daily-life vlogs. Filter by format, topic and From home.
-- [Complete article index](https://avatok.ai/llms-creator-ideas.txt): Titles, descriptions and canonical URLs for all 115 practical guides.
-- [Marketplace](https://avatok.ai/marketplace): Browse available listings; editorial ideas are not claims of available inventory.
+- [115 creator ideas](https://saathum.com/ideas/): Live streams, 1:1 conversations, group-session ideas and daily-life vlogs. Filter by format, topic and From home.
+- [Complete article index](https://saathum.com/llms-creator-ideas.txt): Titles, descriptions and canonical URLs for all 115 practical guides.
+- [Marketplace](https://saathum.com/marketplace): Browse available listings; editorial ideas are not claims of available inventory.
 
 ## What readers will find
 Each guide explains a specific activity, its potential audience, a first-session plan, relevant equipment, reasons people might return and ways to find an audience. Many activities can begin with a camera phone and reliable internet; some need additional skills or equipment. Outdoor ideas are labelled separately from home-based ideas.
@@ -13,21 +13,21 @@ Each guide explains a specific activity, its potential audience, a first-session
 These are creator business ideas, not employment vacancies, salaried jobs or guaranteed income. Availability and eligibility depend on the product and listing. Listening ideas describe adult companionship, not therapy or emergency support. No audience-size, typical-earnings or faster-income claims are established by this library.
 
 ## Product and policy information
-- [Home](https://avatok.ai/): Platform overview.
-- [About](https://avatok.ai/about): Team and platform information.
-- [Pricing and fees](https://avatok.ai/pricing): Current published pricing information. Check the confirmation screen for transaction details; article examples do not set fees.
-- [Payouts](https://avatok.ai/payouts): Payout terms.
-- [Refunds](https://avatok.ai/refunds): Cancellation and refund terms.
-- [Community guidelines](https://avatok.ai/community-guidelines): Platform rules.
-- [Privacy](https://avatok.ai/privacy): Privacy policy.
-- [Contact](https://avatok.ai/contact): Support and enquiries.
+- [Home](https://saathum.com/): Platform overview.
+- [About](https://saathum.com/about): Team and platform information.
+- [Pricing and fees](https://saathum.com/pricing): Current published pricing information. Check the confirmation screen for transaction details; article examples do not set fees.
+- [Payouts](https://saathum.com/payouts): Payout terms.
+- [Refunds](https://saathum.com/refunds): Cancellation and refund terms.
+- [Community guidelines](https://saathum.com/community-guidelines): Platform rules.
+- [Privacy](https://saathum.com/privacy): Privacy policy.
+- [Contact](https://saathum.com/contact): Support and enquiries.
 
-Language: English (India). Public article text is available in server-rendered HTML without signing in or running JavaScript. The sitemap is https://avatok.ai/sitemap.xml. Authenticated dashboards and administration are not public discovery content.
+Language: English (India). Public article text is available in server-rendered HTML without signing in or running JavaScript. The sitemap is https://saathum.com/sitemap.xml. Authenticated dashboards and administration are not public discovery content.
 
 ## Help centre
-- [Help centre](https://avatok.ai/help): Searchable how-to articles grouped into five sections.
-- [Getting started](https://avatok.ai/help#getting-started): What avaTOK is, how to sign up, and web versus app.
-- [Booking & paying](https://avatok.ai/help#booking-and-paying): Finding a creator, booking a session, tokens and payments.
-- [For creators](https://avatok.ai/help#creators): Building a listing, getting it approved, pricing it, running a live session.
-- [Billing & payouts](https://avatok.ai/help#billing): The platform fee, refunds, withdrawing earnings, and tax basics.
-- [Account & safety](https://avatok.ai/help#account-and-safety): Verification, recording and consent, reporting a problem, deleting your account.
+- [Help centre](https://saathum.com/help): Searchable how-to articles grouped into five sections.
+- [Getting started](https://saathum.com/help#getting-started): What Saathum is, how to sign up, and web versus app.
+- [Booking & paying](https://saathum.com/help#booking-and-paying): Finding a creator, booking a session, tokens and payments.
+- [For creators](https://saathum.com/help#creators): Building a listing, getting it approved, pricing it, running a live session.
+- [Billing & payouts](https://saathum.com/help#billing): The platform fee, refunds, withdrawing earnings, and tax basics.
+- [Account & safety](https://saathum.com/help#account-and-safety): Verification, recording and consent, reporting a problem, deleting your account.

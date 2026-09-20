@@ -1,13 +1,10 @@
 ---
+// [TAKEDOWN-HDFC-DARK-1 2026-09-20] Admin console for the internal ₹1 HDFC UPI SMS
+// smoke harness (worker/src/routes/hdfc_sms_*.ts). The Worker routes are gated
+// behind the hdfcSmsRailEnabled flag (410 while off, see worker/src/index.ts and
+// routes/config.ts) — not the commercial rail, and must not be reachable during a
+// payment gateway review. This page stays a hard 404 regardless of that flag;
+// restoring the UI needs its own deliberate revert of this file.
 export const prerender = false;
-Astro.response.headers.set('Cache-Control','private, no-store');
-Astro.response.headers.set('Referrer-Policy','no-referrer');
-import Base from '../../../layouts/Base.astro';
-import UpiSmokeCheckout from '../../../islands/checkout/UpiSmokeCheckout';
+return new Response('Not found', { status: 404 });
 ---
-
-<Base title="UPI payment test · avaTOK" description="Private avaTOK UPI and SMS payment pipeline test." chrome={false} headerAuth="static" navStatic={true} noindex={true}>
-  <main style="min-height:100vh; display:grid; place-items:center; padding:24px; background:#f5efe5;">
-    <UpiSmokeCheckout client:load />
-  </main>
-</Base>

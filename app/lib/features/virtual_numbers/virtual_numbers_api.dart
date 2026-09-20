@@ -30,7 +30,7 @@ class VirtualNumbersApi {
   }
 
   Future<VirtualLine> createAvaTok(
-      {String? requestedNumber, String label = 'AvaTOK number'}) async {
+      {String? requestedNumber, String label = 'Saathum number'}) async {
     final response = await ApiAuth.postJson('$_base/virtual-lines/avatok', {
       if (requestedNumber != null && requestedNumber.trim().isNotEmpty)
         'requested_number': requestedNumber.trim(),

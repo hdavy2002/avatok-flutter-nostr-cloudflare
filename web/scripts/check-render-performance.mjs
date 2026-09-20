@@ -39,7 +39,7 @@ if (built) {
   if (baseSource.includes("components/Fonts.astro")) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');
   }
-  assert.match(html, /Turn your skill/);
+  assert.match(html, /Your audience is ready/);
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

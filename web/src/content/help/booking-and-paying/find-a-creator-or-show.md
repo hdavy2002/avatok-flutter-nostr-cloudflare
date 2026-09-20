@@ -1,6 +1,6 @@
 ---
-title: "Finding a creator or show on avaTOK"
-description: "How the avaTOK marketplace is organised into three groups, how listings and creator profiles work, and how to browse without an app."
+title: "Finding a creator or show on Saathum"
+description: "How the Saathum marketplace is organised into three groups, how listings and creator profiles work, and how to browse without an app."
 section: booking-and-paying
 order: 1
 updated: 2026-09-11
@@ -8,7 +8,7 @@ keywords: ["marketplace", "browse", "find creator", "live show", "book", "search
 audience: buyer
 faq:
   - q: "Do I need an account to browse the marketplace?"
-    a: "No. avatok.ai/marketplace is open to everyone, signed in or not — you only need an account when you actually book or pay."
+    a: "No. saathum.com/marketplace is open to everyone, signed in or not — you only need an account when you actually book or pay."
   - q: "What are the three groups on the marketplace?"
     a: "India goes live (live streams), Group classes (small-group sessions) and Book their time (1:1 consultations with experts) — every live show, class and 1:1 listing sits in one of these three."
 draft: false
@@ -16,7 +16,7 @@ draft: false
 
 ## Start at the marketplace
 
-Everything bookable on avaTOK — live streams, one-on-one time, booked expert sessions — is listed at [avatok.ai/marketplace](/marketplace). You do not need to sign in to look around: browsing, searching and opening a listing all work for a visitor. You only need to identify yourself (with your email) when you actually book a seat.
+Everything bookable on Saathum — live streams, one-on-one time, booked expert sessions — is listed at [saathum.com/marketplace](/marketplace). You do not need to sign in to look around: browsing, searching and opening a listing all work for a visitor. You only need to identify yourself (with your email) when you actually book a seat.
 
 ## The three groups
 
@@ -44,4 +44,4 @@ Every creator has their own page (reached from their name or avatar on a listing
 
 ## A note on what you will see
 
-avaTOK is a young marketplace, so at any given moment a group may have very few listings, or none — that is not a bug, it is how many creators have published so far. If a group is empty it simply will not appear as a tile that day.
+Saathum is a young marketplace, so at any given moment a group may have very few listings, or none — that is not a bug, it is how many creators have published so far. If a group is empty it simply will not appear as a tile that day.

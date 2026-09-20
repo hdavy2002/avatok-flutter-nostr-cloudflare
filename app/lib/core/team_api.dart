@@ -6,7 +6,7 @@ import 'config.dart';
 
 /// TeamApi — Team Receptionist (IVR / auto-attendant).
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md. A manager subscribes to a Team plan,
-/// adds staff (name, role, voice, greeting, AvaTOK number); the staff list is the
+/// adds staff (name, role, voice, greeting, Saathum number); the staff list is the
 /// "press 1 / press 2" menu on the team number. Staff become Pro for free, billed
 /// by the team. The server is the source of truth; this is the thin client.
 const String _base = 'https://$kSignalingHost/api/team';

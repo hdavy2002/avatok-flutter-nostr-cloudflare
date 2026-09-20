@@ -468,7 +468,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
 
           {price > 0 && (
             <Card fillClassName="bg-paper2">
-              <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.e786406a7cf2b9c2" source="At ₹" />{price}<UiText id="web-dashboard.c1409f8795a2bad6" source="/hr, avaTOK takes ₹" />{split.fee}{" "}<UiText id="web-dashboard.65fb17d22dac7abf" source="and you keep ₹" />{split.creator}.
+              <p className="font-body font-bold text-[13px] text-ink"><UiText id="web-dashboard.e786406a7cf2b9c2" source="At ₹" />{price}<UiText id="web-dashboard.c1409f8795a2bad6" source="/hr, Saathum takes ₹" />{split.fee}{" "}<UiText id="web-dashboard.65fb17d22dac7abf" source="and you keep ₹" />{split.creator}.
               </p>
               <p className="mt-1 font-body text-[12px] text-inkSoft">
                 ₹{PRICING.flatTokensPerHour}{" "}<UiText id="web-dashboard.2029b52b55f9a44b" source="flat +" />{" "}{PRICING.commissionPct}<UiText id="web-dashboard.b48fc60c158e496a" source="% of what’s left. A 2-hour booking bills the flat fee twice." />{" "}</p>
@@ -482,7 +482,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                 <thead>
                   <tr className="border-b-2 border-ink bg-paper2 text-left">
                     <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.5f0046bac1969116" source="Creator sets" /></th>
-                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="avaTOK takes" /></th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="Saathum takes" /></th>
                     <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.81daa0f1638ccfdb" source="Creator keeps" /></th>
                   </tr>
                 </thead>
@@ -535,7 +535,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
           {/* [WIZ-DISCOUNT-1] What the CUSTOMER pays, live. The step showed only
               the creator's take-home at full price, so a creator typing "50" in
               early-bird had no way to see that they were about to sell an hour
-              for ₹250 and keep ₹205. avaTOK's fee is charged on the DISCOUNTED
+              for ₹250 and keep ₹205. Saathum's fee is charged on the DISCOUNTED
               amount (feeSplit is a pure function of what is actually paid), so
               each row is feeSplit(that row's price) — never the list-price
               split with a discount subtracted afterwards. */}
@@ -548,7 +548,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                     <tr className="border-b-2 border-ink bg-paper2 text-left">
                       <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.8018e16c02982db7" source="Buying with" /></th>
                       <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.742bc6ee58b256ca" source="Customer pays" /></th>
-                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="avaTOK takes" /></th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.b39e0d8f2996036f" source="Saathum takes" /></th>
                       <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.0e5467ac43335fc4" source="You keep" /></th>
                     </tr>
                   </thead>
@@ -567,7 +567,7 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
                   </tbody>
                 </table>
               </div>
-              <p className="mt-1 font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.89c2a84ef6b263b0" source="avaTOK’s ₹" />{PRICING.flatTokensPerHour}{" "}<UiText id="web-dashboard.2029b52b55f9a44b" source="flat +" />{" "}{PRICING.commissionPct}<UiText id="web-dashboard.f4a9ae34a26c3254" source="% is taken from what the customer actually pays, so a discount comes out of both sides — not only yours." />{" "}</p>
+              <p className="mt-1 font-body text-[12px] text-inkSoft"><UiText id="web-dashboard.89c2a84ef6b263b0" source="Saathum’s ₹" />{PRICING.flatTokensPerHour}{" "}<UiText id="web-dashboard.2029b52b55f9a44b" source="flat +" />{" "}{PRICING.commissionPct}<UiText id="web-dashboard.f4a9ae34a26c3254" source="% is taken from what the customer actually pays, so a discount comes out of both sides — not only yours." />{" "}</p>
             </div>
           )}
         </>

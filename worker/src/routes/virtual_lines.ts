@@ -86,7 +86,7 @@ export async function virtualLineCreateAvaTOK(req: Request, env: Env): Promise<R
   const now = Date.now(); const id = crypto.randomUUID(); const hash = await sha256hex(selected.canonical);
   try {
     await db.prepare(`INSERT INTO virtual_lines (id,owner_uid,kind,canonical_number,display_number,number_hash,country_iso2,label,color_key,capabilities_json,status,created_at,updated_at) VALUES (?1,?2,'avatok',?3,?4,?5,?6,?7,?8,?9,'active',?10,?10)`)
-      .bind(id, ctx.uid, selected.canonical, selected.display, hash, plan.iso2, cleanLabel(body.label, "AvaTOK number"), cleanColor(body.colorKey), JSON.stringify({ audio: true, video: true, messaging: true, pstn: false, sms: false }), now).run();
+      .bind(id, ctx.uid, selected.canonical, selected.display, hash, plan.iso2, cleanLabel(body.label, "Saathum number"), cleanColor(body.colorKey), JSON.stringify({ audio: true, video: true, messaging: true, pstn: false, sms: false }), now).run();
     await db.prepare(`INSERT INTO virtual_line_settings (line_id,policy_json,created_at,updated_at) VALUES (?1,'{}',?2,?2)`).bind(id, now).run();
   } catch (e) { return json({ error: "number_unavailable", detail: String(e).slice(0, 100) }, 409); }
   const row = await db.prepare(`SELECT * FROM virtual_lines WHERE id=?1 AND owner_uid=?2`).bind(id, ctx.uid).first<LineRow>();

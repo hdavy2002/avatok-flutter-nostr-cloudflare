@@ -12,14 +12,14 @@
 // migration runner in the request path):
 //   - agent_profiles   { instructions, Collection, tool manifest, rate, length
 //     options, routing, booking_authority, business_hours + version } — §12.5/§12.8
-//   - service_numbers  Mode-B-only additional AvaTOK numbers. NEVER recycled
+//   - service_numbers  Mode-B-only additional Saathum numbers. NEVER recycled
 //     (§15.3): delete = retired=1 forever, never reused for a new owner.
 //   - agent_call_log   per-call summary rows WP4's Grok pipeline will populate;
 //     read-only here (GET /api/agent/my-calls; {available:false} when empty).
 //
 // REUSED, not duplicated:
 //   - lib/numbering.ts — CountryPlan/canonical/display/generate/validNsn: the
-//     SAME allocation mechanics as the primary AvaTOK number (routes/number.ts
+//     SAME allocation mechanics as the primary Saathum number (routes/number.ts
 //     assign()). Service numbers draw from a DISTINCT sub-range of each
 //     country's leadPool (the second half) so they are visually distinguishable
 //     from primary numbers within the same national format, without a schema

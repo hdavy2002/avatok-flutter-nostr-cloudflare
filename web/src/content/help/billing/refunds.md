@@ -8,10 +8,10 @@ updated: 2026-09-11
 keywords: ["refund", "cancellation", "no-show", "paisa wapas", "chargeback", "app store refund", "no show", "booking cancel"]
 faq:
   - q: "The creator never showed up to my booked session — what happens?"
-    a: "If a refund is approved after a creator no-show, avaTOK returns the exact token amount recorded for that booking; unclear cases may go to manual review."
+    a: "If a refund is approved after a creator no-show, Saathum returns the exact token amount recorded for that booking; unclear cases may go to manual review."
   - q: "I paid but then missed the session myself — do I get my tokens back?"
     a: "If the creator was there and ready and you weren't, the session is treated as delivered and the creator is paid; that's the no-show rule working the other way."
-  - q: "I bought tokens through the Play Store or App Store — can avaTOK refund me?"
+  - q: "I bought tokens through the Play Store or App Store — ca Saathum refund me?"
     a: "No, that payment went to Google or Apple, not to us — request the refund through their own process. If approved, any token adjustment uses the exact amount recorded in the immutable payment snapshot."
 draft: false
 ---
@@ -22,7 +22,7 @@ This page is the plain-English version. The binding terms — what's refundable,
 
 ## Payments are still in testing
 
-avaTOK uses **100 Tokens = $1** as an internal accounting anchor. Checkout may be shown in local currency using a server-owned FX quote. The quote and payment snapshot are immutable. If a refund or reversal is approved, it uses the exact token amount in that snapshot, not a later FX rate; see [Refunds & Cancellations §2](/refunds).
+Saathum uses **100 Tokens = $1** as an internal accounting anchor. Checkout may be shown in local currency using a server-owned FX quote. The quote and payment snapshot are immutable. If a refund or reversal is approved, it uses the exact token amount in that snapshot, not a later FX rate; see [Refunds & Cancellations §2](/refunds).
 
 ## Creator no-show
 
@@ -42,7 +42,7 @@ If a creator (or an admin) takes down a listing while there are still open, unat
 
 ## App-store purchases (Google Play / Apple)
 
-If you topped up tokens or bought a subscription inside the Android or iOS app, the payment went to the app store, not to avaTOK — refunds for those follow Google Play's or Apple's own process and timelines, and we can't reverse a store charge on your behalf. If the store approves a refund, we may adjust your token balance by the exact amount recorded in the immutable payment snapshot; if those tokens were already spent, your account may need the position corrected. See [Refunds & Cancellations §4](/refunds).
+If you topped up tokens or bought a subscription inside the Android or iOS app, the payment went to the app store, not to Saathum — refunds for those follow Google Play's or Apple's own process and timelines, and we can't reverse a store charge on your behalf. If the store approves a refund, we may adjust your token balance by the exact amount recorded in the immutable payment snapshot; if those tokens were already spent, your account may need the position corrected. See [Refunds & Cancellations §4](/refunds).
 
 ## Chargebacks
 
@@ -50,4 +50,4 @@ If you think a charge is wrong, contact us first — it's faster than a chargeba
 
 ## How to raise a billing issue
 
-Email support@avatok.ai from the address on your account with your avaTOK handle, the date and local-currency amount of the charge, the token amount if shown, how you paid, and the order or booking reference if you have one. We'll look into it — see [Refunds & Cancellations §10](/refunds) for the full list of what to include.
+Email support@avatok.ai from the address on your account with your Saathum handle, the date and local-currency amount of the charge, the token amount if shown, how you paid, and the order or booking reference if you have one. We'll look into it — see [Refunds & Cancellations §10](/refunds) for the full list of what to include.

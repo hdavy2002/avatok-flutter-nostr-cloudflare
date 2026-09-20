@@ -1,4 +1,4 @@
-// Shared outbound-mail helper for the avatok.ai Pages Functions (web/src/pages/api/*).
+// Shared outbound-mail helper for the saathum.com Pages Functions (web/src/pages/api/*).
 //
 // Policy: Cloudflare Email Service REST API first, Brevo transactional API as
 // fallback — see Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md
@@ -36,7 +36,7 @@ export interface OutboundMail {
   subject: string;
   html: string;
   text?: string;
-  /** Defaults to { name: BREVO_SENDER_NAME || "avaTOK", email: BREVO_SENDER_EMAIL || "hello@avatok.ai" }.
+  /** Defaults to { name: BREVO_SENDER_NAME || "Saathum", email: BREVO_SENDER_EMAIL || "hello@saathum.com" }.
    *  The BREVO_* env var names stay as the source of truth for the default sender
    *  (rather than adding CF_SENDER_* vars) so this migration needs zero Pages
    *  dashboard changes beyond adding CF_ACCOUNT_ID / CF_EMAIL_API_TOKEN. */
@@ -55,8 +55,12 @@ export type MailResult =
   | { ok: true; provider: 'cloudflare' | 'brevo'; messageId: string | null; fallbackUsed: boolean }
   | { ok: false; provider: 'cloudflare' | 'brevo'; retryable: boolean; error: string; fallbackUsed: boolean };
 
-const DEFAULT_SENDER_NAME = 'avaTOK';
-const DEFAULT_SENDER_EMAIL = 'hello@avatok.ai';
+// [SAATHUM-EMAIL-1] These fallbacks only fire if BREVO_SENDER_NAME/EMAIL are
+// unset in the Pages dashboard. Do not set the dashboard values to saathum.com
+// until it is onboarded in Cloudflare Email Sending AND verified as a Brevo
+// sender — see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
+const DEFAULT_SENDER_NAME = 'Saathum';
+const DEFAULT_SENDER_EMAIL = 'hello@saathum.com';
 
 function defaultSender(env: MailEnv): { name: string; email: string } {
   return {

@@ -23,12 +23,12 @@ import 'contacts.dart';
 import 'dialpad_prefill.dart';
 import 'stranger_gate_api.dart' show dmConvIdFor; // [AVA-TOGGLE-DM-1] server conv id
 
-/// Contact details: name, AvaTOK number, and shared groups.
+/// Contact details: name, Saathum number, and shared groups.
 ///
 /// Handles are retired and the old Nostr "safety number" (out-of-band E2E
 /// verification) is removed — messaging is server-readable under the
 /// Cloudflare-native architecture, so that fingerprint no longer has meaning.
-/// The network identity shown is the contact's AvaTOK number.
+/// The network identity shown is the contact's Saathum number.
 class ContactProfileScreen extends StatefulWidget {
   final String name;
   final String uid; // contact routing id (Clerk uid)
@@ -86,9 +86,9 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     if (_looksLikeRawId(widget.name, widget.uid)) {
       _recoverName();
     }
-    // Resolve the contact's AvaTOK number for display (best-effort).
+    // Resolve the contact's Saathum number for display (best-effort).
     // Seed number + email from the saved contact immediately (directory resolve
-    // refines them). The saved contact usually already has the AvaTOK number, so
+    // refines them). The saved contact usually already has the Saathum number, so
     // we show it right away instead of a raw "user_…" id.
     ContactsStore().load().then((cs) {
       final m = cs.where((c) => c.uid == widget.uid).toList();
@@ -133,7 +133,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     } catch (_) {/* best-effort — directory resolve still runs as a fallback */}
   }
 
-  /// The big title: a real name when we have one, otherwise the AvaTOK number,
+  /// The big title: a real name when we have one, otherwise the Saathum number,
   /// and only as a last resort a neutral "AvaTOK user" — never a raw user_… id.
   String get _displayName {
     if (!_looksLikeRawId(_name, widget.uid)) return _name;
@@ -141,7 +141,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     return uiCopy(UiMessage.m_avatok_user_d606f5f109);
   }
 
-  /// Deep link others can scan/click to add THIS contact by their AvaTOK number.
+  /// Deep link others can scan/click to add THIS contact by their Saathum number.
   /// Forward-compatible `?n=` form (the web landing + server add-by-number resolve
   /// it; non-installers are sent to the Play Store).
   String get _addLink {
@@ -191,13 +191,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         Center(child: Text(_displayName, style: ADText.appTitle())),
         const SizedBox(height: Msg.s4),
         if (_number.isNotEmpty)
-          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
+          _box('Saathum number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: Row(children: [
             Expanded(
               // [DIALPAD-BIZ-CALLS] Tapping the number drops it into the dialpad,
               // ready to dial (not auto-dialed) — connects the friend channel
               // (this profile, met by email) to the business channel (their
-              // AvaTOK number). Flag-gated; plain SelectableText when off.
+              // Saathum number). Flag-gated; plain SelectableText when off.
               child: RemoteConfig.businessCallUx
                   ? GestureDetector(
                       onTap: () => openDialpadWithNumber(context, _number),
@@ -215,8 +215,8 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 }),
           ]))
         else
-          // No shared AvaTOK number — show a friendly note, never the raw user_… id.
-          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
+          // No shared Saathum number — show a friendly note, never the raw user_… id.
+          _box('Saathum number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: UiText(UiMessage.m_this_contact_hasn_t_shared_1f9b530200,
                   style: ADText.preview(c: AD.textSecondary))),
         if (_email.isNotEmpty) ...[

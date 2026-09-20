@@ -50,7 +50,7 @@ export interface RoutingDecisionInput {
   trace_id: string;
   caller_id: string;
   callee_id: string;
-  /** The AvaTOK number actually dialed (primary or service). Optional — when
+  /** The Saathum number actually dialed (primary or service). Optional — when
    *  omitted we assume the callee's primary/identity number (Mode A). */
   number_dialed?: string | null;
   /** 'dialpad' when placed from the Flutter dialpad (business channel). The

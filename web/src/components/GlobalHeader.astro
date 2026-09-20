@@ -25,7 +25,7 @@ const links = [
 <header class:list={['avh', 'global-header', design === 'disco' && 'disco-header', sticky && 'global-header--sticky']}>
   {design === 'original' && <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>}
   <div class="global-header__bar">
-    <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href={homePath} aria-label="avaTOK global home">{design === 'disco' ? <><span>ava</span><span>TOK</span></> : <img src={publicImage('/assets/global-original/ideas-header-logo.png', { width: 336, fit: 'scale-down' })} alt="avaTOK" width="168" height="57" />}</a>
+    <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href={homePath} aria-label="Saathum global home">{design === 'disco' ? <><span>ava</span><span>TOK</span></> : <img src={publicImage('/assets/global-original/ideas-header-logo.png', { width: 336, fit: 'scale-down' })} alt="Saathum" width="168" height="57" />}</a>
     <nav data-india-i18n-attr="aria-label:web-common.eb814be3ca3b78c0" class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
     <div class="global-header__actions">
       <GlobalLocaleControls />

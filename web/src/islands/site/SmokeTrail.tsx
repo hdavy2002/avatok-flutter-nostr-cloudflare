@@ -1,6 +1,6 @@
 /**
  * SmokeTrail — soft white clouds that billow and dissipate behind the cursor on the
- * avatok.ai home page.
+ * saathum.com home page.
  *
  * Built on the Canvas UI "Liquid" component (`@canvas-ui/liquid-react`, vendored at
  * src/components/canvasui/Liquid.tsx — DO NOT edit that file, it is the upstream
@@ -23,9 +23,9 @@
  *
  * That matters more than it used to. html-in-canvas is NOT permanently unavailable —
  * it is a Chrome ORIGIN TRIAL (feature `HTMLInCanvas`), which canvasui.dev is enrolled
- * in and avatok.ai is not. If avatok.ai ever registers for that trial, the API would
+ * in and saathum.com is not. If saathum.com ever registers for that trial, the API would
  * appear at runtime and, without this line, this effect would break on the day the
- * token was added. Verified 2026-08-07: undefined on avatok.ai, a function on
+ * token was added. Verified 2026-08-07: undefined on saathum.com, a function on
  * canvasui.dev, whose token expires 2026-10-20.
  * ─────────────────────────────────────────────────────────────────────────────
  */

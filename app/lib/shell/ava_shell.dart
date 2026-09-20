@@ -80,7 +80,7 @@ class _AvaShellState extends State<AvaShell> {
   Identity? _id;
   bool?
       _profileComplete; // null = checking, false = show gate, true = enter app
-  // Compulsory AvaTOK number (owner decision 2026-06-27): a complete profile with
+  // Compulsory Saathum number (owner decision 2026-06-27): a complete profile with
   // NO number must choose one before entering the app — applies to new users at
   // onboarding AND existing users without a number on next open.
   bool _needsNumber = false;
@@ -96,7 +96,7 @@ class _AvaShellState extends State<AvaShell> {
   String?
       _authFirst; // first name from the Google sign-in → prefills the profile
   String? _authLast; // last name from the Google sign-in → prefills the profile
-  // The AvaTOK number the user just picked in the compulsory gate THIS session —
+  // The Saathum number the user just picked in the compulsory gate THIS session —
   // handed straight to the profile step so it shows locked without waiting on the
   // `me` cache/network (fixes the onboarding "Assigned just now" blank).
   String? _assignedNumberDisplay;
@@ -205,7 +205,7 @@ class _AvaShellState extends State<AvaShell> {
           if (serverComplete == false) complete = false;
         } catch (_) {/* offline → trust local decision */}
       }
-      // Compulsory AvaTOK number — now picked BEFORE the profile (owner decision
+      // Compulsory Saathum number — now picked BEFORE the profile (owner decision
       // 2026-06-27) so the chosen number can be shown (locked) in the profile's
       // phone field. Computed regardless of profile completeness. Fail-open when
       // offline so a network error never traps a user.
@@ -537,7 +537,7 @@ class _AvaShellState extends State<AvaShell> {
     }
   }
 
-  /// One-time onboarding offer: if the account has no AvaTOK number yet and can
+  /// One-time onboarding offer: if the account has no Saathum number yet and can
   /// still generate one (free accounts get one; paid unlimited), invite the user
   /// to pick it now. Skippable — they can always do it later in Settings → Your
   /// number. The offer is shown once per account (scoped flag).
@@ -626,7 +626,7 @@ class _AvaShellState extends State<AvaShell> {
     // visibly restarted. Both are LOCAL reads, so the screen is now static and
     // the handoff is undetectable. Do not reintroduce a spinner here.
     if (_profileComplete == null) return const AvaBootScreen();
-    // Compulsory AvaTOK number gate FIRST (owner decision 2026-06-27): the user
+    // Compulsory Saathum number gate FIRST (owner decision 2026-06-27): the user
     // picks their number before completing the profile, so the profile can show
     // that number (locked) in the phone field. Same gate for new users at
     // onboarding and existing users who never registered a number.

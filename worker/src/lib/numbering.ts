@@ -1,8 +1,8 @@
 // AvaTOK virtual-number numbering plans (Specs/AVATOK-NUMBER-FEATURE-SPEC.md §3).
 //
-// IMPORTANT: AvaTOK numbers are PURELY INTERNAL, app-to-app identifiers. They are
+// IMPORTANT: Saathum numbers are PURELY INTERNAL, app-to-app identifiers. They are
 // NEVER routed over the PSTN — there is no dial-out, no inbound from carriers, no
-// SMS to/from the telephone network. A call/message to an AvaTOK number is an
+// SMS to/from the telephone network. A call/message to a Saathum number is an
 // in-app AvaTOK↔AvaTOK action only. Because nothing ever leaves the app onto the
 // real network, these identifiers cannot "collide" with a real subscriber in any
 // operational sense (we never place a call to the number on the PSTN).

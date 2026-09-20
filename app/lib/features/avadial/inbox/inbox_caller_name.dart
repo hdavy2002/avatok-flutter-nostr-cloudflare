@@ -31,7 +31,7 @@ import 'inbox_api.dart';
 ///
 /// Priority (owner-specified order): [ContactOverrides] rename (phone-keyed)
 /// → [ContactsStore] by uid (bare-uid business-voicemail threads) →
-/// [ContactsStore] by normalized phone/AvaTOK number → [DeviceContacts] →
+/// [ContactsStore] by normalized phone/Saathum number → [DeviceContacts] →
 /// server-stamped `caller_name` → formatted E.164 → "Unknown caller".
 ///
 /// NOTE for AVANOTIF-VM-1 (reconcile): that lane is independently building a
@@ -109,7 +109,7 @@ class InboxCallerName {
       }
     }
 
-    // 3) ContactsStore by normalized phone/AvaTOK number.
+    // 3) ContactsStore by normalized phone/Saathum number.
     if (phone != null && phone.isNotEmpty) {
       final key = DeviceContacts.normKey(phone);
       for (final c in contacts) {

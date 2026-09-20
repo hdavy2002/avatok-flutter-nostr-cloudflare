@@ -427,6 +427,17 @@ function listingContentFieldsError(raw: any, maxPerBookingOn = false): string | 
   if (raw.credential !== undefined && raw.credential !== null && String(raw.credential).length > 40) {
     return "credential must be at most 40 characters";
   }
+  // [LISTING-PERFORMER-1 2026-09-20] Free text naming who actually performs /
+  // facilitates the service — see the migration header for why the creator is
+  // often neither. Length-capped like the other short disclosure fields above
+  // (credential); listingBlockers() (lib/listing_blockers.ts) is what REQUIRES
+  // one of the two to be set before publish, not this shape check.
+  if (raw.performed_by !== undefined && raw.performed_by !== null && String(raw.performed_by).length > 80) {
+    return "performed_by must be at most 80 characters";
+  }
+  if (raw.facilitated_by !== undefined && raw.facilitated_by !== null && String(raw.facilitated_by).length > 80) {
+    return "facilitated_by must be at most 80 characters";
+  }
   return null;
 }
 
@@ -644,6 +655,9 @@ const CARD_SELECT = `
          l.blurb, l.slug, l.schedule_mode, l.recurrence_days, l.recurrence_time,
          l.timezone, l.billing_unit, l.free_entry, l.max_per_booking,
          l.response_time_min, l.vibe_tags, l.credential, l.media_mode,
+         -- [LISTING-PERFORMER-1 2026-09-20] who performs/facilitates, and
+         -- whether it's at a temple.
+         l.performed_by, l.facilitated_by, l.at_temple,
          -- [WEB-GATEWAY-E 2026-09-18] Badged, non-bookable sample listing. See
          -- shapeCard's is_example field and every money-entry-point guard.
          l.is_example,
@@ -807,6 +821,13 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // answer the schema already commits to.
     media_mode: r.media_mode ?? "audio_video",
     credential: r.credential ?? null,
+    // [LISTING-PERFORMER-1 2026-09-20] Additive, defaulting to "not set" /
+    // false so a pre-migration row and a legacy client both read exactly as
+    // before. `location` (above) still carries the actual venue text; this
+    // only discloses whether it's a temple.
+    performed_by: r.performed_by ?? null,
+    facilitated_by: r.facilitated_by ?? null,
+    at_temple: !!r.at_temple,
     // §C.1 — "price_semantics is not a new column: join listing_categories into
     // CARD_SELECT/shapeCard". Null when the category row can't be resolved (matches
     // getListing's own "asking" fallback being applied client-side, not baked in here
@@ -821,7 +842,7 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
-      avatok_number: r.creator_number ?? null,                        // owner's AvaTOK number (dial inside AvaTOK)
+      avatok_number: r.creator_number ?? null,                        // owner's Saathum number (dial inside AvaTOK)
       kyc_verified: r.creator_kyc === "verified",                     // A4 trust badge
       // [LIST-CONTENT-2] spec §H.1 — "regulars" proof chip source.
       follower_count: Number(r.creator_follower_count ?? 0),
@@ -1072,6 +1093,9 @@ const EDITABLE = ["title", "description", "category", "price", "currency_display
   // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video, field only (see the
   // migration + normFields for why it is NOT in REVIEW_MATERIAL_FIELDS).
   "media_mode",
+  // [LISTING-PERFORMER-1 2026-09-20] who performs / facilitates this, and
+  // whether it happens at a temple — see the migration header.
+  "performed_by", "facilitated_by", "at_temple",
 ] as const;
 
 // [AVA-MKT-CVER-1] MATERIAL fields — the subset of EDITABLE whose change invalidates
@@ -1171,6 +1195,11 @@ const REVIEW_MATERIAL_FIELDS = [
   // would change the hash of every already-approved listing at once and make each one
   // fail publish with `review_stale`. Gate the write paths, never the fingerprint.
   "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
+  // [LISTING-PERFORMER-1 2026-09-20] who actually performs/facilitates the
+  // service is exactly the kind of thing an admin reviewer judges — a creator
+  // quietly changing this post-approval (e.g. "me" -> "a partner I've never
+  // vetted") must reopen review, same as the rest of this list.
+  "performed_by", "facilitated_by", "at_temple",
 ] as const;
 
 /** Deterministic JSON: object keys sorted (recursively) so the same content always
@@ -1367,6 +1396,13 @@ function normFields(b: any): Record<string, unknown> {
     out.vibe_tags = Array.isArray(b.vibe_tags) ? JSON.stringify(b.vibe_tags.slice(0, 2).map((t: unknown) => String(t))) : null;
   }
   if (b.credential !== undefined) out.credential = b.credential ? String(b.credential).slice(0, 40) : null;
+  // [LISTING-PERFORMER-1 2026-09-20] performed_by/facilitated_by are free
+  // text; at_temple is a plain disclosure flag (the actual venue, if any,
+  // still lives in the existing `location` field — this only says whether
+  // that location is a temple).
+  if (b.performed_by !== undefined) out.performed_by = b.performed_by ? String(b.performed_by).slice(0, 80) : null;
+  if (b.facilitated_by !== undefined) out.facilitated_by = b.facilitated_by ? String(b.facilitated_by).slice(0, 80) : null;
+  if (b.at_temple !== undefined) out.at_temple = b.at_temple ? 1 : 0;
   // E: the free lane costs the CREATOR, never the buyer — force price=0 unconditionally
   // the moment free_entry lands at 1 in this call, regardless of what price was sent
   // alongside it. (The case where free_entry was already 1 on an EARLIER call and this
@@ -1554,10 +1590,11 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
        vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version,
        spoken_lang, translation_enabled, section,
        slug, blurb, schedule_mode, recurrence_days, recurrence_time, timezone, billing_unit,
-       free_entry, max_per_booking, response_time_min, vibe_tags, credential, media_mode)
+       free_entry, max_per_booking, response_time_min, vibe_tags, credential, media_mode,
+       performed_by, facilitated_by, at_temple)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
              ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,
-             ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45,?46)`,
+             ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45,?46,?47,?48,?49)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? LISTING_DEFAULT_CURRENCY, f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
@@ -1595,7 +1632,11 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     f.free_entry ?? 0, f.max_per_booking ?? 4, f.response_time_min ?? null,
     f.vibe_tags ?? null, f.credential ?? null,
     // [MKT-3GROUP-1] spec §3 — media_mode, defaults to the column default.
-    f.media_mode ?? "audio_video").run();
+    f.media_mode ?? "audio_video",
+    // [LISTING-PERFORMER-1 2026-09-20] defaults to the column DEFAULTs (null,
+    // null, 0) — a brand-new draft discloses nothing until the creator fills
+    // it in, and listingBlockers() is what stops it publishing that way.
+    f.performed_by ?? null, f.facilitated_by ?? null, f.at_temple ?? 0).run();
   track(env, ctx.uid, "listing_draft_created", APP, {
     kind, vertical, category, section: sectionFor(kind, category), proposed_category: f.proposed_category ?? null,
     cat_version: catV, playbook_version: pbV, template_version: tplV,

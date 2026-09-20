@@ -86,7 +86,7 @@ function paidCallsGate(cfg: { paidCalls: boolean }): boolean {
 
 // GET /api/call/paid/offer?to=<number-or-uid>[&service_id=…] — the CALLEE's
 // published paid-call offer, shown to the CALLER before the price/length
-// prompt (plan §3B step 2). `to` may be a dialed AvaTOK number OR a uid —
+// prompt (plan §3B step 2). `to` may be a dialed Saathum number OR a uid —
 // resolveNumberAndProfile handles both (same resolver the routing engine
 // uses). Missing/unpublished offer → {available:false} (200, not an error:
 // "no offer" is the normal case for every free number). This route was the
@@ -114,7 +114,7 @@ export async function getPaidCallOfferRoute(req: Request, env: Env): Promise<Res
   const resolved = await resolveNumberAndProfile(env, to, looksLikeNumber ? digits : null).catch(() => null);
   let calleeUid = resolved && !resolved.retired ? resolved.owner_uid : to;
   if (looksLikeNumber && resolved && !resolved.is_service_number) {
-    // Not a service number — try the primary AvaTOK number directory.
+    // Not a service number — try the primary Saathum number directory.
     try {
       const row = await env.DB_META.prepare(
         "SELECT uid FROM users WHERE avatok_number=?1 OR number_norm=substr(?1,-10) LIMIT 1",

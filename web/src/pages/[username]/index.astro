@@ -3,7 +3,7 @@
 //
 // Owner decision: every creator name, avatar and profile affordance on the
 // front page and the listing detail should land here. FOR NOW the page is the
-// bazaar comp from design/live-streaming/ ("avaTOK Creator Profile.dc.html") —
+// bazaar comp from design/live-streaming/ ("Saathum Creator Profile.dc.html") —
 // look and feel only, hardcoded mock data, backend wiring comes later.
 //
 // WHY A DIRECTORY ROUTE
@@ -21,6 +21,7 @@ export const prerender = false;
 
 import { renderMockupPage } from '../../lib/mockupPage';
 import { creatorPath } from '../../lib/urls';
+import { getCreator, ApiError } from '../../lib/apiClient';
 // Staged into web/src/generated/ by prebuild — see scripts/copy-design-demo.mjs
 // for why it is generated rather than committed, and why it is not in public/.
 import mockupHtml from '../../generated/creator-profile.dc.html?raw';
@@ -33,13 +34,26 @@ if (!/^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '')) {
   return new Response('Not found', { status: 404 });
 }
 
+// [TAKEDOWN-USERNAME-404-1 2026-09-20] The shape guard above only rejects malformed
+// paths — it let ANY syntactically valid handle render the hardcoded demo profile at
+// 200, including handles nobody has claimed. Same handle-or-uid lookup /c/[handle].astro
+// already uses (routes/listings.ts getCreator), so a made-up handle now 404s for real.
+try {
+  await getCreator(username!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) {
+    return new Response('Not found', { status: 404 });
+  }
+  throw e;
+}
+
 // Cards on a profile belong to THIS creator, so both link kinds are scoped to
 // the handle in the URL rather than the shared demo creator.
 const handle = encodeURIComponent(username!);
 return renderMockupPage({
   siteUrl: Astro.url,
   html: mockupHtml,
-  title: `@${username} · avaTOK`,
+  title: `@${username} · Saathum`,
   listingHref: `/${handle}/mock-listing`,
   profileHref: creatorPath(username!),
 });

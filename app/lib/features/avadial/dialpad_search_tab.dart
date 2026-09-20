@@ -19,7 +19,7 @@ import '../../core/ui/messenger_theme.dart';
 
 /// The Calls app's Dialpad tab — AVATOK-ONLY (owner pivot 2026-07-16). AvaDial no
 /// longer places carrier/PSTN calls: dialing a number now resolves it against the
-/// AvaTOK directory (the same in-network identity every AvaTOK number already
+/// AvaTOK directory (the same in-network identity every Saathum number already
 /// carries — see features/avatok/ava_number.dart) and, on a hit, starts an
 /// in-app AvaTOK-to-AvaTOK call through [place1to1Call] — the SAME call flow the
 /// chat thread / contact profile "Call" buttons use. No `ACTION_CALL`/`tel:`
@@ -70,7 +70,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
 
   /// [AVADIAL-AVATOK-ONLY-1] Search is wired to the SAME AvaTOK directory lookup
   /// the rest of the app uses (Directory.search — features/avatok/contacts.dart),
-  /// which is deliberately EXACT-KEY: a complete email, an AvaTOK number (6+
+  /// which is deliberately EXACT-KEY: a complete email, a Saathum number (6+
   /// digits), or a raw uid. A bare name matches nothing here on purpose (the
   /// directory has no name index at scale — see Directory.search's doc comment);
   /// name search only ever applied to the LOCAL saved-contacts list, which this

@@ -15,7 +15,7 @@ import remarkUiCopy from './scripts/remark-ui-copy.mjs';
 // dev` works and the deployed bundle is byte-for-byte unchanged.
 const isDev = process.argv.includes('dev');
 
-// avatok.ai public web client.
+// saathum.com public web client.
 //
 // "hybrid" rendering on Astro 5 = `output: 'static'` + a server adapter:
 // every page is prerendered to static HTML by default (fast, edge-cached),
@@ -23,7 +23,7 @@ const isDev = process.argv.includes('dev');
 // This keeps the marketplace shippable as HTML while letting auth'd islands
 // (book / watch / consult / agent) run on the Cloudflare edge.
 export default defineConfig({
-  site: 'https://avatok.ai',
+  site: 'https://saathum.com',
   output: 'static',
   markdown: { remarkPlugins: [remarkUiCopy] },
   adapter: cloudflare({

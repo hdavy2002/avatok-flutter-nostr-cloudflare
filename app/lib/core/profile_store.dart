@@ -31,7 +31,7 @@ class Profile {
   // this under identity verification (see [privatePhoneVerified] placeholder).
   final String privatePhone;
   // When true, the user's QR card / contact areas show [privatePhone] INSTEAD of
-  // their AvaTOK number, and the AvaTOK dialpad routes calls to that number to
+  // their Saathum number, and the AvaTOK dialpad routes calls to that number to
   // their AvaTOK app. Off by default — privacy-first.
   final bool showPrivateNumber;
   // True once [privatePhone] has been confirmed via SMS OTP (owner request

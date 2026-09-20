@@ -8,8 +8,12 @@ import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
-import '../avavoice/avavoice_home.dart';
-import '../avavision/avavision_home.dart';
+// [SAATHUM] AI voice/vision creator studios are hidden for the narrowing (the
+// `ai_voice_agents` shelf is out of scope; see plan/SPEC.md). Nothing is
+// deleted — see the commented-out tiles below — so re-enabling is restoring
+// these two imports and un-commenting the tiles.
+// import '../avavoice/avavoice_home.dart';
+// import '../avavision/avavision_home.dart';
 import '../explore/explore_home.dart';
 import 'marketplace_browse.dart' show marketplaceTitle;
 import 'native_listing/native_listing_wizard_screen.dart';
@@ -71,30 +75,32 @@ class MarketplaceHub extends StatelessWidget {
             },
           ),
           const SizedBox(height: Msg.s3),
-          _Tile(
-            icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
-            title: uiCopy(UiMessage.m_voice_creator_studio_00d3771b01),
-            subtitle: uiCopy(UiMessage.m_build_and_manage_ai_voice_c16fcf4168),
-            onTap: () {
-              Analytics.capture('creator_studio_opened', {'studio': 'avavoice'});
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const AvaVoiceHome(),
-              ));
-            },
-          ),
-          const SizedBox(height: Msg.s3),
-          _Tile(
-            icon: PhosphorIcons.eye(PhosphorIconsStyle.regular),
-            title: uiCopy(UiMessage.m_vision_creator_studio_a882de6ba7),
-            subtitle: uiCopy(UiMessage.m_build_and_manage_ai_vision_2686c5e7ab),
-            onTap: () {
-              Analytics.capture('creator_studio_opened', {'studio': 'avavision'});
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const AvaVisionHome(),
-              ));
-            },
-          ),
-          const SizedBox(height: Msg.s3),
+          // [SAATHUM] Voice/Vision creator studio tiles hidden — see the import
+          // note above. Nothing deleted; un-comment both to restore.
+          // _Tile(
+          //   icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
+          //   title: uiCopy(UiMessage.m_voice_creator_studio_00d3771b01),
+          //   subtitle: uiCopy(UiMessage.m_build_and_manage_ai_voice_c16fcf4168),
+          //   onTap: () {
+          //     Analytics.capture('creator_studio_opened', {'studio': 'avavoice'});
+          //     Navigator.of(context).push(MaterialPageRoute(
+          //       builder: (_) => const AvaVoiceHome(),
+          //     ));
+          //   },
+          // ),
+          // const SizedBox(height: Msg.s3),
+          // _Tile(
+          //   icon: PhosphorIcons.eye(PhosphorIconsStyle.regular),
+          //   title: uiCopy(UiMessage.m_vision_creator_studio_a882de6ba7),
+          //   subtitle: uiCopy(UiMessage.m_build_and_manage_ai_vision_2686c5e7ab),
+          //   onTap: () {
+          //     Analytics.capture('creator_studio_opened', {'studio': 'avavision'});
+          //     Navigator.of(context).push(MaterialPageRoute(
+          //       builder: (_) => const AvaVisionHome(),
+          //     ));
+          //   },
+          // ),
+          // const SizedBox(height: Msg.s3),
           _Tile(
             icon: PhosphorIcons.plusSquare(PhosphorIconsStyle.regular),
             title: uiCopy(UiMessage.m_create_listing_815d30caa6),

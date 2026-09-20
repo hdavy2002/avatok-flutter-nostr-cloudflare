@@ -1,6 +1,6 @@
 ---
 title: Create a listing
-description: What a listing needs before it can be published on avaTOK, and how to fix the most common blockers.
+description: What a listing needs before it can be published on Saathum, and how to fix the most common blockers.
 section: creators
 order: 1
 updated: 2026-09-11
@@ -16,7 +16,7 @@ faq:
 draft: false
 ---
 
-avaTOK has three kinds of listing. **Live events** ("Live events") are a scheduled broadcast with a fixed start time. **Group classes and 1:1 consultations** ("Group classes" and "1:1 consultations") are paid time with an expert, either in a small group or one-to-one, booked against their availability. **Marketplace listings** (buy, sell, social) are simple items or offers with no schedule attached. Start a listing from [My listings](/dashboard/listings) → New listing.
+Saathum has three kinds of listing. **Live events** ("Live events") are a scheduled broadcast with a fixed start time. **Group classes and 1:1 consultations** ("Group classes" and "1:1 consultations") are paid time with an expert, either in a small group or one-to-one, booked against their availability. **Marketplace listings** (buy, sell, social) are simple items or offers with no schedule attached. Start a listing from [My listings](/dashboard/listings) → New listing.
 
 ## What every listing needs
 
@@ -40,7 +40,7 @@ Marketplace listings (buy, sell, social) can publish with just the above — no 
 
 ## Reading a blocker
 
-When a listing can't publish, avaTOK shows you the exact reason in one sentence — never a raw error code. A few you might see:
+When a listing can't publish, Saathum shows you the exact reason in one sentence — never a raw error code. A few you might see:
 
 - *"Add a photo, or generate the AI poster, before publishing."*
 - *"Set the date and time this event starts."*
