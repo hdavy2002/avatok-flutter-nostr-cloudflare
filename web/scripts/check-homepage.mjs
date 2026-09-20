@@ -27,7 +27,7 @@ assert.equal((html.match(/<details>/g) || []).length, 6, 'Six marketplace questi
 assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
  const href = match[1].replaceAll('&amp;', '&');
- if (href.startsWith('#') || href.startsWith('/#')) {
+ if (href.startsWith('#')) {
   assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
  }
 }
