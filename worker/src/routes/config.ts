@@ -962,6 +962,16 @@ export interface PlatformConfig {
   // TRUE to enable real checkout + per-tier daily allowance enforcement. One KV
   // flip, no redeploy.
   billingEnabled: boolean;
+  // [SAATHUM-FLAGS-1 2026-09-20] Product-scope switch, SEPARATE axis from
+  // billingEnabled above. billingEnabled asks "is checkout engineering-ready
+  // yet"; this asks "is the Phase-1 AI-usage subscription ladder even part of
+  // THIS product". Saathum narrows to devotional 1:1 consultations + live
+  // events — the Free/Plus/Pro/Max tiers are not part of that product and must
+  // stay dark even after billingEnabled/money-in is eventually restored for
+  // wallet checkout. Default FALSE. Read by routes/subscribe.ts
+  // (subscribeCheckout/subscribeAndroidVerify) and routes/plans.ts (getPlans).
+  // Boolean → NOT in numericKeys.
+  subscriptionPlansEnabled: boolean;
   // AvaWallet Google Play top-up (fixed-price `avatok_topup_*` products → Tokens).
   // Independent of billingEnabled (that gates subscriptions): a user can top up
   // their wallet even while subscription paywalls are off. When FALSE the verify
@@ -1003,6 +1013,15 @@ export interface PlatformConfig {
   virtualNumberVobizEnabled: boolean;
   virtualNumberProviderFailoverEnabled: boolean;
   teamIvrEnabled: boolean;           // master switch for /api/team/* (auto-attendant + team billing)
+  // [SAATHUM-FLAGS-1 2026-09-20] Product-scope switch, SEPARATE axis from
+  // teamIvrEnabled above. teamIvrEnabled asks "has dogfood passed yet";
+  // this asks "are Teams even part of THIS product". Saathum narrows to
+  // devotional 1:1 consultations + live events — Team Receptionist is not
+  // part of that product and must stay dark regardless of teamIvrEnabled's
+  // own state. Default FALSE. Read by routes/team.ts flagOff() (the single
+  // choke point every /api/team/* handler calls first). Boolean → NOT in
+  // numericKeys.
+  teamsEnabled: boolean;
   ivrAiFrontDesk: boolean;           // future: AI natural-language front desk (off; tap-menu is default)
   // Group invites with TRUE pending membership + Accept/Decline (owner request
   // 2026-06-29). OFF (default) = current behavior: added members join the group
@@ -2254,6 +2273,7 @@ const DEFAULTS: PlatformConfig = {
   callNativeAnswerV1: true,        // [CALL-NATIVE-ANSWER-1] native ring + instant connecting continuity
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
+  subscriptionPlansEnabled: false, // [SAATHUM-FLAGS-1] Saathum product-scope: no AI-usage tier ladder
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
   avatokVanityNumberTokens: 0,     // [PIVOT-PAID-NUMBER-1] 0 = paid vanity-number path DARK until priced
@@ -2277,6 +2297,7 @@ const DEFAULTS: PlatformConfig = {
   virtualNumberVobizEnabled: true,
   virtualNumberProviderFailoverEnabled: false,
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
+  teamsEnabled: false,             // [SAATHUM-FLAGS-1] Saathum product-scope: Teams not part of this product
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   listingLivenessGate: true,       // ON 2026-07-03: mandatory liveness (once) to create/publish a listing
