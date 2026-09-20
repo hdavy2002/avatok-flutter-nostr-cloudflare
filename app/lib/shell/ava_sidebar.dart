@@ -362,40 +362,47 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // _special('team', 'Team', 'AI receptionist & staff',
               //     PhosphorIcons.usersThree(PhosphorIconsStyle.bold), AD.tabCalls,
               //     paid: true, paidHidden: _onPaidTeam),
-              // Subscribe — moved to sit just below Contacts (was a top CTA).
-              // FREE LAUNCH: hidden while billing is off (no paywalls).
-              if (RemoteConfig.billingEnabled)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 4),
-                child: ZinePressable(
-                  onTap: () => widget.onSelect('subscribe'),
-                  color: AD.iconVideo,
-                  borderColor: AD.borderControl,
-                  borderWidth: 1,
-                  radius: BorderRadius.circular(AD.rListCard),
-                  boxShadow: const [],
-                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
-                  child: Row(children: [
-                    // White fill so the badge's glyph stays legible against the
-                    // violet Subscribe tile. `ZineIconBadge` picks its glyph
-                    // colour from the fill's luminance, so a light fill here
-                    // gives a dark glyph.
-                    ZineIconBadge(
-                        icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        UiText(UiMessage.m_subscribe_cc0e38da9c, style: ADText.rowName(c: Colors.white)),
-                        const SizedBox(height: 1),
-                        UiText(UiMessage.m_plans_upgrades_83f7d940c8,
-                            style: ADText.statCaption(c: Colors.white70)),
-                      ]),
-                    ),
-                    PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                        size: 14, color: Colors.white),
-                  ]),
-                ),
-              ),
+              // Subscribe — HIDDEN for the Saathum narrowing (subscription
+              // plans are out of scope; see plan/SPEC.md). This used to show
+              // whenever RemoteConfig.billingEnabled was on; that condition is
+              // independent of this rename and could flip back on for reasons
+              // unrelated to subscriptions, so the tile is hard-hidden here
+              // (matching the Team row above) rather than left riding on the
+              // billing flag. Re-enable by un-commenting this block AND
+              // restoring the `if (RemoteConfig.billingEnabled)` guard.
+              // Nothing was deleted — see _planChip() for the matching change.
+              // if (RemoteConfig.billingEnabled)
+              // Padding(
+              //   padding: const EdgeInsets.only(top: 4, bottom: 4),
+              //   child: ZinePressable(
+              //     onTap: () => widget.onSelect('subscribe'),
+              //     color: AD.iconVideo,
+              //     borderColor: AD.borderControl,
+              //     borderWidth: 1,
+              //     radius: BorderRadius.circular(AD.rListCard),
+              //     boxShadow: const [],
+              //     padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
+              //     child: Row(children: [
+              //       // White fill so the badge's glyph stays legible against the
+              //       // violet Subscribe tile. `ZineIconBadge` picks its glyph
+              //       // colour from the fill's luminance, so a light fill here
+              //       // gives a dark glyph.
+              //       ZineIconBadge(
+              //           icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Colors.white),
+              //       const SizedBox(width: 12),
+              //       Expanded(
+              //         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              //           UiText(UiMessage.m_subscribe_cc0e38da9c, style: ADText.rowName(c: Colors.white)),
+              //           const SizedBox(height: 1),
+              //           UiText(UiMessage.m_plans_upgrades_83f7d940c8,
+              //               style: ADText.statCaption(c: Colors.white70)),
+              //         ]),
+              //       ),
+              //       PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+              //           size: 14, color: Colors.white),
+              //     ]),
+              //   ),
+              // ),
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
               // [LAUNCH-DARK-1 2026-09-05] The APPS group is HIDDEN, header and
@@ -463,12 +470,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
     // FREE LAUNCH: no paywalls. With billing off, show a plain non-tappable
     // "FREE PLAN" pill (no upgrade route). Reverts to the upgrade chip when
     // billingEnabled flips back on.
-    final billingOn = RemoteConfig.billingEnabled;
+    //
+    // [SAATHUM] Subscription plans are hidden for the narrowing (see the
+    // Subscribe tile above), so this never taps through to 'subscribe' even
+    // when billingEnabled is on — always the plain, non-tappable pill.
     return AdSticker(
-      billingOn ? uiCopy(UiMessage.m_free_plan_upgrade_ffcfe24d15) : uiCopy(UiMessage.m_free_plan_899e2f1f2a),
+      uiCopy(UiMessage.m_free_plan_899e2f1f2a),
       kind: AdStickerKind.hint,
       icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
-      onTap: billingOn ? () => widget.onSelect('subscribe') : null,
     );
   }
 

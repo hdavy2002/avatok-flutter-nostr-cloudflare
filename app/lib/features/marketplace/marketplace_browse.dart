@@ -817,6 +817,16 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                 final sections = <Widget>[];
                 var index = 0;
                 for (final group in kListingGroups) {
+                  // [SAATHUM] `find_your_people` (companionship — listener,
+                  // home friend, adda rooms, etc.) is out of scope for the
+                  // Saathum narrowing (plan/SPEC.md): three shelves become
+                  // two. Filtered here, not in the generated `kListingGroups`
+                  // mirror (owned by lane 01-taxonomy, regenerated from
+                  // Specs/listing-taxonomy.json), so the shelf is gone
+                  // regardless of which lane's regeneration has landed, and
+                  // nothing is hand-edited in a generated file. Nothing is
+                  // deleted — drop this line to restore the shelf.
+                  if (group.id == 'find_your_people') continue;
                   final selected = _selectedCategory[group.id];
                   final groupCards = grouped.cardsFor(group.id);
                   if (groupCards.isEmpty) continue;
