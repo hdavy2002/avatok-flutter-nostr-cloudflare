@@ -1,4 +1,4 @@
-# avatok.ai — web is the public booking funnel. The authenticated app-only
+# saathum.com — web is the public booking funnel. The authenticated app-only
 # surfaces (creator dashboard, AvaVision, admin ops) stay reachable by URL but
 # are kept out of search. Per-page <meta name="robots" content="noindex"> is the
 # authoritative signal; these rules are a belt-and-suspenders for crawlers.
@@ -14,9 +14,9 @@
 # Why the AI crawlers below get an explicit Allow: several of them (GPTBot,
 # Google-Extended, Applebot-Extended, CCBot) are opt-OUT crawlers that
 # publishers commonly block, and an explicit Allow is the unambiguous signal
-# that avaTOK wants to be read, quoted and cited when someone asks an assistant
+# that Saathum wants to be read, quoted and cited when someone asks an assistant
 # how to earn money from home. Do NOT add a Disallow for these without a
-# deliberate decision — it would remove avaTOK from ChatGPT, Claude, Perplexity
+# deliberate decision — it would remove Saathum from ChatGPT, Claude, Perplexity
 # and Google AI Overviews answers.
 
 User-agent: *
@@ -117,4 +117,4 @@ Disallow: /dashboard
 Disallow: /admin
 Disallow: /vision
 
-Sitemap: https://avatok.ai/sitemap.xml
+Sitemap: https://saathum.com/sitemap.xml

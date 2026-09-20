@@ -106,7 +106,7 @@ function fmtSlotTime(ms: number, timeZone: string): string {
 }
 
 // ─────────────────────────── month calendar ────────────────────────────────
-// [LIST-PAGE-2 gap 1] Comp: design/live-streaming/avaTOK Listing Details.dc.html
+// [LIST-PAGE-2 gap 1] Comp: design/live-streaming/Saathum Listing Details.dc.html
 // :241-261 — "SEPTEMBER 2026" with ‹ › nav, S M T W T F S header, today/selected
 // filled red, dots under show days, "● = SHOW DAY · EVERY FRIDAY" legend.
 
@@ -267,7 +267,7 @@ export default function BookingBox({
   const [qty, setQty] = useState(1);
   const cap = Math.max(1, maxPerBooking || 4);
   // [LIST-DETAIL-BUG-1] Default matches the server-side default in
-  // ListingDetailView.astro — avaTOK is India-only today (CLAUDE.md "no
+  // ListingDetailView.astro — Saathum is India-only today (CLAUDE.md "no
   // company"), so a null/older `timezone` field means Asia/Kolkata, not the
   // reader's own browser zone.
   const tz = timezone || 'Asia/Kolkata';

@@ -483,7 +483,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       res = await consultPrejoin(booking, jwt);
     } catch {
       if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-      showRefusal({ ok: false, reason: 'unavailable', status: 0, detail: 'could not reach avaTOK' });
+      showRefusal({ ok: false, reason: 'unavailable', status: 0, detail: 'could not reach Saathum' });
       return;
     }
     if (!mountedRef.current || generation !== operationGenerationRef.current) return;
@@ -1353,7 +1353,7 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
             <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.a52b97a613669bf9" source="Not open yet" /></h1>
-            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.10dffb4cde0f93a3" source="Paid 1:1 sessions aren't live on avaTOK yet. Check back soon." />{" "}</p>
+            <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.10dffb4cde0f93a3" source="Paid 1:1 sessions aren't live on Saathum yet. Check back soon." />{" "}</p>
             <a href="/explore" className="no-underline">
               <Button variant="ghost" label={uiT("web-consult-gs.3b73900b8d29f963","Explore")} />
             </a>
@@ -1364,7 +1364,7 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
       return (
         <Centered>
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.b1cac7b807bbb517" source="Couldn't reach avaTOK" /></h1>
+            <h1 className="font-display font-semibold text-[26px] text-ink"><UiText id="web-consult-gs.b1cac7b807bbb517" source="Couldn't reach Saathum" /></h1>
             <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-consult-gs.a3dcdf028063c109" source="Something went wrong on our end. Please try again." />{" "}</p>
             <Button variant="lime" label={uiT("web-consult-gs.d8b8392e2c542950","Try again")} onClick={onRetry} />
           </div>

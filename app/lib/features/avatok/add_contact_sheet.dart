@@ -17,7 +17,7 @@ import 'contacts.dart';
 /// New-chat sheet — a RESOLVE box, not a phone-book browser.
 ///
 /// PRIVACY (owner decision 2026-06-27): you find people ONLY by their exact,
-/// owner-controlled keys — an email or an AvaTOK number — never by browsing /
+/// owner-controlled keys — an email or a Saathum number — never by browsing /
 /// searching the device address book by private number. (Resolving a private
 /// phone → account is disabled server-side, so a phone number simply returns
 /// nothing.) Your already-saved AvaTOK contacts appear as quick-picks. Inviting
@@ -48,7 +48,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   List<Contact> _saved = const [];
   String _query = '';
   bool _resolving = false;     // looking the query up against the directory
-  Contact? _resolvedHit;       // an AvaTOK account found by email / AvaTOK number
+  Contact? _resolvedHit;       // an AvaTOK account found by email / Saathum number
   bool _resolvedMiss = false;  // searched but nothing matched
   bool _inviting = false;
 
@@ -77,7 +77,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     _debounce = Timer(const Duration(milliseconds: 450), () => _maybeResolve(q));
   }
 
-  /// Resolve ONLY emails and AvaTOK numbers. A bare name isn't a lookup key here
+  /// Resolve ONLY emails and Saathum numbers. A bare name isn't a lookup key here
   /// (use global search for that), and a private phone resolves to nothing by
   /// design — so we don't even probe for it.
   Future<void> _maybeResolve(String q) async {

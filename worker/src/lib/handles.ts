@@ -3,7 +3,7 @@
 // Handles were retired as the in-app identity (see routes/api.ts's
 // `handleCheck`/HANDLE_RE comment — "Handles are retired site-wide",
 // Specs/AVATOK-NUMBER-FEATURE-SPEC.md). That stands for the APP: the
-// AvaTOK number remains the in-app identity, and `/api/handle/check`
+// Saathum number remains the in-app identity, and `/api/handle/check`
 // stays deprecated/410.
 //
 // SUPERSEDED FOR THE WEB (owner decision 2026-09-10): the website needs a

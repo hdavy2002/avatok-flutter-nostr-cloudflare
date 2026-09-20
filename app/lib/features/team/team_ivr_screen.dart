@@ -13,7 +13,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
 import '../avatok/place_1to1_call.dart' show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
-/// TeamIvrScreen — the caller-facing auto-attendant for a team's AvaTOK number.
+/// TeamIvrScreen — the caller-facing auto-attendant for a team's Saathum number.
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
 ///
 /// Real IVR experience: on connect, **Ava speaks** the greeting + menu (one-way

@@ -18,7 +18,7 @@ import 'device_contacts.dart';
 /// Google/Gmail: contacts live locally here AND (Phase 2) get backed up to AvaTOK's
 /// own servers, so losing a Google account or a SIM never locks the user out.
 ///
-/// It merges the device phone book with AvaTOK's own extra fields (AvaTOK number,
+/// It merges the device phone book with AvaTOK's own extra fields (Saathum number,
 /// emails, LinkedIn, custom fields) into one portable record.
 class AvaBookContact {
   final String name;

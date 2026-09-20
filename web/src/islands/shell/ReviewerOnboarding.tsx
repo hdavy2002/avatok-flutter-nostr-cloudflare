@@ -3,7 +3,7 @@ import { UiText } from "../../lib/i18n/react";
 /* ReviewerOnboarding — first-sign-in onboarding + terms acceptance for accounts
  * in REVIEWER MODE (payment-gateway or app-store reviewers).
  *
- * [REVIEWER-ONBOARD-1 2026-08-28] A reviewer arriving at avatok.ai has no
+ * [REVIEWER-ONBOARD-1 2026-08-28] A reviewer arriving at saathum.com has no
  * context: they land on a marketplace that is mid-pivot, half-populated with
  * test data, with payments switched off. This screen is the honest briefing —
  * what the product is, what stage it is at, what they will and will not be able
@@ -162,14 +162,14 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
   return createPortal(
     <div className="ro-scrim" role="dialog" aria-modal="true" aria-labelledby="ro-title">
       <div className="ro-card">
-        <p className="ro-kicker"><UiText id="web-dashboard.721feaa18450b1e6" source="Welcome to avaTOK" /></p>
+        <p className="ro-kicker"><UiText id="web-dashboard.721feaa18450b1e6" source="Welcome to Saathum" /></p>
         <h2 className="ro-title" id="ro-title"><UiText id="web-dashboard.74e492d5d0df0bab" source="Before you start" /></h2>
 
-        <p className="ro-lead"><UiText id="web-dashboard.0cbbe6459d3b69c9" source="avaTOK is a creator marketplace for paid live events, private 1:1 sessions and AI voice agents. Thank you for taking the time to review it." />{" "}</p>
+        <p className="ro-lead"><UiText id="web-dashboard.0cbbe6459d3b69c9" source="Saathum is a creator marketplace for paid live events, private 1:1 sessions and AI voice agents. Thank you for taking the time to review it." />{" "}</p>
 
         <ul className="ro-list">
           <li>
-            <strong><UiText id="web-dashboard.63daeb29abfbc2cc" source="We are an early-stage startup." /></strong>{" "}<UiText id="web-dashboard.aac0944d09bd4cd8" source="avaTOK is built and operated by an independent founding team in India. We are currently an" />{' '}
+            <strong><UiText id="web-dashboard.63daeb29abfbc2cc" source="We are an early-stage startup." /></strong>{" "}<UiText id="web-dashboard.aac0944d09bd4cd8" source="Saathum is built and operated by an independent founding team in India. We are currently an" />{' '}
             <strong><UiText id="web-dashboard.2cc9b827c20aa0f9" source="unregistered business" /></strong><UiText id="web-dashboard.0a984f1d42a2293b" source="; registration of a company in Mumbai is in process." />{" "}<a href="/terms#status" target="_blank" rel="noreferrer"><UiText id="web-dashboard.1e7c107176e052c9" source="Read our full status" /></a>.
           </li>
           <li>

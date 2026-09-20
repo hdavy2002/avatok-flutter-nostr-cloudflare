@@ -3,7 +3,7 @@
 //
 // Owner decision: every creator name, avatar and profile affordance on the
 // front page and the listing detail should land here. FOR NOW the page is the
-// bazaar comp from design/live-streaming/ ("avaTOK Creator Profile.dc.html") —
+// bazaar comp from design/live-streaming/ ("Saathum Creator Profile.dc.html") —
 // look and feel only, hardcoded mock data, backend wiring comes later.
 //
 // WHY A DIRECTORY ROUTE
@@ -53,7 +53,7 @@ const handle = encodeURIComponent(username!);
 return renderMockupPage({
   siteUrl: Astro.url,
   html: mockupHtml,
-  title: `@${username} · avaTOK`,
+  title: `@${username} · Saathum`,
   listingHref: `/${handle}/mock-listing`,
   profileHref: creatorPath(username!),
 });

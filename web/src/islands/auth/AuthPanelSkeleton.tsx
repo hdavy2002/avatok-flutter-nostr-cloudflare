@@ -1,6 +1,6 @@
 import { UiText } from "../../lib/i18n/react";
 /* AuthPanelSkeleton — shown by <ClerkLoading> while Clerk's clerk-js bundle is
- * still downloading/initialising from clerk.avatok.ai. Without this the panel
+ * still downloading/initialising from clerk.saathum.com. Without this the panel
  * area is blank for the ~second or two the SDK takes to boot, which reads as a
  * broken/hung page. A zine-styled card with a spinner keeps the page alive and
  * matches the eventual <SignIn/> footprint so there's minimal layout shift.

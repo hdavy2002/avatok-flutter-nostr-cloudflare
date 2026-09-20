@@ -1,7 +1,7 @@
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* Shared primitives for the avaTOK auth surface (/sign-in, /sign-up).
+/* Shared primitives for the Saathum auth surface (/sign-in, /sign-up).
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Built from design/login/README.md. All styling
  * lives in src/styles/auth.css — these components only own structure, state and
@@ -88,7 +88,7 @@ export function Wordmark({ href = '/' }: { href?: string }) {
   const {t:uiT}=useUiTranslation("web-auth");
 
   return (
-    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","avaTOK home")}>
+    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","Saathum home")}>
       <span className="wm-ava">ava</span>
       <span className="wm-tok">TOK</span>
     </a>
@@ -278,7 +278,7 @@ export function Divider({ label }: { label: string }) {
  *
  * [WEB-PWLESS-1 2026-09-06] GOOGLE IS NOW LIVE; FACEBOOK IS STILL NOT.
  * `oauth_google` is the only provider enabled on the instance — verified against
- * https://clerk.avatok.ai/v1/environment (`user_settings.social`). Rendering a
+ * https://clerk.saathum.com/v1/environment (`user_settings.social`). Rendering a
  * Facebook button would produce a visibly dead control that fails at Clerk on
  * click, which is worse than no button; that is why this is one button and not a
  * pair, and why `SOCIAL_ENABLED` is gone rather than flipped (a single boolean

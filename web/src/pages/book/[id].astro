@@ -97,7 +97,7 @@ const langTag = languageLabel(listing.spoken_lang ?? null);
 const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing.creator.handle}` : null);
 ---
 
-<Base headerAuth="static" title={`${verb} · ${listing.title} · avatok.ai`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on avatok.ai.`} navStatic={true}>
+<Base headerAuth="static" title={`${verb} · ${listing.title} · saathum.com`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on saathum.com.`} navStatic={true}>
   <main class="mx-auto max-w-5xl px-4 py-8">
     <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
       <!-- What you're booking (server-rendered, instant) -->
@@ -124,8 +124,8 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
           <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
           {listing.creator && (
             <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-              <Avatar src={listing.creator.avatar} name={hostName ?? 'avaTOK creator'} size={40} />
-              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'avaTOK creator'}</span>
+              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saathum creator'} size={40} />
+              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saathum creator'}</span>
             </a>
           )}
           {(startsAtLabel || durationTag || langTag) && (

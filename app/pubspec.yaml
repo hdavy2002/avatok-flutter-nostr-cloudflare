@@ -197,7 +197,7 @@ dependencies:
   # Contact QR code (profile share)
   qr_flutter: ^4.1.0
   # Compose the shareable/downloadable QR card image (JPEG) — branded card with
-  # title + QR + AvaTOK number, generated programmatically (owner request 2026-06-29).
+  # title + QR + Saathum number, generated programmatically (owner request 2026-06-29).
   image: ^4.2.0
   # Print the QR card (post it at a business) — wraps the generated card in a PDF.
   printing: ^5.13.4

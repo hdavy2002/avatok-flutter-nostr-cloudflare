@@ -1,5 +1,5 @@
 ---
-// Creator dashboard shell — on-brand with the avatok home page (zine design:
+// Creator dashboard shell — on-brand with the Saathum home page (zine design:
 // cream paper, ink borders, hard shadows, Fredoka headings / Nunito body, lime
 // + blue + coral accents). Left rail grouped Featured / Studio / Apps / Account,
 // colour-chipped icon rows with an active state, a sticky page header with the
@@ -7,7 +7,7 @@
 // to the bottom. Customers recover purchases here; creators manage and schedule
 // their live events and appointments here, but [APP-ONLY-TX-1 2026-09-12,
 // RULEBOOK-PAID-SESSIONS §7] never TRANSMIT from the browser — every creator
-// "start" action deep-links into the avaTOK app.
+// "start" action deep-links into the Saathum app.
 import Base from './Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SidebarUser from '../islands/shell/SidebarUser.tsx';
@@ -21,7 +21,7 @@ export interface Props {
   /** Which sidebar item is active (matches an item `key`). */
   active?: string;
 }
-const { title = 'Dashboard · avatok.ai', heading, subtitle, active = 'overview' } = Astro.props;
+const { title = 'Dashboard · saathum.com', heading, subtitle, active = 'overview' } = Astro.props;
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
@@ -143,7 +143,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
           mobile drawer keeps it — there the header is behind the overlay, and
           this row also holds the only close button. */}
       <div class="flex items-center gap-2 border-b-zine border-ink px-5 py-4 lg:hidden">
-        <a data-india-i18n-attr="aria-label:web-dashboard.cb2388cd9265d98f" href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+        <a data-india-i18n-attr="aria-label:web-dashboard.cb2388cd9265d98f" href="/" class="flex items-center gap-2 no-underline" aria-label="saathum.com home">
           <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-blueInk)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle></svg>
           <span class="font-display font-semibold text-[21px] leading-none tracking-[0.03em] text-ink">ava<span class="text-blueInk">TOK</span></span>
         </a>

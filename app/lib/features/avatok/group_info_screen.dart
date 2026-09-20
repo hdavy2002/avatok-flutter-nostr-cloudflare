@@ -219,7 +219,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   /// [AVA-GRPINFO-PROFILES] Open the full profile for a tapped MEMBERS row.
   ///
-  /// PEER rows → `ContactProfileScreen` (photo, name, AvaTOK number, the QR "add
+  /// PEER rows → `ContactProfileScreen` (photo, name, Saathum number, the QR "add
   /// me" share card), mirroring `chat_thread.dart`'s `_openMemberProfile`
   /// ([AVA-GRP-UI]) contract — same screen, same `avatarUrl` seed.
   ///

@@ -37,7 +37,7 @@ const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf
 // same structured data — a listing that describes itself differently
 // depending on which of its URLs a crawler reached is worse than one that
 // describes itself not at all.
-const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
+const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://saathum.com').toString();
 const eventLd = listingJsonLd(listing, pageUrl);
 const crumbLd = listingBreadcrumbLd(listing, pageUrl);
 

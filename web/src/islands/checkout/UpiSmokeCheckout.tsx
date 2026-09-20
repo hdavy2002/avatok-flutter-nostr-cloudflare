@@ -87,7 +87,7 @@ export function UpiSmokeCheckoutView({deps, resumeFromUrl = true}: {deps: SmokeD
     !intent.claim_submitted ? 'After paying, enter the transaction reference from your UPI app.' :
     'Reference saved. Waiting for matching bank evidence.';
   return <section className="ph-no-capture ph-mask" data-ph-no-capture style={{width:'min(100%, 560px)',background:'#fff',border:'2px solid #171717',borderRadius:24,padding:28,fontFamily:'Nunito, sans-serif'}}>
-    <p>AvaTOK internal test · administrators only</p>
+    <p>Saathum internal test · administrators only</p>
     <h1>UPI payment smoke test</h1>
     <p>₹1 internal payment test. This does not create a booking.</p>
     {message && <p role="alert">{message}</p>}

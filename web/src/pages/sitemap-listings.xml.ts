@@ -15,7 +15,7 @@ import { listingPath } from '../lib/urls';
 
 export const prerender = false;
 
-const SITE = 'https://avatok.ai';
+const SITE = 'https://saathum.com';
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');

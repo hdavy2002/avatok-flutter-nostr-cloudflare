@@ -139,7 +139,7 @@ export function listingHref(listing: CardModel): string {
 }
 
 /* ── The bazaar palette ──────────────────────────────────────────────────────
- * Lifted verbatim from design/live-streaming/avaTOK Marketplace.dc.html (the
+ * Lifted verbatim from design/live-streaming/Saathum Marketplace.dc.html (the
  * PAL object), so the real cards and the comp cannot drift apart. `dark` flips
  * the whole card to cream-on-colour, which changes text, chip and hairline
  * colours together — that is why it is one table and not four loose values.
@@ -205,7 +205,7 @@ function paletteFor(id: string): Pal {
  * The bazaar marketplace card, rendered from REAL listing data.
  *
  * [CARD-BAZAAR-1 2026-08-30, owner decision] This replaces the plain poster tile
- * with the design from design/live-streaming/avaTOK Marketplace.dc.html: 3px ink
+ * with the design from design/live-streaming/Saathum Marketplace.dc.html: 3px ink
  * border, 26px radius, a 6×7px hard shadow, a coloured card body, the scalloped
  * ticket edge under the photo, status pill, favourite heart, two stub lines, two
  * chips, BOOK NOW / CALENDAR and a creator footer.
@@ -304,7 +304,7 @@ export function ListingTile({
   // [CARD-CREATOR-LINK-1] The creator's page, when we know their handle. Same
   // /c/<handle> route the listing page's host card links to, so there is one
   // answer to "where does a creator's name go".
-  const creatorName = c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK');
+  const creatorName = c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'Saathum');
   const creatorHref = c.creator?.handle ? `/c/${encodeURIComponent(c.creator.handle)}` : null;
   const creatorAvatarNode = (
     <span aria-hidden="true" style={{
@@ -621,7 +621,7 @@ export function ListingTile({
           letterSpacing: '.1em', color: p.stub, textTransform: 'uppercase',
         }}>
           <span className="truncate">{c.category ?? c.kind ?? uiT("web-common.3ec404f37aa2fad6","LISTING")}</span>
-          <span className="truncate">{language ?? uiT("web-common.35fd151dd99b83c6","AVATOK")}</span>
+          <span className="truncate">{language ?? uiT("web-common.35fd151dd99b83c6","SAATHUM")}</span>
         </div>
 
         {/* [CARD-UNIFORM-1] Title and body are FIXED-HEIGHT blocks — two lines
@@ -710,7 +710,7 @@ export function ListingTile({
               : initials}
           </span>
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol }} className="truncate">
-            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : uiT("web-common.ee1d5e5358dcacd0","avaTOK"))}
+            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : uiT("web-common.ee1d5e5358dcacd0","Saathum"))}
             {/* [LIST-TRUST-1 §2.3] The AI badge replaces the ✓ on an agent card —
                 the tick belongs to the human behind it, shown on the detail page,
                 never here. Every other lane's tick is EARNED, never unconditional. */}

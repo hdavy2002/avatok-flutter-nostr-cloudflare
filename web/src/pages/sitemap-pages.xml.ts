@@ -1,4 +1,4 @@
-// [WEB-SEO-1 2026-08-27] avatok.ai static-pages sitemap.
+// [WEB-SEO-1 2026-08-27] saathum.com static-pages sitemap.
 // [WEB-SEO-3 2026-09-10] Renamed from sitemap.xml.ts to sitemap-pages.xml.ts.
 // This file's content and behaviour are UNCHANGED — only the URL moved, from
 // /sitemap.xml to /sitemap-pages.xml. /sitemap.xml is now a sitemapindex (see
@@ -37,7 +37,7 @@ import { getHelpEntries, helpUrl } from '../lib/help';
 
 export const prerender = true;
 
-const SITE = 'https://avatok.ai';
+const SITE = 'https://saathum.com';
 
 /** [path, changefreq, priority] */
 const ROUTES: Array<[string, string, string, string?]> = [

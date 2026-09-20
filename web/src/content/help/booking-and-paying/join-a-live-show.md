@@ -10,7 +10,7 @@ faq:
   - q: "Can I still join a show a few minutes after it was meant to start?"
     a: "You can buy a ticket up to about 15 minutes after the scheduled start. If the creator hasn't gone live by then, the show is treated as a creator no-show and ticket holders are refunded."
   - q: "What if the creator never goes live?"
-    a: "You don't need to do anything — if the creator hasn't gone live about 15 minutes after the scheduled start, avaTOK cancels your ticket as a creator no-show and starts a full refund automatically."
+    a: "You don't need to do anything — if the creator hasn't gone live about 15 minutes after the scheduled start, Saathum cancels your ticket as a creator no-show and starts a full refund automatically."
 draft: false
 ---
 
@@ -20,7 +20,7 @@ Open your ticketed show from "All my bookings" or the link in your confirmation.
 
 ## When a show counts as "over"
 
-A show moves through a few states, and avaTOK — every page that shows it, checkout included — reads all of them from the same clock, so they agree on whether a show is over:
+A show moves through a few states, and Saathum — every page that shows it, checkout included — reads all of them from the same clock, so they agree on whether a show is over:
 
 - **Upcoming** — before the scheduled start.
 - **Starting** — the scheduled start time has passed but the platform has not yet seen the creator actually go live.
@@ -34,6 +34,6 @@ A show that was never marked live and whose scheduled end has already passed is 
 
 ## If the creator never starts the show
 
-If the creator still hasn't gone live about 15 minutes after the scheduled start, you don't need to raise a support ticket. avaTOK's automatic check cancels your ticket as a creator no-show and refunds it in full, whether or not you had opened the show page. The refund goes back the way you paid (to your token balance if you paid from it); a refund to UPI or a card can take a little time to show at your bank. See [Refunds & Cancellations](/refunds) for how refunds work more generally.
+If the creator still hasn't gone live about 15 minutes after the scheduled start, you don't need to raise a support ticket. Saathum's automatic check cancels your ticket as a creator no-show and refunds it in full, whether or not you had opened the show page. The refund goes back the way you paid (to your token balance if you paid from it); a refund to UPI or a card can take a little time to show at your bank. See [Refunds & Cancellations](/refunds) for how refunds work more generally.
 
 If the creator went live but the show ended early or they dropped off, it isn't refunded automatically — email support@avatok.ai with your booking details and we'll review it.

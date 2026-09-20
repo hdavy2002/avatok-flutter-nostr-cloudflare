@@ -1,4 +1,4 @@
-// [WEB-SEO-3 2026-09-10] avatok.ai sitemap index.
+// [WEB-SEO-3 2026-09-10] saathum.com sitemap index.
 //
 // Replaces the old single-file sitemap.xml.ts (now sitemap-pages.xml.ts — the
 // static marketing routes) with a <sitemapindex> that references it plus the
@@ -14,7 +14,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = true;
 
-const SITE = 'https://avatok.ai';
+const SITE = 'https://saathum.com';
 
 const SITEMAPS = ['/sitemap-pages.xml', '/sitemap-listings.xml', '/sitemap-creators.xml'];
 

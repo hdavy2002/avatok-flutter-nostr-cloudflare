@@ -1,6 +1,6 @@
 // Contact-book backup/restore (owner request 2026-07-13; scaled 2026-07-14) — the
 // "don't rely on Gmail" lane. A user's AvaTOK contact book (their phone contacts
-// merged with the extra details they add in AvaTOK — AvaTOK number, emails,
+// merged with the extra details they add in AvaTOK — Saathum number, emails,
 // LinkedIn, custom fields) is stored on AvaTOK's OWN servers so a lost Google
 // account or SIM can never lock them out of their contacts.
 //

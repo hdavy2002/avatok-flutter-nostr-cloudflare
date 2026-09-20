@@ -31,7 +31,7 @@ const creatorHandle = listing?.creator?.handle ?? null;
 
 const og = listing
   ? listingOg(listing)
-  : { title: `${title} · avatok.ai`, description: 'Watch live on avatok.ai.', image: undefined, extra: [] as Array<{ property?: string; name?: string; content: string }> };
+  : { title: `${title} · saathum.com`, description: 'Watch live on saathum.com.', image: undefined, extra: [] as Array<{ property?: string; name?: string; content: string }> };
 
 // The shell is cacheable; the island fetches live state per-viewer.
 Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
@@ -46,7 +46,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-rev
 
   <main class="min-h-screen bg-paper">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-      <a data-i18n="web-watch.6c268582050557ce" href="/explore" class="font-display font-semibold text-[18px] text-ink no-underline">avatok.ai</a>
+      <a data-i18n="web-watch.6c268582050557ce" href="/explore" class="font-display font-semibold text-[18px] text-ink no-underline">saathum.com</a>
       <a data-i18n="web-watch.6149c6fed086c92e" href="/explore" class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline">← Explore</a>
     </div>
 

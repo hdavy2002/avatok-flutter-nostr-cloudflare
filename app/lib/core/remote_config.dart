@@ -956,7 +956,7 @@ class RemoteConfig {
   // all default OFF so a config-fetch failure keeps today's behaviour exactly
   // as-is. Staging first; prod flipped one at a time on the owner's say-so.
   /// Phase A — the friend/business channel split: email-only new-chat search,
-  /// tappable AvaTOK numbers → dialpad, the no-answer card, and the named
+  /// tappable Saathum numbers → dialpad, the no-answer card, and the named
   /// incoming-business-call screen. Mirrors config.ts `businessCallUx`.
   static bool get businessCallUx => _b('businessCallUx', false);
   /// [AVACALL-INUI-1] Use the branded IncomingBusinessCallScreen (avatar +

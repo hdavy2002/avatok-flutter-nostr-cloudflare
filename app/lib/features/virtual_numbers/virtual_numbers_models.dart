@@ -140,7 +140,7 @@ class VirtualLine {
   bool can(String capability) => capabilities[capability] == true;
   bool get isDid => kind == VirtualLineKind.did;
   bool get isActive => status == VirtualLineStatus.active;
-  String get typeLabel => isDid ? 'DID number' : 'AvaTOK number';
+  String get typeLabel => isDid ? 'DID number' : 'Saathum number';
   String get statusLabel => switch (status) {
         VirtualLineStatus.active => 'Active',
         VirtualLineStatus.provisioning => 'Setting up',

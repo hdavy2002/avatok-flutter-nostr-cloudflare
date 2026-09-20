@@ -105,7 +105,7 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
           <p className="max-w-md font-body font-bold text-[15px] text-inkSoft">
             {service === 'vision'
               ? uiT("web-dashboard.60eccc20e3a19216","Create an AI vision coach — pick a template, set the prompt and rate, then publish. Sessions run in the app.")
-              : uiT("web-dashboard.7fa4b5c5ae73fd6f","Create AI voice agents in the AvaTOK app, then manage and publish them here.")}
+              : uiT("web-dashboard.7fa4b5c5ae73fd6f","Create AI voice agents in the Saathum app, then manage and publish them here.")}
           </p>
           {rows.length === 0 && api.createHref && <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.69fc1fd220c0cbb0" source="Create your first one" /></a>}
         </div>

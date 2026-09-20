@@ -25,7 +25,7 @@ import 'phone_theme.dart';
 
 /// AvaPhone — a PSTN-style phone experience that is, under the hood, pure
 /// AvaTOK→AvaTOK in-network calling/messaging (NO real PSTN). You dial an
-/// AvaTOK number directly (no need to save a contact first); reaching a stranger
+/// Saathum number directly (no need to save a contact first); reaching a stranger
 /// who doesn't answer drops you to their AvaVoice receptionist to leave a
 /// voicemail. Three surfaces, mirroring a phone dialer:
 ///   • Calls     — favourites (most-dialed) + recent calls + the dialpad.
@@ -33,9 +33,9 @@ import 'phone_theme.dart';
 ///   • Contacts  — AvaTOK-number contacts ONLY (never the phone's address book).
 class AvaPhoneScreen extends StatefulWidget {
   /// [DIALPAD-BIZ-CALLS] When non-empty, the dialpad sheet opens automatically
-  /// on first frame, pre-filled with this AvaTOK number (NOT auto-dialed — the
+  /// on first frame, pre-filled with this Saathum number (NOT auto-dialed — the
   /// user still presses call). Set by [openDialpadWithNumber] so a tapped
-  /// AvaTOK number elsewhere in the app (e.g. a contact profile) drops straight
+  /// Saathum number elsewhere in the app (e.g. a contact profile) drops straight
   /// into the dialer. See dialpad_prefill.dart.
   final String initialDialNumber;
   const AvaPhoneScreen({super.key, this.initialDialNumber = ''});
@@ -1203,7 +1203,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
       AvaCallsDestinationState.avatok => (
           PhoneTheme.teal,
           PhosphorIcons.sealCheck(PhosphorIconsStyle.regular),
-          'AvaTOK number · free in-network call'
+          'Saathum number · free in-network call'
         ),
       AvaCallsDestinationState.pstn => (
           PhoneTheme.callGreen,

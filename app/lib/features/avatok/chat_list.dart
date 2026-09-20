@@ -2151,7 +2151,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         .then((_) => _flagsStore.load().then((f) { if (mounted) setState(() => _flags = f); }));
   }
 
-  /// Open the AvaPhone dialer (PSTN-style calling/SMS over AvaTOK numbers).
+  /// Open the AvaPhone dialer (PSTN-style calling/SMS over Saathum numbers).
   /// Create a custom filter chip (the "+" chip).
   Future<void> _addCustomFilter() async {
     final nameCtrl = TextEditingController();

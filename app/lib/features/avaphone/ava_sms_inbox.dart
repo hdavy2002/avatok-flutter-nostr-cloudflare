@@ -16,7 +16,7 @@ import 'phone_theme.dart';
 ///
 /// This is DELIBERATELY separate from the Messenger: the Messenger is for people
 /// you've added and chat with richly; this surface is the "text a number"
-/// experience. You compose to an AvaTOK number (a stranger included) and it sends
+/// experience. You compose to a Saathum number (a stranger included) and it sends
 /// an in-network message — delivered live or via an FCM push when they're
 /// offline — through the exact same messaging backend the Messenger uses
 /// (conversations + InboxDO + FCM). Incoming number-messages surface here too.
@@ -225,7 +225,7 @@ class _SmsRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────── compose: text an AvaTOK number ───────────────────
+// ─────────────────────── compose: text a Saathum number ───────────────────
 
 class _ComposeSheet extends StatefulWidget {
   final List<Contact> contacts;
@@ -248,7 +248,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
   Future<void> _go() async {
     final q = _ctrl.text.trim();
     if (q.replaceAll(RegExp(r'[^\d]'), '').length < 4) {
-      setState(() => _error = 'Enter a full AvaTOK number');
+      setState(() => _error = 'Enter a full Saathum number');
       return;
     }
     setState(() { _resolving = true; _error = null; });

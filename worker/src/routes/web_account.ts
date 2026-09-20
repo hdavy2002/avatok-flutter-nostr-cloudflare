@@ -12,7 +12,7 @@
 // the app.
 //
 // That is why the owner's two asks — collect a phone at signup, and auto-assign
-// an AvaTOK number — could not simply be added to a form. There was no row.
+// a Saathum number — could not simply be added to a form. There was no row.
 //
 // WHAT THIS DOES
 //
@@ -24,7 +24,7 @@
 //
 // This route used to call `autoAssignNumber` so signup would be fast ("this
 // will be auto assigned to save sign up time"). The owner reversed that: the
-// AvaTOK number is the user's identity in the app and picking it is a
+// Saathum number is the user's identity in the app and picking it is a
 // deliberate act, so the app's existing non-escapable number gate now does it.
 //
 // The decisive detail is that `autoAssignNumber` sets `free_number_used=1`

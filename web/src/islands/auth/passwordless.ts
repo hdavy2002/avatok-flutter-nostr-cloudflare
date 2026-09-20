@@ -103,11 +103,11 @@ function isAlreadyExists(e: unknown): boolean {
 }
 
 /**
- * Materialise the avaTOK-side account.
+ * Materialise the Saathum-side account.
  *
  * [WEB-PWLESS-1] Until now ONLY /sign-up did this, so an account created at
- * checkout existed to Clerk and was invisible to avaTOK — no `users` row, no
- * AvaTOK number, nothing to attach a booking or a later app sign-in to. Every
+ * checkout existed to Clerk and was invisible to Saathum — no `users` row, no
+ * Saathum number, nothing to attach a booking or a later app sign-in to. Every
  * path that creates an account calls it now.
  *
  * Never throws: the Clerk session is already live by the time we get here, so a
@@ -215,7 +215,7 @@ export async function sendPasswordlessCode(opts: {
   //   Clerk → Configure → User & authentication → Email → Sign-in with email
   //   → "Email verification code"
   // Check it with:
-  //   curl -s https://clerk.avatok.ai/v1/environment \
+  //   curl -s https://clerk.saathum.com/v1/environment \
   //     | jq '.user_settings.attributes.email_address.first_factors'
   // An empty array there means no sign-in strategy is enabled AT ALL and nobody
   // with an existing account can get in by any route. Say so plainly rather than

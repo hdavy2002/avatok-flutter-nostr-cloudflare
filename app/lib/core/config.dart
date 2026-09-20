@@ -85,7 +85,7 @@ const String kNotifyUrl = 'https://$kSignalingHost/api/notify';
 
 /// Restore endpoint — GET the signed-in account's own saved profile (Clerk JWT)
 /// so a fresh install / new phone rehydrates name, photo, birth year, bio + the
-/// AvaTOK number without re-onboarding. Email-OTP account recovery (owner
+/// Saathum number without re-onboarding. Email-OTP account recovery (owner
 /// request 2026-06-27).
 const String kMeUrl = 'https://$kSignalingHost/api/me';
 

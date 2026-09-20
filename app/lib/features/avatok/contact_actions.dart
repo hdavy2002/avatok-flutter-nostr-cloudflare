@@ -25,7 +25,7 @@ import 'forward_sheet.dart';
 /// Forward reuses Stream I's [showForwardSheet] + the existing card message kind
 /// ('card') so it never competes with the forward-to-groups system.
 class ContactActions {
-  /// Best contact number to display/copy: AvaTOK number first, then real phone.
+  /// Best contact number to display/copy: Saathum number first, then real phone.
   static String _bestNumber(Contact c) =>
       c.number.isNotEmpty ? c.number : c.phone;
 

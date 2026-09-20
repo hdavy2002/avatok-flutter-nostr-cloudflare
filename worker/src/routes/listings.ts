@@ -834,7 +834,7 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
-      avatok_number: r.creator_number ?? null,                        // owner's AvaTOK number (dial inside AvaTOK)
+      avatok_number: r.creator_number ?? null,                        // owner's Saathum number (dial inside AvaTOK)
       kyc_verified: r.creator_kyc === "verified",                     // A4 trust badge
       // [LIST-CONTENT-2] spec §H.1 — "regulars" proof chip source.
       follower_count: Number(r.creator_follower_count ?? 0),

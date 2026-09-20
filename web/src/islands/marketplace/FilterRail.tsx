@@ -77,7 +77,7 @@ export function activeFilterCount(value: RailState): number {
 
 /**
  * The bazaar FILTERS rail — the comp's left sidebar
- * (design/marketplace/avaTOK Marketplace.dc.html).
+ * (design/marketplace/Saathum Marketplace.dc.html).
  *
  * [MARKET-BAZAAR-2 2026-08-31, owner decision] This REPLACES the three rows of
  * Type / Category / Sort chips. The page was saying the same thing twice: 25

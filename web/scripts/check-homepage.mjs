@@ -174,9 +174,9 @@ console.log('115 unique article routes, hero images, sections and shared chrome 
 // /sitemap-pages.xml. Check both exist and that the index points at the pages file.
 const sitemapIndex = readFileSync(resolve(root,'sitemap.xml'),'utf8');
 assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
-assert(sitemapIndex.includes('https://avatok.ai/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
+assert(sitemapIndex.includes('https://saathum.com/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
-for (const href of new Set(guideLinks)) assert(sitemap.includes('https://avatok.ai'+href),'Guide missing from sitemap: '+href);
+for (const href of new Set(guideLinks)) assert(sitemap.includes('https://saathum.com'+href),'Guide missing from sitemap: '+href);
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
  assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
 }
@@ -190,7 +190,7 @@ function meta(page, key) {
 for (const href of new Set(guideLinks)) {
  const page = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
  const hero = page.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/)[1];
- assert.equal(meta(page,'og:image'),'https://avatok.ai'+hero,'Hero and OG image match');
+ assert.equal(meta(page,'og:image'),'https://saathum.com'+hero,'Hero and OG image match');
  assert.equal(meta(page,'twitter:image'),meta(page,'og:image'));
  assert.equal(meta(page,'og:type'),'article');
  assert(meta(page,'og:title') && meta(page,'og:description'),'Share title and description');
@@ -200,7 +200,7 @@ for (const href of new Set(guideLinks)) {
  assert.match(page,/BreadcrumbList/);
  assert.match(page,/datePublished/);
  const index = readFileSync(resolve(root,'llms-creator-ideas.txt'),'utf8');
- assert(index.includes('https://avatok.ai'+href),'AI-readable article index');
+ assert(index.includes('https://saathum.com'+href),'AI-readable article index');
 }
 assert.match(ideas,/CollectionPage/);
 assert.match(ideas,/ItemList/);
@@ -211,13 +211,13 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 
 // The promoted homepage has one accurate share preview and canonical URL.
 const rawShareImage = meta(rawHtml, 'og:image');
-assert.match(rawShareImage, /^https:\/\/avatok\.ai\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.(?:jpg|png)$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
+assert.match(rawShareImage, /^https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.(?:jpg|png)$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
 assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
 assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
-assert.match(campaignImages[0], /^https:\/\/avatok\.ai\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
-assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
+assert.match(campaignImages[0], /^https:\/\/saathum\.com\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
+assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · Saathum');
 assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
@@ -236,7 +236,7 @@ for (const image of campaignImages) {
  assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
  assert.equal(metadata.height, Number(meta(html, 'og:image:height')), 'Creator preview height matches its metadata');
 }
-assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/avatok\.ai\/"/, 'Homepage canonical is the root URL');
-assert.equal(meta(html, 'og:url'), 'https://avatok.ai/');
-assert.doesNotMatch(sitemap, /<loc>https:\/\/avatok\.ai\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
+assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');
+assert.equal(meta(html, 'og:url'), 'https://saathum.com/');
+assert.doesNotMatch(sitemap, /<loc>https:\/\/saathum\.com\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
 console.log('Homepage title, description, canonical and selected creator image passed.');

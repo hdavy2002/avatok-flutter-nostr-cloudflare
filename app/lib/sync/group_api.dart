@@ -112,7 +112,7 @@ class GroupApi {
       // for it and never returns it. _groupFrom builds a fresh Group, and upsert
       // REPLACES the stored row wholesale, so rebuilding from the server payload
       // alone silently erased the group description on every refresh (the same
-      // shape of bug as the contact avatar backfill wiping AvaTOK numbers,
+      // shape of bug as the contact avatar backfill wiping Saathum numbers,
       // ISSUE-CONTACT-AVATAR-1). Carry local-only fields across explicitly.
       final prev = await _local(conv);
       final g = _groupFrom(conv, (j['title'] ?? 'Group').toString(), members,

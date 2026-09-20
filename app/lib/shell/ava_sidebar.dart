@@ -413,7 +413,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // added to `AppRegistry` later — the whole group is off.
               //
               // `apps` is still computed above, so restoring this is
-              // un-commenting these five lines. Note that AvaTOK numbers
+              // un-commenting these five lines. Note that Saathum numbers
               // themselves are NOT affected: the number-choice gate in the
               // shell is a separate flow.
               // if (apps.isNotEmpty) ...[

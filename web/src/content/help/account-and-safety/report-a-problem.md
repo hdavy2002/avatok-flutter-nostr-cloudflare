@@ -1,6 +1,6 @@
 ---
-title: "Report a problem on avaTOK"
-description: "How to report a user, a listing, or a billing issue on avaTOK — what to include and who reads it."
+title: "Report a problem on Saathum"
+description: "How to report a user, a listing, or a billing issue on Saathum — what to include and who reads it."
 section: account-and-safety
 order: 3
 updated: 2026-09-11
@@ -34,7 +34,7 @@ For anything about tokens, a charge, a payout, or a failed withdrawal, email **s
 
 ## Filing a formal complaint (Grievance Redressal)
 
-For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision avaTOK took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance@avatok.ai** with the subject line *Grievance*. This reaches avaTOK's Grievance Officer, **Depika Singh**, directly.
+For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saathum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance@avatok.ai** with the subject line *Grievance*. This reaches Saathum's Grievance Officer, **Depika Singh**, directly.
 
 Include what you can: your full name and the email/phone linked to your account, a clear description of the harm, the exact location of the content (link, handle, group, approximate date/time), any evidence you have, and the outcome you're seeking. One complaint per issue keeps the record clear.
 
@@ -53,4 +53,4 @@ Full detail, including what happens after you file and how to escalate, is in ou
 - **Copyright infringement** — see [DMCA / Copyright](/dmca).
 - **Anything else** — hello@avatok.ai.
 
-If someone is in immediate danger, contact your local emergency services first — avaTOK is not an emergency service.
+If someone is in immediate danger, contact your local emergency services first — Saathum is not an emergency service.

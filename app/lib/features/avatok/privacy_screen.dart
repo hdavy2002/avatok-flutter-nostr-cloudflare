@@ -10,7 +10,7 @@ import 'contacts.dart';
 
 /// Settings → Privacy & discoverability (Specs/AVATOK-NUMBER-FEATURE-SPEC.md §10 #5).
 ///
-/// Controls which network keys can find the user. The AvaTOK number is always
+/// Controls which network keys can find the user. The Saathum number is always
 /// discoverable (that's its purpose); the real phone is private by default; email
 /// is on by default. Handles are retired, so they never appear here.
 ///
@@ -104,7 +104,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
           : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
               UiText(UiMessage.m_how_people_can_find_you_036cc1ea01, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
-              // AvaTOK number — always on, locked.
+              // Saathum number — always on, locked.
               _card(
                 child: Row(children: [
                   _iconBadge(PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
@@ -129,8 +129,8 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
               const SizedBox(height: Msg.s5),
               UiText(UiMessage.m_who_can_add_me_372ec860c1, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
-              _whoOption('everyone', 'Everyone', 'Anyone who searches your AvaTOK number or email'),
-              _whoOption('number_only', 'Only with my AvaTOK number', 'People must know your exact number'),
+              _whoOption('everyone', 'Everyone', 'Anyone who searches your Saathum number or email'),
+              _whoOption('number_only', 'Only with my Saathum number', 'People must know your exact number'),
               _whoOption('nobody', 'Nobody', 'You won’t appear in search or QR adds'),
               const SizedBox(height: Msg.s5),
               // [LASTSEEN-PRIVACY-1] WhatsApp-style last-seen visibility.

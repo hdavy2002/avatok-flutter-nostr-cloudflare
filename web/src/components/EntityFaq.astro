@@ -1,44 +1,39 @@
 ---
 /**
- * [WEB-SEO-6 2026-09-10] "What is avaTOK?" — entity disambiguation block.
+ * [SAATHUM-BRAND-1 2026-09-20] "What is Saathum?" — entity definition block.
  *
- * WHY THIS EXISTS. A Google search for "avatok" ranks avatok.ai first, but the
- * AI Overview beside it describes two unrelated things that share the name: an
- * industrial-conductor brand (avatok.tech) and an old avatar-video app on
- * download sites. Google cannot tell which entity the word means, so it hedges.
- * The fix it responds to best is the site DEFINING ITSELF in plain crawlable
- * prose — a question-shaped definition plus an explicit "not to be confused
- * with" — and the same text again as FAQPage structured data.
+ * Was [WEB-SEO-6]'s name-disambiguation block for "Saathum": a Google AI
+ * Overview conflated the Saathum brand with an unrelated industrial-conductor
+ * company (avatok.tech) and an old avatar-video app that shared the name, so
+ * this component existed to tell the Knowledge Graph which entity saathum.com
+ * meant. Saathum has no known name collision, so the disambiguation angle
+ * ("not to be confused with...") is gone; this now just defines the brand in
+ * plain crawlable prose, as both visible HTML and FAQPage JSON-LD.
  *
  * Every fact here comes from src/lib/org.ts so the wording cannot drift from
  * the Organization graph (Base.astro) or the legal-status copy.
  *
- * Renders visible HTML AND the JSON-LD (in-body JSON-LD is valid and Google
- * reads it). Mount on entity home pages only — /about today — not on every
- * page; repeating a FAQPage site-wide reads as spam.
+ * Mount on entity home pages only — /about today — not on every page;
+ * repeating a FAQPage site-wide reads as spam.
  */
 import { ORG } from '../lib/org';
 
 const faqs: Array<{ q: string; a: string }> = [
   {
-    q: 'What is avaTOK?',
-    a: `avaTOK (avatok.ai) is a global creator marketplace for paid live streaming and paid 1:1 video sessions. Creators publish a listing — a live event, a private session, a conversation or a skill they can teach — people book or join it, and the creator gets paid. The brand is spelled avaTOK.`,
+    q: 'What is Saathum?',
+    a: `Saathum (saathum.com) is a live streaming and 1:1 video consultation platform for devotional and spiritual life — puja and darshan, temple tours, satsang and festivals, and astrology and spiritual-guidance sessions. Creators publish a listing, people book or join it, and the creator gets paid.`,
   },
   {
-    q: 'Is avaTOK the same as Avatok industrial conductors or the AvaTok avatar app?',
-    a: `No. avaTOK at avatok.ai is a creator platform for live streams and video sessions. It has no connection to avatok.tech (industrial composite-core conductors and power equipment) or to any avatar or selfie-video creation app that also uses the name AvaTok. If you are looking for those, avatok.ai is not it.`,
+    q: 'Who runs Saathum?',
+    a: `Saathum was founded by American and Indian founders and is operated by ${ORG.legalName}, a Delaware corporation. Its registered-agent address is ${ORG.address.street}, ${ORG.address.locality}, ${ORG.address.region} ${ORG.address.postalCode}. Contact: ${ORG.email}.`,
   },
   {
-    q: 'Who runs avaTOK?',
-    a: `avaTOK was founded by American and Indian founders and is operated by ${ORG.legalName}, a Delaware corporation. Its registered-agent address is ${ORG.address.street}, ${ORG.address.locality}, ${ORG.address.region} ${ORG.address.postalCode}. Contact: ${ORG.email}.`,
+    q: 'What can I do on Saathum?',
+    a: `Two things. Earn: create a free listing and get paid to host a live devotional event or run 1:1 astrology and spiritual-guidance consultations. Book: browse the marketplace, join a live event or book a creator's time in a slot they have opened on their calendar.`,
   },
   {
-    q: 'What can I do on avaTOK?',
-    a: `Two things. Earn: create a free listing and get paid to host live streams, run 1:1 video consultations, be a home friend, listen, or teach something you know. Book: browse the marketplace, join a live event or book a creator's time in a slot they have opened on their calendar.`,
-  },
-  {
-    q: 'Is avaTOK free?',
-    a: `Creating an account and publishing a listing is free. Buyers pay in tokens when they book or join a paid session. avaTOK uses 100 Tokens = $1 as an internal accounting anchor; local-currency checkout uses a server-owned FX quote, and withdrawal semantics are not yet available.`,
+    q: 'Is Saathum free?',
+    a: `Creating an account and publishing a listing is free. Buyers pay in tokens when they book or join a paid session. Saathum uses 100 Tokens = $1 as an internal accounting anchor; local-currency checkout uses a server-owned FX quote, and withdrawal semantics are not yet available.`,
   },
 ];
 
@@ -55,12 +50,10 @@ const faqLd = {
 };
 ---
 
-<section class="entity-faq" id="what-is-avatok" aria-labelledby="entity-faq-title">
-  <h2 data-i18n="web-common.473772a990bd7a3f" id="entity-faq-title">What is avaTOK?</h2>
+<section class="entity-faq" id="what-is-saathum" aria-labelledby="entity-faq-title">
+  <h2 data-i18n="web-common.0ff34d5107c1600d" id="entity-faq-title">What is Saathum?</h2>
   <p>
-    <strong>avaTOK</strong> <ui-copy style="display:contents" data-i18n="web-common.31f26dfed8446e8b">is the name of this platform — spelled with a lower-case</ui-copy> <em>ava</em> <ui-copy style="display:contents" data-i18n="web-common.599ac66e3421bd49">and an
-    upper-case</ui-copy> <em>TOK</em><ui-copy style="display:contents" data-i18n="web-common.ccbbc58c94d9d473">, at</ui-copy> <a data-i18n="web-common.6c268582050557ce" href="https://avatok.ai/">avatok.ai</a><ui-copy style="display:contents" data-i18n="web-common.85825b05eca58690">. Because a few unrelated
-    products share the name, here is the short, plain version.</ui-copy>
+    <strong>Saathum</strong> <ui-copy style="display:contents" data-i18n="web-common.b29ef72e7a79fd4d">is the name of this platform, at</ui-copy> <a data-i18n="web-common.4d319a0fb45f536c" href="https://saathum.com/">saathum.com</a><ui-copy style="display:contents" data-i18n="web-common.cdb4ee2aea69cc6a">.</ui-copy>
   </p>
   <dl>
     {faqs.map((f) => (

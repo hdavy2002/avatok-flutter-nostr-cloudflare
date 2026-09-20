@@ -231,7 +231,7 @@ export interface CreatorRef {
    * the raw D1 column (0/1) instead of the coerced boolean.
    */
   kyc_verified?: boolean | 0 | 1;
-  /** [WEB-MSG-HANDOFF-1] The creator's AvaTOK number — a public identity that
+  /** [WEB-MSG-HANDOFF-1] The creator's Saathum number — a public identity that
    *  masks their real phone number. The web shows it and points the visitor at
    *  the app, which is where messaging lives. */
   avatok_number?: string | null;

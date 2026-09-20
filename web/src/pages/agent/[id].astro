@@ -33,7 +33,7 @@ try {
 // Public reads are edge-cacheable, mirroring the rest of the marketplace.
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 
-const SITE = 'avatok.ai';
+const SITE = 'saathum.com';
 const name = agent?.name ?? 'AI voice agent';
 const role = agent?.role ?? '';
 const free = agent ? isFreeForCallers(agent) : false;

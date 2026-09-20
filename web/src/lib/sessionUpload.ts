@@ -107,7 +107,7 @@ export async function uploadChatAttachment(file: File, jwt: string): Promise<Cha
       body: file,
     }));
   } catch {
-    throw new AttachmentError('Could not reach avaTOK to upload that file.');
+    throw new AttachmentError('Could not reach Saathum to upload that file.');
   }
   if (!res.ok) {
     if (res.status === 413) throw new AttachmentError('That file is too large to store right now.');

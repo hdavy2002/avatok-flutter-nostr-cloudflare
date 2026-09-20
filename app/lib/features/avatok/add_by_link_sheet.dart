@@ -16,7 +16,7 @@ import 'contacts.dart';
 ///
 /// The QR encodes `https://avatok.ai/add?t=<token>` (or `avatok://add?t=`). This
 /// resolves the token to the sharer's contact card and shows a confirmation. A
-/// paid sharer's card shows their AvaTOK number; a free sharer's shows their real
+/// paid sharer's card shows their Saathum number; a free sharer's shows their real
 /// number. On confirm we return a Contact the caller saves + can message.
 ///
 /// [token] is optional — when a deep-link supplies it we skip the paste step. The
@@ -92,7 +92,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
       name: name.isNotEmpty ? name : (c.email.isNotEmpty ? c.email : c.number),
       email: c.email,
       avatarUrl: c.avatarUrl,
-      // Paid sharer → AvaTOK number; free sharer → their real phone.
+      // Paid sharer → Saathum number; free sharer → their real phone.
       number: c.sharesRealNumber ? '' : c.number,
       phone: c.sharesRealNumber ? c.number : '',
     );

@@ -168,7 +168,7 @@ export function CustomerSession({identity,isLoaded,isSignedIn,deps,invitation,si
     <h1>Invited customer booking test</h1>
     <p><strong>This charges a real ₹1. The booking is a test only and does not reserve a real consultation.</strong></p>
     {!isLoaded || mountedIdentity!==identity ? <p>Loading account…</p> : !isSignedIn ? <>
-      <p>Sign in with your normal AvaTOK account to use your private invitation.</p>
+      <p>Sign in with your normal Saathum account to use your private invitation.</p>
       {signIn}
       <p>If signing in opens a new page, reopen your original invitation link afterward.</p>
     </> : <UpiCustomerTestCheckoutView key={identity} deps={deps} invitation={invitation} signIn={signIn}/>}

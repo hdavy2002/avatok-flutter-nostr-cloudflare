@@ -200,7 +200,7 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
 // Onboarding contact verification: email (server OTP).
 //
 // [M-D1 2026-07-17 / M-D11 2026-07-18] PHONE IS GONE — liveness only, no phone
-// anywhere: not as an identity gate, and not as a contact field. The AvaTOK
+// anywhere: not as an identity gate, and not as a contact field. The Saathum
 // number is the contact rail. Phone OTP was unrouted 2026-07-10 (410 via
 // LEGACY_GONE in index.ts) and the dead handler + Twilio Lookup line-type check
 // were deleted 2026-07-18. Rationale: Specs/SPEC-2026-07-10-whatsapp-

@@ -213,7 +213,7 @@ class DeepLinks {
           name: name.isNotEmpty ? name : (card.email.isNotEmpty ? card.email : card.number),
           email: card.email,
           avatarUrl: card.avatarUrl,
-          // [PIVOT-NUMBER-MASK-1] The server now ALWAYS puts the AvaTOK number
+          // [PIVOT-NUMBER-MASK-1] The server now ALWAYS puts the Saathum number
           // (never the real phone) in `card.number`, for free and paid alike —
           // see worker/src/routes/number.ts shareCardPut. `card.number` is
           // therefore never the real phone number here; nothing belongs in

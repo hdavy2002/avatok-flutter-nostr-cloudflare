@@ -184,7 +184,7 @@ export const POSTER_STYLE_VERSION = 5;
  *  overlay-lettering fallback that draws it in HTML when the model refuses to
  *  letter anything. If those three ever disagree, the watermark either goes
  *  missing or fails every poster for "extra text". */
-export const POSTER_WATERMARK = "avatok.ai";
+export const POSTER_WATERMARK = "saathum.com";
 
 export type PosterCopy = { title: string; tagline: string };
 

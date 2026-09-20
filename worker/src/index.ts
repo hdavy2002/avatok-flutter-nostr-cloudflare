@@ -979,7 +979,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/reserve" && req.method === "POST") return await num.reserve(req, env);
       if (p === "/api/number/assign" && req.method === "POST") return await num.assign(req, env);
       if (p === "/api/number/assign-own" && req.method === "POST") return await num.assignOwn(req, env);
-      // [PIVOT-PAID-NUMBER-1] Buy a vanity/short AvaTOK number with tokens.
+      // [PIVOT-PAID-NUMBER-1] Buy a vanity/short Saathum number with tokens.
       // Without this line purchaseVanity is unreachable dead code — the endpoint
       // equivalent of the fake-flag problem CLAUDE.md documents, where a feature
       // is fully built, looks correct in review, and can never actually fire.
@@ -993,7 +993,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/add" && req.method === "GET") return await cached(req, ctx, () => num.addResolve(req, env), 30);
 
       // AvaCalls universal classifier and Virtual Numbers multi-line domain.
-      // These are separate from the legacy singular AvaTOK number routes above.
+      // These are separate from the legacy singular Saathum number routes above.
       if (p === "/api/avacalls/resolve" && req.method === "POST") return await avacallsResolve(req, env);
       if (p === "/api/virtual-lines" || p.startsWith("/api/virtual-lines/")) return await virtualLinesRoute(req, env, p);
 
@@ -1352,7 +1352,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/listings" && req.method === "GET") return await adminListings(req, env);
       // [WEB-ACCOUNT-1] The row a web signup never created, plus the phone.
       // Idempotent; safe to call repeatedly. [WEB-APP-ONBOARD-1] It no longer
-      // assigns an AvaTOK number — the app's gate does, so the free number
+      // assigns a Saathum number — the app's gate does, so the free number
       // survives for the user to actually choose.
       if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
       // [WEB-PHONE-OTP-1 2026-09-10] SMS OTP (2Factor) for web sign-up phone verification.

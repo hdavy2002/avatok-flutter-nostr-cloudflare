@@ -22,9 +22,9 @@ import 'phone_theme.dart';
 /// AvaPhone › Contacts — AvaTOK NUMBER contacts ONLY.
 ///
 /// Critically, this list is NOT the phone's address book. It shows only people
-/// saved by their AvaTOK number, each clearly marked as an AvaTOK number, so the
+/// saved by their Saathum number, each clearly marked as a Saathum number, so the
 /// user is never confused with their real phone contacts. New contacts are added
-/// by typing an AvaTOK number (resolved on the network) or by scanning/pasting a
+/// by typing a Saathum number (resolved on the network) or by scanning/pasting a
 /// shared QR link — never by importing the device address book.
 class AvaPhoneContacts extends StatefulWidget {
   const AvaPhoneContacts({super.key});
@@ -356,7 +356,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
   Future<void> _resolve() async {
     final q = _ctrl.text.trim();
     if (q.replaceAll(RegExp(r'[^\d]'), '').length < 4) {
-      setState(() => _error = 'Enter a full AvaTOK number');
+      setState(() => _error = 'Enter a full Saathum number');
       return;
     }
     setState(() { _resolving = true; _error = null; });
@@ -368,7 +368,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
       setState(() { _resolving = false; _error = 'No AvaTOK account on that number'; });
       return;
     }
-    // Ensure the saved contact carries the dialed AvaTOK number for display.
+    // Ensure the saved contact carries the dialed Saathum number for display.
     final saved = hit.number.isNotEmpty
         ? hit
         : Contact(uid: hit.uid, name: hit.name, email: hit.email, avatarUrl: hit.avatarUrl, number: q);

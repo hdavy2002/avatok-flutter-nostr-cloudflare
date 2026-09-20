@@ -19,7 +19,7 @@ export interface OgMeta {
   extra: Array<{ property?: string; name?: string; content: string }>;
 }
 
-const SITE = 'avatok.ai';
+const SITE = 'saathum.com';
 const OG_IMG_WIDTH = 1200;
 
 function clampDesc(text: string | null | undefined, fallback: string): string {
@@ -176,11 +176,11 @@ export function listingJsonLd(listing: Listing, canonicalUrl: string): Record<st
  *  shape from a page it landed on directly. */
 export function listingBreadcrumbLd(listing: Listing, canonicalUrl: string): Record<string, unknown> {
   const items: Array<{ name: string; item: string }> = [
-    { name: 'avaTOK', item: 'https://avatok.ai/' },
-    { name: 'Marketplace', item: 'https://avatok.ai/marketplace' },
+    { name: 'Saathum', item: 'https://saathum.com/' },
+    { name: 'Marketplace', item: 'https://saathum.com/marketplace' },
   ];
   if (listing.creator?.handle) {
-    items.push({ name: listing.creator.name ?? `@${listing.creator.handle}`, item: `https://avatok.ai/${listing.creator.handle}` });
+    items.push({ name: listing.creator.name ?? `@${listing.creator.handle}`, item: `https://saathum.com/${listing.creator.handle}` });
   }
   items.push({ name: listing.title, item: canonicalUrl });
   return {

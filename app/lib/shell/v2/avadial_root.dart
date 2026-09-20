@@ -348,9 +348,9 @@ class _ContactsTab extends StatefulWidget {
 class _ContactsTabState extends State<_ContactsTab> {
   final _store = ContactsStore();
   List<Contact> _all = const [];
-  // [AVADIAL-AVATOK-ONLY-2] Which AvaTOK numbers are on the block list, so the
+  // [AVADIAL-AVATOK-ONLY-2] Which Saathum numbers are on the block list, so the
   // Contacts row menu can offer Block/Unblock and reflect the live state — the
-  // SAME [BlockList] the Block tab reads, keyed by the contact's AvaTOK number.
+  // SAME [BlockList] the Block tab reads, keyed by the contact's Saathum number.
   Set<String> _blockedNumbers = const {};
   bool _loaded = false;
   String _query = '';
@@ -366,7 +366,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   StreamSubscription<List<coredc.DeviceContact>>? _deviceSub;
 
   // [AVADIAL-CONTACTS-MERGE] Server (AvaTOK-directory) search. Local fields —
-  // name, cell, email, company — are matched on-device; only AvaTOK numbers/
+  // name, cell, email, company — are matched on-device; only Saathum numbers/
   // emails need this round-trip (owner spec), so it's debounced + gated on the
   // query looking like an AvaTOK id.
   List<Contact> _serverHits = const [];
@@ -475,8 +475,8 @@ class _ContactsTabState extends State<_ContactsTab> {
 
   /// [AVADIAL-CONTACTS-MERGE] Search input handler. Local fields (name, cell,
   /// email, company) filter on-device instantly via [_deviceFiltered]/[_filtered];
-  /// only an AvaTOK number or email triggers the debounced SERVER directory
-  /// lookup (owner spec — "only AvaTOK numbers need a server based search").
+  /// only a Saathum number or email triggers the debounced SERVER directory
+  /// lookup (owner spec — "only Saathum numbers need a server based search").
   void _onQueryChanged(String v) {
     setState(() => _query = v);
     _searchDebounce?.cancel();
@@ -701,7 +701,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     Analytics.capture('avadial_contact_renamed', const {});
   }
 
-  /// Block/unblock this contact's AvaTOK number — the SAME account-scoped
+  /// Block/unblock this contact's Saathum number — the SAME account-scoped
   /// [BlockList] the Block tab reads (which also drives the OS-level
   /// write-through when AvaTOK holds the dialer role), so blocking here shows
   /// up there immediately via [avaDialRev].
@@ -1060,7 +1060,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         ),
       );
 
-  /// One device-address-book row. On-AvaTOK numbers get an orange call badge and
+  /// One device-address-book row. On-Saathum numbers get an orange call badge and
   /// tap-to-call; everyone else gets a share/invite button (WhatsApp).
   Widget _deviceRow(coredc.DeviceContact c) {
     final on = c.onAvatok;
@@ -1184,7 +1184,7 @@ class _ServerHit {
 /// Non-contact rows in the merged list (permission CTA / empty / loading states).
 enum _Marker { checking, grant, deviceEmpty, serverSearching }
 
-/// "Save contact" — resolves a typed AvaTOK number or email against the public
+/// "Save contact" — resolves a typed Saathum number or email against the public
 /// directory ([Directory.resolve]) exactly like the dialpad and AvaPhoneContacts
 /// do. On no hit, offers "Invite" instead of silently failing (owner spec).
 class _AddAvaTokContactDialog extends StatefulWidget {
@@ -1210,7 +1210,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
     final digits = q.replaceAll(RegExp(r'[^\d]'), '');
     final looksEmail = q.contains('@');
     if (digits.length < 4 && !looksEmail) {
-      setState(() => _error = 'Enter an AvaTOK number or email');
+      setState(() => _error = 'Enter a Saathum number or email');
       return;
     }
     setState(() { _resolving = true; _error = null; });
@@ -1788,7 +1788,7 @@ class _LogsTabState extends State<_LogsTab> {
 // [AVADIAL-AVATOK-ONLY-2] 2026-07-16 (owner spec, pic6): "The block list is
 // about avatok contacts only and not users phone book contacts." [BlockList]
 // itself is a flat number → label store shared with other surfaces (and its
-// numbers can be either an AvaTOK number or, historically, a device number), so
+// numbers can be either a Saathum number or, historically, a device number), so
 // this tab now cross-references every entry against [ContactsStore] and only
 // shows the ones that match a saved AvaTOK contact's number — a bare
 // device/phone-book number that was never an AvaTOK contact is dropped from
@@ -1828,7 +1828,7 @@ class _BlockTabState extends State<_BlockTab> {
   Future<(List<BlockEntry>, Map<String, Contact>)> _loadAll() async {
     final blocked = await BlockList.I.load();
     final contacts = await ContactsStore().load();
-    // AvaTOK contacts only — keyed by their AvaTOK number so a block entry can
+    // AvaTOK contacts only — keyed by their Saathum number so a block entry can
     // be matched back to the contact that owns it.
     final byNumber = {for (final c in contacts) if (c.number.isNotEmpty) c.number: c};
     return (blocked, byNumber);

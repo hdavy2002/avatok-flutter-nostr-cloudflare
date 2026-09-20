@@ -1,6 +1,6 @@
 ---
-// Smart "Add me on AvaTOK" landing (owner request 2026-06-29).
-// A shared QR/link points here. On a phone with AvaTOK installed, the
+// Smart "Add me on Saathum" landing (owner request 2026-06-29).
+// A shared QR/link points here. On a phone with Saathum installed, the
 // `avatok://add?...` deep link opens the app straight to Add Contact; otherwise
 // we fall back to the Play Store after a short delay.
 //
@@ -15,8 +15,8 @@ import Base from '../layouts/Base.astro';
 const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avatok_call'; // real applicationId (build.gradle.kts)
 ---
 <Base
-  title="Add me on AvaTOK"
-  description="Add a friend on AvaTOK — opens straight in the app if you have it installed, or takes you to get the app."
+  title="Add me on Saathum"
+  description="Add a friend on Saathum — opens straight in the app if you have it installed, or takes you to get the app."
   chrome={false}
   noindex={true}
 >
@@ -47,11 +47,11 @@ const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avat
 
   <div class="add-page">
     <main class="card">
-      <h1><ui-copy style="display:contents" data-i18n="web-add.fefae4eded096cdd">Add me on</ui-copy> <span class="brand">AvaTOK</span></h1>
-      <p data-i18n="web-add.5180bc4749c9ddf2" id="sub">Opening AvaTOK…</p>
-      <a data-i18n="web-add.3ec572aaed90208f" id="open" class="btn" href="#">Open in AvaTOK</a>
-      <a data-i18n="web-add.15ef34a6e991f40a" id="store" class="btn alt" href={PLAY_STORE}>Get AvaTOK</a>
-      <div data-i18n="web-add.6c268582050557ce" class="foot">avatok.ai</div>
+      <h1><ui-copy style="display:contents" data-i18n="web-add.fefae4eded096cdd">Add me on</ui-copy> <span class="brand">Saathum</span></h1>
+      <p data-i18n="web-add.5180bc4749c9ddf2" id="sub">Opening Saathum…</p>
+      <a data-i18n="web-add.3ec572aaed90208f" id="open" class="btn" href="#">Open in Saathum</a>
+      <a data-i18n="web-add.15ef34a6e991f40a" id="store" class="btn alt" href={PLAY_STORE}>Get Saathum</a>
+      <div data-i18n="web-add.6c268582050557ce" class="foot">saathum.com</div>
     </main>
   </div>
   <script define:vars={{ store: PLAY_STORE }}>

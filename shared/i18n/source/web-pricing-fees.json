@@ -1,7 +1,7 @@
 {
   "web-pricing-fees.b0e8c0e71aa039e2": "Usage calculator · first draft",
   "web-pricing-fees.412160b1f9e5dfe3": "Estimate your monthly usage",
-  "web-pricing-fees.a57a6391cad9ac72": "Build a quick estimate for the way you expect to use avaTOK. Token amounts are the internal unit;",
+  "web-pricing-fees.a57a6391cad9ac72": "Build a quick estimate for the way you expect to use Saathum. Token amounts are the internal unit;",
   "web-pricing-fees.1333886bf7b67378": "100 Tokens = $1",
   "web-pricing-fees.32df79f87ed2464e": "is the accounting anchor. Any customer-facing local-currency\n      amount comes from a server-owned FX quote captured in an immutable quote/payment snapshot at checkout.",
   "web-pricing-fees.1ec08a2f0975b2a7": "Your usage",

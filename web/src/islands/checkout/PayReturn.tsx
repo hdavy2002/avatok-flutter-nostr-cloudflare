@@ -1,7 +1,7 @@
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
 /* [WEB-PAY-RETURN-1] PayReturn — the browser-return landing page for a gateway that
- * redirects the buyer AWAY from avatok.ai to pay (Paytm's Show Payment Page today;
+ * redirects the buyer AWAY from saathum.com to pay (Paytm's Show Payment Page today;
  * any future redirect-based gateway lands here too).
  *
  * The buyer arrives here COLD: they left the site, paid (or didn't) on the gateway's

@@ -103,7 +103,7 @@ class MinorTerms {
       'of the app.\n\n'
       '2. Keep yourself safe. Never share personal information — your home '
       'address, school, real phone number, passwords, or financial details — '
-      'with people you do not know and trust. Your AvaTOK number lets you stay '
+      'with people you do not know and trust. Your Saathum number lets you stay '
       'in touch without giving out your real number.\n\n'
       '3. Be kind and lawful. Do not send, request, or share content that is '
       'sexual, violent, hateful, bullying, or otherwise harmful or illegal. '

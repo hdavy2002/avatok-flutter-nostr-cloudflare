@@ -55,7 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _saving = false;
   bool _listed = false;
   bool _sharePresence = true;
-  bool _showPrivateNumber = false; // show private number instead of AvaTOK number
+  bool _showPrivateNumber = false; // show private number instead of Saathum number
   String _avatarUrl = '';
   String _gender = ''; // 'male' | 'female' | 'other' — mandatory (Ava's pronouns)
   bool _photoBusy = false;
@@ -95,14 +95,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Build (or refresh) the stable QR share card so others can scan to add me.
-  /// Paid users share their AvaTOK number; free users share their real number.
+  /// Paid users share their Saathum number; free users share their real number.
   Future<void> _initShare() async {
     final me = await AvaNumber.me();
     final prof = await _store.load();
     final parts = _name.text.trim().isEmpty ? prof.displayName.split(RegExp(r'\s+')) : _name.text.trim().split(RegExp(r'\s+'));
     final first = parts.isNotEmpty ? parts.first : '';
     final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-    // Number on the share card. By default this is the virtual AvaTOK number.
+    // Number on the share card. By default this is the virtual Saathum number.
     // EXCEPTION (owner request 2026-06-29): if the user has explicitly added a
     // private number AND chosen to expose it, that number REPLACES the AvaTOK
     // number on the card (they've opted in — privacy is their choice).
@@ -128,8 +128,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() { _name.dispose(); _last.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); _privatePhone.dispose(); super.dispose(); }
 
   /// The number to show on the QR/share card + under the QR. When the user has
-  /// opted to expose their private number, that REPLACES the AvaTOK number
-  /// everywhere (owner request 2026-06-29); otherwise we use the AvaTOK number.
+  /// opted to expose their private number, that REPLACES the Saathum number
+  /// everywhere (owner request 2026-06-29); otherwise we use the Saathum number.
   String get _cardNumber {
     final priv = _privatePhone.text.trim();
     if (_showPrivateNumber && priv.isNotEmpty) return priv;
@@ -776,7 +776,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Optional private phone number the user may CHOOSE to expose (owner
         // request 2026-06-29). Off by default; not verified yet (VERIFICATION STUB
         // — Profile.privatePhoneVerified). When the switch is on, this number
-        // replaces the AvaTOK number on the QR card and contact areas.
+        // replaces the Saathum number on the QR card and contact areas.
         UiText(UiMessage.m_private_phone_number_optional_05a5a67444, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         AdField(
