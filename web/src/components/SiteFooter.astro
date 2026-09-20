@@ -59,8 +59,11 @@ const columns = [
   {
     title: 'Bazaar',
     links: [
+      // [SAATHUM-WEB-UI 2026-09-20] 'Find your people' (→ /#live-friends)
+      // removed: it pointed at the companionship shelf, and every
+      // companionship sub-category is hidden under Saathum's devotional
+      // scope (SPEC.md) — the link led to an always-empty section.
       { href: '/#live-streaming', label: 'Live streaming' },
-      { href: '/#live-friends', label: 'Find your people' },
       { href: '/marketplace', label: 'Explore marketplace' },
     ],
   },
@@ -94,7 +97,7 @@ const globalColumns = [
 const footerColumns = variant === 'global' ? globalColumns : columns;
 const chromeKey = (value: string) => ({
   Bazaar:'chrome.bazaar', Creators:'chrome.creators', Company:'chrome.company', Explore:'chrome.explore',
-  'Live streaming':'chrome.liveStreaming', 'Find your people':'chrome.findPeople', 'Explore marketplace':'chrome.exploreMarketplace',
+  'Live streaming':'chrome.liveStreaming', 'Explore marketplace':'chrome.exploreMarketplace',
   'Start selling':'chrome.startSelling', 'Creator dashboard':'chrome.creatorDashboard', Payouts:'chrome.payouts', Safety:'chrome.safety',
   About:'chrome.about', 'Help centre':'chrome.help', Careers:'chrome.careers', Contact:'chrome.contact', 'Terms of Service':'chrome.terms', 'Privacy Policy':'chrome.privacy',
   Terms:'chrome.terms', Privacy:'chrome.privacy', Cookies:'chrome.cookies', Refunds:'chrome.refunds',
