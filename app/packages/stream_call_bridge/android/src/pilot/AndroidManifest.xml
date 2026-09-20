@@ -15,7 +15,7 @@
         <!-- Present only in the opt-in pilot source set. Normal Cloudflare APKs
              expose none of Stream's notification actions. -->
         <activity
-            android:name="ai.avatok.avatok_call.MainActivity"
+            android:name="com.saathum.app.MainActivity"
             tools:node="merge">
             <intent-filter android:priority="1">
                 <action android:name="io.getstream.video.android.action.INCOMING_CALL" />

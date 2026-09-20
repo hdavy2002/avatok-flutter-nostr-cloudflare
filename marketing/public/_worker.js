@@ -206,7 +206,7 @@ function joinPage(token) {
   <p class="muted" id="who"></p>
   <p id="err">This link is invalid or has expired.</p>
   <a class="btn primary" id="open" href="#" style="display:none">Open in AvaTOK app</a>
-  <a class="btn secondary" id="store" href="https://play.google.com/store/apps/details?id=ai.avatok.avatok_call" style="display:none">Get the app</a>
+  <a class="btn secondary" id="store" href="https://play.google.com/store/apps/details?id=com.saathum.app" style="display:none">Get the app</a>
 </div>
 <script>
 (async()=>{
@@ -222,7 +222,7 @@ function joinPage(token) {
     document.getElementById("when").textContent=f.format(s)+" – "+tf.format(e)+" (your time)";
     document.getElementById("who").textContent="with "+(j.creator_name||"a creator")+(j.status!=="confirmed"?" · "+j.status:"");
     const open=document.getElementById("open");
-    open.href="intent://j/"+encodeURIComponent(token)+"#Intent;scheme=https;package=ai.avatok.avatok_call;S.browser_fallback_url="+encodeURIComponent(location.href)+";end";
+    open.href="intent://j/"+encodeURIComponent(token)+"#Intent;scheme=https;package=com.saathum.app;S.browser_fallback_url="+encodeURIComponent(location.href)+";end";
     open.style.display="block";
     document.getElementById("store").style.display="block";
   }catch(_){
@@ -240,7 +240,7 @@ function assetlinks(env) {
   const prints = String(env.ASSETLINKS_SHA256 || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
   return JSON.stringify([{
     relation: ["delegate_permission/common.handle_all_urls"],
-    target: { namespace: "android_app", package_name: "ai.avatok.avatok_call", sha256_cert_fingerprints: prints },
+    target: { namespace: "android_app", package_name: "com.saathum.app", sha256_cert_fingerprints: prints },
   }]);
 }
 

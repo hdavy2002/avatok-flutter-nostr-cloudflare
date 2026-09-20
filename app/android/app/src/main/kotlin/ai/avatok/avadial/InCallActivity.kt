@@ -18,7 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
-import ai.avatok.avatok_call.R
+import com.saathum.app.R
 
 /**
  * [AVADIAL-NATIVE-INCALL-1] The native active-call screen. Owner decision 2026-07-15.

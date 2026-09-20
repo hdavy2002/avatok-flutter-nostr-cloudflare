@@ -224,7 +224,7 @@ jobs:
 
       - name: Generate android/ platform files
         working-directory: app
-        run: flutter create --platforms=android --org ai.avatok --project-name avatok_call .
+        run: flutter create --platforms=android --org com.saathum --project-name app .
 
       - name: Configure Android (permissions, minSdk)
         working-directory: app

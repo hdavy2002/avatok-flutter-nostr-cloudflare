@@ -12,34 +12,76 @@
           "package_name": "ai.avatok.avatok_call"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1098288797441-b96kjeimda7r07igqc4j1rav31ajkgig.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ai.avatok.avatok_call",
+            "certificate_hash": "13d9f7c10a5b89c942c6f59fd85ac8d3801aed3c"
+          }
+        },
+        {
+          "client_id": "1098288797441-oi8r46b5bglbcgn1d2of40mf5hh26evp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ai.avatok.avatok_call",
+            "certificate_hash": "73a137ef97d81a1623d1d85e760657a8bc663a4d"
+          }
+        },
+        {
+          "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD2wFlqW1U602YI_VLe8efN1CxYKzuUhm4"
+        },
+        {
+          "current_key": "AIzaSyDIzZa-rvMN8zEEX45m7gK2oWd25v9hYLs"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1098288797441:android:8e77c35d2df04506126d00",
+        "mobilesdk_app_id": "1:1098288797441:android:1df297ba98e2a8a5126d00",
         "android_client_info": {
-          "package_name": "ai.avatok.avatok_call.staging"
+          "package_name": "com.saathum.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD2wFlqW1U602YI_VLe8efN1CxYKzuUhm4"
+        },
+        {
+          "current_key": "AIzaSyDIzZa-rvMN8zEEX45m7gK2oWd25v9hYLs"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1098288797441-5dphmioqit1b3h3d75pkein2ihkf7okc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

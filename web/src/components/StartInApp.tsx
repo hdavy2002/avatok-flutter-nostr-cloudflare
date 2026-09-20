@@ -19,7 +19,7 @@ import { Button } from './Button';
 import { capture } from '../lib/analytics';
 import { appSessionDeepLink } from '../lib/urls';
 
-const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avatok_call';
+const PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.saathum.app';
 
 export interface StartInAppProps {
   /** Which lane sent the creator here — drives the copy and the deep link. */

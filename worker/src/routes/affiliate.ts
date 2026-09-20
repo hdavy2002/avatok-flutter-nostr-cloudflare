@@ -637,7 +637,7 @@ function previewHtml(env: Env, p: { title: string; price?: number | null; app?: 
   const price = p.price != null && p.price > 0 ? `\u20b9${p.price}` : "";
   const appLabel = p.app ? APP_LABEL[p.app] ?? "AvaTok" : "AvaTok";
   const open = p.deepLink ? `<script>setTimeout(function(){window.location.href=${JSON.stringify(p.deepLink)};},300);</script>` : "";
-  const playId = (env.PLAY_PACKAGE_ID || "ai.avatok.avatok_call").trim();
+  const playId = (env.PLAY_PACKAGE_ID || "com.saathum.app").trim();
   const appStoreId = (env.APP_STORE_ID || "").trim();
   const playBadge = `<a href="https://play.google.com/store/apps/details?id=${encodeURIComponent(playId)}${p.token ? `&referrer=${encodeURIComponent(`aff=${p.token}`)}` : ""}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 6px 8px 0">Google&nbsp;Play</a>`;
   const appStoreBadge = appStoreId

@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:000000000000:android:8e77c35d2df04506126d00",
         "android_client_info": {
-          "package_name": "ai.avatok.avatok_call"
+          "package_name": "com.saathum.app"
         }
       },
       "oauth_client": [],

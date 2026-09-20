@@ -17,7 +17,7 @@ set -uo pipefail
 
 ADB="${ADB:-/Users/davy/Library/Android/sdk/platform-tools/adb}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PKG="${PKG:-ai.avatok.avatok_call}"
+PKG="${PKG:-com.saathum.app}"
 
 FRESH=1
 if [ "${1:-}" = "--keep-data" ]; then FRESH=0; shift; fi

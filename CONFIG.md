@@ -27,7 +27,11 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
 - Publishable key (public): `pk_live_Y2xlcmsuc2FhdGh1bS5jb20k`
 
 ## Firebase / FCM
-- Project: `avatok-e19ef` · Android package: `ai.avatok.avatok_call`
+- Project: `avatok-e19ef` · Android package: `com.saathum.app` — ⚠️ **not yet registered.**
+  `firebase/google-services.json` still only registers the OLD `ai.avatok.avatok_call`
+  package. A new Firebase Android app for `com.saathum.app` (and `.staging`) must be
+  added to a Firebase project and a fresh `google-services.json` dropped in before FCM
+  will work. See `REPORT.md`.
 
 ## Bunny.net Stream
 - Library ID: `553793` · CDN: `vz-837d504e-6a8.b-cdn.net` · Pull zone: `vz-837d504e-6a8`
@@ -43,7 +47,8 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
   delivery events.
 
 ## App
-- Android applicationId: `ai.avatok.avatok_call`
+- Android applicationId: `com.saathum.app` (changed from `ai.avatok.avatok_call` — new,
+  separate Play Store listing; see `REPORT.md`)
 - Direct test APK: GitHub release `calltest-latest`
 
 ## Razorpay — ⚠️ PRODUCTION IS RUNNING IN **TEST MODE** (2026-09-13)

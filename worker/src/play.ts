@@ -9,7 +9,7 @@
 // Setup (owner): create a Google Cloud service account, grant it access in the
 // Play Console (Users & permissions → "View financial data" + the app), download
 // its JSON key, and set it as the Worker secret PLAY_SERVICE_ACCOUNT_JSON. Also
-// set the var PLAY_PACKAGE_ID (defaults to ai.avatok.avatok_call).
+// set the var PLAY_PACKAGE_ID (defaults to com.saathum.app).
 
 import type { Env } from "./types";
 import { MONEY_IN_DISABLED } from "./money";
@@ -106,7 +106,19 @@ async function getAccessToken(env: Env): Promise<string> {
 }
 
 export function playPackageId(env: Env): string {
-  return (env as any).PLAY_PACKAGE_ID || "ai.avatok.avatok_call";
+  return (env as any).PLAY_PACKAGE_ID || "com.saathum.app";
+}
+
+// [SAATHUM-APP-3] Saathum ships as a NEW Play app (com.saathum.app) so that
+// existing avaTOK testers never receive it as an update. Both packages talk to
+// THIS worker, so purchase verification must accept either: a token minted by
+// the old app is only valid against the old package id, and vice versa. Trying
+// the configured package first and falling back keeps old testers' wallet
+// top-ups working without a second deployment.
+export function playPackageIds(env: Env): string[] {
+  const primary = playPackageId(env);
+  const legacy = (env as any).PLAY_PACKAGE_ID_LEGACY || "ai.avatok.avatok_call";
+  return primary === legacy ? [primary] : [primary, legacy];
 }
 
 // Verify a SUBSCRIPTION purchase token via purchases.subscriptionsv2.
@@ -120,13 +132,16 @@ export async function verifyPlaySubscription(
   try { accessToken = await getAccessToken(env); }
   catch (e) { return { ok: false, entitled: false, reason: (e as Error).message }; }
 
-  const pkg = playPackageId(env);
-  const url =
-    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
-    `${encodeURIComponent(pkg)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
-
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  const data = (await res.json()) as any;
+  let res!: Response;
+  let data: any;
+  for (const pkg of playPackageIds(env)) {
+    const url =
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
+      `${encodeURIComponent(pkg)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
+    res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    data = (await res.json()) as any;
+    if (res.ok) break; // a token is only valid against the package that minted it
+  }
   if (!res.ok) {
     return { ok: false, entitled: false, reason: data?.error?.message || `play_api_${res.status}` };
   }
@@ -179,13 +194,16 @@ export async function verifyPlayProduct(
   try { accessToken = await getAccessToken(env); }
   catch (e) { return { ok: false, purchased: false, reason: (e as Error).message }; }
 
-  const pkg = playPackageId(env);
-  const url =
-    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
-    `${encodeURIComponent(pkg)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
-
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  const data = (await res.json()) as any;
+  let res!: Response;
+  let data: any;
+  for (const pkg of playPackageIds(env)) {
+    const url =
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
+      `${encodeURIComponent(pkg)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`;
+    res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    data = (await res.json()) as any;
+    if (res.ok) break;
+  }
   if (!res.ok) {
     return { ok: false, purchased: false, reason: data?.error?.message || `play_api_${res.status}` };
   }

@@ -50,7 +50,7 @@ case "$1" in
     ;;
   attach)
     [ -n "$2" ] || { echo "usage: $0 attach <device-serial>"; exit 1; }
-    adb -s "$2" shell am start -n ai.avatok.avatok_call/.MainActivity >/dev/null
+    adb -s "$2" shell am start -n com.saathum.app/.MainActivity >/dev/null
     cd "$APP" || exit 1
     exec flutter attach -d "$2"
     ;;

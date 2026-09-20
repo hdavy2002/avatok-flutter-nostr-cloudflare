@@ -1,4 +1,4 @@
-package ai.avatok.avatok_call
+package com.saathum.app
 
 import io.flutter.app.FlutterApplication
 
