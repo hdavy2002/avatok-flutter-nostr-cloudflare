@@ -8,11 +8,16 @@ const steps = [
 ---
 <section class="booking-express rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
   <span id="formats" aria-hidden="true"></span>
-  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> <ui-copy style="display:contents" data-i18n="web-landing.e38ba82f0a13cc39">Ek platform. Teen tareeke.</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> <ui-copy style="display:contents" data-i18n="web-landing.6e0103589f0d1804">Ek platform. Do tareeke.</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
+      {/* [SAATHUM-WEB-UI 2026-09-20] Was three shelves (Live events / 1:1
+          sessions / Group sessions). Saathum keeps two groups — devotional
+          live events and astrology consultations — so the companionship shelf
+          is gone and the surviving 1:1 shelf now points at book_their_time
+          (astrology consultations, individual only — Saathum has no group
+          sessions). See SPEC.md and Specs/listing-taxonomy.json. */}
       <div class="rail-format-grid">
         <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="rail-format-icon rail-badge--pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg></span><span><h3 data-i18n="web-landing.b7a9f5518da78e1f">Live events</h3><p data-i18n="web-landing.982acdf78125b594">Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="rail-format-icon rail-badge--yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg></span><span><h3 data-i18n="web-landing.f34fb6b7a6f51b9d">1:1 sessions</h3><p data-i18n="web-landing.7480d0ba273e2df7">Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
-        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="rail-format-icon rail-badge--blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 4 5v2" /></svg></span><span><h3 data-i18n="web-landing.84d0be67f5ca32a2">Group sessions</h3><p data-i18n="web-landing.bf94bce3c2953bed">Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="rail-format-icon rail-badge--yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg></span><span><h3 data-i18n="web-landing.fd0b1a468083deee">1:1 consultations</h3><p data-i18n="web-landing.7400a62e97524a0a">Book a private consultation.</p></span><span aria-hidden="true">↗</span></a>
       </div>
 
   <div class="express-ticket" id="how-avatok-works">
