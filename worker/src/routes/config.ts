@@ -107,6 +107,12 @@ export interface PlatformConfig {
   stripeIntlEnabled: boolean;
   payGatewayPickerEnabled: boolean;
   hdfcSmsEnabled: boolean;
+  /** [TAKEDOWN-HDFC-DARK-1] Router-level kill switch for the entire HDFC UPI SMS
+   * ₹1 smoke harness — every /api/pay/hdfc-sms/* and /api/sms/* route 410s while
+   * this is false, before any handler (including requireAdmin/HMAC checks) runs.
+   * Distinct from `hdfcSmsEnabled`, which only pauses intent creation/claiming
+   * inside the handlers; this one makes the whole rail unreachable. Default false. */
+  hdfcSmsRailEnabled: boolean;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   /** [WAITROOM-1] Minutes after starts_at the creator has to check in
@@ -2025,6 +2031,7 @@ const DEFAULTS: PlatformConfig = {
   stripeIntlEnabled: false,
   payGatewayPickerEnabled: false,
   hdfcSmsEnabled: false,
+  hdfcSmsRailEnabled: false,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // [WAITROOM-1] Prepaid waiting-room model (RULEBOOK-PAID-SESSIONS.md v2 §2/§3).
