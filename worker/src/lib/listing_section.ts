@@ -84,8 +84,27 @@ export function publishBlockedReason(
     : `This section needs ${needs}, which is currently switched off.`;
 }
 
-/** Categories that read as a divination practice rather than a subject. */
-const ASTRO_CATEGORIES = new Set(["astrologers"]);
+/** Categories that read as a divination or spiritual-guidance practice rather
+ *  than a subject.
+ *
+ *  [SAATHUM-TAXONOMY-1 2026-09-20] The seven new Specs/listing-taxonomy.json
+ *  book_their_time categories added for the Saathum keep-list. Without this,
+ *  `sectionFor` would fall through to rule 4 below (`kind.startsWith("consult")`
+ *  -> "consulting"), and "consulting" is one of the shelves Saathum hides
+ *  (`_hidden_sections`) — these new categories would be structurally
+ *  unreachable on the marketplace despite not being marked `hidden` in the
+ *  taxonomy. Routing them here, into the astro_tarot section Saathum keeps
+ *  visible, is what makes them actually bookable. */
+const ASTRO_CATEGORIES = new Set([
+  "astrologers",
+  "palmistry",
+  "tarot_reading",
+  "numerology",
+  "kundli_matching",
+  "vastu",
+  "pandit_consultation",
+  "meditation",
+]);
 
 /** Categories that ARE a section — the bazaar session types [MARKET-SECTION-2]. */
 const SECTION_CATEGORIES: Record<string, Section> = {

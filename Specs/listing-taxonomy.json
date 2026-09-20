@@ -42,7 +42,13 @@
       ]
     }
   ],
-  "_hidden_sections": {},
+  "_hidden_sections": {
+    "live_friends": "[SAATHUM-TAXONOMY-1 2026-09-20] Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden, this shelf included. Category live_friends marked inactive in the same migration.",
+    "adda_rooms": "[SAATHUM-TAXONOMY-1 2026-09-20] Same companionship narrowing as live_friends, on top of the pre-existing conferenceEnabled gate (false in production). Category adda_rooms marked inactive in the same migration.",
+    "consulting": "[SAATHUM-TAXONOMY-1 2026-09-20] The generic 1:1 shelf (teachers, professors, business, fitness, wellness, music, language, art, legal_tax, tech_help, services, ...) is outside the Saathum keep-list. astro_tarot stays visible for astrologers and the new astrology/spiritual-guidance categories.",
+    "glow_up": "[SAATHUM-TAXONOMY-1 2026-09-20] Style & glow-up is outside the Saathum devotional-services keep-list. Category glow_up marked inactive in the same migration.",
+    "ai_voice_agents": "[SAATHUM-TAXONOMY-1 2026-09-20] AI voice agent listings are outside the Saathum devotional-services keep-list for this narrowing; agentListingsEnabled is also being turned off (lane 02-flags)."
+  },
   "categories": [
     {
       "id": "live_cooking",
@@ -50,7 +56,9 @@
       "emoji": "🍳",
       "group": "india_goes_live",
       "new": true,
-      "sort": 10
+      "sort": 10,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_trek",
@@ -58,7 +66,9 @@
       "emoji": "🥾",
       "group": "india_goes_live",
       "new": true,
-      "sort": 20
+      "sort": 20,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_puja",
@@ -98,7 +108,9 @@
       "emoji": "🎵",
       "group": "india_goes_live",
       "new": true,
-      "sort": 60
+      "sort": 60,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_dance",
@@ -106,7 +118,9 @@
       "emoji": "💃",
       "group": "india_goes_live",
       "new": true,
-      "sort": 70
+      "sort": 70,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_travel",
@@ -114,7 +128,9 @@
       "emoji": "🛵",
       "group": "india_goes_live",
       "new": true,
-      "sort": 80
+      "sort": 80,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_food_walk",
@@ -122,7 +138,9 @@
       "emoji": "🍜",
       "group": "india_goes_live",
       "new": true,
-      "sort": 90
+      "sort": 90,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_fitness",
@@ -130,7 +148,9 @@
       "emoji": "🧘",
       "group": "india_goes_live",
       "new": true,
-      "sort": 100
+      "sort": 100,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_sports",
@@ -138,7 +158,9 @@
       "emoji": "🏏",
       "group": "india_goes_live",
       "new": true,
-      "sort": 110
+      "sort": 110,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_art",
@@ -146,7 +168,9 @@
       "emoji": "🎨",
       "group": "india_goes_live",
       "new": true,
-      "sort": 120
+      "sort": 120,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_satsang",
@@ -162,7 +186,9 @@
       "emoji": "☕",
       "group": "india_goes_live",
       "new": true,
-      "sort": 140
+      "sort": 140,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "listener",
@@ -170,7 +196,9 @@
       "emoji": "👂",
       "group": "find_your_people",
       "new": true,
-      "sort": 210
+      "sort": 210,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "home_friend",
@@ -178,7 +206,9 @@
       "emoji": "🏠",
       "group": "find_your_people",
       "new": true,
-      "sort": 220
+      "sort": 220,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "late_night_friend",
@@ -186,7 +216,9 @@
       "emoji": "🌙",
       "group": "find_your_people",
       "new": true,
-      "sort": 230
+      "sort": 230,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "quiet_company",
@@ -194,7 +226,9 @@
       "emoji": "🤍",
       "group": "find_your_people",
       "new": true,
-      "sort": 240
+      "sort": 240,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "chat_buddy",
@@ -202,7 +236,9 @@
       "emoji": "💬",
       "group": "find_your_people",
       "new": true,
-      "sort": 250
+      "sort": 250,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "walk_talk",
@@ -210,7 +246,9 @@
       "emoji": "🚶",
       "group": "find_your_people",
       "new": true,
-      "sort": 260
+      "sort": 260,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "language_buddy",
@@ -218,7 +256,9 @@
       "emoji": "🗣️",
       "group": "find_your_people",
       "new": true,
-      "sort": 270
+      "sort": 270,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "college_friends",
@@ -226,7 +266,9 @@
       "emoji": "🎓",
       "group": "find_your_people",
       "new": true,
-      "sort": 280
+      "sort": 280,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "senior_company",
@@ -234,7 +276,9 @@
       "emoji": "🌻",
       "group": "find_your_people",
       "new": true,
-      "sort": 290
+      "sort": 290,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "queer_friendly",
@@ -242,7 +286,9 @@
       "emoji": "🏳️‍🌈",
       "group": "find_your_people",
       "new": true,
-      "sort": 300
+      "sort": 300,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "live_friends",
@@ -250,7 +296,9 @@
       "emoji": "👥",
       "group": "find_your_people",
       "new": false,
-      "sort": 310
+      "sort": 310,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden, this category's live_friends shelf included. Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "adda_rooms",
@@ -260,7 +308,8 @@
       "new": false,
       "sort": 320,
       "requires_flag": "conferenceEnabled",
-      "_note": "conferenceEnabled is FALSE in production (read from the live config 2026-09-05). Hide this blip while the flag is off — an always-empty blip is indistinguishable from 'nobody has listed one yet', and only one of those is a bug."
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden, on top of the pre-existing conferenceEnabled gate (FALSE in production, read from the live config 2026-09-05). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "astrologers",
@@ -271,12 +320,77 @@
       "sort": 410
     },
     {
+      "id": "palmistry",
+      "label": "Palmistry",
+      "emoji": "🤲",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 411,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "tarot_reading",
+      "label": "Tarot reading",
+      "emoji": "🃏",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 412,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "numerology",
+      "label": "Numerology",
+      "emoji": "🔢",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 413,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "kundli_matching",
+      "label": "Kundli matching",
+      "emoji": "💑",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 414,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "vastu",
+      "label": "Vastu",
+      "emoji": "🧭",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 415,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "pandit_consultation",
+      "label": "Pandit consultation",
+      "emoji": "🙏",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 416,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. The creator is often not the officiating pandit; lane 03-listing-rules' performed_by/at_temple/facilitated_by fields disclose who does what. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
+      "id": "meditation",
+      "label": "Meditation",
+      "emoji": "🧘",
+      "group": "book_their_time",
+      "new": true,
+      "sort": 417,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] New — Specs/SPEC.md 1:1 keep-list. worker/src/lib/listing_section.ts ASTRO_CATEGORIES routes this to the astro_tarot section (kept visible), not the hidden consulting shelf."
+    },
+    {
       "id": "teachers",
       "label": "Tutors & teachers",
       "emoji": "📚",
       "group": "book_their_time",
       "new": false,
-      "sort": 420
+      "sort": 420,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "professors",
@@ -284,7 +398,9 @@
       "emoji": "🎓",
       "group": "book_their_time",
       "new": false,
-      "sort": 430
+      "sort": 430,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "business",
@@ -292,7 +408,9 @@
       "emoji": "💼",
       "group": "book_their_time",
       "new": false,
-      "sort": 440
+      "sort": 440,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "money_finance",
@@ -300,7 +418,9 @@
       "emoji": "💰",
       "group": "book_their_time",
       "new": true,
-      "sort": 450
+      "sort": 450,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "career_coach",
@@ -308,7 +428,9 @@
       "emoji": "🧭",
       "group": "book_their_time",
       "new": true,
-      "sort": 460
+      "sort": 460,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "fitness",
@@ -316,7 +438,9 @@
       "emoji": "💪",
       "group": "book_their_time",
       "new": false,
-      "sort": 470
+      "sort": 470,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "wellness",
@@ -324,7 +448,9 @@
       "emoji": "🧘",
       "group": "book_their_time",
       "new": false,
-      "sort": 480
+      "sort": 480,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "music",
@@ -332,7 +458,9 @@
       "emoji": "🎵",
       "group": "book_their_time",
       "new": false,
-      "sort": 490
+      "sort": 490,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "language",
@@ -340,7 +468,9 @@
       "emoji": "🗣️",
       "group": "book_their_time",
       "new": false,
-      "sort": 500
+      "sort": 500,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "art",
@@ -348,7 +478,9 @@
       "emoji": "🎨",
       "group": "book_their_time",
       "new": false,
-      "sort": 510
+      "sort": 510,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "glow_up",
@@ -356,7 +488,9 @@
       "emoji": "✨",
       "group": "book_their_time",
       "new": false,
-      "sort": 520
+      "sort": 520,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "legal_tax",
@@ -364,7 +498,9 @@
       "emoji": "⚖️",
       "group": "book_their_time",
       "new": true,
-      "sort": 530
+      "sort": 530,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "tech_help",
@@ -372,7 +508,9 @@
       "emoji": "🛠️",
       "group": "book_their_time",
       "new": true,
-      "sort": 540
+      "sort": 540,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     },
     {
       "id": "services",
@@ -380,7 +518,9 @@
       "emoji": "🔧",
       "group": "book_their_time",
       "new": false,
-      "sort": 550
+      "sort": 550,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — not in the Saathum devotional-services keep-list (Specs/SPEC.md). Stays in JSON/D1 so existing listings keep it; reversible."
     }
   ],
   "pricing": {
