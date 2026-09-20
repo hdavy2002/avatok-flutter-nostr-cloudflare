@@ -665,7 +665,7 @@ function Inner() {
 
       {!resume && (
         <>
-          <Divider label={uiT("web-auth.4aec6108de24a9f0","Ya phir")} />
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
           <GoogleButton onClick={() => void google()} disabled={stalled || submitting || emailLocked} />
           <div className="auth-foot">
             <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>

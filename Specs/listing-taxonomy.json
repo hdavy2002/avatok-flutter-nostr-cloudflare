@@ -23,7 +23,8 @@
       ],
       "sections": [
         "live_friends",
-        "adda_rooms"
+        "adda_rooms",
+        "group_classes"
       ]
     },
     {
@@ -310,6 +311,56 @@
       "requires_flag": "conferenceEnabled",
       "hidden": true,
       "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — Saathum narrows to devotional services (Specs/SPEC.md); the whole find_your_people companionship group is hidden, on top of the pre-existing conferenceEnabled gate (FALSE in production, read from the live config 2026-09-05). Stays in JSON/D1 so existing listings keep it; reversible."
+    },
+    {
+      "id": "group_language_practice",
+      "label": "Language practice",
+      "emoji": "🗣️",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 330,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — group classes are outside the Saathum devotional-services keep-list (Specs/SPEC.md). Carried over from origin/main's [WEB-GATEWAY-F] group-classes addition (worker/src/lib/listing_section.ts already routes these to the group_classes section); stays in JSON/D1 so existing listings keep it, reversible.",
+      "hidden": true
+    },
+    {
+      "id": "group_fitness_batch",
+      "label": "Fitness & yoga batch",
+      "emoji": "🧘",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 340,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — group classes are outside the Saathum devotional-services keep-list (Specs/SPEC.md). Carried over from origin/main's [WEB-GATEWAY-F] group-classes addition (worker/src/lib/listing_section.ts already routes these to the group_classes section); stays in JSON/D1 so existing listings keep it, reversible."
+    },
+    {
+      "id": "group_exam_revision",
+      "label": "Exam revision",
+      "emoji": "📖",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 350,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — group classes are outside the Saathum devotional-services keep-list (Specs/SPEC.md). Carried over from origin/main's [WEB-GATEWAY-F] group-classes addition (worker/src/lib/listing_section.ts already routes these to the group_classes section); stays in JSON/D1 so existing listings keep it, reversible."
+    },
+    {
+      "id": "group_music_class",
+      "label": "Music class",
+      "emoji": "🎵",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 360,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — group classes are outside the Saathum devotional-services keep-list (Specs/SPEC.md). Carried over from origin/main's [WEB-GATEWAY-F] group-classes addition (worker/src/lib/listing_section.ts already routes these to the group_classes section); stays in JSON/D1 so existing listings keep it, reversible."
+    },
+    {
+      "id": "group_cooking_class",
+      "label": "Cooking class",
+      "emoji": "🍳",
+      "group": "find_your_people",
+      "new": true,
+      "sort": 370,
+      "hidden": true,
+      "_note": "[SAATHUM-TAXONOMY-1 2026-09-20] Hidden — group classes are outside the Saathum devotional-services keep-list (Specs/SPEC.md). Carried over from origin/main's [WEB-GATEWAY-F] group-classes addition (worker/src/lib/listing_section.ts already routes these to the group_classes section); stays in JSON/D1 so existing listings keep it, reversible."
     },
     {
       "id": "astrologers",

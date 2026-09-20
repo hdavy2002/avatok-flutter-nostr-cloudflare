@@ -61,6 +61,7 @@ type Listing = {
   capacity: number | null;
   attrs: string | null;
   free_entry: number | null; // [LIST-FREE-1]
+  is_example: number | null; // [WEB-GATEWAY-E 2026-09-18]
 };
 
 type CheckoutOperation = {
@@ -412,11 +413,15 @@ export async function commercialHold(req: Request, env: Env): Promise<Response> 
   const idem = idempotencyKey(req);
   if (!idem) return json({ error: "valid Idempotency-Key required" }, 400);
   const listing = await metaDb(env).prepare(
-    "SELECT id,creator_id,kind,title,status,duration_min FROM listings WHERE id=?1 LIMIT 1",
-  ).bind(route.listingId).first<{ id: string; creator_id: string; kind: string; title: string; status: string; duration_min: number | null }>();
+    "SELECT id,creator_id,kind,title,status,duration_min,is_example FROM listings WHERE id=?1 LIMIT 1",
+  ).bind(route.listingId).first<{ id: string; creator_id: string; kind: string; title: string; status: string; duration_min: number | null; is_example: number | null }>();
   if (!listing || !["consult", "consultation"].includes(listing.kind) || !["published", "live"].includes(listing.status)) {
     return json({ error: "listing unavailable" }, 404);
   }
+  // [WEB-GATEWAY-E 2026-09-18] A badged example never gets a slot hold — refused
+  // before claimCheckoutAvailability touches the calendar. See listings.ts
+  // bookListing for the same gate on the legacy path.
+  if (listing.is_example) return json({ error: "example_listing" }, 409);
   if (listing.creator_id === auth.uid) return json({ error: "cannot hold your own service" }, 400);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const slotId = typeof body.slot_id === "string" ? body.slot_id : typeof body.slot === "string" ? body.slot : null;
@@ -705,12 +710,18 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ error: "policy confirmation required" }, 400);
   }
   const listing = await metaDb(env).prepare(
-    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry
+    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry,is_example
        FROM listings WHERE id=?1`,
   ).bind(route.listingId).first<Listing>();
   if (!listing || listing.kind !== route.kind && !(route.kind === "consult_1to1" && listing.kind === "consult")
     || !["published", "live"].includes(listing.status)) {
     return json({ error: "listing unavailable" }, 404);
+  }
+  // [WEB-GATEWAY-E 2026-09-18] A badged example is never purchasable — refused
+  // before the free-lane gate, the checkout-operation row or any gateway call.
+  if (listing.is_example) {
+    commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "example_listing" });
+    return json({ error: "example_listing" }, 409);
   }
   if (listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
   if (route.kind === "consult_1to1" && Number(listing.capacity ?? 1) !== 1) {

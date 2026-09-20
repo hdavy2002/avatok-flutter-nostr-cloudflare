@@ -75,7 +75,7 @@ import {
   quoteListingEntitlement,
   type ListingEntitlementOk,
 } from "../lib/listing_billing";
-import { readConfig } from "./config";
+import { readConfig, type PlatformConfig } from "./config";
 // [C01 MKT-STATUS-GATE-1] The server-owned status transition table — see the file
 // header there for the exact bypass this closes (setListingStatus used to accept
 // any source status for live|completed|cancelled and every source but 'draft' for
@@ -658,6 +658,9 @@ const CARD_SELECT = `
          -- [LISTING-PERFORMER-1 2026-09-20] who performs/facilitates, and
          -- whether it's at a temple.
          l.performed_by, l.facilitated_by, l.at_temple,
+         -- [WEB-GATEWAY-E 2026-09-18] Badged, non-bookable sample listing. See
+         -- shapeCard's is_example field and every money-entry-point guard.
+         l.is_example,
          lc.price_semantics AS category_price_semantics,
          -- [CARD-CAT-LABEL-1 2026-09-05] The human name for the category. The
          -- card carried only the ID, so every surface that wanted to name a
@@ -831,6 +834,11 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // since a card has no per-request default the way the detail page's local variable
     // does).
     price_semantics: r.category_price_semantics ?? null,
+    // [WEB-GATEWAY-E 2026-09-18] Badged sample, owned by an official account,
+    // never bookable/payable — see routes/listings.ts bookListing and every
+    // other money entry point. Defaults false: a pre-migration row (or a
+    // client older than this change) reads exactly as before.
+    is_example: !!r.is_example,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -3256,6 +3264,7 @@ export async function expireEndedEventListings(
   const rows = await metaDb(env).prepare(
     `SELECT l.id, l.creator_id, l.title FROM listings l
       WHERE l.kind='live_event' AND l.status='published' AND COALESCE(l.starts_at,0) > 0
+        AND l.is_example=0 -- [WEB-GATEWAY-E] a badged example never expires by the clock
         AND ${endMsSql("l")} + ?2 <= ?1
         AND NOT EXISTS (
           SELECT 1 FROM commercial_sessions s
@@ -3648,6 +3657,42 @@ export async function exploreCategories(env: Env): Promise<Response> {
   return json({ categories: rs.results ?? [] });
 }
 
+/**
+ * [WEB-GATEWAY-E 2026-09-18] WHERE fragment hiding badged example listings
+ * unless the caller explicitly asked for them (`?examples=1`) AND the owner's
+ * `exampleListingsEnabled` switch is on. Without this every browse/search
+ * surface — including the Flutter app, which never sends `?examples=1` — would
+ * start returning the 8 non-bookable sample listings mixed in with real ones.
+ * The flag is deliberately a SEPARATE check from the `?examples=1` param: the
+ * param says the caller (web marketplace/homepage) wants examples if any are
+ * showing; the flag is the owner's single kill switch at launch, and either
+ * one being off hides them.
+ */
+export function exampleFilter(req: Request, config: PlatformConfig, where: string[]): void {
+  const wantsExamples = new URL(req.url).searchParams.get("examples") === "1";
+  if (!(wantsExamples && config.exampleListingsEnabled === true)) where.push("l.is_example=0");
+}
+
+/**
+ * [WEB-GATEWAY-FIX1] WHERE fragment honouring the pre-existing
+ * `attrs.hide_from_marketplace` flag (set e.g. by
+ * `worker/migrations/2026-09-17-upi-smoke-event.sql` on the production
+ * `avatok-upi-smoke-2026` smoke-test listing). Nothing read this flag before,
+ * so a listing marked hidden still surfaced on every browse/search/creator
+ * surface. Unconditional — unlike exampleFilter there is no opt-in param;
+ * a hidden listing stays hidden for everyone. Does NOT apply to the listing
+ * detail page (/api/listings/:id) or the HDFC smoke routes, which must keep
+ * resolving a hidden listing by direct id/link.
+ */
+export function hiddenListingFilter(where: string[]): void {
+  // CASE, not a bare json_extract: SQLite's json_extract RAISES on malformed
+  // JSON, so one bad attrs write would take down every browse/search query.
+  // CASE is evaluated lazily, so the json_valid guard genuinely protects it.
+  where.push(HIDDEN_LISTING_SQL);
+}
+export const HIDDEN_LISTING_SQL =
+  "(CASE WHEN l.attrs IS NULL OR json_valid(l.attrs)=0 THEN 1 ELSE COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0 END)";
+
 /** WHERE fragment hiding listings from creators the (authed) caller blocked. */
 function blockFilter(uid: string | null, binds: unknown[], where: string[]): void {
   if (!uid) return;
@@ -3667,6 +3712,11 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // [LISTING-EXPIRY-1] …and fixed-date shows whose scheduled end has passed. The cron
   // closes them within minutes; this makes the marketplace right in the meantime.
   where.push(notEndedSql("l", `?${binds.length}`));
+  // [WEB-GATEWAY-E 2026-09-18] Badged example listings only reach a caller that
+  // explicitly asked for them — see exampleFilter's own doc comment.
+  exampleFilter(req, await readConfig(env), where);
+  // [WEB-GATEWAY-FIX1] Listings marked hide_from_marketplace never reach browse.
+  hiddenListingFilter(where);
   // [AVA-MKT-VERT-1] §2.0 — the cross-vertical rule, on the main browse. Defaults to
   // commerce, so today's callers (which send no ?vertical) see today's rows.
   const vertical = verticalFilter(req, binds, where);
@@ -3750,6 +3800,11 @@ async function sectionCountsFor(env: Env, req: Request, uid: string | null): Pro
     binds.push(Date.now());
     where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
     where.push(notEndedSql("l", `?${binds.length}`)); // [LISTING-EXPIRY-1] counts match the grid
+    // [WEB-GATEWAY-E 2026-09-18] Counts match the grid here too — a sidebar
+    // chip must not advertise examples the grid itself is hiding.
+    exampleFilter(req, await readConfig(env), where);
+    // [WEB-GATEWAY-FIX1] Same reasoning: a hidden listing must not inflate a count chip.
+    hiddenListingFilter(where);
     verticalFilter(req, binds, where);
     blockFilter(uid, binds, where);
     const rs = await metaSession(env).prepare(
@@ -3800,6 +3855,11 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const q = (u.get("q") || "").trim();
   const where = ["l.status IN ('published','live')"];
   const binds: unknown[] = [];
+  // [WEB-GATEWAY-E 2026-09-18] Same gate as exploreBrowse — a search hit on a
+  // badged example must not reach a caller (the app) that never asked for one.
+  exampleFilter(req, await readConfig(env), where);
+  // [WEB-GATEWAY-FIX1] Same gate as exploreBrowse for hide_from_marketplace.
+  hiddenListingFilter(where);
 
   // -------------------------------------------------------------------------
   // [AVA-MKT-VERT-1] §2.0 — "search (ftsSync included)" is vertical-scoped, and this
@@ -4101,9 +4161,18 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   // not surface the latter (that is the §2.6 case, not a tidiness one). Not named in the
   // spec's list, but "a filter on every query" is the rule and the same default applies.
   const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
+  // [WEB-GATEWAY-FIX1] Creator profile is a public read like explore/browse —
+  // apply the same example-listing and hide_from_marketplace gates so example
+  // rows and hidden listings don't leak to the Flutter app / web creator page
+  // via this route. examples=1 (web's getCreator) still opts back in.
+  const creatorWhere = [
+    "l.creator_id=?1", "l.vertical=?2", "l.status IN ('published','live')",
+    notEndedSql("l", "?3"),
+  ];
+  exampleFilter(req, await readConfig(env), creatorWhere);
+  hiddenListingFilter(creatorWhere);
   const ls = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 AND l.status IN ('published','live')
-        AND ${notEndedSql("l", "?3")}
+    `${CARD_SELECT} WHERE ${creatorWhere.join(" AND ")}
       ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC LIMIT 50`,
   ).bind(id, vertical, Date.now()).all();
   const lrows = (ls.results ?? []) as any[];
@@ -4384,6 +4453,10 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const db = metaDb(env);
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || !["published", "live"].includes(l.status)) return json({ error: "listing not available" }, 404);
+  // [WEB-GATEWAY-E 2026-09-18] A badged example is never bookable or payable —
+  // refused BEFORE any calendar claim or wallet hold. See every other money
+  // entry point (commercial_checkout.ts, pay.ts, cashfree.ts) for the same gate.
+  if (l.is_example) return json({ error: "example_listing" }, 409);
   // [AGENT-LIVE-1] M6 — an AI voice agent is never booked through the legacy
   // calendar/escrow pipeline (no calendar slot, no per-creator wallet escrow —
   // D7's platform-fee split and the seat authority own this instead). Checked

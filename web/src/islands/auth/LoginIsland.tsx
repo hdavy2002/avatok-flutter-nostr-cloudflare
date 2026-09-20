@@ -259,12 +259,12 @@ function Inner() {
           its loading state, and if loading fails the message above explains it. */}
       <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}><UiText id="web-auth.88d420398edd3a06" source="Email me a code" />{" "}</Button>
 
-      <Divider label={uiT("web-auth.4aec6108de24a9f0","Ya phir")} />
+      <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
 
       <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
 
       <div className="auth-foot">
-        <p className="auth-aside"><UiText id="web-auth.147f03f49b15afba" source="Chai ho jaye?" /><br /><UiText id="web-auth.eef3540404312d17" source="Woh bhi ho jayega." /></p>
+        <p className="auth-aside"><UiText id="web-auth.147f03f49b15afba" source="Time for chai?" /><br /><UiText id="web-auth.eef3540404312d17" source="That's sorted too." /></p>
         <p className="auth-footline"><UiText id="web-auth.38c1c4457cd164cc" source="New here?" /><a href="/sign-up"><UiText id="web-auth.86033f75a4c0876a" source="Create an account" /></a>
         </p>
       </div>

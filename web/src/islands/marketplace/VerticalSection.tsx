@@ -91,7 +91,7 @@ export function VerticalSection({
             className={`flex-none whitespace-nowrap rounded-full border-2 border-ink px-3.5 py-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.05em] ${
               selected === null ? 'bg-coral text-card' : 'bg-card text-ink'
             }`}
-          ><UiText id="web-marketplace.369a8c6d0036df8f" source="Sab" />{" "}</button>
+          ><UiText id="web-marketplace.369a8c6d0036df8f" source="All" />{" "}</button>
           {blips.map((b) => (
             <button
               key={b.id}
@@ -126,7 +126,7 @@ export function VerticalSection({
       </div>
 
       <div className="mb-5 flex justify-between gap-3">
-        <span className="font-label text-[0.75rem] font-bold uppercase tracking-[0.1em] text-inkMute"><UiText id="web-marketplace.d604310a789a1848" source="Showing" />{" "}{n}{" "}<UiText id="web-marketplace.28391d3bc64ec15c" source="of" />{" "}{listings.length}{" "}<UiText id="web-marketplace.af4425aac1c88e65" source="· Sab haazir" />{" "}</span>
+        <span className="font-label text-[0.75rem] font-bold uppercase tracking-[0.1em] text-inkMute"><UiText id="web-marketplace.d604310a789a1848" source="Showing" />{" "}{n}{" "}<UiText id="web-marketplace.28391d3bc64ec15c" source="of" />{" "}{listings.length}{" "}<UiText id="web-marketplace.af4425aac1c88e65" source="· All shown" />{" "}</span>
         <span className="font-label text-[0.75rem] font-bold uppercase tracking-[0.1em] text-inkMute">
           {group.zone}
         </span>

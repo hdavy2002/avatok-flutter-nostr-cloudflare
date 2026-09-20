@@ -86,7 +86,7 @@ export async function creatorBlocked(env: Env, creatorId: string, uid: string): 
 }
 
 async function loadListing(env: Env, id: string): Promise<any | null> {
-  return metaDb(env).prepare("SELECT id, creator_id, kind, title, price, starts_at, duration_min, status FROM listings WHERE id=?1").bind(id).first<any>();
+  return metaDb(env).prepare("SELECT id, creator_id, kind, title, price, starts_at, duration_min, status, is_example FROM listings WHERE id=?1").bind(id).first<any>();
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +252,7 @@ export async function liveDonate(req: Request, env: Env): Promise<Response> {
   if (!(amount > 0 && amount <= 100_000)) return json({ error: "amount must be 1..100000 coins" }, 400);
   const l = await loadListing(env, id);
   if (!l) return json({ error: "listing not found" }, 404);
+  if (l.is_example) return json({ error: "example_listing" }, 409);
   if (l.creator_id === ctx.uid) return json({ error: "cannot donate to yourself" }, 400);
 
   const donationId = crypto.randomUUID();

@@ -121,7 +121,7 @@ export const ORG: OrgConstants = {
     country: 'US',
   },
   indianEntity: {
-    name: 'Ave Maria International Pvt Ltd',
+    name: '',
     locality: 'Mumbai',
     country: 'IN',
     registeredOffice: null,

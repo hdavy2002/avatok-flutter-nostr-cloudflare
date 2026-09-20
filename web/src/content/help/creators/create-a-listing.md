@@ -16,7 +16,7 @@ faq:
 draft: false
 ---
 
-Saathum has three kinds of listing. **Live shows** ("India goes live") are a scheduled broadcast with a fixed start time. **1:1 sessions** ("Book their time") are private, paid time with you, booked against your availability. **Marketplace listings** (buy, sell, social) are simple items or offers with no schedule attached. Start a listing from [My listings](/dashboard/listings) → New listing.
+Saathum has three kinds of listing. **Live events** ("Live events") are a scheduled broadcast with a fixed start time. **Group classes and 1:1 consultations** ("Group classes" and "1:1 consultations") are paid time with an expert, either in a small group or one-to-one, booked against their availability. **Marketplace listings** (buy, sell, social) are simple items or offers with no schedule attached. Start a listing from [My listings](/dashboard/listings) → New listing.
 
 ## What every listing needs
 

@@ -483,7 +483,7 @@ function RefusalScreen({
     return (
       <Frame tone="blueInk">
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{freeBox.full}</h1>
-        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.8f01e8752ccec47f" source="Sab spots bhar gaye — koi buy zaroori nahi tha." /></p>
+        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.8f01e8752ccec47f" source="All spots are taken — no purchase was needed." /></p>
         <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.e73afff1478776ab" source="View the creator" />{" "}</a>
       </Frame>
     );

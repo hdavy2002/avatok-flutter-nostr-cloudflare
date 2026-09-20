@@ -44,7 +44,7 @@ export class IslandBoundary extends Component<IslandBoundaryProps, IslandBoundar
     if (this.state.hasError) {
       return (
         <div className="rounded-zine-field border-zine border-ink bg-card px-4 py-5 font-body text-ink shadow-zine-xs">
-          <p className="font-bold text-[15px]"><UiText id="web-common.364bcac52041cd26" source="Kuch gadbad ho gayi — reload karke dekho." /></p>
+          <p className="font-bold text-[15px]"><UiText id="web-common.364bcac52041cd26" source="Something went wrong — try reloading." /></p>
           <button
             type="button"
             onClick={() => window.location.reload()}

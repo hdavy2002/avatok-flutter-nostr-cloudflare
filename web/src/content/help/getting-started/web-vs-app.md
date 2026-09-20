@@ -4,13 +4,13 @@ description: "What you can do on saathum.com in the browser — browse, book, pa
 section: getting-started
 order: 3
 updated: 2026-09-11
-keywords: ["web vs app", "avatok app", "download app", "browser", "messaging", "saathum number", "app link", "where to message"]
+keywords: ["web vs app", "Saathum app", "download app", "browser", "messaging", "Saathum number", "app link", "where to message"]
 audience: both
 faq:
   - q: "Can I message a creator on the website?"
     a: "No — saathum.com has no messaging. A listing page shows the creator's Saathum number and a link to the app, where messaging happens."
   - q: "Do I need the app to watch a live show or join a session I've booked?"
-    a: "No — you can watch and join right in your browser at saathum.com; the app is for the full experience, including chat with the creator."
+    a: "No — you can watch and join right in your browser at saathum.com; the app is for the full experience, including messaging the creator."
   - q: "Where do I choose my Saathum number?"
     a: "In the app. Signing up on the website only creates your account — your Saathum number and the rest of onboarding happen the first time you open the app."
 draft: false
