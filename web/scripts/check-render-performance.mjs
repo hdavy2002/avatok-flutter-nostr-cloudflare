@@ -13,10 +13,8 @@ assert.match(resting, /opacity:\s*1\s*;/);
 assert.match(resting, /transform:\s*none\s*;/);
 assert.match(resting, /filter:\s*none\s*;/);
 assert.doesNotMatch(read('src/lib/railwayHome.ts'), /classList\.add\('is-shown'\)/);
-// Responsive hero srcsets are checked when the active homepage owns one; the
-// current locale-aware homepage may intentionally serve a single transformed
-// source while preserving the same public image policy.
-assert.match(home, /avatok-creator-constellation\.png/);
+// The active homepage hero must use the shared bounded public-image pipeline.
+assert.match(home, /publicImage\('\/assets\/ideas\/guides\/ganga-ghat-se-shaam\.jpg'/);
 // The locale-aware production branch may own fonts through its existing
 // header/layout path. Apply duplicate-owner assertions only when the shared
 // Fonts component is actually active in the current source tree.
@@ -33,13 +31,13 @@ const built = ['dist/index.html', 'dist/client/index.html'].map((p) => resolve(r
 assert(built, 'run after the Astro build: homepage artifact required');
 if (built) {
   const html = readFileSync(built, 'utf8');
-  assert.match(html, /id="rail-title"/);
+  assert.match(html, /id="spiritual-title"/);
   const fontOwners = (html.match(/data-avatok-fonts/g) ?? []).length;
   assert(fontOwners <= 1, 'emitted home must not duplicate font owners');
   if (baseSource.includes("components/Fonts.astro")) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');
   }
-  assert.match(html, /Your audience is ready/);
+  assert.match(html, /Be there for the moment\./);
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');
