@@ -1,35 +1,116 @@
 ---
-import { publicImage } from '../lib/config';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 export const prerender = true;
 import Base from '../layouts/Base.astro';
 import Fonts from '../components/Fonts.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import SpiritualHome from '../components/SpiritualHome.astro';
+import { creatorIdeas, formats, topics } from '../lib/creatorIdeas';
+import '../styles/railway-home.css';
+import '../styles/india-additions.css';
+import CreatorIdeas from '../components/india-preview/CreatorIdeas.astro';
+import BookingExpress from '../components/india-preview/BookingExpressIllustrated.astro';
+import EarningsCalculator from '../components/india-preview/EarningsCalculatorIllustrated.astro';
+
+const ideas = creatorIdeas.slice(0, 6);
+const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.png', [420, 640, 900, 1280], { fit: 'scale-down' });
+
 ---
 <Base
-  title="Saathum: live Hindu spiritual experiences from India"
-  description="Find and join live Hindu spiritual experiences from real temples and sacred places across India. Watch live, hear your name in the sankalp and receive the recording."
-  image={publicImage('/assets/ideas/guides/ganga-ghat-se-shaam.jpg', { width: 1100, quality: 75, fit: 'cover', format: 'jpeg' })}
-  imageAlt="A live evening spiritual experience beside the Ganga in India."
-  imageWidth={1280}
-  imageHeight={853}
+  title="Saathum: paid live streams and 1:1 video calls with your favourite creators"
+  description="YouTube, Instagram and Facebook creators sell tickets to live streams and 1:1 video calls on Saathum. Pay securely in rupees."
+  image={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="Creators hosting a paid live stream and taking 1:1 video calls with their audience."
+  imageWidth={1156}
+  imageHeight={1360}
   chrome={false}
-  keywords="live puja, online darshan, Hindu spiritual experiences, live aarti India, pandit online, Saathum"
+  keywords="paid live stream, creator live stream tickets, 1:1 video call with creators, YouTube creators India, Instagram creators India"
 >
   <Fragment slot="head">
     <Fonts india />
     <meta property="og:image:type" content="image/jpeg" />
-    <meta name="theme-color" content="#fbf1df" />
-    <link rel="preload" as="image" href={publicImage('/assets/ideas/guides/ganga-ghat-se-shaam.jpg', { width: 1100, fit: 'cover' })} />
+    <meta name="theme-color" content="#f7ead5" />
+    <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
   </Fragment>
-  <a class="spiritual-skip" href="#live-now">Skip to live experiences</a>
+  <a data-i18n="web-landing.e4fa98b15a1e147a" class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader indiaLandingLanguage={true} />
-  <main class="spiritual-home" data-design="spiritual-experiences-2026-09" id="main-content">
-    <!-- Compatibility targets for unchanged shared-footer links. -->
-    <div id="live-streaming" aria-hidden="true"></div>
-    <div id="live-friends" aria-hidden="true"></div>
-    <SpiritualHome />
+  <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
+    <section class="station-hero creator-hero" aria-labelledby="rail-title">
+      <div class="creator-hero__frame">
+        {/* [UI-MOTION-1 2026-09-10] "texts-reveal" (transitions.dev, `.t-*` in
+            styles/motion.css) — headline and supporting line rise in with a
+            staggered blur on first paint. `.t-stagger` goes on `.station-copy`
+            itself, not a new wrapper div, so `h1`/`p` stay its DIRECT children —
+            railway-home.css has `.station-copy > p:not(.station-aside)` rules
+            at every breakpoint that a wrapper div would have broken.
+            CRITICAL: both lines are real, readable text at rest — the
+            <noscript> below forces them visible if JS never runs, and
+            railwayHome.ts's safety-net timeout forces `.is-shown` even if the
+            reveal script itself fails, so nothing is ever permanently parked
+            at opacity:0. */}
+        <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
+        <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
+          <p class="station-kicker creator-hero__kicker"><span aria-hidden="true"></span> <ui-copy style="display:contents" data-i18n="web-landing.b9d43bd06fbe8631">For YouTube and Instagram creators · India</ui-copy></p>
+          <h1 id="rail-title" class="t-stagger-line"><span data-i18n="web-landing.0528be3d426aff53" class="creator-hero__line">Your audience is ready</span><span data-i18n="web-landing.92f4118799fbcf80" class="creator-hero__line creator-hero__line--accent">to pay for you.</span></h1>
+          <p class="t-stagger-line t-stagger-line--2"><ui-copy style="display:contents" data-i18n="web-landing.d0082f5d7ac7dd8b">Saathum lets YouTube, Instagram and Facebook creators sell tickets to live streams and booked 1:1 video calls. Your audience pays in rupees. </ui-copy><strong data-i18n="web-landing.721cb60fc48386d6">You are paid to your bank account.</strong></p>
+          <div class="station-actions">
+            <a data-i18n="web-landing.c54a63bb77c61e9d" class="rail-button" href="/sign-up" data-home-cta="hero-create">Start selling, free</a>
+            <a data-i18n="web-landing.87423590f6bd3088" class="station-outline" href="/marketplace" data-home-cta="hero-ideas">Browse creators</a>
+          </div>
+          <div data-india-i18n-attr="aria-label:web-landing.eed4e047041fb536" class="creator-hero__formats" aria-label="Ways to earn on Saathum">
+            <a data-i18n="web-landing.b7a9f5518da78e1f" href="/marketplace?group=india_goes_live" data-home-cta="hero-live">Paid live streams</a>
+            <a data-i18n="web-landing.451c573451f6721a" href="/marketplace?group=find_your_people" data-home-cta="hero-private">Group live sessions</a>
+            <a data-i18n="web-landing.84d0be67f5ca32a2" href="/marketplace?group=book_their_time" data-home-cta="hero-group">1:1 video calls</a>
+          </div>
+        </div>
+        {/* closes the merged .station-copy.t-stagger div opened above (it used
+            to close a plain .station-copy). */}
+        <div class="station-art creator-hero__art">
+            <span data-i18n="web-landing.f675ebf648fc78c6" class="creator-hero__live" aria-hidden="true">● Live around the world</span>
+          <img data-india-i18n-attr="alt:web-landing.7c72ea27bba5af71" src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="1360" alt="Creators hosting a paid live stream and taking 1:1 video calls with their audience." fetchpriority="high" decoding="async" />
+          <p class="creator-hero__share"><strong>80%</strong><span data-i18n="web-landing.6785ce181ad9bfd9">you keep</span></p>
+        </div>
+      </div>
+      <a class="rail-next" href="#ideas-catalogue"><ui-copy style="display:contents" data-i18n="web-landing.ceae9c3f4625186e">Find your first earning idea</ui-copy> <span aria-hidden="true">↓</span></a>
+    </section>
+
+    <BookingExpress />
+
+    <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
+      <p class="rail-eyebrow rail-flowered"><img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /> <ui-copy style="display:contents" data-i18n="web-landing.af29625174aed2ab">Ideas for your channel</ui-copy> <img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /></p>
+      <h2 id="ideas-title"><ui-copy style="display:contents" data-i18n="web-landing.35013d916827ddd2">What could you offer</ui-copy> <span data-i18n="web-landing.6088e03833a8d3c7">your audience?</span></h2>
+      <p data-i18n="web-landing.6193ee40538a4862" class="rail-section-copy">A few ideas to get your first paid stream or call started.</p>
+      <div class="rail-idea-grid">
+        {ideas.map((idea) => (
+          <article class="idea-card rail-article-card">
+            <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
+              <div class="idea-picture"><img src={publicImage(idea.cardImage, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(idea.cardImage, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-card-copy"><div class="idea-chips"><span data-i18n={`web-ideas.format.${idea.format}`} class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span data-i18n={`web-ideas.topic.${idea.topic}`}>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span data-i18n="web-landing.50fb1f69cb64b60d">From home</span>}</div><h3 data-i18n={`web-ideas.${idea.id}.title`} id={`${idea.id}-title`}>{idea.title}</h3><p data-i18n={`web-ideas.${idea.id}.description`}>{idea.description}</p><span class="idea-read-guide"><ui-copy style="display:contents" data-i18n="web-landing.83b3b277abbf82ba">Read the guide</ui-copy> <span aria-hidden="true">↗</span></span></div>
+            </a>
+          </article>
+        ))}
+      </div>
+      {/* [WEB-HOME-EXPLORE-BTN 2026-09-10] A real button, not a text link —
+          the only way on from the six sample ideas is the full /ideas page. */}
+      <a class="rail-button rail-button--ink rail-explore-button" href="/ideas" data-home-cta="explore-ideas"><ui-copy style="display:contents" data-i18n="web-landing.fb4c2e13ffc8a351">Explore more ideas</ui-copy> <span aria-hidden="true">↗</span></a>
+      <p data-i18n="web-landing.e7b786bad9689075" class="rail-note"></p>
+    </section>
+
+
+    {/* Creator homepage: each additional section is an independently editable component.
+        The original hero and ideas remain; BookingExpress combines the approved format and onboarding sections. */}
+    <div class="india-additions">
+      <div class="india-page" data-india-page>
+        <CreatorIdeas />
+        <EarningsCalculator />
+      </div>
+    </div>
+
+
   </main>
-  <div class="station-footer"><SiteFooter indiaLandingLanguage={true} /></div>
+  <div class="station-footer" id="payouts"><SiteFooter indiaLandingLanguage={true} /></div>
+  <script>
+    import '../lib/railwayHome';
+    import '../lib/indiaCreators';
+  </script>
 </Base>
