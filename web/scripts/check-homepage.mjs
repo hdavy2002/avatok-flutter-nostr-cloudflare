@@ -10,20 +10,20 @@ const root = resolve('dist');
 validateBuiltImageSources(root);
 const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
-assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
-assert.match(html, /Your audience is ready/, 'Approved hero headline remains');
-assert.match(html, /to pay for you\./, 'Approved hero accent remains');
+assert.match(html, /data-design="spiritual-experiences-2026-09"/, 'Expected approved spiritual experiences homepage');
+assert.match(html, /Be there for the moment\./, 'Approved devotee-first hero headline remains');
+assert.match(html, /Wherever you are\./, 'Approved hero accent remains');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/data-home-idea="/g) || []).length, 6, 'Six original creator idea cards');
-assert.equal((html.match(/<article\b[^>]*class="[^"]*\bindia-idea-card\b/g) || []).length, 4, 'Four additional creator ideas');
+assert.equal((html.match(/<article\b[^>]*class="[^"]*\bspiritual-card\b/g) || []).length, 30, 'All marketplace listing cards render');
+assert.equal((html.match(/class="spiritual-type-tile"/g) || []).length, 6, 'Six experience types render');
+assert.equal((html.match(/class="spiritual-place-tile"/g) || []).length, 6, 'Six sacred places render');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon-ideas', 'addon-calculator']) {
- assert(ids.has(id), 'Approved homepage section exists: ' + id);
+for (const id of ['main-content', 'spiritual-title', 'live-now', 'purpose-title', 'type-title', 'place-title', 'how-it-works', 'trust-title', 'creators', 'faq']) {
+ assert(ids.has(id), 'Approved spiritual homepage section exists: ' + id);
 }
-assert.match(html, /<section\b[^>]*class="[^"]*\bbooking-illustrated\b[^"]*"[^>]*id="consultations"/, 'Booking Express retains the approved illustrated section');
-assert.match(html, /<section\b[^>]*class="[^"]*\bcalculator-illustrated\b[^"]*"[^>]*id="addon-calculator"/, 'Earnings calculator retains the approved illustrated section');
-assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
-assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
+assert(html.indexOf('id="live-now"') < html.indexOf('id="purpose-title"'), 'Live marketplace proof precedes browsing categories');
+assert(html.indexOf('id="how-it-works"') < html.indexOf('id="creators"'), 'Devotee explainer precedes the creator section');
+assert.equal((html.match(/<details>/g) || []).length, 6, 'Six marketplace questions render');
 assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
  const href = match[1].replaceAll('&amp;', '&');
@@ -31,13 +31,15 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
  }
 }
-for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jpg']) {
- assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
+const devotionalArtwork = new Set([...html.matchAll(/<img\b[^>]*src="(\/assets\/saathum\/card-[^"]+\.svg)"/g)].map(match => match[1]));
+assert.equal(devotionalArtwork.size, 6, 'Six distinct devotional listing artworks render');
+for (const image of devotionalArtwork) {
+ assert(existsSync(resolve(root, image.slice(1))), 'Missing devotional artwork: ' + image);
 }
 assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
-assert.match(html, /<img\b[^>]*src="\/assets\/home\/avatok-creator-constellation\.png"/, 'Approved creator hero remains');
-assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Creator hero asset resolves');
+assert.match(html, /<img\b[^>]*src="\/assets\/ideas\/guides\/ganga-ghat-se-shaam\.jpg"/, 'Approved Ganga hero remains');
+assert(existsSync(resolve(root, 'assets/ideas/guides/ganga-ghat-se-shaam.jpg')), 'Ganga hero asset resolves');
 assert.match(html, /aria-controls="avh-drawer"/, 'Mobile menu is accessible');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train|start-dialog|This design preview|noindex/, 'Production page has no retired animation, placeholder or search exclusion');
 assert.doesNotMatch(html, /href="\/india(?:[/?#"]|$)|data-site-experience="global"|data-artwork="global-retro-decades"/, 'Single homepage has no retired country switch or global landing');
@@ -54,7 +56,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
+console.log('Homepage checks passed: spiritual marketplace sections, devotional artwork, language selectors, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -131,7 +133,6 @@ const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
@@ -211,32 +212,32 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 109 
 
 // The promoted homepage has one accurate share preview and canonical URL.
 const rawShareImage = meta(rawHtml, 'og:image');
-assert.match(rawShareImage, /^https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.(?:jpg|png)$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
+assert.match(rawShareImage, /^https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=cover\/_images\/[a-f0-9]+\.jpg$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
 assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
 assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
-assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
-assert.match(campaignImages[0], /^https:\/\/saathum\.com\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
-assert.equal(meta(html, 'og:title'), 'Saathum: paid live streams and 1:1 video calls with your favourite creators');
-assert.equal(meta(html, 'og:description'), 'YouTube, Instagram and Facebook creators sell tickets to live streams and 1:1 video calls on Saathum. Pay securely in rupees.');
+assert.equal(campaignImages.length, 1, 'Homepage advertises one spiritual preview image');
+assert.match(campaignImages[0], /^https:\/\/saathum\.com\/assets\/ideas\/guides\/ganga-ghat-se-shaam\.jpg$/, 'Homepage advertises the approved Ganga preview image');
+assert.equal(meta(html, 'og:title'), 'Saathum: live Hindu spiritual experiences from India');
+assert.equal(meta(html, 'og:description'), 'Find and join live Hindu spiritual experiences from real temples and sacred places across India. Watch live, hear your name in the sankalp and receive the recording.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1156');
-assert.equal(meta(html, 'og:image:height'), '1360');
+assert.equal(meta(html, 'og:image:width'), '1280');
+assert.equal(meta(html, 'og:image:height'), '853');
 assert.equal(meta(html, 'og:image:type'), 'image/jpeg');
 // These checks inspect the original source; delivery format is enforced above.
 for (const image of campaignImages) {
  const imagePath = resolve(root, new URL(image).pathname.slice(1));
  assert(existsSync(imagePath), 'Published creator preview image exists');
  const bytes = readFileSync(imagePath);
- assert(bytes.length > 1000 && bytes.length < 3_000_000, 'Creator preview image is present and below 3 MB for social crawlers');
+ assert(bytes.length > 1000 && bytes.length < 3_000_000, 'Spiritual preview image is present and below 3 MB for social crawlers');
  const metadata = await sharp(bytes).metadata();
- assert.equal(metadata.format, 'png', 'Creator preview source bytes remain the approved PNG');
- assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
- assert.equal(metadata.height, Number(meta(html, 'og:image:height')), 'Creator preview height matches its metadata');
+ assert.equal(metadata.format, 'jpeg', 'Spiritual preview source bytes remain the approved JPEG');
+ assert((metadata.width ?? 0) >= Number(meta(html, 'og:image:width')), 'Preview source is large enough for social delivery');
+ assert(Math.abs((metadata.width ?? 0) / (metadata.height ?? 1) - Number(meta(html, 'og:image:width')) / Number(meta(html, 'og:image:height'))) < 0.01, 'Preview source and declared social image keep the same aspect ratio');
 }
 assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');
 assert.equal(meta(html, 'og:url'), 'https://saathum.com/');
 assert.doesNotMatch(sitemap, /<loc>https:\/\/saathum\.com\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
-console.log('Homepage title, description, canonical and selected creator image passed.');
+console.log('Homepage title, description, canonical and selected spiritual image passed.');
