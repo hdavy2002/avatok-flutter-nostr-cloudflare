@@ -1,179 +1,102 @@
-# REPORT — Merge origin/main into saathum/int
+# QUALITY-4K-1 compile-error fix
 
-Merged `origin/main` (29 commits ahead at merge-base `76003bb2`, the WEB-GATEWAY
-text-only/anti-companionship copy pass + the creator-pivot homepage rewrite)
-into `saathum/int`. Followed the owner's resolution policy: main's newer,
-approved COPY wins on pure content files; taxonomy is a superset merge;
-`listings.ts` is a real three-way merge; generated mirrors were regenerated,
-never hand-edited.
+## Scope
 
-## Conflicted files (24) — resolution and why
+Fixed the two Dart compile errors introduced by commit `70fcf181` [QUALITY-4K-1]
+that were breaking the Android CI build on `main`. Touched exactly the two
+files named in the task. No behaviour change beyond making the code compile —
+the quality feature's logic is unmodified.
 
-### Taxonomy / generated mirrors
-- **`Specs/listing-taxonomy.json`** — took OURS (Saathum's 49-category
-  superset) as base, then added main's 5 new `group_classes` categories
-  (`group_language_practice`, `group_fitness_batch`, `group_exam_revision`,
-  `group_music_class`, `group_cooking_class`) that ours lacked — main's
-  `worker/src/lib/listing_section.ts` already routes these to a `group_classes`
-  section and auto-merged cleanly, so the taxonomy needed the matching entries
-  or the worker would reference categories the JSON doesn't declare. Marked
-  all 5 `hidden: true` (group classes aren't in Saathum's keep-list) and added
-  `group_classes` to `find_your_people`'s `sections` array. **Deliberately did
-  NOT carry over** main's `_hidden_sections.astro_tarot` entry (main hid
-  astrology from public marketing pre-Saathum; SPEC.md explicitly keeps
-  Astrologers for Saathum, so resurrecting that hide would be wrong).
-- **`app/lib/core/listing_groups.dart`**, **`web/src/lib/listingTaxonomy.ts`**
-  — regenerated via `python3 scripts/gen_listing_taxonomy.py` from the
-  resolved JSON, never hand-edited. `--check` confirms both are up to date.
+## Verification method (no local Flutter/Dart toolchain)
 
-### `worker/src/routes/listings.ts` — real three-way merge
-One conflict hunk in `CARD_SELECT`: HEAD added `l.performed_by,
-l.facilitated_by, l.at_temple`, main added `l.is_example`. Kept both column
-lists. Verified every other touch point for each feature
-(`shapeCard`'s JSON output, insert/update paths, `is_example` guards in the
-booking/expiry code, `listing_blockers` integration) had already auto-merged
-cleanly outside this one hunk — confirmed by grepping the whole file for both
-field sets post-merge. `npx tsc --noEmit` in `worker/` is clean.
+Per this repo's `CLAUDE.md`, the local Flutter/Dart toolchain was deliberately
+removed on 2026-09-10 and is not to be reinstalled. `flutter analyze` /
+`dart analyze` are both `command not found` on this machine:
 
-### `web/src/lib/org.ts`
-Main made no factual change to `description`/`slogan`/`foundersDescription`
-(byte-identical to the merge-base) — took OURS wholesale, including the
-Saathum devotional-services description and "Apna hunar. Apni kamaai." slogan.
+```
+$ which flutter dart
+(nothing)
+```
 
-### `web/scripts/check-homepage.mjs`
-Kept the domain assertions on `saathum.com` (ours) but updated the og:title/
-og:description literal-string assertions to match main's new homepage copy,
-brand-renamed (`Saathum: paid live streams and 1:1 video calls...`). Passes.
+So verification here is by careful reading plus a mechanical paren/brace
+balance check (`python3`, no deps) on the edited file, not a real analyzer
+run. CI (`typecheck.yml` / `verify.yml` / `android.yml`) is the real compile
+net and should be re-run to confirm.
 
-### Pure copy/content files — took MAIN wholesale, reapplied ONLY the brand rename
-`shared/i18n/source/{web-about,web-auth,web-common,web-landing}.json`,
-`web/src/components/{LegalStatus,SiteFooter,india-preview/BookingExpressIllustrated}.astro`,
-`web/src/content/help/{booking-and-paying/find-a-creator-or-show,creators/create-a-listing,getting-started/create-your-account,getting-started/web-vs-app}.md`,
-`web/src/layouts/Base.astro` *(see exception below)*,
-`web/src/pages/{about,careers,index,india-next,landing-steps-preview,sign-in,sign-up}.astro`.
+## Fix 1 — `app/lib/core/calls/stream_video_quality_controller.dart:250`
 
-Rename rules replicated from the `[SAATHUM-BRAND-1]` commit: `avaTOK`/
-`AvaTOK`/`Avatok`/`AvaTok` → `Saathum`, `AVATOK` → `SAATHUM`, bare
-`avatok.ai` → `saathum.com`, "an Saathum" → "a Saathum" (article fix).
-Protected verbatim and left unrenamed: `@avatok.ai` emails (`support@`,
-`hello@`, `privacy@`), `api.avatok.ai`/`blossom.avatok.ai`, the
-`avatok-creator-constellation.png` asset filename, the `how-avatok-works` DOM
-anchor id (also asserted literally by `check-homepage.mjs`), and the
-two-span `<span>ava</span><span>TOK</span>` logo treatment (matches the
-`[SAATHUM-BRAND-1]` report's own documented gap — the logo artwork itself is
-still avaTOK's, unrenamed on purpose). All verified byte-for-byte preserved
-after the rename script ran.
+**Bug:** in `_readStats`, the `policy.observe(VideoQualitySample(...))` call
+was missing its two closing parens and terminating semicolon. The next line,
+`unawaited(refresh());`, was syntactically swallowed as an unterminated
+argument list, which is exactly what the parser reports as "Can't find `)` to
+match `(`" and, because the parser then tries to recover and treats what
+follows as a second positional argument to `observe(...)`, "Too many
+positional arguments: 0 allowed, but 1 found" (`VideoQualityPolicy.observe`
+takes exactly one `VideoQualitySample` argument).
 
-One real bug caught by `check-help.mjs` and fixed: the rename script
-mechanically turned the *route slug* `/help/getting-started/what-is-avatok`
-into `/help/getting-started/what-is-Saathum` inside `web-vs-app.md`'s link —
-the file's own path was never renamed (routing/redirect decision, out of
-scope, matches `[SAATHUM-BRAND-1]`'s own precedent), so the link broke.
-Fixed the one occurrence; re-ran `check-help.mjs` clean.
+**Fix:** added the missing `));` after the last named argument
+(`videoPaused: serverPaused && !incomingPaused,`), closing `VideoQualitySample(`
+and `policy.observe(` and terminating the statement. `unawaited(refresh());`
+is now its own statement again, exactly as it reads immediately above the
+diff in the surrounding methods (`_readState` already ends its state-change
+handling with `unawaited(refresh());` as a separate statement) — this was
+clearly the intended shape.
 
-**`Base.astro`** doesn't match the copy-file globs (it's a layout, not a
-page/component), but the conflict there was HEAD's dynamic
-`` `${ORG.name}, ...` `` keywords template vs. main's hardcoded literal
-`'avaTOK, ...'` string. Kept HEAD — it's strictly better (auto-correct on any
-future rename) and main added nothing else in that hunk.
+```diff
+       videoPaused: serverPaused && !incomingPaused,
++    ));
+     unawaited(refresh());
+   }
+```
 
-### Judgment-call exceptions — kept OURS instead of main, with reasoning
-- **`web/src/components/EntityFaq.astro`** — main's version is still the
-  original `[WEB-SEO-6]` "not to be confused with avatok.tech / an avatar app"
-  disambiguation block. That premise doesn't transfer to Saathum (no known
-  name collision), which is exactly why `[SAATHUM-BRAND-1]` already rewrote
-  this file as a plain entity definition sourced from `ORG`. Mechanically
-  renaming main's version would have shipped an FAQ asking "Is Saathum the
-  same as Avatok industrial conductors?" — nonsensical. Kept HEAD's rewrite.
-- **`web/src/content/help/getting-started/what-is-avatok.md`** — same
-  reasoning; this file mirrors EntityFaq's disambiguation content and had
-  already been rewritten for Saathum. Kept HEAD.
+Confirmed the file's overall paren/brace counts are now balanced (0/0) with a
+plain-text scan; before the fix they were unbalanced by exactly the two
+parens added.
 
-## Auto-merged files that still needed the brand rename reapplied
+## Fix 2 — `app/lib/features/commercial_getstream/commercial_live_gateway.dart`
 
-Three files matched the "pure copy" spirit of the policy but auto-merged
-without a conflict marker (only one side had touched them since merge-base),
-so they silently carried main's unrenamed text into the working tree:
-- `shared/i18n/source/landing.json` (auto-took main's creator-pivot ideas
-  copy — ours never touched this file)
-- `web/src/lib/indiaLandingSource.ts` (the hardcoded India-landing fallback
-  dictionary — same content family as `landing.json`; left unrenamed it would
-  have reproduced the exact hydration-mismatch failure mode in project memory
-  `web-i18n-catalog-overrides-markup.md`)
-- `web/scripts/check-render-performance.mjs` — not a copy file, but its
-  literal-string assertion (`assert.match(html, /Turn your skill/)`) was
-  stale against an intermediate main state; updated to match the actual
-  shipped homepage h1 (`/Your audience is ready/`).
+**Bug:** `_StreamCommercialQualityController.value` (lines ~100-105) and
+`.setMode` (lines ~116-121) both `switch` on `VideoQualityMode`, an enum
+declared in `app/lib/core/calls/video_quality_policy.dart`. This file only
+imported `../../core/calls/stream_video_quality_controller.dart`, which
+itself imports `video_quality_policy.dart` but does not `export` it — Dart
+imports are not transitive, so `VideoQualityMode` was an unresolved name in
+this file. That single missing import explains all three reported symptoms
+here:
 
-Ran the rename script over all three; `check-render-performance.mjs` now
-passes.
+- **102-104 "Not a constant expression":** the switch-expression case
+  patterns (`VideoQualityMode.best => ...` etc.) are enum-constant patterns;
+  with the enum type unresolved, the analyzer can't treat them as constant
+  patterns.
+- **118-120 "The getter 'VideoQualityMode' isn't defined for the type
+  '_StreamCommercialQualityController'":** the analyzer's error-recovery path
+  for an unresolved bare identifier used as a pattern read it as an implicit
+  member access on the enclosing class.
+- **101 "switch on VideoQualityMode is not exhaustive, missing
+  VideoQualityMode.auto":** exhaustiveness checking couldn't recognize the
+  `VideoQualityMode.auto => ...` arm as covering the real enum (which is
+  unresolved), even though the source already lists `auto`, `best`, and
+  `dataSaver` — all three of the enum's actual members
+  (`video_quality_policy.dart:2-12`).
 
-## Not touched — flagged, not fixed (out of scope for this merge)
+**Fix:** added the direct import:
 
-1. **Founder-composition claims are now inconsistent across the site.**
-   Main's WEB-GATEWAY-RESTORE-TEXT pass deliberately scrubbed "founded by
-   American and Indian founders" / "three friends in India" from
-   `LegalStatus.astro`, `EntityFaq.astro` (main's side), `careers.astro`, and
-   `what-is-avatok.md` (main's side) — and fixed a real error along the way
-   (`about.astro` on main dropped the fictitious "Ave Maria International Pvt
-   Ltd" Indian-entity name that OUR `about.astro` still had pre-merge; now
-   fixed by taking main's `about.astro`). But `web/src/lib/org.ts`'s
-   `description` (kept OURS, no factual change from main to carry per the
-   merge policy) and `EntityFaq.astro`/`what-is-avatok.md` (kept OURS, for
-   the disambiguation reasons above) still say "built by American and Indian
-   founders" / "founded by three friends in India". Owner should decide
-   whether to scrub that framing from the remaining Saathum-authored files too.
-2. **Two homepage/help surfaces link to a group that's now entirely hidden.**
-   `web/src/components/india-preview/BookingExpressIllustrated.astro`'s third
-   format tile ("Group live sessions") and
-   `help/booking-and-paying/find-a-creator-or-show.md`'s "Group Classes"
-   group description both point at `?group=find_your_people` — which, after
-   the taxonomy merge above, has zero visible categories under Saathum (all
-   12 companionship categories + the 5 new group-class categories are
-   hidden). Left as-is since fixing it means writing new copy, outside a
-   brand-rename/merge task — flagging so the owner can decide whether to
-   repoint or remove that tile.
-3. **Pre-existing, out-of-scope `avaTOK` residue**, confirmed unchanged by
-   this merge (present on `saathum/int` before I started, and not touched by
-   any `origin/main` commit): `worker/src/routes/commercial_lifecycle.ts`
-   ("is back in your avaTOK wallet.", "Open AvaTOK to see the new time."),
-   `worker/src/routes/pay.ts`'s `WEB_BASE_URL` fallback
-   (`https://avatok.ai`), `worker/src/routes/listings.ts:199`'s
-   `"an AvaTOK creator"` fallback, `web/src/lib/copy.ts`,
-   `web/src/lib/i18n/localeStore.ts`'s `avatok.ui.locale.*` storage-key
-   prefix. `worker/src/routes/config.ts`'s many `AvaTOK`/`avatok` comments and
-   identifiers were also left alone — `[SAATHUM-BRAND-1]`'s own report
-   explicitly excluded `config.ts` from the brand sweep. None of these are
-   merge regressions; `[SAATHUM-BRAND-1]`'s report already flagged its sweep
-   as non-exhaustive for exactly this class of file.
+```diff
+ import '../../core/calls/stream_video_quality_controller.dart';
++import '../../core/calls/video_quality_policy.dart';
+ import '../../core/config.dart';
+```
 
-## Verification performed
+With `VideoQualityMode` now resolved, both switches are exhaustive as
+written (they already cover `auto`, `best`, `dataSaver`, the enum's only
+three values — nothing else changed), and the case patterns become valid
+constant patterns, resolving all four reported errors.
 
-- `python3 scripts/gen_listing_taxonomy.py --check` — both mirrors up to date.
-- `cd web && npm install --include=dev && npm run build` — clean, zero errors.
-- `node scripts/check-homepage.mjs` — passes (homepage anchors, artwork,
-  109 creator-idea articles, sharing metadata, canonical/og on saathum.com).
-- `node scripts/check-help.mjs` — passes (21 pages, 20 articles, all
-  `/help`/`/help#`/`/#anchor` links resolve, FAQPage/BreadcrumbList checks).
-- `node scripts/check-render-performance.mjs` — passes (after the h1 literal
-  fix above).
-- `node scripts/check-image-coverage.mjs`, `node scripts/check-image-urls.mjs`
-  — both pass.
-- `cd worker && npm install --include=dev && npm run typecheck` — clean,
-  zero errors.
-- `python3 tool/check_ship_readiness.py --check flags` — OK, 0 gaps.
-- `python3 tool/check_design_guard.py --check all` — OK, within baseline.
-- Scripted grep sweep of every file in the merge diff for residual `avatok`
-  mentions, cross-checked each hit against the exception categories above
-  (infra hostnames, emails, wire identifiers, asset filenames, DOM ids,
-  pre-existing out-of-scope content) — no unexplained hit remains.
-- Confirmed zero `<<<<<<<`/`=======`/`>>>>>>>` conflict markers remain
-  anywhere in the tree.
+## What was NOT changed
 
-## Not done
-
-- Did not touch `web/src/generated/` (per hard rule).
-- Did not rename `api.avatok.ai`, `blossom.avatok.ai`, or any `@avatok.ai`
-  mailbox (per hard rule) — spot-checked every occurrence above.
-- Did not push. This is a local merge commit on `saathum/int` in this
-  worktree only.
+- No other files were touched.
+- No logic, control flow, or public API changed — only two syntactic
+  omissions (parens/semicolon, and a missing import) were corrected.
+- Did not push to `main` or any branch; work is committed locally on
+  `saathum/14-dart-fix` only, via `scripts/git_safe_commit.py` per this
+  repo's git protocol.
