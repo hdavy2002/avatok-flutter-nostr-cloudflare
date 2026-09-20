@@ -26,6 +26,9 @@ import SpiritualHome from '../components/SpiritualHome.astro';
   <a class="spiritual-skip" href="#live-now">Skip to live experiences</a>
   <SiteHeader indiaLandingLanguage={true} />
   <main class="spiritual-home" data-design="spiritual-experiences-2026-09" id="main-content">
+    <!-- Compatibility targets for unchanged shared-footer links. -->
+    <div id="live-streaming" aria-hidden="true"></div>
+    <div id="live-friends" aria-hidden="true"></div>
     <SpiritualHome />
   </main>
   <div class="station-footer"><SiteFooter indiaLandingLanguage={true} /></div>
