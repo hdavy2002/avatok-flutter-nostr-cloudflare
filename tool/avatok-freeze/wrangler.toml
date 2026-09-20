@@ -1,0 +1,14 @@
+# [06-FREEZE-AVATOK] Cloudflare Pages config for the FROZEN static snapshot
+# of avatok.ai. This is its own Pages project — separate from `avatok-app`
+# (the live SSR client, which is becoming the Saathum live site) and from
+# `avatok-web` (the older marketing worker referenced elsewhere in the repo).
+#
+# Deliberately NO [[kv_namespaces]], no [vars], no adapter-driven bindings:
+# the frozen build (see prepare-source.mjs) removes the Cloudflare adapter
+# entirely, so this ships as plain static files with no _worker.js and no
+# Functions. There is nothing here that can reach D1, KV, R2 or Clerk, which
+# is the point — a stale credential or binding on an unmaintained archive is
+# a liability, not a feature.
+name = "avatok-frozen"
+compatibility_date = "2025-05-05"
+pages_build_output_dir = "./dist"

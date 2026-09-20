@@ -1,0 +1,125 @@
+# [06-FREEZE-AVATOK] Build (and, only on explicit request, deploy) a static
+# historical snapshot of avatok.ai to ITS OWN Cloudflare Pages project,
+# `avatok-frozen` — separate from `avatok-app` (the live SSR client, which
+# becomes the Saathum live site) and `avatok-web`.
+#
+# This is NOT the live site build. tool/avatok-freeze/prepare-source.mjs
+# mutates a throwaway checkout of web/ before `astro build` ever runs: it
+# deletes every route that needs the Worker at request time (auth, checkout,
+# dashboard, marketplace, live/consult/talk/watch, admin, vision, api/*,
+# per-user profiles — see EXCLUDE in that file), forces
+# `<meta name="robots" content="noindex, nofollow">` on every remaining page,
+# writes a disallow-all robots.txt, and drops the Cloudflare adapter so the
+# whole thing ships as plain prerendered HTML with no _worker.js and no
+# bindings. tool/avatok-freeze/postprocess-dist.mjs then rewrites the BUILT
+# HTML so links into the deleted routes (SiteHeader/SiteFooter CTAs etc.)
+# become inert spans instead of dead links.
+#
+# See tool/avatok-freeze/README.md for the full design and the commit SHA
+# this was last verified against.
+#
+# Requires the same two repo secrets as web-deploy.yml:
+#   CLOUDFLARE_API_TOKEN  — token with "Cloudflare Pages: Edit" on the account
+#   CLOUDFLARE_ACCOUNT_ID — the account id that owns the Cloudflare account
+#
+# Deliberately workflow_dispatch only, with publish defaulted to false. The
+# 06-freeze-avatok lane prepares this workflow but does not run it and does
+# not deploy — that is left to the coordinator, once this lane's changes and
+# any other lane's marketplace/taxonomy changes have landed in the order the
+# batch requires (see plan/SPEC.md: "Build from current main BEFORE other
+# lanes land, or the snapshot ships with empty shelves").
+name: Freeze avatok.ai (Cloudflare Pages)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Deploy the built snapshot to the avatok-frozen Pages project
+        type: boolean
+        default: false
+        required: true
+
+concurrency:
+  group: avatok-freeze-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard explicit dispatch
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Mutates this checkout's web/ in place. Safe here ONLY because this is
+      # a throwaway CI checkout that is discarded at the end of the job — see
+      # the warning at the top of prepare-source.mjs.
+      - name: Prepare frozen source (delete SSR/auth/checkout routes, force noindex)
+        run: node tool/avatok-freeze/prepare-source.mjs web
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        # No PUBLIC_CLERK_PUBLISHABLE_KEY, no PUBLIC_API_BASE: this build has
+        # no sign-in and no Worker calls, by design (prepare-source.mjs
+        # deleted every page that would use either). Setting them here would
+        # suggest the frozen snapshot still talks to Clerk/the API, which it
+        # must not.
+        env:
+          PUBLIC_RELEASE_SHA: ${{ github.sha }}
+        run: npm run build      # runs prebuild (zine tokens, etc.) + astro build
+
+      - name: Postprocess built HTML (neutralize dead CTAs, belt-and-suspenders noindex)
+        run: node tool/avatok-freeze/postprocess-dist.mjs web/dist
+
+      - name: Check frozen build
+        run: node tool/avatok-freeze/check-frozen-build.mjs web/dist
+
+      - name: Save verified frozen artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatok-frozen-dist-${{ github.sha }}
+          path: web/dist
+          include-hidden-files: true
+          retention-days: 7
+          compression-level: 0
+
+  deploy:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Download verified frozen artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: avatok-frozen-dist-${{ github.sha }}
+          path: tool/avatok-freeze/dist
+
+      - name: Deploy to Cloudflare Pages (avatok-frozen)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: tool/avatok-freeze
+          # Project name comes from tool/avatok-freeze/wrangler.toml's `name`
+          # field (avatok-frozen) — no [[kv_namespaces]], no [vars], no
+          # adapter bindings there on purpose; this ships as plain static
+          # files with nothing that can reach D1, KV, R2 or Clerk.
+          command: pages deploy dist --branch=main --commit-hash=${{ github.sha }}
