@@ -2,16 +2,13 @@
 // [SHV2-S5] A4.4 "Explore spiritual experiences" + A5 O5 "What could you
 // organise?" — same 13 editorial topics (contracts.md §1), two variants.
 //
-// Modelled on the existing "Ideas for your channel" section's card-grid
-// skeleton (rail-ideas / rail-idea-grid / rail-idea in
-// src/styles/railway-home.css): a centred H2 above a responsive card grid,
-// each card a border/radius panel with a title, one line of copy and a link.
-// This component ships its OWN scoped styles (rather than depending on that
-// ambient .rail-home-scoped stylesheet) so it renders correctly on both the
-// homepage (attendee variant, inside <main class="rail-home">) and the
-// organiser page (organiser variant, a different page/stylesheet — S6 owns
-// organisers.astro). Every colour/font-family/border-radius value below
-// already exists in src/styles/railway-home.css; nothing new was invented.
+// Reuses the existing "Ideas for your channel" card grid verbatim:
+// .rail-idea-grid > .rail-idea > .rail-idea-copy (src/styles/railway-home.css,
+// imported by both host pages — index.astro (S4) and organisers.astro (S6)).
+// No colour/background/border/border-radius/box-shadow/font-family is
+// declared in this file's own <style> block — only a column-count override
+// for 13 tiles (layout-only). "Search events" reuses the existing
+// .rail-text-link class.
 import { SPIRITUAL_TOPICS, topicSearchHref } from '../lib/spiritualExperiences';
 
 export interface Props {
@@ -21,95 +18,45 @@ export interface Props {
 const { variant = 'attendee' } = Astro.props;
 ---
 {variant === 'attendee' ? (
-  <section id="experiences" class="experience-topics" aria-labelledby="experience-topics-title">
-    <h2 id="experience-topics-title"><ui-copy style="display:contents" data-i18n="web-experiences.ddd950d8e272cde5">Explore spiritual experiences</ui-copy></h2>
-    <div class="experience-topics-grid">
+  <section id="experiences" class="rail-ideas" aria-labelledby="experience-topics-title">
+    <h2 id="experience-topics-title">Explore spiritual experiences</h2>
+    <div class="rail-idea-grid experience-topics-grid">
       {SPIRITUAL_TOPICS.map((topic) => (
-        <article class="experience-topic-card">
-          {topic.icon && <img class="experience-topic-icon" src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
-          <h3 data-i18n={`web-experiences.${topic.id}.title`}>{topic.title}</h3>
-          <p data-i18n={`web-experiences.${topic.id}.blurb`}>{topic.blurb}</p>
-          <a class="experience-topic-search" href={topicSearchHref(topic)} data-home-cta={`experience-${topic.id}`}>
-            <ui-copy style="display:contents" data-i18n="web-experiences.901abe952186a81b">Search events</ui-copy> <span aria-hidden="true">&rarr;</span>
-          </a>
+        <article class="rail-idea">
+          <div class="rail-idea-copy">
+            {topic.icon && <img src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
+            <h3>{topic.title}</h3>
+            <p>{topic.blurb}</p>
+            <a class="rail-text-link" href={topicSearchHref(topic)} data-home-cta={`experience-${topic.id}`}>Search events</a>
+          </div>
         </article>
       ))}
     </div>
   </section>
 ) : (
-  <div class="experience-topics experience-topics--organiser">
-    <div class="experience-topics-grid experience-topics-grid--organiser">
-      {SPIRITUAL_TOPICS.map((topic) => (
-        <article class="experience-topic-card">
-          {topic.icon && <img class="experience-topic-icon" src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
-          <h3 data-i18n={`web-experiences.${topic.id}.title`}>{topic.title}</h3>
-          <p data-i18n={`web-experiences.${topic.id}.organiserIdea`}>{topic.organiserIdea}</p>
-        </article>
-      ))}
-    </div>
+  <div class="rail-idea-grid experience-topics-grid experience-topics-grid--organiser">
+    {SPIRITUAL_TOPICS.map((topic) => (
+      <article class="rail-idea">
+        <div class="rail-idea-copy">
+          {topic.icon && <img src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
+          <h3>{topic.title}</h3>
+          <p>{topic.organiserIdea}</p>
+        </div>
+      </article>
+    ))}
   </div>
 )}
 
 <style>
-.experience-topics { padding-block: 58px; text-align: center; }
-.experience-topics h2 {
-  font-family: 'Comfortaa', 'Baloo 2', sans-serif;
-  font-weight: 400;
-  text-transform: uppercase;
-  font-size: clamp(2rem, 3.4vw, 3.25rem);
-  line-height: 1.2;
-  margin: 0 0 32px;
-  color: #101e31;
-}
-.experience-topics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
-  text-align: left;
-}
+/* Layout only — column count for 13 tiles. Colour, border, radius,
+   background and font come entirely from .rail-idea-grid / .rail-idea /
+   .rail-idea-copy in railway-home.css; nothing here overrides them. */
+.experience-topics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .experience-topics-grid--organiser { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.experience-topic-card {
-  min-width: 0;
-  border: 1px solid #d8c8b1;
-  border-radius: 12px;
-  background: #fcf1de;
-  padding: 18px;
-}
-.experience-topic-icon { display: block; margin-bottom: 10px; }
-.experience-topic-card h3 {
-  font-family: 'Comfortaa', 'Baloo 2', sans-serif;
-  font-weight: 400;
-  text-transform: none;
-  font-size: 1.0625rem;
-  line-height: 1.3;
-  margin: 0 0 8px;
-  color: #101e31;
-}
-.experience-topic-card p {
-  font-family: 'Instrument Sans', Arial, sans-serif;
-  font-size: 0.9375rem;
-  line-height: 1.45;
-  margin: 0 0 14px;
-  color: #101e31;
-}
-.experience-topics--organiser .experience-topic-card p { margin-bottom: 0; }
-.experience-topic-search {
-  display: inline-block;
-  font-family: 'Instrument Sans', Arial, sans-serif;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: #ba3022;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-.experience-topic-search:focus-visible { outline: 3px solid #17609b; outline-offset: 4px; }
-
 @media (max-width: 900px) {
-  .experience-topics-grid,
-  .experience-topics-grid--organiser { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .experience-topics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 480px) {
-  .experience-topics-grid,
-  .experience-topics-grid--organiser { grid-template-columns: 1fr; }
+  .experience-topics-grid { grid-template-columns: 1fr; }
 }
 </style>

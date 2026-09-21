@@ -377,17 +377,17 @@ function ExploreGridInner({
                 {usingSearch ? (
                   <>
                     <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                      {uiT("web-marketplace.7ac0b07eb2c63e55","No events for “{query}” yet.",{query:q.trim()})}
+                      No events for “{q.trim()}” yet.
                     </p>
                     <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
-                      {uiT("web-marketplace.46c5bffec8756b63","Know a teacher, priest or temple who could host one?")}
+                      Know a teacher, priest or temple who could host one?
                     </p>
                     <div className="mt-4 flex flex-wrap items-center gap-4">
                       <a
                         href="/organisers"
                         className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-                      ><UiText id="web-marketplace.756bd074d18f651e" source="Become an organiser" />{" "}</a>
-                      <a href="/marketplace" className="text-blueInk underline"><UiText id="web-marketplace.ced52984a0c2bacb" source="See all events" />{" "}</a>
+                      >Become an organiser</a>
+                      <a href="/marketplace" className="text-blueInk underline">See all events</a>
                     </div>
                   </>
                 ) : (
