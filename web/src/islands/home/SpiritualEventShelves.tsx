@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
-import type { Card, CardView } from '../../lib/types';
-import { durationLabel, languageLabel, priceLabel } from '../../lib/card';
+import type { Card } from '../../lib/types';
+import { durationLabel, languageLabel, priceLabel, toCardView } from '../../lib/card';
 import { ListingTile, listingHref } from '../../components/ListingTile';
-import { capture } from '../../lib/analytics';
 import {
   createHomeEventsController,
   type HomeEventsController,
@@ -11,62 +10,6 @@ import {
   type HomeEventsTab,
 } from '../../lib/spiritualHomeEvents';
 import './SpiritualEventShelves.css';
-
-/**
- * [SHV2-S3] `HomeEventsState` (contracts.md §2) exposes normalized `CardView[]`,
- * but `ListingTile` (and the lane/pill helpers it calls) read the raw wire-shaped
- * `Card` — snake_case fields `ListingTile` re-normalizes itself via `toCardView`.
- * This losslessly maps the already-normalized fields back onto the wire shape so
- * `ListingTile`'s own re-normalization reconstructs the same values. Fields that
- * exist only on `Card` (free_entry, schedule_mode, vibe_tags, billing_unit,
- * price_semantics, credential, slug) are not on `CardView` at all, so they are
- * left absent — the lane ladders in lib/card.ts already have honest fallbacks
- * for an absent field, never a fabricated one. Flagged for the coordinator in
- * the hand-back note: the clean fix is `HomeEventsState` exposing `Card[]`.
- */
-export function toPseudoCard(c: CardView): Card {
-  return {
-    id: c.id,
-    kind: c.kind ?? undefined,
-    title: c.title,
-    one_liner: c.oneLiner,
-    poster: c.poster,
-    cover_media: c.poster ? [{ type: 'image', url: c.poster }] : null,
-    price: c.price,
-    effective_price: c.price,
-    promo_pct: c.promoPct,
-    currency_display: c.currency,
-    category: c.category,
-    category_label: c.categoryLabel ?? null,
-    country: c.country,
-    location: c.location,
-    rating_avg: c.ratingAvg,
-    rating_count: c.ratingCount,
-    review_count: c.reviewCount,
-    joined_count: c.joinedCount,
-    creator: c.creator
-      ? {
-        uid: c.creator.id,
-        handle: c.creator.handle,
-        name: c.creator.name,
-        avatar_url: c.creator.avatar,
-        kyc_verified: c.creator.verified,
-      }
-      : null,
-    live: c.live,
-    status: c.status,
-    schedule_state: c.scheduleState,
-    starts_at: c.startsAt,
-    duration_min: c.durationMin,
-    capacity: c.capacity,
-    spoken_lang: c.spokenLang,
-    adults_only: c.adultsOnly,
-    seats_left: c.seatsLeft,
-    watching: c.watching,
-    favorited: c.favorited,
-    created_at: c.createdAt,
-  };
-}
 
 /** Browser-local time with a visible zone label and an explicit IST fallback
  *  (A4.2/AC-08). Returns null when there is no start time to show at all. */
@@ -103,41 +46,55 @@ export function formatLocalStart(startsAtMs: number | null): { iso: string; labe
 }
 
 interface EventCardProps {
-  card: CardView;
+  card: Card;
   position: number;
   section: 'home_live' | 'home_upcoming' | 'home_new';
   joinable: boolean;
 }
 
-/** One shelf card: the shared `ListingTile` visual + booking gate, plus the
- *  honest supplemental line A4.2 requires (title, creator, time, duration,
- *  price basis, language/location if supplied) and the fail-closed
- *  Join now / View details action. */
+/**
+ * One shelf card: `ListingTile` for the shared visual chrome, existing booking
+ * gate and telemetry (via contracts.md §2a's `action` prop — a single Join
+ * now / View details link, never a second affordance). The supplemental line
+ * below adds ONLY what the tile does not already show visibly:
+ *  - Title: dead code in ListingTile's non-poster path hides its own `<h4>`
+ *    (`display:'none'`) and the poster path only paints it when
+ *    `lettering==='overlay'` — so a title is not reliably visible without this.
+ *  - Time: the tile's status pill is a compact, IST-only approximation with no
+ *    machine-readable `<time>` — AC-08 needs the real thing.
+ *  - Price: the tile never renders price visibly in either path (same
+ *    `display:'none'`/sr-only-only treatment as the title).
+ *  - Location: the tile never renders it at all.
+ * Language and duration ARE already visible on the tile's own non-poster
+ * layout (stub line / bottom-right), so those two are shown here only when
+ * `toCardView(card).aiPoster` says the tile is in its poster-first layout,
+ * which hides both.
+ */
 function EventCard({ card, position, section, joinable }: EventCardProps) {
-  const pseudo = useMemo(() => toPseudoCard(card), [card]);
-  const href = useMemo(() => listingHref(pseudo), [pseudo]);
-  const start = useMemo(() => formatLocalStart(card.startsAt), [card.startsAt]);
-  const duration = durationLabel(card.durationMin);
-  const price = priceLabel(card.price, null, null);
-  const language = languageLabel(card.spokenLang);
-  const creatorName = card.creator?.name ?? null;
-
-  const onActionClick = useCallback(() => {
-    capture('market_card_click', {
-      listing_id: card.id, kind: card.kind, position, section,
-      cta: joinable ? 'join_now' : 'view_details',
-    });
-  }, [card.id, card.kind, position, section, joinable]);
+  const href = listingHref(card);
+  const start = formatLocalStart(card.starts_at ?? null);
+  const price = priceLabel(card.effective_price ?? card.price ?? null, card.price_semantics, card.billing_unit);
+  const posterFirst = Boolean(toCardView(card).aiPoster);
+  const duration = posterFirst ? durationLabel(card.duration_min ?? null) : null;
+  const language = posterFirst ? languageLabel(card.spoken_lang ?? null) : null;
 
   return (
     <div className="shv2-card">
-      <ListingTile listing={pseudo} href={href} width={420} position={position} section={section} enableSkeleton />
+      <ListingTile
+        listing={card}
+        href={href}
+        width={420}
+        position={position}
+        section={section}
+        enableSkeleton
+        action={{ label: joinable ? 'Join now' : 'View details', href, cta: joinable ? 'join_now' : 'view_details' }}
+      />
       <div className="shv2-card-meta">
         <p className="shv2-card-title">{card.title}</p>
         <p className="shv2-card-line">
-          {creatorName && <span className="shv2-card-creator">{creatorName}</span>}
           {language && <span>{language}</span>}
           {card.location && <span>{card.location}</span>}
+          {duration && <span>{duration}</span>}
         </p>
         <p className="shv2-card-line">
           {start && (
@@ -145,17 +102,8 @@ function EventCard({ card, position, section, joinable }: EventCardProps) {
               {start.label} <span className="shv2-card-zone">{start.zone}</span>
             </time>
           )}
-          {duration && <span>{duration}</span>}
           {price && <span className="shv2-card-price">{price}</span>}
         </p>
-        <a
-          className="shv2-card-action rail-button rail-button--ink"
-          href={href}
-          data-cta={joinable ? 'join_now' : 'view_details'}
-          onClick={onActionClick}
-        >
-          {joinable ? 'Join now' : 'View details'}
-        </a>
       </div>
     </div>
   );
@@ -181,7 +129,7 @@ function SkeletonShelf({ count }: { count: number }) {
 }
 
 interface ShelfProps {
-  cards: CardView[];
+  cards: Card[];
   section: 'home_live' | 'home_upcoming' | 'home_new';
   state: HomeEventsState;
 }
@@ -353,13 +301,15 @@ export function SpiritualEventShelves({ controller: injected }: SpiritualEventSh
       <noscript>
         <style>{'.shv2-skeleton{display:none}'}</style>
         <p className="shv2-noscript">
-          <a href="/marketplace?section=live_streaming">Browse live events</a>
+          <a href="/marketplace">Browse live events</a>
           {' · '}
           <a href="/marketplace">Browse upcoming events</a>
         </p>
       </noscript>
       <section id="live-now" aria-label="Live now">{liveContent}</section>
-      <section id="upcoming-events" aria-label="Upcoming events">{upcomingContent}</section>
+      <section id="upcoming-events" {...(upcomingContent ? { 'aria-label': 'Upcoming events' } : {})}>
+        {upcomingContent}
+      </section>
     </div>
   );
 }
