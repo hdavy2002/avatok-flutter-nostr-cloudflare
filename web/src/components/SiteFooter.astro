@@ -2,9 +2,12 @@
 import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
-// blue "chai" truck-art strip on top, dark panel with three columns — BAZAAR /
-// CREATORS / COMPANY — the Horn OK Please art, the legal bar, then the green
-// "auto" + "tassels" strips below.
+// blue "chai" truck-art strip on top, dark panel with three columns — the Horn
+// OK Please art, the legal bar, then the green "auto" + "tassels" strips
+// below. [SHV2-S8 2026-09-21] The three columns were BAZAAR / CREATORS /
+// COMPANY; they are now Explore / For organisers / Trust for the Saathum
+// attendee+organiser pivot (Spec A3) — same three-column skeleton, new
+// content, per the style-fidelity rule (B2 §11).
 //
 // [WEB-FOOTER-3] REVERSES the [WEB-FOOTER-2] decision to spread ~26 links
 // across six columns to avoid a "compliance regression dressed as a design
@@ -55,34 +58,46 @@ const legalLinks = [
   { href: '/tokens', label: 'Tokens & Wallet' },
 ];
 
+// [SHV2-S8 2026-09-21] Saathum attendee/organiser/trust footer (Spec A3).
+// Replaces Bazaar/Creators/Company: "Live streaming" (/#live-streaming) and
+// "1:1 consultations" (/#live-friends) were both dead anchors after the
+// redesign (D2 also drops 1:1 entirely) and are retargeted here to working
+// marketplace destinations by simply not carrying them forward.
 const columns = [
   {
-    title: 'Bazaar',
+    title: 'Explore',
     links: [
-      { href: '/#live-streaming', label: 'Live streaming' },
-      { href: '/#live-friends', label: '1:1 consultations' },
-      { href: '/marketplace', label: 'Explore marketplace' },
+      { href: '/marketplace', label: 'Explore events' },
+      { href: '/#experiences', label: 'Experiences' },
+      { href: '/help', label: 'Help' },
+      // "Joining a live event" — help.ts/getHelpEntries() would build this
+      // async; this content path is stable and already hardcoded elsewhere
+      // on the site (e.g. pricing-fees.astro's helpHref), so it's linked
+      // directly the same way.
+      { href: '/help/booking-and-paying/join-a-live-show', label: 'Joining a live event' },
     ],
   },
   {
-    title: 'Creators',
+    title: 'For organisers',
     links: [
-      { href: '/sign-up', label: 'Start selling' },
+      { href: '/organisers', label: 'For organisers' },
       { href: '/dashboard', label: 'Creator dashboard' },
-      { href: '/payouts', label: 'Payouts' },
-      { href: '/community-guidelines', label: 'Safety' },
+      { href: '/organisers#guides', label: 'Guides' },
+      { href: '/pricing-fees', label: 'Pricing & Fees' },
     ],
   },
   {
-    title: 'Company',
+    title: 'Trust',
     links: [
-      { href: '/about', label: 'About' },
-      // [WEB-HELP-1 2026-09-11] Help centre listed right after About per plan §8.
-      { href: '/help', label: 'Help centre' },
-      { href: '/careers', label: 'Careers' },
+      { href: '/refunds', label: 'Refunds & cancellations' },
       { href: '/contact', label: 'Contact' },
-      { href: '/terms', label: 'Terms of Service' },
-      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/terms', label: 'Terms' },
+      { href: '/privacy', label: 'Privacy' },
+      // The approved operating-entity disclosure already lives at
+      // /terms#status (LegalStatus.astro, variant="full", under the "Who we
+      // are, and where we are in our journey" heading) — linked here rather
+      // than duplicated, per A3/D7.
+      { href: '/terms#status', label: 'Who we are' },
     ],
   },
 ];
@@ -92,9 +107,16 @@ const globalColumns = [
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
 const footerColumns = variant === 'global' ? globalColumns : columns;
+// [SHV2-S8 2026-09-21] Bazaar/Live streaming/1:1 consultations/Explore
+// marketplace entries removed — dead since `columns` no longer carries those
+// labels (see above). Everything else here is still used by `globalColumns`
+// and/or `legalLinks`, both untouched by this change. The new `columns`
+// labels above deliberately carry NO key here: D9 takes the India/Saathum
+// shell English-only, and AC-18 forbids replaying an old key's stored
+// translation over new wording (dom.ts would do exactly that on a locale
+// switch) — see the gating on `variant === 'global'` below.
 const chromeKey = (value: string) => ({
-  Bazaar:'chrome.bazaar', Creators:'chrome.creators', Company:'chrome.company', Explore:'chrome.explore',
-  'Live streaming':'chrome.liveStreaming', '1:1 consultations':'chrome.findPeople', 'Explore marketplace':'chrome.exploreMarketplace',
+  Creators:'chrome.creators', Company:'chrome.company', Explore:'chrome.explore',
   'Start selling':'chrome.startSelling', 'Creator dashboard':'chrome.creatorDashboard', Payouts:'chrome.payouts', Safety:'chrome.safety',
   About:'chrome.about', 'Help centre':'chrome.help', Careers:'chrome.careers', Contact:'chrome.contact', 'Terms of Service':'chrome.terms', 'Privacy Policy':'chrome.privacy',
   Terms:'chrome.terms', Privacy:'chrome.privacy', Cookies:'chrome.cookies', Refunds:'chrome.refunds',
@@ -107,15 +129,27 @@ const chromeKey = (value: string) => ({
 
   <div class="bf-main">
     <div class="bf-brand">
-      <a class="bf-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}><span>ava</span><span>TOK</span></a>
-      <p class="bf-tag" data-india-i18n={indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "Paid live streams and 1:1 video calls from creators you already follow."}</p>
+      {/* [SHV2-S8 2026-09-21] Diya + "Saathum" replacing the "ava"/"TOK"
+          two-span wordmark (AC-03: consistent branding in header, drawer AND
+          footer). Reuses this file's own Comfortaa heading face and the
+          existing #fdf1d3 ink already used one line below. */}
+      <a class="bf-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
+        <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />
+        <span class="bf-logo-text">Saathum</span>
+      </a>
+      {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
+          reused here for the india copy (AC-18); the global copy is untouched
+          and keeps its key. */}
+      <p class="bf-tag" data-india-i18n={variant === 'global' && indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "Live spiritual experiences, wherever you are."}</p>
       <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>
     </div>
 
+    {/* [SHV2-S8] Column titles/links are only localised for the untouched
+        'global' variant — see the chromeKey note above. */}
     {footerColumns.map((col) => (
-      <nav class="bf-col" aria-label={col.title} data-india-i18n-attr={indiaLandingLanguage ? `aria-label:${chromeKey(col.title)}` : undefined}>
-        <h2 class="bf-col-title" data-india-i18n={indiaLandingLanguage ? chromeKey(col.title) : undefined}>{col.title}</h2>
-        {col.links.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>)}
+      <nav class="bf-col" aria-label={col.title} data-india-i18n-attr={variant === 'global' && indiaLandingLanguage ? `aria-label:${chromeKey(col.title)}` : undefined}>
+        <h2 class="bf-col-title" data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeKey(col.title) : undefined}>{col.title}</h2>
+        {col.links.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>)}
       </nav>
     ))}
 
@@ -212,23 +246,20 @@ const chromeKey = (value: string) => ({
 
   .bf-logo {
     display: flex;
-    align-items: baseline;
-    gap: 0.0625rem;
-    font-family: 'Comfortaa', 'Baloo 2', sans-serif;
-    word-spacing: 0.22em;
-    /* Anton ships one weight; see the font-synthesis note in global.css. */
-    font-weight: 400;
-    font-size: 1.875rem;
+    align-items: center;
+    gap: 0.5rem;
     margin-bottom: 14px;
     text-decoration: none;
   }
-  .bf-logo span:first-child { color: #fdf1d3; }
-  .bf-logo span:last-child {
-    color: #d93825;
-    font-family: 'Playfair Display', Georgia, serif;
-    font-style: italic;
-    font-weight: 900;
-    font-size: 1.8125rem;
+  .bf-logo img { display: block; width: 34px; height: 34px; }
+  /* [SHV2-S8 2026-09-21] Diya + "Saathum" replacing the "ava"/"TOK" two-span
+     wordmark. Same Comfortaa face and #fdf1d3 ink the old first span used. */
+  .bf-logo-text {
+    font-family: 'Comfortaa', 'Baloo 2', sans-serif;
+    word-spacing: 0.22em;
+    font-weight: 700;
+    font-size: 1.875rem;
+    color: #fdf1d3;
   }
 
   .bf-tag {
