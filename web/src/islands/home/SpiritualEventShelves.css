@@ -1,0 +1,128 @@
+/* [SHV2-S3] Layout only. No new colours, fonts, radii or shadow values — every
+   value below is `var(--rail-*)` (railway-home.css) or a shadow/radius offset
+   already used elsewhere in the codebase (see ListingTile.tsx / railway-home.css). */
+
+.shv2-events { width: min(1280px, 92%); margin-inline: auto; padding-block: 28px; }
+.shv2-events section { min-height: 0; }
+
+.shv2-shelf-heading { font-size: clamp(1.5rem, 2.6vw, 2.25rem); margin-bottom: 16px; }
+
+.shv2-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.shv2-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.shv2-card-meta { display: flex; flex-direction: column; gap: 4px; }
+.shv2-card-title {
+  font-family: 'Comfortaa', 'Baloo 2', sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.25;
+  margin: 0;
+}
+.shv2-card-line {
+  display: flex; flex-wrap: wrap; gap: 6px 10px;
+  font-size: 0.8125rem; line-height: 1.4; margin: 0;
+  color: var(--rail-ink);
+  opacity: 0.75;
+}
+.shv2-card-line > * + *::before { content: '·'; margin-right: 6px; opacity: 0.6; }
+.shv2-card-creator { font-weight: 700; }
+.shv2-card-zone { font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.8; }
+.shv2-card-price { font-weight: 700; }
+
+.shv2-card-action {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 10px 18px;
+  font-size: 0.9375rem;
+}
+
+.shv2-tablist { display: flex; gap: 8px; margin-bottom: 16px; }
+.shv2-tab {
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 1.5px solid var(--rail-ink);
+  background: transparent;
+  color: var(--rail-ink);
+  font-family: 'Comfortaa', 'Baloo 2', sans-serif;
+  font-size: 0.9375rem;
+  text-transform: uppercase;
+}
+.shv2-tab[aria-selected="true"] {
+  background: var(--rail-red);
+  color: #fff;
+  border-color: var(--rail-red);
+}
+
+.shv2-live-strip,
+.shv2-none-strip,
+.shv2-inline-error,
+.shv2-empty-note {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  padding: 16px 0;
+}
+.shv2-none-strip a,
+.shv2-inline-error a,
+.shv2-noscript a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.shv2-retry {
+  border: 1.5px solid var(--rail-ink);
+  border-radius: 999px;
+  padding: 6px 16px;
+  min-height: 44px;
+  background: transparent;
+  font-weight: 700;
+}
+
+.shv2-explore-all {
+  display: inline-block;
+  margin-top: 18px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.shv2-skeleton-poster {
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  border: 1.5px solid var(--rail-ink);
+  background: var(--rail-paper);
+  opacity: 0.5;
+  animation: shv2-pulse 1.4s ease-in-out infinite;
+}
+.shv2-skeleton-line {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--rail-ink);
+  opacity: 0.12;
+  animation: shv2-pulse 1.4s ease-in-out infinite;
+}
+.shv2-skeleton-line--wide { width: 90%; }
+.shv2-skeleton-line--short { width: 45%; }
+
+@keyframes shv2-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shv2-skeleton-poster, .shv2-skeleton-line { animation: none; }
+}
+
+@media (max-width: 699px) {
+  .shv2-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .shv2-events { padding-block: 20px; }
+}
+
+@media (max-width: 380px) {
+  .shv2-shelf { grid-template-columns: 1fr; }
+}
