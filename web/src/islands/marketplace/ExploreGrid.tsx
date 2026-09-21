@@ -370,28 +370,52 @@ function ExploreGridInner({
                 </span>
               </div>
               <div className="max-w-[40ch] text-left">
-                <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                  {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Nothing found, boss.") : uiT("web-marketplace.b35908a94a11f32d","The shop's still being set up.")}
-                </p>
-                <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
-                  {narrowed
-                    ? uiT("web-marketplace.81deae8ffc16e5d4","This filter combination is completely empty. Try loosening a filter.")
-                    : uiT("web-marketplace.4b46fe3be22fa4ef","No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.")}
-                </p>
-                <div className="mt-4">
-                  {narrowed ? (
-                    <button
-                      type="button"
-                      onClick={clearAll}
-                      className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-                    ><UiText id="web-marketplace.0fda15a3954fb235" source="Show all" />{" "}</button>
-                  ) : (
-                    <a
-                      href="/sign-up"
-                      className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-                    ><UiText id="web-marketplace.4259d2bbd1a3d7d3" source="Become a creator" />{" "}</a>
-                  )}
-                </div>
+                {/* [SHV2-S5 / D5] A search with zero results must not be a dead
+                    end: point the visitor at becoming an organiser instead of
+                    the generic "loosen a filter" copy below, which doesn't fit
+                    a search that legitimately has no matching inventory yet. */}
+                {usingSearch ? (
+                  <>
+                    <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
+                      {uiT("web-marketplace.7ac0b07eb2c63e55","No events for “{query}” yet.",{query:q.trim()})}
+                    </p>
+                    <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
+                      {uiT("web-marketplace.46c5bffec8756b63","Know a teacher, priest or temple who could host one?")}
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center gap-4">
+                      <a
+                        href="/organisers"
+                        className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+                      ><UiText id="web-marketplace.756bd074d18f651e" source="Become an organiser" />{" "}</a>
+                      <a href="/marketplace" className="text-blueInk underline"><UiText id="web-marketplace.ced52984a0c2bacb" source="See all events" />{" "}</a>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
+                      {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Nothing found, boss.") : uiT("web-marketplace.b35908a94a11f32d","The shop's still being set up.")}
+                    </p>
+                    <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
+                      {narrowed
+                        ? uiT("web-marketplace.81deae8ffc16e5d4","This filter combination is completely empty. Try loosening a filter.")
+                        : uiT("web-marketplace.4b46fe3be22fa4ef","No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.")}
+                    </p>
+                    <div className="mt-4">
+                      {narrowed ? (
+                        <button
+                          type="button"
+                          onClick={clearAll}
+                          className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
+                        ><UiText id="web-marketplace.0fda15a3954fb235" source="Show all" />{" "}</button>
+                      ) : (
+                        <a
+                          href="/sign-up"
+                          className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+                        ><UiText id="web-marketplace.4259d2bbd1a3d7d3" source="Become a creator" />{" "}</a>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
