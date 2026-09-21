@@ -1,60 +1,31 @@
-// [SHV2-S2] Regression tests for web/src/lib/spiritualHomeEvents.ts.
+// [SHV2-S2] Regression tests for web/src/lib/spiritualHomeEventsCore.ts.
 //
 // node:test based, matching this repo's web/test/ convention (see
-// calendar_core.test.ts, upi_smoke_controller.test.ts) — there is no vitest
-// devDependency in web/package.json.
+// calendar_core.test.ts) — there is no vitest devDependency in web/package.json,
+// and CI (verify.yml) runs exactly `cd web && node --experimental-strip-types
+// --test test/*.test.ts` (contracts.md §6a).
 //   node --experimental-strip-types --test test/spiritual_home_events.test.ts
 //
-// ⚠️ KNOWN GAP (see the S2 hand-back note): `spiritualHomeEvents.ts` statically
-// imports real value bindings from `./card` and `./apiClient` (`toCardView`,
-// `scheduleStateOf`, `getLiveNow`, `getExplore`), which is what the brief and
-// contracts.md §2 require. Those two files (and their own transitive imports —
-// `./types`, `./copy`, `./config`, `./requestDeadline`, `./analytics`) use
-// EXTENSIONLESS relative imports, written for the Vite/Astro bundler. Node's
-// ESM loader has no bundler-style resolution — even `--experimental-strip-types`
-// only strips TS syntax, it does not add extension probing — so plain
-// `node --test` cannot resolve them. This is a PRE-EXISTING repo condition, not
-// introduced here: `node --experimental-strip-types -e "import('./src/lib/card.ts')"`
-// fails the same way with zero of this module's code involved, because card.ts's
-// own `from './copy'` has no extension. Every other web/test/*.test.ts file
-// avoids this by testing modules with NO runtime imports (calendarCore.ts says
-// so explicitly) or by importing only `import type` (erased at strip time).
-// This is the first web/lib module whose contract requires real value imports
-// from card.ts/apiClient.ts, so it is the first to hit the wall.
-//
-// The tests below are written against the real, frozen contracts.md §2 shape
-// and exercise the actual exported logic. They currently fail to load under
-// plain `node --test` for the reason above, not because of a logic defect —
-// `npx tsc --noEmit` passes clean for spiritualHomeEvents.ts. spiritualHomeEvents.ts
-// itself was given explicit `.ts` extensions on its own imports to get as far
-// as Node's loader will go; the load still dies one hop deeper, inside
-// card.ts's own `from './copy'` (no extension) — confirmed by running this
-// suite: `Cannot find module '.../src/lib/copy' imported from
-// .../src/lib/card.ts`. See the hand-back note for the question this raises
-// for the coordinator (most likely fix: explicit `.ts` extensions on
-// card.ts/apiClient.ts's own relative imports, and transitively types.ts /
-// copy.ts / config.ts / requestDeadline.ts / analytics.ts — all out of S2's
-// ownership).
+// This suite imports ONLY `spiritualHomeEventsCore.ts`, which — like
+// `calendarCore.ts` — has NO runtime imports (only `import type`, erased at
+// strip-time), so it loads under plain `node --test` with no DOM and no
+// bundler. The real `card.ts`/`apiClient.ts` value bindings (`scheduleStateOf`,
+// `getLiveNow`, `getExplore`) live behind `HomeEventsDeps` and are injected
+// here as simple fakes; the thin wrapper `spiritualHomeEvents.ts` (which does
+// import the real `card.ts`/`apiClient.ts` — both of which use extensionless
+// relative imports written for the Vite/Astro bundler and are therefore NOT
+// loadable by plain node) is deliberately never imported by this file.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { HomeEventsDeps, HomeEventsState } from '../src/lib/spiritualHomeEvents.ts';
-import type { Card, CardPage, CardView } from '../src/lib/types.ts';
-
-// [SHV2-S2] The real module is loaded dynamically and guarded, rather than
-// with a static `import { ... } from '../src/lib/spiritualHomeEvents.ts'`, so
-// that the known card.ts/apiClient.ts resolution gap (see above) degrades to
-// ONE skipped, clearly-labelled test instead of crashing this whole file and
-// turning the shared `node --test test/*.test.ts` CI step red for everyone.
-// The moment that gap is fixed, `mod` resolves and the real suite below runs
-// for real with no further changes needed here.
-type SpiritualHomeEventsModule = typeof import('../src/lib/spiritualHomeEvents.ts');
-let mod: SpiritualHomeEventsModule | null = null;
-let loadError: unknown = null;
-try {
-  mod = await import('../src/lib/spiritualHomeEvents.ts');
-} catch (err) {
-  loadError = err;
-}
+import {
+  LIVE_EVENT_CATEGORY_ALLOWLIST,
+  computeStatus,
+  computeJoinable,
+  isEligibleLiveEvent,
+  createHomeEventsController,
+} from '../src/lib/spiritualHomeEventsCore.ts';
+import type { HomeEventsDeps, HomeEventsState } from '../src/lib/spiritualHomeEventsCore.ts';
+import type { Card, CardPage, ScheduleState } from '../src/lib/types.ts';
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -74,42 +45,6 @@ function card(overrides: Partial<Card> = {}): Card {
   };
 }
 
-function view(overrides: Partial<CardView> = {}): CardView {
-  return {
-    id: 'listing-1',
-    kind: 'live_event',
-    title: 'Satsang with Guruji',
-    oneLiner: null,
-    poster: null,
-    aiPoster: null,
-    category: 'live_satsang',
-    price: 100,
-    listPrice: 100,
-    promoPct: 0,
-    currency: null,
-    ratingAvg: null,
-    ratingCount: 0,
-    reviewCount: 0,
-    joinedCount: 0,
-    startsAt: Date.now(),
-    durationMin: 60,
-    capacity: null,
-    spokenLang: null,
-    location: null,
-    country: null,
-    adultsOnly: false,
-    seatsLeft: null,
-    watching: null,
-    status: 'live',
-    scheduleState: 'live',
-    live: true,
-    favorited: false,
-    createdAt: Date.now(),
-    creator: null,
-    ...overrides,
-  };
-}
-
 /** A page of `Card`s, cursor-paginated like `/api/explore`. */
 function page(listings: Card[], cursor: string | null = null): CardPage {
   return { listings, cursor };
@@ -118,6 +53,34 @@ function page(listings: Card[], cursor: string | null = null): CardPage {
 const drain = async () => {
   for (let i = 0; i < 40; i++) await Promise.resolve();
 };
+
+/**
+ * Simple fake of card.ts's real `scheduleStateOf` — same semantics, reimplemented
+ * here (rather than imported) so this test file has no runtime dependency on
+ * card.ts. Mirrors worker/src/lib/listing_schedule.ts's scheduleState().
+ */
+function fakeScheduleStateOf(
+  c: Pick<Card, 'schedule_state' | 'status' | 'kind' | 'starts_at' | 'duration_min' | 'expires_at'>,
+  now = Date.now(),
+): ScheduleState {
+  if (c.schedule_state) return c.schedule_state;
+  const status = String(c.status ?? '');
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'completed') return 'ended';
+  if (status !== 'published' && status !== 'live' && status !== '') return 'unpublished';
+  const expiresRaw = Number(c.expires_at ?? 0);
+  const expires = expiresRaw > 0 ? (expiresRaw < 1e11 ? expiresRaw * 1000 : expiresRaw) : null;
+  if (expires !== null && expires <= now) return 'expired';
+  if (status === 'live') return 'live';
+  if (c.kind !== 'live_event') return 'open';
+  const raw = Number(c.starts_at ?? 0);
+  if (!(raw > 0)) return 'open';
+  const start = raw < 1e11 ? raw * 1000 : raw;
+  const end = start + Math.max(1, Number(c.duration_min ?? 60) || 60) * 60_000;
+  if (now < start) return 'upcoming';
+  if (now < end) return 'starting';
+  return 'ended';
+}
 
 /** Manual fake clock: `now()`/`setTimeout`/`clearTimeout` driven by `advance()`,
  *  draining microtasks between each fired timer so chained `.then()`s settle. */
@@ -172,39 +135,13 @@ function createFakeVisibility(initiallyVisible = true) {
   };
 }
 
-/** Queue-driven fake for `getLiveNow`/`getExplore` — each call pops the next
- *  step (a value, or a thrown error), or hangs forever if the queue is empty
- *  and `hangIfEmpty` is set (for deadline/abort/dispose tests). */
-function createFakeFetch<T>(steps: Array<T | (() => T) | Error> = []) {
-  const queue = [...steps];
-  const calls: unknown[] = [];
-  let hangIfEmpty = false;
-  const fn = async (...args: unknown[]): Promise<T> => {
-    calls.push(args);
-    if (!queue.length) {
-      if (hangIfEmpty) return new Promise<T>(() => {});
-      throw new Error('fake fetch: no more queued steps');
-    }
-    const step = queue.shift()!;
-    if (step instanceof Error) throw step;
-    return typeof step === 'function' ? (step as () => T)() : step;
-  };
-  return {
-    fn,
-    calls,
-    push: (step: T | (() => T) | Error) => queue.push(step),
-    setHangIfEmpty: (v: boolean) => {
-      hangIfEmpty = v;
-    },
-  };
-}
-
 function baseDeps(overrides: Partial<HomeEventsDeps> = {}): { deps: HomeEventsDeps; clock: ReturnType<typeof createFakeClock>; vis: ReturnType<typeof createFakeVisibility> } {
   const clock = createFakeClock();
   const vis = createFakeVisibility(true);
   const deps: HomeEventsDeps = {
     getLiveNow: async () => ({ listings: [] }),
     getExplore: async () => page([]),
+    scheduleStateOf: fakeScheduleStateOf,
     now: clock.now,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
@@ -218,12 +155,7 @@ function baseDeps(overrides: Partial<HomeEventsDeps> = {}): { deps: HomeEventsDe
   return { deps, clock, vis };
 }
 
-// ── real test suite, only registered once `mod` has actually resolved ──────
-
-function registerRealTests(mod: SpiritualHomeEventsModule): void {
-  const { LIVE_EVENT_CATEGORY_ALLOWLIST, computeStatus, computeJoinable, isEligibleLiveEvent, createHomeEventsController } = mod;
-
-  // ── pure helpers ───────────────────────────────────────────────────────────
+// ── pure helpers ─────────────────────────────────────────────────────────────
 
 test('allowlist matches contracts.md §3 exactly', () => {
   assert.deepEqual(
@@ -256,45 +188,55 @@ test('computeStatus: full / upcoming_only / none per A4.2', () => {
 
 test('computeJoinable: true only when every condition holds', () => {
   const now = 1_000_000;
-  const v = view({ live: true, startsAt: now - 1000, durationMin: 60, seatsLeft: 5, scheduleState: 'live' });
-  assert.equal(computeJoinable(v, { stale: false, joinableRaw: true, now }), true);
+  const c = card({ status: 'live', live: true, joinable: true, starts_at: now - 1000, duration_min: 60 });
+  assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), true);
 });
 
 test('computeJoinable: fails closed when joinable is missing (undefined)', () => {
   const now = 1_000_000;
-  const v = view({ live: true, startsAt: now - 1000, durationMin: 60 });
-  assert.equal(computeJoinable(v, { stale: false, joinableRaw: undefined, now }), false);
+  const c = card({ status: 'live', live: true, starts_at: now - 1000, duration_min: 60 });
+  assert.equal(c.joinable, undefined);
+  assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false);
+});
+
+test('computeJoinable: fails closed when joinable is explicitly false', () => {
+  const now = 1_000_000;
+  const c = card({ status: 'live', live: true, joinable: false, starts_at: now - 1000, duration_min: 60 });
+  assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false);
 });
 
 test('computeJoinable: fails closed when the server never confirmed live', () => {
   const now = 1_000_000;
-  const v = view({ live: false });
-  assert.equal(computeJoinable(v, { stale: false, joinableRaw: true, now }), false);
+  const c = card({ status: 'published', live: false, joinable: true, starts_at: now + HOUR });
+  assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false);
 });
 
 test('computeJoinable: fails closed once the scheduled window has expired', () => {
   const now = 1_000_000;
-  const v = view({ live: true, startsAt: now - 2 * HOUR, durationMin: 60 }); // ended an hour ago
-  assert.equal(computeJoinable(v, { stale: false, joinableRaw: true, now }), false);
+  const c = card({ status: 'live', live: true, joinable: true, starts_at: now - 2 * HOUR, duration_min: 60 }); // ended an hour ago
+  // status:'live' alone would normally short-circuit to 'live' in scheduleStateOf,
+  // so use schedule_state directly to express "server confirms this window is over".
+  const withState = { ...c, schedule_state: 'ended' as const };
+  assert.equal(computeJoinable(withState, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false);
 });
 
 test('computeJoinable: fails closed when sold out', () => {
   const now = 1_000_000;
-  const v = view({ live: true, startsAt: now - 1000, durationMin: 60, seatsLeft: 0 });
-  assert.equal(computeJoinable(v, { stale: false, joinableRaw: true, now }), false);
+  const c = card({ status: 'live', live: true, joinable: true, starts_at: now - 1000, duration_min: 60, seats_left: 0 });
+  assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false);
 });
 
 test('computeJoinable: fails closed while stale, even if everything else says joinable', () => {
   const now = 1_000_000;
-  const v = view({ live: true, startsAt: now - 1000, durationMin: 60, seatsLeft: 5 });
-  assert.equal(computeJoinable(v, { stale: true, joinableRaw: true, now }), false);
+  const c = card({ status: 'live', live: true, joinable: true, starts_at: now - 1000, duration_min: 60 });
+  assert.equal(computeJoinable(c, { stale: true, now, scheduleStateOf: fakeScheduleStateOf }), false);
 });
 
 test('computeJoinable: fails closed on a non-bookable schedule state (ended/cancelled/expired)', () => {
   const now = 1_000_000;
   for (const scheduleState of ['ended', 'cancelled', 'expired'] as const) {
-    const v = view({ live: true, startsAt: now - 1000, durationMin: 60, seatsLeft: 5, scheduleState });
-    assert.equal(computeJoinable(v, { stale: false, joinableRaw: true, now }), false, scheduleState);
+    const c = { ...card({ live: true, joinable: true }), schedule_state: scheduleState };
+    assert.equal(computeJoinable(c, { stale: false, now, scheduleStateOf: fakeScheduleStateOf }), false, scheduleState);
   }
 });
 
@@ -317,6 +259,7 @@ test('controller: FULL when at least one eligible live event exists', async () =
   const s = firstReadyState(states)!;
   assert.equal(s.status, 'full');
   assert.equal(s.live.length, 1);
+  assert.equal(s.live[0].id, 'live-1');
   controller.dispose();
 });
 
@@ -383,7 +326,7 @@ test('controller: ERROR after bounded retries are exhausted, and error is never 
 
 test('controller: retry() re-attempts the load from an error state', async () => {
   let fail = true;
-  const { deps, clock } = baseDeps({
+  const { deps } = baseDeps({
     retryDelaysMs: [],
     getLiveNow: async () => {
       if (fail) throw new Error('boom');
@@ -524,6 +467,32 @@ test('controller: selecting newest twice does not re-fetch once ready', async ()
   controller.dispose();
 });
 
+test('controller: selecting newest again after an error re-fetches it', async () => {
+  let shouldFail = true;
+  let exploreCalls = 0;
+  const { deps } = baseDeps({
+    getExplore: async () => {
+      exploreCalls += 1;
+      if (shouldFail) throw new Error('down');
+      return page([]);
+    },
+  });
+  const controller = createHomeEventsController(deps);
+  controller.start();
+  await drain();
+  controller.getState().selectTab('newest');
+  await drain();
+  assert.equal(controller.getState().newestStatus, 'error');
+  const callsAtError = exploreCalls;
+  shouldFail = false;
+  controller.getState().selectTab('upcoming');
+  controller.getState().selectTab('newest');
+  await drain();
+  assert.ok(exploreCalls > callsAtError, 'reselecting newest after an error re-fetches it');
+  assert.equal(controller.getState().newestStatus, 'ready');
+  controller.dispose();
+});
+
 // ── controller: refresh pause/resume, stale ─────────────────────────────────
 
 test('controller: a failed refresh marks stale=true, keeps last-known cards, drops joinability', async () => {
@@ -643,15 +612,3 @@ test('controller: dispose clears the refresh timer so it never fires again', asy
   await clock.advance(600_000);
   assert.equal(liveCalls, callsAtDispose, 'no further refresh after dispose');
 });
-}
-
-if (mod) {
-  registerRealTests(mod);
-} else {
-  test(
-    'spiritualHomeEvents.ts real suite is SKIPPED: node cannot resolve card.ts/apiClient.ts (pre-existing extensionless-import limitation, not a logic defect in this module — see file header and the S2 hand-back note)',
-    (t) => {
-      t.skip(String((loadError as Error)?.message ?? loadError));
-    },
-  );
-}
