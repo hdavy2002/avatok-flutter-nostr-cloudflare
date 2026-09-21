@@ -42,6 +42,10 @@
 // already shipped) are imported — no new colours/fonts/radii/shadows. NEW
 // `styles/organisers.css` carries layout-only rules for the one thing with no
 // existing equivalent: the equipment note callout.
+//
+// [Follow-up, AC-15] `lib/railwayHome.ts` (S10, route-aware) is imported exactly
+// as `index.astro` does, and every CTA link carries `data-home-cta` while every
+// O-section carries `data-home-section` — no other click handler added.
 export const prerender = true;
 
 import Base from '../layouts/Base.astro';
@@ -142,15 +146,15 @@ const faqs = [
     <div class="india-additions">
       <div class="india-page" data-india-page>
 
-        <section class="india-hero india-wrap" aria-labelledby="organisers-hero-title" id="organisers-hero">
+        <section class="india-hero india-wrap" aria-labelledby="organisers-hero-title" id="organisers-hero" data-home-section="hero">
           <div class="india-hero__copy">
             <p class="india-kicker"><span aria-hidden="true">✦</span> For organisers</p>
             <h1 id="organisers-hero-title">Bring your local spiritual community to the world.</h1>
             <p class="india-lede">Partner with a guru, priest, temple or yoga teacher. Arrange a live experience, share the booking link and help people take part from home.</p>
             <div class="india-actions">
-              <a class="india-button india-button--dark avh-auth-out" href="/sign-up">Start organising <span aria-hidden="true">↗</span></a>
-              <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new">Start organising <span aria-hidden="true">↗</span></a>
-              <a class="india-text-link" href="#how-to-organise">See how it works <span aria-hidden="true">↓</span></a>
+              <a class="india-button india-button--dark avh-auth-out" href="/sign-up" data-home-cta="hero-start-organising">Start organising <span aria-hidden="true">↗</span></a>
+              <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new" data-home-cta="hero-start-organising">Start organising <span aria-hidden="true">↗</span></a>
+              <a class="india-text-link" href="#how-to-organise" data-home-cta="hero-how-it-works">See how it works <span aria-hidden="true">↓</span></a>
             </div>
             <div class="india-hero__ticket">
               <span aria-hidden="true">✹</span>
@@ -164,7 +168,7 @@ const faqs = [
           </div>
         </section>
 
-        <section class="india-formats india-section" aria-labelledby="organisers-partners-title" id="who-to-partner-with">
+        <section class="india-formats india-section" aria-labelledby="organisers-partners-title" id="who-to-partner-with" data-home-section="partners">
           <div class="india-wrap">
             <p class="india-kicker">Who could you partner with?</p>
             <h2 id="organisers-partners-title">Find a spiritual host for your first event</h2>
@@ -180,7 +184,7 @@ const faqs = [
           </div>
         </section>
 
-        <section class="india-journey" aria-labelledby="how-to-organise-title" id="how-to-organise">
+        <section class="india-journey" aria-labelledby="how-to-organise-title" id="how-to-organise" data-home-section="how_to_organise">
           <p class="india-kicker">How it works</p>
           <h2 id="how-to-organise-title">From first conversation to going live</h2>
           <ol class="india-steps">
@@ -194,7 +198,7 @@ const faqs = [
           </ol>
         </section>
 
-        <section class="india-formats india-section" aria-labelledby="organisers-equipment-title" id="what-you-need">
+        <section class="india-formats india-section" aria-labelledby="organisers-equipment-title" id="what-you-need" data-home-section="equipment">
           <div class="india-wrap">
             <p class="india-kicker">What you need</p>
             <h2 id="organisers-equipment-title">Keep it simple</h2>
@@ -211,7 +215,7 @@ const faqs = [
           </div>
         </section>
 
-        <section class="india-ideas india-section" aria-labelledby="organisers-topics-title" id="what-to-organise">
+        <section class="india-ideas india-section" aria-labelledby="organisers-topics-title" id="what-to-organise" data-home-section="topics">
           <div class="india-wrap">
             <p class="india-kicker">What could you organise?</p>
             <h2 id="organisers-topics-title">Ideas across our spiritual topics</h2>
@@ -219,7 +223,7 @@ const faqs = [
           </div>
         </section>
 
-        <section id="earnings" aria-labelledby="organisers-earnings-title">
+        <section id="earnings" aria-labelledby="organisers-earnings-title" data-home-section="earnings">
           <div class="india-wrap">
             <p class="india-kicker">Plan your event</p>
             <h2 id="organisers-earnings-title">What could your event look like?</h2>
@@ -227,16 +231,18 @@ const faqs = [
           </div>
         </section>
 
-        <IllustrativeStory />
+        <div data-home-section="story">
+          <IllustrativeStory />
+        </div>
 
-        <section class="india-ideas india-section" aria-labelledby="organisers-guides-title" id="guides">
+        <section class="india-ideas india-section" aria-labelledby="organisers-guides-title" id="guides" data-home-section="guides">
           <div class="india-wrap">
             <p class="india-kicker">Guides</p>
             <h2 id="organisers-guides-title">Read a guide before your first event</h2>
             {guides.length > 0 && (
               <div class="india-idea-grid">
                 {guides.map((g) => (
-                  <a class:list={['india-idea-card', `india-idea-card--${g.tone}`]} href={g.href}>
+                  <a class:list={['india-idea-card', `india-idea-card--${g.tone}`]} href={g.href} data-home-cta={`guide-${g.slug}`}>
                     <img src={g.cardImage} alt="" loading="lazy" />
                     <div>
                       <h3>{g.title}</h3>
@@ -249,7 +255,7 @@ const faqs = [
           </div>
         </section>
 
-        <section class="india-faq india-wrap" aria-labelledby="organisers-faq-title" id="faq">
+        <section class="india-faq india-wrap" aria-labelledby="organisers-faq-title" id="faq" data-home-section="faq">
           <div class="india-faq__intro">
             <p class="india-kicker">Questions</p>
             <h2 id="organisers-faq-title">Organiser FAQ</h2>
@@ -268,15 +274,15 @@ const faqs = [
           </div>
         </section>
 
-        <section class="india-close india-wrap" aria-labelledby="organisers-closing-title" id="organiser-final-cta">
+        <section class="india-close india-wrap" aria-labelledby="organisers-closing-title" id="organiser-final-cta" data-home-section="closing">
           <img class="india-close__burst" src="/ornament-flower.png" width="90" height="90" alt="" loading="lazy" />
           <p class="india-kicker">Ready when you are</p>
           <h2 id="organisers-closing-title">Bring your first spiritual event to Saathum.</h2>
           <p>Agree with a host, set a price and share the link — the community you reach is up to you.</p>
           <div class="india-actions" style="justify-content:center">
-            <a class="india-button india-button--dark avh-auth-out" href="/sign-up">Start organising <span aria-hidden="true">↗</span></a>
-            <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new">Start organising <span aria-hidden="true">↗</span></a>
-            <a class="india-text-link" href="/marketplace">Explore events <span aria-hidden="true">→</span></a>
+            <a class="india-button india-button--dark avh-auth-out" href="/sign-up" data-home-cta="closing-start-organising">Start organising <span aria-hidden="true">↗</span></a>
+            <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new" data-home-cta="closing-start-organising">Start organising <span aria-hidden="true">↗</span></a>
+            <a class="india-text-link" href="/marketplace" data-home-cta="closing-explore-events">Explore events <span aria-hidden="true">→</span></a>
           </div>
         </section>
 
@@ -284,4 +290,7 @@ const faqs = [
     </div>
   </main>
   <SiteFooter indiaLandingLanguage={false} />
+  <script>
+    import '../lib/railwayHome';
+  </script>
 </Base>
