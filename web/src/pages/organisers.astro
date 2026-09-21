@@ -8,8 +8,14 @@
 //     byte-for-byte the same pattern as the homepage.
 //   - Hero: skeleton copied from `components/india-preview/CreatorIntro.astro`
 //     (`.india-hero`/`.india-hero__copy`/`.india-kicker`/`.india-lede`/
-//     `.india-actions`/`.india-button`/`.india-text-link`/`.india-hero__ticket`),
-//     with the heading promoted from h2 to h1 since this page owns its own H1.
+//     `.india-actions`/`.india-button`/`.india-text-link`/`.india-hero__ticket`/
+//     `.india-hero__visual`/`.india-help-sticker`/`.india-poster-orbit`), with
+//     the heading promoted from h2 to h1 since this page owns its own H1.
+//     [FIX round 1] The art slot (`.india-hero__visual` > `img.india-help-sticker`)
+//     is filled with the owner-approved `design/photo/hawan.png`, copied
+//     byte-for-byte to `public/assets/saathum/hawan.png` (S6-owned per
+//     contracts §7/§7a) — same classes CreatorIntro.astro already uses for its
+//     own sticker, no new styling. It is the page's only preloaded image.
 //   - Partner/equipment panels: skeleton copied from
 //     `components/india-preview/PaidFormats.astro` (`.india-format-grid` /
 //     `.india-format-card` / `.india-format-card__number`), art stickers dropped
@@ -45,9 +51,14 @@ import ExperienceTopics from '../components/ExperienceTopics.astro';
 import EarningsPlanner from '../components/organisers/EarningsPlanner.astro';
 import IllustrativeStory from '../components/organisers/IllustrativeStory.astro';
 import { creatorIdeas } from '../lib/creatorIdeas';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 import '../styles/railway-home.css';
 import '../styles/india-additions.css';
 import '../styles/organisers.css';
+
+// [FIX round 1] Owner-approved hero photo (contracts §7a) — never `hero.png`.
+const HERO_ART = '/assets/saathum/hawan.png';
+const heroArtSrcSet = publicImageSrcSet(HERO_ART, [200, 300, 400], { fit: 'scale-down' });
 
 // The four existing guides named in the brief (A5 O8), at their existing URLs.
 // No new guide content is written here — only linked.
@@ -122,6 +133,9 @@ const faqs = [
   chrome={false}
   indiaLandingLanguage={false}
 >
+  <Fragment slot="head">
+    <link rel="preload" as="image" href={publicImage(HERO_ART, { width: 300, fit: 'scale-down' })} imagesrcset={heroArtSrcSet} />
+  </Fragment>
   <a class="rail-skip" href="#main-content">Skip to main content</a>
   <SiteHeader indiaLandingLanguage={false} />
   <main id="main-content">
@@ -143,6 +157,10 @@ const faqs = [
               <strong>You bring the organisation. Your spiritual host brings the experience.</strong>
               <span aria-hidden="true">✹</span>
             </div>
+          </div>
+          <div class="india-hero__visual" aria-hidden="true">
+            <img class="india-help-sticker" src={publicImage(HERO_ART, { width: 300, fit: 'scale-down' })} srcset={heroArtSrcSet} width="300" height="225" alt="" aria-hidden="true" loading="eager" fetchpriority="high" decoding="async" />
+            <span class="india-poster-orbit">✦</span>
           </div>
         </section>
 
