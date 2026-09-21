@@ -1,9 +1,12 @@
 ---
-// A6 earnings planner. Reuses the corner-ornament / two-column card layout
-// from web/src/components/india-preview/EarningsCalculatorIllustrated.astro
-// (see the S7 hand-back note for the reused-token list); self-contained so it
-// renders correctly regardless of the page shell it is mounted in.
-import { publicImage } from '../../lib/config';
+// A6 earnings planner. Built on the EXISTING calculator classes from
+// web/src/styles/india-additions.css (.india-calculator / .india-calc-grid /
+// .india-calc-form / .india-calc-result / .india-kicker / .india-calc-total),
+// the same base classes web/src/components/india-preview/
+// EarningsCalculatorIllustrated.astro uses, imported globally by the page
+// that mounts this component (organisers.astro wraps sections in
+// .india-additions > .india-page). See the S7 hand-back note (FIX round 1)
+// for the full list of reused rules.
 import {
   SLOT_CHOICES,
   labelForSlots,
@@ -27,32 +30,15 @@ const defaultPlan = computeEarningsPlan({
 });
 ---
 
-<section class="earnings-planner" aria-labelledby="earnings-planner-title" data-organiser-planner>
-  <div class="earnings-planner__wrap">
-    <div class="earnings-planner__heading">
-      <div class="earnings-planner__heading-copy">
-        <p class="earnings-planner__badge">Illustrative earnings plan</p>
-        <h2 id="earnings-planner-title">Plan what a paid event could look like</h2>
-        <p class="earnings-planner__lede">Saathum adds a time fee of ₹50 per participant for every 30 minutes booked (₹100 per hour) and keeps 20% of your price. The 20% does not change with event length. This is a planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
-      </div>
-      <div class="earnings-planner__heading-art" aria-hidden="true">
-        <img
-          src={publicImage('/assets/landing-steps-preview/savings-original.png', { width: 220, fit: 'scale-down' })}
-          alt=""
-          width="140"
-          height="140"
-          loading="lazy"
-          decoding="async"
-        />
-      </div>
-    </div>
+<section class="india-section india-calculator" aria-labelledby="earnings-planner-title" data-organiser-planner>
+  <div class="india-wrap">
+    <p class="india-kicker">Illustrative earnings plan</p>
+    <h2 id="earnings-planner-title">Plan what a paid event could look like</h2>
+    <p class="india-section-lede">Saathum adds a time fee of ₹50 per participant for every 30 minutes booked (₹100 per hour) and keeps 20% of your price. The 20% does not change with event length. This is a planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
 
-    <form class="earnings-planner__grid" data-planner-form novalidate>
-      <div class="earnings-planner__form">
-        <span class="earnings-planner__corner earnings-planner__corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="90" height="90" loading="lazy" decoding="async" /></span>
-        <span class="earnings-planner__corner earnings-planner__corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="90" height="90" loading="lazy" decoding="async" /></span>
-
-        <label class="earnings-planner__field">
+    <form class="india-calc-grid" data-planner-form novalidate>
+      <div class="india-calc-form">
+        <label>
           <span>Event length</span>
           <select data-planner="slots" name="slots">
             {SLOT_CHOICES.map((slots) => (
@@ -61,54 +47,59 @@ const defaultPlan = computeEarningsPlan({
           </select>
         </label>
 
-        <label class="earnings-planner__field">
+        <label>
           <span>Your price per participant (A)</span>
           <input data-planner="priceA" name="priceA" type="number" inputmode="numeric" min="0" max="50000" step="1" value={DEFAULT_PRICE_A} aria-describedby="planner-price-help" />
         </label>
-        <small id="planner-price-help" class="earnings-planner__help">Whatever you charge for your event, before Saathum's time fee.</small>
+        <p id="planner-price-help" class="planner-help">Whatever you charge for your event, before Saathum's time fee.</p>
 
-        <label class="earnings-planner__field">
+        <label>
           <span>Ticket price the participant pays (T)</span>
           <input data-planner="ticketPrice" name="ticketPrice" type="number" inputmode="numeric" min="0" step="1" value={defaultTicketPrice} aria-describedby="planner-ticket-help" />
         </label>
-        <small id="planner-ticket-help" class="earnings-planner__help">Linked to your price above — type here instead to set the ticket price directly.</small>
-        <p class="earnings-planner__error" data-planner-error role="alert" hidden></p>
+        <p id="planner-ticket-help" class="planner-help">Linked to your price above — type here instead to set the ticket price directly.</p>
+        <p class="planner-error" data-planner-error role="alert" hidden></p>
 
-        <label class="earnings-planner__field">
+        <label>
           <span>Paid participants (N)</span>
           <input data-planner="participants" name="participants" type="number" inputmode="numeric" min="0" max="10000" step="1" value={DEFAULT_PARTICIPANTS} />
         </label>
 
-        <label class="earnings-planner__field">
+        <label>
           <span>Add your costs (C)</span>
           <input data-planner="costs" name="costs" type="number" inputmode="numeric" min="0" max="10000000" step="1" value={DEFAULT_COSTS} aria-describedby="planner-costs-help" />
         </label>
-        <small id="planner-costs-help" class="earnings-planner__help">Host, venue or other costs for this event.</small>
+        <p id="planner-costs-help" class="planner-help">Host, venue or other costs for this event.</p>
       </div>
 
-      <div class="earnings-planner__result" data-planner-result aria-live="polite">
-        <span class="earnings-planner__corner earnings-planner__corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="90" height="90" loading="lazy" decoding="async" /></span>
-        <span class="earnings-planner__corner earnings-planner__corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 160, fit: 'scale-down' })} alt="" width="90" height="90" loading="lazy" decoding="async" /></span>
+      <div class="india-calc-result" data-planner-result aria-live="polite">
+        <p data-planner-zero-note hidden>You haven't added anything for yourself or your host yet.</p>
 
-        <p class="earnings-planner__zero-note" data-planner-zero-note hidden>You haven't added anything for yourself or your host yet.</p>
-
-        <div class="earnings-planner__row">
+        <div>
           <span>Ticket price</span>
           <strong data-planner-ticket-price>₹{formatInr(defaultPlan.ticketPrice)}</strong>
         </div>
-        <div class="earnings-planner__row">
+        <div>
           <span>Ticket sales</span>
           <strong data-planner-ticket-sales>₹{formatInr(defaultPlan.ticketSales)}</strong>
         </div>
-        <div class="earnings-planner__row earnings-planner__row--total">
+        <div>
+          <span>Saathum's time fee</span>
+          <strong data-planner-time-fee>₹{formatInr(defaultPlan.platformBaseTotal)}</strong>
+        </div>
+        <div>
+          <span>Saathum's platform share (20%)</span>
+          <strong data-planner-commission>₹{formatInr(defaultPlan.platformCommission)}</strong>
+        </div>
+        <div class="india-calc-total">
           <span>Organiser proceeds before other costs</span>
           <strong data-planner-proceeds>₹{formatInr(defaultPlan.organiserProceeds)}</strong>
         </div>
-        <div class="earnings-planner__row">
+        <div>
           <span>Estimated remainder after your costs</span>
           <strong data-planner-remainder>₹{formatInr(defaultPlan.estimatedRemainder)}</strong>
         </div>
-        <p class="earnings-planner__disclaimer">A planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
+        <p>A planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
       </div>
     </form>
   </div>
@@ -129,10 +120,12 @@ const defaultPlan = computeEarningsPlan({
     const zeroNoteEl = root.querySelector<HTMLElement>('[data-planner-zero-note]');
     const ticketPriceEl = root.querySelector<HTMLElement>('[data-planner-ticket-price]');
     const ticketSalesEl = root.querySelector<HTMLElement>('[data-planner-ticket-sales]');
+    const timeFeeEl = root.querySelector<HTMLElement>('[data-planner-time-fee]');
+    const commissionEl = root.querySelector<HTMLElement>('[data-planner-commission]');
     const proceedsEl = root.querySelector<HTMLElement>('[data-planner-proceeds]');
     const remainderEl = root.querySelector<HTMLElement>('[data-planner-remainder]');
 
-    if (slotsEl && priceEl && ticketEl && participantsEl && costsEl && errorEl && resultEl && zeroNoteEl && ticketPriceEl && ticketSalesEl && proceedsEl && remainderEl) {
+    if (slotsEl && priceEl && ticketEl && participantsEl && costsEl && errorEl && resultEl && zeroNoteEl && ticketPriceEl && ticketSalesEl && timeFeeEl && commissionEl && proceedsEl && remainderEl) {
       let lastEdited: 'price' | 'ticket' = 'price';
       const nonNegative = (value: number) => (Number.isFinite(value) && value > 0 ? value : 0);
 
@@ -165,6 +158,8 @@ const defaultPlan = computeEarningsPlan({
         zeroNoteEl.hidden = !plan.zeroPriceNote;
         ticketPriceEl.textContent = `₹${formatInr(plan.ticketPrice)}`;
         ticketSalesEl.textContent = `₹${formatInr(plan.ticketSales)}`;
+        timeFeeEl.textContent = `₹${formatInr(plan.platformBaseTotal)}`;
+        commissionEl.textContent = `₹${formatInr(plan.platformCommission)}`;
         proceedsEl.textContent = `₹${formatInr(plan.organiserProceeds)}`;
         remainderEl.textContent = `₹${formatInr(plan.estimatedRemainder)}`;
       };
@@ -187,48 +182,14 @@ const defaultPlan = computeEarningsPlan({
 </script>
 
 <style>
-  /* Self-contained: literal colours copied from
-     web/src/components/india-preview/EarningsCalculatorIllustrated.astro and
-     web/src/styles/india-additions.css so this component renders correctly
-     regardless of which page shell mounts it. No new hex/font/radius/shadow
-     values — see the S7 hand-back note. */
-  .earnings-planner { padding: 48px 0; background: #e9dcc5; border-block: 1px solid #c4ae88; font-family: 'Instrument Sans', Arial, sans-serif; color: #101e31; }
-  .earnings-planner *, .earnings-planner *::before, .earnings-planner *::after { box-sizing: border-box; }
-  .earnings-planner__wrap { width: min(1180px, 92%); margin-inline: auto; }
-  .earnings-planner__heading { display: grid; grid-template-columns: minmax(0, 1fr) 200px; align-items: center; gap: 28px; }
-  .earnings-planner__badge { display: inline-block; max-width: 100%; margin: 0 0 14px; padding: 7px 15px; background: #35415c; color: #fff8e9; font-family: 'Kalam', 'Instrument Sans', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .065em; transform: rotate(-1deg); border-radius: 999px; }
-  .earnings-planner h2 { margin: 0 0 12px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: clamp(26px, 3vw, 40px); line-height: 1.15; }
-  .earnings-planner__lede { max-width: 640px; margin: 0; font-size: 17px; line-height: 1.55; }
-  .earnings-planner__heading-art img { display: block; width: 100%; height: auto; object-fit: contain; }
-  .earnings-planner__grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; margin-top: 34px; align-items: start; }
-  .earnings-planner__form, .earnings-planner__result { position: relative; min-width: 0; padding: 30px; border: 1px solid #c6b493; border-radius: 22px; }
-  .earnings-planner__form { background: #fff9ec; box-shadow: 5px 5px 0 #c9b895; }
-  .earnings-planner__result { background: #ffe2a0; border: 2px solid #35415c; box-shadow: 6px 6px 0 #b09a6f; }
-  .earnings-planner__corner { position: absolute; display: block; width: 60px; height: 60px; pointer-events: none; }
-  .earnings-planner__corner img { display: block; width: 100%; height: 100%; object-fit: contain; }
-  .earnings-planner__corner--start { top: -6px; left: -6px; }
-  .earnings-planner__corner--end { bottom: -6px; right: -6px; transform: rotate(180deg); }
-  .earnings-planner__field { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; padding-bottom: 18px; font-size: 16px; font-weight: 700; }
-  .earnings-planner__field select, .earnings-planner__field input { grid-column: 1 / -1; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid #c6b493; border-radius: 10px; background: #fffaf0; color: #101e31; font: inherit; font-size: 16px; }
-  .earnings-planner__field select:focus-visible, .earnings-planner__field input:focus-visible { outline: 3px solid #17609b; outline-offset: 2px; }
-  .earnings-planner__help { display: block; margin: -12px 0 18px; font-size: 13px; line-height: 1.5; font-weight: 400; color: #625a4e; }
-  .earnings-planner__error { margin: -6px 0 18px; padding: 10px 14px; border-radius: 10px; background: #efb8ae; color: #9d3023; font-size: 14px; font-weight: 700; }
-  .earnings-planner__zero-note { margin: 0 0 16px; font-size: 14px; font-weight: 700; color: #8c7335; }
-  .earnings-planner__row { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px; padding: 14px 0; border-bottom: 1px dashed #8c7335; font-size: 16px; }
-  .earnings-planner__row:last-of-type { border-bottom: 0; }
-  .earnings-planner__row strong { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 22px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .earnings-planner__row--total { border-bottom: 3px double #35415c; padding: 18px 0; }
-  .earnings-planner__row--total strong { font-size: clamp(28px, 3.6vw, 40px); color: #9d3023; }
-  .earnings-planner__disclaimer { margin: 18px 0 0; font-size: 13px; line-height: 1.6; color: #625a4e; }
-  @media (max-width: 900px) {
-    .earnings-planner__heading { grid-template-columns: minmax(0, 1fr) 150px; gap: 20px; }
-    .earnings-planner__grid { gap: 24px; }
-  }
-  @media (max-width: 700px) {
-    .earnings-planner { padding: 32px 0; }
-    .earnings-planner__heading { grid-template-columns: minmax(0, 1fr); }
-    .earnings-planner__heading-art { justify-self: center; width: 120px; }
-    .earnings-planner__grid { grid-template-columns: minmax(0, 1fr); margin-top: 26px; }
-    .earnings-planner__form, .earnings-planner__result { padding: 22px; }
-  }
+  /* Layout only for genuinely new elements — every colour, font-family,
+     border, border-radius and box-shadow comes from the existing
+     .india-calculator / .india-calc-grid / .india-calc-form / .india-calc-result
+     / .india-kicker rules in web/src/styles/india-additions.css (imported by
+     the page that mounts this component). `<select>` needs the same grid
+     placement `.india-calc-form` already gives `<input>`; the help/error text
+     are new elements with no existing equivalent to reuse. */
+  .india-calc-form select { grid-column: 1 / -1; width: 100%; min-height: 30px; }
+  .planner-help { margin: -12px 0 18px; font-size: 13px; line-height: 1.5; font-weight: 400; }
+  .planner-error { margin: -6px 0 18px; font-size: 14px; font-weight: 700; }
 </style>

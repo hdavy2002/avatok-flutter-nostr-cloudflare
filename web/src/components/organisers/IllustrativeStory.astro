@@ -1,8 +1,11 @@
 ---
-// A6.4 illustrative story. Structural skeleton (badge, heading, corner
-// ornaments, bordered panel) copied from
-// web/src/components/india-preview/EarningsCalculatorIllustrated.astro — see
-// the S7 hand-back note for the reused-token list.
+// A6.4 illustrative story. Built on the EXISTING classes from
+// web/src/styles/india-additions.css: `.india-kicker` for the label,
+// `.india-showcase`/`.india-showcase__art` for the copy+illustration layout
+// (the same "framed art beside copy" pattern used elsewhere in the
+// india-preview poster system), and `.india-calc-result` for the "what if"
+// panel (identical box the earnings planner's result panel uses). See the
+// S7 hand-back note (FIX round 1) for the full reused-rule list.
 import { publicImage } from '../../lib/config';
 import { computeEarningsPlan, formatInr } from '../../lib/organiserEarnings';
 
@@ -16,11 +19,12 @@ const moreAttendees = [200, 1000].map((participants) => ({
 }));
 ---
 
-<section class="illustrative-story" aria-labelledby="illustrative-story-title" data-organiser-story>
-  <div class="illustrative-story__wrap">
-    <p class="illustrative-story__label">Illustrative scenario — not an actual customer result.</p>
-    <div class="illustrative-story__body">
-      <div class="illustrative-story__copy">
+<section class="india-section" aria-labelledby="illustrative-story-title" data-organiser-story>
+  <div class="india-wrap">
+    <p class="india-kicker">Illustrative scenario — not an actual customer result.</p>
+
+    <div class="india-showcase">
+      <div class="india-showcase__copy">
         <h2 id="illustrative-story-title">What could a 50-person satsang look like?</h2>
         <p>
           Sunita partners with a local spiritual teacher who already has a following. They agree the plan together, she sets a ticket price, and in the weeks before the event she promotes it to their combined community.
@@ -29,7 +33,7 @@ const moreAttendees = [200, 1000].map((participants) => ({
           She and the teacher rehearse the broadcast, then run a live satsang for 50 paying participants. At a ₹{formatInr(headline.ticketPrice)} ticket, those 50 participants bring in ₹{formatInr(headline.ticketSales)} in ticket sales. After Saathum's time fee and platform share, organiser proceeds come to ₹{formatInr(headline.organiserProceeds)} — before Sunita pays the teacher and any other costs for the event.
         </p>
       </div>
-      <figure class="illustrative-story__art">
+      <figure class="india-showcase__art">
         <img
           src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 360, fit: 'scale-down' })}
           alt=""
@@ -39,13 +43,13 @@ const moreAttendees = [200, 1000].map((participants) => ({
           loading="lazy"
           decoding="async"
         />
-        <figcaption>Illustrative artwork, not a photograph.</figcaption>
+        <figcaption class="planner-caption">Illustrative artwork, not a photograph.</figcaption>
       </figure>
     </div>
 
-    <div class="illustrative-story__more">
+    <div class="india-calc-result">
       <h3>What if more people come?</h3>
-      <table>
+      <table class="planner-table">
         <thead>
           <tr>
             <th scope="col">Participants</th>
@@ -63,41 +67,23 @@ const moreAttendees = [200, 1000].map((participants) => ({
           ))}
         </tbody>
       </table>
-      <p class="illustrative-story__note">A planning example at the same ₹{formatInr(headline.ticketPrice)} ticket and one-hour length. Not an actual customer result or a payout promise.</p>
+      <p>A planning example at the same ₹{formatInr(headline.ticketPrice)} ticket and one-hour length. Not an actual customer result or a payout promise.</p>
     </div>
   </div>
 </section>
 
 <style>
-  /* Self-contained: literal colours copied from
-     web/src/components/india-preview/EarningsCalculatorIllustrated.astro and
-     web/src/styles/india-additions.css so this component renders correctly
-     regardless of which page shell mounts it. No new hex/font/radius/shadow
-     values — see the S7 hand-back note. */
-  .illustrative-story { padding: 48px 0; font-family: 'Instrument Sans', Arial, sans-serif; color: #101e31; }
-  .illustrative-story *, .illustrative-story *::before, .illustrative-story *::after { box-sizing: border-box; }
-  .illustrative-story__wrap { width: min(1180px, 92%); margin-inline: auto; }
-  .illustrative-story__label { display: inline-block; margin: 0 0 18px; padding: 7px 15px; background: #35415c; color: #fff8e9; font-family: 'Kalam', 'Instrument Sans', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .065em; transform: rotate(-1deg); border-radius: 999px; }
-  .illustrative-story__body { display: grid; grid-template-columns: 1.15fr .85fr; gap: 32px; align-items: start; padding: 32px; background: #fff9ec; border: 1px solid #c6b493; border-radius: 22px; box-shadow: 5px 5px 0 #c9b895; }
-  .illustrative-story h2 { margin: 0 0 16px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.2; }
-  .illustrative-story__copy p { margin: 0 0 14px; font-size: 17px; line-height: 1.6; }
-  .illustrative-story__copy p:last-child { margin-bottom: 0; }
-  .illustrative-story__art { margin: 0; text-align: center; }
-  .illustrative-story__art img { display: block; width: 100%; max-width: 220px; height: auto; object-fit: contain; margin: 0 auto; }
-  .illustrative-story__art figcaption { margin-top: 10px; font-size: 12px; line-height: 1.5; color: #625a4e; font-style: italic; }
-  .illustrative-story__more { margin-top: 28px; padding: 28px; background: #ffe2a0; border: 2px solid #35415c; border-radius: 22px; box-shadow: 6px 6px 0 #b09a6f; }
-  .illustrative-story__more h3 { margin: 0 0 16px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: clamp(20px, 2.4vw, 26px); }
-  .illustrative-story__more table { width: 100%; border-collapse: collapse; font-size: 16px; }
-  .illustrative-story__more th, .illustrative-story__more td { padding: 12px 10px; text-align: left; border-bottom: 1px dashed #8c7335; }
-  .illustrative-story__more th { font-weight: 700; }
-  .illustrative-story__more td:not(:first-child), .illustrative-story__more th:not(:first-child) { font-variant-numeric: tabular-nums; }
-  .illustrative-story__more tbody tr:last-child td { border-bottom: 0; }
-  .illustrative-story__note { margin: 16px 0 0; font-size: 13px; line-height: 1.6; color: #625a4e; }
+  /* Layout only for genuinely new elements — every colour, font-family,
+     border, border-radius and box-shadow comes from the existing
+     .india-showcase / .india-showcase__art / .india-calc-result / .india-kicker
+     rules in web/src/styles/india-additions.css. The table and its caption
+     have no existing equivalent, so they get their own layout-only rules
+     (no border/background/colour/font-family declared). */
+  .planner-caption { margin-top: 10px; font-size: 12px; line-height: 1.5; font-style: italic; text-align: center; }
+  .planner-table { width: 100%; border-collapse: collapse; }
+  .planner-table th, .planner-table td { padding: 12px 8px; text-align: left; }
+  .planner-table td:not(:first-child), .planner-table th:not(:first-child) { font-variant-numeric: tabular-nums; }
   @media (max-width: 700px) {
-    .illustrative-story { padding: 32px 0; }
-    .illustrative-story__body { grid-template-columns: minmax(0, 1fr); padding: 22px; }
-    .illustrative-story__art { order: -1; max-width: 160px; margin: 0 auto; }
-    .illustrative-story__more { padding: 20px; }
-    .illustrative-story__more table { display: block; overflow-x: auto; }
+    .planner-table { display: block; overflow-x: auto; }
   }
 </style>
