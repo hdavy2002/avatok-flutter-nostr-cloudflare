@@ -1,0 +1,269 @@
+---
+// /organisers — Become a spiritual event organiser (Specs/saathum-spec-v2-and-agent-plan.md A5).
+//
+// Style fidelity (B2 rule 11): this page copies section skeletons wholesale from
+// existing components rather than inventing new ones.
+//   - Chrome: SiteHeader/SiteFooter mounted exactly as `index.astro` does at base
+//     (`chrome={false}` + manual mount + a `.rail-skip` skip link), so the shell is
+//     byte-for-byte the same pattern as the homepage.
+//   - Hero: skeleton copied from `components/india-preview/CreatorIntro.astro`
+//     (`.india-hero`/`.india-hero__copy`/`.india-kicker`/`.india-lede`/
+//     `.india-actions`/`.india-button`/`.india-text-link`/`.india-hero__ticket`),
+//     with the heading promoted from h2 to h1 since this page owns its own H1.
+//   - Partner/equipment panels: skeleton copied from
+//     `components/india-preview/PaidFormats.astro` (`.india-format-grid` /
+//     `.india-format-card` / `.india-format-card__number`), art stickers dropped
+//     (D10 — no fitting existing art; character stickers under /help/art are
+//     comedic and off-tone for a devotional page).
+//   - Workflow steps: skeleton copied from `components/india-preview/CreatorJourney.astro`
+//     (`.india-steps`).
+//   - Guides grid: skeleton copied from `components/india-preview/CreatorIdeas.astro`
+//     (`.india-idea-grid` / `.india-idea-card`), reusing the FOUR existing guide
+//     entries (and their existing approved article art) from `lib/creatorIdeas.ts`.
+//   - FAQ: skeleton copied from `components/india-preview/CreatorFaq.astro`
+//     (`.india-faq` / `<details>`/`<summary>`).
+//   - Final CTA: skeleton copied from `components/india-preview/CreatorClosing.astro`
+//     (`.india-close`).
+//   - Auth-aware CTA: reuses the SiteHeader's existing global toggle — sibling
+//     `.avh-auth-out`/`.avh-auth-in` elements, shown/hidden via the
+//     `html[data-avatok-auth]` attribute that SiteHeader's own inline script
+//     already stamps before paint (`lib/authState.ts`). No new mechanism, no
+//     invented query params: guest -> `/sign-up`, authenticated -> the existing
+//     "Create a listing" dashboard entry (`/dashboard/listings/new`, the same
+//     href used by `layouts/Dashboard.astro` and `islands/dashboard/Overview.tsx`).
+//
+// CSS: only `styles/railway-home.css` and `styles/india-additions.css` (both
+// already shipped) are imported — no new colours/fonts/radii/shadows. NEW
+// `styles/organisers.css` carries layout-only rules for the one thing with no
+// existing equivalent: the equipment note callout.
+export const prerender = true;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import ExperienceTopics from '../components/ExperienceTopics.astro';
+import EarningsPlanner from '../components/organisers/EarningsPlanner.astro';
+import IllustrativeStory from '../components/organisers/IllustrativeStory.astro';
+import { creatorIdeas } from '../lib/creatorIdeas';
+import '../styles/railway-home.css';
+import '../styles/india-additions.css';
+import '../styles/organisers.css';
+
+// The four existing guides named in the brief (A5 O8), at their existing URLs.
+// No new guide content is written here — only linked.
+const GUIDE_SLUGS = ['mandir-se-live-darshan', 'subah-ki-aarti', 'ganga-ghat-se-shaam', 'guruji-ka-private-satsang'];
+const GUIDE_TONES = ['pink', 'mango', 'purple', 'blue'] as const;
+const guides = GUIDE_SLUGS
+  .map((slug, i) => {
+    const idea = creatorIdeas.find((c) => c.slug === slug);
+    return idea ? { ...idea, tone: GUIDE_TONES[i] } : null;
+  })
+  .filter((g): g is NonNullable<typeof g> => g !== null);
+
+const partners = [
+  { title: 'A spiritual teacher', body: 'Someone who already leads satsangs, talks or teaching sessions for a community.' },
+  { title: 'A priest or temple', body: 'A priest or temple that permits streaming a puja, aarti or festival observance.' },
+  { title: 'A bhajan or kirtan group', body: 'A group who perform devotional music and are comfortable being on camera.' },
+  { title: 'A yoga or meditation teacher', body: 'A teacher who already runs sessions in person and wants to reach people further away.' },
+];
+
+const workflowSteps = [
+  { title: 'Agree with a host', body: 'Find a spiritual teacher, priest, temple or group willing to be part of a live event, and agree responsibilities and the money split beforehand.' },
+  { title: 'Create and price the event', body: 'Set up the listing and agree the ticket price with your host.' },
+  { title: 'Invite the community', body: "Share the booking link with the host's community and your own." },
+  { title: 'Rehearse and go live', body: 'Test your setup ahead of time, then broadcast the event from the Saathum app.' },
+];
+
+const equipment = [
+  { title: 'A phone', body: 'Any recent smartphone is usually enough to broadcast.' },
+  { title: 'A stable tripod', body: 'Keeps the picture steady for the whole event.' },
+  { title: 'A clear microphone', body: 'So the host can be heard clearly, even in a large space.' },
+  { title: 'Dependable internet', body: 'A steady connection matters more than a fast one.' },
+  { title: 'Power', body: 'A charged phone or a way to keep it charged for the length of the event.' },
+  { title: 'A backup plan', body: 'Know what you will do if the connection drops or a device fails.' },
+];
+
+const faqs = [
+  {
+    q: 'Do I need followers?',
+    a: "No. A host's existing community helps bring the first attendees, but promotion and demand still decide how many people book.",
+  },
+  {
+    q: 'Can I organise for someone else?',
+    a: 'Yes — get the host and, where relevant, the venue’s permission first, and agree responsibilities and the money split beforehand.',
+  },
+  {
+    q: 'What equipment do I need?',
+    a: 'A phone with a stable tripod, a clear microphone and dependable internet is usually enough. Broadcast quality depends on your own device and connection, so test your setup before you go live.',
+  },
+  {
+    q: 'Who sets the ticket price?',
+    a: 'You and your host agree the price together and set it when you create the listing. Saathum adds its fee on top — see the next question.',
+  },
+  {
+    q: 'How does the platform fee work?',
+    a: 'Saathum adds a time fee of ₹50 per participant for every 30 minutes booked (₹100 per hour) and keeps 20% of your price. The 20% does not change with event length.',
+  },
+  {
+    q: 'How do attendees join?',
+    a: 'Attendees book their place, pay online, and follow the joining link in their confirmation.',
+  },
+  {
+    q: 'When can I withdraw?',
+    a: 'Withdrawals are not available yet. See our Payouts page for the current status before you plan around any income.',
+  },
+];
+---
+
+<Base
+  title="Become a spiritual event organiser | Saathum"
+  description="Partner with a spiritual teacher, priest, temple or yoga instructor to organise a live spiritual event on Saathum — from planning it to going live."
+  keywords="Saathum organiser, host a live puja, host a satsang, spiritual event organiser, live streaming for temples, devotional live events India"
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <a class="rail-skip" href="#main-content">Skip to main content</a>
+  <SiteHeader indiaLandingLanguage={false} />
+  <main id="main-content">
+    <div class="india-additions">
+      <div class="india-page" data-india-page>
+
+        <section class="india-hero india-wrap" aria-labelledby="organisers-hero-title" id="organisers-hero">
+          <div class="india-hero__copy">
+            <p class="india-kicker"><span aria-hidden="true">✦</span> For organisers</p>
+            <h1 id="organisers-hero-title">Bring your local spiritual community to the world.</h1>
+            <p class="india-lede">Partner with a guru, priest, temple or yoga teacher. Arrange a live experience, share the booking link and help people take part from home.</p>
+            <div class="india-actions">
+              <a class="india-button india-button--dark avh-auth-out" href="/sign-up">Start organising <span aria-hidden="true">↗</span></a>
+              <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new">Start organising <span aria-hidden="true">↗</span></a>
+              <a class="india-text-link" href="#how-to-organise">See how it works <span aria-hidden="true">↓</span></a>
+            </div>
+            <div class="india-hero__ticket">
+              <span aria-hidden="true">✹</span>
+              <strong>You bring the organisation. Your spiritual host brings the experience.</strong>
+              <span aria-hidden="true">✹</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="india-formats india-section" aria-labelledby="organisers-partners-title" id="who-to-partner-with">
+          <div class="india-wrap">
+            <p class="india-kicker">Who could you partner with?</p>
+            <h2 id="organisers-partners-title">Find a spiritual host for your first event</h2>
+            <div class="india-format-grid">
+              {partners.map((p, i) => (
+                <article class="india-format-card">
+                  <div class="india-format-card__number">0{i + 1}</div>
+                  <h3>{p.title}</h3>
+                  <p>{p.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section class="india-journey" aria-labelledby="how-to-organise-title" id="how-to-organise">
+          <p class="india-kicker">How it works</p>
+          <h2 id="how-to-organise-title">From first conversation to going live</h2>
+          <ol class="india-steps">
+            {workflowSteps.map((step, i) => (
+              <li>
+                <span>0{i + 1}</span>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section class="india-formats india-section" aria-labelledby="organisers-equipment-title" id="what-you-need">
+          <div class="india-wrap">
+            <p class="india-kicker">What you need</p>
+            <h2 id="organisers-equipment-title">Keep it simple</h2>
+            <div class="india-format-grid">
+              {equipment.map((e, i) => (
+                <article class="india-format-card">
+                  <div class="india-format-card__number">0{i + 1}</div>
+                  <h3>{e.title}</h3>
+                  <p>{e.body}</p>
+                </article>
+              ))}
+            </div>
+            <p class="organiser-equipment-note">Equipment does not supply an audience — that still comes from your host's community and your own promotion.</p>
+          </div>
+        </section>
+
+        <section class="india-ideas india-section" aria-labelledby="organisers-topics-title" id="what-to-organise">
+          <div class="india-wrap">
+            <p class="india-kicker">What could you organise?</p>
+            <h2 id="organisers-topics-title">Ideas across our spiritual topics</h2>
+            <ExperienceTopics variant="organiser" />
+          </div>
+        </section>
+
+        <section id="earnings" aria-labelledby="organisers-earnings-title">
+          <div class="india-wrap">
+            <p class="india-kicker">Plan your event</p>
+            <h2 id="organisers-earnings-title">What could your event look like?</h2>
+            <EarningsPlanner />
+          </div>
+        </section>
+
+        <IllustrativeStory />
+
+        <section class="india-ideas india-section" aria-labelledby="organisers-guides-title" id="guides">
+          <div class="india-wrap">
+            <p class="india-kicker">Guides</p>
+            <h2 id="organisers-guides-title">Read a guide before your first event</h2>
+            {guides.length > 0 && (
+              <div class="india-idea-grid">
+                {guides.map((g) => (
+                  <a class:list={['india-idea-card', `india-idea-card--${g.tone}`]} href={g.href}>
+                    <img src={g.cardImage} alt="" loading="lazy" />
+                    <div>
+                      <h3>{g.title}</h3>
+                      <p>{g.description}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section class="india-faq india-wrap" aria-labelledby="organisers-faq-title" id="faq">
+          <div class="india-faq__intro">
+            <p class="india-kicker">Questions</p>
+            <h2 id="organisers-faq-title">Organiser FAQ</h2>
+          </div>
+          <div class="india-faq__list" aria-label="Organiser frequently asked questions">
+            {faqs.map((item) => (
+              <details>
+                <summary><span>{item.q}</span></summary>
+                <p>
+                  {item.q === 'When can I withdraw?'
+                    ? <>{item.a} <a href="/payouts">Read our Payouts page</a>.</>
+                    : item.a}
+                </p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section class="india-close india-wrap" aria-labelledby="organisers-closing-title" id="organiser-final-cta">
+          <img class="india-close__burst" src="/ornament-flower.png" width="90" height="90" alt="" loading="lazy" />
+          <p class="india-kicker">Ready when you are</p>
+          <h2 id="organisers-closing-title">Bring your first spiritual event to Saathum.</h2>
+          <p>Agree with a host, set a price and share the link — the community you reach is up to you.</p>
+          <div class="india-actions" style="justify-content:center">
+            <a class="india-button india-button--dark avh-auth-out" href="/sign-up">Start organising <span aria-hidden="true">↗</span></a>
+            <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new">Start organising <span aria-hidden="true">↗</span></a>
+            <a class="india-text-link" href="/marketplace">Explore events <span aria-hidden="true">→</span></a>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+  <SiteFooter indiaLandingLanguage={false} />
+</Base>
