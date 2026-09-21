@@ -3,9 +3,8 @@
    a layout property (display/grid/flex/gap/padding/width) or an existing
    `--rail-*` token / class already defined in railway-home.css. */
 
-.saathum-hero { padding-block: 48px 34px; }
-.saathum-hero-actions { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
-.saathum-hero-note { max-width: 62ch; }
+/* D7 plain descriptor, directly under the hero CTAs, inside .creator-hero__copy. */
+.saathum-hero-note { max-width: 46ch; margin-top: 14px; }
 .saathum-hero-note a { text-decoration: underline; text-underline-offset: 3px; }
 
 /* Panel grids shared by benefits (4) and joining (3); talks & darshan reuses
@@ -20,7 +19,6 @@
 }
 @media (max-width: 700px) {
   .saathum-panel-grid--3 { grid-template-columns: 1fr; }
-  .saathum-hero-actions { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 480px) {
   .saathum-panel-grid--4 { grid-template-columns: 1fr; }

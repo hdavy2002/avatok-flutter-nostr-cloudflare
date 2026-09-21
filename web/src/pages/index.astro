@@ -4,34 +4,51 @@ import Base from '../layouts/Base.astro';
 import Fonts from '../components/Fonts.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import { publicImage } from '../lib/config';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 import '../styles/railway-home.css';
 import '../styles/saathum-home.css';
 import SpiritualEventShelves from '../islands/home/SpiritualEventShelves';
 import ExperienceTopics from '../components/ExperienceTopics.astro';
+
+const heroSrcSet = publicImageSrcSet('/assets/saathum/ganga-aarti.png', [420, 640, 900, 1156], { fit: 'scale-down' });
 ---
 <Base
   title="Saathum | Live pujas, satsangs and spiritual experiences"
   description="Discover live pujas, satsangs, aartis and spiritual gatherings from India. Find an experience, book your place and join from wherever you are."
   keywords="live puja online, satsang live stream, aarti darshan online, spiritual events India, book live puja tickets"
+  image={publicImage('/assets/saathum/ganga-aarti.png', { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="An evening aarti ceremony by a river."
+  imageWidth={1156}
+  imageHeight={867}
   chrome={false}
 >
   <Fragment slot="head">
     <Fonts india />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta name="theme-color" content="#f7ead5" />
+    <link rel="preload" as="image" href={publicImage('/assets/saathum/ganga-aarti.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
   </Fragment>
   <a class="rail-skip" href="#main-content">Skip to main content</a>
   <SiteHeader indiaLandingLanguage={false} />
   <main class="rail-home" data-design="saathum-spiritual-2026-09" id="main-content">
-    <section class="saathum-hero rail-wrap" aria-labelledby="rail-title" data-home-section="hero">
-      <p class="rail-eyebrow">LIVE SPIRITUAL EXPERIENCES FROM INDIA</p>
-      <h1 id="rail-title">Be there for the moments that matter.</h1>
-      <p class="rail-intro-copy">Join live pujas, satsangs, aartis and spiritual gatherings from India—wherever you call home.</p>
-      <div class="rail-actions saathum-hero-actions">
-        <a class="rail-button" href="/marketplace" data-home-cta="hero-explore-events">Explore events</a>
-        <a class="rail-text-link" href="#experiences" data-home-cta="hero-browse-experiences">Browse experiences</a>
+    <section class="station-hero creator-hero" aria-labelledby="rail-title">
+      <div class="creator-hero__frame">
+        <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
+        <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
+          <p class="station-kicker creator-hero__kicker">LIVE SPIRITUAL EXPERIENCES FROM INDIA</p>
+          <h1 id="rail-title" class="t-stagger-line"><span class="creator-hero__line">Be there for the moments </span><span class="creator-hero__line creator-hero__line--accent">that matter.</span></h1>
+          <p class="t-stagger-line t-stagger-line--2">Join live pujas, satsangs, aartis and spiritual gatherings from India—wherever you call home.</p>
+          <div class="station-actions">
+            <a class="rail-button" href="/marketplace" data-home-cta="hero-explore-events">Explore events</a>
+            <a class="station-outline" href="#experiences" data-home-cta="hero-browse-experiences">Browse experiences</a>
+          </div>
+          <p class="rail-note saathum-hero-note">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
+        </div>
+        <div class="station-art creator-hero__art">
+          <img src={publicImage('/assets/saathum/ganga-aarti.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="867" alt="An evening aarti ceremony by a river." fetchpriority="high" decoding="async" />
+        </div>
       </div>
-      <p class="rail-note saathum-hero-note">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
+      <a class="rail-next" href="#home-events">Explore events <span aria-hidden="true">↓</span></a>
     </section>
 
     <div id="home-events">
