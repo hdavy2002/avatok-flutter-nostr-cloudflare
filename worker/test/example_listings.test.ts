@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { exampleFilter, hiddenListingFilter, HIDDEN_LISTING_SQL } from "../src/routes/listings";
+import { notStuckLiveSql, STUCK_LIVE_MS } from "../src/lib/listing_schedule";
 import type { PlatformConfig } from "../src/routes/config";
 
 const root = resolve(import.meta.dirname, "..");
@@ -51,9 +53,19 @@ describe("[WEB-GATEWAY-E] badged example listings", () => {
     expect(listingsRoute).toContain("is_example: !!r.is_example");
   });
 
-  it("gates exploreBrowse and exploreSearch behind exampleFilter, never exploreLiveNow", () => {
+  it("gates exploreBrowse, exploreSearch and exploreLiveNow behind exampleFilter", () => {
+    // [SHV2-S1] exploreBrowse and exploreLiveNow now share ONE guard helper
+    // (discoverabilityGuards) so they cannot drift — see its own doc comment.
+    const guardFn = listingsRoute.slice(listingsRoute.indexOf("export async function discoverabilityGuards"), listingsRoute.indexOf("export async function exploreBrowse"));
+    expect(guardFn).toContain("exampleFilter(req, await readConfig(env), where)");
+    expect(guardFn).toContain("hiddenListingFilter(where)");
+
     const browseFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreBrowse"), listingsRoute.indexOf("export async function exploreLiveNow"));
-    expect(browseFn).toContain("exampleFilter(req, await readConfig(env), where)");
+    expect(browseFn).toContain("discoverabilityGuards(req, env, where)");
+
+    const liveNowFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreLiveNow"), listingsRoute.indexOf("export async function exploreSearch"));
+    expect(liveNowFn).toContain("discoverabilityGuards(req, env, where)");
+
     const searchFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreSearch"), listingsRoute.indexOf("export async function getListing"));
     expect(searchFn).toContain("exampleFilter(req, await readConfig(env), where)");
   });
@@ -154,9 +166,13 @@ describe("[WEB-GATEWAY-FIX1] closing the remaining example-listing gaps", () => 
     });
   });
 
-  it("wires hiddenListingFilter into exploreBrowse", () => {
-    const fn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreBrowse"), listingsRoute.indexOf("export async function exploreLiveNow"));
-    expect(fn).toContain("hiddenListingFilter(where)");
+  it("wires hiddenListingFilter into exploreBrowse and exploreLiveNow via discoverabilityGuards", () => {
+    const guardFn = listingsRoute.slice(listingsRoute.indexOf("export async function discoverabilityGuards"), listingsRoute.indexOf("export async function exploreBrowse"));
+    expect(guardFn).toContain("hiddenListingFilter(where)");
+    const browseFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreBrowse"), listingsRoute.indexOf("export async function exploreLiveNow"));
+    expect(browseFn).toContain("discoverabilityGuards(req, env, where)");
+    const liveNowFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreLiveNow"), listingsRoute.indexOf("export async function exploreSearch"));
+    expect(liveNowFn).toContain("discoverabilityGuards(req, env, where)");
   });
 
   it("wires hiddenListingFilter into exploreSearch", () => {
@@ -176,5 +192,52 @@ describe("[WEB-GATEWAY-FIX1] closing the remaining example-listing gaps", () => 
   it("never touches getListing (listing detail) or the HDFC/gateway smoke routes", () => {
     const fn = listingsRoute.slice(listingsRoute.indexOf("export async function getListing"), listingsRoute.indexOf("export async function getListing") + 800);
     expect(fn).not.toContain("hiddenListingFilter");
+  });
+});
+
+describe("[SHV2-S1] exploreLiveNow gets exploreBrowse's discoverability guards", () => {
+  const HOUR = 3_600_000;
+  const NOW = 1789084800000; // 11 Sept 2026 00:00 UTC — arbitrary, fixed for reproducibility
+
+  it("excludes a hidden row, an example row, a stuck/ended-while-live row and a cancelled row from the live-now query, leaving only the joinable live row", () => {
+    // Exactly the WHERE fragments exploreLiveNow assembles: the status guard,
+    // notStuckLiveSql (the pre-existing "ended" guard), then the same
+    // discoverabilityGuards fragments exploreBrowse has always applied.
+    const where: string[] = ["l.status='live'", notStuckLiveSql("l", String(NOW))];
+    exampleFilter(new Request("https://x/api/explore/live-now"), cfg(), where);
+    hiddenListingFilter(where);
+    const whereSql = where.join(" AND ");
+
+    const rows: [string, string, string, number, number, string | null, number][] = [
+      ["live_ok", "live_event", "live", NOW - HOUR, 120, null, 0],
+      ["live_hidden", "live_event", "live", NOW - HOUR, 120, JSON.stringify({ hide_from_marketplace: 1 }), 0],
+      ["live_example", "live_event", "live", NOW - HOUR, 120, null, 1],
+      ["live_stuck", "live_event", "live", NOW - STUCK_LIVE_MS - 2 * HOUR, 60, null, 0],
+      ["cancelled", "live_event", "cancelled", NOW - HOUR, 60, null, 0],
+    ];
+    const script = String.raw`
+import json, sqlite3, sys
+p = json.load(sys.stdin)
+db = sqlite3.connect(":memory:")
+db.execute("CREATE TABLE listings (id TEXT, kind TEXT, status TEXT, starts_at INTEGER, duration_min INTEGER, attrs TEXT, is_example INTEGER)")
+db.executemany("INSERT INTO listings VALUES (?,?,?,?,?,?,?)", p["rows"])
+live_now = [r[0] for r in db.execute("SELECT l.id FROM listings l WHERE " + p["whereSql"] + " ORDER BY l.id")]
+print(json.dumps({"live_now": live_now}))
+`;
+    const out = JSON.parse(execFileSync("python3", ["-c", script], {
+      input: JSON.stringify({ rows, whereSql }),
+    }).toString());
+    expect(out.live_now).toEqual(["live_ok"]);
+  });
+
+  it("leaves exploreBrowse's own filters untouched (discoverabilityGuards is additive, not a behaviour change)", () => {
+    // Bounded at sectionCountsFor, not exploreLiveNow — that helper function sits
+    // between exploreBrowse and exploreLiveNow in the source and keeps its own
+    // direct exampleFilter/hiddenListingFilter calls (untouched by this change).
+    const browseFn = listingsRoute.slice(listingsRoute.indexOf("export async function exploreBrowse"), listingsRoute.indexOf("async function sectionCountsFor"));
+    expect(browseFn).toContain("l.status IN ('published','live')");
+    expect(browseFn).toContain("notEndedSql(\"l\"");
+    expect(browseFn).not.toContain("exampleFilter(req, await readConfig(env), where)");
+    expect(browseFn).not.toContain("hiddenListingFilter(where)");
   });
 });

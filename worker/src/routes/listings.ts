@@ -3693,6 +3693,20 @@ export function hiddenListingFilter(where: string[]): void {
 export const HIDDEN_LISTING_SQL =
   "(CASE WHEN l.attrs IS NULL OR json_valid(l.attrs)=0 THEN 1 ELSE COALESCE(json_extract(l.attrs,'$.hide_from_marketplace'),0)=0 END)";
 
+/**
+ * [SHV2-S1] Shared discoverability guards — exampleFilter + hiddenListingFilter,
+ * applied together. exploreBrowse and exploreLiveNow both call this ONE function
+ * so the two can never drift on what counts as "discoverable": before this,
+ * exploreLiveNow (the marketplace's live-now rail) applied neither guard, so a
+ * badged example or a listing marked `hide_from_marketplace` could still reach
+ * the rail the moment its status was 'live', even though exploreBrowse already
+ * hid the same row everywhere else.
+ */
+export async function discoverabilityGuards(req: Request, env: Env, where: string[]): Promise<void> {
+  exampleFilter(req, await readConfig(env), where);
+  hiddenListingFilter(where);
+}
+
 /** WHERE fragment hiding listings from creators the (authed) caller blocked. */
 function blockFilter(uid: string | null, binds: unknown[], where: string[]): void {
   if (!uid) return;
@@ -3712,11 +3726,9 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // [LISTING-EXPIRY-1] …and fixed-date shows whose scheduled end has passed. The cron
   // closes them within minutes; this makes the marketplace right in the meantime.
   where.push(notEndedSql("l", `?${binds.length}`));
-  // [WEB-GATEWAY-E 2026-09-18] Badged example listings only reach a caller that
-  // explicitly asked for them — see exampleFilter's own doc comment.
-  exampleFilter(req, await readConfig(env), where);
-  // [WEB-GATEWAY-FIX1] Listings marked hide_from_marketplace never reach browse.
-  hiddenListingFilter(where);
+  // [SHV2-S1] Badged examples and hide_from_marketplace rows never reach browse
+  // — see discoverabilityGuards's own doc comment.
+  await discoverabilityGuards(req, env, where);
   // [AVA-MKT-VERT-1] §2.0 — the cross-vertical rule, on the main browse. Defaults to
   // commerce, so today's callers (which send no ?vertical) see today's rows.
   const vertical = verticalFilter(req, binds, where);
@@ -3831,6 +3843,11 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   // (the provider's "ended" webhook never landed), not a show anyone can join.
   binds.push(Date.now());
   where.push(notStuckLiveSql("l", `?${binds.length}`));
+  // [SHV2-S1] Same discoverability guards as exploreBrowse — see
+  // discoverabilityGuards's own doc comment. Previously missing here, so a
+  // badged example or a hide_from_marketplace row could still surface on this
+  // rail the moment it went live.
+  await discoverabilityGuards(req, env, where);
   // [AVA-MKT-VERT-1] §2.0 — the live rail is a listing read like any other, and it is
   // the one that renders unbidden at the top of the shell. Defaults to commerce.
   const vertical = verticalFilter(req, binds, where);
