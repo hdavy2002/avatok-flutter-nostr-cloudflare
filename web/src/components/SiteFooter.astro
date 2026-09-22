@@ -126,7 +126,7 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url("${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })}")` : undefined}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
   {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
