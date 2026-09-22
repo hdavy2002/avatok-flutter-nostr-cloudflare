@@ -44,6 +44,8 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
   ['/explore', 'daily', '0.9'],
+  // [SHV2-S8 2026-09-21] AC-12: /organisers added (Spec A5/B4).
+  ['/organisers', 'weekly', '0.8'],
   ['/sign-up', 'monthly', '0.9'],
   ['/about', 'monthly', '0.7'],
   ['/blog', 'weekly', '0.7'],

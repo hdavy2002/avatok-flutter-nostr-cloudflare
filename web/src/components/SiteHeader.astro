@@ -29,11 +29,13 @@ import { publicImage } from '../lib/config';
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 import GlobalHeader from './GlobalHeader.astro';
-import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
 // back. The same disclosure still lives on /terms#status.
+// [SHV2-S8 2026-09-21] IndiaLanguageSelector import removed: D9 hides the
+// language picker on the India/Saathum shell (English only, no new translation
+// catalogues). The component file itself is untouched — only unmounted here.
 
 export interface HeaderLink { href: string; label: string }
 
@@ -69,18 +71,15 @@ interface Props {
   authMobileOnly?: boolean;
 }
 
-// The site menu. Every entry points at something that exists — checked.
+// [SHV2-S8 2026-09-21] Saathum attendee/organiser nav (Spec Part A3). Every
+// entry points at something that exists — checked. Replaces the earlier
+// Marketplace/Wiki/Pricing/Ideas set: "Live now" is deliberately not a nav
+// item (A3 — with little or no inventory it would permanently lead nowhere).
 const DEFAULT_LINKS: HeaderLink[] = [
-  { href: '/marketplace', label: 'Marketplace' },
-  // [WEB-HELP-3 2026-09-11] Wiki menu item: links the site-wide help centre
-  // (/help) into the main nav, both the desktop bar and the mobile stacked
-  // panel share this one array. Placed right after Marketplace/Explore and
-  // ahead of the rest of the nav so it reads as core navigation, not a CTA —
-  // the auth/sign-in controls are a separate array (.avh-right / the mobile
-  // auth Fragment below) and are unaffected either way.
-  { href: '/help', label: 'Wiki' },
-  { href: '/pricing-fees', label: 'Pricing' },
-  { href: 'https://saathum.com/ideas', label: 'Ideas' },
+  { href: '/marketplace', label: 'Explore events' },
+  { href: '/#experiences', label: 'Experiences' },
+  { href: '/organisers', label: 'For organisers' },
+  { href: '/help', label: 'Help' },
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
@@ -92,7 +91,11 @@ const globalLinks: HeaderLink[] = [
   { href: '#payouts', label: 'Payouts' },
 ];
 const headerLinks = variant === 'global' ? globalLinks : links;
-const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wiki: 'chrome.wiki', Pricing: 'chrome.pricing', Ideas: 'chrome.ideas', 'For creators': 'chrome.forCreators', 'How it works': 'chrome.howItWorks', Payouts: 'chrome.payouts' } as Record<string, string>)[label];
+// [SHV2-S8] Only the 'global' variant's nav is still localised — D9 takes the
+// India/Saathum shell English-only, so the new default links never carry a
+// data-india-i18n key (AC-18: no old key may be reused with new wording under
+// it, since dom.ts would replay a stale translation over the new copy).
+const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators': 'chrome.forCreators', 'How it works': 'chrome.howItWorks', Payouts: 'chrome.payouts' } as Record<string, string>)[label];
 ---
 
 {variant === 'global' ? <GlobalHeader sticky={sticky} /> : <>
@@ -133,16 +136,23 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 <header class:list={['avh', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
+  {/* [SHV2-S8 2026-09-21] D8/A2: diya mark + "Saathum" set in the existing
+      heading face, replacing the avaTOK wordmark PNG (the header previously
+      already said alt="Saathum" while the artwork itself still read "avaTOK"
+      — a mismatch this fixes). Icon is decorative (alt=""); the anchor's own
+      aria-label carries the accessible name. */}
   <a class="avh-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    <img src={publicImage('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="Saathum" width="231" height="90" />
+    <img src={publicImage('/diya-logo.png', { width: 160, fit: 'scale-down' })} alt="" width="54" height="54" />
+    <span class="avh-logo-text">Saathum</span>
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
-    {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
+    {headerLinks.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   </nav>
 
   <div class="avh-right">
-    {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-desktop" />}
+    {/* [SHV2-S8 2026-09-21] IndiaLanguageSelector unmounted here — D9 hides
+        the language picker on the India/Saathum shell (English only). */}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
@@ -178,12 +188,18 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
 <dialog data-india-i18n-attr="aria-label:web-common.3f9abc8733ba366a" class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    <img src={publicImage('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="Saathum" width="154" height="60" />
+    {/* [SHV2-S8 2026-09-21] Same diya + "Saathum" lockup as the desktop bar,
+        scaled for the drawer's narrower heading row. */}
+    <div class="avh-drawer-brand">
+      <img src={publicImage('/diya-logo.png', { width: 128, fit: 'scale-down' })} alt="" width="44" height="44" />
+      <span class="avh-drawer-brand-text">Saathum</span>
+    </div>
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
-  {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
-  {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
+  {/* [SHV2-S8 2026-09-21] IndiaLanguageSelector unmounted here too — see the
+      desktop instance above. */}
+  {headerLinks.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
       page regardless of session — the comment here said so, blaming the
@@ -328,15 +344,22 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   @media (min-width: 768px) { .avh--auth-mobile { display: none !important; } }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 
-  .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }
+  .avh-logo { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
   .avh-logo img { display: block; height: 54px; width: auto; }
+  /* [SHV2-S8 2026-09-21] "Saathum" set in the same face as the footer's own
+     text lockup (.bf-logo) — Comfortaa/Baloo 2 are already loaded above and
+     var(--avh-ink) is the header's existing ink token, so nothing new here. */
+  .avh-logo-text {
+    font-family: 'Comfortaa', 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--avh-ink);
+    white-space: nowrap;
+  }
 
-  /* [WEB-HELP-3 2026-09-11] Five items now (was four) at the desktop tier.
-     The switch to the mobile burger stays at max-width:1100px below — not
-     restyled for this change — so on narrower desktop/tablet widths in the
-     ~1024-1200px band the extra Wiki item may wrap or crowd the bar before
-     the burger takes over. Flagging, not fixing: a real fix is a layout
-     change, out of scope here. */
+  /* [SHV2-S8 2026-09-21] Four items at the desktop tier (Explore events,
+     Experiences, For organisers, Help — A3). The switch to the mobile burger
+     stays at max-width:1100px below, unchanged. */
   .avh-nav { display: flex; align-items: center; gap: 24px; }
   .avh-nav a,
   .avh-mobile a {
@@ -400,7 +423,17 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   .avh-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px;
     position: sticky; top: 0; z-index: 1; padding: max(18px, env(safe-area-inset-top)) 20px 18px;
     background: var(--avh-cream); border-bottom: 1px solid #d7c8af; }
-  .avh-drawer-heading img { width: 120px; height: auto; }
+  /* [SHV2-S8 2026-09-21] Retargeted from a bare `.avh-drawer-heading img`
+     rule (which sized the old single-image wordmark) to the new brand
+     wrapper, since the drawer heading now also holds a text span. */
+  .avh-drawer-brand { display: flex; align-items: center; gap: 8px; }
+  .avh-drawer-brand img { display: block; width: 44px; height: auto; }
+  .avh-drawer-brand-text {
+    font-family: 'Comfortaa', 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--avh-ink);
+  }
   .avh-drawer-close { display: grid; place-items: center; width: 44px; height: 44px;
     border: 2px solid var(--avh-ink); border-radius: 50%; font-size: 30px; line-height: 1;
     background: transparent; color: inherit; cursor: pointer; }
@@ -437,6 +470,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   @media (max-width: 620px) {
     .avh-bar { gap: 12px; padding: 10px 14px; }
     .avh-logo img { height: 40px; }
+    .avh-logo-text { font-size: 20px; }
   }
   /* Shared readable navigation on phones and tablets. */
   @media (max-width:1199px) {
