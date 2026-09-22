@@ -292,12 +292,13 @@ assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Saathum | Live pujas, satsangs and spiritual experiences', 'A4 og:title');
-assert.equal(meta(html, 'og:description'), 'Live pujas, aartis and satsangs from India. Share the moments that bring you home. Explore spiritual experiences, book your place and join live.', 'A4 og:description');
+assert.equal(meta(html, 'og:title'), 'Saathum | Book Hindu religious experiences online', 'A4 og:title');
+assert.equal(meta(html, 'og:description'), 'Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are.', 'A4 og:description');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
+assert.match(ogImageUrl, /saathum-booking\/listing-aarti\.png/, 'Homepage share image uses the booking artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 const ogImagePath = resolve(root, new URL(ogImageUrl).pathname.replace(/^\//, ''));
 assert(existsSync(ogImagePath), 'Homepage share image resolves: ' + ogImageUrl);
