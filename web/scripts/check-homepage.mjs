@@ -91,7 +91,8 @@ assert.match(visibleText, /Saathum is a marketplace where event organisers sell 
 assert.match(visibleText, /Attendees book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
 
 // Screenshot examples are clearly editorial samples, never invented bookable inventory.
-assert.match(visibleText, /Sample event/, 'Reference event examples are visibly identified');
+assert.match(visibleText, /These are illustrative moments\./, 'Reference event examples are visibly identified');
+assert.match(visibleText, /Live now|Starts in|Tomorrow|This weekend|Book now/, 'Listing availability labels remain visible');
 assert.doesNotMatch(bodyHtml, /href="\/(?:l|listing)\/sample[^"\s]*"/, 'Samples must not invent listing destinations');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const id of ['main-content', 'home-events', 'experiences', 'benefits', 'joining', 'organise-invite']) {
