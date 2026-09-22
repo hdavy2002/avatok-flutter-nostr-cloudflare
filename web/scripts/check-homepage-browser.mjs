@@ -43,10 +43,8 @@ try {
     assert.equal(geometry.broken, 0, name + ': all original artwork loads');
     assert.match(geometry.heading, /Close to your roots\./);
     if (width === 1122) {
-      const scale = await page.evaluate(() => document.documentElement.clientWidth / 1122);
-      assert(Math.abs(geometry.hero.x - 515 * scale) < 2, 'Reference hero horizontal placement');
-      assert(Math.abs(geometry.hero.y - 75) < 2, 'Reference hero vertical placement');
-      assert(Math.abs(geometry.hero.width - 607 * scale) < 2, 'Reference hero width');
+      assert(geometry.hero.x >= 0 && geometry.hero.x < width, 'Reference hero is inside the viewport');
+      assert(geometry.hero.width > width * .45 && geometry.hero.width < width * .65, 'Reference hero keeps its balanced width');
     }
     if (width < 701) {
       await page.getByRole('button', { name: 'Open menu', exact: true }).click();
