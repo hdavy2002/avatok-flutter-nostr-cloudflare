@@ -1,14 +1,8 @@
 // Production-build smoke check: homepage links, art and archive must resolve.
 //
-// [SHV2-S10 2026-09-21] The attendee-facing block below was rewritten for the
-// Saathum homepage contract (Specs/saathum-spec-v2-and-agent-plan.md Part A4;
-// ids/wording binding via Specs/saathum-home-v2/contracts.md §1/§4/§5). The
-// retired creator-marketplace assertions (hero "Your audience is ready…",
-// earnings calculator, creator idea cards, `ideas-catalogue`/`consultations`/
-// `addon-calculator` anchors) are gone — that page no longer ships. Every
-// other assertion below (creator ideas route, global-ideas, guides, sitemap,
-// India redirects, archive) is UNRELATED to this rebuild (B2 rule 8) and is
-// left as-is.
+// [SAATHUM-REFERENCE-2026-09-22] Homepage copy and layout checks follow the
+// owner-approved screenshot. Archive, creator guides, sitemap and organiser
+// checks below remain independent of this homepage visual replacement.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
@@ -29,32 +23,27 @@ const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
-// --- Saathum attendee homepage (A4) ---
+// --- Owner-approved Saathum reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-// Astro may attach data-i18n metadata to the title element; validate the
-// rendered title without depending on attribute ordering.
-assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual experiences/, 'A4 page title');
-assert.match(html, /LIVE SPIRITUAL EXPERIENCES FROM INDIA/, 'A4.1 hero eyebrow');
-// The authored H1 uses two styled spans, so allow the closing/opening tags
-// between the two visible phrases.
-assert.match(html, /Be there for the moments\s*(?:<\/span>\s*<span[^>]*>)?\s*that matter\./, 'A4.1 hero H1');
-assert.match(html, /Join live pujas, satsangs, aartis and spiritual gatherings from India.{1,2}wherever you call home\./s, 'A4.1 hero support line');
-assert.match(html, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\. Attendees book and pay online; refunds follow our(?:\s|<[^>]*>)+published policy(?:<[^>]*>)?\./, 'A4.1 plain descriptor, visible without scrolling (D7)');
-assert.match(html, /Explore events/, 'A4.1 primary hero CTA label');
-assert.match(html, /Browse experiences/, 'A4.1 secondary hero CTA label');
-assert.match(html, /Explore spiritual experiences/, 'A4.4 experiences H2 (contracts.md §1)');
-assert.match(html, /Far from home\. Close to your traditions\./, 'A4.5 benefits heading');
-assert.match(html, /Time with the teachings that matter to you/, 'A4.6 satsang discovery panel');
-assert.match(html, /Darshan, wherever you are/, 'A4.6 darshan discovery panel');
-assert.match(html, /Know a spiritual teacher or temple in your area\?/, 'A4.8 organiser invitation heading');
-assert.match(html, /Become an organiser/, 'A4.8 organiser invitation CTA label');
-assert.match(html, /href="\/organisers"/, '/organisers reachable from the homepage (A4.8)');
+assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual experiences/, 'Spiritual marketplace page title');
+// Headline spans and line breaks are presentational; compare readable text.
+const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
+assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*JOIN FROM ANYWHERE/, 'Approved hero eyebrow');
+for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Bring your community together.']) {
+  assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
+}
+assert.match(html, /data-design="saathum-reference-2026-09-22"/, 'Approved design identity');
+assert.match(html, /data-reference-artwork/, 'Original approved artwork is present');
+assert.match(visibleText, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\./, 'Marketplace role is explained');
+assert.match(visibleText, /Attendees book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
 
-// contracts.md §5 — section ids must resolve in every render state,
-// including the prerendered/loading/no-JS shell (A4.2).
+// Screenshot examples are clearly editorial samples, never invented bookable inventory.
+assert.match(visibleText, /Sample event/, 'Reference event examples are visibly identified');
+assert.doesNotMatch(bodyHtml, /href="\/(?:l|listing)\/sample[^"\s]*"/, 'Samples must not invent listing destinations');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['live-now', 'upcoming-events', 'experiences', 'benefits', 'talks-darshan', 'joining', 'organise-invite']) {
-  assert(ids.has(id), 'Saathum homepage section exists: #' + id);
+for (const id of ['main-content', 'home-events', 'experiences', 'benefits', 'joining', 'organise-invite']) {
+  assert(ids.has(id), 'Homepage section exists: #' + id);
 }
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
@@ -62,23 +51,15 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
     assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
   }
 }
-
-// A4.4 — all 13 editorial topics search the marketplace by the contract's
-// exact terms (contracts.md §1). No invented category ids (A9 AC-07).
 const topicSearchTerms = [...html.matchAll(/href="\/marketplace\?q=([^"&]+)"/g)]
   .map(m => decodeURIComponent(m[1].replace(/\+/g, ' ')));
-for (const term of ['Satsang', 'Bhajan', 'Puja', 'Havan', 'Aarti', 'Katha', 'Bhagavad Gita', 'Mantra', 'Yoga', 'Meditation', 'Festival', 'Temple', 'Hindu traditions']) {
-  assert(topicSearchTerms.includes(term), 'Topic search term present: ' + term);
+for (const term of ['Puja', 'Aarti', 'Bhajan', 'Satsang', 'Festival', 'Yoga']) {
+  assert(topicSearchTerms.includes(term), 'Reference category searches marketplace: ' + term);
 }
-
-// A7 — a no-JS visitor can still reach the marketplace.
-assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace (A7)');
-
-// A3 — nav and footer.
-assert.match(html, /href="\/help"/, 'Help reachable (A3 nav/footer)');
-assert.match(html, /Live spiritual experiences, wherever you are\./, 'A3 footer tagline');
-assert.match(html, /href="\/help\/booking-and-paying\/join-a-live-show"/, 'A3 "Joining a live event" footer link / A4.7 help link resolves to the existing article');
-assert.match(html, /href="\/pricing-fees"/, 'A3 footer organiser link: /pricing-fees');
+assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace');
+for (const href of ['/marketplace', '/help', '/refunds', '/terms', '/organisers', '/pricing-fees', '/help/booking-and-paying/join-a-live-show']) {
+  assert(html.includes('href="' + href + '"'), 'Essential marketplace destination remains reachable: ' + href);
+}
 
 // A3/A9 AC-01 — the old creator homepage is gone, not just relabelled.
 assert.doesNotMatch(html, /Your audience is ready/, 'Retired creator hero headline absent');
@@ -118,7 +99,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: Saathum attendee hero, sections, anchors and India redirects.');
+console.log('Homepage checks passed: approved Saathum reference, real links, labelled samples, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {

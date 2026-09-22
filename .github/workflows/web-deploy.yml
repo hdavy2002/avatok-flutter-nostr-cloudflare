@@ -97,6 +97,21 @@ jobs:
           node scripts/check-image-urls.mjs
           node scripts/check-performance.mjs
 
+      - name: Check homepage in desktop and mobile browsers
+        working-directory: web
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+          node scripts/check-homepage-browser.mjs
+
+      - name: Save homepage visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepage-visual-review
+          path: web/homepage-review
+          retention-days: 3
+
       - name: Save verified production artifact
         if: inputs.publish
         uses: actions/upload-artifact@v4

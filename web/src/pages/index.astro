@@ -1,146 +1,143 @@
 ---
 export const prerender = true;
 import Base from '../layouts/Base.astro';
-import Fonts from '../components/Fonts.astro';
-import SiteHeader from '../components/SiteHeader.astro';
-import SiteFooter from '../components/SiteFooter.astro';
-import { publicImage, publicImageSrcSet } from '../lib/config';
-import '../styles/railway-home.css';
-import '../styles/saathum-home.css';
-import SpiritualEventShelves from '../islands/home/SpiritualEventShelves';
-import ExperienceTopics from '../components/ExperienceTopics.astro';
+import OriginalArtwork from '../components/OriginalArtwork.astro';
+import { publicImage } from '../lib/config';
+import '../styles/saathum-replica.css';
 
-const heroSrcSet = publicImageSrcSet('/assets/saathum/ganga-aarti.png', [420, 640, 900, 1156], { fit: 'scale-down' });
+const categories = [
+  { label: 'Puja & Archana', term: 'Puja', box: [34, 553, 168, 148] },
+  { label: 'Aarti & Darshan', term: 'Aarti', box: [209, 553, 169, 148] },
+  { label: 'Bhajan & Kirtan', term: 'Bhajan', box: [385, 553, 173, 148] },
+  { label: 'Satsang', term: 'Satsang', box: [565, 553, 171, 148] },
+  { label: 'Festivals', term: 'Festival', box: [743, 553, 170, 148] },
+  { label: 'Yoga & Meditation', term: 'Yoga', box: [921, 553, 168, 148] },
+];
+const moments = [
+  { title: 'An evening by the Ganga', label: 'Aarti & Darshan', term: 'Aarti', box: [40, 807, 340, 176] },
+  { title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', box: [395, 807, 330, 176] },
+  { title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', box: [742, 807, 342, 176] },
+];
+const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 ---
-<Base
-  title="Saathum | Live pujas, satsangs and spiritual experiences"
-  description="Discover live pujas, satsangs, aartis and spiritual gatherings from India. Find an experience, book your place and join from wherever you are."
-  keywords="live puja online, satsang live stream, aarti darshan online, spiritual events India, book live puja tickets"
-  image={publicImage('/assets/saathum/ganga-aarti.png', { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="An evening aarti ceremony by a river."
-  imageWidth={1156}
-  imageHeight={867}
-  chrome={false}
->
+<Base title="Saathum | Live pujas, satsangs and spiritual experiences"
+  description="Live pujas, aartis and satsangs from India. Share the moments that bring you home. Explore spiritual experiences, book your place and join live."
+  image={publicImage('/assets/saathum-reference/approved-homepage.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="Saathum: live spiritual experiences with Indian peacock, elephant and lotus artwork."
+  imageWidth={1122} imageHeight={1402} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <Fonts india />
-    <meta property="og:image:type" content="image/jpeg" />
-    <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href={publicImage('/assets/saathum/ganga-aarti.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
+    <meta name="theme-color" content="#faf6ea" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap" />
+    <link rel="preload" as="image" href={publicImage('/assets/saathum-reference/approved-homepage.png', { width: 1280, fit: 'scale-down' })} />
   </Fragment>
-  <a class="rail-skip" href="#main-content">Skip to main content</a>
-  <SiteHeader indiaLandingLanguage={false} />
-  <main class="rail-home" data-design="saathum-spiritual-2026-09" id="main-content">
-    <section class="station-hero creator-hero" aria-labelledby="rail-title">
-      <div class="creator-hero__frame">
-        <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
-        <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
-          <p class="station-kicker creator-hero__kicker">LIVE SPIRITUAL EXPERIENCES FROM INDIA</p>
-          <h1 id="rail-title" class="t-stagger-line"><span class="creator-hero__line">Be there for the moments </span><span class="creator-hero__line creator-hero__line--accent">that matter.</span></h1>
-          <p class="t-stagger-line t-stagger-line--2">Join live pujas, satsangs, aartis and spiritual gatherings from India—wherever you call home.</p>
-          <div class="station-actions">
-            <a class="rail-button" href="/marketplace" data-home-cta="hero-explore-events">Explore events</a>
-            <a class="station-outline" href="#experiences" data-home-cta="hero-browse-experiences">Browse experiences</a>
+  <a class="s-skip" href="#main-content">Skip to main content</a>
+  <div class="s-home" data-design="saathum-reference-2026-09-22">
+    <OriginalArtwork box={[0, 0, 1122, 20]} class="s-top-border" eager />
+    <header class="s-header">
+      <a class="s-brand" href="/" aria-label="Saathum home">
+        <OriginalArtwork box={[50, 30, 45, 36]} eager /><span>Saathum</span>
+      </a>
+      <nav class="s-desktop-nav" aria-label="Main navigation">
+        <a href="/marketplace" data-home-cta="nav-explore">Explore events</a>
+        <a href="#experiences" data-home-cta="nav-experiences">Experiences</a>
+        <a href="#joining" data-home-cta="nav-joining">How it works</a>
+      </nav>
+      <div class="s-header-actions">
+        <a href="/sign-in" class="s-sign-in" data-home-cta="nav-sign-in">Sign in</a>
+        <a href="/organisers" class="s-button s-button--small" data-home-cta="nav-organiser">Become an organiser</a>
+        <button class="s-menu" aria-controls="avh-drawer" aria-expanded="false" aria-label="Open menu" type="button"><span aria-hidden="true">☰</span></button>
+      </div>
+    </header>
+    <dialog id="avh-drawer" class="s-drawer" aria-labelledby="s-menu-title">
+      <div class="s-drawer-heading"><h2 id="s-menu-title">Saathum</h2><button type="button" aria-label="Close menu">×</button></div>
+      <nav aria-label="Mobile navigation">
+        <a href="/marketplace">Explore events</a><a href="#experiences">Experiences</a><a href="#joining">How it works</a>
+        <a href="/organisers">Become an organiser</a><a href="/sign-in">Sign in</a><a href="/sign-up">Create an account</a><a href="/help">Help</a>
+      </nav>
+    </dialog>
+    <main id="main-content">
+      <section class="s-hero" aria-labelledby="s-title" data-home-section="hero">
+        <OriginalArtwork box={[677, 20, 218, 55]} class="s-arch-crown" eager />
+        <div class="s-hero-copy">
+          <p class="s-eyebrow">LIVE FROM INDIA · JOIN FROM ANYWHERE</p>
+          <h1 id="s-title">Close to your roots.<br /><span>Wherever you are.</span></h1>
+          <p class="s-hero-description">Live pujas, aartis and satsangs. Share the moments<br class="s-desktop-break" /> that bring you home.</p>
+          <div class="s-hero-actions">
+            <a class="s-button" href="/marketplace" data-home-cta="hero-explore-events">Explore events <span aria-hidden="true">→</span></a>
+            <a class="s-text-link" href="#experiences" data-home-cta="hero-browse-experiences">Find your experience</a>
           </div>
-          <p class="rail-note saathum-hero-note">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
         </div>
-        <div class="station-art creator-hero__art">
-          <img src={publicImage('/assets/saathum/ganga-aarti.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="867" alt="An evening aarti ceremony by a river." fetchpriority="high" decoding="async" />
+        <OriginalArtwork box={[515, 75, 607, 403]} class="s-hero-art" eager />
+        <OriginalArtwork box={[0, 367, 513, 112]} class="s-diya-art" eager />
+      </section>
+      <OriginalArtwork box={[0, 479, 1122, 21]} class="s-floral-divider" />
+      <section class="s-experiences" id="experiences" aria-labelledby="s-experiences-title" data-home-section="experiences">
+        <h2 class="s-centered-title" id="s-experiences-title"><span aria-hidden="true">❧</span> Find your spiritual moment <span aria-hidden="true">❧</span></h2>
+        <div class="s-category-grid">
+          {categories.map((category) => (
+            <a class="s-category" href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase()}>
+              <OriginalArtwork box={category.box as [number, number, number, number]} />
+              <span class="s-category-label">{category.label}<span class="s-circle-arrow" aria-hidden="true">→</span></span>
+            </a>
+          ))}
         </div>
-      </div>
-      <a class="rail-next" href="#home-events">Explore events <span aria-hidden="true">↓</span></a>
-    </section>
-
-    <div id="home-events">
-      <noscript>
-        <p class="rail-note rail-wrap">JavaScript is required to show live and upcoming events here. <a href="/marketplace">Browse all events</a>.</p>
-      </noscript>
-      <SpiritualEventShelves client:load />
-    </div>
-
-    <ExperienceTopics />
-
-    <section class="rail-ideas rail-wrap saathum-benefits" id="benefits" aria-labelledby="benefits-title" data-home-section="benefits">
-      <h2 class="rail-flowered" id="benefits-title"><img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /> Far from home. Close to your traditions. <img src={publicImage('/ornament-flower.png', { width: 56, fit: 'scale-down' })} alt="" width="28" height="28" /></h2>
-      <div class="rail-idea-grid saathum-panel-grid saathum-panel-grid--4">
-        <article class="rail-idea">
-          <div class="rail-idea-copy">
-            <h3>Join when travel is difficult</h3>
-            <p>Watch live from wherever you are, even when a trip home isn't possible right now.</p>
-          </div>
-        </article>
-        <article class="rail-idea">
-          <div class="rail-idea-copy">
-            <h3>Hear your spiritual teacher</h3>
-            <p>Take part in real time, from the teacher whose voice you already know.</p>
-          </div>
-        </article>
-        <article class="rail-idea">
-          <div class="rail-idea-copy">
-            <h3>Share meaningful occasions</h3>
-            <p>Invite family to join too — each person joins under the event's own ticket terms.</p>
-          </div>
-        </article>
-        <article class="rail-idea">
-          <div class="rail-idea-copy">
-            <h3>Stay connected to language and tradition</h3>
-            <p>Take part in the language and rhythms of the events you grew up with.</p>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="rail-formats rail-wrap saathum-talks-darshan" id="talks-darshan" aria-labelledby="talks-darshan-title" data-home-section="talks_darshan">
-      <h2 id="talks-darshan-title">Special talks and darshan</h2>
-      <div class="rail-format-grid">
-        <a href="/marketplace?q=Satsang" data-home-cta="talks-darshan-satsang">
-          <span><h3>Time with the teachings that matter to you</h3><p>Find live satsangs and spiritual talks you can book a ticket for.</p></span>
-        </a>
-        <a href="/marketplace?q=Darshan" data-home-cta="talks-darshan-darshan">
-          <span><h3>Darshan, wherever you are</h3><p>Find live darshan and aarti events you can book a ticket for.</p></span>
-        </a>
-      </div>
-    </section>
-
-    <section class="rail-ideas rail-wrap saathum-joining" id="joining" aria-labelledby="joining-title" data-home-section="joining">
-      <h2 id="joining-title">Joining is simple</h2>
-      <ol class="saathum-panel-grid saathum-panel-grid--3 saathum-steps">
-        <li class="rail-idea">
-          <div class="rail-idea-copy">
-            <span class="rail-badge rail-badge--yellow">Step 1</span>
-            <h3>Choose an experience</h3>
-            <p>Browse live pujas, satsangs, aartis and other spiritual events.</p>
-          </div>
-        </li>
-        <li class="rail-idea">
-          <div class="rail-idea-copy">
-            <span class="rail-badge rail-badge--pink">Step 2</span>
-            <h3>Book your place</h3>
-            <p>Reserve your ticket and pay securely online.</p>
-          </div>
-        </li>
-        <li class="rail-idea">
-          <div class="rail-idea-copy">
-            <span class="rail-badge rail-badge--blue">Step 3</span>
-            <h3>Open your joining link</h3>
-            <p>Find your joining link in your booking confirmation when it's time.</p>
-          </div>
-        </li>
-      </ol>
-      <p class="rail-note">Check the language, time and ticket details before booking. Follow the joining instructions in your confirmation.</p>
-      <a class="rail-text-link" href="/help/booking-and-paying/join-a-live-show" data-home-cta="joining-help">Need help joining an event?</a>
-    </section>
-
-    <section class="rail-ideas rail-wrap saathum-organise-invite" id="organise-invite" aria-labelledby="organise-invite-title" data-home-section="organise_invite">
-      <h2 id="organise-invite-title">Know a spiritual teacher or temple in your area?</h2>
-      <p class="rail-section-copy">Help their community join from anywhere. Learn how to organise a live experience.</p>
-      <div class="rail-last-cta">
-        <a class="rail-button" href="/organisers" data-home-cta="organise-invite">Become an organiser</a>
-      </div>
-    </section>
-  </main>
-  <div class="station-footer"><SiteFooter indiaLandingLanguage={false} /></div>
+      </section>
+      <OriginalArtwork box={[0, 747, 1122, 12]} class="s-gold-divider" />
+      <section class="s-moments" id="home-events" aria-labelledby="s-moments-title" data-home-section="home_events">
+        <div class="s-section-heading"><h2 id="s-moments-title"><span aria-hidden="true">❧</span> Moments to look forward to</h2><a class="s-text-link" href="/marketplace" data-home-cta="all-events">View all events <span aria-hidden="true">→</span></a></div>
+        <div class="s-moment-grid">
+          {moments.map((moment) => (
+            <article class="s-moment">
+              <a href={search(moment.term)} data-home-cta={'moment-' + moment.term.toLowerCase()} class="s-moment-image" aria-label={moment.title + ' — explore ' + moment.label}>
+                <OriginalArtwork box={moment.box as [number, number, number, number]} />
+                <span class="s-sample-label">Sample event</span>
+              </a>
+              <h3><a href={search(moment.term)}>{moment.title}</a></h3>
+              <p>{moment.label}</p>
+              <a class="s-text-link" href={search(moment.term)} data-home-cta={'sample-explore-' + moment.term.toLowerCase()}>Explore <span aria-hidden="true">→</span></a>
+            </article>
+          ))}
+        </div>
+        <noscript><p class="s-noscript"><a href="/marketplace">Browse all events</a> and book your place.</p></noscript>
+      </section>
+      <section class="s-belonging" id="benefits" aria-labelledby="s-benefits-title" data-home-section="benefits">
+        <OriginalArtwork box={[0, 1057, 466, 165]} class="s-family-art" />
+        <div class="s-belonging-copy"><h2 id="s-benefits-title">Far from home.<br /> Close to your traditions.</h2><p>Familiar voices, shared rituals, meaningful moments.</p></div>
+        <ol class="s-steps" id="joining" aria-label="How to join a live event">
+          <li><a href="/marketplace" data-home-cta="joining-explore"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="13" cy="13" r="8" /><path d="m19 19 8 8" /></svg><span>01</span>Explore</a></li>
+          <li><a href="/help/booking-and-paying/find-a-creator-or-show" data-home-cta="joining-book"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="7" width="22" height="21" rx="2" /><path d="M10 3v8m12-8v8M5 15h22m-16 5h3m4 0h3" /></svg><span>02</span>Book</a></li>
+          <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="joining-help"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="3" /><path d="M10 8a10 10 0 0 0 0 16m12-16a10 10 0 0 1 0 16M6 3a17 17 0 0 0 0 26M26 3a17 17 0 0 1 0 26" /></svg><span>03</span>Join live</a></li>
+        </ol>
+      </section>
+      <section class="s-organise" id="organise-invite" aria-labelledby="s-organise-title" data-home-section="organise_invite">
+        <OriginalArtwork box={[0, 1225, 285, 83]} class="s-elephant-left" />
+        <div><h2 id="s-organise-title">Bring your community together.</h2><p>Host a spiritual experience on Saathum.</p></div>
+        <a class="s-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">→</span></a>
+        <OriginalArtwork box={[815, 1225, 307, 83]} class="s-elephant-right" />
+      </section>
+      <OriginalArtwork box={[0, 1305, 1122, 10]} class="s-gold-divider" />
+    </main>
+    <footer class="s-footer bazaar-footer">
+      <a class="s-brand" href="/" aria-label="Saathum home"><OriginalArtwork box={[40, 1325, 36, 30]} /><span>Saathum</span></a>
+      <nav aria-label="Footer navigation"><a href="/about">About</a><span aria-hidden="true">·</span><a href="/help">Help</a><span aria-hidden="true">·</span><a href="/terms">Terms</a><span aria-hidden="true">·</span><a href="/refunds">Refund policy</a></nav>
+      <details class="s-footer-details"><summary>About booking</summary><p>Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>. Illustrative sample events above link to experience searches; current availability is shown in the marketplace.</p><a href="/pricing-fees">Organiser fees</a><span> · </span><a href="/privacy">Privacy</a><div class="s-legal-links">{[['/cookies','Cookies'],['/marketplace-terms','Marketplace terms'],['/consultation-terms','Session terms'],['/acceptable-use','Acceptable use'],['/recording','Recording'],['/biometric-retention','Biometric retention'],['/dmca','Copyright'],['/community-guidelines','Community guidelines'],['/child-safety','Child safety'],['/grievance','Grievance'],['/contact','Contact'],['/tokens','Tokens'],['/terms#status','Company status']].map(([href,label]) => <a href={href}>{label}</a>)}</div></details>
+      <span class="s-footer-motto">A MORE<br />DEVOTED<br />WORLD</span>
+    </footer>
+    <OriginalArtwork box={[0, 1370, 1122, 32]} class="s-bottom-border" />
+  </div>
   <script>
     import '../lib/railwayHome';
+    import { capture } from '../lib/analytics';
+    document.querySelectorAll<HTMLAnchorElement>('.s-footer a, .s-drawer a').forEach(link => {
+      link.addEventListener('click', () => capture('nav_click', { route: 'homepage', design: 'saathum-reference-2026-09-22', location: link.closest('footer') ? 'footer' : 'mobile-menu', destination: link.getAttribute('href') }));
+    });
+    const drawer = document.querySelector<HTMLDialogElement>('#avh-drawer');
+    const toggle = document.querySelector<HTMLButtonElement>('[aria-controls="avh-drawer"]');
+    toggle?.addEventListener('click', () => { drawer?.showModal(); toggle.setAttribute('aria-expanded', 'true'); });
+    drawer?.querySelector('[aria-label="Close menu"]')?.addEventListener('click', () => drawer.close());
+    drawer?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => drawer.close()));
+    drawer?.addEventListener('close', () => { toggle?.setAttribute('aria-expanded', 'false'); toggle?.focus(); });
+    drawer?.addEventListener('click', event => { if (event.target === drawer) { const rect = drawer.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) drawer.close(); } });
   </script>
 </Base>
+

@@ -1,0 +1,19 @@
+---
+import { publicImage } from '../lib/config';
+interface Props {
+  box: [number, number, number, number];
+  class?: string;
+  eager?: boolean;
+}
+const { box: [x, y, width, height], class: className = '', eager = false } = Astro.props;
+const src = publicImage('/assets/saathum-reference/approved-homepage.png', { width: 1280, fit: 'scale-down' });
+---
+<span class:list={['original-artwork', className]} data-reference-artwork aria-hidden="true"
+  style={`aspect-ratio:${width}/${height};--art-width:${1122 / width * 100}%;--art-left:${-x / width * 100}%;--art-top:${-y / height * 100}%`}>
+  <img src={src} width="1122" height="1402" alt="" loading={eager ? 'eager' : 'lazy'}
+    fetchpriority={eager ? 'high' : 'auto'} decoding="async" draggable="false" />
+</span>
+<style>
+  .original-artwork{display:block;position:relative;overflow:hidden;pointer-events:none}
+  .original-artwork img{position:absolute;display:block;width:var(--art-width);max-width:none;height:auto;left:var(--art-left);top:var(--art-top)}
+</style>
