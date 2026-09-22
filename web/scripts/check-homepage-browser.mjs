@@ -35,6 +35,8 @@ try {
       const images = [...document.images];
       images.forEach(image => image.loading = 'eager');
       await Promise.all(images.map(image => image.decode()));
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
     });
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth, content: document.documentElement.scrollWidth,
@@ -49,6 +51,14 @@ try {
     assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': headings use Comfortaa');
     assert.match(await page.locator('.folk-site').evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': body uses Nunito');
     assert.notEqual(await page.locator('.folk-artwork').first().evaluate(el => getComputedStyle(el).filter), 'none', name + ': stickers retain a soft shadow');
+    const categoryArt = await page.locator('.folk-category .folk-artwork').evaluateAll(elements => elements.map(image => {
+      const rect = image.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight };
+    }));
+    assert.equal(categoryArt.length, 6, name + ': every category has its own illustration');
+    for (const [index, art] of categoryArt.entries()) {
+      assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0 && art.naturalHeight > 0, name + ': category illustration paints with geometry #' + index);
+    }
     const footer = page.locator('footer');
     for (const asset of ['hero', 'ganesh', 'cow', 'music', 'satsang', 'culture', 'lotus']) {
       assert(await page.locator('[data-folk-artwork="' + asset + '"]').first().isVisible(), name + ': artwork is visible: ' + asset);
