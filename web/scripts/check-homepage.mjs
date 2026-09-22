@@ -1,43 +1,102 @@
 // Production-build smoke check: homepage links, art and archive must resolve.
+//
+// [SHV2-S10 2026-09-21] The attendee-facing block below was rewritten for the
+// Saathum homepage contract (Specs/saathum-spec-v2-and-agent-plan.md Part A4;
+// ids/wording binding via Specs/saathum-home-v2/contracts.md §1/§4/§5). The
+// retired creator-marketplace assertions (hero "Your audience is ready…",
+// earnings calculator, creator idea cards, `ideas-catalogue`/`consultations`/
+// `addon-calculator` anchors) are gone — that page no longer ships. Every
+// other assertion below (creator ideas route, global-ideas, guides, sitemap,
+// India redirects, archive) is UNRELATED to this rebuild (B2 rule 8) and is
+// left as-is.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
+
+function meta(page, key) {
+  const tags = page.match(/<meta\b[^>]*>/g) || [];
+  const tag = tags.find(tag => tag.includes('property="' + key + '"') || tag.includes('name="' + key + '"'));
+  return tag?.match(/content="([^"]*)"/)?.[1];
+}
 
 const root = resolve('dist');
 validateBuiltImageSources(root);
 const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
-assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
-assert.match(html, /Your audience is ready/, 'Approved hero headline remains');
-assert.match(html, /to pay for you\./, 'Approved hero accent remains');
+
+// --- Saathum attendee homepage (A4) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/data-home-idea="/g) || []).length, 6, 'Six original creator idea cards');
-assert.equal((html.match(/<article\b[^>]*class="[^"]*\bindia-idea-card\b/g) || []).length, 4, 'Four additional creator ideas');
+assert.match(html, /<title>Saathum \| Live pujas, satsangs and spiritual experiences/, 'A4 page title');
+assert.match(html, /LIVE SPIRITUAL EXPERIENCES FROM INDIA/, 'A4.1 hero eyebrow');
+assert.match(html, /Be there for the moments that matter\./, 'A4.1 hero H1');
+assert.match(html, /Join live pujas, satsangs, aartis and spiritual gatherings from India.{1,2}wherever you call home\./s, 'A4.1 hero support line');
+assert.match(html, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\. Attendees book and pay online; refunds follow our published policy\./, 'A4.1 plain descriptor, visible without scrolling (D7)');
+assert.match(html, /Explore events/, 'A4.1 primary hero CTA label');
+assert.match(html, /Browse experiences/, 'A4.1 secondary hero CTA label');
+assert.match(html, /Explore spiritual experiences/, 'A4.4 experiences H2 (contracts.md §1)');
+assert.match(html, /Far from home\. Close to your traditions\./, 'A4.5 benefits heading');
+assert.match(html, /Time with the teachings that matter to you/, 'A4.6 satsang discovery panel');
+assert.match(html, /Darshan, wherever you are/, 'A4.6 darshan discovery panel');
+assert.match(html, /Know a spiritual teacher or temple in your area\?/, 'A4.8 organiser invitation heading');
+assert.match(html, /Become an organiser/, 'A4.8 organiser invitation CTA label');
+assert.match(html, /href="\/organisers"/, '/organisers reachable from the homepage (A4.8)');
+
+// contracts.md §5 — section ids must resolve in every render state,
+// including the prerendered/loading/no-JS shell (A4.2).
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon-ideas', 'addon-calculator']) {
- assert(ids.has(id), 'Approved homepage section exists: ' + id);
+for (const id of ['live-now', 'upcoming-events', 'experiences', 'benefits', 'talks-darshan', 'joining', 'organise-invite']) {
+  assert(ids.has(id), 'Saathum homepage section exists: #' + id);
 }
-assert.match(html, /<section\b[^>]*class="[^"]*\bbooking-illustrated\b[^"]*"[^>]*id="consultations"/, 'Booking Express retains the approved illustrated section');
-assert.match(html, /<section\b[^>]*class="[^"]*\bcalculator-illustrated\b[^"]*"[^>]*id="addon-calculator"/, 'Earnings calculator retains the approved illustrated section');
-assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
-assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
-assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
- const href = match[1].replaceAll('&amp;', '&');
- if (href.startsWith('#') || href.startsWith('/#')) {
-  assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
- }
+  const href = match[1].replaceAll('&amp;', '&');
+  if (href.startsWith('#') || href.startsWith('/#')) {
+    assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
+  }
 }
+
+// A4.4 — all 13 editorial topics search the marketplace by the contract's
+// exact terms (contracts.md §1). No invented category ids (A9 AC-07).
+const topicSearchTerms = [...html.matchAll(/href="\/marketplace\?q=([^"&]+)"/g)]
+  .map(m => decodeURIComponent(m[1].replace(/\+/g, ' ')));
+for (const term of ['Satsang', 'Bhajan', 'Puja', 'Havan', 'Aarti', 'Katha', 'Bhagavad Gita', 'Mantra', 'Yoga', 'Meditation', 'Festival', 'Temple', 'Hindu traditions']) {
+  assert(topicSearchTerms.includes(term), 'Topic search term present: ' + term);
+}
+
+// A7 — a no-JS visitor can still reach the marketplace.
+assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace (A7)');
+
+// A3 — nav and footer.
+assert.match(html, /href="\/help"/, 'Help reachable (A3 nav/footer)');
+assert.match(html, /Live spiritual experiences, wherever you are\./, 'A3 footer tagline');
+assert.match(html, /href="\/help\/booking-and-paying\/join-a-live-show"/, 'A3 "Joining a live event" footer link / A4.7 help link resolves to the existing article');
+assert.match(html, /href="\/pricing-fees"/, 'A3 footer organiser link: /pricing-fees');
+
+// A3/A9 AC-01 — the old creator homepage is gone, not just relabelled.
+assert.doesNotMatch(html, /Your audience is ready/, 'Retired creator hero headline absent');
+assert.doesNotMatch(html, /to pay for you\./, 'Retired creator hero accent absent');
+assert.doesNotMatch(html, /data-home-idea="/, 'Creator idea cards removed (A3)');
+assert.doesNotMatch(html, /\bindia-idea-card\b/, 'Creator idea cards removed (A3)');
+assert.doesNotMatch(html, /\bbooking-illustrated\b/, 'Booking Express illustrated section removed from home (A3)');
+assert.doesNotMatch(html, /\bcalculator-illustrated\b/, 'Earnings calculator removed from home — mounts only on /organisers (contracts.md §6)');
+assert.doesNotMatch(html, /<input\b[^>]*type="range"/, 'No calculator controls on the homepage (contracts.md §6)');
+assert.doesNotMatch(html, /id="ideas-catalogue"|id="how-avatok-works"|id="addon-ideas"|id="addon-calculator"|id="consultations"/, 'Retired creator anchors removed (contracts.md §5)');
+assert.doesNotMatch(html, /avatok-creator-constellation/, 'Retired creator hero art removed (A4.1, D10)');
+assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Language picker hidden on Saathum (D9)');
+assert.doesNotMatch(html, /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content anywhere on the homepage (D2, AC-17)');
+
+for (const key of ['web-landing.0528be3d426aff53', 'web-landing.92f4118799fbcf80', 'web-landing.d0082f5d7ac7dd8b', 'web-landing.721cb60fc48386d6', 'web-landing.c54a63bb77c61e9d', 'web-landing.b9d43bd06fbe8631']) {
+  assert.doesNotMatch(html, new RegExp('data-i18n="' + key + '"'), 'Retired creator-copy i18n key not reused (D9, AC-18): ' + key);
+}
+
 for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jpg']) {
  assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
 }
-assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
+assert.match(html, /href="\/sign-up(?:\?|\"|\/)|href="\/dashboard(?:\?|\"|\/)/, 'Organiser CTA sign-in path remains reachable (A3 guest/authenticated)');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
-assert.match(html, /<img\b[^>]*src="\/assets\/home\/avatok-creator-constellation\.png"/, 'Approved creator hero remains');
-assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Creator hero asset resolves');
 assert.match(html, /aria-controls="avh-drawer"/, 'Mobile menu is accessible');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train|start-dialog|This design preview|noindex/, 'Production page has no retired animation, placeholder or search exclusion');
 assert.doesNotMatch(html, /href="\/india(?:[/?#"]|$)|data-site-experience="global"|data-artwork="global-retro-decades"/, 'Single homepage has no retired country switch or global landing');
@@ -54,7 +113,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
+console.log('Homepage checks passed: Saathum attendee hero, sections, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -131,7 +190,6 @@ const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
@@ -177,16 +235,12 @@ assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
 assert(sitemapIndex.includes('https://saathum.com/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 for (const href of new Set(guideLinks)) assert(sitemap.includes('https://saathum.com'+href),'Guide missing from sitemap: '+href);
+assert(sitemap.includes('https://saathum.com/organisers'), '/organisers listed in sitemap (AC-12)');
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
  assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
 }
 
 // Share previews and machine-readable discovery must match visible articles.
-function meta(page, key) {
- const tags = page.match(/<meta\b[^>]*>/g) || [];
- const tag = tags.find(tag => tag.includes('property="'+key+'"') || tag.includes('name="'+key+'"'));
- return tag?.match(/content="([^"]*)"/)?.[1];
-}
 for (const href of new Set(guideLinks)) {
  const page = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
  const hero = page.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/)[1];
@@ -209,34 +263,25 @@ assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
 assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
-// The promoted homepage has one accurate share preview and canonical URL.
-const rawShareImage = meta(rawHtml, 'og:image');
-assert.match(rawShareImage, /^https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.(?:jpg|png)$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
-assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
-assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
-const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
-assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
-assert.match(campaignImages[0], /^https:\/\/saathum\.com\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
-assert.equal(meta(html, 'og:title'), 'Saathum: paid live streams and 1:1 video calls with your favourite creators');
-assert.equal(meta(html, 'og:description'), 'YouTube, Instagram and Facebook creators sell tickets to live streams and 1:1 video calls on Saathum. Pay securely in rupees.');
+// The promoted homepage has one accurate share preview and canonical URL (A4).
+assert.equal(meta(html, 'og:title'), 'Saathum | Live pujas, satsangs and spiritual experiences', 'A4 og:title');
+assert.equal(meta(html, 'og:description'), 'Discover live pujas, satsangs, aartis and spiritual gatherings from India. Find an experience, book your place and join from wherever you are.', 'A4 og:description');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
-assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1156');
-assert.equal(meta(html, 'og:image:height'), '1360');
-assert.equal(meta(html, 'og:image:type'), 'image/jpeg');
-// These checks inspect the original source; delivery format is enforced above.
-for (const image of campaignImages) {
- const imagePath = resolve(root, new URL(image).pathname.slice(1));
- assert(existsSync(imagePath), 'Published creator preview image exists');
- const bytes = readFileSync(imagePath);
- assert(bytes.length > 1000 && bytes.length < 3_000_000, 'Creator preview image is present and below 3 MB for social crawlers');
- const metadata = await sharp(bytes).metadata();
- assert.equal(metadata.format, 'png', 'Creator preview source bytes remain the approved PNG');
- assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
- assert.equal(metadata.height, Number(meta(html, 'og:image:height')), 'Creator preview height matches its metadata');
-}
+const ogImageUrl = meta(html, 'og:image');
+assert(ogImageUrl, 'Homepage has a share image');
+assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
+const ogImagePath = resolve(root, new URL(ogImageUrl).pathname.replace(/^\//, ''));
+assert(existsSync(ogImagePath), 'Homepage share image resolves: ' + ogImageUrl);
+assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');
 assert.equal(meta(html, 'og:url'), 'https://saathum.com/');
 assert.doesNotMatch(sitemap, /<loc>https:\/\/saathum\.com\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
-console.log('Homepage title, description, canonical and selected creator image passed.');
+console.log('Homepage title, description, canonical and share image passed.');
+
+// [SHV2-S10] Attach the new /organisers contract check to THIS existing CI
+// step (web-deploy.yml "Check homepage links and archive"; typecheck.yml
+// "Check public homepage and help before deployment") instead of adding a
+// new workflow step or trigger — B2 rule 8, S10 brief phase 1. Same pattern
+// check-performance.mjs already uses to fan out to its sub-checks.
+execFileSync(process.execPath, ['scripts/check-organisers.mjs'], { stdio: 'inherit' });
