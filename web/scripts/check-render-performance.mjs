@@ -47,7 +47,7 @@ if (built) {
   if (baseSource.includes("components/Fonts.astro")) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');
   }
-  assert.match(html, /Be there for the moments that matter\./, 'A4.1 hero H1 reaches the built page');
+  assert.match(html, /Be there for the moments\s*(?:<\/span>\s*<span[^>]*>)?\s*that matter\./, 'A4.1 hero H1 reaches the built page');
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');
