@@ -251,7 +251,7 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 109 
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
 assert.equal(meta(html, 'og:title'), 'Saathum | Live pujas, satsangs and spiritual experiences', 'A4 og:title');
-assert.equal(meta(html, 'og:description'), 'Discover live pujas, satsangs, aartis and spiritual gatherings from India. Find an experience, book your place and join from wherever you are.', 'A4 og:description');
+assert.equal(meta(html, 'og:description'), 'Live pujas, aartis and satsangs from India. Share the moments that bring you home. Explore spiritual experiences, book your place and join live.', 'A4 og:description');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
