@@ -446,3 +446,10 @@
     scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important;
   }
 }
+@media (max-width: 760px) {
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-bar {
+    padding: 12px 16px; gap: 12px;
+  }
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-logo-text { font-size: 28px; }
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-logo img { width: 44px; height: 44px; }
+}

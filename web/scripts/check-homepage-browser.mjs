@@ -25,7 +25,7 @@ await new Promise(done => server.listen(4179, '127.0.0.1', done));
 const browser = await chromium.launch();
 await mkdir('homepage-review', { recursive: true });
 try {
-  for (const [name, width, height] of [['ultra-wide', 2560, 1400], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['tablet', 820, 1000], ['menu-breakpoint', 1100, 900], ['mobile', 390, 844], ['small-mobile', 320, 740]]) {
+  for (const [name, width, height] of [['ultra-wide', 2560, 1400], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['desktop-breakpoint', 1122, 1000], ['tablet', 820, 1000], ['menu-breakpoint', 1100, 900], ['mobile', 390, 844], ['small-mobile', 320, 740]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     await page.route(/posthog|api\.avatok\.ai/, route => route.abort());
     await page.goto('http://127.0.0.1:4179/', { waitUntil: 'networkidle' });
@@ -61,9 +61,11 @@ try {
       assert(headerType.barRight <= width + 1, name + ': header bar stays inside viewport');
     }
     await page.locator('#experiences').scrollIntoViewIfNeeded();
-    await new Promise(requestAnimationFrame);
-    await new Promise(requestAnimationFrame);
+    await page.evaluate(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
     await page.locator('.grand-category-grid').screenshot({ path: 'homepage-review/' + name + '-categories.png' });
+    await page.locator('.grand-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
+    await page.locator('.grand-belonging').screenshot({ path: 'homepage-review/' + name + '-belonging.png' });
+    await page.locator('.grand-culture').screenshot({ path: 'homepage-review/' + name + '-culture.png' });
     await page.locator('#home-events').scrollIntoViewIfNeeded();
     await page.locator('.grand-listing-grid').screenshot({ path: 'homepage-review/' + name + '-listings.png' });
     await page.locator('footer').scrollIntoViewIfNeeded();
@@ -139,6 +141,13 @@ try {
       assert(await page.locator('.grand-elephant img').first().evaluate(el => el.getBoundingClientRect().width >= 250), name + ': elephants are large');
     }
     if (width <= 1100) {
+      const mobileHeader = await page.locator('header').evaluate(header => {
+        const logo = header.querySelector('.avh-logo')?.getBoundingClientRect();
+        const burger = header.querySelector('.avh-burger')?.getBoundingClientRect();
+        return { logoRight: logo?.right ?? 0, burgerLeft: burger?.left ?? innerWidth, burgerRight: burger?.right ?? 0 };
+      });
+      assert(mobileHeader.logoRight + 8 < mobileHeader.burgerLeft, name + ': mobile logo clears menu button');
+      assert(mobileHeader.burgerRight <= width + 1, name + ': mobile menu button stays inside viewport');
       await page.getByRole('button', { name: 'Open menu', exact: true }).click();
       assert(await page.locator('#avh-drawer').evaluate(dialog => dialog.open), name + ': mobile menu opens');
       await page.keyboard.press('Escape');
