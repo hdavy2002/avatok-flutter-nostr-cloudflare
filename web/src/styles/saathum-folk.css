@@ -32,7 +32,7 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-hero-art { min-width: 0; align-self: end; display: flex; align-items: flex-end; justify-content: center; }
 .folk-site[data-design="saathum-reference-v5"] .grand-hero-image { display: block; width: 100%; height: auto; max-height: 800px; object-fit: contain; object-position: center bottom; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences, .folk-site[data-design="saathum-reference-v5"] .grand-moments-inner { max-width: 1840px; margin: auto; padding-inline: var(--grand-gutter); }
-.folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 25px 26px; margin-bottom: 28px; background: linear-gradient(135deg, #2d2347 0%, #3b2445 52%, #25203d 100%); box-shadow: inset 0 1px 0 #d1ae7055, inset 0 -1px 0 #17152d; }
+.folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 25px 26px; background: transparent; }
 .folk-site[data-design="saathum-reference-v5"] .grand-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 17px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-section-heading h2 span { color: var(--grand-red); font-size: .8em; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences .grand-section-heading { justify-content: center; text-align: center; color: #fffaf0; }
@@ -125,12 +125,12 @@
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: 64px; height: 64px; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { color: var(--grand-teal); font: 700 42px/1.2 'Comfortaa', sans-serif; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-tag { color: var(--grand-ink); font-size: 15px; line-height: 1.5; max-width: 30ch; margin: auto; }
-.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { display: flex; justify-content: center; flex-wrap: wrap; gap: 28px; max-width: 1320px; margin: 34px auto 14px; text-align: center; }
-.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col { flex: 1 1 280px; display: flex; flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-items: center; row-gap: 9px; padding: 22px 24px 24px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { display: flex; justify-content: center; flex-wrap: wrap; gap: 28px 44px; max-width: 1320px; margin: 30px auto 8px; text-align: center; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col { flex: 1 1 320px; display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 18px; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { color: var(--grand-teal); font: 800 17px/1.4 'Nunito', sans-serif; margin-bottom: 9px; letter-spacing: 0; }
-.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { flex: 0 0 auto; margin-bottom: 5px; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { flex: 0 0 100%; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col a { color: var(--grand-ink); font-size: 15px; font-weight: 600; line-height: 1.35; padding: 3px 0; }
-.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 22px; max-width: 1320px; margin: 18px auto 0; padding: 18px var(--grand-gutter); background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 13px; line-height: 1.45; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 22px; max-width: 1320px; margin: 8px auto 0; padding: 10px var(--grand-gutter); background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 13px; line-height: 1.45; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a { color: var(--grand-ink); padding: 3px 0; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal-links-sep { display: none; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal { border: 0; background: transparent; padding: 0; }

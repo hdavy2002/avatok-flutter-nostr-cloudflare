@@ -4,12 +4,13 @@ import { publicImage, publicImageSrcSet } from '../lib/config';
 interface Props {
   name: 'puja' | 'aarti' | 'bhajan' | 'satsang' | 'festival' | 'yoga';
   kind: 'category' | 'listing';
+  sourcePath?: string;
   alt: string;
   sizes?: string;
   eager?: boolean;
 }
-const { name, kind, alt, sizes = '(max-width: 760px) 92vw, 30vw', eager = false } = Astro.props;
-const source = `/assets/saathum-booking/${kind}-${name}.png`;
+const { name, kind, sourcePath, alt, sizes = '(max-width: 760px) 92vw, 30vw', eager = false } = Astro.props;
+const source = sourcePath ?? `/assets/saathum-booking/${kind}-${name}.png`;
 const [width, height] = kind === 'category' ? [1254, 1254] : [1536, 1024];
 ---
 <img class:list={['booking-artwork', kind === 'category' ? 'booking-artwork--category' : 'booking-artwork--listing']}
