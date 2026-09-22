@@ -1,0 +1,18 @@
+---
+interface Props { kind: 'puja' | 'aarti' | 'bhajan' | 'satsang' | 'festival' | 'yoga' | 'search' | 'ticket' | 'live'; }
+const { kind } = Astro.props;
+---
+<svg class="folk-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+  <circle cx="50" cy="50" r="44" fill="var(--folk-icon-ground, #ffe1a2)" stroke="white" stroke-width="7" />
+  <g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
+    {kind === 'puja' && <><path d="M24 56h52c-5 17-16 23-26 23S29 73 24 56Z" fill="#d87332"/><path d="M30 61h40M44 78h12M50 54c-18-7-6-21 3-33-1 11 14 23-3 33Z" fill="#ef9e25"/><path d="M50 52c-7-3-2-10 1-15" stroke="#fff6e6"/><path d="M20 48h9m42 0h9M25 36l7 5m37-1 6-5"/></>}
+    {kind === 'aarti' && <><path d="M50 20v10m-7 1h14M35 48c0-23 30-23 30 0v11l7 8H28l7-8Z" fill="#e6a33c"/><path d="M43 70c0 11 14 11 14 0M30 60h40M42 42v10"/><path d="M22 31v10m-5-5h10m51 1v10m-5-5h10" stroke="#bc8238"/></>}
+    {kind === 'bhajan' && <><ellipse cx="39" cy="43" rx="14" ry="7" fill="#fff6e6"/><path d="m25 43 3 29c5 8 18 8 22 0l3-29M29 47l5 25m14-25-5 25" fill="#d87332"/><ellipse cx="39" cy="43" rx="14" ry="7" fill="#fff6e6"/><circle cx="39" cy="43" r="3" fill="#51251f"/><path d="M58 53v20c3 6 15 6 18 0V53" fill="#e79b9a"/><ellipse cx="67" cy="53" rx="9" ry="5" fill="#fff6e6"/><path d="M58 23v14m0-13 12-3v12M55 37h3m9-3h3"/></>}
+    {kind === 'satsang' && <><path d="M20 31c14-5 22-1 30 5 8-6 17-10 30-5v40c-13-5-22-1-30 5-8-6-16-10-30-5Z" fill="#fff6e6"/><path d="M50 36v40m-23-34c6-1 11 1 16 4m-16 6c6-1 11 1 16 4m-16 6c6-1 11 1 16 4m14-20c5-3 10-5 16-4m-16 14c5-3 10-5 16-4m-16 14c5-3 10-5 16-4"/><path d="M33 26h34" stroke="#ef9e25"/></>}
+    {kind === 'festival' && <><path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Zm26-20V15l16 5-16 5" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/><path d="M32 42h36M34 55v9m32-9v9m-13-27h-6"/></>}
+    {kind === 'yoga' && <><path d="M50 74C25 70 18 55 19 43c16 0 27 13 31 26 4-13 15-26 31-26 1 12-6 27-31 31Z" fill="#e79b9a"/><path d="M50 68C32 57 35 39 50 24c15 15 18 33 0 44Z" fill="#edb4ad"/><path d="M50 28v40m-24 9c12 8 36 8 48 0"/></>}
+    {kind === 'search' && <><circle cx="44" cy="44" r="19" fill="#fff6e6"/><path d="m59 59 18 18M34 40c2-6 5-8 11-8"/></>}
+    {kind === 'ticket' && <><path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/></>}
+    {kind === 'live' && <><rect x="21" y="29" width="58" height="40" rx="6" fill="#fff6e6"/><path d="m44 39 17 10-17 10Z" fill="#ad3028"/><path d="M38 79h24m-12-9v9"/></>}
+  </g>
+</svg>

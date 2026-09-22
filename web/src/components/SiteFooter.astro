@@ -1,4 +1,7 @@
 ---
+import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
+import '../styles/folk-chrome.css';
+import FolkIcon from './FolkIcon.astro';
 import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
@@ -30,8 +33,8 @@ import { publicImage } from '../lib/config';
 import TruckBorder from './TruckBorder.astro';
 import GlobalFooter from './GlobalFooter.astro';
 
-export interface Props { variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
-const { variant = 'india', indiaLandingLanguage = true } = Astro.props;
+export interface Props { folk?: boolean; variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
+const { folk = false, variant = 'india', indiaLandingLanguage = true } = Astro.props;
 
 const year = new Date().getFullYear();
 
@@ -106,7 +109,7 @@ const globalColumns = [
   { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/payouts', label: 'Payouts' }, { href: '/community-guidelines', label: 'Safety' }] },
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
-const footerColumns = variant === 'global' ? globalColumns : columns;
+const footerColumns = variant === 'global' ? globalColumns : folk ? HOME_FOOTER_COLUMNS : columns;
 // [SHV2-S8 2026-09-21] Bazaar/Live streaming/1:1 consultations/Explore
 // marketplace entries removed — dead since `columns` no longer carries those
 // labels (see above). Everything else here is still used by `globalColumns`
@@ -124,8 +127,8 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', variant === 'global' && 'bazaar-footer--global']}>
-  <TruckBorder kind="chai" count={40} />
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']}>
+  {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
     <div class="bf-brand">
@@ -134,14 +137,14 @@ const chromeKey = (value: string) => ({
           footer). Reuses this file's own Comfortaa heading face and the
           existing #fdf1d3 ink already used one line below. */}
       <a class="bf-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-        <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />
+        {folk ? <span class="folk-diya"><FolkIcon kind="puja" /></span> : <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />}
         <span class="bf-logo-text">Saathum</span>
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched
           and keeps its key. */}
       <p class="bf-tag" data-india-i18n={variant === 'global' && indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "Live spiritual experiences, wherever you are."}</p>
-      <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>
+      {!folk && <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>}
     </div>
 
     {/* [SHV2-S8] Column titles/links are only localised for the untouched
@@ -153,12 +156,12 @@ const chromeKey = (value: string) => ({
       </nav>
     ))}
 
-    <div class="bf-art">
+    {!folk && <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
       <img data-india-i18n-attr="alt:web-common.bc1848dfbe79762d" src={publicImage('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
       <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · SEE YOU SOON' : 'BYE FOR NOW · SEE YOU SOON'}</span>
       <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'Come back soon!'}</span>
-    </div>
+    </div>}
   </div>
 
   {/* [WEB-BANNER-OFF-1 2026-09-02] The status + address block was removed at the
@@ -180,14 +183,14 @@ const chromeKey = (value: string) => ({
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
-      <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
-      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">SAATHUM ·</ui-copy> <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{folk ? 'Made in India with love ❤️ and cutting chai' : variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
+      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">SAATHUM ·</ui-copy> <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Live spiritual experiences, together.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 
   <div class="bf-rule"></div>
-  <TruckBorder kind="auto" count={40} />
-  <TruckBorder kind="tassels" count={44} />
+  {!folk && <TruckBorder kind="auto" count={40} />}
+  {!folk && <TruckBorder kind="tassels" count={44} />}
 </footer>}
 
 <script>

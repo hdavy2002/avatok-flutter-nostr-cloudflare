@@ -23,7 +23,7 @@ const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
-// --- Owner-approved Saathum reference homepage (2026-09-22) ---
+// --- Owner-approved Rajasthani sticker homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual experiences/, 'Spiritual marketplace page title');
 // Headline spans and line breaks are presentational; compare readable text.
@@ -33,8 +33,26 @@ assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*
 for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Bring your community together.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-reference-2026-09-22"/, 'Approved design identity');
-assert.match(html, /data-reference-artwork/, 'Original approved artwork is present');
+assert.match(html, /data-design="saathum-rajasthani-stickers-v1"/, 'Approved folk design identity');
+assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|peacock/i, 'Retired screenshot/peacock artwork is absent, including metadata');
+for (const name of ['hero', 'rituals', 'chai']) {
+  assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
+  const file = resolve(root, 'assets/saathum-folk', name + '.png');
+  assert(existsSync(file), 'Original sticker asset exists: ' + name);
+  const metadata = await sharp(file).metadata();
+  assert(metadata.hasAlpha, 'Sticker asset retains transparency: ' + name);
+}
+assert(visibleText.includes('Made in India with love ❤️ and cutting chai'), 'Exact owner footer line');
+const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
+for (const [label, href] of [['Marketplace','/marketplace'],['Wiki','/help'],['Pricing','/pricing-fees'],['Ideas','/ideas']]) {
+  assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
+  assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
+}
+const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
+for (const href of ['/marketplace?group=india_goes_live','/marketplace?group=book_their_time','/marketplace','/sign-up','/dashboard','/payouts','/about','/help','/careers','/contact','/terms','/privacy','/cookies','/refunds','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/grievance','/pricing-fees','/tokens','/organisers','/organisers#guides','/terms#status','/help/booking-and-paying/join-a-live-show']) {
+  assert(footerHtml.includes('href="' + href + '"'), 'Full footer destination remains discoverable: ' + href);
+}
+assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
 assert.match(visibleText, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\./, 'Marketplace role is explained');
 assert.match(visibleText, /Attendees book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
 
@@ -99,7 +117,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: approved Saathum reference, real links, labelled samples, anchors and India redirects.');
+console.log('Homepage checks passed: Rajasthani stickers, restored menus, labelled samples, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {

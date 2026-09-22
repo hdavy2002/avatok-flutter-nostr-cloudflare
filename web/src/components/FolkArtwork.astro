@@ -1,0 +1,18 @@
+---
+import { publicImage, publicImageSrcSet } from '../lib/config';
+interface Props {
+  name: 'hero' | 'rituals' | 'chai';
+  alt?: string;
+  class?: string;
+  eager?: boolean;
+  sizes?: string;
+}
+const { name, alt = '', class: className = '', eager = false, sizes = '(max-width: 700px) 90vw, 600px' } = Astro.props;
+const source = '/assets/saathum-folk/' + name + '.png';
+---
+<img class:list={['folk-artwork', className]} data-folk-artwork={name}
+  src={publicImage(source, { width: name === 'hero' ? 1280 : 640, fit: 'scale-down' })}
+  srcset={publicImageSrcSet(source, [420, 640, 900, 1280], { fit: 'scale-down' })}
+  sizes={sizes} alt={alt} aria-hidden={alt ? undefined : 'true'}
+  width={1536} height={1024} loading={eager ? 'eager' : 'lazy'}
+  fetchpriority={eager ? 'high' : undefined} decoding="async" />

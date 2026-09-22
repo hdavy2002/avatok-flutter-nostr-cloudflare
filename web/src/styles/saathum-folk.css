@@ -1,0 +1,170 @@
+/* Saathum Folk v1: reusable warm Rajasthani design tokens. See Specs/SAATHUM-FOLK-DESIGN-SYSTEM.md. */
+.folk-site {
+  --folk-paper: #fff6e6; --folk-ink: #51251f; --folk-red: #ad3028;
+  --folk-saffron: #ef9e25; --folk-pink: #e79b9a; --folk-gold: #bc8238;
+  --folk-white: #fff; --folk-muted: #79554a; --folk-line: #d7b58b;
+  --folk-sticker-shadow: 0 3px 0 #c6a57c, 0 8px 18px #63351a12;
+  --folk-display: 'DM Serif Display', Georgia, serif; --folk-body: 'Nunito', system-ui, sans-serif;
+  background: var(--folk-paper); color: var(--folk-ink); font: 500 16px/1.65 var(--folk-body);
+  overflow: clip; width: 100%; background-image: radial-gradient(#9e5b2820 .55px, transparent .55px); background-size: 6px 6px;
+}
+.folk-site *, .folk-site *::before, .folk-site *::after { box-sizing: border-box; }
+.folk-site h1, .folk-site h2, .folk-site h3 { font-family: var(--folk-display); font-weight: 400; letter-spacing: -.025em; color: var(--folk-ink); margin: 0; line-height: 1.1; }
+.folk-site h2 { font-size: clamp(29px, 3vw, 44px); }
+.folk-site h3 { font-size: 25px; }
+.folk-site p { margin: 0; }
+.folk-site a { color: inherit; text-decoration: none; }
+.folk-site em { font-style: italic; color: var(--folk-red); }
+.folk-site a:focus-visible, .folk-site button:focus-visible, .folk-site summary:focus-visible { outline: 3px solid var(--folk-red); outline-offset: 5px; border-radius: 5px; }
+.folk-wrap { width: min(1240px, calc(100% - 88px)); margin-inline: auto; }
+.folk-skip { position: fixed; top: -100px; left: 12px; padding: 10px 18px; background: white; z-index: 1000; }
+.folk-skip:focus { top: 12px; }
+.folk-ribbon { display: flex; justify-content: space-around; gap: 20px; height: 27px; overflow: hidden; align-items: center; color: var(--folk-red); background: #f5d4a4; border-block: 2px solid var(--folk-red); font-size: 21px; }
+.folk-ribbon span:nth-child(even) { color: #a86128; font-size: 15px; }
+.folk-eyebrow { font: 800 11px/1.5 var(--folk-body); letter-spacing: .15em; text-transform: uppercase; color: var(--folk-red); }
+.folk-hero { display: grid; grid-template-columns: .98fr 1.1fr; align-items: center; gap: 0; padding-block: 65px 45px; min-height: 590px; }
+.folk-hero-copy { position: relative; z-index: 1; padding-block: 25px; }
+.folk-hero h1 { font-size: clamp(43px, 4.65vw, 70px); line-height: 1.04; letter-spacing: -.038em; margin: 23px -35px 25px 0; }
+.folk-hero .folk-eyebrow { font-size: 10px; letter-spacing: .15em; }
+.folk-hero .folk-eyebrow span { margin-right: 7px; font-size: 16px; }
+.folk-lead { color: var(--folk-muted); font-size: 18px; line-height: 1.65; max-width: 410px; }
+.folk-actions { display: flex; gap: 25px; align-items: center; flex-wrap: wrap; margin-top: 29px; }
+.folk-site .folk-button { display: inline-flex; gap: 24px; align-items: center; justify-content: center; border: 3px solid white; border-radius: 13px; background: var(--folk-red); color: white; font: 800 14px/1.4 var(--folk-body); padding: 15px 21px; box-shadow: 0 3px 0 #7e231e; min-height: 50px; transition: transform .18s ease, box-shadow .18s ease; }
+.folk-button span { font-size: 24px; font-weight: 400; line-height: 1; }
+.folk-site .folk-button:hover { transform: translateY(-2px); box-shadow: 0 5px 0 #7e231e; }
+.folk-site .folk-text-link { font: 800 13px/1.7 var(--folk-body); border-bottom: 1px solid var(--folk-ink); padding-block: 4px; display: inline-flex; align-items: center; gap: 9px; width: fit-content; }
+.folk-site .folk-text-link:hover { color: var(--folk-red); border-color: var(--folk-red); }
+.folk-handnote, .folk-side-note, .folk-art-note { font: italic 20px/1.5 var(--folk-display); color: var(--folk-red); }
+.folk-hero-copy .folk-handnote { margin-top: 25px; transform: rotate(-3deg); }
+.folk-hero-art { position: relative; padding: 24px 0 7px; margin-right: -35px; }
+.folk-artwork { display: block; width: 100%; height: auto; object-fit: contain; filter: drop-shadow(0 7px 3px #7a3d1716); }
+.folk-seal { display: inline-block; position: absolute; top: -3px; right: 5%; z-index: 1; font: 800 9px/1.5 var(--folk-body); letter-spacing: .1em; text-align: center; padding: 9px 17px; border: 4px solid white; border-radius: 50%; background: #f5c268; box-shadow: var(--folk-sticker-shadow); transform: rotate(9deg); }
+.folk-seal span { font-size: 20px; display: block; line-height: 1.1; }
+.folk-hero-art > .folk-art-note { display: block; text-align: center; transform: rotate(-3deg); margin-top: -9px; }
+.folk-divider { display: flex; align-items: center; justify-content: center; gap: 22px; width: calc(100% - 88px); margin: 0 auto; color: var(--folk-red); }
+.folk-divider::before, .folk-divider::after { content: ''; height: 5px; flex: 1; border-block: 1px solid var(--folk-line); }
+.folk-divider span:nth-child(2) { font-size: 27px; color: #c4812c; }
+.folk-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 33px; }
+.folk-section-heading h2 { margin-top: 7px; }
+.folk-side-note { font-size: 18px; transform: rotate(-4deg); white-space: nowrap; }
+.folk-experiences { padding-block: 45px 68px; }
+.folk-category-grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 16px; }
+.folk-category { position: relative; text-align: center; border: 6px solid white; border-radius: 65px 65px 18px 18px; background: #f9e4b8; padding: 17px 9px 40px; box-shadow: var(--folk-sticker-shadow); transition: transform .18s ease; }
+.folk-category:nth-child(even) { background: #f3d4c7; transform: rotate(2deg); }
+.folk-category:nth-child(odd) { transform: rotate(-2deg); }
+.folk-category:hover { transform: translateY(-5px) rotate(0); }
+.folk-icon { width: 92px; height: 92px; display: block; margin: auto; flex: 0 0 auto; filter: drop-shadow(0 2px 1px #8c552b18); }
+.folk-category h3 { font-size: 18px; margin-block: 11px 6px; letter-spacing: -.025em; }
+.folk-category p { font-size: 11px; line-height: 1.4; color: var(--folk-muted); max-width: 118px; margin: auto; }
+.folk-circle-arrow { position: absolute; bottom: -17px; left: calc(50% - 17px); display: grid; place-items: center; width: 34px; height: 34px; border: 3px solid white; background: var(--folk-red); color: white; border-radius: 50%; font-size: 18px; }
+.folk-moments { background: #f7e8d1; padding-block: 54px 41px; border-block: 1px solid #ead4b5; }
+.folk-moment-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 26px; padding: 4px; }
+.folk-moment { background: #fffdf7; border: 8px solid white; border-radius: 20px; box-shadow: var(--folk-sticker-shadow); transform: rotate(-1deg); overflow: hidden; }
+.folk-moment:nth-child(2) { transform: rotate(1.3deg); }
+.folk-moment:nth-child(3) { transform: rotate(-.8deg); }
+.folk-moment-art { display: block; position: relative; height: 233px; background: #e9b371; border-radius: 12px; overflow: hidden; }
+.folk-moment--1 .folk-moment-art { background: #e7b0a4; }
+.folk-moment--2 .folk-moment-art { background: #edc88e; }
+.folk-moment-art::before, .folk-moment-art::after { content: '✽'; position: absolute; font-size: 75px; line-height: 1; color: #b5463060; top: 86px; left: 5%; transform: rotate(15deg); }
+.folk-moment-art::after { left: auto; right: 5%; transform: rotate(-15deg); }
+.folk-sample-label { position: absolute; z-index: 2; top: 12px; left: 12px; border: 2px solid white; background: #fff6e6; font-size: 10px; line-height: 1; padding: 7px 9px; border-radius: 20px; font-weight: 800; }
+.folk-arch { position: absolute; inset: 22px 22% 0; border: 5px solid #fff9e9; border-radius: 100px 100px 0 0; background: #fff0d4; box-shadow: 0 0 0 3px #b2683280; padding-top: 23px; text-align: center; }
+.folk-arch .folk-icon { width: 126px; height: 126px; max-width: 100%; }
+.folk-arch-star { display: block; color: #b67a29; font-size: 20px; line-height: 1; }
+.folk-arch-petals { display: block; font-size: 18px; color: var(--folk-red); }
+.folk-event-stamp { position: absolute; bottom: 11px; right: 9px; font: italic 13px var(--folk-display); background: white; color: var(--folk-red); border-radius: 5px; padding: 7px 10px; transform: rotate(-5deg); box-shadow: 0 2px 0 #c79969; }
+.folk-moment-copy { padding: 21px 17px 19px; }
+.folk-moment-copy .folk-eyebrow { font-size: 9px; margin-bottom: 7px; }
+.folk-moment-copy h3 { font-size: 26px; line-height: 1.15; min-height: 60px; }
+.folk-moment-copy > p:not(.folk-eyebrow) { color: var(--folk-muted); font-size: 13px; line-height: 1.6; margin-block: 12px 20px; }
+.folk-editorial-note { font-size: 11px; color: var(--folk-muted); text-align: center; margin-top: 28px !important; }
+.folk-belonging { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 70px; padding-block: 72px 42px; }
+.folk-belonging-art { position: relative; }
+.folk-belonging-art .folk-art-note { display: block; text-align: center; transform: rotate(-4deg); }
+.folk-belonging h2 { font-size: clamp(34px,3.5vw,48px); margin-block: 12px 22px; }
+.folk-belonging-copy > p:not(.folk-eyebrow) { font-size: 16px; color: var(--folk-muted); max-width: 435px; margin-bottom: 20px; }
+.folk-centered { text-align: center; }
+.folk-centered h2 { margin-top: 10px; }
+.folk-joining { padding-block: 35px 70px; }
+.folk-step-grid { list-style: none; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 30px; padding: 0; margin: 36px 0 0; }
+.folk-step-grid li { display: flex; align-items: start; gap: 15px; }
+.folk-step-grid .folk-icon { width: 73px; height: 73px; margin: 0; }
+.folk-step-number { font: 800 9px/1.6 var(--folk-body); color: var(--folk-red); letter-spacing: .1em; }
+.folk-step-grid h3 { font-size: 23px; margin-block: 6px 10px; }
+.folk-step-grid p { color: var(--folk-muted); font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+.folk-step-grid .folk-text-link { font-size: 11px; }
+.folk-organise { padding-block: 8px 36px; }
+.folk-organise-panel { border: 8px solid white; border-radius: 30px 90px 30px 30px; background: #f2d6ae; padding: 40px 48px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 30px; align-items: center; box-shadow: var(--folk-sticker-shadow); }
+.folk-organise h2 { margin-block: 11px 16px; font-size: clamp(32px,3.4vw,45px); max-width: 560px; }
+.folk-organise p:not(.folk-eyebrow) { color: var(--folk-muted); font-size: 16px; margin-bottom: 21px; }
+.folk-chai { text-align: center; }
+.folk-chai .folk-artwork { max-height: 230px; }
+.folk-chai .folk-handnote { display: block; transform: rotate(-4deg); font-size: 18px; margin-top: 4px; }
+.folk-booking-note { color: var(--folk-muted); text-align: center; font-size: 11px; line-height: 1.7; padding: 10px 60px 37px; max-width: 990px; }
+.folk-booking-note a { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 1600px) { .folk-hero h1 { font-size: 70px; } }
+@media (max-width: 1100px) {
+  .folk-wrap { width: calc(100% - 56px); }
+  .folk-hero { min-height: 510px; padding-block: 35px; }
+  .folk-hero h1 { font-size: 49px; }
+  .folk-hero .folk-eyebrow { font-size: 9px; letter-spacing: .1em; }
+  .folk-lead { font-size: 16px; }
+  .folk-actions { gap: 16px; }
+  .folk-category-grid { gap: 12px; }
+  .folk-category { padding-inline: 5px; }
+  .folk-category h3 { font-size: 16px; }
+  .folk-category .folk-icon { width: 76px; height: 76px; }
+  .folk-step-grid { gap: 20px; }
+  .folk-step-grid li { display: block; }
+  .folk-step-grid .folk-icon { margin: 0 0 12px; }
+  .folk-belonging { gap: 40px; }
+  .folk-moment-grid { gap: 18px; }
+}
+@media (max-width: 760px) {
+  .folk-wrap { width: calc(100% - 36px); }
+  .folk-hero { grid-template-columns: 1fr; gap: 8px; padding-block: 23px 30px; }
+  .folk-hero-copy { padding: 12px 5px 0; text-align: center; }
+  .folk-hero h1 { margin: 18px 0; font-size: clamp(40px,7.2vw,58px); }
+  .folk-hero .folk-eyebrow { font-size: 9px; }
+  .folk-lead { margin-inline: auto !important; max-width: 440px; }
+  .folk-actions { justify-content: center; gap: 18px; margin-top: 23px; }
+  .folk-hero-copy .folk-handnote { margin-top: 21px; font-size: 18px; }
+  .folk-hero-art { width: 100%; max-width: 590px; margin: 20px auto 0; padding-top: 17px; }
+  .folk-seal { top: -4px; right: 4%; font-size: 8px; border-width: 3px; padding: 6px 13px; }
+  .folk-hero-art > .folk-art-note { font-size: 18px; }
+  .folk-divider { width: calc(100% - 36px); }
+  .folk-section-heading { display: block; margin-bottom: 28px; }
+  .folk-section-heading .folk-text-link, .folk-side-note { margin-top: 14px; display: inline-block; }
+  .folk-category-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 31px 13px; }
+  .folk-category { padding-block: 14px 31px; }
+  .folk-category h3 { font-size: 17px; }
+  .folk-category p { font-size: 10px; }
+  .folk-category .folk-icon { width: 80px; height: 80px; }
+  .folk-experiences { padding-block: 30px 45px; }
+  .folk-moments { padding-block: 33px; }
+  .folk-moment-grid { grid-template-columns: 1fr; gap: 27px; max-width: 460px; margin-inline: auto; padding: 4px; }
+  .folk-moment-art { height: 235px; }
+  .folk-moment-copy h3 { min-height: 0; font-size: 29px; }
+  .folk-moment-copy { padding: 22px 20px; }
+  .folk-belonging { grid-template-columns: 1fr; gap: 22px; padding-block: 37px; }
+  .folk-belonging-art { max-width: 440px; margin-inline: auto; }
+  .folk-belonging-copy { text-align: center; }
+  .folk-belonging-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
+  .folk-belonging h2 { font-size: 38px; }
+  .folk-joining { padding-block: 30px 36px; }
+  .folk-step-grid { grid-template-columns: 1fr; max-width: 430px; margin: 28px auto 0; gap: 23px; }
+  .folk-step-grid li { display: flex; align-items: start; gap: 23px; }
+  .folk-step-grid .folk-icon { width: 81px; height: 81px; }
+  .folk-organise-panel { grid-template-columns: 1fr; border-radius: 25px 60px 25px 25px; padding: 29px 21px 22px; gap: 18px; text-align: center; }
+  .folk-organise h2 { font-size: 35px; }
+  .folk-chai .folk-artwork { max-height: 190px; }
+  .folk-booking-note { padding: 3px 8px 30px; font-size: 10px; }
+}
+@media (max-width: 380px) {
+  .folk-hero h1 { font-size: 37px; }
+  .folk-hero .folk-eyebrow { font-size: 8px; letter-spacing: .055em; }
+  .folk-category-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px 15px; }
+  .folk-site .folk-button { padding: 13px 17px; }
+  .folk-actions { flex-direction: column; gap: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .folk-site *, .folk-site *::before, .folk-site *::after { transition: none !important; scroll-behavior: auto !important; } }
