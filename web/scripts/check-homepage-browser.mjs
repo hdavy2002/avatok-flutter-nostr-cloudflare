@@ -44,6 +44,20 @@ try {
       broken: [...document.images].filter(image => !image.complete || image.naturalWidth === 0).length,
       hero: (() => { const r = document.querySelector('.s-hero-art').getBoundingClientRect(); return { x:r.x,y:r.y,width:r.width }; })(),
     }));
+    // Bring the category strip into the viewport before the visual capture. This
+    // exercises lazy-image loading and avoids relying on full-page screenshot
+    // compositing for cards that are below the initial viewport.
+    await page.locator('#experiences').scrollIntoViewIfNeeded();
+    await page.evaluate(async () => {
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
+    await page.locator('.folk-category-grid').screenshot({ path: 'homepage-review/' + name + '-categories.png' });
+    await page.evaluate(async () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
     await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
     assert.equal(geometry.broken, 0, name + ': all sticker artwork loads');
