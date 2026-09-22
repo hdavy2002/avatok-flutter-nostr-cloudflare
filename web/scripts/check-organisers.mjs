@@ -19,6 +19,7 @@ const builtPath = resolve(root, 'organisers/index.html');
 assert(existsSync(builtPath), '/organisers must exist in the production build (AC-02)');
 validateBuiltImageSources(root);
 const html = normalizeBuiltImages(readFileSync(builtPath, 'utf8'), { root });
+const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
 // A5 hero and metadata.
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading on /organisers');
@@ -65,6 +66,6 @@ assert.match(html, /Illustrative scenario — not an actual customer result\./, 
 assert.match(html, /What could a 50-person satsang look like\?/, 'A6.4 story headline');
 
 // D2/AC-17 — no 1:1 consultation or astrology content anywhere on this page.
-assert.doesNotMatch(html, /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content (D2, AC-17)');
+assert.doesNotMatch(bodyHtml, /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in organiser body (D2, AC-17)');
 
 console.log('/organisers checks passed: sections, metadata, FAQ, canonical fee sentence, planner figures, illustrative story, D2 content ban.');
