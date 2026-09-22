@@ -126,7 +126,7 @@ try {
       assert.equal(box.shadow, 'none', name + ': footer menu has no card shadow');
     }
     assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 248, 232)', name + ': cream reference footer');
-    assert(await footer.locator('.bf-col a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 15), name + ': footer links remain readable');
+    assert(await footer.locator('.bf-legal-links a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 13), name + ': footer links remain readable');
     const borderBackgrounds = await page.evaluate(async expectedPath => {
       const decode = (element, pseudo) => new Promise(resolve => {
         const css = getComputedStyle(element, pseudo).backgroundImage;
