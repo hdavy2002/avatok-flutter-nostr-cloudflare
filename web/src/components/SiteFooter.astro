@@ -1,7 +1,6 @@
 ---
 import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
-import FolkIcon from './FolkIcon.astro';
 import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
@@ -127,7 +126,7 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url("${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })}")` : undefined}>
   {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
@@ -137,7 +136,7 @@ const chromeKey = (value: string) => ({
           footer). Reuses this file's own Comfortaa heading face and the
           existing #fdf1d3 ink already used one line below. */}
       <a class="bf-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-        {folk ? <span class="folk-diya"><FolkIcon kind="puja" /></span> : <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />}
+        {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 100, fit: 'scale-down' })} alt="" width="44" height="44" /> : <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />}
         <span class="bf-logo-text">Saathum</span>
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not

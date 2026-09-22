@@ -30,17 +30,20 @@ assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual ex
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
 assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*JOIN FROM ANYWHERE/, 'Approved hero eyebrow');
-for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Bring your community together.']) {
+for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Craft, color and stories we carry.', 'Bring your community together.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-rajasthani-stickers-v1"/, 'Approved folk design identity');
-assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|peacock/i, 'Retired screenshot/peacock artwork is absent, including metadata');
-for (const name of ['hero', 'rituals', 'chai']) {
-  assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
-  const file = resolve(root, 'assets/saathum-folk', name + '.png');
+assert.match(html, /data-design="saathum-bright-stickers-v2"/, 'Approved bright folk design identity');
+assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
+for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
+  if (name !== 'border') assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
+  else assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
+  const file = resolve(root, 'assets/saathum-bright', name + '.png');
   assert(existsSync(file), 'Original sticker asset exists: ' + name);
   const metadata = await sharp(file).metadata();
   assert(metadata.hasAlpha, 'Sticker asset retains transparency: ' + name);
+  assert.equal(metadata.width, width, 'Sticker width is recorded: ' + name);
+  assert.equal(metadata.height, height, 'Sticker height is recorded: ' + name);
 }
 assert(visibleText.includes('Made in India with love ❤️ and cutting chai'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';

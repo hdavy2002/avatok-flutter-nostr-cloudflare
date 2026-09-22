@@ -1,18 +1,24 @@
 ---
 import { publicImage, publicImageSrcSet } from '../lib/config';
 interface Props {
-  name: 'hero' | 'rituals' | 'chai';
+  name: 'hero' | 'ganesh' | 'cow' | 'music' | 'satsang' | 'culture' | 'lotus' | 'border';
   alt?: string;
   class?: string;
   eager?: boolean;
   sizes?: string;
 }
 const { name, alt = '', class: className = '', eager = false, sizes = '(max-width: 700px) 90vw, 600px' } = Astro.props;
-const source = '/assets/saathum-folk/' + name + '.png';
+const source = '/assets/saathum-bright/' + name + '.png';
+const dimensions = {
+  hero: [1536, 1024], ganesh: [1254, 1254], cow: [1254, 1254],
+  music: [1254, 1254], satsang: [1536, 1024], culture: [1536, 1024], lotus: [1254, 1254], border: [2172, 724],
+} as const;
+const [assetWidth, assetHeight] = dimensions[name];
+const sourceWidth = name === 'hero' ? 1280 : name === 'border' ? 1536 : 640;
 ---
 <img class:list={['folk-artwork', className]} data-folk-artwork={name}
-  src={publicImage(source, { width: name === 'hero' ? 1280 : 640, fit: 'scale-down' })}
+  src={publicImage(source, { width: sourceWidth, fit: 'scale-down' })}
   srcset={publicImageSrcSet(source, [420, 640, 900, 1280], { fit: 'scale-down' })}
   sizes={sizes} alt={alt} aria-hidden={alt ? undefined : 'true'}
-  width={1536} height={1024} loading={eager ? 'eager' : 'lazy'}
+  width={assetWidth} height={assetHeight} loading={eager ? 'eager' : 'lazy'}
   fetchpriority={eager ? 'high' : undefined} decoding="async" />

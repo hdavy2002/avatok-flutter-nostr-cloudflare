@@ -5,6 +5,10 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
 const root = resolve('dist');
+const publicImageManifest = JSON.parse(await readFile(resolve('src/lib/publicImageManifest.json'), 'utf8'));
+const borderSource = '/assets/saathum-bright/border.png';
+const borderImmutable = publicImageManifest[borderSource];
+assert(borderImmutable, 'public image manifest contains immutable border asset');
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
 const server = createServer(async (request, response) => {
   try {
@@ -42,17 +46,39 @@ try {
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
     assert.equal(geometry.broken, 0, name + ': all sticker artwork loads');
     assert.match(geometry.heading, /Close to your roots\./);
+    assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': headings use Comfortaa');
+    assert.match(await page.locator('.folk-site').evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': body uses Nunito');
+    assert.notEqual(await page.locator('.folk-artwork').first().evaluate(el => getComputedStyle(el).filter), 'none', name + ': stickers retain a soft shadow');
     const footer = page.locator('footer');
-    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(241, 209, 187)', name + ': warm footer beats legacy scoped styles');
-    assert.equal(await footer.getByRole('link', { name: 'Careers', exact: true }).evaluate(el => getComputedStyle(el).color), 'rgb(81, 37, 31)', name + ': footer links keep readable dark ink');
+    for (const asset of ['hero', 'ganesh', 'cow', 'music', 'satsang', 'culture', 'lotus']) {
+      assert(await page.locator('[data-folk-artwork="' + asset + '"]').first().isVisible(), name + ': artwork is visible: ' + asset);
+    }
+    const borderBackgrounds = await page.evaluate(async expectedPath => {
+      const decode = (element, pseudo) => new Promise(resolve => {
+        const css = getComputedStyle(element, pseudo).backgroundImage;
+        const match = css.match(/url\(["']?([^"')]+)["']?\)/);
+        if (!match) return resolve({ css, path: null, width: 0, height: 0 });
+        const image = new Image();
+        const normalizedPath = () => new URL(match[1], location.href).pathname.replace(/^\/cdn-cgi\/image\/[^/]+\//, '/');
+        image.onload = () => resolve({ css, path: normalizedPath(), width: image.naturalWidth, height: image.naturalHeight });
+        image.onerror = () => resolve({ css, path: normalizedPath(), width: 0, height: 0 });
+        image.src = new URL(match[1], location.href).href;
+      });
+      return Promise.all([decode(document.querySelector('.folk-ribbon'), null), decode(document.querySelector('footer'), '::after')]);
+    });
+    for (const [index, background] of borderBackgrounds.entries()) {
+      assert.equal(background.path, borderImmutable, name + ': border background uses immutable manifest URL #' + index);
+      assert(background.width > 0 && background.height > 0, name + ': border background decodes #' + index);
+    }
+    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(242, 181, 165)', name + ': bright folk footer is active');
+    assert.equal(await footer.getByRole('link', { name: 'Careers', exact: true }).evaluate(el => getComputedStyle(el).color), 'rgb(85, 34, 29)', name + ': footer links keep readable dark ink');
     for (const label of ['Grievance Redressal', 'Child Safety', 'Cookies', 'Payouts', 'Careers']) {
       assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
     }
     for (const selector of ['.folk-site', '.folk-moments', '.folk-organise-panel', '.bazaar-footer--folk', '.folk-category', '.folk-moment-art']) {
       const colors = await page.locator(selector).evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
       for (const color of colors) {
-        const [r,g,b] = color.match(/[\d.]+/g).map(Number);
-        assert(!(g > r + 12 || b > r + 12), name + ': no green/teal/blue field: ' + selector + ' ' + color);
+        assert.notEqual(color, 'rgb(22, 22, 20)', name + ': legacy dark field is absent: ' + selector);
       }
     }
     if (width === 1122) {

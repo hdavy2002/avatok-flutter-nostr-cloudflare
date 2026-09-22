@@ -9,32 +9,33 @@ import { publicImage } from '../lib/config';
 import '../styles/saathum-folk.css';
 
 const categories = [
-  { label: 'Puja & Archana', term: 'Puja', icon: 'puja', note: 'A little everyday devotion' },
-  { label: 'Aarti & Darshan', term: 'Aarti', icon: 'aarti', note: 'Light up your evening' },
-  { label: 'Bhajan & Kirtan', term: 'Bhajan', icon: 'bhajan', note: 'Songs for the soul' },
-  { label: 'Satsang', term: 'Satsang', icon: 'satsang', note: 'Wisdom, shared together' },
-  { label: 'Festivals', term: 'Festival', icon: 'festival', note: 'Celebrate, wherever you are' },
-  { label: 'Yoga & Meditation', term: 'Yoga', icon: 'yoga', note: 'Make room for stillness' },
+  { label: 'Puja & Archana', term: 'Puja', icon: 'puja', note: 'A little everyday devotion', art: 'ganesh', artAlt: 'A bright Ganesh devotional sticker painted in saffron, pink and gold' },
+  { label: 'Aarti & Darshan', term: 'Aarti', icon: 'aarti', note: 'Light up your evening', art: 'hero', artAlt: 'A woman performing aarti beneath a Rajasthani palace arch in a colorful folk-art sticker' },
+  { label: 'Bhajan & Kirtan', term: 'Bhajan', icon: 'bhajan', note: 'Songs for the soul', art: 'music', artAlt: 'Traditional Indian devotional music instruments as a colorful sticker illustration' },
+  { label: 'Satsang', term: 'Satsang', icon: 'satsang', note: 'Wisdom, shared together', art: 'satsang', artAlt: 'Women gathered around a seated spiritual teacher in a colorful satsang folk-art sticker' },
+  { label: 'Festivals', term: 'Festival', icon: 'festival', note: 'Celebrate, wherever you are', art: 'cow', artAlt: 'A decorated sacred cow painted in saffron, pink and gold folk-art detail' },
+  { label: 'Yoga & Meditation', term: 'Yoga', icon: 'yoga', note: 'Make room for stillness', art: 'lotus', artAlt: 'A pink lotus in a white-bordered Indian folk-art sticker' },
 ] as const;
+
 const moments = [
-  { title: 'An evening by the Ganga', label: 'Aarti & Darshan', term: 'Aarti', icon: 'aarti', copy: 'The glow of diyas. The sound of bells. A familiar feeling, wherever you call home.', detail: 'A moment of devotion' },
-  { title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', icon: 'puja', copy: 'Begin with a prayer, a quiet intention, and a little space for what matters.', detail: 'A meaningful beginning' },
-  { title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', icon: 'bhajan', copy: 'Familiar melodies and voices coming together. Some things always feel like home.', detail: 'A song to share' },
+  { title: 'An evening of aarti', label: 'Aarti & Darshan', term: 'Aarti', art: 'hero', alt: 'A woman performing aarti beneath a Rajasthani palace arch in a colorful folk-art sticker', detail: 'A moment of devotion', copy: 'The glow of diyas. The sound of bells. A familiar feeling, wherever you call home.' },
+  { title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', art: 'ganesh', alt: 'A bright Ganesh devotional sticker painted in saffron, pink and gold', detail: 'A meaningful beginning', copy: 'Begin with a prayer, a quiet intention, and a little space for what matters.' },
+  { title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', art: 'music', alt: 'Traditional Indian devotional music instruments as a colorful sticker illustration', detail: 'A song to share', copy: 'Familiar melodies and voices coming together. Some things always feel like home.' },
 ] as const;
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 ---
 <Base title="Saathum | Live pujas, satsangs and spiritual experiences"
   description="Live pujas, aartis and satsangs from India. Share the moments that bring you home. Explore spiritual experiences, book your place and join live."
-  image={publicImage('/assets/saathum-folk/hero.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="Saathum Rajasthani folk art: an ornate elephant, sacred cow and deer in saffron, rose and gold."
+  image={publicImage('/assets/saathum-bright/hero.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="Saathum folk art: a woman performing aarti beneath a Rajasthani palace arch, with a decorated elephant and peacock."
   chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#fff6e6" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap" />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-rajasthani-stickers-v1">
+  <div class="folk-site" data-design="saathum-bright-stickers-v2">
     <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <div class="folk-ribbon" aria-hidden="true"><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span><span>✧</span><span>✿</span></div>
+    <div class="folk-ribbon" aria-hidden="true" style={`--folk-border-url:url("${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })}")`}></div>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome />
     <main id="main-content">
       <section class="folk-hero folk-wrap" aria-labelledby="folk-title" data-home-section="hero">
@@ -50,19 +51,22 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
         </div>
         <div class="folk-hero-art s-hero-art">
           <span class="folk-seal"><span aria-hidden="true">✦</span> ROOTED IN INDIA<br />SHARED WITH LOVE</span>
-          <FolkArtwork name="hero" eager sizes="(max-width: 760px) 94vw, 58vw" alt="White-bordered Rajasthani folk-art stickers of a decorated elephant, cow and deer among lotus flowers and temple motifs." />
+          <FolkArtwork name="hero" eager sizes="(max-width: 760px) 96vw, 60vw" alt="A white-bordered Rajasthani folk-art sticker collage with a woman performing aarti beneath a palace arch, a decorated elephant and a peacock." />
           <span class="folk-art-note">a little piece of home</span>
         </div>
       </section>
-      <div class="folk-divider" aria-hidden="true"><span>✽</span><span>✽</span><span>✽</span></div>
+
+      <div class="folk-divider" aria-hidden="true"><span>✽</span><span>✿</span><span>✽</span></div>
+
       <section class="folk-experiences folk-wrap" id="experiences" aria-labelledby="folk-experiences-title" data-home-section="experiences">
         <div class="folk-section-heading"><div><p class="folk-eyebrow">MANY PATHS. ONE FEELING.</p><h2 id="folk-experiences-title">Find your spiritual moment</h2></div><span class="folk-side-note">What brings you closer?</span></div>
         <div class="folk-category-grid">
           {categories.map(category => <a class={'folk-category folk-category--' + category.icon} href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase()}>
-            <FolkIcon kind={category.icon} /><h3>{category.label}</h3><p>{category.note}</p><span class="folk-circle-arrow" aria-hidden="true">↗</span>
+            <FolkArtwork name={category.art} alt={category.artAlt} sizes="120px" /><h3>{category.label}</h3><p>{category.note}</p><span class="folk-circle-arrow" aria-hidden="true">↗</span>
           </a>)}
         </div>
       </section>
+
       <section class="folk-moments" id="home-events" aria-labelledby="folk-moments-title" data-home-section="home_events">
         <div class="folk-wrap">
           <div class="folk-section-heading"><div><p class="folk-eyebrow">SAVE A LITTLE TIME FOR THE SOUL</p><h2 id="folk-moments-title">Moments to look forward to</h2></div><a class="folk-text-link" href="/marketplace" data-home-cta="all-events">View all events <span aria-hidden="true">→</span></a></div>
@@ -70,7 +74,7 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
             {moments.map((moment, i) => <article class={'folk-moment folk-moment--' + i}>
               <a class="folk-moment-art" href={search(moment.term)} aria-label={moment.title + ' — explore ' + moment.label} data-home-cta={'moment-' + moment.term.toLowerCase()}>
                 <span class="folk-sample-label">Sample event</span>
-                <div class="folk-arch"><span class="folk-arch-star" aria-hidden="true">✦</span><FolkIcon kind={moment.icon} /><span class="folk-arch-petals" aria-hidden="true">✿ &nbsp; ✽ &nbsp; ✿</span></div>
+                <FolkArtwork name={moment.art} alt={moment.alt} sizes="(max-width: 760px) 88vw, 30vw" />
                 <span class="folk-event-stamp">{moment.detail}</span>
               </a>
               <div class="folk-moment-copy"><p class="folk-eyebrow">{moment.label}</p><h3><a href={search(moment.term)}>{moment.title}</a></h3><p>{moment.copy}</p><a class="folk-text-link" href={search(moment.term)} data-home-cta={'sample-explore-' + moment.term.toLowerCase()}>Explore experiences <span aria-hidden="true">↗</span></a></div>
@@ -80,10 +84,17 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
           <noscript><p><a href="/marketplace">Browse all events</a> and book your place.</p></noscript>
         </div>
       </section>
+
       <section class="folk-belonging folk-wrap" id="benefits" aria-labelledby="folk-benefits-title" data-home-section="benefits">
-        <div class="folk-belonging-art"><FolkArtwork name="rituals" alt="Rajasthani devotional stickers with a brass diya, bells, lotus and traditional musical instruments." /><span class="folk-art-note">familiar rituals, new memories</span></div>
+        <div class="folk-belonging-art"><FolkArtwork name="satsang" alt="A mature woman spiritual teacher seated with women participants in a colorful white-bordered satsang folk-art sticker." /><span class="folk-art-note">familiar rituals, new memories</span></div>
         <div class="folk-belonging-copy"><p class="folk-eyebrow">HOME IS A FEELING</p><h2 id="folk-benefits-title">Far from home.<br /><em>Close to your traditions.</em></h2><p>Familiar voices, shared rituals, meaningful moments. Make space for the traditions you love, with people who feel the same.</p><a class="folk-text-link" href="/marketplace" data-home-cta="benefits-explore">Find your next moment <span aria-hidden="true">→</span></a></div>
       </section>
+
+      <section class="folk-culture folk-wrap" aria-labelledby="folk-culture-title" data-home-section="culture">
+        <div class="folk-culture-copy"><p class="folk-eyebrow">FROM MANY CORNERS OF INDIA</p><h2 id="folk-culture-title">Craft, color and stories we carry.</h2><p>From Jaipur blue pottery and Bengal terracotta to Madhubani lines, Kalamkari cloth and the glow of a brass lamp, every region adds its own rhythm to the traditions we share.</p><a class="folk-text-link" href="/marketplace" data-home-cta="culture-explore">Discover shared traditions <span aria-hidden="true">→</span></a></div>
+        <div class="folk-culture-art"><FolkArtwork name="culture" alt="A colorful Indian folk-art sticker showing regional pottery, terracotta, Madhubani, Kalamkari and brass-lamp craft traditions." /></div>
+      </section>
+
       <section class="folk-joining folk-wrap" id="joining" aria-labelledby="folk-joining-title" data-home-section="joining">
         <div class="folk-centered"><p class="folk-eyebrow">A FEW LITTLE STEPS. A LOT OF CONNECTION.</p><h2 id="folk-joining-title">Your place is waiting.</h2></div>
         <ol class="folk-step-grid" aria-label="How to join a live event">
@@ -92,9 +103,11 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
           <li><FolkIcon kind="live" /><div><span class="folk-step-number">03 / JOIN LIVE</span><h3>Come as you are</h3><p>Join from wherever you are. Feel a little closer.</p><a href="/help/booking-and-paying/join-a-live-show" class="folk-text-link" data-home-cta="joining-help">Joining an event →</a></div></li>
         </ol>
       </section>
+
       <section class="folk-organise folk-wrap" id="organise-invite" aria-labelledby="folk-organise-title" data-home-section="organise_invite">
-        <div class="folk-organise-panel"><div><p class="folk-eyebrow">FOR THE ONES WHO BRING US TOGETHER</p><h2 id="folk-organise-title">Bring your community together.</h2><p>Host a spiritual experience on Saathum.<br />Share your traditions with people near and far.</p><a class="folk-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">↗</span></a></div><div class="folk-chai"><FolkArtwork name="chai" alt="A glass of cutting chai decorated with warm-colored flowers, as a white-bordered folk-art sticker." /><span class="folk-handnote">Good things begin over chai.</span></div></div>
+        <div class="folk-organise-panel"><div><p class="folk-eyebrow">FOR THE ONES WHO BRING US TOGETHER</p><h2 id="folk-organise-title">Bring your community together.</h2><p>Host a spiritual experience on Saathum.<br />Share your traditions with people near and far.</p><a class="folk-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">↗</span></a></div><div class="folk-organise-art"><FolkArtwork name="music" alt="A harmonium and tabla in a white-bordered Indian folk-art sticker." /><span class="folk-handnote">Good things begin with a song.</span></div></div>
       </section>
+
       <p class="folk-booking-note folk-wrap">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />

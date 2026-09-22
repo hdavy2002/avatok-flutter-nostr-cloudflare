@@ -1,7 +1,6 @@
 ---
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
-import FolkIcon from './FolkIcon.astro';
 import { publicImage } from '../lib/config';
 /*
  * SiteHeader — the standard Saathum header, site-wide.
@@ -148,7 +147,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
       — a mismatch this fixes). Icon is decorative (alt=""); the anchor's own
       aria-label carries the accessible name. */}
   <a class="avh-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    {folk ? <span class="folk-diya"><FolkIcon kind="puja" /></span> : <img src={publicImage('/diya-logo.png', { width: 160, fit: 'scale-down' })} alt="" width="54" height="54" />}
+    {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 160, fit: 'scale-down' })} alt="" width="64" height="64" /> : <img src={publicImage('/diya-logo.png', { width: 160, fit: 'scale-down' })} alt="" width="54" height="54" />}
     <span class="avh-logo-text">Saathum</span>
   </a>
 
@@ -197,7 +196,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
     {/* [SHV2-S8 2026-09-21] Same diya + "Saathum" lockup as the desktop bar,
         scaled for the drawer's narrower heading row. */}
     <div class="avh-drawer-brand">
-      {folk ? <span class="folk-diya"><FolkIcon kind="puja" /></span> : <img src={publicImage('/diya-logo.png', { width: 128, fit: 'scale-down' })} alt="" width="44" height="44" />}
+      {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 128, fit: 'scale-down' })} alt="" width="48" height="48" /> : <img src={publicImage('/diya-logo.png', { width: 128, fit: 'scale-down' })} alt="" width="44" height="44" />}
       <span class="avh-drawer-brand-text">Saathum</span>
     </div>
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
