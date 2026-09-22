@@ -2,7 +2,7 @@
    Artwork windows retain the original pixels; copy and controls are real HTML. */
 html:has(.s-home){font-size:16px;background:#faf6ea}
 body:has(.s-home){background:#faf6ea;background-image:none;color:#083f43}
-.s-home{--u:calc(100cqw / 1122);container-type:inline-size;max-width:1600px;margin:0 auto;background:#faf6ea;color:#083f43;font-family:Georgia,'Times New Roman',serif;font-weight:400}
+.s-home{--u:calc(100cqw / 1122);container-type:inline-size;max-width:1600px;margin:0 auto;background:#faf6ea;color:#083f43;font-family:Georgia,'Times New Roman',serif;font-weight:400;overflow-x:clip}
 .s-home *{box-sizing:border-box}
 .s-home h1,.s-home h2,.s-home h3,.s-home p{margin:0}
 .s-home h1,.s-home h2,.s-home h3,.s-brand{font-family:'DM Serif Display',Georgia,serif;font-weight:400;text-transform:none}
