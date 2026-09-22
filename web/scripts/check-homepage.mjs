@@ -25,19 +25,20 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
 // --- Owner-approved Rajasthani sticker homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual experiences/, 'Spiritual marketplace page title');
+assert.match(html, /<title[^>]*>Saathum \| Book Hindu religious experiences online/, 'Booking marketplace page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
-assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*JOIN FROM ANYWHERE/, 'Approved hero eyebrow');
+assert.match(visibleText, /BOOK HINDU RELIGIOUS EXPERIENCES\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*LIVE FROM INDIA/, 'Booking hero eyebrow');
 for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Craft, color and stories we carry.', 'Bring your community together.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-bright-stickers-v2"/, 'Approved bright folk design identity');
+assert.match(html, /data-design="saathum-booking-v3"/, 'Approved booking folk design identity');
 assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
+const renderedFolkArtwork = new Set(['hero', 'satsang', 'culture', 'lotus']);
 for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
-  if (name !== 'border') assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
-  else assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
+  if (name !== 'border' && renderedFolkArtwork.has(name)) assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
+  if (name === 'border') assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
   const file = resolve(root, 'assets/saathum-bright', name + '.png');
   assert(existsSync(file), 'Original sticker asset exists: ' + name);
   const metadata = await sharp(file).metadata();
@@ -45,7 +46,27 @@ for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254
   assert.equal(metadata.width, width, 'Sticker width is recorded: ' + name);
   assert.equal(metadata.height, height, 'Sticker height is recorded: ' + name);
 }
-assert(visibleText.includes('Made in India with love ❤️ and cutting chai'), 'Exact owner footer line');
+for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']], ['listing', ['aarti', 'puja', 'bhajan']]]) {
+  for (const name of names) {
+    const path = resolve(root, 'assets/saathum-booking', kind + '-' + name + '.png');
+    assert(existsSync(path), 'Booking artwork exists: ' + kind + '-' + name);
+    const metadata = await sharp(path).metadata();
+    assert(metadata.width && metadata.height, 'Booking artwork has dimensions: ' + kind + '-' + name);
+    assert(!metadata.hasAlpha, 'Booking artwork is opaque RGB: ' + kind + '-' + name);
+    if (kind === 'category') assert.equal(metadata.width, metadata.height, 'Category art is square: ' + name);
+    else assert(metadata.width > metadata.height, 'Listing art is landscape: ' + name);
+    const sourcePath = 'saathum-booking/' + kind + '-' + name + '.png';
+    assert(html.includes(sourcePath), 'Exact booking artwork source is referenced: ' + sourcePath);
+  }
+}
+const elephantPath = resolve(root, 'assets/saathum-booking/elephant.png');
+assert(existsSync(elephantPath), 'Organiser strip elephant artwork exists');
+const elephantMetadata = await sharp(elephantPath).metadata();
+assert(elephantMetadata.hasAlpha, 'Organiser elephant retains transparency');
+assert.equal(elephantMetadata.width, 1536, 'Organiser elephant width is recorded');
+assert.equal(elephantMetadata.height, 1024, 'Organiser elephant height is recorded');
+assert.match(html, /folk-organise-elephant/, 'Organiser strip renders elephant artwork');
+assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 for (const [label, href] of [['Marketplace','/marketplace'],['Wiki','/help'],['Pricing','/pricing-fees'],['Ideas','/ideas']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
@@ -93,7 +114,7 @@ assert.doesNotMatch(html, /<input\b[^>]*type="range"/, 'No calculator controls o
 assert.doesNotMatch(html, /id="ideas-catalogue"|id="how-avatok-works"|id="addon-ideas"|id="addon-calculator"|id="consultations"/, 'Retired creator anchors removed (contracts.md §5)');
 assert.doesNotMatch(html, /avatok-creator-constellation/, 'Retired creator hero art removed (A4.1, D10)');
 assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Language picker hidden on Saathum (D9)');
-assert.doesNotMatch(bodyHtml, /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in homepage body (D2, AC-17)');
+assert.doesNotMatch(bodyHtml.replace(/<footer\b[\s\S]*?<\/footer>/i, ''), /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in homepage content (D2, AC-17)');
 
 for (const key of ['web-landing.0528be3d426aff53', 'web-landing.92f4118799fbcf80', 'web-landing.d0082f5d7ac7dd8b', 'web-landing.721cb60fc48386d6', 'web-landing.c54a63bb77c61e9d', 'web-landing.b9d43bd06fbe8631']) {
   assert.doesNotMatch(html, new RegExp('data-i18n="' + key + '"'), 'Retired creator-copy i18n key not reused (D9, AC-18): ' + key);

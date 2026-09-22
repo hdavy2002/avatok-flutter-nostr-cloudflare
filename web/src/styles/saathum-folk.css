@@ -1,225 +1,580 @@
-/* Saathum Bright Folk v2. Scoped to the homepage folk wrapper. */
-.folk-site {
+/* Saathum booking folk shell v3. The data-design scope protects shared chrome. */
+.folk-site[data-design="saathum-booking-v3"] {
   --folk-paper: #fff8e8;
-  --folk-ink: #55221d;
-  --folk-red: #db3b2f;
-  --folk-saffron: #f59c24;
-  --folk-pink: #ee8fa6;
-  --folk-teal: #299e98;
-  --folk-gold: #d2992e;
+  --folk-ink: #163f3c;
+  --folk-red: #c94637;
+  --folk-saffron: #f2a42b;
+  --folk-pink: #e98ca1;
+  --folk-teal: #247e78;
+  --folk-gold: #c69238;
   --folk-white: #fff;
-  --folk-muted: #765349;
-  --folk-line: #e2b56f;
+  --folk-muted: #5a6e69;
+  --folk-line: #d9b668;
   --folk-display: 'Comfortaa', system-ui, sans-serif;
   --folk-body: 'Nunito', system-ui, sans-serif;
-  --folk-sticker-shadow: 0 5px 0 #b8794936, 0 14px 28px #65261c20;
   width: 100%;
   overflow: clip;
   background: var(--folk-paper);
   color: var(--folk-ink);
-  font: 500 16px/1.65 var(--folk-body);
+  font: 500 16px/1.55 var(--folk-body);
   background-image: radial-gradient(#bd6a3020 .55px, transparent .55px);
   background-size: 7px 7px;
 }
-.folk-site *, .folk-site *::before, .folk-site *::after { box-sizing: border-box; }
-.folk-site h1, .folk-site h2, .folk-site h3 { margin: 0; color: var(--folk-ink); font-family: var(--folk-display); font-weight: 700; letter-spacing: -.045em; line-height: 1.1; }
-.folk-site h2 { font-size: clamp(29px, 3vw, 46px); }
-.folk-site h3 { font-size: 23px; }
-.folk-site p { margin: 0; }
-.folk-site a { color: inherit; text-decoration: none; }
-.folk-site em { color: var(--folk-red); font-style: normal; }
-.folk-site a:focus-visible, .folk-site button:focus-visible, .folk-site summary:focus-visible { outline: 3px solid var(--folk-teal); outline-offset: 5px; border-radius: 5px; }
-.folk-wrap { width: min(1240px, calc(100% - 176px)); margin-inline: auto; }
-.folk-skip { position: fixed; top: -100px; left: 12px; z-index: 1000; padding: 10px 18px; background: var(--folk-white); }
-.folk-skip:focus { top: 12px; }
-.folk-ribbon { height: 44px; overflow: hidden; border-block: 2px solid var(--folk-red); background: var(--folk-saffron) var(--folk-border-url) repeat-x center / auto 100px; }
-.folk-eyebrow { color: var(--folk-red); font: 900 11px/1.5 var(--folk-body); letter-spacing: .15em; text-transform: uppercase; }
-.folk-hero { display: grid; grid-template-columns: .92fr 1.12fr; align-items: center; gap: 0; min-height: 630px; padding-block: 62px 46px; }
-.folk-hero-copy { position: relative; z-index: 1; padding-block: 25px; }
-.folk-hero h1 { margin: 22px -42px 25px 0; font-size: clamp(43px, 4.9vw, 72px); line-height: 1.02; }
-.folk-hero .folk-eyebrow { font-size: 10px; }
-.folk-hero .folk-eyebrow span { margin-right: 7px; color: var(--folk-saffron); font-size: 17px; }
-.folk-lead { max-width: 410px; color: var(--folk-muted); font-size: 18px; line-height: 1.65; }
-.folk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 25px; margin-top: 29px; }
-.folk-site .folk-button { display: inline-flex; min-height: 52px; align-items: center; justify-content: center; gap: 24px; border: 3px solid var(--folk-white); border-radius: 15px; background: var(--folk-red); color: var(--folk-white); box-shadow: 0 4px 0 #9b271f; font: 900 14px/1.4 var(--folk-body); padding: 15px 21px; transition: transform .18s ease, box-shadow .18s ease; }
-.folk-button span { font-size: 24px; font-weight: 400; line-height: 1; }
-.folk-site .folk-button:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #9b271f; }
-.folk-site .folk-text-link { display: inline-flex; width: fit-content; align-items: center; gap: 9px; border-bottom: 2px solid var(--folk-ink); padding-block: 4px; font: 900 13px/1.7 var(--folk-body); }
-.folk-site .folk-text-link:hover { border-color: var(--folk-red); color: var(--folk-red); }
-.folk-handnote, .folk-side-note, .folk-art-note { color: var(--folk-red); font: italic 700 18px/1.5 var(--folk-display); }
-.folk-hero-copy .folk-handnote { margin-top: 25px; transform: rotate(-3deg); }
-.folk-hero-art { position: relative; margin-right: -34px; padding: 24px 0 7px; }
-.folk-artwork { display: block; width: 100%; height: auto; object-fit: contain; filter: drop-shadow(0 8px 4px #6c2c1c25); }
-.folk-seal { position: absolute; top: -4px; right: 5%; z-index: 1; display: inline-block; padding: 9px 17px; border: 4px solid var(--folk-white); border-radius: 50%; background: var(--folk-pink); box-shadow: var(--folk-sticker-shadow); font: 900 9px/1.5 var(--folk-body); letter-spacing: .1em; text-align: center; transform: rotate(8deg); }
-.folk-seal span { display: block; color: var(--folk-saffron); font-size: 20px; line-height: 1.1; }
-.folk-hero-art > .folk-art-note { display: block; margin-top: -9px; text-align: center; transform: rotate(-3deg); }
-.folk-divider { display: flex; align-items: center; justify-content: center; gap: 22px; width: calc(100% - 176px); margin: 0 auto; color: var(--folk-red); }
-.folk-divider::before, .folk-divider::after { height: 27px; flex: 1; border-block: 2px solid var(--folk-line); background: repeating-linear-gradient(90deg, transparent 0 20px, #e2b56f 21px 23px, transparent 24px 42px); content: ''; opacity: .75; }
-.folk-divider span:nth-child(2) { color: var(--folk-teal); font-size: 27px; }
-.folk-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 33px; }
-.folk-section-heading h2 { margin-top: 7px; }
-.folk-side-note { color: var(--folk-teal); white-space: nowrap; transform: rotate(-4deg); }
-.folk-experiences { padding-block: 48px 76px; }
-.folk-category-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
-.folk-category { position: relative; padding: 17px 9px 40px; border: 7px solid var(--folk-white); border-radius: 75px 75px 21px 21px; background: #ffd99b; box-shadow: var(--folk-sticker-shadow); text-align: center; transition: transform .18s ease; }
-.folk-category:nth-child(2) { background: #ffc6b7; transform: rotate(2deg); }
-.folk-category:nth-child(3) { background: #a9ded3; transform: rotate(-1.5deg); }
-.folk-category:nth-child(4) { background: #f8b9cc; transform: rotate(1.5deg); }
-.folk-category:nth-child(5) { background: #f6c36e; transform: rotate(-2deg); }
-.folk-category:nth-child(6) { background: #efd6a1; transform: rotate(1deg); }
-.folk-category:hover { transform: translateY(-5px) rotate(0); }
-.folk-category .folk-icon { width: 92px; height: 92px; margin: auto; }
-.folk-category > .folk-artwork { width: 105px; height: 92px; margin: auto; object-fit: contain; }
-.folk-category h3 { margin-block: 11px 6px; font-size: 17px; letter-spacing: -.03em; }
-.folk-category p { max-width: 118px; margin: auto; color: var(--folk-muted); font-size: 11px; line-height: 1.4; }
-.folk-circle-arrow { position: absolute; bottom: -17px; left: calc(50% - 17px); display: grid; width: 34px; height: 34px; place-items: center; border: 3px solid var(--folk-white); border-radius: 50%; background: var(--folk-red); color: var(--folk-white); font-size: 18px; }
-.folk-moments { padding-block: 57px 43px; border-block: 2px solid #e8c987; background: #ffe8c7; }
-.folk-moment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; padding: 4px; }
-.folk-moment { overflow: hidden; border: 8px solid var(--folk-white); border-radius: 24px; background: #fffdf7; box-shadow: var(--folk-sticker-shadow); transform: rotate(-1deg); }
-.folk-moment:nth-child(2) { transform: rotate(1.3deg); }
-.folk-moment:nth-child(3) { transform: rotate(-.8deg); }
-.folk-moment-art { position: relative; display: block; height: 260px; overflow: hidden; border-radius: 15px; background: #faad67; }
-.folk-moment--1 .folk-moment-art { background: #edb8c5; }
-.folk-moment--2 .folk-moment-art { background: #79c9be; }
-.folk-moment-art .folk-artwork { width: 100%; height: 100%; object-fit: contain; }
-.folk-sample-label { position: absolute; top: 12px; left: 12px; z-index: 2; padding: 7px 9px; border: 2px solid var(--folk-white); border-radius: 20px; background: var(--folk-paper); font-size: 10px; font-weight: 900; line-height: 1; }
-.folk-event-stamp { position: absolute; right: 9px; bottom: 11px; padding: 7px 10px; border-radius: 6px; background: var(--folk-white); color: var(--folk-red); box-shadow: 0 2px 0 #c79969; font: italic 700 13px var(--folk-display); transform: rotate(-5deg); }
-.folk-moment-copy { padding: 21px 17px 19px; }
-.folk-moment-copy .folk-eyebrow { margin-bottom: 7px; font-size: 9px; }
-.folk-moment-copy h3 { min-height: 60px; font-size: 25px; line-height: 1.15; }
-.folk-moment-copy > p:not(.folk-eyebrow) { margin-block: 12px 20px; color: var(--folk-muted); font-size: 13px; line-height: 1.6; }
-.folk-editorial-note { margin-top: 28px !important; color: var(--folk-muted); font-size: 11px; text-align: center; }
-.folk-belonging { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 70px; padding-block: 76px 45px; }
-.folk-belonging-art { position: relative; }
-.folk-belonging-art .folk-art-note { display: block; text-align: center; transform: rotate(-4deg); }
-.folk-belonging h2 { margin-block: 12px 22px; font-size: clamp(34px, 3.5vw, 50px); }
-.folk-belonging-copy > p:not(.folk-eyebrow) { max-width: 435px; margin-bottom: 20px; color: var(--folk-muted); font-size: 16px; }
-.folk-culture { display: grid; grid-template-columns: .9fr 1.1fr; align-items: center; gap: 55px; padding-block: 20px 58px; }
-.folk-culture-copy { padding: 18px 0; }
-.folk-culture h2 { max-width: 540px; margin-block: 11px 18px; }
-.folk-culture-copy > p:not(.folk-eyebrow) { max-width: 540px; margin-bottom: 20px; color: var(--folk-muted); font-size: 16px; }
-.folk-culture-art { padding: 8px 0; }
-.folk-centered { text-align: center; }
-.folk-centered h2 { margin-top: 10px; }
-.folk-joining { padding-block: 35px 70px; }
-.folk-step-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px; margin: 36px 0 0; padding: 0; list-style: none; }
-.folk-step-grid li { display: flex; align-items: start; gap: 15px; }
-.folk-step-grid .folk-icon { width: 73px; height: 73px; margin: 0; flex: 0 0 auto; }
-.folk-step-number { color: var(--folk-red); font: 900 9px/1.6 var(--folk-body); letter-spacing: .1em; }
-.folk-step-grid h3 { margin-block: 6px 10px; font-size: 22px; }
-.folk-step-grid p { margin-bottom: 10px; color: var(--folk-muted); font-size: 13px; line-height: 1.5; }
-.folk-step-grid .folk-text-link { font-size: 11px; }
-.folk-organise { padding-block: 8px 36px; }
-.folk-organise-panel { display: grid; grid-template-columns: 1.25fr 1fr; gap: 30px; align-items: center; padding: 40px 48px; border: 8px solid var(--folk-white); border-radius: 30px 100px 30px 30px; background: #f8c15f; box-shadow: var(--folk-sticker-shadow); }
-.folk-organise h2 { max-width: 560px; margin-block: 11px 16px; font-size: clamp(32px, 3.4vw, 47px); }
-.folk-organise p:not(.folk-eyebrow) { margin-bottom: 21px; color: var(--folk-muted); font-size: 16px; }
-.folk-organise-art { text-align: center; }
-.folk-organise-art .folk-artwork { max-height: 235px; }
-.folk-organise-art .folk-handnote { display: block; margin-top: 4px; transform: rotate(-4deg); }
-.folk-booking-note { max-width: 990px; padding: 10px 60px 37px; color: var(--folk-muted); font-size: 11px; line-height: 1.7; text-align: center; }
-.folk-booking-note a { text-decoration: underline; text-underline-offset: 3px; }
+.folk-site[data-design="saathum-booking-v3"] *,
+.folk-site[data-design="saathum-booking-v3"] *::before,
+.folk-site[data-design="saathum-booking-v3"] *::after { box-sizing: border-box; }
+.folk-site[data-design="saathum-booking-v3"] h1,
+.folk-site[data-design="saathum-booking-v3"] h2,
+.folk-site[data-design="saathum-booking-v3"] h3 {
+  margin: 0;
+  color: var(--folk-ink);
+  font-family: var(--folk-display);
+  font-weight: 700;
+  letter-spacing: -.045em;
+  line-height: 1.1;
+}
+.folk-site[data-design="saathum-booking-v3"] h2 { font-size: clamp(29px, 3vw, 46px); }
+.folk-site[data-design="saathum-booking-v3"] h3 { font-size: 23px; }
+.folk-site[data-design="saathum-booking-v3"] p { margin: 0; }
+.folk-site[data-design="saathum-booking-v3"] a { color: inherit; text-decoration: none; }
+.folk-site[data-design="saathum-booking-v3"] em { color: var(--folk-red); font-style: normal; }
+.folk-site[data-design="saathum-booking-v3"] a:focus-visible,
+.folk-site[data-design="saathum-booking-v3"] button:focus-visible {
+  outline: 3px solid var(--folk-teal);
+  outline-offset: 4px;
+  border-radius: 5px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-wrap {
+  width: min(1240px, calc(100% - 176px));
+  margin-inline: auto;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-skip {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 1000;
+  padding: 10px 18px;
+  background: var(--folk-white);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-skip:focus { top: 12px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-ribbon {
+  height: 44px;
+  overflow: hidden;
+  border-block: 2px solid var(--folk-red);
+  background: var(--folk-saffron) var(--folk-border-url) repeat-x center / auto 100px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-eyebrow {
+  color: var(--folk-red);
+  font: 900 11px/1.5 var(--folk-body);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-hero {
+  display: grid;
+  grid-template-columns: .92fr 1.12fr;
+  align-items: center;
+  min-height: 550px;
+  padding-block: 50px 36px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-hero-copy {
+  position: relative;
+  z-index: 1;
+  padding-block: 22px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-hero h1 {
+  margin: 20px -42px 22px 0;
+  font-size: clamp(43px, 4.9vw, 72px);
+  line-height: 1.02;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-hero .folk-eyebrow span {
+  margin-right: 7px;
+  color: var(--folk-saffron);
+  font-size: 17px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-lead {
+  max-width: 450px;
+  color: var(--folk-muted);
+  font-size: 18px;
+  line-height: 1.6;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  margin-top: 28px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-button {
+  display: inline-flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  border: 3px solid var(--folk-white);
+  border-radius: 12px;
+  background: var(--folk-red);
+  color: var(--folk-white);
+  box-shadow: 0 4px 0 #8f2f27;
+  font: 900 14px/1.4 var(--folk-body);
+  padding: 14px 20px;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-button span { font-size: 23px; line-height: 1; }
+.folk-site[data-design="saathum-booking-v3"] .folk-button:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #8f2f27; }
+.folk-site[data-design="saathum-booking-v3"] .folk-text-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid currentColor;
+  padding-block: 3px;
+  font: 900 13px/1.7 var(--folk-body);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-text-link:hover { color: var(--folk-red); }
+.folk-site[data-design="saathum-booking-v3"] .folk-handnote,
+.folk-site[data-design="saathum-booking-v3"] .folk-side-note,
+.folk-site[data-design="saathum-booking-v3"] .folk-art-note {
+  color: var(--folk-red);
+  font: italic 700 17px/1.4 var(--folk-display);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-hero-copy .folk-handnote { margin-top: 22px; transform: rotate(-3deg); }
+.folk-site[data-design="saathum-booking-v3"] .folk-hero-art { position: relative; margin-right: -34px; padding: 22px 0 4px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-artwork { display: block; width: 100%; height: auto; object-fit: contain; filter: drop-shadow(0 8px 4px #6c2c1c25); }
+.folk-site[data-design="saathum-booking-v3"] .folk-seal {
+  position: absolute;
+  top: -4px;
+  right: 5%;
+  z-index: 1;
+  display: inline-block;
+  padding: 8px 16px;
+  border: 4px solid var(--folk-white);
+  border-radius: 50%;
+  background: var(--folk-pink);
+  box-shadow: 0 5px 0 #b8794936, 0 14px 28px #65261c20;
+  font: 900 9px/1.5 var(--folk-body);
+  letter-spacing: .1em;
+  text-align: center;
+  transform: rotate(8deg);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-seal span { display: block; color: var(--folk-saffron); font-size: 20px; line-height: 1.1; }
+.folk-site[data-design="saathum-booking-v3"] .folk-hero-art > .folk-art-note { display: block; margin-top: -9px; text-align: center; transform: rotate(-3deg); }
+.folk-site[data-design="saathum-booking-v3"] .folk-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  width: calc(100% - 176px);
+  margin: 0 auto;
+  color: var(--folk-red);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-divider::before,
+.folk-site[data-design="saathum-booking-v3"] .folk-divider::after {
+  height: 27px;
+  flex: 1;
+  border-block: 2px solid var(--folk-line);
+  background: repeating-linear-gradient(90deg, transparent 0 20px, #e2b56f 21px 23px, transparent 24px 42px);
+  content: '';
+  opacity: .75;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-divider span:nth-child(2) { color: var(--folk-teal); font-size: 27px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 25px;
+  margin-bottom: 26px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-section-heading h2 { margin-top: 7px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-section-heading--categories { justify-content: center; text-align: center; margin-bottom: 22px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-side-note { color: var(--folk-teal); white-space: nowrap; transform: rotate(-4deg); }
+.folk-site[data-design="saathum-booking-v3"] .folk-experiences { padding-block: 44px 66px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-category {
+  display: block;
+  overflow: hidden;
+  border: 6px solid var(--folk-white);
+  border-radius: 10px;
+  background: var(--folk-white);
+  box-shadow: 0 5px 14px #74452b18;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-category:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 9px 18px #74452b24;
+}
+.folk-site[data-design="saathum-booking-v3"] .booking-artwork {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.folk-site[data-design="saathum-booking-v3"] .booking-artwork--category {
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-category-copy {
+  position: relative;
+  min-height: 63px;
+  padding: 10px 10px 11px;
+  background: #ffe0b0;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(2) .folk-category-copy { background: #ffd0c3; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(3) .folk-category-copy { background: #b8e0d6; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(4) .folk-category-copy { background: #f4c3d1; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(5) .folk-category-copy { background: #f7cf83; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(6) .folk-category-copy { background: #ead7a7; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category h3 { font-size: 16px; line-height: 1.2; }
+.folk-site[data-design="saathum-booking-v3"] .folk-category p {
+  margin-top: 5px;
+  color: var(--folk-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-circle-arrow {
+  position: absolute;
+  right: 11px;
+  bottom: 15px;
+  color: var(--folk-red);
+  font-size: 19px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-moments {
+  padding-block: 52px 40px;
+  border-block: 1px solid #dfc58d;
+  background: #fff0d5;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-moment {
+  overflow: hidden;
+  border: 6px solid var(--folk-white);
+  border-radius: 10px;
+  background: var(--folk-white);
+  box-shadow: 0 5px 14px #74452b16;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-art {
+  display: block;
+  overflow: hidden;
+  background: #e7b070;
+}
+.folk-site[data-design="saathum-booking-v3"] .booking-artwork--listing {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy { padding: 14px 16px 16px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy .folk-eyebrow { margin-bottom: 6px; font-size: 9px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy h3 { min-height: 0; font-size: 23px; line-height: 1.15; }
+.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy > p:not(.folk-eyebrow) {
+  margin-block: 10px 16px;
+  color: var(--folk-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-editorial-note {
+  margin-top: 23px;
+  color: var(--folk-muted);
+  font-size: 11px;
+  text-align: center;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-belonging {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 25px;
+  margin-block: 34px;
+  padding: 21px 25px;
+  border: 1px solid #7ea78d;
+  border-radius: 20px;
+  background: #b9d4bd;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-belonging-art { position: relative; max-width: 270px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-belonging-art .folk-art-note { display: block; text-align: center; transform: rotate(-4deg); font-size: 13px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-belonging h2 { margin-block: 6px 9px; font-size: clamp(25px, 2.1vw, 29px); }
+.folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy > p:not(.folk-eyebrow) { max-width: 360px; margin-bottom: 7px; color: var(--folk-muted); font-size: 12px; line-height: 1.4; }
+.folk-site[data-design="saathum-booking-v3"] .folk-joining { min-width: 0; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  margin: 11px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid li { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-icon { width: 46px; height: 46px; margin: 0; flex: 0 0 auto; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-number { color: var(--folk-red); font: 900 8px/1.4 var(--folk-body); letter-spacing: .08em; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid h3 { margin-block: 2px 5px; font-size: 15px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid p { margin-bottom: 7px; color: var(--folk-muted); font-size: 11px; line-height: 1.4; }
+.folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-text-link { font-size: 10px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-culture {
+  display: grid;
+  grid-template-columns: .95fr 1fr;
+  align-items: center;
+  gap: 28px;
+  padding-block: 8px 22px;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-culture-copy { padding: 12px 0; }
+.folk-site[data-design="saathum-booking-v3"] .folk-culture h2 { max-width: 540px; margin-block: 7px 10px; font-size: clamp(25px, 2.2vw, 31px); }
+.folk-site[data-design="saathum-booking-v3"] .folk-culture-copy > p:not(.folk-eyebrow) { max-width: 540px; margin-bottom: 17px; color: var(--folk-muted); font-size: 14px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-culture-art { max-height: 170px; padding: 0; overflow: hidden; }
+.folk-site[data-design="saathum-booking-v3"] .folk-culture-art .folk-artwork { max-height: 170px; object-fit: contain; }
+.folk-site[data-design="saathum-booking-v3"] .folk-organise { padding-block: 5px 28px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-panel {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 24px;
+  align-items: center;
+  padding: 18px 25px;
+  border-block: 1px solid var(--folk-gold);
+  background: #f8e2b1;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-side {
+  display: grid;
+  width: 84px;
+  height: 84px;
+  place-items: center;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-side .folk-organise-elephant {
+  width: 126px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 3px #6c2c1c28);
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-side--right .folk-organise-elephant { transform: scaleX(-1); }
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 16px;
+  align-items: center;
+  text-align: left;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-organise h2 { font-size: clamp(24px, 2.4vw, 34px); }
+.folk-site[data-design="saathum-booking-v3"] .folk-organise p:not(.folk-eyebrow) { margin: 0; color: var(--folk-muted); font-size: 12px; line-height: 1.4; }
+.folk-site[data-design="saathum-booking-v3"] .folk-organise-art { display: none; }
+.folk-site[data-design="saathum-booking-v3"] .folk-booking-note { max-width: 990px; padding: 6px 60px 28px; color: var(--folk-muted); font-size: 11px; line-height: 1.7; text-align: center; }
+.folk-site[data-design="saathum-booking-v3"] .folk-booking-note a { text-decoration: underline; text-underline-offset: 3px; }
 
-/* The shared chrome stays shared everywhere else; folk styling is scoped to this page. */
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh.avh--folk { --avh-cream: var(--folk-paper); --avh-ink: var(--folk-ink); --avh-red: var(--folk-red); border-bottom: 2px solid var(--folk-gold); background: var(--folk-paper); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-bar { max-width: 1240px; padding: 12px 0; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-logo { gap: 8px; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-logo-text, .folk-site[data-design="saathum-bright-stickers-v2"] .avh-drawer--folk .avh-drawer-brand-text { color: var(--folk-ink); font-family: var(--folk-display); font-weight: 700; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-logo-text { font-size: 27px; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-nav { gap: 19px; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-nav a, .folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-cta { font-size: 13px; font-weight: 900; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-cta--solid { border: 3px solid var(--folk-white); border-radius: 14px; background: var(--folk-red); box-shadow: 0 3px 0 #9b271f; color: var(--folk-white); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-burger { border-color: var(--folk-red); border-radius: 14px; background: var(--folk-white); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .folk-lotus-mark { display: block; width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 2px #6c2c1c22); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh-drawer--folk { --avh-cream: var(--folk-paper); --avh-ink: var(--folk-ink); --avh-red: var(--folk-red); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .avh-drawer--folk .folk-lotus-mark { display: block; width: 44px; height: 44px; object-fit: contain; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk { position: relative; padding: 34px 24px 0; border-top: 2px solid var(--folk-red); background: #f2b5a5; color: var(--folk-ink); font-family: var(--folk-body); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk::after { display: block; height: 44px; margin: 0 -24px; border-top: 2px solid var(--folk-red); background: var(--folk-border-url) repeat-x center / auto 100px; content: ''; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-main { max-width: 1240px; grid-template-columns: 1.2fr repeat(3, 1fr); gap: 20px; padding: 32px 0; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-brand { padding: 14px 8px 14px 0; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { color: var(--folk-ink); font-family: var(--folk-display); font-size: 30px; font-weight: 700; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .folk-lotus-mark { width: 42px; height: 42px; object-fit: contain; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-tag { max-width: 36ch; color: var(--folk-ink); font-size: 16px; line-height: 1.65; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col { padding: 20px; border: 5px solid var(--folk-white); border-radius: 25px 18px 28px 18px; background: var(--folk-paper); box-shadow: 0 5px 0 #65261c20; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col-title { margin-bottom: 14px; color: var(--folk-red); font-family: var(--folk-display); font-size: 18px; font-weight: 700; letter-spacing: 0; text-transform: none; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col a, .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a { color: var(--folk-ink); }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col a { padding: 7px 0; font-size: 14px; font-weight: 800; line-height: 1.4; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col a:hover, .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a:hover { color: var(--folk-red); text-decoration: underline; text-underline-offset: 4px; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { max-width: 1240px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 20px; padding: 20px; border: 5px solid var(--folk-white); border-radius: 20px; background: var(--folk-paper); font-size: 13px; letter-spacing: 0; text-transform: none; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links-sep { display: none; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal { border-top: 0; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner { max-width: 1240px; padding: 26px 0; color: var(--folk-ink); font-size: 13px; letter-spacing: 0; }
-.folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-rule { border-top-color: var(--folk-red); }
+/* Shared header/footer overrides stay scoped to this page and beat folk-chrome.css. */
+.folk-site[data-design="saathum-booking-v3"] .avh.avh--folk {
+  --avh-cream: var(--folk-paper);
+  --avh-ink: var(--folk-ink);
+  --avh-red: var(--folk-red);
+  border-bottom: 2px solid var(--folk-gold);
+  background: var(--folk-paper);
+}
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-bar { max-width: 1240px; padding: 12px 0; }
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-logo-text,
+.folk-site[data-design="saathum-booking-v3"] .avh-drawer--folk .avh-drawer-brand-text {
+  color: var(--folk-ink);
+  font-family: var(--folk-display);
+  font-weight: 700;
+}
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-logo-text { font-size: 27px; }
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-nav { gap: 19px; }
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-nav a,
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-cta { font-size: 13px; font-weight: 900; }
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-cta--solid {
+  border: 3px solid var(--folk-white);
+  border-radius: 12px;
+  background: var(--folk-red);
+  box-shadow: 0 3px 0 #8f2f27;
+  color: var(--folk-white);
+}
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-burger { border-color: var(--folk-red); border-radius: 12px; background: var(--folk-white); }
+.folk-site[data-design="saathum-booking-v3"] .avh--folk .folk-lotus-mark { display: block; width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 2px #6c2c1c22); }
+.folk-site[data-design="saathum-booking-v3"] .avh-drawer--folk { --avh-cream: var(--folk-paper); --avh-ink: var(--folk-ink); --avh-red: var(--folk-red); }
 
 @media (max-width: 1100px) {
-  .folk-wrap { width: calc(100% - 112px); }
-  .folk-hero { min-height: 540px; padding-block: 38px; }
-  .folk-hero h1 { font-size: 50px; }
-  .folk-category-grid { gap: 12px; }
-  .folk-category { padding-inline: 5px; }
-  .folk-category h3 { font-size: 16px; }
-  .folk-category .folk-icon { width: 76px; height: 76px; }
-  .folk-category > .folk-artwork { width: 90px; height: 76px; }
-  .folk-belonging { gap: 40px; }
-  .folk-culture { gap: 30px; }
-  .folk-step-grid { gap: 20px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .avh--folk .avh-bar { padding: 12px 24px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-brand { grid-column: 1 / -1; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-wrap { width: calc(100% - 112px); }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero { min-height: 500px; padding-block: 38px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { font-size: 50px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-category-copy { min-height: 78px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging { gap: 35px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid { gap: 17px; }
 }
 @media (max-width: 760px) {
-  .folk-wrap { width: calc(100% - 36px); }
-  .folk-ribbon { height: 34px; font-size: 18px; }
-  .folk-hero { grid-template-columns: 1fr; gap: 8px; padding-block: 25px 32px; }
-  .folk-hero-copy { padding: 12px 5px 0; text-align: center; }
-  .folk-hero h1 { margin: 18px 0; font-size: clamp(40px, 10vw, 58px); }
-  .folk-lead { margin-inline: auto; max-width: 440px; }
-  .folk-actions { justify-content: center; gap: 18px; margin-top: 23px; }
-  .folk-hero-copy .folk-handnote { margin-top: 21px; }
-  .folk-hero-art { width: 100%; max-width: 600px; margin: 20px auto 0; padding-top: 17px; }
-  .folk-seal { top: -4px; right: 4%; border-width: 3px; padding: 6px 13px; font-size: 8px; }
-  .folk-divider { width: calc(100% - 36px); }
-  .folk-section-heading { display: block; margin-bottom: 28px; }
-  .folk-section-heading .folk-text-link, .folk-side-note { display: inline-block; margin-top: 14px; }
-  .folk-category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 31px 13px; }
-  .folk-category { padding-block: 14px 31px; }
-  .folk-category h3 { font-size: 16px; }
-  .folk-category p { font-size: 10px; }
-  .folk-category .folk-icon { width: 80px; height: 80px; }
-  .folk-category > .folk-artwork { width: 90px; height: 80px; }
-  .folk-experiences { padding-block: 34px 50px; }
-  .folk-moments { padding-block: 35px; }
-  .folk-moment-grid { grid-template-columns: 1fr; gap: 27px; max-width: 460px; margin-inline: auto; }
-  .folk-moment-art { height: 250px; }
-  .folk-moment-copy h3 { min-height: 0; font-size: 29px; }
-  .folk-moment-copy { padding: 22px 20px; }
-  .folk-belonging { grid-template-columns: 1fr; gap: 22px; padding-block: 42px; }
-  .folk-belonging-art { max-width: 440px; margin-inline: auto; }
-  .folk-belonging-copy { text-align: center; }
-  .folk-belonging-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
-  .folk-belonging h2 { font-size: 38px; }
-  .folk-culture { grid-template-columns: 1fr; gap: 10px; padding-block: 8px 45px; }
-  .folk-culture-copy { text-align: center; }
-  .folk-culture-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
-  .folk-culture-art { max-width: 540px; margin-inline: auto; }
-  .folk-joining { padding-block: 30px 38px; }
-  .folk-step-grid { grid-template-columns: 1fr; max-width: 430px; margin: 28px auto 0; gap: 23px; }
-  .folk-step-grid li { gap: 23px; }
-  .folk-step-grid .folk-icon { width: 81px; height: 81px; }
-  .folk-organise-panel { grid-template-columns: 1fr; gap: 18px; padding: 29px 21px 22px; border-radius: 25px 60px 25px 25px; text-align: center; }
-  .folk-organise h2 { font-size: 35px; }
-  .folk-organise-art .folk-artwork { max-height: 205px; }
-  .folk-booking-note { padding: 3px 8px 30px; font-size: 10px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk { padding: 24px 18px 0; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-main { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 10px 0 24px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-col:last-child { grid-column: 1 / -1; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 16px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner { gap: 10px; line-height: 1.6; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-wrap { width: calc(100% - 36px); }
+  .folk-site[data-design="saathum-booking-v3"] .folk-ribbon { height: 34px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero { grid-template-columns: 1fr; gap: 6px; padding-block: 26px 30px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero-copy { padding: 11px 5px 0; text-align: center; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { margin: 17px 0; font-size: clamp(40px, 10vw, 58px); }
+  .folk-site[data-design="saathum-booking-v3"] .folk-lead { margin-inline: auto; max-width: 450px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-actions { justify-content: center; gap: 17px; margin-top: 23px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero-art { width: 100%; max-width: 600px; margin: 18px auto 0; padding-top: 17px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-seal { top: -4px; right: 4%; border-width: 3px; padding: 6px 13px; font-size: 8px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-divider { width: calc(100% - 36px); }
+  .folk-site[data-design="saathum-booking-v3"] .folk-section-heading { display: block; margin-bottom: 23px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-section-heading .folk-text-link,
+  .folk-site[data-design="saathum-booking-v3"] .folk-side-note { display: inline-block; margin-top: 12px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-category-copy { min-height: 78px; padding: 11px 11px 14px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-category h3 { font-size: 16px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-experiences { padding-block: 34px 49px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-moments { padding-block: 36px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-moment-grid { grid-template-columns: 1fr; gap: 19px; max-width: 470px; margin-inline: auto; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-moment-copy { padding: 16px 17px 18px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-moment-copy h3 { font-size: 26px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging { grid-template-columns: 1fr; gap: 18px; padding: 22px 17px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-art { max-width: 430px; margin-inline: auto; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy { text-align: center; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-belonging h2 { font-size: 34px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-joining { padding: 0; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; margin: 10px 0 0; gap: 7px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid li { gap: 5px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-icon { width: 42px; height: 42px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-culture { grid-template-columns: 1fr; gap: 6px; padding-block: 4px 33px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-culture-copy { text-align: center; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-culture-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-culture-art { max-width: 510px; margin-inline: auto; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel { grid-template-columns: 1fr; gap: 8px; padding: 17px 17px 19px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel::before,
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel::after { display: none; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel > div:first-child { text-align: center; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-copy { grid-template-columns: 1fr; gap: 8px; text-align: center; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise h2 { font-size: 31px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-art,
+  .folk-site[data-design="saathum-booking-v3"] .folk-organise-side { display: none; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-booking-note { padding: 4px 8px 25px; font-size: 10px; }
 }
 @media (max-width: 380px) {
-  .folk-hero h1 { font-size: 37px; }
-  .folk-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 15px; }
-  .folk-site .folk-button { padding: 13px 17px; }
-  .folk-actions { flex-direction: column; gap: 13px; }
-  .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-main, .folk-site[data-design="saathum-bright-stickers-v2"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { grid-template-columns: minmax(0, 1fr); }
+  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { font-size: 37px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-button { padding: 13px 17px; }
+  .folk-site[data-design="saathum-booking-v3"] .folk-actions { flex-direction: column; gap: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .folk-site *, .folk-site *::before, .folk-site *::after { transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .folk-site[data-design="saathum-booking-v3"] *,
+  .folk-site[data-design="saathum-booking-v3"] *::before,
+  .folk-site[data-design="saathum-booking-v3"] *::after {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}/* Footer lives in SiteFooter.astro; these page-scoped rules override legacy folk-chrome. */
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk {
+  position: relative;
+  padding: 38px 24px 0;
+  border-top: 2px solid #c94637;
+  background: #fff8e8;
+  color: #163f3c;
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk::after {
+  display: block;
+  height: 44px;
+  margin: 0 -24px;
+  border-top: 2px solid #c94637;
+  background: var(--folk-border-url) repeat-x center / auto 100px;
+  content: '';
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-main {
+  max-width: 1080px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 18px 0 26px;
+  text-align: center;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-brand {
+  grid-column: 1 / -1;
+  padding: 0;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-logo {
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-logo-text {
+  color: #163f3c;
+  font-family: 'Comfortaa', system-ui, sans-serif;
+  font-size: 29px;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-tag {
+  max-width: none;
+  color: #5a6e69;
+  font-size: 13px;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 16px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col-title {
+  flex: 0 0 100%;
+  margin-bottom: 3px;
+  color: #c94637;
+  font-family: 'Comfortaa', system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col a {
+  padding: 2px 0;
+  color: #163f3c;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col a:hover,
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a:hover {
+  color: #c94637;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links {
+  max-width: 1080px;
+  display: flex;
+  justify-content: center;
+  gap: 5px 14px;
+  padding: 17px 0;
+  border: 0;
+  background: transparent;
+  color: #5a6e69;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links-sep { display: none; }
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a { color: #163f3c; }
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal {
+  border-top: 1px solid #d9b668;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner {
+  max-width: 1080px;
+  justify-content: center;
+  gap: 8px 18px;
+  padding: 20px 0;
+  color: #163f3c;
+  font-size: 11px;
+  letter-spacing: .03em;
+  text-align: center;
+}
+.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-rule { border-top-color: #c94637; }
+@media (max-width: 760px) {
+  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk { padding: 27px 18px 0; }
+  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-main { grid-template-columns: 1fr; gap: 10px; padding-top: 10px; }
+  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { gap: 6px 12px; padding-inline: 0; }
+  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner { line-height: 1.6; }
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::before,
+.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::after {
+  color: var(--folk-saffron);
+  font-size: .55em;
+  vertical-align: .25em;
+}
+.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::before { content: '✽'; margin-right: 12px; }
+.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::after { content: '✽'; margin-left: 12px; }
