@@ -42,7 +42,7 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
 }
 
 // O9 FAQ — exact questions from A5.
-for (const q of ['Do I need followers?', 'Can I organise for someone else?', 'What equipment?', 'Who sets the ticket price?', 'How does the platform fee work?', 'How do attendees join?', 'When can I withdraw?']) {
+for (const q of ['Do I need followers?', 'Can I organise for someone else?', 'What equipment do I need?', 'Who sets the ticket price?', 'How does the platform fee work?', 'How do attendees join?', 'When can I withdraw?']) {
   assert(html.includes(q), 'FAQ question present: ' + q);
 }
 assert.match(html, /href="\/payouts"/, 'FAQ withdrawal answer links to /payouts (O9)');
