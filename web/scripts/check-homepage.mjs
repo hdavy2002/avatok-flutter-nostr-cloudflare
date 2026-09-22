@@ -38,7 +38,7 @@ assert.match(html, /LIVE SPIRITUAL EXPERIENCES FROM INDIA/, 'A4.1 hero eyebrow')
 // between the two visible phrases.
 assert.match(html, /Be there for the moments\s*(?:<\/span>\s*<span[^>]*>)?\s*that matter\./, 'A4.1 hero H1');
 assert.match(html, /Join live pujas, satsangs, aartis and spiritual gatherings from India.{1,2}wherever you call home\./s, 'A4.1 hero support line');
-assert.match(html, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\. Attendees book and pay online; refunds follow our published policy\./, 'A4.1 plain descriptor, visible without scrolling (D7)');
+assert.match(html, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\. Attendees book and pay online; refunds follow our(?:\s|<[^>]*>)+published policy(?:<[^>]*>)?\./, 'A4.1 plain descriptor, visible without scrolling (D7)');
 assert.match(html, /Explore events/, 'A4.1 primary hero CTA label');
 assert.match(html, /Browse experiences/, 'A4.1 secondary hero CTA label');
 assert.match(html, /Explore spiritual experiences/, 'A4.4 experiences H2 (contracts.md §1)');
