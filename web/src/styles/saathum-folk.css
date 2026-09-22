@@ -46,7 +46,8 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-category-copy { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 9px 12px 13px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-category-copy h3 { font-family: 'Nunito', sans-serif; letter-spacing: -.025em; font-size: clamp(14px, 1.12vw, 21px); line-height: 1.2; }
 .folk-site[data-design="saathum-reference-v5"] .grand-arrow { display: grid; place-items: center; flex: 0 0 28px; height: 28px; background: #fffaf0; border-radius: 50%; font-size: 19px; }
-.folk-site[data-design="saathum-reference-v5"] .grand-moments { padding-block: 24px 21px; border-top: 2px solid #d1ae7066; }
+.folk-site[data-design="saathum-reference-v5"] .grand-moments { padding-block: 24px 21px; border-top: 2px solid #d1ae7066; background: #24484b; color: #fffaf0; }
+.folk-site[data-design="saathum-reference-v5"] .grand-moments .grand-section-heading { color: #fffaf0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-listing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-listing { background: #fff; border: 5px solid #fff; border-radius: 11px; min-width: 0; overflow: hidden; box-shadow: 0 6px 18px #17343c22; transition: transform .18s ease, box-shadow .18s ease; }
 .folk-site[data-design="saathum-reference-v5"] .grand-listing:hover { transform: translateY(-3px); box-shadow: 0 10px 22px #17343c30; }
@@ -57,7 +58,7 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-listing-copy h3 a { text-decoration: none; }
 .folk-site[data-design="saathum-reference-v5"] .grand-listing-copy p { margin-top: 5px; font-size: 17px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-listing-copy .grand-link { margin-top: 3px; }
-.folk-site[data-design="saathum-reference-v5"] .grand-editorial-note { font-size: 13px; text-align: center; margin-top: 12px; }
+.folk-site[data-design="saathum-reference-v5"] .grand-editorial-note { font-size: 13px; text-align: center; margin-top: 12px; color: #fffaf0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging { background: var(--grand-sage); border-block: 1px solid #c9d2bd; }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-inner { max-width: 1840px; margin: auto; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, .88fr); gap: 22px; align-items: center; padding: 0 var(--grand-gutter); }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-art { align-self: end; min-width: 0; }
