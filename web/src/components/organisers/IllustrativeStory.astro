@@ -1,0 +1,89 @@
+---
+// A6.4 illustrative story. Built on the EXISTING classes from
+// web/src/styles/india-additions.css: `.india-kicker` for the label,
+// `.india-showcase`/`.india-showcase__art` for the copy+illustration layout
+// (the same "framed art beside copy" pattern used elsewhere in the
+// india-preview poster system), and `.india-calc-result` for the "what if"
+// panel (identical box the earnings planner's result panel uses). See the
+// S7 hand-back note (FIX round 1) for the full reused-rule list.
+import { publicImage } from '../../lib/config';
+import { computeEarningsPlan, formatInr } from '../../lib/organiserEarnings';
+
+const SLOTS = 2; // 1 hour, matching the A6.3 vectors this story quotes
+const PRICE_A = 400; // ₹500 ticket = ₹100 time fee + ₹400 organiser price
+
+const headline = computeEarningsPlan({ slots: SLOTS, priceA: PRICE_A, participants: 50, costs: 0 });
+const moreAttendees = [200, 1000].map((participants) => ({
+  participants,
+  ...computeEarningsPlan({ slots: SLOTS, priceA: PRICE_A, participants, costs: 0 }),
+}));
+---
+
+<section class="india-section" aria-labelledby="illustrative-story-title" data-organiser-story>
+  <div class="india-wrap">
+    <p class="india-kicker">Illustrative scenario — not an actual customer result.</p>
+
+    <div class="india-showcase">
+      <div class="india-showcase__copy">
+        <h2 id="illustrative-story-title">What could a 50-person satsang look like?</h2>
+        <p>
+          Sunita partners with a local spiritual teacher who already has a following. They agree the plan together, she sets a ticket price, and in the weeks before the event she promotes it to their combined community.
+        </p>
+        <p>
+          She and the teacher rehearse the broadcast, then run a live satsang for 50 paying participants. At a ₹{formatInr(headline.ticketPrice)} ticket, those 50 participants bring in ₹{formatInr(headline.ticketSales)} in ticket sales. After Saathum's time fee and platform share, organiser proceeds come to ₹{formatInr(headline.organiserProceeds)} — before Sunita pays the teacher and any other costs for the event.
+        </p>
+      </div>
+      <figure class="india-showcase__art">
+        <img
+          src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 360, fit: 'scale-down' })}
+          alt=""
+          aria-hidden="true"
+          width="220"
+          height="220"
+          loading="lazy"
+          decoding="async"
+        />
+        <figcaption class="planner-caption">Illustrative artwork, not a photograph.</figcaption>
+      </figure>
+    </div>
+
+    <div class="india-calc-result">
+      <h3>What if more people come?</h3>
+      <table class="planner-table">
+        <thead>
+          <tr>
+            <th scope="col">Participants</th>
+            <th scope="col">Ticket sales</th>
+            <th scope="col">Organiser proceeds before other costs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {moreAttendees.map((row) => (
+            <tr>
+              <td>{row.participants}</td>
+              <td>₹{formatInr(row.ticketSales)}</td>
+              <td>₹{formatInr(row.organiserProceeds)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p>A planning example at the same ₹{formatInr(headline.ticketPrice)} ticket and one-hour length. Not an actual customer result or a payout promise.</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Layout only for genuinely new elements — every colour, font-family,
+     border, border-radius and box-shadow comes from the existing
+     .india-showcase / .india-showcase__art / .india-calc-result / .india-kicker
+     rules in web/src/styles/india-additions.css. The table and its caption
+     have no existing equivalent, so they get their own layout-only rules
+     (no border/background/colour/font-family declared). */
+  .planner-caption { margin-top: 10px; font-size: 12px; line-height: 1.5; font-style: italic; text-align: center; }
+  .planner-table { width: 100%; border-collapse: collapse; }
+  .planner-table th, .planner-table td { padding: 12px 8px; text-align: left; }
+  .planner-table td:not(:first-child), .planner-table th:not(:first-child) { font-variant-numeric: tabular-nums; }
+  @media (max-width: 700px) {
+    .planner-table { display: block; overflow-x: auto; }
+  }
+</style>

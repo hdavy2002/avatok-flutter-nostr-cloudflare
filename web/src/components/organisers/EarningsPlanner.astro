@@ -1,0 +1,195 @@
+---
+// A6 earnings planner. Built on the EXISTING calculator classes from
+// web/src/styles/india-additions.css (.india-calculator / .india-calc-grid /
+// .india-calc-form / .india-calc-result / .india-kicker / .india-calc-total),
+// the same base classes web/src/components/india-preview/
+// EarningsCalculatorIllustrated.astro uses, imported globally by the page
+// that mounts this component (organisers.astro wraps sections in
+// .india-additions > .india-page). See the S7 hand-back note (FIX round 1)
+// for the full list of reused rules.
+import {
+  SLOT_CHOICES,
+  labelForSlots,
+  baseForSlots,
+  computeEarningsPlan,
+  formatInr,
+} from '../../lib/organiserEarnings';
+
+const DEFAULT_SLOTS = 2; // 1 hour
+const DEFAULT_PRICE_A = 400;
+const DEFAULT_PARTICIPANTS = 50;
+const DEFAULT_COSTS = 0;
+
+const defaultBase = baseForSlots(DEFAULT_SLOTS);
+const defaultTicketPrice = defaultBase + DEFAULT_PRICE_A;
+const defaultPlan = computeEarningsPlan({
+  slots: DEFAULT_SLOTS,
+  priceA: DEFAULT_PRICE_A,
+  participants: DEFAULT_PARTICIPANTS,
+  costs: DEFAULT_COSTS,
+});
+---
+
+<section class="india-section india-calculator" aria-labelledby="earnings-planner-title" data-organiser-planner>
+  <div class="india-wrap">
+    <p class="india-kicker">Illustrative earnings plan</p>
+    <h2 id="earnings-planner-title">Plan what a paid event could look like</h2>
+    <p class="india-section-lede">Saathum adds a time fee of ₹50 per participant for every 30 minutes booked (₹100 per hour) and keeps 20% of your price. The 20% does not change with event length. This is a planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
+
+    <form class="india-calc-grid" data-planner-form novalidate>
+      <div class="india-calc-form">
+        <label>
+          <span>Event length</span>
+          <select data-planner="slots" name="slots">
+            {SLOT_CHOICES.map((slots) => (
+              <option value={slots} selected={slots === DEFAULT_SLOTS}>{labelForSlots(slots)}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span>Your price per participant (A)</span>
+          <input data-planner="priceA" name="priceA" type="number" inputmode="numeric" min="0" max="50000" step="1" value={DEFAULT_PRICE_A} aria-describedby="planner-price-help" />
+        </label>
+        <p id="planner-price-help" class="planner-help">Whatever you charge for your event, before Saathum's time fee.</p>
+
+        <label>
+          <span>Ticket price the participant pays (T)</span>
+          <input data-planner="ticketPrice" name="ticketPrice" type="number" inputmode="numeric" min="0" step="1" value={defaultTicketPrice} aria-describedby="planner-ticket-help" />
+        </label>
+        <p id="planner-ticket-help" class="planner-help">Linked to your price above — type here instead to set the ticket price directly.</p>
+        <p class="planner-error" data-planner-error role="alert" hidden></p>
+
+        <label>
+          <span>Paid participants (N)</span>
+          <input data-planner="participants" name="participants" type="number" inputmode="numeric" min="0" max="10000" step="1" value={DEFAULT_PARTICIPANTS} />
+        </label>
+
+        <label>
+          <span>Add your costs (C)</span>
+          <input data-planner="costs" name="costs" type="number" inputmode="numeric" min="0" max="10000000" step="1" value={DEFAULT_COSTS} aria-describedby="planner-costs-help" />
+        </label>
+        <p id="planner-costs-help" class="planner-help">Host, venue or other costs for this event.</p>
+      </div>
+
+      <div class="india-calc-result" data-planner-result aria-live="polite">
+        <p data-planner-zero-note hidden>You haven't added anything for yourself or your host yet.</p>
+
+        <div>
+          <span>Ticket price</span>
+          <strong data-planner-ticket-price>₹{formatInr(defaultPlan.ticketPrice)}</strong>
+        </div>
+        <div>
+          <span>Ticket sales</span>
+          <strong data-planner-ticket-sales>₹{formatInr(defaultPlan.ticketSales)}</strong>
+        </div>
+        <div>
+          <span>Saathum's time fee</span>
+          <strong data-planner-time-fee>₹{formatInr(defaultPlan.platformBaseTotal)}</strong>
+        </div>
+        <div>
+          <span>Saathum's platform share (20%)</span>
+          <strong data-planner-commission>₹{formatInr(defaultPlan.platformCommission)}</strong>
+        </div>
+        <div class="india-calc-total">
+          <span>Organiser proceeds before other costs</span>
+          <strong data-planner-proceeds>₹{formatInr(defaultPlan.organiserProceeds)}</strong>
+        </div>
+        <div>
+          <span>Estimated remainder after your costs</span>
+          <strong data-planner-remainder>₹{formatInr(defaultPlan.estimatedRemainder)}</strong>
+        </div>
+        <p>A planning example, not a checkout quote or a payout promise. Taxes, refunds and payment costs are not included.</p>
+      </div>
+    </form>
+  </div>
+</section>
+
+<script>
+  import { baseForSlots, computeEarningsPlan, formatInr, resolvePriceFromTicketPrice } from '../../lib/organiserEarnings';
+
+  const root = document.querySelector<HTMLElement>('[data-organiser-planner]');
+  if (root) {
+    const slotsEl = root.querySelector<HTMLSelectElement>('[data-planner="slots"]');
+    const priceEl = root.querySelector<HTMLInputElement>('[data-planner="priceA"]');
+    const ticketEl = root.querySelector<HTMLInputElement>('[data-planner="ticketPrice"]');
+    const participantsEl = root.querySelector<HTMLInputElement>('[data-planner="participants"]');
+    const costsEl = root.querySelector<HTMLInputElement>('[data-planner="costs"]');
+    const errorEl = root.querySelector<HTMLElement>('[data-planner-error]');
+    const resultEl = root.querySelector<HTMLElement>('[data-planner-result]');
+    const zeroNoteEl = root.querySelector<HTMLElement>('[data-planner-zero-note]');
+    const ticketPriceEl = root.querySelector<HTMLElement>('[data-planner-ticket-price]');
+    const ticketSalesEl = root.querySelector<HTMLElement>('[data-planner-ticket-sales]');
+    const timeFeeEl = root.querySelector<HTMLElement>('[data-planner-time-fee]');
+    const commissionEl = root.querySelector<HTMLElement>('[data-planner-commission]');
+    const proceedsEl = root.querySelector<HTMLElement>('[data-planner-proceeds]');
+    const remainderEl = root.querySelector<HTMLElement>('[data-planner-remainder]');
+
+    if (slotsEl && priceEl && ticketEl && participantsEl && costsEl && errorEl && resultEl && zeroNoteEl && ticketPriceEl && ticketSalesEl && timeFeeEl && commissionEl && proceedsEl && remainderEl) {
+      let lastEdited: 'price' | 'ticket' = 'price';
+      const nonNegative = (value: number) => (Number.isFinite(value) && value > 0 ? value : 0);
+
+      const render = () => {
+        const slots = Number(slotsEl.value);
+        const participants = nonNegative(Number(participantsEl.value));
+        const costs = nonNegative(Number(costsEl.value));
+        const base = baseForSlots(slots);
+
+        let priceA: number;
+        if (lastEdited === 'ticket') {
+          const resolved = resolvePriceFromTicketPrice(slots, Number(ticketEl.value));
+          if (!resolved.valid) {
+            errorEl.textContent = resolved.message;
+            errorEl.hidden = false;
+            resultEl.hidden = true;
+            return;
+          }
+          priceA = resolved.priceA;
+          priceEl.value = String(priceA);
+        } else {
+          priceA = nonNegative(Number(priceEl.value));
+          ticketEl.value = String(base + priceA);
+        }
+
+        errorEl.hidden = true;
+        resultEl.hidden = false;
+
+        const plan = computeEarningsPlan({ slots, priceA, participants, costs });
+        zeroNoteEl.hidden = !plan.zeroPriceNote;
+        ticketPriceEl.textContent = `₹${formatInr(plan.ticketPrice)}`;
+        ticketSalesEl.textContent = `₹${formatInr(plan.ticketSales)}`;
+        timeFeeEl.textContent = `₹${formatInr(plan.platformBaseTotal)}`;
+        commissionEl.textContent = `₹${formatInr(plan.platformCommission)}`;
+        proceedsEl.textContent = `₹${formatInr(plan.organiserProceeds)}`;
+        remainderEl.textContent = `₹${formatInr(plan.estimatedRemainder)}`;
+      };
+
+      slotsEl.addEventListener('input', () => render());
+      priceEl.addEventListener('input', () => {
+        lastEdited = 'price';
+        render();
+      });
+      ticketEl.addEventListener('input', () => {
+        lastEdited = 'ticket';
+        render();
+      });
+      participantsEl.addEventListener('input', () => render());
+      costsEl.addEventListener('input', () => render());
+
+      render();
+    }
+  }
+</script>
+
+<style>
+  /* Layout only for genuinely new elements — every colour, font-family,
+     border, border-radius and box-shadow comes from the existing
+     .india-calculator / .india-calc-grid / .india-calc-form / .india-calc-result
+     / .india-kicker rules in web/src/styles/india-additions.css (imported by
+     the page that mounts this component). `<select>` needs the same grid
+     placement `.india-calc-form` already gives `<input>`; the help/error text
+     are new elements with no existing equivalent to reuse. */
+  .india-calc-form select { grid-column: 1 / -1; width: 100%; min-height: 30px; }
+  .planner-help { margin: -12px 0 18px; font-size: 13px; line-height: 1.5; font-weight: 400; }
+  .planner-error { margin: -6px 0 18px; font-size: 14px; font-weight: 700; }
+</style>
