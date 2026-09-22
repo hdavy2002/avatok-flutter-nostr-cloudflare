@@ -48,6 +48,15 @@ export interface ListingTileProps {
    * fire and the placeholder would hide the real poster forever.
    */
   enableSkeleton?: boolean;
+  /**
+   * [SHV2-S3 contracts.md §2a] When present, replaces the tile's own internal
+   * action button(s) with a single link using the tile's EXISTING button
+   * styling, and the click telemetry `data-cta` carries `cta` instead of the
+   * lane's own `book`/`talk`/`reserve`/`calendar` value. When absent, render
+   * and telemetry are byte-for-byte unchanged (AC-14) — see
+   * ListingTile.test.tsx.
+   */
+  action?: { label: string; href: string; cta: 'join_now' | 'view_details' } | null;
 }
 
 // ── §2.3 market_card_impression — ONE event per batch, up to 50 entries, flushed
@@ -222,7 +231,7 @@ function paletteFor(id: string): Pal {
  */
 export function ListingTile({
   listing, href, width = 520, className = '', position = 0, section = 'unknown', voiceHighlightUrl = null,
-  enableSkeleton = false,
+  enableSkeleton = false, action = null,
 }: ListingTileProps) {
   const {t:uiT}=useUiTranslation("web-common");
 
@@ -600,17 +609,29 @@ export function ListingTile({
               </span>
             </>
           )}
-          <button
-            type="button"
-            data-cta="quick_info"
-            onClick={onMoreInfo}
-            style={{
-              marginLeft: 'auto', flex: 'none', fontFamily: 'Nunito, system-ui, sans-serif',
-              fontWeight: 800, fontSize: '0.75rem', letterSpacing: '.08em',
-              padding: '10px 16px', borderRadius: 20, border: `2px solid ${INK}`, // [UI-COMFORTAA-1] button tier
-              background: CREAM, color: INK, cursor: 'pointer',
-            }}
-          ><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></button>
+          {action ? (
+            <span
+              data-cta={action.cta}
+              style={{
+                marginLeft: 'auto', flex: 'none', fontFamily: 'Nunito, system-ui, sans-serif',
+                fontWeight: 800, fontSize: '0.75rem', letterSpacing: '.08em',
+                padding: '10px 16px', borderRadius: 20, border: `2px solid ${INK}`, // [UI-COMFORTAA-1] button tier
+                background: CREAM, color: INK, cursor: 'pointer',
+              }}
+            >{action.label}</span>
+          ) : (
+            <button
+              type="button"
+              data-cta="quick_info"
+              onClick={onMoreInfo}
+              style={{
+                marginLeft: 'auto', flex: 'none', fontFamily: 'Nunito, system-ui, sans-serif',
+                fontWeight: 800, fontSize: '0.75rem', letterSpacing: '.08em',
+                padding: '10px 16px', borderRadius: 20, border: `2px solid ${INK}`, // [UI-COMFORTAA-1] button tier
+                background: CREAM, color: INK, cursor: 'pointer',
+              }}
+            ><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></button>
+          )}
         </div>
       ) : (
       <div style={{ padding: '15px 17px 17px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
@@ -684,16 +705,26 @@ export function ListingTile({
               border: `2px solid ${INK}`, background: CREAM, color: INK,
             }}>{ctaExtra.SUNO}</span>
           )}
-          <span data-cta={buttons.primaryCta} style={{
-            flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
-            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
-            border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
-          }}>{buttons.primaryLabel}</span>
-          <span data-cta={buttons.secondaryCta} style={{
-            flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
-            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
-            border: `2px solid ${INK}`, background: CREAM, color: INK,
-          }}><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></span>
+          {action ? (
+            <span data-cta={action.cta} style={{
+              flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+              fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
+              border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
+            }}>{action.label}</span>
+          ) : (
+            <>
+              <span data-cta={buttons.primaryCta} style={{
+                flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+                fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
+                border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
+              }}>{buttons.primaryLabel}</span>
+              <span data-cta={buttons.secondaryCta} style={{
+                flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+                fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
+                border: `2px solid ${INK}`, background: CREAM, color: INK,
+              }}><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></span>
+            </>
+          )}
         </div>
 
         <div style={{

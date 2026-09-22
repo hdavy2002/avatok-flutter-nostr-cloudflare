@@ -1,0 +1,15 @@
+/* /organisers — layout-only additions. No new colours, fonts, radii or shadows:
+   every value below reuses an existing `.india-additions`/`.rail-home` token. */
+
+/* Equipment callout (A5 O4: "Equipment does not supply an audience."). Sits
+   under `.india-format-grid` inside the equipment panel; spacing-only. */
+.organiser-equipment-note {
+  margin-top: 28px;
+  max-width: 60ch;
+}
+
+@media (max-width: 699px) {
+  .organiser-equipment-note {
+    margin-top: 20px;
+  }
+}

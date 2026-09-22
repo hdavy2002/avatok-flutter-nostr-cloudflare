@@ -1,0 +1,62 @@
+---
+// [SHV2-S5] A4.4 "Explore spiritual experiences" + A5 O5 "What could you
+// organise?" — same 13 editorial topics (contracts.md §1), two variants.
+//
+// Reuses the existing "Ideas for your channel" card grid verbatim:
+// .rail-idea-grid > .rail-idea > .rail-idea-copy (src/styles/railway-home.css,
+// imported by both host pages — index.astro (S4) and organisers.astro (S6)).
+// No colour/background/border/border-radius/box-shadow/font-family is
+// declared in this file's own <style> block — only a column-count override
+// for 13 tiles (layout-only). "Search events" reuses the existing
+// .rail-text-link class.
+import { SPIRITUAL_TOPICS, topicSearchHref } from '../lib/spiritualExperiences';
+
+export interface Props {
+  variant?: 'attendee' | 'organiser';
+}
+
+const { variant = 'attendee' } = Astro.props;
+---
+{variant === 'attendee' ? (
+  <section id="experiences" class="rail-ideas" aria-labelledby="experience-topics-title">
+    <h2 id="experience-topics-title">Explore spiritual experiences</h2>
+    <div class="rail-idea-grid experience-topics-grid">
+      {SPIRITUAL_TOPICS.map((topic) => (
+        <article class="rail-idea">
+          <div class="rail-idea-copy">
+            {topic.icon && <img src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
+            <h3>{topic.title}</h3>
+            <p>{topic.blurb}</p>
+            <a class="rail-text-link" href={topicSearchHref(topic)} data-home-cta={`experience-${topic.id}`}>Search events</a>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+) : (
+  <div class="rail-idea-grid experience-topics-grid experience-topics-grid--organiser">
+    {SPIRITUAL_TOPICS.map((topic) => (
+      <article class="rail-idea">
+        <div class="rail-idea-copy">
+          {topic.icon && <img src={topic.icon} alt="" width="36" height="36" loading="lazy" decoding="async" aria-hidden="true" />}
+          <h3>{topic.title}</h3>
+          <p>{topic.organiserIdea}</p>
+        </div>
+      </article>
+    ))}
+  </div>
+)}
+
+<style>
+/* Layout only — column count for 13 tiles. Colour, border, radius,
+   background and font come entirely from .rail-idea-grid / .rail-idea /
+   .rail-idea-copy in railway-home.css; nothing here overrides them. */
+.experience-topics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.experience-topics-grid--organiser { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .experience-topics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .experience-topics-grid { grid-template-columns: 1fr; }
+}
+</style>
