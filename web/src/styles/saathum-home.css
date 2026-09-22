@@ -1,0 +1,25 @@
+/* [SHV2-S4] Saathum homepage — layout-only rules for genuinely new sections.
+   No new colours, fonts, radii or shadows: every visual value here is either
+   a layout property (display/grid/flex/gap/padding/width) or an existing
+   `--rail-*` token / class already defined in railway-home.css. */
+
+/* D7 plain descriptor, directly under the hero CTAs, inside .creator-hero__copy. */
+.saathum-hero-note { max-width: 46ch; margin-top: 14px; }
+.saathum-hero-note a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Panel grids shared by benefits (4) and joining (3); talks & darshan reuses
+   the existing .rail-format-grid (2 columns) unmodified. */
+.saathum-panel-grid { list-style: none; padding: 0; margin: 0; }
+.saathum-panel-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.saathum-panel-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.saathum-steps .rail-idea-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+
+@media (max-width: 900px) {
+  .saathum-panel-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .saathum-panel-grid--3 { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .saathum-panel-grid--4 { grid-template-columns: 1fr; }
+}
