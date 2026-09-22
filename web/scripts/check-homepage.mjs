@@ -30,7 +30,9 @@ const html = normalizeBuiltImages(rawHtml, { root });
 
 // --- Saathum attendee homepage (A4) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.match(html, /<title>Saathum \| Live pujas, satsangs and spiritual experiences/, 'A4 page title');
+// Astro may attach data-i18n metadata to the title element; validate the
+// rendered title without depending on attribute ordering.
+assert.match(html, /<title[^>]*>Saathum \| Live pujas, satsangs and spiritual experiences/, 'A4 page title');
 assert.match(html, /LIVE SPIRITUAL EXPERIENCES FROM INDIA/, 'A4.1 hero eyebrow');
 assert.match(html, /Be there for the moments that matter\./, 'A4.1 hero H1');
 assert.match(html, /Join live pujas, satsangs, aartis and spiritual gatherings from India.{1,2}wherever you call home\./s, 'A4.1 hero support line');
