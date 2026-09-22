@@ -99,7 +99,7 @@ try {
     const listingArt = await page.locator('.booking-artwork--listing').evaluateAll(elements => elements.map(image => {
       const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
     }));
-    assert.equal(listingArt.length, 3, name + ': three listing photos');
+    assert.equal(listingArt.length, 9, name + ': nine listing photos');
     for (const [index, art] of listingArt.entries()) {
       assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': listing photo paints #' + index);
       assert(art.width > art.height, name + ': listing photo is landscape #' + index);
@@ -149,7 +149,7 @@ try {
         listings: [...document.querySelectorAll('.grand-listing')].map(el => Math.round(el.getBoundingClientRect().top)),
       }));
       assert.equal(new Set(rows.categories).size, 1, name + ': all six categories occupy one row');
-      assert.equal(new Set(rows.listings).size, 1, name + ': all three listings occupy one row');
+      assert.equal(new Set(rows.listings).size, 3, name + ': nine listings occupy three rows');
     }
     if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': sage community strip remains compact');
     if (width >= 1920) {
