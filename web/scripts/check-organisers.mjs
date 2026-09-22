@@ -36,7 +36,7 @@ for (const id of ['how-to-organise', 'earnings', 'guides', 'faq']) {
 }
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
-  if (href.startsWith('#') || href.startsWith('/#')) {
+  if (href.startsWith('#') || href.startsWith('/organisers#')) {
     assert(ids.has(href.split('#')[1]), 'Missing /organisers anchor: ' + href);
   }
 }
