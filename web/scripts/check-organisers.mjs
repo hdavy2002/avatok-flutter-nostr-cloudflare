@@ -22,7 +22,7 @@ const html = normalizeBuiltImages(readFileSync(builtPath, 'utf8'), { root });
 
 // A5 hero and metadata.
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading on /organisers');
-assert.match(html, /<title>Become a spiritual event organiser \| Saathum/, 'A5 page title');
+assert.match(html, /<title[^>]*>Become a spiritual event organiser \| Saathum/, 'A5 page title');
 assert.match(html, /Bring your local spiritual community to the world\./, 'A5 hero H1');
 assert.match(html, /Partner with a guru, priest, temple or yoga teacher\. Arrange a live experience, share the booking link and help people take part from home\./, 'A5 hero support line');
 assert.match(html, /You bring the organisation\. Your spiritual host brings the experience\./, 'A5 no-immediate-income line');
