@@ -69,3 +69,12 @@ assert.match(html, /What could a 50-person satsang look like\?/, 'A6.4 story hea
 assert.doesNotMatch(bodyHtml, /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in organiser body (D2, AC-17)');
 
 console.log('/organisers checks passed: sections, metadata, FAQ, canonical fee sentence, planner figures, illustrative story, D2 content ban.');
+
+// The organiser remake shares the approved homepage art and full footer.
+assert.match(html, /data-organisers-design="saathum-organisers-v1"/);
+assert.match(html, /data-folk-artwork="satsang"/);
+assert.match(html, /saathum-bright\/satsang\.png/);
+assert.match(html, /Made in India with Love ❤️ and cutting chai\./);
+const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
+for (const href of ['/marketplace?group=india_goes_live','/marketplace?group=book_their_time','/dashboard','/payouts','/careers','/cookies','/refunds','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/grievance','/tokens']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
+console.log('/organisers approved folk design and complete footer passed.');

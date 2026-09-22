@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
+import { checkOrganisersBrowser } from './check-organisers-browser.mjs';
 
 const root = resolve('dist');
 const manifest = JSON.parse(await readFile(resolve('src/lib/publicImageManifest.json'), 'utf8'));
@@ -184,4 +185,5 @@ try {
     console.log(name, JSON.stringify(geometry));
     await page.close();
   }
+  await checkOrganisersBrowser(browser);
 } finally { await browser.close(); server.close(); }

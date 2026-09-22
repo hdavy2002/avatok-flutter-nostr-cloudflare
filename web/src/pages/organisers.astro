@@ -1,71 +1,21 @@
 ---
-// /organisers — Become a spiritual event organiser (Specs/saathum-spec-v2-and-agent-plan.md A5).
-//
-// Style fidelity (B2 rule 11): this page copies section skeletons wholesale from
-// existing components rather than inventing new ones.
-//   - Chrome: SiteHeader/SiteFooter mounted exactly as `index.astro` does at base
-//     (`chrome={false}` + manual mount + a `.rail-skip` skip link), so the shell is
-//     byte-for-byte the same pattern as the homepage.
-//   - Hero: skeleton copied from `components/india-preview/CreatorIntro.astro`
-//     (`.india-hero`/`.india-hero__copy`/`.india-kicker`/`.india-lede`/
-//     `.india-actions`/`.india-button`/`.india-text-link`/`.india-hero__ticket`/
-//     `.india-hero__visual`/`.india-help-sticker`/`.india-poster-orbit`), with
-//     the heading promoted from h2 to h1 since this page owns its own H1.
-//     [FIX round 1] The art slot (`.india-hero__visual` > `img.india-help-sticker`)
-//     is filled with the owner-approved `design/photo/hawan.png`, copied
-//     byte-for-byte to `public/assets/saathum/hawan.png` (S6-owned per
-//     contracts §7/§7a) — same classes CreatorIntro.astro already uses for its
-//     own sticker, no new styling. It is the page's only preloaded image.
-//   - Partner/equipment panels: skeleton copied from
-//     `components/india-preview/PaidFormats.astro` (`.india-format-grid` /
-//     `.india-format-card` / `.india-format-card__number`), art stickers dropped
-//     (D10 — no fitting existing art; character stickers under /help/art are
-//     comedic and off-tone for a devotional page).
-//   - Workflow steps: skeleton copied from `components/india-preview/CreatorJourney.astro`
-//     (`.india-steps`).
-//   - Guides grid: skeleton copied from `components/india-preview/CreatorIdeas.astro`
-//     (`.india-idea-grid` / `.india-idea-card`), reusing the FOUR existing guide
-//     entries (and their existing approved article art) from `lib/creatorIdeas.ts`.
-//   - FAQ: skeleton copied from `components/india-preview/CreatorFaq.astro`
-//     (`.india-faq` / `<details>`/`<summary>`).
-//   - Final CTA: skeleton copied from `components/india-preview/CreatorClosing.astro`
-//     (`.india-close`).
-//   - Auth-aware CTA: reuses the SiteHeader's existing global toggle — sibling
-//     `.avh-auth-out`/`.avh-auth-in` elements, shown/hidden via the
-//     `html[data-avatok-auth]` attribute that SiteHeader's own inline script
-//     already stamps before paint (`lib/authState.ts`). No new mechanism, no
-//     invented query params: guest -> `/sign-up`, authenticated -> the existing
-//     "Create a listing" dashboard entry (`/dashboard/listings/new`, the same
-//     href used by `layouts/Dashboard.astro` and `islands/dashboard/Overview.tsx`).
-//
-// CSS: only `styles/railway-home.css` and `styles/india-additions.css` (both
-// already shipped) are imported — no new colours/fonts/radii/shadows. NEW
-// `styles/organisers.css` carries layout-only rules for the one thing with no
-// existing equivalent: the equipment note callout.
-//
-// [Follow-up, AC-15] `lib/railwayHome.ts` (S10, route-aware) is imported exactly
-// as `index.astro` does, and every CTA link carries `data-home-cta` while every
-// O-section carries `data-home-section` — no other click handler added.
 export const prerender = true;
 
 import Base from '../layouts/Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import FolkArtwork from '../components/FolkArtwork.astro';
 import ExperienceTopics from '../components/ExperienceTopics.astro';
 import EarningsPlanner from '../components/organisers/EarningsPlanner.astro';
 import IllustrativeStory from '../components/organisers/IllustrativeStory.astro';
 import { creatorIdeas } from '../lib/creatorIdeas';
-import { publicImage, publicImageSrcSet } from '../lib/config';
-import '../styles/railway-home.css';
-import '../styles/india-additions.css';
-import '../styles/organisers.css';
+import { publicImage } from '../lib/config';
+import '../styles/saathum-folk.css';
+import '../styles/organisers-folk.css';
 
-// [FIX round 1] Owner-approved hero photo (contracts §7a) — never `hero.png`.
+// Preserve the existing share image; the page uses saved folk artwork.
 const HERO_ART = '/assets/saathum/hawan.png';
-const heroArtSrcSet = publicImageSrcSet(HERO_ART, [200, 300, 400], { fit: 'scale-down' });
 
-// The four existing guides named in the brief (A5 O8), at their existing URLs.
-// No new guide content is written here — only linked.
 const GUIDE_SLUGS = ['mandir-se-live-darshan', 'subah-ki-aarti', 'ganga-ghat-se-shaam', 'guruji-ka-private-satsang'];
 const GUIDE_TONES = ['pink', 'mango', 'purple', 'blue'] as const;
 const guides = GUIDE_SLUGS
@@ -143,13 +93,16 @@ const faqs = [
 >
   <Fragment slot="head">
     <meta property="og:image:type" content="image/jpeg" />
-    <link rel="preload" as="image" href={publicImage(HERO_ART, { width: 300, fit: 'scale-down' })} imagesrcset={heroArtSrcSet} />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <a class="rail-skip" href="#main-content">Skip to main content</a>
-  <SiteHeader indiaLandingLanguage={false} />
+  <div class="folk-site organisers-folk" data-design="saathum-reference-v5" data-organisers-design="saathum-organisers-v1" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <a class="folk-skip" href="#main-content">Skip to main content</a>
+  <div class="folk-ribbon" aria-hidden="true"></div>
+  <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome
+    links={[{ href: '/marketplace', label: 'Explore events' }, { href: '/#experiences', label: 'Experiences' }, { href: '/#joining', label: 'How it works' }]} />
   <main id="main-content">
-    <div class="india-additions">
-      <div class="india-page" data-india-page>
+    <div class="organisers-page">
 
         <section class="india-hero india-wrap" aria-labelledby="organisers-hero-title" id="organisers-hero" data-home-section="hero">
           <div class="india-hero__copy">
@@ -167,16 +120,18 @@ const faqs = [
               <span aria-hidden="true">✹</span>
             </div>
           </div>
-          <div class="india-hero__visual" aria-hidden="true">
-            <img class="india-help-sticker" src={publicImage(HERO_ART, { width: 300, fit: 'scale-down' })} srcset={heroArtSrcSet} width="300" height="225" alt="" aria-hidden="true" loading="eager" fetchpriority="high" decoding="async" />
-            <span class="india-poster-orbit">✦</span>
+          <div class="india-hero__visual">
+            <FolkArtwork name="satsang" eager sizes="(max-width: 700px) 94vw, 52vw" alt="A woman spiritual teacher sharing a satsang with her community, illustrated in Indian folk art." />
           </div>
         </section>
+
+        <div class="grand-divider" aria-hidden="true"></div>
 
         <section class="india-formats india-section" aria-labelledby="organisers-partners-title" id="who-to-partner-with" data-home-section="partners">
           <div class="india-wrap">
             <p class="india-kicker">Who could you partner with?</p>
             <h2 id="organisers-partners-title">Find a spiritual host for your first event</h2>
+            <p class="organisers-section-intro">Begin with permission and a shared plan. Respect the host’s traditions, the venue’s rules, and the wishes of people who do not want to be filmed.</p>
             <div class="india-format-grid">
               {partners.map((p, i) => (
                 <article class="india-format-card">
@@ -224,7 +179,10 @@ const faqs = [
           <div class="india-wrap">
             <p class="india-kicker">What could you organise?</p>
             <h2 id="organisers-topics-title">Ideas across our spiritual topics</h2>
-            <ExperienceTopics variant="organiser" />
+            <div class="organisers-topics-layout">
+              <div class="organisers-topics-art"><FolkArtwork name="music" sizes="(max-width: 700px) 80vw, 27vw" alt="Tabla, harmonium and string instruments illustrated in colorful Indian folk art." /></div>
+              <ExperienceTopics variant="organiser" />
+            </div>
           </div>
         </section>
 
@@ -280,7 +238,8 @@ const faqs = [
         </section>
 
         <section class="india-close india-wrap" aria-labelledby="organisers-closing-title" id="organiser-final-cta" data-home-section="closing">
-          <img class="india-close__burst" src={publicImage('/ornament-flower.png', { width: 90, fit: 'scale-down' })} width="90" height="90" alt="" loading="lazy" />
+          <div class="organisers-closing-art organisers-closing-art--left" aria-hidden="true"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} width="1536" height="1024" alt="" loading="lazy" decoding="async" /></div>
+          <div class="organisers-closing-copy">
           <p class="india-kicker">Ready when you are</p>
           <h2 id="organisers-closing-title">Bring your first spiritual event to Saathum.</h2>
           <p>Agree with a host, set a price and share the link — the community you reach is up to you.</p>
@@ -289,12 +248,14 @@ const faqs = [
             <a class="india-button india-button--dark avh-auth-in" href="/dashboard/listings/new" data-home-cta="closing-start-organising">Start organising <span aria-hidden="true">↗</span></a>
             <a class="india-text-link" href="/marketplace" data-home-cta="closing-explore-events">Explore events <span aria-hidden="true">→</span></a>
           </div>
+          </div>
+          <div class="organisers-closing-art organisers-closing-art--right" aria-hidden="true"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} width="1536" height="1024" alt="" loading="lazy" decoding="async" /></div>
         </section>
 
-      </div>
     </div>
   </main>
-  <SiteFooter indiaLandingLanguage={false} />
+  <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
   <script>
     import '../lib/railwayHome';
   </script>

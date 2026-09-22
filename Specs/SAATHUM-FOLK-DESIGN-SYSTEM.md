@@ -48,3 +48,18 @@ and browser screenshots at 320, 390, 820, 1100, 1122, 1440, 1920 and 2560px.
 Check no horizontal overflow, decoded images, square category scenes, landscape
 listing photos, six-across desktop layout, compact sage band, readable cream footer,
 mobile drawer/auth behavior and preserved asset sources before production release.
+
+## Organisers companion page
+
+The owner requested the same graphics, visual style and ethos for `/organisers`.
+The page opts into the shared reference shell and adds the scoped
+`saathum-organisers-v1` style. Saved female-guru artwork leads the hero, music
+art accompanies the thirteen topics, existing guide/story art remains, and saved
+elephants frame the closing invitation. Open numbered columns and sage bands
+replace the old poster panels.
+
+All existing hosting instructions, seven FAQs, four guides, permission guidance,
+fee language, illustrative scenario and payout-status disclosure remain intact.
+The earnings planner component and its calculation module are unchanged. CI
+checks its input updates, invalid-ticket error and recovery, auth-aware organiser
+CTAs, FAQ opening, image loading and layout from 320 to 2560 pixels.
