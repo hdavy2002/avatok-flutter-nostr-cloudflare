@@ -90,7 +90,7 @@ const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga:
               <div class="grand-listing-art-wrap">
                 <a class="grand-listing-art" href={search(listing.term)} aria-label={listing.title + ' — explore ' + listing.label} data-home-cta={'moment-' + listing.term.toLowerCase()}>
                   <span class:list={['grand-sample-badge', 'grand-sample-badge--' + listing.scheduleTone]}>{listing.schedule}</span>
-                  <BookingArtwork kind="listing" name={listing.name} alt={listing.title + ' devotional experience from India.'} sizes="(max-width: 600px) 92vw, 31vw" />
+                  <BookingArtwork kind="listing" name={avatarFor(listing.name)} alt={listing.title + ' devotional experience from India.'} sizes="(max-width: 600px) 92vw, 31vw" />
                 </a>
                 <button class="grand-favourite" type="button" aria-label={'Add ' + listing.title + ' to favourites'} aria-pressed="false" data-favorite="true">♡</button>
               </div>
