@@ -32,6 +32,7 @@ const listings = [
 ] as const;
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
+const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga: 'bhajan' } as Record<string, string>)[name] ?? name;
 ---
 <Base title="Saathum | Book Hindu religious experiences online"
   description="Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are."
@@ -95,7 +96,7 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
               </div>
               <div class="grand-listing-copy">
                 <div class="grand-listing-heading"><h3><a href={search(listing.term)}>{listing.title}</a></h3><span class="grand-listing-price">{listing.price}</span></div>
-                <div class="grand-listing-host"><img src={publicImage(`/assets/saathum-booking/listing-${listing.name}.png`, { width: 72, fit: 'cover' })} alt="" width="32" height="32" /> <span>{listing.host}</span></div>
+                <div class="grand-listing-host"><img src={publicImage(`/assets/saathum-booking/listing-${avatarFor(listing.name)}.png`, { width: 72, fit: 'cover' })} alt="" width="32" height="32" /> <span>{listing.host}</span></div>
                 <p class="grand-listing-description">{listing.description}</p>
                 <div class="grand-listing-info"><span class="grand-city-pill">● {listing.city}</span><span class="grand-listing-time">{listing.timing}</span></div>
                 <div class="grand-listing-footer"><span class="grand-rating" aria-label={listing.rating + ' out of 5 from ' + listing.reviews + ' reviews'}>★ {listing.rating} <small>({listing.reviews})</small></span><a class="grand-booking-link" href={search(listing.term)} data-home-cta={'sample-book-' + listing.term.toLowerCase()}>Book now <span aria-hidden="true">→</span></a></div>
