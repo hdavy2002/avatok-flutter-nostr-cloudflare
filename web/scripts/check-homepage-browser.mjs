@@ -43,6 +43,8 @@ try {
     assert.equal(geometry.broken, 0, name + ': all sticker artwork loads');
     assert.match(geometry.heading, /Close to your roots\./);
     const footer = page.locator('footer');
+    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(241, 209, 187)', name + ': warm footer beats legacy scoped styles');
+    assert.equal(await footer.getByRole('link', { name: 'Careers', exact: true }).evaluate(el => getComputedStyle(el).color), 'rgb(81, 37, 31)', name + ': footer links keep readable dark ink');
     for (const label of ['Grievance Redressal', 'Child Safety', 'Cookies', 'Payouts', 'Careers']) {
       assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
     }
