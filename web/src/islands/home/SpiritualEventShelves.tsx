@@ -9,41 +9,8 @@ import {
   type HomeEventsState,
   type HomeEventsTab,
 } from '../../lib/spiritualHomeEvents';
+import { actionFor, formatLocalStart, visibleFieldsFor } from './shelfFormat';
 import './SpiritualEventShelves.css';
-
-/** Browser-local time with a visible zone label and an explicit IST fallback
- *  (A4.2/AC-08). Returns null when there is no start time to show at all. */
-export function formatLocalStart(startsAtMs: number | null): { iso: string; label: string; zone: string } | null {
-  if (!startsAtMs) return null;
-  const d = new Date(startsAtMs);
-  if (!Number.isFinite(d.getTime())) return null;
-  let timeZone = 'Asia/Kolkata';
-  let zone = 'IST';
-  try {
-    const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (resolved) timeZone = resolved;
-  } catch {
-    // Intl unavailable — IST fallback above stands.
-  }
-  try {
-    const parts = new Intl.DateTimeFormat(undefined, { timeZone, timeZoneName: 'short' }).formatToParts(d);
-    const tz = parts.find((p) => p.type === 'timeZoneName')?.value;
-    if (tz) zone = tz;
-  } catch {
-    // Keep the IST fallback.
-  }
-  let label: string;
-  try {
-    label = d.toLocaleString(undefined, {
-      timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    });
-  } catch {
-    label = d.toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    });
-  }
-  return { iso: d.toISOString(), label, zone };
-}
 
 interface EventCardProps {
   card: Card;
@@ -75,8 +42,9 @@ function EventCard({ card, position, section, joinable }: EventCardProps) {
   const start = formatLocalStart(card.starts_at ?? null);
   const price = priceLabel(card.effective_price ?? card.price ?? null, card.price_semantics, card.billing_unit);
   const posterFirst = Boolean(toCardView(card).aiPoster);
-  const duration = posterFirst ? durationLabel(card.duration_min ?? null) : null;
-  const language = posterFirst ? languageLabel(card.spoken_lang ?? null) : null;
+  const { showLanguage, showDuration } = visibleFieldsFor(posterFirst);
+  const duration = showDuration ? durationLabel(card.duration_min ?? null) : null;
+  const language = showLanguage ? languageLabel(card.spoken_lang ?? null) : null;
 
   return (
     <div className="shv2-card">
@@ -87,7 +55,7 @@ function EventCard({ card, position, section, joinable }: EventCardProps) {
         position={position}
         section={section}
         enableSkeleton
-        action={{ label: joinable ? 'Join now' : 'View details', href, cta: joinable ? 'join_now' : 'view_details' }}
+        action={actionFor(joinable, href)}
       />
       <div className="shv2-card-meta">
         <p className="shv2-card-title">{card.title}</p>
