@@ -23,21 +23,21 @@ const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
-// --- Owner-approved grand open homepage (2026-09-22) ---
+// --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.match(html, /<title[^>]*>Saathum \| Book Hindu religious experiences online/, 'Booking marketplace page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Come home to the moment\./, 'Grand homepage H1');
-assert.match(visibleText, /BOOK HINDU RELIGIOUS EXPERIENCES\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*LIVE FROM INDIA/, 'Booking hero eyebrow');
-for (const heading of ['Choose a tradition to return to.', 'Save a little time for the soul.', 'Far from home. Close to your traditions.', 'Craft, color and stories we carry.', 'Bring your community together.', 'Three simple steps to join live.']) {
+assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
+assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*JOIN FROM ANYWHERE/, 'Booking hero eyebrow');
+for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Bring your community together.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-grand-v4"/, 'Approved grand booking design identity');
+assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking design identity');
 assert.match(html, /data-grand-artwork="hero"/, 'Grand hero artwork is rendered');
 assert.doesNotMatch(html, /folk-seal|folk-handnote|folk-art-note/, 'Retired compact badges and notes are absent');
 assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
-const renderedFolkArtwork = new Set(['satsang', 'culture', 'lotus']);
+const renderedFolkArtwork = new Set(['satsang', 'lotus']);
 for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
   if (name !== 'border' && renderedFolkArtwork.has(name)) assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
   if (name === 'border') assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
@@ -78,7 +78,7 @@ assert.match(html, /class="grand-elephant/, 'Organiser section renders elephant 
 assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image pipeline');
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
-for (const [label, href] of [['Marketplace','/marketplace'],['Wiki','/help'],['Pricing','/pricing-fees'],['Ideas','/ideas']]) {
+for (const [label, href] of [['Explore events','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }

@@ -73,7 +73,7 @@ try {
     await page.locator('.grand-category-grid').screenshot({ path: 'homepage-review/' + name + '-categories.png' });
     await page.locator('.grand-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
     await page.locator('.grand-belonging').screenshot({ path: 'homepage-review/' + name + '-belonging.png' });
-    await page.locator('.grand-culture').screenshot({ path: 'homepage-review/' + name + '-culture.png' });
+    await page.locator('.grand-organise').screenshot({ path: 'homepage-review/' + name + '-organise.png' });
     await page.locator('#home-events').scrollIntoViewIfNeeded();
     await page.locator('.grand-listing-grid').screenshot({ path: 'homepage-review/' + name + '-listings.png' });
     await page.locator('footer').scrollIntoViewIfNeeded();
@@ -82,7 +82,7 @@ try {
     await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
     assert.equal(geometry.broken, 0, name + ': all artwork loads');
-    assert.match(geometry.heading, /Come home/);
+    assert.match(geometry.heading, /Close to your roots/);
     assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': Comfortaa headings');
     assert.match(await page.locator('.folk-site').evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': Nunito body');
     assert(await page.locator('[data-grand-artwork="hero"]').isVisible(), name + ': grand hero is visible');
@@ -93,7 +93,7 @@ try {
     for (const [index, art] of categoryArt.entries()) {
       assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': category scene paints #' + index);
       assert(Math.abs(art.width - art.height) < 2, name + ': category scene remains square #' + index);
-      if (width <= 600) assert(art.width >= 150, name + ': phone category art stays legible #' + index);
+      if (width <= 600) assert(art.width >= 110, name + ': phone category art stays legible #' + index);
     }
     const listingArt = await page.locator('.booking-artwork--listing').evaluateAll(elements => elements.map(image => {
       const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
@@ -107,7 +107,8 @@ try {
     assert.equal(await page.locator('.folk-seal, .folk-handnote, .folk-event-stamp').count(), 0, name + ': no retired stamps');
     assert.equal(await page.locator('.grand-elephant').count(), 2, name + ': organiser has two elephant artworks');
     assert(await page.locator('[data-folk-artwork="satsang"]').isVisible(), name + ': guru art visible');
-    assert(await page.locator('[data-folk-artwork="culture"]').isVisible(), name + ': culture art visible');
+    assert.equal(await page.locator('.grand-culture, .grand-intro').count(), 0, name + ': compact approved section order');
+    assert(await page.locator('.grand-belonging #joining').isVisible(), name + ': joining steps share the sage band');
     assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
     const footer = page.locator('footer');
     for (const label of ['Grievance Redressal', 'Child Safety', 'Cookies', 'Payouts', 'Careers']) {
@@ -123,7 +124,7 @@ try {
       assert.equal(box.radius, '0px', name + ': footer menu has no rounded panel');
       assert.equal(box.shadow, 'none', name + ': footer menu has no card shadow');
     }
-    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(7, 95, 91)', name + ': teal grand footer');
+    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 248, 232)', name + ': cream reference footer');
     assert(await footer.locator('.bf-col a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 15), name + ': footer links remain readable');
     const borderBackgrounds = await page.evaluate(async expectedPath => {
       const decode = (element, pseudo) => new Promise(resolve => {
@@ -141,12 +142,20 @@ try {
       assert.equal(background.path, borderImmutable, name + ': immutable border URL #' + index);
       assert(background.width > 0 && background.height > 0, name + ': border decodes #' + index);
     }
+    if (width > 1100) {
+      const rows = await page.evaluate(() => ({
+        categories: [...document.querySelectorAll('.grand-category')].map(el => Math.round(el.getBoundingClientRect().top)),
+        listings: [...document.querySelectorAll('.grand-listing')].map(el => Math.round(el.getBoundingClientRect().top)),
+      }));
+      assert.equal(new Set(rows.categories).size, 1, name + ': all six categories occupy one row');
+      assert.equal(new Set(rows.listings).size, 1, name + ': all three listings occupy one row');
+    }
+    if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': sage community strip remains compact');
     if (width >= 1920) {
       const heroWidth = geometry.hero.width;
       assert(heroWidth > 600, name + ': wide hero artwork is generously sized');
-      assert(await page.locator('.grand-belonging-art img').evaluate(el => el.getBoundingClientRect().width >= 480), name + ': guru art is large');
-      assert(await page.locator('.grand-culture-art img').evaluate(el => el.getBoundingClientRect().width >= 500), name + ': culture art is large');
-      assert(await page.locator('.grand-elephant img').first().evaluate(el => el.getBoundingClientRect().width >= 250), name + ': elephants are large');
+      assert(await page.locator('.grand-belonging-art img').evaluate(el => el.getBoundingClientRect().width >= 300), name + ': guru art is large');
+      assert(await page.locator('.grand-elephant img').first().evaluate(el => el.getBoundingClientRect().width >= 200), name + ': elephants are large');
     }
     if (width <= 1100) {
       const mobileHeader = await page.locator('header').evaluate(header => {
@@ -171,7 +180,7 @@ try {
     const authNav = page.locator(width <= 1100 ? '#avh-drawer' : 'header');
     assert(await authNav.getByRole('link', { name: 'Dashboard', exact: true }).isVisible(), name + ': signed-in dashboard');
     assert(await authNav.getByRole('link', { name: 'Sign out', exact: true }).isVisible(), name + ': signed-in sign-out');
-    assert(!(await authNav.getByRole('link', { name: 'Log in', exact: true }).isVisible()), name + ': signed-out login hidden');
+    assert(!(await authNav.getByRole('link', { name: 'Sign in', exact: true }).isVisible()), name + ': signed-out login hidden');
     console.log(name, JSON.stringify(geometry));
     await page.close();
   }

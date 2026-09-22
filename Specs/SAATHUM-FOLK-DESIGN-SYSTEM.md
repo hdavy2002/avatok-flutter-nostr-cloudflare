@@ -1,50 +1,50 @@
-# Saathum grand folk design system
+# Saathum approved reference layout
 
-The Saathum homepage uses the saathum-grand-v4 identity for the Hindu religious
-experiences marketplace. It is an open editorial composition with a warm cream
-canvas, teal ink, red headings, gold details and full width colour fields. Sections
-do not use small rounded panels or sticker badges.
+The owner approved the compact desktop mockup on 2026-09-22 and explicitly
+required reuse of the existing sticker graphics and scene images. The homepage
+identity is `saathum-reference-v5`. Implementation uses Astra only.
 
-## Type
+## Composition
 
-Comfortaa is the display face for the wordmark and headings. Nunito carries body
-copy, navigation and calls to action. Desktop body copy is 20px or larger, hero
-headings are about 64px, and section headings are 48px or larger. Tablet and phone
-sizes scale with clamp() while keeping readable line lengths.
+Use a broad cream canvas, teal ink, vermilion calls to action, and the existing
+Indian floral border. The desktop hero has copy on the left and the saved grand
+arch artwork filling the right. Headline: “Close to your roots. Wherever you are.”
+Comfortaa remains the display face and Nunito the body/navigation face.
 
-## Artwork
+Six rectangular category tiles share one desktop row, with three on tablets and
+two on phones. Three landscape listing photos have straight white edges, visible
+sample-event labels, short titles, categories and marketplace links. These are
+illustrative samples, never invented bookable inventory.
 
-The hero uses /assets/saathum-grand/hero.png, an RGBA 1214x1295 transparent
-composition: a sunset Ganga aarti inside a tall scalloped arch with a painted
-peacock, elephant and diya foreground. It is loaded through publicImage and
-publicImageSrcSet and grows to marketplace scale on wide screens.
+One compact full-width sage strip combines the saved female guru satsang sticker,
+the belonging headline, and Explore / Book / Join live steps. Follow with a slim
+cream organiser strip flanked by the existing elephant stickers. Do not restore
+the separate large welcome, craft or three-step sections from the previous layout.
+Keep their original artwork files saved.
 
-Six opaque square category scenes are rendered through BookingArtwork from
-/assets/saathum-booking/category-{name}.png. Three opaque 3:2 listing photos use
-/assets/saathum-booking/listing-{name}.png. Category scenes are open editorial
-tiles with no enclosing pastel card. Listings use a straight white image edge and
-copy below. The female guru (satsang) and culture folk art are allowed to grow
-large. The organiser band uses the transparent elephant artwork on both sides,
-mirrored with CSS on the right.
+## Assets
 
-## Layout
-
-The hero gives copy a generous left column and the arch artwork a wide right
-column. Categories are three columns on desktop, two on tablet and one on phones
-with square art remaining at least 150px. Listing photography is wide and
-unboxed. Belonging is a full-width pale sage field, followed by a separate
-three-step row. Culture alternates art and copy. Organiser content is a full-width
-coral field with large flanking elephants.
-
-Responsive checks cover 2560, 1920, 1440, 1100, 820, 390 and 320px viewports.
-The browser check eagerly decodes and scrolls every art group before screenshots,
-then verifies no horizontal overflow, broken images, cramped category art or
-hidden footer links.
+Reuse `/assets/saathum-grand/hero.png` unchanged (1214x1295 RGBA). Reuse all six
+`/assets/saathum-booking/category-*.png` and three `listing-*.png` files unchanged.
+Keep `/assets/saathum-bright/satsang.png`, `lotus.png`, `border.png`, and the booking
+`elephant.png` artwork. Retain all other saved graphics on disk. Use the public
+image pipeline, responsive srcsets, appropriate sizes, and eager hero loading.
+Sticker outlines and drop shadows remain; listing images stay photographic scenes.
 
 ## Navigation and footer
 
-SiteHeader and SiteFooter remain shared components. Home CTAs retain
-data-home-cta telemetry, authentication links, mobile drawer behaviour and
-accessible section IDs. The footer keeps every existing home-navigation and legal
-destination in centered wrapping rows. It ends with the exact phrase:
-Made in India with Love ❤️ and cutting chai.
+The homepage header uses Explore events, Experiences and How it works. Guest links
+are Sign in and Become an organiser. Authenticated dashboard/sign-out and accessible
+mobile drawer behavior remain intact; other routes retain their existing header.
+
+The footer is cream with centered open menus: every Bazaar, Creators and Company
+entry plus all existing legal/safety links. No enclosing footer cards. The final
+line remains exactly “Made in India with Love ❤️ and cutting chai.”
+
+## Verification
+
+GitHub Actions only: static link/art/SEO checks, existing safety/performance checks,
+and browser screenshots at 320, 390, 820, 1100, 1122, 1440, 1920 and 2560px.
+Check no horizontal overflow, decoded images, square category scenes, landscape
+listing photos, six-across desktop layout, compact sage band, readable cream footer,
+mobile drawer/auth behavior and preserved asset sources before production release.

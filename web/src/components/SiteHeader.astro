@@ -42,6 +42,8 @@ import GlobalHeader from './GlobalHeader.astro';
 export interface HeaderLink { href: string; label: string }
 
 interface Props {
+  /** Approved reference homepage guest labels; other routes keep their existing auth links. */
+  referenceHome?: boolean;
   /** Homepage-only phone and tablet navigation layouts. */
   responsiveHome?: boolean;
   /** Warm paper chrome, opt-in for the folk homepage only. */
@@ -87,7 +89,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { folk = false, links = folk ? HOME_HEADER_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
+const { referenceHome = false, folk = false, links = folk ? HOME_HEADER_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -170,8 +172,8 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
         No Clerk island is needed for this any more, which also removes the
         double-<ClerkProvider> crash that forced the `static` mode to exist. */}
     <Fragment>
-      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>Log in</a>
-      <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
+      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
+      <a class="avh-cta avh-cta--solid avh-auth-out" href={referenceHome ? '/organisers' : variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>{referenceHome ? 'Become an organiser' : 'Sign up'}</a>
       <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
     {variant === 'global' && <span data-india-i18n-attr="aria-label:web-common.c8b7fff1b82d47c8" data-i18n="web-common.a723fec7087f1226" class="avh-locale" aria-label="Current country">🌍 Global</span>}
@@ -212,8 +214,8 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
       phone was shown "Log in / Sign up" with no way to reach their dashboard or
       sign out. CSS-driven state fixes it with no provider at all. */}
   <Fragment>
-    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>Log in</a>
-    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
+    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={referenceHome ? '/organisers' : variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>{referenceHome ? 'Become an organiser' : 'Sign up'}</a>
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-mobile-auth avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
   </Fragment>
