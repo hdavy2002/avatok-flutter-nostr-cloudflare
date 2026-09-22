@@ -6,109 +6,125 @@ import SiteFooter from '../components/SiteFooter.astro';
 import FolkArtwork from '../components/FolkArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
+import GrandHero from '../components/GrandHero.astro';
 import { publicImage } from '../lib/config';
 import '../styles/saathum-folk.css';
 
 const categories = [
-  { name: 'puja', label: 'Puja & Archana', term: 'Puja', note: 'Everyday devotion' },
-  { name: 'aarti', label: 'Aarti & Darshan', term: 'Aarti', note: 'Light up your evening' },
-  { name: 'bhajan', label: 'Bhajan & Kirtan', term: 'Bhajan', note: 'Songs for the soul' },
-  { name: 'satsang', label: 'Satsang', term: 'Satsang', note: 'Wisdom, shared together' },
-  { name: 'festival', label: 'Festivals', term: 'Festival', note: 'Celebrate together' },
-  { name: 'yoga', label: 'Yoga & Meditation', term: 'Yoga', note: 'Make room for stillness' },
+  { name: 'puja', label: 'Puja & Archana', term: 'Puja', intro: 'Prayer, intention and a moment to pause.' },
+  { name: 'aarti', label: 'Aarti & Darshan', term: 'Aarti', intro: 'The glow of lamps, wherever you are.' },
+  { name: 'bhajan', label: 'Bhajan & Kirtan', term: 'Bhajan', intro: 'Sing along with familiar voices.' },
+  { name: 'satsang', label: 'Satsang', term: 'Satsang', intro: 'Wisdom shared in good company.' },
+  { name: 'festival', label: 'Festivals', term: 'Festival', intro: 'Celebrate the days that bring us together.' },
+  { name: 'yoga', label: 'Yoga & Meditation', term: 'Yoga', intro: 'Make space for stillness.' },
 ] as const;
 
 const listings = [
-  { name: 'aarti', title: 'An evening of aarti', label: 'Aarti & Darshan', term: 'Aarti', copy: 'The glow of diyas, the sound of bells, and a familiar feeling wherever you call home.' },
-  { name: 'puja', title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', copy: 'Begin with a prayer, a quiet intention, and a little space for what matters.' },
-  { name: 'bhajan', title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', copy: 'Familiar melodies and voices coming together. Some things always feel like home.' },
+  { name: 'aarti', title: 'An evening of aarti', label: 'Aarti & Darshan', term: 'Aarti', destination: 'Varanasi, Uttar Pradesh', copy: 'The glow of diyas, the sound of bells, and a familiar feeling wherever you call home.' },
+  { name: 'puja', title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', destination: 'Jaipur, Rajasthan', copy: 'Begin with a prayer, a quiet intention, and a little space for what matters.' },
+  { name: 'bhajan', title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', destination: 'Bengaluru, Karnataka', copy: 'Familiar melodies and voices coming together. Some things always feel like home.' },
 ] as const;
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 ---
 <Base title="Saathum | Book Hindu religious experiences online"
   description="Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are."
-  image={publicImage('/assets/saathum-booking/listing-aarti.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="A devotional aarti experience shared from India."
+  image={publicImage('/assets/saathum-grand/hero.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="A sunset Ganga aarti framed by a grand Indian arch."
   chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-booking-v3">
+  <div class="folk-site" data-design="saathum-grand-v4">
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <div class="folk-ribbon" aria-hidden="true" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}></div>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome />
     <main id="main-content">
-      <section class="folk-hero folk-wrap" aria-labelledby="folk-title" data-home-section="hero">
-        <div class="folk-hero-copy">
-          <p class="folk-eyebrow"><span aria-hidden="true">✦</span> BOOK HINDU RELIGIOUS EXPERIENCES · LIVE FROM INDIA</p>
-          <h1 id="folk-title">Close to your roots.<br /><em>Wherever you are.</em></h1>
-          <p class="folk-lead">Explore and book live pujas, aartis, bhajans and satsangs from India. Join the moments that bring you home.</p>
-          <div class="folk-actions">
-            <a class="folk-button" href="/marketplace" data-home-cta="hero-explore-events">Explore experiences <span aria-hidden="true">↗</span></a>
-            <a class="folk-text-link" href="#experiences" data-home-cta="hero-browse-experiences">Browse by tradition <span aria-hidden="true">→</span></a>
+      <section class="grand-hero" aria-labelledby="grand-title" data-home-section="hero">
+        <div class="grand-hero-copy">
+          <p class="grand-eyebrow">BOOK HINDU RELIGIOUS EXPERIENCES · LIVE FROM INDIA</p>
+          <h1 id="grand-title">Come home<br /><em>to the moment.</em></h1>
+          <p class="grand-lead">Explore and book live pujas, aartis, bhajans and satsangs from India. Join the moments that bring you home, wherever you are.</p>
+          <div class="grand-actions">
+            <a class="grand-button" href="/marketplace" data-home-cta="hero-explore-events">Explore experiences <span aria-hidden="true">↗</span></a>
+            <a class="grand-link" href="#joining" data-home-cta="hero-how-it-works">How it works <span aria-hidden="true">→</span></a>
           </div>
-          <p class="folk-handnote">Discover · book · join live</p>
+          <p class="grand-quiet">Discover · book · join live</p>
         </div>
-        <div class="folk-hero-art s-hero-art">
-          <span class="folk-seal"><span aria-hidden="true">✦</span> ROOTED IN INDIA<br />SHARED WITH LOVE</span>
-          <FolkArtwork name="hero" eager sizes="(max-width: 760px) 96vw, 60vw" alt="A white-bordered Rajasthani folk-art sticker collage with a woman performing aarti beneath a palace arch, a decorated elephant and a peacock." />
-          <span class="folk-art-note">a little piece of home</span>
+        <div class="grand-hero-art">
+          <GrandHero eager alt="A sunset Ganga aarti glowing beneath an ornate Indian arch, with a peacock and elephant in the foreground." />
         </div>
       </section>
 
-      <div class="folk-divider" aria-hidden="true"><span>✽</span><span>✿</span><span>✽</span></div>
+      <div class="grand-divider" aria-hidden="true"><span>✽</span><span>✿</span><span>✽</span></div>
 
-      <section class="folk-experiences folk-wrap" id="experiences" aria-labelledby="folk-experiences-title" data-home-section="experiences">
-        <div class="folk-section-heading folk-section-heading--categories"><h2 id="folk-experiences-title">Find your spiritual moment</h2></div>
-        <div class="folk-category-grid">
-          {categories.map(category => <a class={'folk-category folk-category--' + category.name} href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase()}>
-            <BookingArtwork kind="category" name={category.name} alt={category.label + ' devotional scene in an ornate Indian arch.'} sizes="(max-width: 760px) 45vw, (max-width: 1100px) 28vw, 15vw" />
-            <div class="folk-category-copy"><h3>{category.label}</h3><span class="folk-circle-arrow" aria-hidden="true">↗</span></div>
+      <section class="grand-intro" aria-labelledby="grand-intro-title" data-home-section="welcome">
+        <p class="grand-eyebrow">A LITTLE CLOSER TO HOME</p>
+        <h2 id="grand-intro-title">Tradition feels different when you can share it.</h2>
+        <p>Saathum brings living rituals, music and wisdom from India into the room with you. Find a moment that feels familiar, book your place, and join live.</p>
+      </section>
+
+      <section class="grand-experiences" id="experiences" aria-labelledby="grand-experiences-title" data-home-section="experiences">
+        <div class="grand-section-heading">
+          <div><p class="grand-eyebrow">FIND YOUR RHYTHM</p><h2 id="grand-experiences-title">Choose a tradition to return to.</h2></div>
+          <a class="grand-link" href="/marketplace" data-home-cta="all-experiences">See all experiences <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="grand-category-grid">
+          {categories.map(category => <a class="grand-category" href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase()}>
+            <BookingArtwork kind="category" name={category.name} alt={category.label + ' devotional scene in an ornate Indian arch.'} sizes="(max-width: 600px) 88vw, (max-width: 1100px) 42vw, 29vw" />
+            <div class="grand-category-copy"><h3>{category.label}</h3><p>{category.intro}</p><span class="grand-arrow" aria-hidden="true">↗</span></div>
           </a>)}
         </div>
       </section>
 
-      <section class="folk-moments" id="home-events" aria-labelledby="folk-moments-title" data-home-section="home_events">
-        <div class="folk-wrap">
-          <div class="folk-section-heading"><div><p class="folk-eyebrow">SAVE A LITTLE TIME FOR THE SOUL</p><h2 id="folk-moments-title">Moments to look forward to</h2></div><a class="folk-text-link" href="/marketplace" data-home-cta="all-events">View all experiences <span aria-hidden="true">→</span></a></div>
-          <div class="folk-moment-grid">
-            {listings.map((listing, i) => <article class={'folk-moment folk-moment--' + i}>
-              <a class="folk-moment-art" href={search(listing.term)} aria-label={listing.title + ' — explore ' + listing.label} data-home-cta={'moment-' + listing.term.toLowerCase()}>
-                <BookingArtwork kind="listing" name={listing.name} alt={listing.title + ' devotional experience from India.'} />
+      <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="home_events">
+        <div class="grand-moments-inner">
+          <div class="grand-section-heading">
+            <div><p class="grand-eyebrow">SAMPLE MOMENTS FROM INDIA</p><h2 id="grand-moments-title">Save a little time for the soul.</h2></div>
+            <a class="grand-link" href="/marketplace" data-home-cta="all-events">View current events <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="grand-listing-grid">
+            {listings.map((listing, i) => <article class="grand-listing" data-listing-index={i}>
+              <a class="grand-listing-art" href={search(listing.term)} aria-label={listing.title + ' — explore ' + listing.label} data-home-cta={'moment-' + listing.term.toLowerCase()}>
+                <BookingArtwork kind="listing" name={listing.name} alt={listing.title + ' devotional experience from India.'} sizes="(max-width: 760px) 94vw, (max-width: 1100px) 46vw, 31vw" />
               </a>
-              <div class="folk-moment-copy"><p class="folk-eyebrow">Sample event · {listing.label}</p><h3><a href={search(listing.term)}>{listing.title}</a></h3><p>{listing.copy}</p><a class="folk-text-link" href={search(listing.term)} data-home-cta={'sample-explore-' + listing.term.toLowerCase()}>Explore experiences <span aria-hidden="true">↗</span></a></div>
+              <div class="grand-listing-copy"><p class="grand-eyebrow">Sample event · {listing.destination}</p><h3><a href={search(listing.term)}>{listing.title}</a></h3><p>{listing.copy}</p><a class="grand-link" href={search(listing.term)} data-home-cta={'sample-explore-' + listing.term.toLowerCase()}>Explore {listing.label} <span aria-hidden="true">↗</span></a></div>
             </article>)}
           </div>
-          <p class="folk-editorial-note">A taste of what you can discover. Browse the marketplace for current events and availability.</p>
+          <p class="grand-editorial-note">These are illustrative moments. Browse the marketplace for current events, hosts and availability.</p>
           <noscript><p><a href="/marketplace">Browse all events</a> and book your place.</p></noscript>
         </div>
       </section>
 
-      <section class="folk-belonging folk-wrap" id="benefits" aria-labelledby="folk-benefits-title" data-home-section="benefits">
-        <div class="folk-belonging-art"><FolkArtwork name="satsang" alt="A mature woman spiritual teacher seated with women participants in a colorful white-bordered satsang folk-art sticker." /><span class="folk-art-note">familiar rituals, new memories</span></div>
-        <div class="folk-belonging-copy"><p class="folk-eyebrow">A SPACE TO BELONG</p><h2 id="folk-benefits-title">Far from home.<br /><em>Close to your traditions.</em></h2><p>Familiar rituals, shared with people who feel like home.</p><a class="folk-text-link" href="/marketplace" data-home-cta="benefits-explore">Find your next moment <span aria-hidden="true">→</span></a></div>
-        <div class="folk-joining" id="joining" data-home-section="joining">
-          <p class="folk-eyebrow">A FEW LITTLE STEPS. A LOT OF CONNECTION.</p>
-          <ol class="folk-step-grid" aria-label="How to join a live event">
-            <li><FolkIcon kind="search" /><div><span class="folk-step-number">01 / EXPLORE</span><h3>Explore</h3><a href="/marketplace" class="folk-text-link" data-home-cta="joining-explore">Browse events →</a></div></li>
-            <li><FolkIcon kind="ticket" /><div><span class="folk-step-number">02 / BOOK</span><h3>Book</h3><a href="/help/booking-and-paying/find-a-creator-or-show" class="folk-text-link" data-home-cta="joining-book">How to book →</a></div></li>
-            <li><FolkIcon kind="live" /><div><span class="folk-step-number">03 / JOIN LIVE</span><h3>Join live</h3><a href="/help/booking-and-paying/join-a-live-show" class="folk-text-link" data-home-cta="joining-help">Get ready →</a></div></li>
-          </ol>
+      <section class="grand-belonging" id="benefits" aria-labelledby="grand-benefits-title" data-home-section="benefits">
+        <div class="grand-belonging-inner">
+          <div class="grand-belonging-art"><FolkArtwork name="satsang" alt="A mature woman spiritual teacher seated with women participants in colorful Indian folk art." /></div>
+          <div class="grand-belonging-copy"><p class="grand-eyebrow">A SPACE TO BELONG</p><h2 id="grand-benefits-title">Far from home.<br /><em>Close to your traditions.</em></h2><p>Familiar rituals and generous teachers, shared with people who feel like home.</p><a class="grand-link" href="/marketplace" data-home-cta="benefits-explore">Find your next moment <span aria-hidden="true">→</span></a></div>
         </div>
       </section>
 
-      <section class="folk-culture folk-wrap" aria-labelledby="folk-culture-title" data-home-section="culture">
-        <div class="folk-culture-copy"><p class="folk-eyebrow">FROM MANY CORNERS OF INDIA</p><h2 id="folk-culture-title">Craft, color and stories we carry.</h2><p>From Jaipur blue pottery and Bengal terracotta to Madhubani lines, Kalamkari cloth and the glow of a brass lamp, every region adds its own rhythm to the traditions we share.</p><a class="folk-text-link" href="/marketplace" data-home-cta="culture-explore">Discover shared traditions <span aria-hidden="true">→</span></a></div>
-        <div class="folk-culture-art"><FolkArtwork name="culture" alt="A colorful Indian folk-art sticker showing regional pottery, terracotta, Madhubani, Kalamkari and brass-lamp craft traditions." /></div>
+      <section class="grand-joining" id="joining" aria-labelledby="grand-joining-title" data-home-section="joining">
+        <div class="grand-joining-heading"><p class="grand-eyebrow">MAKE IT YOURS</p><h2 id="grand-joining-title">Three simple steps to join live.</h2></div>
+        <ol class="grand-step-grid" aria-label="How to join a live event">
+          <li><span class="grand-step-number">01</span><FolkIcon kind="search" /><div><h3>Explore</h3><p>Browse traditions and find a moment that speaks to you.</p><a href="/marketplace" class="grand-link" data-home-cta="joining-explore">Browse events →</a></div></li>
+          <li><span class="grand-step-number">02</span><FolkIcon kind="ticket" /><div><h3>Book</h3><p>Choose your place and pay securely online.</p><a href="/help/booking-and-paying/find-a-creator-or-show" class="grand-link" data-home-cta="joining-book">How to book →</a></div></li>
+          <li><span class="grand-step-number">03</span><FolkIcon kind="live" /><div><h3>Join live</h3><p>Bring your tea, open your heart, and be there.</p><a href="/help/booking-and-paying/join-a-live-show" class="grand-link" data-home-cta="joining-help">Get ready →</a></div></li>
+        </ol>
       </section>
 
-      <section class="folk-organise folk-wrap" id="organise-invite" aria-labelledby="folk-organise-title" data-home-section="organise_invite">
-        <div class="folk-organise-panel"><div class="folk-organise-side folk-organise-side--left"><img class="folk-organise-elephant" src={publicImage('/assets/saathum-booking/elephant.png', { width: 180, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div><div class="folk-organise-copy"><h2 id="folk-organise-title">Bring your community together.</h2><p>Host a spiritual experience and share your traditions with people near and far.</p><a class="folk-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">↗</span></a></div><div class="folk-organise-side folk-organise-side--right"><img class="folk-organise-elephant" src={publicImage('/assets/saathum-booking/elephant.png', { width: 180, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div></div>
+      <section class="grand-culture" aria-labelledby="grand-culture-title" data-home-section="culture">
+        <div class="grand-culture-art"><FolkArtwork name="culture" alt="Colorful Indian folk art showing regional pottery, terracotta, Madhubani, Kalamkari and brass-lamp craft traditions." /></div>
+        <div class="grand-culture-copy"><p class="grand-eyebrow">FROM MANY CORNERS OF INDIA</p><h2 id="grand-culture-title">Craft, color and stories we carry.</h2><p>From Jaipur blue pottery and Bengal terracotta to Madhubani lines, Kalamkari cloth and the glow of a brass lamp, every region adds its own rhythm to the traditions we share.</p><a class="grand-link" href="/marketplace" data-home-cta="culture-explore">Discover shared traditions <span aria-hidden="true">→</span></a></div>
       </section>
 
-      <p class="folk-booking-note folk-wrap">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
+      <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="organise_invite">
+        <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+        <div class="grand-organise-copy"><p class="grand-eyebrow">YOUR TRADITION, YOUR ROOM</p><h2 id="grand-organise-title">Bring your community together.</h2><p>Host a spiritual experience and share your traditions with people near and far.</p><a class="grand-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">↗</span></a></div>
+        <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+      </section>
+
+      <p class="grand-booking-note">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>

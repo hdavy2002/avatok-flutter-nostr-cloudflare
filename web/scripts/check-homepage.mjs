@@ -23,19 +23,21 @@ const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 const html = normalizeBuiltImages(rawHtml, { root });
 const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
-// --- Owner-approved Rajasthani sticker homepage (2026-09-22) ---
+// --- Owner-approved grand open homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.match(html, /<title[^>]*>Saathum \| Book Hindu religious experiences online/, 'Booking marketplace page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
+assert.match(visibleText, /Come home to the moment\./, 'Grand homepage H1');
 assert.match(visibleText, /BOOK HINDU RELIGIOUS EXPERIENCES\s*(?:·|&middot;|&#183;|&#x[Bb]7;)\s*LIVE FROM INDIA/, 'Booking hero eyebrow');
-for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Craft, color and stories we carry.', 'Bring your community together.']) {
+for (const heading of ['Choose a tradition to return to.', 'Save a little time for the soul.', 'Far from home. Close to your traditions.', 'Craft, color and stories we carry.', 'Bring your community together.', 'Three simple steps to join live.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-booking-v3"/, 'Approved booking folk design identity');
+assert.match(html, /data-design="saathum-grand-v4"/, 'Approved grand booking design identity');
+assert.match(html, /data-grand-artwork="hero"/, 'Grand hero artwork is rendered');
+assert.doesNotMatch(html, /folk-seal|folk-handnote|folk-art-note/, 'Retired compact badges and notes are absent');
 assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
-const renderedFolkArtwork = new Set(['hero', 'satsang', 'culture', 'lotus']);
+const renderedFolkArtwork = new Set(['satsang', 'culture', 'lotus']);
 for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
   if (name !== 'border' && renderedFolkArtwork.has(name)) assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
   if (name === 'border') assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
@@ -46,6 +48,13 @@ for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254
   assert.equal(metadata.width, width, 'Sticker width is recorded: ' + name);
   assert.equal(metadata.height, height, 'Sticker height is recorded: ' + name);
 }
+const grandHeroPath = resolve(root, 'assets/saathum-grand/hero.png');
+assert(existsSync(grandHeroPath), 'Grand hero artwork exists');
+const grandHeroMetadata = await sharp(grandHeroPath).metadata();
+assert(grandHeroMetadata.hasAlpha, 'Grand hero retains transparent foreground');
+assert.equal(grandHeroMetadata.width, 1214, 'Grand hero width is recorded');
+assert.equal(grandHeroMetadata.height, 1295, 'Grand hero height is recorded');
+assert(html.includes('saathum-grand/hero.png'), 'Exact grand hero source is referenced');
 for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']], ['listing', ['aarti', 'puja', 'bhajan']]]) {
   for (const name of names) {
     const path = resolve(root, 'assets/saathum-booking', kind + '-' + name + '.png');
@@ -65,7 +74,8 @@ const elephantMetadata = await sharp(elephantPath).metadata();
 assert(elephantMetadata.hasAlpha, 'Organiser elephant retains transparency');
 assert.equal(elephantMetadata.width, 1536, 'Organiser elephant width is recorded');
 assert.equal(elephantMetadata.height, 1024, 'Organiser elephant height is recorded');
-assert.match(html, /folk-organise-elephant/, 'Organiser strip renders elephant artwork');
+assert.match(html, /class="grand-elephant/, 'Organiser section renders elephant artwork');
+assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image pipeline');
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 for (const [label, href] of [['Marketplace','/marketplace'],['Wiki','/help'],['Pricing','/pricing-fees'],['Ideas','/ideas']]) {
@@ -141,7 +151,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: Rajasthani stickers, restored menus, labelled samples, anchors and India redirects.');
+console.log('Homepage checks passed: grand hero, open sections, labelled samples, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -298,7 +308,7 @@ assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert.match(ogImageUrl, /saathum-booking\/listing-aarti\.png/, 'Homepage share image uses the booking artwork');
+assert.match(ogImageUrl, /saathum-grand\/hero/, 'Homepage share image uses the grand hero artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 const ogImagePath = resolve(root, new URL(ogImageUrl).pathname.replace(/^\//, ''));
 assert(existsSync(ogImagePath), 'Homepage share image resolves: ' + ogImageUrl);

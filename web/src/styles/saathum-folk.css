@@ -1,611 +1,448 @@
-/* Saathum booking folk shell v3. The data-design scope protects shared chrome. */
-.folk-site[data-design="saathum-booking-v3"] {
-  --folk-paper: #fff8e8;
-  --folk-ink: #163f3c;
-  --folk-red: #c94637;
-  --folk-saffron: #f2a42b;
-  --folk-pink: #e98ca1;
-  --folk-teal: #247e78;
-  --folk-gold: #c69238;
-  --folk-white: #fff;
-  --folk-muted: #5a6e69;
-  --folk-line: #d9b668;
-  --folk-display: 'Comfortaa', system-ui, sans-serif;
-  --folk-body: 'Nunito', system-ui, sans-serif;
-  width: 100%;
-  overflow: clip;
-  background: var(--folk-paper);
-  color: var(--folk-ink);
-  font: 500 16px/1.55 var(--folk-body);
-  background-image: radial-gradient(#bd6a3020 .55px, transparent .55px);
-  background-size: 7px 7px;
+/* Saathum grand v4: open, editorial, generous and rooted in Indian folk colour. */
+.folk-site[data-design="saathum-grand-v4"] {
+  --grand-cream: #fff8e8;
+  --grand-paper: #f8edd9;
+  --grand-sage: #dfe7d0;
+  --grand-coral: #f3c2a4;
+  --grand-teal: #075f5b;
+  --grand-ink: #1f2925;
+  --grand-red: #c93627;
+  --grand-gold: #d59b3c;
+  color: var(--grand-ink);
+  background: var(--grand-cream);
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1.5;
+  overflow: hidden;
 }
-.folk-site[data-design="saathum-booking-v3"] *,
-.folk-site[data-design="saathum-booking-v3"] *::before,
-.folk-site[data-design="saathum-booking-v3"] *::after { box-sizing: border-box; }
-.folk-site[data-design="saathum-booking-v3"] h1,
-.folk-site[data-design="saathum-booking-v3"] h2,
-.folk-site[data-design="saathum-booking-v3"] h3 {
+.folk-site[data-design="saathum-grand-v4"] *,
+.folk-site[data-design="saathum-grand-v4"] *::before,
+.folk-site[data-design="saathum-grand-v4"] *::after { box-sizing: border-box; }
+.folk-site[data-design="saathum-grand-v4"] a { color: inherit; }
+.folk-site[data-design="saathum-grand-v4"] h1,
+.folk-site[data-design="saathum-grand-v4"] h2,
+.folk-site[data-design="saathum-grand-v4"] h3 {
+  font-family: 'Comfortaa', system-ui, sans-serif;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
   margin: 0;
-  color: var(--folk-ink);
-  font-family: var(--folk-display);
-  font-weight: 700;
-  letter-spacing: -.045em;
-  line-height: 1.1;
 }
-.folk-site[data-design="saathum-booking-v3"] h2 { font-size: clamp(29px, 3vw, 46px); }
-.folk-site[data-design="saathum-booking-v3"] h3 { font-size: 23px; }
-.folk-site[data-design="saathum-booking-v3"] p { margin: 0; }
-.folk-site[data-design="saathum-booking-v3"] a { color: inherit; text-decoration: none; }
-.folk-site[data-design="saathum-booking-v3"] em { color: var(--folk-red); font-style: normal; }
-.folk-site[data-design="saathum-booking-v3"] a:focus-visible,
-.folk-site[data-design="saathum-booking-v3"] button:focus-visible {
-  outline: 3px solid var(--folk-teal);
-  outline-offset: 4px;
-  border-radius: 5px;
+.folk-site[data-design="saathum-grand-v4"] h1 { font-size: clamp(3.2rem, 5.3vw, 5.1rem); }
+.folk-site[data-design="saathum-grand-v4"] h2 { font-size: clamp(2.7rem, 4.1vw, 4.3rem); }
+.folk-site[data-design="saathum-grand-v4"] h3 { font-size: clamp(1.35rem, 1.8vw, 2rem); }
+.folk-site[data-design="saathum-grand-v4"] p { margin: 0; }
+.folk-site[data-design="saathum-grand-v4"] em { color: var(--grand-red); font-style: normal; }
+.folk-site[data-design="saathum-grand-v4"] .folk-skip {
+  position: absolute; left: 1rem; top: 0.5rem; z-index: 100;
+  transform: translateY(-180%); background: var(--grand-cream); color: var(--grand-ink);
+  padding: .65rem 1rem; font-weight: 800;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-wrap {
-  width: min(1240px, calc(100% - 176px));
-  margin-inline: auto;
+.folk-site[data-design="saathum-grand-v4"] .folk-skip:focus { transform: translateY(0); }
+.folk-site[data-design="saathum-grand-v4"] .folk-ribbon {
+  min-height: 40px; background: var(--grand-teal);
+  border-bottom: 3px solid var(--grand-gold);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-skip {
-  position: fixed;
-  top: -100px;
-  left: 12px;
-  z-index: 1000;
-  padding: 10px 18px;
-  background: var(--folk-white);
+.folk-site[data-design="saathum-grand-v4"] .grand-eyebrow {
+  color: var(--grand-teal); font-size: .78rem; font-weight: 900;
+  letter-spacing: .16em; line-height: 1.25; text-transform: uppercase;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-skip:focus { top: 12px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-ribbon {
-  height: 44px;
-  overflow: hidden;
-  border-block: 2px solid var(--folk-red);
-  background: var(--folk-saffron) var(--folk-border-url) repeat-x center / auto 100px;
+.folk-site[data-design="saathum-grand-v4"] .grand-link {
+  display: inline-flex; align-items: center; gap: .45rem;
+  color: var(--grand-teal); font-size: 1rem; font-weight: 900;
+  text-decoration-thickness: 2px; text-underline-offset: 4px;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-eyebrow {
-  color: var(--folk-red);
-  font: 900 11px/1.5 var(--folk-body);
-  letter-spacing: .15em;
-  text-transform: uppercase;
+.folk-site[data-design="saathum-grand-v4"] .grand-link:hover,
+.folk-site[data-design="saathum-grand-v4"] .grand-link:focus-visible { color: var(--grand-red); }
+.folk-site[data-design="saathum-grand-v4"] .grand-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: .8rem;
+  min-height: 58px; padding: 1rem 1.55rem; border: 2px solid var(--grand-teal);
+  background: var(--grand-teal); color: #fff8e8; font-size: 1rem; font-weight: 900;
+  text-decoration: none; box-shadow: 5px 5px 0 var(--grand-gold);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero {
-  display: grid;
-  grid-template-columns: .92fr 1.12fr;
-  align-items: center;
-  min-height: 550px;
-  padding-block: 50px 36px;
+.folk-site[data-design="saathum-grand-v4"] .grand-button:hover,
+.folk-site[data-design="saathum-grand-v4"] .grand-button:focus-visible {
+  background: var(--grand-red); border-color: var(--grand-red);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero-copy {
-  position: relative;
-  z-index: 1;
-  padding-block: 22px;
+.folk-site[data-design="saathum-grand-v4"] .grand-hero {
+  display: grid; grid-template-columns: minmax(0, .86fr) minmax(480px, 1.14fr);
+  align-items: center; gap: clamp(2rem, 4vw, 6rem);
+  max-width: 1800px; min-height: 760px; margin: 0 auto; padding: 5.5rem clamp(2rem, 6vw, 8rem) 3.5rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero h1 {
-  margin: 20px -42px 22px 0;
-  font-size: clamp(43px, 4.9vw, 72px);
-  line-height: 1.02;
+.folk-site[data-design="saathum-grand-v4"] .grand-hero-copy { max-width: 680px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-hero-copy .grand-eyebrow { margin-bottom: 1.45rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-hero-copy h1 { max-width: 730px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-lead {
+  max-width: 610px; margin-top: 2rem; font-size: clamp(1.15rem, 1.55vw, 1.55rem); line-height: 1.45;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero .folk-eyebrow span {
-  margin-right: 7px;
-  color: var(--folk-saffron);
-  font-size: 17px;
+.folk-site[data-design="saathum-grand-v4"] .grand-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 1.4rem; margin-top: 2.4rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-lead {
-  max-width: 450px;
-  color: var(--folk-muted);
-  font-size: 18px;
-  line-height: 1.6;
+.folk-site[data-design="saathum-grand-v4"] .grand-quiet {
+  margin-top: 2.5rem; color: var(--grand-teal); font-size: .9rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 24px;
-  margin-top: 28px;
+.folk-site[data-design="saathum-grand-v4"] .grand-hero-art { align-self: stretch; display: grid; place-items: center; min-width: 0; }
+.folk-site[data-design="saathum-grand-v4"] .grand-hero-image {
+  display: block; width: min(100%, 760px); height: auto; max-height: 860px; object-fit: contain;
+  filter: drop-shadow(0 24px 20px #1f292529);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-button {
-  display: inline-flex;
-  min-height: 50px;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  border: 3px solid var(--folk-white);
-  border-radius: 12px;
-  background: var(--folk-red);
-  color: var(--folk-white);
-  box-shadow: 0 4px 0 #8f2f27;
-  font: 900 14px/1.4 var(--folk-body);
-  padding: 14px 20px;
-  transition: transform .18s ease, box-shadow .18s ease;
+.folk-site[data-design="saathum-grand-v4"] .grand-divider {
+  display: flex; align-items: center; justify-content: center; gap: 1.5rem;
+  max-width: 1500px; margin: 0 auto; padding: 1rem 2rem; color: var(--grand-red);
+  font-size: 1.5rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-button span { font-size: 23px; line-height: 1; }
-.folk-site[data-design="saathum-booking-v3"] .folk-button:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #8f2f27; }
-.folk-site[data-design="saathum-booking-v3"] .folk-text-link {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 2px solid currentColor;
-  padding-block: 3px;
-  font: 900 13px/1.7 var(--folk-body);
+.folk-site[data-design="saathum-grand-v4"] .grand-divider::before,
+.folk-site[data-design="saathum-grand-v4"] .grand-divider::after {
+  content: ''; height: 2px; flex: 1; background: var(--grand-gold);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-text-link:hover { color: var(--folk-red); }
-.folk-site[data-design="saathum-booking-v3"] .folk-handnote,
-.folk-site[data-design="saathum-booking-v3"] .folk-side-note,
-.folk-site[data-design="saathum-booking-v3"] .folk-art-note {
-  color: var(--folk-red);
-  font: italic 700 17px/1.4 var(--folk-display);
+.folk-site[data-design="saathum-grand-v4"] .grand-intro {
+  max-width: 950px; margin: 0 auto; padding: 6rem 2rem 7rem; text-align: center;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero-copy .folk-handnote { margin-top: 22px; transform: rotate(-3deg); }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero-art { position: relative; margin-right: -34px; padding: 22px 0 4px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-artwork { display: block; width: 100%; height: auto; object-fit: contain; filter: drop-shadow(0 8px 4px #6c2c1c25); }
-.folk-site[data-design="saathum-booking-v3"] .folk-seal {
-  position: absolute;
-  top: -4px;
-  right: 5%;
-  z-index: 1;
-  display: inline-block;
-  padding: 8px 16px;
-  border: 4px solid var(--folk-white);
-  border-radius: 50%;
-  background: var(--folk-pink);
-  box-shadow: 0 5px 0 #b8794936, 0 14px 28px #65261c20;
-  font: 900 9px/1.5 var(--folk-body);
-  letter-spacing: .1em;
-  text-align: center;
-  transform: rotate(8deg);
+.folk-site[data-design="saathum-grand-v4"] .grand-intro .grand-eyebrow { margin-bottom: 1.25rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-intro h2 { max-width: 900px; margin: 0 auto; }
+.folk-site[data-design="saathum-grand-v4"] .grand-intro p:last-child {
+  max-width: 760px; margin: 1.8rem auto 0; font-size: 1.22rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-seal span { display: block; color: var(--folk-saffron); font-size: 20px; line-height: 1.1; }
-.folk-site[data-design="saathum-booking-v3"] .folk-hero-art > .folk-art-note { display: block; margin-top: -9px; text-align: center; transform: rotate(-3deg); }
-.folk-site[data-design="saathum-booking-v3"] .folk-divider {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  width: calc(100% - 176px);
-  margin: 0 auto;
-  color: var(--folk-red);
+.folk-site[data-design="saathum-grand-v4"] .grand-experiences {
+  max-width: 1800px; margin: 0 auto; padding: 2rem clamp(2rem, 6vw, 8rem) 8rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-divider::before,
-.folk-site[data-design="saathum-booking-v3"] .folk-divider::after {
-  height: 27px;
-  flex: 1;
-  border-block: 2px solid var(--folk-line);
-  background: repeating-linear-gradient(90deg, transparent 0 20px, #e2b56f 21px 23px, transparent 24px 42px);
-  content: '';
-  opacity: .75;
+.folk-site[data-design="saathum-grand-v4"] .grand-section-heading {
+  display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 3.4rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-divider span:nth-child(2) { color: var(--folk-teal); font-size: 27px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-section-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 25px;
-  margin-bottom: 26px;
+.folk-site[data-design="saathum-grand-v4"] .grand-section-heading .grand-eyebrow { margin-bottom: 1rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-category-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(2rem, 3.8vw, 5rem) clamp(1.4rem, 2.5vw, 3.4rem);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-section-heading h2 { margin-top: 7px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-section-heading--categories { justify-content: center; text-align: center; margin-bottom: 22px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-side-note { color: var(--folk-teal); white-space: nowrap; transform: rotate(-4deg); }
-.folk-site[data-design="saathum-booking-v3"] .folk-experiences { padding-block: 44px 66px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 14px;
+.folk-site[data-design="saathum-grand-v4"] .grand-category {
+  display: block; min-width: 0; text-decoration: none;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-category {
-  display: block;
-  overflow: hidden;
-  border: 6px solid var(--folk-white);
-  border-radius: 10px;
-  background: var(--folk-white);
-  box-shadow: 0 5px 14px #74452b18;
-  transition: transform .18s ease, box-shadow .18s ease;
+.folk-site[data-design="saathum-grand-v4"] .grand-category img {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border: 7px solid #fff; box-shadow: 0 10px 0 var(--grand-gold);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 9px 18px #74452b24;
+.folk-site[data-design="saathum-grand-v4"] .grand-category-copy {
+  position: relative; padding: 1.55rem .35rem .4rem; padding-right: 3rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .booking-artwork {
-  display: block;
-  width: 100%;
-  height: auto;
+.folk-site[data-design="saathum-grand-v4"] .grand-category-copy h3 { color: var(--grand-teal); }
+.folk-site[data-design="saathum-grand-v4"] .grand-category-copy p { margin-top: .55rem; font-size: 1rem; line-height: 1.35; }
+.folk-site[data-design="saathum-grand-v4"] .grand-arrow {
+  position: absolute; right: .3rem; top: 1.65rem; color: var(--grand-red); font-size: 1.9rem; font-weight: 900;
 }
-.folk-site[data-design="saathum-booking-v3"] .booking-artwork--category {
-  aspect-ratio: 1;
-  object-fit: cover;
+.folk-site[data-design="saathum-grand-v4"] .grand-category:hover img,
+.folk-site[data-design="saathum-grand-v4"] .grand-category:focus-visible img { transform: translateY(-5px); }
+.folk-site[data-design="saathum-grand-v4"] .grand-category img { transition: transform 180ms ease; }
+.folk-site[data-design="saathum-grand-v4"] .grand-moments { background: var(--grand-paper); padding: 7rem 0 8rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-moments-inner { max-width: 1800px; margin: 0 auto; padding: 0 clamp(2rem, 6vw, 8rem); }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(2rem, 4vw, 5.5rem);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-category-copy {
-  position: relative;
-  min-height: 63px;
-  padding: 10px 28px 11px 10px;
-  background: #ffe0b0;
+.folk-site[data-design="saathum-grand-v4"] .grand-listing { min-width: 0; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-art { display: block; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-art img {
+  display: block; width: 100%; aspect-ratio: 1.5; object-fit: cover; border: 7px solid #fff;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(2) .folk-category-copy { background: #ffd0c3; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(3) .folk-category-copy { background: #b8e0d6; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(4) .folk-category-copy { background: #f4c3d1; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(5) .folk-category-copy { background: #f7cf83; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category:nth-child(6) .folk-category-copy { background: #ead7a7; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category h3 { font-size: 16px; line-height: 1.2; }
-.folk-site[data-design="saathum-booking-v3"] .folk-category p {
-  margin-top: 5px;
-  color: var(--folk-muted);
-  font-size: 11px;
-  line-height: 1.3;
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-copy { padding: 1.5rem .2rem 0; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-copy .grand-eyebrow { color: var(--grand-red); font-size: .72rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-copy h3 { margin-top: .7rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-copy h3 a { text-decoration: none; }
+.folk-site[data-design="saathum-grand-v4"] .grand-listing-copy > p:not(.grand-eyebrow) { margin: .8rem 0 1rem; font-size: 1.03rem; line-height: 1.45; }
+.folk-site[data-design="saathum-grand-v4"] .grand-editorial-note { margin-top: 4rem; color: var(--grand-teal); font-size: .95rem; font-style: italic; }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging { background: var(--grand-sage); }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-inner {
+  display: grid; grid-template-columns: minmax(360px, .95fr) minmax(0, 1fr); align-items: center;
+  max-width: 1800px; min-height: 650px; margin: 0 auto; padding: 5rem clamp(2rem, 8vw, 10rem);
+  gap: clamp(3rem, 8vw, 10rem);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-circle-arrow {
-  position: absolute;
-  right: 11px;
-  bottom: 15px;
-  color: var(--folk-red);
-  font-size: 19px;
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-art { display: grid; place-items: center; min-width: 0; }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-art img { display: block; width: min(100%, 540px); height: auto; }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy { max-width: 700px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy .grand-eyebrow { margin-bottom: 1.2rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy h2 { font-size: clamp(3rem, 4.4vw, 4.8rem); }
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy p:not(.grand-eyebrow) { margin: 1.7rem 0 1.8rem; font-size: 1.25rem; max-width: 560px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-joining {
+  max-width: 1800px; margin: 0 auto; padding: 7rem clamp(2rem, 8vw, 10rem) 8rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-moments {
-  padding-block: 52px 40px;
-  border-block: 1px solid #dfc58d;
-  background: #fff0d5;
+.folk-site[data-design="saathum-grand-v4"] .grand-joining-heading { max-width: 850px; margin-bottom: 4rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-joining-heading .grand-eyebrow { margin-bottom: 1rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(2rem, 7vw, 9rem);
+  list-style: none; margin: 0; padding: 0;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid li {
+  display: grid; grid-template-columns: auto 64px 1fr; align-items: start; gap: 1.1rem; min-width: 0;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment {
-  overflow: hidden;
-  border: 6px solid var(--folk-white);
-  border-radius: 10px;
-  background: var(--folk-white);
-  box-shadow: 0 5px 14px #74452b16;
+.folk-site[data-design="saathum-grand-v4"] .grand-step-number { color: var(--grand-red); font-family: 'Comfortaa'; font-size: 2.5rem; font-weight: 700; line-height: 1; }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid svg { width: 54px; height: 54px; color: var(--grand-teal); }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid h3 { color: var(--grand-teal); }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid p { margin: .7rem 0 1rem; font-size: 1rem; line-height: 1.4; }
+.folk-site[data-design="saathum-grand-v4"] .grand-culture {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); align-items: center; gap: clamp(3rem, 7vw, 9rem);
+  max-width: 1800px; margin: 0 auto; padding: 5rem clamp(2rem, 8vw, 10rem) 8rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-art {
-  display: block;
-  overflow: hidden;
-  background: #e7b070;
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-art { order: 2; display: grid; place-items: center; }
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-art img { display: block; width: min(100%, 590px); height: auto; }
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-copy { order: 1; max-width: 720px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-copy .grand-eyebrow { margin-bottom: 1rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-copy p:not(.grand-eyebrow) { margin: 1.5rem 0 1.8rem; font-size: 1.2rem; line-height: 1.5; }
+.folk-site[data-design="saathum-grand-v4"] .grand-organise {
+  display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) minmax(160px, 1fr); align-items: center;
+  min-height: 420px; padding: 3rem clamp(1.5rem, 5vw, 6rem); background: var(--grand-coral);
 }
-.folk-site[data-design="saathum-booking-v3"] .booking-artwork--listing {
-  width: 100%;
-  aspect-ratio: 3 / 2;
-  object-fit: cover;
+.folk-site[data-design="saathum-grand-v4"] .grand-elephant { min-width: 0; }
+.folk-site[data-design="saathum-grand-v4"] .grand-elephant img {
+  display: block; width: min(100%, 300px); height: auto; filter: drop-shadow(0 9px 7px #1f29252b);
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy { padding: 14px 16px 16px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy .folk-eyebrow { margin-bottom: 6px; font-size: 9px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy h3 { min-height: 0; font-size: 23px; line-height: 1.15; }
-.folk-site[data-design="saathum-booking-v3"] .folk-moment-copy > p:not(.folk-eyebrow) {
-  margin-block: 10px 16px;
-  color: var(--folk-muted);
-  font-size: 13px;
-  line-height: 1.55;
+.folk-site[data-design="saathum-grand-v4"] .grand-elephant--right { transform: scaleX(-1); justify-self: end; }
+.folk-site[data-design="saathum-grand-v4"] .grand-organise-copy { max-width: 760px; margin: 0 auto; text-align: center; }
+.folk-site[data-design="saathum-grand-v4"] .grand-organise-copy .grand-eyebrow { color: var(--grand-red); margin-bottom: 1rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-organise-copy p { max-width: 640px; margin: 1.2rem auto 1.8rem; font-size: 1.2rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-booking-note {
+  max-width: 1100px; margin: 0 auto; padding: 3rem 2rem 5rem; text-align: center; font-size: .95rem;
 }
-.folk-site[data-design="saathum-booking-v3"] .folk-editorial-note {
-  margin-top: 23px;
-  color: var(--folk-muted);
-  font-size: 11px;
-  text-align: center;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-belonging {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.3fr);
-  align-items: center;
-  gap: 25px;
-  margin-block: 34px;
-  padding: 21px 25px;
-  border: 1px solid #7ea78d;
-  border-radius: 20px;
-  background: #b9d4bd;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-belonging-art { position: relative; max-width: 270px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-belonging-art .folk-art-note { display: block; text-align: center; transform: rotate(-4deg); font-size: 13px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-belonging h2 { margin-block: 6px 9px; font-size: clamp(25px, 2.1vw, 29px); }
-.folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy > p:not(.folk-eyebrow) { max-width: 360px; margin-bottom: 7px; color: var(--folk-muted); font-size: 12px; line-height: 1.4; }
-.folk-site[data-design="saathum-booking-v3"] .folk-joining { min-width: 0; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 13px;
-  margin: 11px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid li { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-icon { width: 46px; height: 46px; margin: 0; flex: 0 0 auto; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-number { color: var(--folk-red); font: 900 8px/1.4 var(--folk-body); letter-spacing: .08em; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid h3 { margin-block: 2px 5px; font-size: 15px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid p { margin-bottom: 7px; color: var(--folk-muted); font-size: 11px; line-height: 1.4; }
-.folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-text-link { font-size: 10px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-culture {
-  display: grid;
-  grid-template-columns: .95fr 1fr;
-  align-items: center;
-  gap: 28px;
-  padding-block: 8px 22px;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-culture-copy { padding: 12px 0; }
-.folk-site[data-design="saathum-booking-v3"] .folk-culture h2 { max-width: 540px; margin-block: 7px 10px; font-size: clamp(25px, 2.2vw, 31px); }
-.folk-site[data-design="saathum-booking-v3"] .folk-culture-copy > p:not(.folk-eyebrow) { max-width: 540px; margin-bottom: 17px; color: var(--folk-muted); font-size: 14px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-culture-art { max-height: 170px; padding: 0; overflow: hidden; }
-.folk-site[data-design="saathum-booking-v3"] .folk-culture-art .folk-artwork { max-height: 170px; object-fit: contain; }
-.folk-site[data-design="saathum-booking-v3"] .folk-organise { padding-block: 5px 28px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-panel {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 24px;
-  align-items: center;
-  padding: 18px 25px;
-  border-block: 1px solid var(--folk-gold);
-  background: #f8e2b1;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-side {
-  display: grid;
-  width: 84px;
-  height: 84px;
-  place-items: center;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-side .folk-organise-elephant {
-  width: 126px;
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 5px 3px #6c2c1c28);
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-side--right .folk-organise-elephant { transform: scaleX(-1); }
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-copy {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  gap: 4px 16px;
-  min-width: 0;
-  align-items: center;
-  text-align: left;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-copy h2 {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-  font-size: clamp(24px, 2.4vw, 34px);
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-copy p:not(.folk-eyebrow) {
-  grid-column: 1;
-  grid-row: 2;
-  min-width: 0;
-  margin: 0;
-  color: var(--folk-muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-copy .folk-button {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  white-space: nowrap;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-organise-art { display: none; }
-.folk-site[data-design="saathum-booking-v3"] .folk-booking-note { max-width: 990px; padding: 6px 60px 28px; color: var(--folk-muted); font-size: 11px; line-height: 1.7; text-align: center; }
-.folk-site[data-design="saathum-booking-v3"] .folk-booking-note a { text-decoration: underline; text-underline-offset: 3px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-booking-note a { color: var(--grand-teal); font-weight: 900; }
 
-/* Shared header/footer overrides stay scoped to this page and beat folk-chrome.css. */
-.folk-site[data-design="saathum-booking-v3"] .avh.avh--folk {
-  --avh-cream: var(--folk-paper);
-  --avh-ink: var(--folk-ink);
-  --avh-red: var(--folk-red);
-  border-bottom: 2px solid var(--folk-gold);
-  background: var(--folk-paper);
+/* Legacy shell chrome is loaded after the page stylesheet, so scope every override. */
+.folk-site[data-design="saathum-grand-v4"] .avh {
+  background: var(--grand-cream); color: var(--grand-ink); font-family: 'Nunito', sans-serif;
 }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-bar { max-width: 1240px; padding: 12px 0; }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-logo-text,
-.folk-site[data-design="saathum-booking-v3"] .avh-drawer--folk .avh-drawer-brand-text {
-  color: var(--folk-ink);
-  font-family: var(--folk-display);
-  font-weight: 700;
+.folk-site[data-design="saathum-grand-v4"] .avh-nav a,
+.folk-site[data-design="saathum-grand-v4"] .avh-mobile a,
+.folk-site[data-design="saathum-grand-v4"] .avh-cta { font-size: 17px; color: var(--grand-ink); }
+.folk-site[data-design="saathum-grand-v4"] .avh-nav { gap: 27px; }
+.folk-site[data-design="saathum-grand-v4"] .avh-cta--solid { background: var(--grand-red); color: #fff8e8; }
+.folk-site[data-design="saathum-grand-v4"] .avh-burger { border-color: var(--grand-teal); color: var(--grand-teal); }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer {
+  background: var(--grand-teal); color: #fff8e8; border-top: 9px solid var(--grand-gold);
+  font-family: 'Nunito', sans-serif; font-size: 15px;
 }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-logo-text { font-size: 27px; }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-nav { gap: 19px; }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-nav a,
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-cta { font-size: 13px; font-weight: 900; }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-cta--solid {
-  border: 3px solid var(--folk-white);
-  border-radius: 12px;
-  background: var(--folk-red);
-  box-shadow: 0 3px 0 #8f2f27;
-  color: var(--folk-white);
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer .bf-main { max-width: 1840px; margin: 0 auto; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer .bf-brand { text-align: center; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer .bf-legal-links {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem 1rem; margin-top: 1.5rem; font-size: 14px;
 }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .avh-burger { border-color: var(--folk-red); border-radius: 12px; background: var(--folk-white); }
-.folk-site[data-design="saathum-booking-v3"] .avh--folk .folk-lotus-mark { display: block; width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 2px #6c2c1c22); }
-.folk-site[data-design="saathum-booking-v3"] .avh-drawer--folk { --avh-cream: var(--folk-paper); --avh-ink: var(--folk-ink); --avh-red: var(--folk-red); }
-
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer a { color: #fff8e8; }
+/* Tablet: keep the art generous while giving copy a stable column. */
 @media (max-width: 1100px) {
-  .folk-site[data-design="saathum-booking-v3"] .folk-wrap { width: calc(100% - 112px); }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero { min-height: 500px; padding-block: 38px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { font-size: 50px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-category-copy { min-height: 78px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging { gap: 35px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid { gap: 17px; }
-}
-@media (min-width: 761px) and (max-width: 1100px) {
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel {
-    grid-template-columns: 80px minmax(0, 1fr) 80px;
-    gap: 10px;
-    padding: 14px 12px;
+  .folk-site[data-design="saathum-grand-v4"] { font-size: 19px; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, .95fr); gap: 2rem; min-height: 650px;
+    padding-inline: 3rem;
   }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-side { width: 80px; height: 80px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-side .folk-organise-elephant { width: 80px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-copy h2 { font-size: 26px; }
+  .folk-site[data-design="saathum-grand-v4"] h1 { font-size: clamp(3rem, 7vw, 4.3rem); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-category-grid,
+  .folk-site[data-design="saathum-grand-v4"] .grand-listing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-inner,
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture { gap: 3rem; padding-inline: 4rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-step-grid { gap: 2rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-organise { grid-template-columns: 110px minmax(0, 1fr) 110px; }
 }
 @media (max-width: 760px) {
-  .folk-site[data-design="saathum-booking-v3"] .folk-wrap { width: calc(100% - 36px); }
-  .folk-site[data-design="saathum-booking-v3"] .folk-ribbon { height: 34px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero { grid-template-columns: 1fr; gap: 6px; padding-block: 26px 30px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero-copy { padding: 11px 5px 0; text-align: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { margin: 17px 0; font-size: clamp(40px, 10vw, 58px); }
-  .folk-site[data-design="saathum-booking-v3"] .folk-lead { margin-inline: auto; max-width: 450px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-actions { justify-content: center; gap: 17px; margin-top: 23px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero-art { width: 100%; max-width: 600px; margin: 18px auto 0; padding-top: 17px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-seal { top: -4px; right: 4%; border-width: 3px; padding: 6px 13px; font-size: 8px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-divider { width: calc(100% - 36px); }
-  .folk-site[data-design="saathum-booking-v3"] .folk-section-heading { display: block; margin-bottom: 23px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-section-heading .folk-text-link,
-  .folk-site[data-design="saathum-booking-v3"] .folk-side-note { display: inline-block; margin-top: 12px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-category-copy { min-height: 78px; padding: 11px 28px 14px 11px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-category h3 { font-size: 16px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-experiences { padding-block: 34px 49px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-moments { padding-block: 36px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-moment-grid { grid-template-columns: 1fr; gap: 19px; max-width: 470px; margin-inline: auto; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-moment-copy { padding: 16px 17px 18px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-moment-copy h3 { font-size: 26px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging { grid-template-columns: 1fr; gap: 18px; padding: 22px 17px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-art { max-width: 430px; margin-inline: auto; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy { text-align: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-belonging h2 { font-size: 34px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-joining { padding: 0; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; margin: 10px 0 0; gap: 7px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid li { gap: 5px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-step-grid .folk-icon { width: 42px; height: 42px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-culture { grid-template-columns: 1fr; gap: 6px; padding-block: 4px 33px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-culture-copy { text-align: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-culture-copy > p:not(.folk-eyebrow) { margin-inline: auto; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-culture-art { max-width: 510px; margin-inline: auto; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel { grid-template-columns: 1fr; gap: 8px; padding: 17px 17px 19px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel::before,
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel::after { display: none; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-panel > div:first-child { text-align: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-copy { grid-template-columns: 1fr; gap: 8px; text-align: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-copy .folk-button { grid-column: 1; grid-row: auto; justify-self: center; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise h2 { font-size: 31px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-art,
-  .folk-site[data-design="saathum-booking-v3"] .folk-organise-side { display: none; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-booking-note { padding: 4px 8px 25px; font-size: 10px; }
+  .folk-site[data-design="saathum-grand-v4"] { font-size: 18px; }
+  .folk-site[data-design="saathum-grand-v4"] h2 { font-size: clamp(2.35rem, 10vw, 3.4rem); }
+  .folk-site[data-design="saathum-grand-v4"] .folk-ribbon { min-height: 30px; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero {
+    display: flex; flex-direction: column; align-items: stretch; gap: 2rem; min-height: 0;
+    padding: 3.6rem 1.25rem 2.5rem;
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-copy { max-width: none; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-copy h1 { font-size: clamp(3rem, 13vw, 4.5rem); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-lead { margin-top: 1.35rem; font-size: 1.1rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-actions { align-items: flex-start; flex-direction: column; margin-top: 1.7rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-art { order: 2; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-image { width: 100%; max-height: none; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-intro,
+  .folk-site[data-design="saathum-grand-v4"] .grand-experiences,
+  .folk-site[data-design="saathum-grand-v4"] .grand-joining,
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture { padding-inline: 1.25rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-intro { padding-block: 4rem 4.8rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-section-heading { align-items: flex-start; flex-direction: column; margin-bottom: 2.2rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-category-grid,
+  .folk-site[data-design="saathum-grand-v4"] .grand-listing-grid { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-experiences { padding-bottom: 5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-moments { padding-block: 4.5rem 5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-moments-inner { padding-inline: 1.25rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-inner {
+    display: flex; flex-direction: column; align-items: stretch; min-height: 0; padding: 4rem 1.25rem 4.8rem; gap: 2rem;
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-art img { width: min(100%, 500px); margin: 0 auto; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy h2 { font-size: clamp(2.6rem, 11vw, 3.6rem); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-joining { padding-block: 4.5rem 5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-joining-heading { margin-bottom: 2.7rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-step-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-step-grid li { grid-template-columns: 50px 52px minmax(0, 1fr); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture { display: flex; flex-direction: column; gap: 2.5rem; padding-block: 4rem 5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture-art { order: 1; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture-copy { order: 2; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture-art img { width: min(100%, 540px); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-organise {
+    display: flex; flex-direction: column; gap: 1rem; min-height: 0; padding: 3rem 1.25rem 3.5rem;
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-organise-copy { order: 1; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-elephant { order: 2; width: 100%; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-elephant img { width: min(100%, 250px); margin: 0 auto; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-elephant--right { display: none; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-booking-note { padding-inline: 1.25rem; }
+  .folk-site[data-design="saathum-grand-v4"] .bazaar-footer .bf-col { max-width: none; margin-bottom: 1.4rem; }
 }
-@media (max-width: 380px) {
-  .folk-site[data-design="saathum-booking-v3"] .folk-hero h1 { font-size: 37px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-button { padding: 13px 17px; }
-  .folk-site[data-design="saathum-booking-v3"] .folk-actions { flex-direction: column; gap: 12px; }
+@media (max-width: 390px) {
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero { padding-inline: 1rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-copy h1 { font-size: 2.75rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-category-copy { padding-right: 2.5rem; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-step-number { font-size: 2rem; }
+}
+
+/* Grand overrides for the real shared footer markup and spacious steps. */
+.folk-site[data-design="saathum-grand-v4"] .folk-ribbon {
+  background-color: var(--grand-teal);
+  background-image: var(--folk-border-url);
+  background-repeat: repeat-x;
+  background-position: center;
+  background-size: auto 100px;
+}
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid li {
+  display: block;
+  min-width: 0;
+}
+.folk-site[data-design="saathum-grand-v4"] .grand-step-number,
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid svg {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: .8rem;
+}
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid svg { width: 58px; height: 58px; }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid li > div { margin-top: 1.1rem; }
+.folk-site[data-design="saathum-grand-v4"] .grand-step-grid p,
+.folk-site[data-design="saathum-grand-v4"] .grand-culture-copy p:not(.grand-eyebrow),
+.folk-site[data-design="saathum-grand-v4"] .grand-belonging-copy p:not(.grand-eyebrow),
+.folk-site[data-design="saathum-grand-v4"] .grand-organise-copy p { font-size: 1.2rem; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk {
+  background: var(--grand-teal); color: var(--grand-cream);
+  border-top: 9px solid var(--grand-gold); padding-top: 0;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk::after {
+  content: ''; display: block; height: 45px; margin-top: 1.5rem;
+  background-image: var(--folk-border-url); background-repeat: repeat-x; background-position: center; background-size: auto 100px;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-main {
+  display: block; max-width: 1840px; padding: 4.5rem clamp(1.25rem, 3.2vw, 4rem) 2.2rem;
+  text-align: center;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-brand {
+  margin: 0 auto 2.2rem; max-width: 720px;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-logo {
+  justify-content: center; margin-bottom: .8rem;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-logo-text,
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-tag,
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-col-title {
+  color: var(--grand-cream);
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-tag { font-size: 1rem; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-col {
+  display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: baseline;
+  gap: .35rem 1.3rem; min-width: 0; max-width: none; margin: 0 auto 1.8rem;
+  text-align: center;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-col-title {
+  flex: 0 0 100%; width: 100%; margin: 0 0 .25rem;
+  font-family: 'Comfortaa', sans-serif; font-size: 1.05rem; line-height: 1.2;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-col a {
+  color: var(--grand-cream); font-size: 1rem; line-height: 1.5; text-decoration-thickness: 1px;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal-links {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .85rem;
+  max-width: 1250px; margin: 2.5rem auto 0; color: var(--grand-cream);
+  font-size: .9rem; line-height: 1.5; text-align: center;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a {
+  color: var(--grand-cream); font-size: .9rem;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal-links-sep { display: none; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal {
+  border-top: 1px solid #fff8e84d; padding: 1.2rem 1.25rem 0;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem 2rem;
+  color: var(--grand-cream); font-size: .9rem; text-align: center;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-rule { display: none; }
+@media (max-width: 760px) {
+  .folk-site[data-design="saathum-grand-v4"] .grand-step-grid li > div { margin-top: .9rem; }
+  .folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-main { padding-top: 3rem; }
+}
+/* Marketplace-scale gutters: preserve a large open composition on 1920–2560 screens. */
+@media (min-width: 1101px) {
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero,
+  .folk-site[data-design="saathum-grand-v4"] .grand-experiences,
+  .folk-site[data-design="saathum-grand-v4"] .grand-moments-inner,
+  .folk-site[data-design="saathum-grand-v4"] .grand-joining,
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture,
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-inner {
+    max-width: 1840px;
+    padding-left: clamp(2.5rem, 3.2vw, 4rem);
+    padding-right: clamp(2.5rem, 3.2vw, 4rem);
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero {
+    grid-template-columns: minmax(0, .82fr) minmax(620px, 1.18fr);
+    gap: clamp(3rem, 4vw, 6rem);
+    min-height: 820px;
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-image { width: min(100%, 900px); max-height: 980px; }
+  .folk-site[data-design="saathum-grand-v4"] .grand-belonging-art img { width: min(100%, 720px); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-culture-art img { width: min(100%, 680px); }
+  .folk-site[data-design="saathum-grand-v4"] .grand-elephant img { width: min(100%, 340px); }
+}
+
+/* Explicit folk shell specificity keeps the shared chrome readable after legacy styles. */
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk,
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-bar {
+  background: var(--grand-cream); color: var(--grand-ink);
+}
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-nav a,
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-cta,
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-logo-text {
+  color: var(--grand-ink); font-size: 17px;
+}
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-cta--solid {
+  background: var(--grand-red); color: var(--grand-cream);
+}
+/* Final grand-v4 resets for legacy folk chrome. */
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-bar {
+  width: 100%; max-width: 1840px; margin: 0 auto; padding: 18px clamp(2rem, 3.2vw, 4rem);
+}
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-logo-text {
+  font-family: 'Comfortaa', system-ui, sans-serif; font-size: 32px; font-weight: 700;
+}
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-logo img { width: 54px; height: 54px; }
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-nav { gap: 22px; }
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-nav a,
+.folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-cta { font-size: 16px; }
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-col,
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal-links,
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-legal {
+  background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0;
+}
+.folk-site[data-design="saathum-grand-v4"] .bazaar-footer.bazaar-footer--folk .bf-logo-text {
+  font-family: 'Comfortaa', system-ui, sans-serif; font-size: 32px; font-weight: 700;
+}
+.folk-site[data-design="saathum-grand-v4"] .folk-artwork { filter: drop-shadow(0 18px 14px #1f292538); }
+@media (min-width: 1101px) and (max-width: 1300px) {
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-bar { padding-inline: 2rem; gap: 16px; }
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-nav { gap: 14px; }
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-nav a,
+  .folk-site[data-design="saathum-grand-v4"] .avh.avh--folk .avh-cta { font-size: 16px; }
+}
+@media (min-width: 1101px) and (max-width: 1500px) {
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  }
+  .folk-site[data-design="saathum-grand-v4"] .grand-hero-image { width: min(100%, 720px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .folk-site[data-design="saathum-booking-v3"] *,
-  .folk-site[data-design="saathum-booking-v3"] *::before,
-  .folk-site[data-design="saathum-booking-v3"] *::after {
-    transition: none !important;
-    scroll-behavior: auto !important;
+  .folk-site[data-design="saathum-grand-v4"] *,
+  .folk-site[data-design="saathum-grand-v4"] *::before,
+  .folk-site[data-design="saathum-grand-v4"] *::after {
+    scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important;
   }
-}/* Footer lives in SiteFooter.astro; these page-scoped rules override legacy folk-chrome. */
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk {
-  position: relative;
-  padding: 38px 24px 0;
-  border-top: 2px solid #c94637;
-  background: #fff8e8;
-  color: #163f3c;
-  font-family: 'Nunito', system-ui, sans-serif;
 }
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk::after {
-  display: block;
-  height: 44px;
-  margin: 0 -24px;
-  border-top: 2px solid #c94637;
-  background: var(--folk-border-url) repeat-x center / auto 100px;
-  content: '';
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-main {
-  max-width: 1080px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  align-items: start;
-  padding: 18px 0 26px;
-  text-align: center;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-brand {
-  grid-column: 1 / -1;
-  padding: 0;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-logo {
-  justify-content: center;
-  margin-bottom: 8px;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-logo-text {
-  color: #163f3c;
-  font-family: 'Comfortaa', system-ui, sans-serif;
-  font-size: 29px;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-tag {
-  max-width: none;
-  color: #5a6e69;
-  font-size: 13px;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0 16px;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col-title {
-  flex: 0 0 100%;
-  margin-bottom: 3px;
-  color: #c94637;
-  font-family: 'Comfortaa', system-ui, sans-serif;
-  font-size: 16px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col a {
-  padding: 2px 0;
-  color: #163f3c;
-  font-size: 13px;
-  line-height: 1.35;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-col a:hover,
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a:hover {
-  color: #c94637;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links {
-  max-width: 1080px;
-  display: flex;
-  justify-content: center;
-  gap: 5px 14px;
-  padding: 17px 0;
-  border: 0;
-  background: transparent;
-  color: #5a6e69;
-  font-size: 11px;
-  letter-spacing: 0;
-  text-transform: none;
-  text-align: center;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links-sep { display: none; }
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links a { color: #163f3c; }
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal {
-  border-top: 1px solid #d9b668;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner {
-  max-width: 1080px;
-  justify-content: center;
-  gap: 8px 18px;
-  padding: 20px 0;
-  color: #163f3c;
-  font-size: 11px;
-  letter-spacing: .03em;
-  text-align: center;
-}
-.folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-rule { border-top-color: #c94637; }
-@media (max-width: 760px) {
-  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk { padding: 27px 18px 0; }
-  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-main { grid-template-columns: 1fr; gap: 10px; padding-top: 10px; }
-  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { gap: 6px 12px; padding-inline: 0; }
-  .folk-site[data-design="saathum-booking-v3"] .bazaar-footer.bazaar-footer--folk .bf-legal-inner { line-height: 1.6; }
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::before,
-.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::after {
-  color: var(--folk-saffron);
-  font-size: .55em;
-  vertical-align: .25em;
-}
-.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::before { content: '✽'; margin-right: 12px; }
-.folk-site[data-design="saathum-booking-v3"] .folk-experiences .folk-section-heading h2::after { content: '✽'; margin-left: 12px; }

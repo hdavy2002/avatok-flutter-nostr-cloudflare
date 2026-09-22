@@ -1,0 +1,19 @@
+---
+import { publicImage, publicImageSrcSet } from '../lib/config';
+interface Props { alt: string; sizes?: string; eager?: boolean; }
+const { alt, sizes = '(max-width: 760px) 96vw, 55vw', eager = false } = Astro.props;
+const source = '/assets/saathum-grand/hero.png';
+---
+<img
+  class="grand-hero-image"
+  data-grand-artwork="hero"
+  src={publicImage(source, { width: 1280, fit: 'scale-down' })}
+  srcset={publicImageSrcSet(source, [640, 900, 1214, 1280], { fit: 'scale-down' })}
+  sizes={sizes}
+  alt={alt}
+  width="1214"
+  height="1295"
+  loading={eager ? 'eager' : 'lazy'}
+  fetchpriority={eager ? 'high' : undefined}
+  decoding="async"
+/>
