@@ -105,6 +105,7 @@
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: 64px; height: 64px; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { color: var(--grand-teal); font: 700 42px/1.2 'Comfortaa', sans-serif; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-tag { color: var(--grand-ink); font-size: 15px; line-height: 1.5; max-width: 30ch; margin: auto; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; max-width: 1120px; margin: 30px auto 8px; text-align: center; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col { display: flex; flex-direction: column; align-items: center; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; grid-column: auto; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { color: var(--grand-teal); font: 800 17px/1.4 'Nunito', sans-serif; margin-bottom: 9px; letter-spacing: 0; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col a { color: var(--grand-ink); font-size: 15px; font-weight: 600; line-height: 1.35; padding: 3px 0; }
@@ -167,6 +168,7 @@
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-main { padding-block: 28px 14px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: 52px; height: 52px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { font-size: 34px; }
+  .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { grid-template-columns: 1fr; gap: 26px; margin-top: 24px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { font-size: 16px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col a { font-size: 15px; padding-block: 5px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-legal-links { gap: 7px 15px; }

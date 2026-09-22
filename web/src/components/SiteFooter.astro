@@ -146,12 +146,17 @@ const chromeKey = (value: string) => ({
       {!folk && <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>}
     </div>
 
-    {/* Keep the homepage's complete marketplace destinations available to
-        assistive technology and the footer contract without restoring the
-        tall three-column visual menu. */}
-    {folk && <nav class="grand-visually-hidden" aria-label="Marketplace destinations">
-      {HOME_FOOTER_COLUMNS.flatMap((col) => col.links).map((link) => <a href={link.href}>{link.label}</a>)}
-    </nav>}
+    {/* The homepage keeps its original Bazaar / Creators / Company menus
+        visible: each group stacks its links vertically, while the policy
+        links below remain a compact horizontal strip. */}
+    {folk && <div class="bf-folk-columns">
+      {HOME_FOOTER_COLUMNS.map((col) => (
+        <nav class="bf-col" aria-label={col.title}>
+          <h2 class="bf-col-title">{col.title}</h2>
+          {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
+        </nav>
+      ))}
+    </div>}
 
     {/* [SHV2-S8] Column titles/links are only localised for the untouched
         'global' variant — see the chromeKey note above. */}
