@@ -134,10 +134,15 @@ const faqs = [
   title="Become a spiritual event organiser | Saathum"
   description="Partner with a spiritual teacher, priest, temple or yoga instructor to organise a live spiritual event on Saathum — from planning it to going live."
   keywords="Saathum organiser, host a live puja, host a satsang, spiritual event organiser, live streaming for temples, devotional live events India"
+  image={publicImage(HERO_ART, { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
+  imageAlt="A hawan fire ceremony."
+  imageWidth={1280}
+  imageHeight={960}
   chrome={false}
   indiaLandingLanguage={false}
 >
   <Fragment slot="head">
+    <meta property="og:image:type" content="image/jpeg" />
     <link rel="preload" as="image" href={publicImage(HERO_ART, { width: 300, fit: 'scale-down' })} imagesrcset={heroArtSrcSet} />
   </Fragment>
   <a class="rail-skip" href="#main-content">Skip to main content</a>
