@@ -17,9 +17,17 @@ const server = createServer(async (request, response) => {
     pathname = pathname.replace(/^\/cdn-cgi\/image\/[^/]+\//, '/');
     if (pathname.endsWith('/')) pathname += 'index.html';
     const file = resolve(root, '.' + pathname);
-    if (!file.startsWith(root + sep)) return response.writeHead(403).end();
-    response.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }).end(await readFile(file));
-  } catch { response.writeHead(404).end(); }
+    if (!file.startsWith(root + sep)) {
+      if (!response.headersSent && !response.writableEnded) response.writeHead(403).end();
+      return;
+    }
+    const body = await readFile(file);
+    if (!response.headersSent && !response.writableEnded) {
+      response.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }).end(body);
+    }
+  } catch {
+    if (!response.headersSent && !response.writableEnded) response.writeHead(404).end();
+  }
 });
 await new Promise(done => server.listen(4179, '127.0.0.1', done));
 const browser = await chromium.launch();
