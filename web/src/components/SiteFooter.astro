@@ -1,5 +1,4 @@
 ---
-import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
 import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
@@ -108,7 +107,7 @@ const globalColumns = [
   { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/payouts', label: 'Payouts' }, { href: '/community-guidelines', label: 'Safety' }] },
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
-const footerColumns = variant === 'global' ? globalColumns : folk ? HOME_FOOTER_COLUMNS : columns;
+const footerColumns = variant === 'global' ? globalColumns : columns;
 // [SHV2-S8 2026-09-21] Bazaar/Live streaming/1:1 consultations/Explore
 // marketplace entries removed — dead since `columns` no longer carries those
 // labels (see above). Everything else here is still used by `globalColumns`
@@ -148,7 +147,7 @@ const chromeKey = (value: string) => ({
 
     {/* [SHV2-S8] Column titles/links are only localised for the untouched
         'global' variant — see the chromeKey note above. */}
-    {footerColumns.map((col) => (
+    {!folk && footerColumns.map((col) => (
       <nav class="bf-col" aria-label={col.title} data-india-i18n-attr={variant === 'global' && indiaLandingLanguage ? `aria-label:${chromeKey(col.title)}` : undefined}>
         <h2 class="bf-col-title" data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeKey(col.title) : undefined}>{col.title}</h2>
         {col.links.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>)}
