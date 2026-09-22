@@ -88,7 +88,7 @@
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-bar { max-width: 1840px; padding: 12px var(--grand-gutter); margin: auto; gap: 20px; }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo-text { font-family: 'Comfortaa', sans-serif; font-size: 32px; font-weight: 700; color: var(--grand-teal); }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo img { width: 46px; height: 46px; }
-.folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-nav { gap: 20px; }
+.folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-nav { flex: 1; justify-content: center; gap: 20px; }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-nav a, .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-cta { font-size: 16px; color: var(--grand-ink); }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-cta--solid { background: var(--grand-red); color: #fff; border: 0; border-radius: 4px; box-shadow: none; padding: 12px 16px; }
 .folk-site[data-design="saathum-reference-v5"] .avh-drawer.avh-drawer--folk { --avh-cream: var(--grand-cream); --avh-ink: var(--grand-teal); --avh-red: var(--grand-red); background: var(--grand-cream); color: var(--grand-teal); font-family: 'Nunito', sans-serif; }
