@@ -235,7 +235,7 @@ function Inner() {
     <form className="auth-form" onSubmit={onSubmitEmail} noValidate>
       <div className="auth-desktop-head">
         <p className="auth-eyebrow"><UiText id="web-auth.6621249514b7887c" source="Welcome back" /></p>
-        <h1 className="auth-h2"><UiText id="web-auth.c3854d65cd242a9e" source="Good to" /><br /><UiText id="web-auth.10c91675b679b066" source="see you" /></h1>
+        <h1 className="auth-h2"><UiText id="web-auth.c3854d65cd242a9e" source="Good to" /> <UiText id="web-auth.10c91675b679b066" source="see you" /></h1>
       </div>
 
       {(formError || stalled) && (

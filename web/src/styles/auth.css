@@ -387,8 +387,8 @@
   .auth-wordmark .wm-ava { font-size: 34px; }
   .auth-wordmark .wm-tok { font-size: 33px; }
   .auth-desktop-head { display: flex; flex-direction: column; gap: 8px; }
-  .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; }
-  .auth-h2 { font-family: var(--f-display); font-weight: 600; font-size: 52px; line-height: 1.02; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; }
+  .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; text-align: center; }
+  .auth-h2 { font-family: var(--f-display); font-weight: 600; font-size: 40px; line-height: 1.02; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; white-space: nowrap; text-align: center; }
   .auth-form { padding: 0; gap: 18px; }
   .auth-foot { align-items: flex-start; text-align: left; padding: 0; margin-top: 18px; }
 
@@ -412,7 +412,7 @@
 
 /* Sign-up desktop heading is a touch smaller (README §5), and the column is
    wider than log in's so CREATE MY ACCOUNT sits on one line. */
-@media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 46px; } .auth-main--signup .auth-card { max-width: 560px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
+@media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 40px; } .auth-main--signup .auth-card { max-width: 560px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
 
 @media (prefers-reduced-motion: reduce) { .auth-btn { transition: none; } }
 
