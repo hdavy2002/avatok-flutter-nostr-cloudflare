@@ -53,6 +53,12 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Pinned per tool/avatok-freeze/README.md: the frozen snapshot must
+          # build from main @ 76003bb2 (2026-09-20, before any other
+          # Saathum-rename lane's changes landed), never from whatever ref
+          # triggered this dispatch. Do not remove this pin.
+          ref: 76003bb2b8fe8a574a4bc17bc17dbf4ff7d310bf
 
       - name: Setup Node
         uses: actions/setup-node@v4
