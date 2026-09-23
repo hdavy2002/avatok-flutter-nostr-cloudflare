@@ -54,11 +54,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Pinned per tool/avatok-freeze/README.md: the frozen snapshot must
-          # build from main @ 76003bb2 (2026-09-20, before any other
-          # Saathum-rename lane's changes landed), never from whatever ref
-          # triggered this dispatch. Do not remove this pin.
-          ref: 76003bb2b8fe8a574a4bc17bc17dbf4ff7d310bf
+          fetch-depth: 0
+
+      - name: Restore web/ to its pre-rename state (76003bb2)
+        run: |
+          # Per tool/avatok-freeze/README.md: the frozen snapshot must build
+          # from web/ as it stood on main @ 76003bb2 (2026-09-20, before any
+          # other Saathum-rename lane's changes landed) — NOT from whatever
+          # ref triggered this dispatch. That commit predates the freeze
+          # tooling itself (tool/avatok-freeze/*, added later by b724a26c),
+          # so we cannot check out the whole repo at that SHA — only web/ is
+          # overlaid from it; the freeze scripts stay at their current
+          # version. Do not remove this pin.
+          git checkout 76003bb2b8fe8a574a4bc17bc17dbf4ff7d310bf -- web
 
       - name: Setup Node
         uses: actions/setup-node@v4
