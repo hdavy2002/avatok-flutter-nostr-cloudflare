@@ -361,7 +361,7 @@
     min-height: 100dvh;
   }
   /* The card chrome dissolves — the right column IS the surface. */
-  .auth-card { width: 100%; max-width: 460px; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+  .auth-card { width: 100%; max-width: 560px; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
 
   .auth-panel {
     display: flex;
@@ -410,8 +410,9 @@
 /* Below 1280 the decorative panel is hidden outright, never shrunk. */
 @media (max-width: 1279px) { .auth-panel { display: none; } }
 
-/* Sign-up desktop heading is a touch smaller (README §5). */
-@media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 46px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
+/* Sign-up desktop heading is a touch smaller (README §5), and the column is
+   wider than log in's so CREATE MY ACCOUNT sits on one line. */
+@media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 46px; } .auth-main--signup .auth-card { max-width: 560px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
 
 @media (prefers-reduced-motion: reduce) { .auth-btn { transition: none; } }
 
