@@ -38,7 +38,7 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-section-heading h2 span { color: var(--grand-red); font-size: .8em; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences .grand-section-heading { justify-content: center; text-align: center; color: #fffaf0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences h2 { color: #fffaf0; }
-.folk-site[data-design="saathum-reference-v5"] .grand-experiences h2 span { color: var(--grand-gold); }
+.folk-site[data-design="saathum-reference-v5"] .grand-experiences h2 span { color: #F6B93B; }
 .folk-site[data-design="saathum-reference-v5"] .grand-moments h2 { color: #fffaf0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences h2 span { margin-inline: 12px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-category-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
