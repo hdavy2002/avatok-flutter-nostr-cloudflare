@@ -11,7 +11,6 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import IndiaLanguageSelector from '../components/IndiaLanguageSelector.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost, publicImage } from '../lib/config';
@@ -52,7 +51,7 @@ const clerkHost = clerkFapiHost();
            shrunk, below that (README §Responsive). -->
       <aside class="auth-panel auth-panel--marigold" aria-hidden="true">
         <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
-        <img src={publicImage('/auth/horn-ok-please.png', { width: 996, fit: 'scale-down' })} alt="" width="996" height="354" />
+        <img src={publicImage('/assets/saathum-bright/ganesh.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
         <p class="auth-aside"><ui-copy style="display:contents" data-i18n="web-auth.147f03f49b15afba">Time for chai?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-auth.eef3540404312d17">That's sorted too.</ui-copy></p>
         <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
       </aside>
@@ -64,12 +63,7 @@ const clerkHost = clerkFapiHost();
              which would take the ornaments with it. -->
         <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
         <div class="auth-card">
-          <div class="auth-language"><IndiaLanguageSelector id="auth-language" /></div>
           <header class="auth-head">
-            <a data-india-i18n-attr="aria-label:web-auth.394186beed5b531d" class="auth-wordmark" href="/" aria-label="Saathum home">
-              <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
-            </a>
-            <img src={publicImage('/auth/horn-ok-please.png', { width: 996, fit: 'scale-down' })} alt="" width="996" height="354" fetchpriority="high" />
             <p class="auth-hindi" lang="hi">We've been waiting for you</p>
           </header>
           <LoginIsland client:load />
