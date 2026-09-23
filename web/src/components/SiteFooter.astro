@@ -1,6 +1,8 @@
 ---
 import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
+// [SAATHUM-CHROME-1] Landing-page footer rules, carried by the footer itself.
+import '../styles/saathum-folk.css';
 import { publicImage } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
@@ -33,7 +35,10 @@ import TruckBorder from './TruckBorder.astro';
 import GlobalFooter from './GlobalFooter.astro';
 
 export interface Props { folk?: boolean; variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
-const { folk = false, variant = 'india', indiaLandingLanguage = true } = Astro.props;
+// [SAATHUM-CHROME-1 2026-09-23] OWNER DECISION: the landing-page footer is the
+// ONE standard footer site-wide — folk defaults ON. The truck-art footer (chai/
+// auto/tassels strips, Horn OK Please) is retired for the india variant.
+const { folk = true, variant = 'india', indiaLandingLanguage = true } = Astro.props;
 
 const year = new Date().getFullYear();
 
@@ -126,7 +131,7 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style="display:contents"><footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
   {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
@@ -202,7 +207,7 @@ const chromeKey = (value: string) => ({
   <div class="bf-rule"></div>
   {!folk && <TruckBorder kind="auto" count={40} />}
   {!folk && <TruckBorder kind="tassels" count={44} />}
-</footer>}
+</footer></div>}
 
 <script>
   // [WEB-POSTHOG-1] Footer link clicks -> nav_click{item, location:'footer'}.

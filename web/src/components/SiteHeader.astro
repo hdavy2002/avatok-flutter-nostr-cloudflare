@@ -1,6 +1,9 @@
 ---
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
+// [SAATHUM-CHROME-1] The landing page's header/footer rules live here; imported
+// by the chrome itself so every page that renders the header gets them.
+import '../styles/saathum-folk.css';
 import { publicImage } from '../lib/config';
 /*
  * SiteHeader — the standard Saathum header, site-wide.
@@ -88,8 +91,20 @@ const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/help', label: 'Help' },
 ];
 
+// [SAATHUM-CHROME-1 2026-09-23] OWNER DECISION: the landing-page header is the
+// ONE standard header, site-wide. The old truck-art header (jhalar band, flower
+// ornament, "Log in / Sign up") is retired for the india variant — folk,
+// referenceHome and responsiveHome now default ON, and the menu defaults to the
+// landing page's menu. Do not re-introduce a second india header style.
+const LANDING_LINKS: HeaderLink[] = [
+  { href: '/marketplace', label: 'Explore events' },
+  { href: '/#experiences', label: 'Experiences' },
+  { href: '/#joining', label: 'How it works' },
+];
+void HOME_HEADER_LINKS; void DEFAULT_LINKS;
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { referenceHome = false, folk = false, links = folk ? HOME_HEADER_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
+const { folk = true, referenceHome = folk, links = folk ? LANDING_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = folk, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
+const folkBorder = `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -140,6 +155,13 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   })();
 </script>
 
+{/* [SAATHUM-CHROME-1] display:contents wrapper: carries the landing page's
+    .folk-site[data-design="saathum-reference-v5"] scope (fonts, colours,
+    --grand-* tokens) onto the header on EVERY page without creating a box,
+    so position:sticky still pins to the viewport. The marigold ribbon that
+    used to be hand-placed on index/organisers now lives here. */}
+<div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style={folk ? `display:contents;${folkBorder}` : 'display:contents'}>
+{folk && <div class="folk-ribbon" aria-hidden="true"></div>}
 <header class:list={['avh', folk && 'avh--folk', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   {!folk && <TruckBorder kind="jhalar" count={60} class="avh-band" />}
   <div class="avh-bar">
@@ -222,6 +244,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   {variant === 'global' && <a data-i18n="web-common.a9744a11b7d55a26" class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
 </dialog>
+</div>
 
 
 

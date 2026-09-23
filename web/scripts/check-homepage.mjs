@@ -229,7 +229,8 @@ const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
+// [SAATHUM-CHROME-1] The landing-page (folk) footer is now the site standard.
+assert.match(ideas, /class="bazaar-footer bazaar-footer--folk"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
 assert.match(ideas, /data-topic="daily"/, 'Daily-life ideas included');
@@ -247,7 +248,7 @@ for (const href of new Set(guideLinks)) {
  assert.equal((article.match(/<h1[ >]/g)||[]).length,1,'One article heading: '+href);
  assert.match(article,/data-creator-guide="idea-\d+"/,'Article identity');
  assert.match(article,/avh--sticky/,'Shared article header');
- assert.match(article,/class="bazaar-footer"/,'Shared article footer');
+ assert.match(article,/class="bazaar-footer bazaar-footer--folk"/,'Shared article footer');
  for (const section of ['offer','plan','equipment','return','earnings','start']) assert(article.includes('id="'+section+'"'),'Missing '+section+' in '+href);
  const hero = article.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/);
  assert(hero,'Article hero: '+href);
