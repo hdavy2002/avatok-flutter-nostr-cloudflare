@@ -71,6 +71,52 @@ export function stripDeadAnchors(html) {
   return { html: out, count };
 }
 
+// [AVATOK-FREEZE-CHROME] Owner request 2026-09-24. The footer's legal line
+// ("© 2026 AVATOK · MADE WITH ♥ AND CUTTING CHAI") is re-written at runtime
+// by the i18n script from shared/i18n catalogs, which come from current main
+// and therefore say "SAATHUM ·". Replace the whole line with plain
+// "MADE WITH ♥" and no data-i18n / data-india-i18n hooks, so no script can
+// swap Saathum wording back in.
+const MADE_WITH = 'MADE WITH ♥';
+export function simplifyFooterLegal(html) {
+  let count = 0;
+  // Copyright + brand + made-with, wrapped in one span.
+  html = html.replace(
+    /<span([^>]*)>\s*©\s*2026\s*<ui-copy\b[^>]*>[\s\S]*?<\/ui-copy>\s*<span[^>]*data-india-i18n="chrome\.madeWith"[^>]*>[\s\S]*?<\/span>\s*<\/span>/g,
+    (_m, attrs) => {
+      count++;
+      return `<span${attrs}>${MADE_WITH}</span>`;
+    },
+  );
+  // Any stand-alone made-with span left over (other footers).
+  html = html.replace(/<span[^>]*data-india-i18n="chrome\.madeWith"([^>]*)>[\s\S]*?<\/span>/g, () => {
+    count++;
+    return `<span>${MADE_WITH}</span>`;
+  });
+  return { html, count };
+}
+
+// [AVATOK-FREEZE-CHROME] The live site shows only the auth links that fit the
+// visitor's sign-in state; the frozen build turns all four into inert spans,
+// so they all show at once. Collapse any run of inert auth spans into a single
+// inert "Sign in" (owner decision: text only, no link — the frozen site has
+// no sign-in page).
+const AUTH_LABELS = new Set(['log in', 'sign in', 'sign up', 'dashboard', 'sign out']);
+export function collapseAuthLinks(html) {
+  let count = 0;
+  const spanRe = '<span class="frozen-disabled-link">((?:(?!<\\/span>)[\\s\\S])*)<\\/span>';
+  const runRe = new RegExp(`(?:${spanRe}\\s*){2,}`, 'g');
+  html = html.replace(runRe, (run) => {
+    const labels = [...run.matchAll(new RegExp(spanRe, 'g'))].map((m) =>
+      m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().toLowerCase(),
+    );
+    if (!labels.every((l) => AUTH_LABELS.has(l))) return run;
+    count++;
+    return '<span class="frozen-disabled-link">Sign in</span>';
+  });
+  return { html, count };
+}
+
 export function ensureNoindex(html) {
   if (/<meta\s+name="robots"[^>]*noindex/i.test(html)) return { html, changed: false };
   if (/<meta\s+name="robots"[^>]*>/i.test(html)) {
@@ -107,11 +153,19 @@ if (process.argv[1] && process.argv[1].endsWith('postprocess-dist.mjs')) {
   const files = walk(distDir);
   let totalAnchors = 0;
   let totalNoindexFixed = 0;
+  let totalAuth = 0;
+  let totalFooter = 0;
   for (const file of files) {
     let html = readFileSync(file, 'utf8');
     const anchorResult = stripDeadAnchors(html);
     html = anchorResult.html;
     totalAnchors += anchorResult.count;
+    const authResult = collapseAuthLinks(html);
+    html = authResult.html;
+    totalAuth += authResult.count;
+    const footerResult = simplifyFooterLegal(html);
+    html = footerResult.html;
+    totalFooter += footerResult.count;
     const noindexResult = ensureNoindex(html);
     html = noindexResult.html;
     if (noindexResult.changed) totalNoindexFixed++;
@@ -119,6 +173,7 @@ if (process.argv[1] && process.argv[1].endsWith('postprocess-dist.mjs')) {
   }
   console.log(
     `[avatok-freeze] postprocessed ${files.length} HTML files: disabled ${totalAnchors} dead links, ` +
-      `force-fixed noindex on ${totalNoindexFixed} pages that Base.astro's patch didn't already cover.`,
+      `force-fixed noindex on ${totalNoindexFixed} pages that Base.astro's patch didn't already cover, collapsed ${totalAuth} auth-link groups to "Sign in", ` +
+      `simplified ${totalFooter} footer legal lines.`,
   );
 }
