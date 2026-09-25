@@ -18,29 +18,29 @@ draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/m
 
 ## The full policy
 
-This is the plain-English version for creators. The binding terms are in [Payouts & Withdrawals](/payouts) — that page is authoritative if anything here differs from it.
+This is the plain-English version for creators. The binding terms are in Payouts & Withdrawals — that page is authoritative if anything here differs from it.
 
 ## Payouts are still in testing
 
-**Withdrawals are not yet available.** Do not treat a token balance as a promise of cash redemption or payout income. See [Payouts & Withdrawals §1](/payouts).
+**Withdrawals are not yet available.** Do not treat a token balance as a promise of cash redemption or payout income. See Payouts & Withdrawals §1.
 
 ## Who can withdraw
 
-No account holder can currently request a withdrawal. Existing balances and legacy records remain preserved as token balances. See [Payouts & Withdrawals §2](/payouts).
+No account holder can currently request a withdrawal. Existing balances and legacy records remain preserved as token balances. See Payouts & Withdrawals §2.
 
 ## Future payout methods
 
-No payout method or local-currency conversion is currently promised. The internal accounting anchor is **100 Tokens = $1**; it is not a withdrawal rate. See [Payouts & Withdrawals §3](/payouts).
+No payout method or local-currency conversion is currently promised. The internal accounting anchor is **100 Tokens = $1**; it is not a withdrawal rate. See Payouts & Withdrawals §3.
 
 Future availability, if introduced, will be documented here.
 
 ## Verification comes first
 
-No withdrawal verification workflow is currently available. Any future requirements will be published before the feature is enabled — see [Payouts & Withdrawals §5](/payouts).
+No withdrawal verification workflow is currently available. Any future requirements will be published before the feature is enabled — see Payouts & Withdrawals §5.
 
 ## Minimum balance
 
-No minimum withdrawable balance is currently defined because withdrawals are not available. See [Payouts & Withdrawals §8](/payouts).
+No minimum withdrawable balance is currently defined because withdrawals are not available. See Payouts & Withdrawals §8.
 
 ## Transfer fee, GST, and what actually lands in your account
 
@@ -48,12 +48,12 @@ No withdrawal fee, tax calculation, or net payout is promised at this stage. Fut
 
 ## Timelines
 
-No payout timeline is currently offered. See [Payouts & Withdrawals §9](/payouts).
+No payout timeline is currently offered. See Payouts & Withdrawals §9.
 
 ## If a payout fails or is returned
 
-There is no payout workflow to fail or return at present. Any future implementation will define its failure handling before it becomes available. See [Payouts & Withdrawals §10](/payouts).
+There is no payout workflow to fail or return at present. Any future implementation will define its failure handling before it becomes available. See Payouts & Withdrawals §10.
 
 ## Holds and declines
 
-A payout can be delayed, held, reduced, or declined where Saathum reasonably suspects fraud, money laundering, sanctions exposure, or a breach of the [Terms of Service](/terms) — or where law or a payment partner requires it. Amounts you owe, such as a reversed transaction, can also be set off against a pending payout. See [Payouts & Withdrawals §11](/payouts).
+A payout can be delayed, held, reduced, or declined where Saathum reasonably suspects fraud, money laundering, sanctions exposure, or a breach of the [Terms of Service](/terms) — or where law or a payment partner requires it. Amounts you owe, such as a reversed transaction, can also be set off against a pending payout. See Payouts & Withdrawals §11.

@@ -50,7 +50,8 @@ export async function checkOrganisersBrowser(browser) {
     const withdrawal = page.locator('#faq details').filter({has:page.getByText('When can I withdraw?',{exact:true})});
     await withdrawal.locator('summary').click();
     assert.match(await withdrawal.innerText(), /Withdrawals are not available yet/);
-    assert(await withdrawal.getByRole('link',{name:'Read our Payouts page',exact:true}).isVisible());
+    // [SAATHUM-ENTITY-1] Payouts link removed with the page.
+    assert.equal(await withdrawal.getByRole('link',{name:'Read our Payouts page',exact:true}).count(), 0);
     await withdrawal.locator('summary').click();
     if (width <= 1100) {
       await page.getByRole('button',{name:'Open menu',exact:true}).click();

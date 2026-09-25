@@ -178,8 +178,8 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
             <strong><UiText id="web-dashboard.098ae124bfa76cda" source="Payments are not live." /></strong>{" "}<UiText id="web-dashboard.2575660644382cf5" source="Our payment gateway application is under review, so no real money can move on this account and no charge will be made to you. Prices shown are indicative." />{" "}</li>
           <li>
             <strong><UiText id="web-dashboard.d5bc5cba6e5c4741" source="Tokens are our in-app unit." /></strong>{" "}<UiText id="web-dashboard.a040c2235e0891bd" source="1 token = ₹1, fixed. See" />{' '}
-            <a href="/tokens" target="_blank" rel="noreferrer"><UiText id="web-dashboard.4f40c430b4aba8c5" source="Tokens & Wallet" /></a>{" "}<UiText id="web-dashboard.6201111b83a0cb5b" source="and" />{' '}
-            <a href="/pricing-fees" target="_blank" rel="noreferrer"><UiText id="web-dashboard.39f57a6e5029c0fc" source="Pricing & Fees" /></a>.
+            <UiText id="web-dashboard.4f40c430b4aba8c5" source="Tokens & Wallet" />{" "}<UiText id="web-dashboard.6201111b83a0cb5b" source="and" />{' '}
+            <UiText id="web-dashboard.39f57a6e5029c0fc" source="Pricing & Fees" />.
           </li>
         </ul>
 

@@ -46,7 +46,8 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
 for (const q of ['Do I need followers?', 'Can I organise for someone else?', 'What equipment do I need?', 'Who sets the ticket price?', 'How does the platform fee work?', 'How do attendees join?', 'When can I withdraw?']) {
   assert(html.includes(q), 'FAQ question present: ' + q);
 }
-assert.match(html, /href="\/payouts"/, 'FAQ withdrawal answer links to /payouts (O9)');
+// [SAATHUM-ENTITY-1 2026-09-25] /payouts is removed; no page may link to it.
+assert.doesNotMatch(html, /href="\/(?:payouts|tokens|pricing-fees)"/, "No links to removed payouts/tokens/pricing pages");
 assert.doesNotMatch(html, /withdraw(?:al)?s? (?:are|is) available|instant(?:ly)? withdraw|withdraw (?:to|directly to) your bank/i, 'No bank-payout promise while /payouts says withdrawals are unavailable (O9, AC-11)');
 assert.doesNotMatch(html, /\bevery phone\b[\s\S]{0,60}\b2K\b|\b2K\b[\s\S]{0,60}\bevery phone\b/i, 'No universal-2K broadcast claim (O9, AC-11)');
 

@@ -24,7 +24,7 @@ Top-ups use a server-owned FX quote to show the local-currency amount for the re
 
 ## What tokens are not
 
-A token is an in-app unit of account, not a bank product. It is not a deposit, not e-money, not a security, and not a cryptocurrency. It does not earn interest, and it cannot be sent to another person's account. Withdrawal semantics are not yet available. The full legal detail lives on the [Tokens & Wallet](/tokens) policy page.
+A token is an in-app unit of account, not a bank product. It is not a deposit, not e-money, not a security, and not a cryptocurrency. It does not earn interest, and it cannot be sent to another person's account. Withdrawal semantics are not yet available. The full legal detail lives on the Tokens & Wallet policy page.
 
 ## Your balance
 

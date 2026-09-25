@@ -63,8 +63,6 @@ const legalLinks = [
   { href: '/child-safety', label: 'Child Safety' },
   { href: '/grievance', label: 'Grievance Redressal' },
   { href: '/contact', label: 'Contact & Report' },
-  { href: '/pricing-fees', label: 'Pricing & Fees' },
-  { href: '/tokens', label: 'Tokens & Wallet' },
 ];
 // [SAATHUM-ARCHIVE-1 2026-09-25] Archived pages stay live but leave the menus.
 const visibleLegalLinks = legalLinks.filter((l) => !isArchivedPath(l.href));
@@ -94,7 +92,6 @@ const columns = [
       { href: '/organisers', label: 'For organisers' },
       { href: '/dashboard', label: 'Creator dashboard' },
       { href: '/organisers#guides', label: 'Guides' },
-      { href: '/pricing-fees', label: 'Pricing & Fees' },
     ],
   },
   {
@@ -114,7 +111,7 @@ const columns = [
 ];
 const globalColumns = [
   { title: 'Explore', links: [{ href: '/marketplace', label: 'Marketplace' }, { href: '/global-ideas', label: 'Ideas' }, { href: '/#formats', label: 'Live & 1:1' }] },
-  { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/payouts', label: 'Payouts' }, { href: '/community-guidelines', label: 'Safety' }] },
+  { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/community-guidelines', label: 'Safety' }] },
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
 // [SAATHUM-ARCHIVE-1 2026-09-25] Drop archived pages from the non-folk columns too.

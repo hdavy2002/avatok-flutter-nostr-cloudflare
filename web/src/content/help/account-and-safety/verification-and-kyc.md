@@ -29,7 +29,7 @@ Saathum gates your **first public action**, not signup. You can create an accoun
 ## What verification unlocks
 
 - A passed liveness check clears you to post, create a listing, go live, comment, message or call someone you haven't spoken to before, join or post in a group, forward content, and upload media. Publishing a paid live show or 1:1 session also needs a separate identity check on your account, so you may be asked to verify your ID then.
-- Full document + selfie verification is required before a **payout** is released — see [Withdrawing your earnings](/help/billing/withdrawing-your-earnings) and the [Payouts & Withdrawals](/payouts) policy, section 5, for what that check covers.
+- Full document + selfie verification is required before a **payout** is released — see [Withdrawing your earnings](/help/billing/withdrawing-your-earnings) and the Payouts & Withdrawals policy, section 5, for what that check covers.
 - Consumers who only browse, book and watch are never asked to verify.
 
 ## How long a check stays valid

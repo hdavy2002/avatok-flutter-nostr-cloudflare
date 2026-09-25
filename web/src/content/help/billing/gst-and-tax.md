@@ -18,7 +18,7 @@ draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/m
 
 ## The full policy
 
-This is the plain-English summary for creators. The binding terms are sections 6 and 7 of [Payouts & Withdrawals](/payouts) — treat that page as authoritative.
+This is the plain-English summary for creators. The binding terms are sections 6 and 7 of Payouts & Withdrawals — treat that page as authoritative.
 
 ## What's deducted before money reaches you
 
@@ -27,15 +27,15 @@ Two things can reduce a withdrawal below the number of tokens you're cashing out
 - **A transfer fee**, which the policy allows on withdrawals. No fixed rate is published because it can vary by payout method and provider.
 - **GST**, where it applies in India, charged in addition to the transfer fee.
 
-Your own bank or payment provider may also apply its own charge on top of both of these. See [Payouts & Withdrawals §6](/payouts).
+Your own bank or payment provider may also apply its own charge on top of both of these. See Payouts & Withdrawals §6.
 
 ## Tax withholding (for example, TDS)
 
-Where Indian tax law requires withholding on marketplace payouts — TDS is the example given in the policy — Saathum may withhold the required amount from your payout and remit it to the tax authorities. Similar withholding may apply in other jurisdictions if their law requires it. Saathum may ask you for tax details before releasing a payout, and can decline the payout until they're provided. See [Payouts & Withdrawals §7](/payouts).
+Where Indian tax law requires withholding on marketplace payouts — TDS is the example given in the policy — Saathum may withhold the required amount from your payout and remit it to the tax authorities. Similar withholding may apply in other jurisdictions if their law requires it. Saathum may ask you for tax details before releasing a payout, and can decline the payout until they're provided. See Payouts & Withdrawals §7.
 
 ## Your own tax position
 
-This page and the policy it summarises only describe what Saathum withholds or deducts at the point of paying you out — they don't tell you your total tax liability. **You're responsible for declaring your earnings and paying any tax due on them**, and nothing here or on the [Payouts & Withdrawals](/payouts) page is tax advice.
+This page and the policy it summarises only describe what Saathum withholds or deducts at the point of paying you out — they don't tell you your total tax liability. **You're responsible for declaring your earnings and paying any tax due on them**, and nothing here or on the Payouts & Withdrawals page is tax advice.
 
 ## Where to check the current figures
 
