@@ -1,0 +1,145 @@
+/* saathum-tokens.css — [DASH2-FOUNDATION 2026-09-25]
+ *
+ * The Saathum landing palette as ONE token file, plus the shadcn/ui theme
+ * variables for Dashboard 2 mapped onto it.
+ *
+ *  - `--grand-*` values are COPIED from styles/saathum-folk.css (the landing
+ *    keeps its own copy for now; the owner rule is "do not change existing
+ *    landing designs"). If the landing palette ever moves, move both.
+ *  - Everything shadcn reads (`--background`, `--primary`, `--radius`, ...) is
+ *    scoped under `.dash2`, so importing this file anywhere changes nothing
+ *    outside the Dashboard 2 root. The tailwind.config.ts colour keys read
+ *    these as HSL triplets: `hsl(var(--primary) / <alpha>)`.
+ *  - Components never use a raw hex: use `bg-primary`, `border-border`,
+ *    `text-muted-foreground`, `bg-grand-teal` ... or `var(--grand-*)`.
+ */
+:root {
+  --grand-cream: #fff8e8;
+  --grand-teal: #07545b;
+  --grand-ink: #17343c;
+  --grand-red: #c82c25;
+  --grand-sage: #dfe7d0;
+  --grand-gold: #d1ae70;
+  --grand-gutter: clamp(20px, 2.4vw, 44px);
+}
+
+.dash2 {
+  /* shadcn theme (HSL triplets) — light */
+  --background: 42 100% 95%;          /* cream */
+  --foreground: 193 45% 16%;          /* ink */
+  --card: 42 100% 98.5%;              /* lifted cream, reads as paper on cream */
+  --card-foreground: 193 45% 16%;
+  --popover: 42 100% 98.5%;
+  --popover-foreground: 193 45% 16%;
+  --primary: 3 69% 46%;               /* red (landing CTA) */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 81 32% 86%;            /* sage */
+  --secondary-foreground: 193 45% 16%;
+  --muted: 40 62% 91%;
+  --muted-foreground: 193 20% 36%;
+  --accent: 185 86% 19%;              /* teal */
+  --accent-foreground: 42 100% 95%;
+  --destructive: 3 69% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 38 51% 63%;               /* gold */
+  --input: 38 51% 63%;
+  --ring: 185 86% 19%;                /* teal */
+  --radius: 10px;
+  --scrim: 193 45% 16%;               /* modal overlays */
+
+  /* Dashboard 2 extras */
+  --dash-gold-soft: 38 51% 63% / 0.45;          /* hairline gold borders */
+  --dash-shadow: 0 1px 2px hsl(193 45% 16% / 0.06), 0 8px 24px -12px hsl(193 45% 16% / 0.18);
+  --dash-shadow-lg: 0 2px 4px hsl(193 45% 16% / 0.06), 0 18px 40px -18px hsl(193 45% 16% / 0.28);
+  --dash-sidebar-w: 260px;
+  --dash-rail-w: 72px;
+  --dash-tabbar-h: 64px;
+  --dash-topbar-h: 56px;
+
+  /* spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* `bg-card` is shared with the zine palette (see tailwind.config.ts):
+     inside Dashboard 2 it means the shadcn card colour. */
+  --zine-card: hsl(var(--card));
+}
+
+.dash2.dark,
+.dark .dash2 {
+  --background: 193 45% 9%;
+  --foreground: 42 100% 95%;
+  --card: 193 42% 12%;
+  --card-foreground: 42 100% 95%;
+  --popover: 193 42% 12%;
+  --popover-foreground: 42 100% 95%;
+  --primary: 3 72% 54%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 81 14% 24%;
+  --secondary-foreground: 42 100% 95%;
+  --muted: 193 30% 16%;
+  --muted-foreground: 42 25% 72%;
+  --accent: 185 60% 32%;
+  --accent-foreground: 42 100% 95%;
+  --destructive: 3 72% 54%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 38 40% 42%;
+  --input: 38 40% 42%;
+  --ring: 38 51% 63%;
+  --scrim: 0 0% 0%;
+  --dash-shadow: 0 1px 2px hsl(0 0% 0% / 0.3), 0 8px 24px -12px hsl(0 0% 0% / 0.5);
+  --dash-shadow-lg: 0 2px 4px hsl(0 0% 0% / 0.3), 0 18px 40px -18px hsl(0 0% 0% / 0.6);
+}
+
+/* Base layer for the Dashboard 2 root only (shadcn's `* { border-border }`).
+   Wrapped in :where() so it has ZERO specificity and every Tailwind utility
+   (border-primary, font-dashbody, bg-muted ...) still wins over it. */
+:where(.dash2) *,
+:where(.dash2) *::before,
+:where(.dash2) *::after {
+  border-color: hsl(var(--border) / 0.55);
+}
+:where(.dash2) {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+/* Headings: Comfortaa. Family only — weight/size come from utilities
+   (global.css pins h1-h6 to 400 for Anton; add `font-bold` where wanted). */
+.dash2 :where(h1, h2, h3, h4, h5, h6) {
+  font-family: 'Comfortaa', 'Baloo 2', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Gold ribbon divider — the landing's `.grand-divider` look. The layout sets
+   --folk-border-url to the same border artwork the landing uses. */
+.dash2 .dash-ribbon {
+  height: 14px;
+  background-color: var(--grand-gold);
+  background-image: var(--folk-border-url, none);
+  background-repeat: repeat-x;
+  background-position: center;
+  background-size: auto 44px;
+  border-block: 1px solid var(--grand-gold);
+  border-radius: 2px;
+}
+
+/* Soft premium surface helpers */
+.dash2 .dash-surface {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--dash-gold-soft));
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--dash-shadow);
+}
+.dash2 .dash-safe-bottom { padding-bottom: calc(var(--dash-tabbar-h) + env(safe-area-inset-bottom, 0px) + var(--space-4)); }
+@media (min-width: 640px) {
+  .dash2 .dash-safe-bottom { padding-bottom: var(--space-10); }
+}
