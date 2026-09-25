@@ -1,4 +1,8 @@
 ---
+// rebrand: reviewed — [SAATHUM-REFUNDS-1 2026-09-25] Owner rewrite: no marketplace, no tokens.
+// What you see is what you pay; full refund if you cancel 24+ hours before the scheduled
+// start, by request with the 12-digit UPI transaction number. Same Content layout and
+// elements as before — text only.
 export const prerender = true;
 import Content from '../layouts/Content.astro';
 ---
@@ -6,181 +10,81 @@ import Content from '../layouts/Content.astro';
 <Content
   kicker="Legal"
   title="Refunds & Cancellations"
-  description="How refunds, cancellations, and billing disputes work on Saathum, including app-store purchases and the rules for tokens."
+  description="How cancellations and refunds work for pujas and havans booked on Saathum — what you see is what you pay, and how to request a refund with your UPI transaction number."
   image="/og/refunds.png"
-  lead="What can be refunded on Saathum, what cannot, and how to raise a billing problem."
-  updated="2026-08-28"
+  lead="What you see is what you pay. Cancel at least 24 hours before your ritual and we refund you in full."
+  updated="2026-09-25"
   helpHref="/help/billing/refunds"
 >
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.c2a40a66132679cc">This policy explains how refunds and cancellations work on Saathum — our creator marketplace,
-    paid live streaming, and paid 1:1 video sessions. It sits alongside
-    our</ui-copy> <a data-i18n="web-refunds.4afa55bf7aec7ddc" href="/terms">Terms of Service</a>, <a data-i18n="web-refunds.188dc350278985ab" href="/tokens">Tokens &amp; Wallet</a> <ui-copy style="display:contents" data-i18n="web-refunds.16047a3f9597e500">policy, and</ui-copy>
-    <a data-i18n="web-refunds.5e2a4b33bff1936b" href="/pricing-fees">Pricing &amp; Fees</a> <ui-copy style="display:contents" data-i18n="web-refunds.2c0560d6168d330b">page.</ui-copy>
+    This policy explains how cancellations and refunds work for pujas and havans you book on
+    Saathum. It sits alongside our <a href="/terms">Terms of Service</a>.
   </p>
 
-  <h2 data-i18n="web-refunds.0922ebe046cfa13d" id="status">1. Who you are dealing with</h2>
-
+  <h2 id="price">1. What you see is what you pay</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.65e081354f24d9d0">Your agreement is with Saathum, under the laws
-    described in our</ui-copy> <a data-i18n="web-refunds.4afa55bf7aec7ddc" href="/terms">Terms of Service</a><ui-copy style="display:contents" data-i18n="web-refunds.5568f94f0e161ed0">. If anything on this page is unclear,
-    email</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a> <ui-copy style="display:contents" data-i18n="web-refunds.6ce88ccb509cc7ba">before you pay.</ui-copy>
+    The price shown on a ritual is the full price you pay. There are no tokens, wallets, credits or
+    extra charges added at checkout.
   </p>
 
-  <h2 data-i18n="web-refunds.7ba63bf41f0df2dc">2. Token values and payment records</h2>
+  <h2 id="cancel">2. Cancelling your booking</h2>
   <div class="note">
     <p>
-      <ui-copy style="display:contents" data-i18n="web-refunds.65bcdb28bb2fdfbd">Saathum uses</ui-copy> <strong data-i18n="web-refunds.1333886bf7b67378">1 Token = ₹1</strong> <ui-copy style="display:contents" data-i18n="web-refunds.0d7350d4ced7e0de">as the fixed customer-facing value in India. The
-      payment snapshot records the exact Token amount attached to that payment.</ui-copy>
-    </p>
-    <p style="margin-top:12px">
-      <ui-copy style="display:contents" data-i18n="web-refunds.8c960f8ccf5397cc">If a payment or booking is reversed, the wallet reversal is for the</ui-copy> <strong data-i18n="web-refunds.50cdbd5ff69d998d">exact token amount
-      recorded in the immutable payment snapshot</strong><ui-copy style="display:contents" data-i18n="web-refunds.93e70db03769f46f">. We do not reprice a reversal using a later
-      later rate. For a billing problem, email</ui-copy>
-      <a href="mailto:support@saathum.com">support@saathum.com</a>.
+      <strong>Cancel at least 24 hours before the scheduled start</strong> of your puja or havan and
+      you get a full refund of the amount you paid.
     </p>
   </div>
-
-  <h2 data-i18n="web-refunds.f00e6edeeb4da04f">3. Token refunds and reversals</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.7409d8ee5a9921ab">When you top up, the payment is recorded with the
-    exact Token amount. Tokens are the in-app unit used to pay for AI features and services. The fixed
-    customer-facing value is</ui-copy> <strong data-i18n="web-refunds.1333886bf7b67378">1 Token = ₹1</strong><ui-copy style="display:contents" data-i18n="web-refunds.b29a618cc32248d2"> in India.</ui-copy>
-  </p>
-  <div class="note">
-    <p>
-      <strong data-i18n="web-refunds.5f8e3bc8d30ccf61">Once purchased or converted, tokens are not automatically refundable</strong> <ui-copy style="display:contents" data-i18n="web-refunds.ef2da13cf7196b98">— except where a
-      refund is required by applicable law, or by the billing policy of the app store you bought
-      through (Google Play or Apple). Nothing in this policy limits rights you have that cannot be
-      waived under consumer law where you live.</ui-copy>
-    </p>
-    <p>
-      <ui-copy style="display:contents" data-i18n="web-refunds.cef3f289c93f56af">A qualifying refund or booking cancellation returns the</ui-copy> <strong data-i18n="web-refunds.5f9af22f4ff8bf4e">exact token amount recorded for
-      the original transaction</strong><ui-copy style="display:contents" data-i18n="web-refunds.0b12c2486c218e5b">. Withdrawal and cash-redemption semantics are not yet
-      available. See section 6 and</ui-copy> <a data-i18n="web-refunds.aba115e7791e41dc" href="/payouts">Payouts &amp; Withdrawals</a>.
-    </p>
-  </div>
-
-  <h2 data-i18n="web-refunds.df28f6ee1536de9e">4. Purchases made through an app store</h2>
-  <p data-i18n="web-refunds.5bb3b1635148b63c">
-    If you bought a top-up or subscription inside the Android or iOS app, the payment was taken by
-    the app store, not by us. Refunds for those purchases are handled by the store under its own
-    policy and timelines:
-  </p>
-  <ul>
-    <li><strong data-i18n="web-refunds.027b1684683ad703">Google Play</strong> <ui-copy style="display:contents" data-i18n="web-refunds.1e553d43da48f92f">— request a refund through your Google Play order history or
-      Google Play support.</ui-copy></li>
-    <li><strong data-i18n="web-refunds.f223faa96f229162">Apple</strong> <ui-copy style="display:contents" data-i18n="web-refunds.3706062e4c4e25f0">— request a refund through Apple's "Report a Problem" process or
-      Apple Support.</ui-copy></li>
-  </ul>
-  <p data-i18n="web-refunds.4113c67fa6ac3d7b">
-    We cannot reverse a store charge on your behalf. If the store approves a refund, we may reverse
-    the exact corresponding token amount from the immutable payment snapshot. If those tokens have already been spent, your
-    balance may go to zero and your account may be restricted until the position is corrected.
+    Cancellations made less than 24 hours before the scheduled start are not refunded, because
+    our priests have already prepared your ritual and your sankalp.
   </p>
 
-  <h2 data-i18n="web-refunds.1c33dc93470f5482">5. Cancelling a subscription vs consuming tokens</h2>
-  <p data-i18n="web-refunds.7920dab051e7fde1">
-    These are two different things:
-  </p>
-  <ul>
-    <li><strong data-i18n="web-refunds.50e833ed07174399">Cancelling a recurring plan</strong> <ui-copy style="display:contents" data-i18n="web-refunds.7d334ee918fc3bdd">stops future charges. Cancel it wherever you
-      set it up — usually the app store's subscriptions screen. Cancelling generally does not
-      refund a period you have already paid for, and access normally continues until the end of the
-      current period.</ui-copy></li>
-    <li><strong data-i18n="web-refunds.e7cc72cd8a98e9ac">Spending tokens</strong> <ui-copy style="display:contents" data-i18n="web-refunds.3930308eb0df0823">is immediate and is treated as consumption of the service.
-      A token spent on an AI feature, a marketplace purchase, or a consultation is used up at that
-      point.</ui-copy></li>
-  </ul>
-  <p data-i18n="web-refunds.430ce8c5629aca8c">
-    Cancelling a plan does not by itself remove tokens already in your balance.
-  </p>
-
-  <h2 data-i18n="web-refunds.7168249ec1feb78a">6. Unused vs consumed tokens</h2>
+  <h2 id="request">3. How to request a refund</h2>
   <p>
-    <strong data-i18n="web-refunds.b803e56ff96e2511">Consumed tokens</strong> <ui-copy style="display:contents" data-i18n="web-refunds.1fca6b8deef40e20">— tokens already spent on a delivered feature or service — are
-    not refundable, except where required by law.</ui-copy>
+    Refunds are not automatic — you need to send us a request. Email
+    <a href="mailto:support@saathum.com">support@saathum.com</a> or use our
+    <a href="/contact">contact form</a> and include:
   </p>
+  <ol>
+    <li>Your full name, and the email or phone number you booked with.</li>
+    <li>The ritual you booked and its scheduled date and time.</li>
+    <li><strong>Your 12-digit UPI transaction number</strong> (also called the UTR or UPI reference number) for the payment.</li>
+  </ol>
   <p>
-    <strong data-i18n="web-refunds.220a769564b58615">Unused tokens</strong> <ui-copy style="display:contents" data-i18n="web-refunds.df1465468d492d95">remain in your wallet as tokens. Withdrawal semantics are not yet
-    available. Where a refund or reversal applies, it uses the exact token amount in the original
-    transaction snapshot, not a later rate. See</ui-copy>
-    <a data-i18n="web-refunds.aba115e7791e41dc" href="/payouts">Payouts &amp; Withdrawals</a>.
+    The UPI transaction number is how we locate your payment, so we can't process a refund
+    without it. You'll find it in your UPI app (Google Pay, PhonePe, Paytm, BHIM or your bank's
+    app) by opening the payment in your transaction history, and in your bank's payment SMS.
   </p>
 
-  <h2 data-i18n="web-refunds.39af8479048587d0">7. Marketplace purchases and consultations</h2>
-  <p data-i18n="web-refunds.93dfac6b2237f82f">
-    The marketplace and live consultancy connect you with other users who provide digital services.
-    We may apply the following where a booking or order goes wrong:
-  </p>
-  <h3 data-i18n="web-refunds.52ea24f1ec02cfb1">Cancellations</h3>
-  <p data-i18n="web-refunds.157181308ce8ff48">
-    A booking cancelled before the agreed start time may be eligible for a return of tokens to your
-    balance, subject to the cancellation terms shown on the listing at the time of booking and to
-    our review.
-  </p>
-  <h3 data-i18n="web-refunds.d9a54d4cc678f9d0">No-shows</h3>
-  <p data-i18n="web-refunds.3610bc7df03c6585">
-    If the provider does not attend a booked session, you may raise it with us and we may return the
-    tokens to your balance. If the customer does not attend, the session may be treated as delivered
-    and the tokens as consumed.
-  </p>
-  <h3 data-i18n="web-refunds.c14b6dcc519bdb26">Failure to deliver</h3>
+  <h2 id="refund-paid">4. How your refund is paid</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.8ec7d72384e5dcd4">If a provider does not deliver what the listing described, tell us at</ui-copy>
-    <a href="mailto:support@saathum.com">support@saathum.com</a><ui-copy style="display:contents" data-i18n="web-refunds.f64b0c51a21730ca">. We may review the order, withhold or
-    reverse the provider's earnings, and return tokens to your balance where we consider it
-    appropriate. We are not the provider of the underlying service and do not guarantee any
-    particular outcome.</ui-copy>
-  </p>
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.137d639919881e8a">Any resolution we make is normally in</ui-copy> <strong data-i18n="web-refunds.f955d1c7f89560a7">tokens returned to your balance</strong><ui-copy style="display:contents" data-i18n="web-refunds.96ea80e29da57e5b">, not a
-    payment back to your card or bank.</ui-copy>
+    Once we've located your payment and confirmed your cancellation was made at least 24 hours
+    before the scheduled start, we refund the full amount to the UPI account you paid from. We'll
+    let you know by email when the refund has been sent.
   </p>
 
-  <h2 data-i18n="web-refunds.42aa68a78aee19b1">8. Chargebacks</h2>
-  <p data-i18n="web-refunds.a4a3815d81b25e07">
-    If you believe a charge is wrong, please contact us first — a chargeback is slower for everyone
-    and may restrict your account while it is open. Where a chargeback or payment reversal is raised
-    against your account, we may suspend the account, freeze the token balance, and reverse tokens
-    linked to the disputed payment. We may decline further top-ups from a payment method with an
-    unresolved dispute.
-  </p>
-
-  <h2 data-i18n="web-refunds.70ca1abb18850cf2">9. Fraud and abuse</h2>
+  <h2 id="we-cancel">5. If we cancel or can't perform your ritual</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.fff5319b8ff24b32">We may refuse, reverse, or hold a refund where we reasonably suspect fraud, abuse of promotional
-    credit, or a breach of our</ui-copy> <a data-i18n="web-refunds.4afa55bf7aec7ddc" href="/terms">Terms of Service</a>.
+    If we cancel your puja or havan, or can't perform it, you get a full refund. Send us a
+    request the same way, with your 12-digit UPI transaction number, and we'll refund you.
   </p>
 
-  <h2 data-i18n="web-refunds.6a536903e1ef3309">10. How to raise a billing issue</h2>
+  <h2 id="missed">6. If you miss the live stream</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.969ccbd3cf6300ec">Email</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a> <ui-copy style="display:contents" data-i18n="web-refunds.1443ea783e5df833">from the address on your account
-    and include:</ui-copy>
-  </p>
-  <ul>
-    <li data-i18n="web-refunds.a789ff18d1a1a472">your Saathum handle or registered email;</li>
-    <li data-i18n="web-refunds.5f03272ad75778bf">the date and Indian-rupee amount of the charge, plus the Token amount if shown;</li>
-    <li data-i18n="web-refunds.a48c885cee066df3">whether you paid through Google Play, Apple, or another method;</li>
-    <li data-i18n="web-refunds.489a37bc03d8e121">the order, booking, or transaction reference if you have one;</li>
-    <li data-i18n="web-refunds.e8fda4dd92924bea">a short description of what went wrong.</li>
-  </ul>
-  <p data-i18n="web-refunds.0bf4d1fa126cf10e">
-    We will look into it and respond. We cannot promise a specific turnaround, and any refund we do
-    make is returned by the same method that took the payment where possible.
+    Your sankalp is still performed at the altar, so a booking you miss watching is not refunded.
+    The replay is available for 7 days.
   </p>
 
-  <h2 data-i18n="web-refunds.f5007dc76b66f358">11. Changes to this policy</h2>
-  <p data-i18n="web-refunds.73ee27295f2ed9be">
-    We may update this policy from time to time. We will post the updated version here and revise
-    the "Last updated" date above.
-  </p>
-
-  <h2 data-i18n="web-refunds.5adadc207219605c">12. Contact</h2>
+  <h2 id="disputes">7. Wrong or duplicate payments</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-refunds.31f99beb659dec48">Billing and payout questions:</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a><ui-copy style="display:contents" data-i18n="web-refunds.a2bd067f82126b7a">. General
-    enquiries:</ui-copy> <a href="mailto:hello@saathum.com">hello@saathum.com</a><ui-copy style="display:contents" data-i18n="web-refunds.966163e6c8882917">. Privacy questions:</ui-copy>
-    <a href="mailto:privacy@saathum.com">privacy@saathum.com</a><ui-copy style="display:contents" data-i18n="web-refunds.bf2fb03dedc02906">. See also our</ui-copy>
-    <a data-i18n="web-refunds.4afa55bf7aec7ddc" href="/terms">Terms of Service</a> <ui-copy style="display:contents" data-i18n="web-refunds.6201111b83a0cb5b">and</ui-copy> <a data-i18n="web-refunds.506ff394621596dd" href="/privacy">Privacy Policy</a>.
+    If you think you were charged by mistake or paid twice, email
+    <a href="mailto:support@saathum.com">support@saathum.com</a> with the 12-digit UPI transaction
+    number for each payment. Please contact us before raising a dispute with your bank — it's
+    faster, and we'll sort it out directly.
+  </p>
+
+  <h2 id="rights">8. Your rights</h2>
+  <p>
+    Nothing in this policy limits any rights you have under applicable consumer protection law.
   </p>
 </Content>

@@ -10,7 +10,7 @@ faq:
   - q: "What if I miss the live stream?"
     a: "Your sankalp was still performed, and the replay is available for 7 days."
   - q: "What if the ritual never goes live?"
-    a: "You don't need to do anything — if it hasn't gone live about 15 minutes after the scheduled start, Saathum cancels your booking and starts a full refund automatically."
+    a: "You get a full refund. Email support@saathum.com with your 12-digit UPI transaction number and we'll refund you."
 draft: false
 ---
 
@@ -34,12 +34,12 @@ Every page reads the ritual's status from the same clock, checkout included:
 - **Starting** — the start time has passed and our priest is getting ready.
 - **Live** — the ritual is streaming now.
 - **Ended** — the ritual is complete.
-- **Cancelled** — the ritual was cancelled; bookings are refunded.
+- **Cancelled** — the ritual was cancelled; request your full refund with your UPI transaction number.
 
 Bookings stay open for about **15 minutes** after the scheduled start. After that, checkout says booking has closed.
 
 ## If the ritual doesn't go live
 
-If a ritual still hasn't gone live about 15 minutes after its scheduled start, you don't need to raise a support ticket. Saathum's automatic check cancels your booking and refunds it in full, whether or not you had opened the page. The refund goes back the way you paid; a refund to UPI or a card can take a little time to show at your bank. See [Refunds & Cancellations](/refunds) for more.
+If a ritual doesn't go live, you get a full refund. Email support@saathum.com (or use the [contact form](/contact)) with your **12-digit UPI transaction number** so we can locate your payment, and we'll refund the UPI account you paid from. See [Refunds & Cancellations](/refunds).
 
 If the stream went live but ended early or dropped, it isn't refunded automatically — email support@saathum.com with your booking details and we'll review it.

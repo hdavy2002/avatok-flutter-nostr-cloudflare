@@ -226,7 +226,7 @@ const closedTitle = showCancelled ? 'This show was cancelled.'
 const closedLine = showCancelled
   ? 'Everyone who booked is refunded automatically — nothing to do on your side.'
   : showEnded
-    ? 'If the ritual did not go live, everyone who booked is refunded automatically.'
+    ? 'If the ritual did not go live, you get a full refund — request it with your UPI transaction number.'
     : 'The show has already started, so new seats are no longer sold.';
 const countdownActive = !isLive && scheduleState === 'upcoming';
 
@@ -1080,8 +1080,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span>THESE PROMISES APPLY TO EVERY RITUAL</span>
             </div>
             <div class="trust-grid">
-              <div class="trust-item"><div>FULL PRICE UPFRONT</div><p>Ritual, prasad and GST — all visible before you book. No new numbers at checkout.</p></div>
-              <div class="trust-item"><div>CANCEL = FULL REFUND</div><p>Free cancellation up to 24 hours before the ritual. If we cancel, your refund is automatic.</p></div>
+              <div class="trust-item"><div>FULL PRICE UPFRONT</div><p>What you see is what you pay. No tokens, no extra charges at checkout.</p></div>
+              <div class="trust-item"><div>CANCEL = FULL REFUND</div><p>Cancel at least 24 hours before the ritual for a full refund — just send us your 12-digit UPI transaction number.</p></div>
               <div class="trust-item"><div>YOUR NAME IN THE SANKALP</div><p>Our priest speaks your name, gotra and wish at the altar, on camera.</p></div>
               <div class="trust-item"><div>WATCH LIVE OR REPLAY</div><p>Join live, or watch the replay for 7 days.</p></div>
               <div class="trust-item"><div>ONLY BENEFIC RITUALS</div><p>No fear and no fierce rituals. We never tell you something bad will happen if you don't book.</p></div>
