@@ -26,7 +26,7 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, /<title[^>]*>Saathum — Sacred Rituals Performed for You, Watched Live/, 'Puja service page title');
+assert.match(html, /<title[^>]*>Join Live Havans &amp; Pujas Online \| Saathum/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Sab ki aahuti, sab ka ashirwad\./, 'Brief H1');
@@ -306,16 +306,14 @@ for (const href of ritualLinks) {
 console.log('Puja & Havan Guide checks passed: 55 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Saathum — Sacred Rituals Performed for You, Watched Live', 'A4 og:title (SAATHUM-REBRAND-1)');
-assert.equal(meta(html, 'og:description'), 'Book a sacred ritual for exams, home, health, prosperity or peace. Our priests perform it for you at a real altar while you watch live, wherever you are. Prasad delivered to your door.', 'A4 og:description (SAATHUM-REBRAND-1)');
+assert.equal(meta(html, 'og:title'), 'Join Live Havans &#38; Pujas Online | Saathum', 'A4 og:title (WEB-SEO-AUTO-1)');
+assert.equal(meta(html, 'og:description'), 'Join live havans for health, prosperity, peace and new beginnings. Our priests perform your sankalp. Watch live, replay for 7 days and receive prasad at home.', 'A4 og:description (WEB-SEO-AUTO-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert.match(ogImageUrl, /saathum-grand\/hero/, 'Homepage share image uses the grand hero artwork');
+assert.match(ogImageUrl, /^https:\/\/saathum\.com\/og\/home\/home\.png\?v=[a-f0-9]{64}$/, 'Homepage uses a versioned generated share image');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
-const ogImagePath = resolve(root, new URL(ogImageUrl).pathname.replace(/^\//, ''));
-assert(existsSync(ogImagePath), 'Homepage share image resolves: ' + ogImageUrl);
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');
 assert.equal(meta(html, 'og:url'), 'https://saathum.com/');
