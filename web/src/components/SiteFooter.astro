@@ -1,5 +1,6 @@
 ---
 import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
+import { isArchivedPath } from '../lib/archivedPages';
 import '../styles/folk-chrome.css';
 // [SAATHUM-CHROME-1] Landing-page footer rules, carried by the footer itself.
 import '../styles/saathum-folk.css';
@@ -64,6 +65,8 @@ const legalLinks = [
   { href: '/pricing-fees', label: 'Pricing & Fees' },
   { href: '/tokens', label: 'Tokens & Wallet' },
 ];
+// [SAATHUM-ARCHIVE-1 2026-09-25] Archived pages stay live but leave the menus.
+const visibleLegalLinks = legalLinks.filter((l) => !isArchivedPath(l.href));
 
 // [SHV2-S8 2026-09-21] Saathum attendee/organiser/trust footer (Spec A3).
 // Replaces Bazaar/Creators/Company: "Live streaming" (/#live-streaming) and
@@ -74,7 +77,7 @@ const columns = [
   {
     title: 'Explore',
     links: [
-      { href: '/marketplace', label: 'Explore events' },
+      { href: '/marketplace', label: 'Pujas & Havans' },
       { href: '/#experiences', label: 'Experiences' },
       { href: '/help', label: 'Help' },
       // "Joining a live event" — help.ts/getHelpEntries() would build this
@@ -113,7 +116,8 @@ const globalColumns = [
   { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/payouts', label: 'Payouts' }, { href: '/community-guidelines', label: 'Safety' }] },
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
-const footerColumns = variant === 'global' ? globalColumns : columns;
+// [SAATHUM-ARCHIVE-1 2026-09-25] Drop archived pages from the non-folk columns too.
+const footerColumns = (variant === 'global' ? globalColumns : columns).map((col) => ({ ...col, links: col.links.filter((l) => !isArchivedPath(l.href.split('#')[0])) }));
 // [SHV2-S8 2026-09-21] Bazaar/Live streaming/1:1 consultations/Explore
 // marketplace entries removed — dead since `columns` no longer carries those
 // labels (see above). Everything else here is still used by `globalColumns`
@@ -131,7 +135,7 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style="display:contents"><footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={visibleLegalLinks} year={year} /> : <div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style="display:contents"><footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
   {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
@@ -188,19 +192,22 @@ const chromeKey = (value: string) => ({
       Cashfree/gateway application asks for a visible operating address, restore
       it here (the .bf-entity styles below are kept for that). */}
 
-  <nav class="bf-legal-links" aria-label="Legal and safety" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.legal' : undefined}>
-    {legalLinks.map((l, i) => (
+  {/* [SAATHUM-ARCHIVE-1 2026-09-25] The folk (live) footer carries every kept
+      policy link in its Legal column (homeNavigation.ts), so this duplicate
+      strip is hidden there. Archived pages are filtered out everywhere. */}
+  {!folk && <nav class="bf-legal-links" aria-label="Legal and safety" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.legal' : undefined}>
+    {visibleLegalLinks.map((l, i) => (
       <>
         <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>
-        {i < legalLinks.length - 1 && <span class="bf-legal-links-sep" aria-hidden="true"> · </span>}
+        {i < visibleLegalLinks.length - 1 && <span class="bf-legal-links-sep" aria-hidden="true"> · </span>}
       </>
     ))}
-  </nav>
+  </nav>}
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{folk ? 'Made in India with Love ❤️ and cutting chai.' : variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
-      <span>© {year} <ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">SAATHUM ·</ui-copy> <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Live spiritual experiences, together.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">SAATHUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Live spiritual experiences, together.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 

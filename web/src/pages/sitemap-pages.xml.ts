@@ -34,6 +34,7 @@ import { creatorIdeas } from '../lib/creatorIdeas';
 // [WEB-HELP-1 2026-09-11] Help routes: '/help' plus one entry per
 // non-draft help article, appended in GET() since collection reads are async.
 import { getHelpEntries, helpUrl } from '../lib/help';
+import { isArchivedPath } from '../lib/archivedPages';
 
 export const prerender = true;
 
@@ -99,7 +100,8 @@ export const GET: APIRoute = async () => {
         ],
     ),
   ];
-  const urls = [...ROUTES, ...helpRoutes].map(
+  // [SAATHUM-ARCHIVE-1 2026-09-25] Archived pages are noindex — keep them out.
+  const urls = [...ROUTES, ...helpRoutes].filter(([path]) => !isArchivedPath(path)).map(
     ([path, changefreq, priority, rowLastmod]) =>
       `  <url>\n` +
       `    <loc>${SITE}${path}</loc>\n` +

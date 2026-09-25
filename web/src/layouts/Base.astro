@@ -17,6 +17,7 @@ import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
 import { ORG, orgJsonLd } from '../lib/org';
+import { isArchivedPath } from '../lib/archivedPages';
 
 export interface Props {
   title?: string;
@@ -80,13 +81,17 @@ const {
   chrome = true,
   headerAuth = 'auto',
   navStatic = false,
-  noindex = false,
+  noindex: noindexProp = false,
   hideNavCtas = false,
   keywords = `${ORG.name}, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions`,
   lang = 'en',
   dir = 'ltr',
   indiaLandingLanguage = true,
 } = Astro.props;
+
+// [SAATHUM-ARCHIVE-1 2026-09-25] Archived marketplace pages stay reachable but
+// are kept out of search — see src/lib/archivedPages.ts.
+const noindex = noindexProp || isArchivedPath(Astro.url.pathname);
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? ORG.url).toString();
 // [WEB-SEO-2] See the <title> note below. Case-insensitive so any casing of

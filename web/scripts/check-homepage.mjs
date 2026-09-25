@@ -78,13 +78,19 @@ assert.match(html, /class="grand-elephant/, 'Organiser section renders elephant 
 assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image pipeline');
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
-for (const [label, href] of [['Explore events','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
+// [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label renamed.
+for (const [label, href] of [['Pujas &amp; Havans','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
-for (const href of ['/marketplace?group=india_goes_live','/marketplace?group=book_their_time','/marketplace','/sign-up','/dashboard','/payouts','/about','/help','/careers','/contact','/terms','/privacy','/cookies','/refunds','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/grievance','/pricing-fees','/tokens','/organisers','/organisers#guides','/terms#status','/help/booking-and-paying/join-a-live-show']) {
-  assert(footerHtml.includes('href="' + href + '"'), 'Full footer destination remains discoverable: ' + href);
+// [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
+// linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
+for (const href of ['/marketplace','/about','/help','/contact','/terms','/privacy','/cookies','/refunds','/grievance']) {
+  assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
+}
+for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
+  assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
 assert.match(visibleText, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\./, 'Marketplace role is explained');
@@ -110,7 +116,8 @@ for (const term of ['Puja', 'Aarti', 'Bhajan', 'Satsang', 'Festival', 'Yoga']) {
   assert(topicSearchTerms.includes(term), 'Reference category searches marketplace: ' + term);
 }
 assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace');
-for (const href of ['/marketplace', '/help', '/refunds', '/terms', '/organisers', '/pricing-fees', '/help/booking-and-paying/join-a-live-show']) {
+// [SAATHUM-ARCHIVE-1 2026-09-25] /pricing-fees and the join-a-live-show help link left the menus.
+for (const href of ['/marketplace', '/help', '/refunds', '/terms']) {
   assert(html.includes('href="' + href + '"'), 'Essential marketplace destination remains reachable: ' + href);
 }
 
@@ -275,7 +282,8 @@ assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
 assert(sitemapIndex.includes('https://saathum.com/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 for (const href of new Set(guideLinks)) assert(sitemap.includes('https://saathum.com'+href),'Guide missing from sitemap: '+href);
-assert(sitemap.includes('https://saathum.com/organisers'), '/organisers listed in sitemap (AC-12)');
+// [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex) — kept out of the sitemap.
+assert(!sitemap.includes('https://saathum.com/organisers'), '/organisers archived: not in sitemap');
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
  assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
 }

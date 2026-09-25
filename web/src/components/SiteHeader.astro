@@ -1,5 +1,5 @@
 ---
-import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import { HOME_HEADER_LINKS, MARKETPLACE_LABEL } from '../lib/homeNavigation';
 import '../styles/folk-chrome.css';
 // [SAATHUM-CHROME-1] The landing page's header/footer rules live here; imported
 // by the chrome itself so every page that renders the header gets them.
@@ -84,10 +84,11 @@ interface Props {
 // entry points at something that exists — checked. Replaces the earlier
 // Marketplace/Wiki/Pricing/Ideas set: "Live now" is deliberately not a nav
 // item (A3 — with little or no inventory it would permanently lead nowhere).
+// [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace renamed; For organisers archived
+// (see src/lib/archivedPages.ts) — was { href: '/organisers', label: 'For organisers' }.
 const DEFAULT_LINKS: HeaderLink[] = [
-  { href: '/marketplace', label: 'Explore events' },
+  { href: '/marketplace', label: MARKETPLACE_LABEL },
   { href: '/#experiences', label: 'Experiences' },
-  { href: '/organisers', label: 'For organisers' },
   { href: '/help', label: 'Help' },
 ];
 
@@ -97,7 +98,8 @@ const DEFAULT_LINKS: HeaderLink[] = [
 // referenceHome and responsiveHome now default ON, and the menu defaults to the
 // landing page's menu. Do not re-introduce a second india header style.
 const LANDING_LINKS: HeaderLink[] = [
-  { href: '/marketplace', label: 'Explore events' },
+  // [SAATHUM-ARCHIVE-1 2026-09-25] was 'Explore events'.
+  { href: '/marketplace', label: MARKETPLACE_LABEL },
   { href: '/#experiences', label: 'Experiences' },
   { href: '/#joining', label: 'How it works' },
 ];

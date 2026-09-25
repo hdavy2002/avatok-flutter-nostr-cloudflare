@@ -1,42 +1,42 @@
 /** Homepage-only navigation; shared/default chrome keeps its existing menus. */
+// [SAATHUM-ARCHIVE-1 2026-09-25] OWNER DECISION: Saathum is now a simple
+// Puja & Havan booking site. The marketplace stays (renamed, showing
+// Saathum's own internal listings — no outside creators). Creator/seller,
+// consultation and UGC pages are ARCHIVED, not deleted: they are listed in
+// src/lib/archivedPages.ts, so restoring one is: remove it from
+// ARCHIVED_PAGES + re-add its link below.
+// Previous menu (for restore): Bazaar = Live streaming, 1:1 consultations,
+// Explore marketplace, Explore events, Experiences, Help, Joining a live event
+// (/help/booking-and-paying/join-a-live-show); Creators = Start selling
+// (/sign-up), Creator dashboard (/dashboard), Payouts, Safety
+// (/community-guidelines), For organisers, Guides (/organisers#guides),
+// Pricing & Fees; Company also had Careers, Who we are (/terms#status) and
+// duplicate Terms/Privacy links.
+
+/** Menu label for /marketplace — renamed for the puja/havan catalogue. */
+export const MARKETPLACE_LABEL = 'Pujas & Havans';
+
 export const HOME_HEADER_LINKS = [
-  { href: '/marketplace', label: 'Marketplace' },
-  { href: '/help', label: 'Wiki' },
-  { href: '/pricing-fees', label: 'Pricing' },
-  { href: '/ideas', label: 'Ideas' },
-  { href: '/#experiences', label: 'Experiences' },
-  { href: '/organisers', label: 'For organisers' },
+  { href: '/marketplace', label: MARKETPLACE_LABEL },
+  { href: '/#joining', label: 'How it works' },
+  { href: '/help', label: 'Help' },
 ];
 export const HOME_FOOTER_COLUMNS = [
-  { title: 'Bazaar', links: [
-    // marketGroups.ts defines these public groups; marketplace reads ?group=.
-    { href: '/marketplace?group=india_goes_live', label: 'Live streaming' },
-    { href: '/marketplace?group=book_their_time', label: '1:1 consultations' },
-    { href: '/marketplace', label: 'Explore marketplace' },
-    { href: '/marketplace', label: 'Explore events' },
-    { href: '/#experiences', label: 'Experiences' },
-    { href: '/help', label: 'Help' },
-    { href: '/help/booking-and-paying/join-a-live-show', label: 'Joining a live event' },
-  ] },
-  { title: 'Creators', links: [
-    { href: '/sign-up', label: 'Start selling' },
-    { href: '/dashboard', label: 'Creator dashboard' },
-    { href: '/payouts', label: 'Payouts' },
-    { href: '/community-guidelines', label: 'Safety' },
-    { href: '/organisers', label: 'For organisers' },
-    { href: '/organisers#guides', label: 'Guides' },
-    { href: '/pricing-fees', label: 'Pricing & Fees' },
+  { title: 'Services', links: [
+    { href: '/marketplace', label: MARKETPLACE_LABEL },
+    { href: '/#joining', label: 'How it works' },
+    { href: '/help', label: 'Help centre' },
   ] },
   { title: 'Company', links: [
     { href: '/about', label: 'About' },
-    { href: '/help', label: 'Help centre' },
-    { href: '/careers', label: 'Careers' },
     { href: '/contact', label: 'Contact' },
+  ] },
+  { title: 'Legal', links: [
     { href: '/terms', label: 'Terms of Service' },
     { href: '/privacy', label: 'Privacy Policy' },
-    { href: '/terms#status', label: 'Who we are' },
     { href: '/refunds', label: 'Refunds & cancellations' },
-    { href: '/terms', label: 'Terms' },
-    { href: '/privacy', label: 'Privacy' },
+    { href: '/cookies', label: 'Cookies' },
+    // Required to stay discoverable (India IT Rules 2021 grievance officer).
+    { href: '/grievance', label: 'Grievance Redressal' },
   ] },
 ];

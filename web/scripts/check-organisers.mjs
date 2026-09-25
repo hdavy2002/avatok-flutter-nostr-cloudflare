@@ -76,5 +76,8 @@ assert.match(html, /data-folk-artwork="satsang"/);
 assert.match(html, /saathum-bright\/satsang\.png/);
 assert.match(html, /Made in India with Love ❤️ and cutting chai\./);
 const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
-for (const href of ['/marketplace?group=india_goes_live','/marketplace?group=book_their_time','/dashboard','/payouts','/careers','/cookies','/refunds','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/grievance','/tokens']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
+// [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex, off the menus) but still renders; its
+// footer is the shared Puja & Havan footer.
+for (const href of ['/marketplace','/cookies','/refunds','/grievance','/terms','/privacy']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
+assert.match(html, /name="robots" content="noindex, nofollow"/, '/organisers is archived (noindex)');
 console.log('/organisers approved folk design and complete footer passed.');

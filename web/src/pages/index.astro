@@ -33,6 +33,8 @@ const listings = [
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga: 'bhajan' } as Record<string, string>)[name] ?? name;
+// [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
+import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
 ---
 <Base title="Saathum | Book Hindu religious experiences online"
   description="Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are."
@@ -46,7 +48,7 @@ const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga:
   <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome
-      links={[{ href: '/marketplace', label: 'Explore events' }, { href: '/#experiences', label: 'Experiences' }, { href: '/#joining', label: 'How it works' }]} />
+      links={[{ href: '/marketplace', label: MARKETPLACE_LABEL }, { href: '/#experiences', label: 'Experiences' }, { href: '/#joining', label: 'How it works' }]} />
     <main id="main-content">
       <section class="grand-hero" aria-labelledby="grand-title" data-home-section="hero">
         <div class="grand-hero-copy">
