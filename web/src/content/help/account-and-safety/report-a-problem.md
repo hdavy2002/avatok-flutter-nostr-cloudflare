@@ -18,7 +18,7 @@ draft: false
 
 ## Reporting is one tap away
 
-Inside the app, reporting and blocking a user, listing or piece of content is built into the report tool right where you see it — use that first if you can, it gets your report to the right place fastest. Violations of our [Community Guidelines](/community-guidelines) can lead to content removal, feature limits, or account suspension or termination depending on severity.
+Inside the app, reporting and blocking a user, listing or piece of content is built into the report tool right where you see it — use that first if you can, it gets your report to the right place fastest. Violations of our [Terms of Service](/terms) can lead to content removal, feature limits, or account suspension or termination depending on severity.
 
 ## Reporting a problem with a ritual
 
