@@ -3,7 +3,6 @@
 import { publicImage } from '../lib/config';
 export const prerender = true;
 import Content from '../layouts/Content.astro';
-import LegalStatus from '../components/LegalStatus.astro';
 import EntityFaq from '../components/EntityFaq.astro';
 ---
 
@@ -15,11 +14,7 @@ import EntityFaq from '../components/EntityFaq.astro';
   lead="Little rituals, big joy."
   updated="2026-09-25"
 >
-  <h2 id="status">Who runs Saathum</h2>
-  <p>
-    Saathum is the puja and havan service brand of <strong>Ava Global International, Inc.</strong>, a domestic Delaware corporation.
-  </p>
-  <LegalStatus variant="full" />
+
 
   <figure class="editorial-photo">
     <img data-india-i18n-attr="alt:web-about.c1dc3d3115a3996c" src={publicImage('/genz-friends.jpg', { width: 900, fit: 'scale-down' })} alt="Four people laughing together over a phone" />

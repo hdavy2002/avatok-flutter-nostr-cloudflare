@@ -42,4 +42,4 @@ The website is built to be the fast, public front door — something anyone can 
 3. Watch or attend right in your browser if you like.
 4. To message the creator, or if you're a creator getting paid, open the **Saathum app** — that's where your Saathum number lives and where the conversation continues.
 
-Not sure where to start? [What is Saathum?](/help/getting-started/what-is-avatok) covers the basics, and [Create your account](/help/getting-started/create-your-account) walks through signing up.
+Not sure where to start? [What is Saathum?](/help/getting-started/what-is-saathum) covers the basics, and [Create your account](/help/getting-started/create-your-account) walks through signing up.

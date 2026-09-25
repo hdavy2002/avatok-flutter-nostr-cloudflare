@@ -90,7 +90,8 @@ export interface OrgConstants {
 export const ORG: OrgConstants = {
   name: 'Saathum',
   alternateNames: ['Saathum.com'],
-  legalName: 'Ava Global International, Inc.',
+  // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
+  legalName: null,
   url: 'https://saathum.com/',
   logo: {
     url: 'https://saathum.com/app-logo2.png',
@@ -99,9 +100,9 @@ export const ORG: OrgConstants = {
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   description:
-    'Saathum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door. Operated by Ava Global International, Inc., a Delaware corporation.',
+    'Saathum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door.',
   slogan: 'A puja for every hope. Performed in your name.',
-  foundersDescription: 'Founded by American and Indian founders',
+  foundersDescription: '',
   foundingDate: '2025',
   // [SAATHUM-BRAND-1 2026-09-20] Left as the avatok.ai mailbox on purpose —
   // per the rename's hard rule, existing @avatok.ai mailboxes stay working
@@ -205,27 +206,10 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'A live streaming and 1:1 video consultation platform for devotional and spiritual life at saathum.com — puja and darshan, temple tours, satsang and festivals, and astrology and spiritual-guidance sessions.',
-    knowsAbout: ['live streaming', 'devotional events', 'astrology consultations', 'paid 1:1 video consultations'],
+      'An online puja and havan service at saathum.com — rituals performed in your name and gotra by our priests, watched live, with prasad delivered.',
+    knowsAbout: ['puja', 'havan', 'sankalp', 'live puja'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
-    parentOrganization: {
-      '@type': 'Organization',
-      name: ORG.parent.name,
-      address: {
-        '@type': 'PostalAddress',
-        addressRegion: ORG.parent.region,
-        addressCountry: ORG.parent.country,
-      },
-    },
-    address: {
-      '@type': 'PostalAddress',
-      addressLocality: ORG.address.locality,
-      addressRegion: ORG.address.region,
-      addressCountry: ORG.address.country,
-      ...(ORG.address.street != null ? { streetAddress: ORG.address.street } : {}),
-      ...(ORG.address.postalCode != null ? { postalCode: ORG.address.postalCode } : {}),
-    },
     areaServed: 'Worldwide',
     knowsLanguage: ORG.languages,
     email: ORG.email,
