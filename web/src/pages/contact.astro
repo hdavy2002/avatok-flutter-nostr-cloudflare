@@ -13,13 +13,12 @@ import Content from '../layouts/Content.astro';
   tone="pink"
 >
   <p>
-    <ui-copy style="display:contents" data-i18n="web-contact.3561417b16521b57">You can always email us directly at</ui-copy> <a href="mailto:support@avatok.ai">support@avatok.ai</a><ui-copy style="display:contents" data-i18n="web-contact.5ebe030573ca42a3">, or
+    <ui-copy style="display:contents" data-i18n="web-contact.3561417b16521b57">You can always email us directly at</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a><ui-copy style="display:contents" data-i18n="web-contact.5ebe030573ca42a3">, or
     use the form below. For copyright issues see our</ui-copy> <a data-i18n="web-contact.0606b89431ebdb4b" href="/dmca">DMCA / Copyright</a> <ui-copy style="display:contents" data-i18n="web-contact.26b6e19408dd9c56">policy; for
     anything about your data, see our</ui-copy> <a data-i18n="web-contact.506ff394621596dd" href="/privacy">Privacy Policy</a><ui-copy style="display:contents" data-i18n="web-contact.908bc4dab31f73e1">. To file a formal
     complaint, use</ui-copy> <a data-i18n="web-contact.b5d03028fbc1d7ac" href="/grievance">Grievance Redressal</a>.
   </p>
 
-  <h2 data-i18n="web-contact.8739a7eb5fa17cb1" id="status">Who we are and where to find us</h2>
 
 
   <form id="contact-form" class="cform" novalidate>
@@ -59,7 +58,7 @@ import Content from '../layouts/Content.astro';
     </label>
     <button data-i18n="web-contact.93a26b1eaff99b3a" type="submit" class="cbtn">Send message</button>
     <p class="cstatus" id="contact-status" role="status" aria-live="polite"></p>
-    <p class="delivery-note"><ui-copy style="display:contents" data-i18n="web-contact.5ff3490d40ebce43">Every form submission is delivered through Brevo to</ui-copy> <strong>support@avatok.ai</strong>.</p>
+    <p class="delivery-note"><ui-copy style="display:contents" data-i18n="web-contact.5ff3490d40ebce43">Every form submission is delivered through Brevo to</ui-copy> <strong>support@saathum.com</strong>.</p>
   </form>
 </Content>
 
@@ -121,11 +120,11 @@ import Content from '../layouts/Content.astro';
           statusEl.textContent = 'Thanks! Your message is on its way — we’ll be in touch.';
         } else {
           statusEl.className = 'cstatus err';
-          statusEl.textContent = out.error || 'Could not send your message. Please email support@avatok.ai.';
+          statusEl.textContent = out.error || 'Could not send your message. Please email support@saathum.com.';
         }
       } catch {
         statusEl.className = 'cstatus err';
-        statusEl.textContent = 'Network error. Please email support@avatok.ai.';
+        statusEl.textContent = 'Network error. Please email support@saathum.com.';
       } finally {
         btn.disabled = false;
         btn.textContent = prev;

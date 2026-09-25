@@ -8,9 +8,9 @@ keywords: ["platform fee", "commission", "avatok fee", "paisa", "creator earning
 audience: both
 faq:
   - q: "How much does Saathum take from a paid booking?"
-    a: "A percentage set by Saathum comes out of the creator's share of the price; buyers pay the listing price plus GST. Email support@avatok.ai with a booking reference if you want the exact split for a booking."
+    a: "A percentage set by Saathum comes out of the creator's share of the price; buyers pay the listing price plus GST. Email support@saathum.com with a booking reference if you want the exact split for a booking."
   - q: "Why does the fee on the listing page not match what I expected?"
-    a: "Saathum is in testing and is moving to a new fee structure, so the fee shown while pricing a listing isn't yet the one used at payout. Ask support@avatok.ai to confirm the split for a specific booking."
+    a: "Saathum is in testing and is moving to a new fee structure, so the fee shown while pricing a listing isn't yet the one used at payout. Ask support@saathum.com to confirm the split for a specific booking."
   - q: "Does Saathum keep changing the fee without telling me?"
     a: "No — the fee for a booking is fixed at the moment the buyer pays and doesn't change afterwards. Only the rate for future bookings can change."
 draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
@@ -34,8 +34,8 @@ Saathum is in a testing phase (see [Refunds & Cancellations](/refunds)). The fee
 
 We can promise: the fee applied to a booking is fixed when the buyer pays and doesn't change afterwards, and it's taken automatically.
 
-What we're not printing here is a fixed percentage, because Saathum can adjust it during testing. If you're a creator and a payout doesn't match what you expected, email support@avatok.ai with the booking reference and we'll check it for you.
+What we're not printing here is a fixed percentage, because Saathum can adjust it during testing. If you're a creator and a payout doesn't match what you expected, email support@saathum.com with the booking reference and we'll check it for you.
 
 ## If something looks wrong
 
-If a fee was deducted that doesn't match what was shown to you at the time, contact us with the order or booking reference — see how to raise a billing issue in the [Refunds & Cancellations](/refunds) policy, or write to support@avatok.ai. Because payments are still in testing, anything charged in error is refunded in full.
+If a fee was deducted that doesn't match what was shown to you at the time, contact us with the order or booking reference — see how to raise a billing issue in the [Refunds & Cancellations](/refunds) policy, or write to support@saathum.com. Because payments are still in testing, anything charged in error is refunded in full.

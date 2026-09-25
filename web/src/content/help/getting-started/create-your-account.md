@@ -45,4 +45,4 @@ Use [sign in](/sign-in) instead — the same email-code verification applies the
 
 ## Trouble signing up
 
-If an email address already has an account, sign-up will tell you to log in instead. If a code doesn't arrive, you can resend it after a short wait shown on screen. For anything else, see [Report a problem](/help/account-and-safety/report-a-problem) or write to support@avatok.ai.
+If an email address already has an account, sign-up will tell you to log in instead. If a code doesn't arrive, you can resend it after a short wait shown on screen. For anything else, see [Report a problem](/help/account-and-safety/report-a-problem) or write to support@saathum.com.

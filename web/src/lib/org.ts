@@ -9,7 +9,7 @@
 // comment above Base.astro's `orgLd` ([WEB-SEO-1]/[WEB-SEO-2]) — read it
 // before changing a value, not just the field's name.
 //
-// The legal entity behind the brand is Ava Global International, Inc., a
+// The legal entity behind the brand is Saathum, a
 // domestic Delaware corporation. The public registered-agent address is used
 // below because it is the address returned by Delaware's entity search.
 //
@@ -109,7 +109,7 @@ export const ORG: OrgConstants = {
   // and are not renamed as part of this sweep. Point this at a saathum.com
   // mailbox once one exists and is verified (see
   // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md).
-  email: 'support@avatok.ai',
+  email: 'support@saathum.com',
   address: {
     locality: 'Newark',
     region: 'Delaware',
@@ -118,7 +118,7 @@ export const ORG: OrgConstants = {
     postalCode: '19713',
   },
   parent: {
-    name: 'Ava Global International, Inc.',
+    name: 'Saathum',
     region: 'Delaware',
     country: 'US',
   },
@@ -130,7 +130,7 @@ export const ORG: OrgConstants = {
   },
   sameAs: {
     // [SAATHUM-BRAND-1 2026-09-20] These four profiles (youtube/@avatok,
-    // linkedin/company/avatok, the AvaTOK Wikidata item) were the avaTOK
+    // linkedin/company/avatok, the Saathum Wikidata item) were the Saathum
     // brand's real, resolving accounts — `sameAs` must only list profiles
     // that resolve TODAY (see the file header), and none of them are
     // Saathum's. Nulled rather than repointed at a guessed Saathum handle;

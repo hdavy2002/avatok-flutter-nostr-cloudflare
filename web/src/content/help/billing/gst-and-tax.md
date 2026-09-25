@@ -8,7 +8,7 @@ keywords: ["GST", "tax", "TDS", "withholding", "creator tax", "invoice", "kar", 
 audience: creator
 faq:
   - q: "Does Saathum deduct GST from my payout?"
-    a: "Where GST applies in India, the policy allows it to be charged in addition to the transfer fee. During testing the withdrawal request doesn't show a breakdown yet, so ask support@avatok.ai before you withdraw."
+    a: "Where GST applies in India, the policy allows it to be charged in addition to the transfer fee. During testing the withdrawal request doesn't show a breakdown yet, so ask support@saathum.com before you withdraw."
   - q: "Will Saathum withhold tax (like TDS) from what I earn?"
     a: "Where Indian tax law requires withholding on marketplace payouts, Saathum may withhold it and remit it to the authorities, and may ask for your tax details before releasing a payout."
   - q: "Does this page tell me how much tax I personally owe?"
@@ -39,6 +39,6 @@ This page and the policy it summarises only describe what Saathum withholds or d
 
 ## Where to check the current figures
 
-During testing the withdrawal request doesn't yet show a fee or tax breakdown, so the reliable way to check what will be deducted from a specific withdrawal is to ask support@avatok.ai before you confirm it.
+During testing the withdrawal request doesn't yet show a fee or tax breakdown, so the reliable way to check what will be deducted from a specific withdrawal is to ask support@saathum.com before you confirm it.
 
 If your tax situation involves more than one platform, other income, or you're unsure what to declare, this is exactly the kind of question a chartered accountant is better placed to answer than a help article.

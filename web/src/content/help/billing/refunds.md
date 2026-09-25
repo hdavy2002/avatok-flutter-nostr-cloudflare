@@ -52,4 +52,4 @@ If you think a charge is wrong, contact us first — it's faster than a chargeba
 
 ## How to raise a billing issue
 
-Email support@avatok.ai from the address on your account with the date and amount of the charge, how you paid, and the booking reference if you have one. See [Refunds & Cancellations §10](/refunds) for the full list of what to include.
+Email support@saathum.com from the address on your account with the date and amount of the charge, how you paid, and the booking reference if you have one. See [Refunds & Cancellations §10](/refunds) for the full list of what to include.

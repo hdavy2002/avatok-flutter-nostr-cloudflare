@@ -42,4 +42,4 @@ Bookings stay open for about **15 minutes** after the scheduled start. After tha
 
 If a ritual still hasn't gone live about 15 minutes after its scheduled start, you don't need to raise a support ticket. Saathum's automatic check cancels your booking and refunds it in full, whether or not you had opened the page. The refund goes back the way you paid; a refund to UPI or a card can take a little time to show at your bank. See [Refunds & Cancellations](/refunds) for more.
 
-If the stream went live but ended early or dropped, it isn't refunded automatically — email support@avatok.ai with your booking details and we'll review it.
+If the stream went live but ended early or dropped, it isn't refunded automatically — email support@saathum.com with your booking details and we'll review it.
