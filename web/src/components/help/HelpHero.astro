@@ -7,8 +7,8 @@ import { publicImage } from '../../lib/config';
 // TruckBorder "tassels" strip, the display headline with the hard-shadow
 // "works." reveal, the lead, the big HelpSearch (size="hero"), and the
 // STD/ISD/PCO signboard art tilted like a listing-tile photo with the
-// sneakers-saree cut-out sticker layered on top — sticker hidden below
-// 1024px per the comp (Phone.dc.html never references sneakers-saree.png
+// temple-bell cut-out sticker layered on top — sticker hidden below
+// 1024px per the comp (Phone.dc.html never references help-hero.png
 // at all), where the signboard shrinks and moves inline next to the lead.
 //
 // Colour/type tokens come from the scoped custom-property block
@@ -65,10 +65,10 @@ import HelpSearch from '../HelpSearch.astro';
       />
       <img
         class="help-hero-sticker"
-        src={publicImage('/help/art/sneakers-saree.png', { width: 300, fit: 'scale-down' })}
+        src={publicImage('/help/art/help-hero.png', { width: 300, fit: 'scale-down' })}
         alt=""
         width="300"
-        height="453"
+        height="450"
         loading="lazy"
       />
     </div>
@@ -171,7 +171,7 @@ import HelpSearch from '../HelpSearch.astro';
   }
 
   /* [WEB-HELP-2] Below 1024px the comp drops the standalone art block and
-     the sticker entirely (Phone.dc.html never loads sneakers-saree.png —
+     the sticker entirely (Phone.dc.html never loads help-hero.png —
      see this file's header comment) and puts a small signboard next to the
      lead paragraph instead. */
   @media (max-width: 1024px) {

@@ -19,6 +19,7 @@ import BazaarHero from './BazaarHero.astro';
 import BazaarSearchStrip from './BazaarSearchStrip.astro';
 import TruckBorder from './TruckBorder.astro';
 import { PUBLIC_GROUP_ORDER, GROUP_DISPLAY } from '../lib/marketGroups';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 
 interface Props {
   hrefBase?: string;
@@ -53,8 +54,8 @@ const mpBase = `${hrefBase}/marketplace`;
 // every time someone taps it. See marketGroups.ts.
 const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 const RITUAL_TILES = [
-  { label: 'Pujas', zone: 'Performed in your name', href: `${hrefBase}/marketplace?q=Puja#listings` },
-  { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings` },
+  { label: 'Pujas', zone: 'Performed in your name', href: `${hrefBase}/marketplace?q=Puja#listings`, image: '/marketplace/art/puja.png', alt: 'Puja thali with diya, lotus, kumkum, rice and marigolds' },
+  { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings`, image: '/marketplace/art/havan.png', alt: 'Havan kund with a calm sacred flame, mango wood and marigold garland' },
 ];
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
@@ -103,9 +104,24 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     {(ritualTiles ? RITUAL_TILES : visibleTiles.map((g) => ({ ...g, href: `${mpBase}?group=${encodeURIComponent(g.id)}#listings` }))).map((g, i) => (
       <a
         href={g.href}
-        class={`${i === 0 ? 'hidden sm:block' : 'block'} overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed`}
+        class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
       >
         <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
+        {ritualTiles && 'image' in g && (
+          <picture class="block border-b border-ink bg-paper2 px-3 pt-3 sm:px-5 sm:pt-5">
+            <img
+              src={publicImage(g.image, { width: 720, fit: 'scale-down' })}
+              srcset={publicImageSrcSet(g.image, [320, 480, 720, 960], { fit: 'scale-down' })}
+              sizes="(max-width: 639px) 92vw, 46vw"
+              alt={g.alt}
+              width="1774"
+              height="887"
+              loading="eager"
+              decoding="async"
+              class="block aspect-[2/1] w-full object-contain"
+            />
+          </picture>
+        )}
         {/* [MARKET-BAZAAR-3] Taller and roomier than before. The tiles were
             px-4/pt-3/pb-3.5, which made a 120px strip that read as a row of
             buttons rather than the comp's stall signs. */}
