@@ -13,6 +13,7 @@
     "dev": "astro dev",
     "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs && node scripts/prepare-global-art.mjs && node scripts/prepare-public-images.mjs && node scripts/check-image-urls.mjs",
     "build": "astro build",
+    "postbuild": "node scripts/dedupe-routes-json.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "copy-demo": "node scripts/copy-design-demo.mjs"

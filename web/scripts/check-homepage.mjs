@@ -248,6 +248,10 @@ assert(!existsSync(resolve(root, 'ideas/index.html')), '/ideas is a redirect, no
 const routesJson = JSON.parse(readFileSync(resolve(root, '_routes.json'), 'utf8'));
 assert(routesJson.exclude.includes('/rituals/*'), '_routes.json must exclude /rituals/* (else articles hit the Function and 404)');
 assert(routesJson.include.length + routesJson.exclude.length <= 100, 'Cloudflare 100-rule _routes.json ceiling');
+for (const list of [routesJson.include, routesJson.exclude]) {
+  const splats = list.filter(rule => rule.endsWith('/*')).map(rule => rule.slice(0, -1));
+  for (const rule of list) assert(!splats.some(prefix => rule !== prefix + '*' && (rule.startsWith(prefix) || rule + '/' === prefix)), 'Cloudflare rejects overlapping _routes.json rules: ' + rule);
+}
 const guide = normalizeBuiltImages(readFileSync(resolve(root, 'rituals/index.html'), 'utf8'), { root });
 assert.equal((guide.match(/data-idea-card/g) || []).length, 55, 'All 55 rituals (30 havans + 25 pujas) are in the guide');
 assert.equal((guide.match(/data-format="havan"/g) || []).length, 31, '30 havan cards + the Havans filter');
