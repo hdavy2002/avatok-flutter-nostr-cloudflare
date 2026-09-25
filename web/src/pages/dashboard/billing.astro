@@ -1,9 +1,10 @@
 ---
+// /dashboard/billing — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Billing".
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] the v1 'Billing' stub is at archive/dashboard-v1/billing.astro.
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import DashSoon from '../../components/DashSoon.astro';
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import Billing from '../../islands/dashboard2/Billing.tsx';
 ---
-<Dashboard title="Billing · saathum.com" heading="Billing" subtitle="Receipts, payment methods and statements." active="billing">
-  <DashSoon icon="🧾" title="Billing & receipts"
-    body="Your top-up receipts, payment methods and downloadable statements will live here. Coming in the next update." />
-</Dashboard>
+<Dashboard2 title="Billing" active="billing" subtitle="Payments, receipts and refunds.">
+  <Billing client:load />
+</Dashboard2>

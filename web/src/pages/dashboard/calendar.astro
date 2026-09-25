@@ -1,9 +1,12 @@
 ---
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/calendar.astro.
+// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
+// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
+// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import CalendarPanel from '../../islands/dashboard/CalendarPanel.tsx';
+import { isDashboard2Enabled } from '../../lib/serverFlags';
+import V1 from '../archive/dashboard-v1/calendar.astro';
+if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard${Astro.url.search}`, 302);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Dashboard title="Calendar & availability · saathum.com" heading="Calendar & availability" subtitle="Keep one schedule for every listing and booking." active="calendar">
-  <p data-i18n="web-dashboard.cd9986bcd8497443" class="mb-4 text-inkSoft">Set your working hours, review commitments, and open or block specific dates. Existing bookings stay protected when availability changes.</p>
-  <CalendarPanel client:load />
-</Dashboard>
+<V1 />

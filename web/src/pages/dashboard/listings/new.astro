@@ -1,31 +1,12 @@
 ---
-// /dashboard/listings/new — create a listing (live/consult/class/agent).
-// Gated: full account + KYC, same as the app. The CreateListing island wraps its
-// form in RequireAccount.
-//
-// [WIZ-EDIT-COPY-1 2026-09-14] ?id=<uuid> opens the SAME wizard on an existing
-// listing — that is what "Edit" on My listings links to. The page was still
-// headed "Create / New listing" in that case, so editing a saved listing was
-// presented as making a new one (and the browser tab said so too). This route
-// is `prerender = false`, so the request URL is available server-side and the
-// wording can just follow it. The wizard itself also opens an existing listing
-// at the step that still needs work rather than back on step 1 — see
-// wizardLogic.resumeStepFor.
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/listings/new.astro.
+// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
+// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
+// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
 export const prerender = false;
-
-import Dashboard from '../../../layouts/Dashboard.astro';
-import CreateListing from '../../../islands/dashboard/CreateListing.tsx';
-
-const editing = Boolean(Astro.url.searchParams.get('id'));
-const eyebrow = editing ? 'Edit' : 'Create';
-const heading = editing ? 'Edit listing' : 'New listing';
-const tabTitle = editing ? 'Edit listing · saathum.com' : 'New listing · saathum.com';
+import { isDashboard2Enabled } from '../../../lib/serverFlags';
+import V1 from '../../archive/dashboard-v1/listings/new.astro';
+if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard${Astro.url.search}`, 302);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-
-<Dashboard title={tabTitle} active="listings">
-  <header class="mb-6">
-    <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{eyebrow}</span>
-    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">{heading}</h1>
-  </header>
-  <CreateListing client:load />
-</Dashboard>
+<V1 />

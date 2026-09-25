@@ -1,0 +1,10 @@
+---
+// /dashboard/profile — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Profile".
+
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import Profile from '../../islands/dashboard2/Profile.tsx';
+---
+<Dashboard2 title="Profile" active="profile" subtitle="Your details, family, phone and UPI IDs.">
+  <Profile client:load />
+</Dashboard2>

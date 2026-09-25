@@ -1,12 +1,12 @@
 ---
-// Customer Appointments — creator's booked 1:1 appointment schedule.
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/consult.astro.
+// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
+// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
+// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import CommercialSchedule from '../../islands/dashboard/CommercialSchedule.tsx';
+import { isDashboard2Enabled } from '../../lib/serverFlags';
+import V1 from '../archive/dashboard-v1/consult.astro';
+if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard${Astro.url.search}`, 302);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Dashboard title="Customer Appointments · saathum.com" heading="Customer Appointments" subtitle="Your customer appointments. Start each one from the Saathum app." active="consult">
-  <CommercialSchedule client:load role="creator" kind="consult_1to1"
-    description="Each customer and time slot stays separate, so Start and Join always open the selected appointment."
-    emptyTitle="No customer appointments yet"
-    emptyBody="Publish a 1:1 consult listing and make availability available for customers to book." />
-</Dashboard>
+<V1 />

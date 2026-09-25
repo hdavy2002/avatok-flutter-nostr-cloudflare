@@ -1,0 +1,10 @@
+---
+// /dashboard/my-events — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "My events".
+
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import MyEvents from '../../islands/dashboard2/MyEvents.tsx';
+---
+<Dashboard2 title="My events" active="my-events" subtitle="Upcoming and live pujas you have booked.">
+  <MyEvents client:load />
+</Dashboard2>

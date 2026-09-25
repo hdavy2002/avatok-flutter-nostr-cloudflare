@@ -1,0 +1,33 @@
+---
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] archived v1 dashboard, restore by moving back
+// Was src/pages/dashboard/listings/new.astro. Served from there while dashboard2Enabled is off.
+// /dashboard/listings/new — create a listing (live/consult/class/agent).
+// Gated: full account + KYC, same as the app. The CreateListing island wraps its
+// form in RequireAccount.
+//
+// [WIZ-EDIT-COPY-1 2026-09-14] ?id=<uuid> opens the SAME wizard on an existing
+// listing — that is what "Edit" on My listings links to. The page was still
+// headed "Create / New listing" in that case, so editing a saved listing was
+// presented as making a new one (and the browser tab said so too). This route
+// is `prerender = false`, so the request URL is available server-side and the
+// wording can just follow it. The wizard itself also opens an existing listing
+// at the step that still needs work rather than back on step 1 — see
+// wizardLogic.resumeStepFor.
+export const prerender = false;
+
+import Dashboard from '../../../../layouts/Dashboard.astro';
+import CreateListing from '../../../../islands/dashboard/CreateListing.tsx';
+
+const editing = Boolean(Astro.url.searchParams.get('id'));
+const eyebrow = editing ? 'Edit' : 'Create';
+const heading = editing ? 'Edit listing' : 'New listing';
+const tabTitle = editing ? 'Edit listing · saathum.com' : 'New listing · saathum.com';
+---
+
+<Dashboard title={tabTitle} active="listings">
+  <header class="mb-6">
+    <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{eyebrow}</span>
+    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">{heading}</h1>
+  </header>
+  <CreateListing client:load />
+</Dashboard>

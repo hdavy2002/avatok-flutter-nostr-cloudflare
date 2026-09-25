@@ -1,0 +1,7 @@
+---
+// [DASH2-FOUNDATION 2026-09-25] Any other /dashboard/* path (old v1 deep links
+// with no dedicated route) lands on the dashboard home instead of a 404.
+// Real routes in this folder always win over this catch-all.
+export const prerender = false;
+return Astro.redirect('/dashboard', 301);
+---

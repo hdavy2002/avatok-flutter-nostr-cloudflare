@@ -1,0 +1,15 @@
+---
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] archived v1 dashboard, restore by moving back
+// Was src/pages/dashboard.astro. Served from there while dashboard2Enabled is off.
+// /dashboard — the signed-in Overview (mirrors the app's AvaVerse home).
+// Renders inside the Dashboard shell (sidebar). Content is an island because it
+// is per-user; the shell guards auth.
+export const prerender = false;
+
+import Dashboard from '../../../layouts/Dashboard.astro';
+import Overview from '../../../islands/dashboard/Overview.tsx';
+---
+
+<Dashboard title="Dashboard · saathum.com" active="overview">
+  <Overview client:load />
+</Dashboard>

@@ -1,0 +1,10 @@
+---
+// /dashboard/past — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Past events".
+
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import PastEvents from '../../islands/dashboard2/PastEvents.tsx';
+---
+<Dashboard2 title="Past events" active="past" subtitle="Watch the pujas you attended again.">
+  <PastEvents client:load />
+</Dashboard2>

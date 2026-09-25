@@ -1,22 +1,12 @@
 ---
-// /dashboard/library — saved media & files (app: AvaLibrary).
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/library.astro.
+// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
+// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
+// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
 export const prerender = false;
-
-import Dashboard from '../../layouts/Dashboard.astro';
+import { isDashboard2Enabled } from '../../lib/serverFlags';
+import V1 from '../archive/dashboard-v1/library.astro';
+if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard${Astro.url.search}`, 302);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-
-<Dashboard title="Library · saathum.com" active="library">
-  <header class="mb-6">
-    <span data-i18n="web-dashboard.67b696468610b879" class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Dashboard</span>
-    <h1 data-i18n="web-dashboard.dc20b3d5d2cddf82" class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Library</h1>
-  </header>
-  <div class="rounded-zine border-zine border-ink bg-card p-8 text-center shadow-zine-sm">
-    <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-zineBadge border-zine border-ink bg-mint text-[22px] shadow-zine-xs">▤</div>
-    <h2 data-i18n="web-dashboard.88875255fe87eca5" class="font-display font-semibold text-[20px] text-ink">Your saved media & files</h2>
-    <p data-i18n="web-dashboard.f1970c73d48af462" class="mx-auto mt-2 max-w-md font-body font-bold text-[15px] text-inkSoft">
-      Files you save across Saathum live here — one shared pool, 5&nbsp;GB free. Uploading and managing your
-      library is rolling out to the web next; for now it's available in the app.
-    </p>
-    <a data-i18n="web-dashboard.a17e57883bc7246d" href="/marketplace" class="mt-5 inline-block rounded-full border-zine border-ink bg-paper px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Back to marketplace</a>
-  </div>
-</Dashboard>
+<V1 />

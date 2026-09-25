@@ -1,8 +1,12 @@
 ---
+// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/payout.astro.
+// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
+// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
+// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import PayoutPanel from '../../islands/dashboard/PayoutPanel.tsx';
+import { isDashboard2Enabled } from '../../lib/serverFlags';
+import V1 from '../archive/dashboard-v1/payout.astro';
+if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard/billing${Astro.url.search}`, 302);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Dashboard title="Payout · saathum.com" heading="Payout" subtitle="Withdraw your earnings to your bank." active="payout">
-  <PayoutPanel client:load />
-</Dashboard>
+<V1 />
