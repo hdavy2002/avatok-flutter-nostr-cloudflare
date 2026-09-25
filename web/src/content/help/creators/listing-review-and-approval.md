@@ -13,7 +13,7 @@ faq:
     a: Yes — a reviewer can edit listing content to fix a problem, and your listing keeps its approval. Every change is recorded with its before and after values.
   - q: My listing was approved — why can't I publish it?
     a: Approval and publishing are separate checks. A listing must still meet every publish requirement (see Create a listing) at the moment you publish it, even after review.
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 After you submit a listing, it moves through a small set of statuses. Here's what each one means and what you can expect at each stage.

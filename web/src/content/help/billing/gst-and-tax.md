@@ -13,7 +13,7 @@ faq:
     a: "Where Indian tax law requires withholding on marketplace payouts, Saathum may withhold it and remit it to the authorities, and may ask for your tax details before releasing a payout."
   - q: "Does this page tell me how much tax I personally owe?"
     a: "No — it only covers what Saathum withholds at the point of payout; you're responsible for your own tax position, and this isn't tax advice."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## The full policy

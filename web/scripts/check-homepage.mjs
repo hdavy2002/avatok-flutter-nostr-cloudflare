@@ -25,12 +25,13 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.match(html, /<title[^>]*>Saathum \| Book Hindu religious experiences online/, 'Booking marketplace page title');
+// [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
+assert.match(html, /<title[^>]*>Saathum — Book a Puja or Havan Performed in Your Name, Live/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Close to your roots\. Wherever you are\./, 'Approved reference H1');
-assert.match(visibleText, /LIVE FROM INDIA\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*JOIN FROM ANYWHERE/, 'Booking hero eyebrow');
-for (const heading of ['Find your spiritual moment', 'Moments to look forward to', 'Far from home. Close to your traditions.', 'Bring your community together.']) {
+assert.match(visibleText, /A puja for every hope\. Performed in your name\./, 'Brief H1');
+assert.match(visibleText, /IN YOUR NAME\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
+for (const heading of ['What would you like to welcome into your life?', 'Upcoming live pujas &amp; havans', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
 assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking design identity');
@@ -55,7 +56,7 @@ assert(grandHeroMetadata.hasAlpha, 'Grand hero retains transparent foreground');
 assert.equal(grandHeroMetadata.width, 1214, 'Grand hero width is recorded');
 assert.equal(grandHeroMetadata.height, 1295, 'Grand hero height is recorded');
 assert(html.includes('saathum-grand/hero.png'), 'Exact grand hero source is referenced');
-for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']], ['listing', ['aarti', 'puja', 'bhajan']]]) {
+for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']], ['listing', ['aarti', 'puja']]]) {
   for (const name of names) {
     const path = resolve(root, 'assets/saathum-booking', kind + '-' + name + '.png');
     assert(existsSync(path), 'Booking artwork exists: ' + kind + '-' + name);
@@ -79,25 +80,26 @@ assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image 
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label renamed.
-for (const [label, href] of [['Our Pujas','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
+for (const [label, href] of [['Pujas','/marketplace?q=Puja'],['Havans','/marketplace?q=Havan'],['By intention','/#experiences'],['How it works','/how-it-works'],['About','/about']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace','/about','/help','/contact','/terms','/privacy','/cookies','/refunds','/grievance']) {
+for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/about','/how-it-works','/help','/contact','/terms','/privacy','/cookies','/refunds','/grievance']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
 for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
   assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
-assert.match(visibleText, /Saathum is a marketplace where event organisers sell tickets to live online spiritual events\./, 'Marketplace role is explained');
-assert.match(visibleText, /Attendees book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
+assert.match(visibleText, /Saathum performs pujas and havans for you, in your name\./, 'Service role is explained');
+assert.match(visibleText, /You book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
+assert.match(visibleText, /Saathum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
 
 // Screenshot examples are clearly editorial samples, never invented bookable inventory.
-assert.match(visibleText, /These are illustrative moments\./, 'Reference event examples are visibly identified');
+assert.match(visibleText, /These are illustrative examples\./, 'Reference ritual examples are visibly identified');
 assert.match(visibleText, /Live now|Starts in|Tomorrow|This weekend|Book now/, 'Listing availability labels remain visible');
 assert.doesNotMatch(bodyHtml, /href="\/(?:l|listing)\/sample[^"\s]*"/, 'Samples must not invent listing destinations');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
@@ -112,7 +114,7 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
 }
 const topicSearchTerms = [...html.matchAll(/href="\/marketplace\?q=([^"&]+)"/g)]
   .map(m => decodeURIComponent(m[1].replace(/\+/g, ' ')));
-for (const term of ['Puja', 'Aarti', 'Bhajan', 'Satsang', 'Festival', 'Yoga']) {
+for (const term of ['Puja', 'Havan', 'Studies', 'Fresh start', 'Prosperity', 'Health', 'Family', 'Festival']) {
   assert(topicSearchTerms.includes(term), 'Reference category searches marketplace: ' + term);
 }
 assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace');
@@ -141,7 +143,7 @@ for (const key of ['web-landing.0528be3d426aff53', 'web-landing.92f4118799fbcf80
 for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jpg']) {
  assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
 }
-assert.match(html, /href="\/sign-up(?:\?|\"|\/)|href="\/dashboard(?:\?|\"|\/)/, 'Organiser CTA sign-in path remains reachable (A3 guest/authenticated)');
+assert.match(html, /href="\/sign-in(?:\?|\"|\/)|href="\/dashboard(?:\?|\"|\/)/, 'Sign-in / dashboard path remains reachable (guest/authenticated)');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
 assert.match(html, /aria-controls="avh-drawer"/, 'Mobile menu is accessible');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train|start-dialog|This design preview|noindex/, 'Production page has no retired animation, placeholder or search exclusion');

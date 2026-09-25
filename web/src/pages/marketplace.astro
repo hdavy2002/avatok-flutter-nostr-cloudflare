@@ -55,8 +55,8 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
 ---
 
 <Base
-  title="Marketplace · saathum.com"
-  description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
+  title="Our Pujas & Havans · Saathum"
+  description="Choose a puja or havan for studies, a fresh start, prosperity, health, family or peace. Our priests perform it in your name and gotra while you watch live. Prasad delivered to your door."
 >
   {/* [MARKET-BAZAAR-1] No max-width and no padding here: the bazaar hero is a
       full-bleed terracotta band with a truck-art strip that has to reach both
@@ -64,6 +64,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       below the band (its `gutters` const), so wrapping it in a max-w-6xl
       container would both crop the band and double-indent the grid. */}
   <main>
-    <MarketplaceBrowse hrefBase="" group={group} q={q} showHero={true} showSplit={true} />
+    <MarketplaceBrowse hrefBase="" group={group} q={q} showHero={true} showSplit={true} ritualTiles={true} />
+    {/* rebrand: reviewed — [SAATHUM-REBRAND-1] same design; tiles and split cards carry puja copy + the §5.11 disclaimer. */}
   </main>
 </Base>

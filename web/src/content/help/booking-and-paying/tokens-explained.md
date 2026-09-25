@@ -11,7 +11,7 @@ faq:
     a: "100 Tokens = $1 as Saathum's internal accounting anchor. Checkout may be shown in local currency using a server-owned FX quote captured with the payment."
   - q: "Can I get my unused tokens back as cash?"
     a: "Withdrawal semantics are not yet available. If a refund or reversal applies, Saathum uses the exact token amount recorded for the original transaction."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## The internal anchor: 100 Tokens = $1

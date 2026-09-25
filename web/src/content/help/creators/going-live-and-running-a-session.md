@@ -13,7 +13,7 @@ faq:
     a: If you connect and the buyer never shows up, the booking counts as delivered and you're paid your share. If the buyer connects and you don't, it's treated as a no-show on your side and the buyer is refunded in full.
   - q: When does my live show actually end?
     a: It doesn't end the instant your scheduled time is up — the platform gives a short grace period after the scheduled end before the listing is marked complete, so running a little over doesn't cut you off mid-show.
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Device checks

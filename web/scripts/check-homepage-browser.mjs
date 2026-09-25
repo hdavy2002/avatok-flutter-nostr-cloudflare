@@ -113,7 +113,7 @@ try {
     assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
     const footer = page.locator('footer');
     // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan footer: Child Safety, Payouts, Careers archived.
-    for (const label of ['Our Pujas', 'Grievance Redressal', 'Cookies', 'Refunds & cancellations', 'Contact']) {
+    for (const label of ['All pujas', 'Grievance Redressal', 'Cookies', 'Refund policy', 'Contact']) {
       assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
     }
     const footerBoxes = await footer.locator('.bf-col, .bf-legal-links').evaluateAll(elements => elements.map(el => {
@@ -173,7 +173,7 @@ try {
       await page.locator('#avh-drawer').waitFor({ state: 'hidden' });
       assert(await page.getByRole('button', { name: 'Open menu', exact: true }).evaluate(el => el === document.activeElement), name + ': Escape restores focus');
       await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-      await page.locator('#avh-drawer').getByRole('link', { name: 'Experiences', exact: true }).click();
+      await page.locator('#avh-drawer').getByRole('link', { name: 'By intention', exact: true }).click();
       assert(!(await page.locator('#avh-drawer').evaluate(dialog => dialog.open)), name + ': anchor selection closes menu');
     }
     await page.context().addCookies([{ name: '__client_uat', value: '1', url: 'http://127.0.0.1:4179' }]);

@@ -13,7 +13,7 @@ faq:
     a: "Currently 90 days from when you passed — after that you'll be asked to redo it before your next public action."
   - q: "How long does Saathum keep my face scan?"
     a: "For as long as your account is open, then it is destroyed on a fixed schedule after you delete your account — see the full retention schedule linked below."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Why Saathum asks you to verify

@@ -1,4 +1,5 @@
 ---
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] text-only; design untouched.
 // [LISTING-DETAILS-COMP-1] Faithful port of
 // design/details-page/astro-export/src/pages/listing-details.astro (the
 // approved comp) — markup, classnames and every <style> rule are UNCHANGED.
@@ -88,7 +89,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const slug = l.slug?.trim();
   const showPath = handle && slug ? `/${handle}/${slug}` : `/l/${l.id}`;
   const SHOW_URL = new URL(showPath, 'https://saathum.com').toString();
-  const hostName = (l.creator?.name || l.creator?.handle || 'Saathum creator').trim();
+  const hostName = (l.creator?.name || l.creator?.handle || 'Saathum').trim();
   // Possessive for section titles: "Sunny's house rules" / "Host's house rules" when nameless.
   const hostPoss = (l.creator?.name || l.creator?.handle) ? `${hostName.split(' ')[0]}'s` : 'Host\u2019s';
   const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — Saathum" allow="autoplay" loading="lazy"></iframe>`;
@@ -157,7 +158,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const listingCount = newHost
     ? '1 ACTIVE LISTING — THIS ONE'
     : `${otherListings.length + 1} ACTIVE LISTING${otherListings.length === 0 ? '' : 'S'}`;
-  const hostChip1 = newHost ? 'NEW HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
+  const hostChip1 = newHost ? 'NEW RITUAL' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} RATING`;
   const hostChip2 = newHost ? 'FIRST SHOW: SCHEDULING' : `${trust?.shows_hosted ?? 0} SHOWS`;
   const followers = l.creator?.follower_count ?? l.joined_count ?? 0;
   const watchStat = isLive ? String(l.watching ?? 0) : followers >= 1000 ? `${(followers / 1000).toFixed(1)}K` : String(followers);
@@ -225,7 +226,7 @@ const closedTitle = showCancelled ? 'This show was cancelled.'
 const closedLine = showCancelled
   ? 'Everyone who booked is refunded automatically — nothing to do on your side.'
   : showEnded
-    ? 'If the host did not go live, everyone who booked is refunded automatically.'
+    ? 'If the ritual did not go live, everyone who booked is refunded automatically.'
     : 'The show has already started, so new seats are no longer sold.';
 const countdownActive = !isLive && scheduleState === 'upcoming';
 
@@ -521,7 +522,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   {(showEnded || showCancelled || showStarting || !bookingOpen) && !isLive ? (
     <div class="ticker ticker--countdown">
       <div class="ticker__inner">
-        <span class="ticker__lead"><span class="ticker__dot"></span>{showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
+        <span class="ticker__lead"><span class="ticker__dot"></span>{showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — OUR PRIEST IS GETTING READY'}</span>
         {listing.starts_at && <span class="ticker__sub">{timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' })}</span>}
       </div>
     </div>
@@ -609,7 +610,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <button data-india-i18n-attr="aria-label:web-common.ea713ecd8537f77e" type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          {!heroBase && !videoIsHero && <span class="player-card__center-label"><ui-copy style="display:contents" data-i18n="web-common.e1b03986432ddb27">LIVE STAGE · HOST CAMERA</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.bfe7bf486171cd5e">16:9 STREAM DROPS HERE</ui-copy></span>}
+          {!heroBase && !videoIsHero && <span class="player-card__center-label"><ui-copy style="display:contents">LIVE FROM THE ALTAR</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.bfe7bf486171cd5e">16:9 STREAM DROPS HERE</ui-copy></span>}
           {/* [VIDEO-HERO-1] With a video in the frame these move OUT of it and
               into the bar below — overlaid on a player they would sit on top of
               YouTube's own controls and the scrubber. Exactly one #join-note and
@@ -760,7 +761,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           : <span><strong id="stat-fav-value">{favouritesCount}</strong><em data-i18n="web-common.2f16e813a887ddb2">♡ FAVOURITES</em></span>}
         <span><strong>{showsListed}</strong><em data-i18n="web-common.28b44d29f196e7eb">SHOWS LISTED</em></span>
         {showsHosted > 0
-          ? <span><strong>{showsHosted}</strong><em data-i18n="web-common.4aceb8dc2d0e2155">SHOWS HOSTED</em></span>
+          ? <span><strong>{showsHosted}</strong><em>RITUALS PERFORMED</em></span>
           : <span><strong>{comebackPct}</strong><em data-i18n="web-common.13ee7fd4145e0959">♡ COME BACK AGAIN</em></span>}
       </div>
       <div class="price-line">
@@ -875,7 +876,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </div>
       </div>
       {masala && (
-        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Lose the seat, lose the scene.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
+        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Lose the seat, lose the scene.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— The Saathum promise</ui-copy></div>
       )}
     </aside>
 
@@ -913,7 +914,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <div class="host-card__name">
                 {hostHref ? <a class="host-card__namelink" href={hostHref}>{hostName}</a> : hostName}
               </div>
-              {hostSinceYear && <div class="host-card__meta"><ui-copy style="display:contents" data-i18n="web-common.15b96cad7066c479">HOST SINCE</ui-copy> {hostSinceYear}</div>}
+              {hostSinceYear && <div class="host-card__meta"><ui-copy style="display:contents">PERFORMING SINCE</ui-copy> {hostSinceYear}</div>}
             </div>
             <div class="host-card__chips">
               <span class="chip">{hostChip1}</span>
@@ -936,8 +937,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {newHost ? (
               <div class="newhost-box">
                 <div class="newhost-box__head">
-                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NEW HOST</span>
-                  <span data-i18n="web-common.b817d19e4de3f60b" class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
+                  <span class="newhost-box__tag">NEW ON SAATHUM</span>
+                  <span class="newhost-box__title">This ritual is new — you'd be among the first to book it.</span>
                 </div>
                 <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what Saathum has checked instead:</p>
                 <div class="newhost-box__grid">
@@ -991,7 +992,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="section-head">
             <h2 class="section-title">{hostPoss} <ui-copy style="display:contents" data-i18n="web-common.d6e21286621a8586">house</ui-copy> <span data-i18n="web-common.fe4d7b920447bdc2" class="section-title__accent">rules.</span></h2>
             <img data-india-i18n-attr="alt:web-common.0bb1b667ae2b58b3" src={publicImage('/assets/jatt-sticker.png', { width: 900, fit: 'scale-down' })} alt="Caution: on board — proceed with respect" class="rules-sticker" />
-            <span data-i18n="web-common.ead43b00684c9888" class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+            <span class="section-head__note">SET BY SAATHUM · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="divider"><TruckBorder kind="eyes" /></div>
           <div class="rules-card">
@@ -1075,16 +1076,16 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="trust-block__ribbon"><TruckBorder kind="lotus" /></div>
           <div class="trust-block__body">
             <div class="trust-block__head">
-              <h2 data-i18n="web-common.cf4dec8f5f1fec58" class="section-title section-title--onteal">Seedhi baat, no chakkar.</h2>
-              <span data-i18n="web-common.4435de7ad4572e25">THESE PROMISES APPLY TO EVERY LISTING</span>
+              <h2 class="section-title section-title--onteal">Performed with devotion.</h2>
+              <span>THESE PROMISES APPLY TO EVERY RITUAL</span>
             </div>
             <div class="trust-grid">
-              <div class="trust-item"><div data-i18n="web-common.d494030c23c9a3c7">FULL PRICE UPFRONT</div><p data-i18n="web-common.6bb40e5d5e38daf2">Ticket + fees + GST — all visible before you book. No new numbers at checkout, ever.</p></div>
-              <div class="trust-item"><div data-i18n="web-common.58c85d51c130f513">CANCEL = FULL REFUND</div><p data-i18n="web-common.b569bde494e2184a">Free cancellation up to 24 hours before the show. If the host cancels, your refund is automatic.</p></div>
-              <div class="trust-item"><div data-i18n="web-common.b506c87ee3640286">REAL SEATS, REAL COUNTS</div><p data-i18n="web-common.6eb44be111561b15">Seat and viewer counters come from live inventory. No fake "only 2 left!" drama here.</p></div>
-              <div class="trust-item"><div data-i18n="web-common.181634a366708982">HUMAN OR AI — CLEARLY LABELLED</div><p data-i18n="web-common.1882c67e85f05bdb">This show is 100% live human. AI agents live in their own section with their own label. Never mixed.</p></div>
-              <div class="trust-item"><div data-i18n="web-common.5d3da5398afabb29">RECORDING OFF BY DEFAULT</div><p data-i18n="web-common.8280de5fd88e1ef4">The recap reel only includes people who said yes during the show. Everyone else is out, permanently.</p></div>
-              <div class="trust-item"><div data-i18n="web-common.ea46780201e34bf8">MODERATED ROOM</div><p data-i18n="web-common.75361e0beb1a3230">Report button on every screen. Bad behaviour means instant exit — and your refund stays yours.</p></div>
+              <div class="trust-item"><div>FULL PRICE UPFRONT</div><p>Ritual, prasad and GST — all visible before you book. No new numbers at checkout.</p></div>
+              <div class="trust-item"><div>CANCEL = FULL REFUND</div><p>Free cancellation up to 24 hours before the ritual. If we cancel, your refund is automatic.</p></div>
+              <div class="trust-item"><div>YOUR NAME IN THE SANKALP</div><p>Our priest speaks your name, gotra and wish at the altar, on camera.</p></div>
+              <div class="trust-item"><div>WATCH LIVE OR REPLAY</div><p>Join live, or watch the replay for 7 days.</p></div>
+              <div class="trust-item"><div>ONLY BENEFIC RITUALS</div><p>No fear and no fierce rituals. We never tell you something bad will happen if you don't book.</p></div>
+              <div class="trust-item"><div>NO GUARANTEED OUTCOMES</div><p>Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.</p></div>
             </div>
           </div>
         </div>
@@ -1480,7 +1481,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <p class="browse-card__blurb">${c.blurb}</p>
           <div class="browse-card__foot">
             <span class="browse-card__ini">${c.ini}</span>
-            <span class="browse-card__name">${c.name || 'Saathum creator'}${c.verified ? ' ✓' : ''}</span>
+            <span class="browse-card__name">${c.name || 'Saathum'}${c.verified ? ' ✓' : ''}</span>
             <span class="browse-card__dur">${c.dur}</span>
           </div>
         </div>

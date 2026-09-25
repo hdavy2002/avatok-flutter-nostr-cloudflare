@@ -31,8 +31,10 @@ interface Props {
   showSplit?: boolean;
   /** Show the big bazaar hero (public only; the dashboard has its own header). */
   showHero?: boolean;
+  ritualTiles?: boolean;
 }
-const { hrefBase = '', group, q, showSplit = false, showHero = false } = Astro.props;
+// rebrand: reviewed — [SAATHUM-REBRAND-1] ritualTiles relabels the SAME tiles as Pujas / Havans (search links).
+const { hrefBase = '', group, q, showSplit = false, showHero = false, ritualTiles = false } = Astro.props;
 // Public, anonymous data only, including when embedded in the private dashboard.
 const initialSeed = await getMarketplaceSeed(q);
 if (initialSeed.error) Astro.response.headers.set('Cache-Control', 'no-store');
@@ -50,6 +52,10 @@ const mpBase = `${hrefBase}/marketplace`;
 // Saathum's devotional scope (SPEC.md), so a tile for it would be a dead end
 // every time someone taps it. See marketGroups.ts.
 const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
+const RITUAL_TILES = [
+  { label: 'Pujas', zone: 'Performed in your name', href: `${hrefBase}/marketplace?q=Puja#listings` },
+  { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings` },
+];
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
 // at random) keeps a tile's strip stable across renders — a tile that changes
@@ -94,9 +100,9 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
 
 <section class={showHero ? 'relative -mt-10' : 'pt-2'}>
   <div class={`grid gap-3.5 ${gutters}`} style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
-    {visibleTiles.map((g, i) => (
+    {(ritualTiles ? RITUAL_TILES : visibleTiles.map((g) => ({ ...g, href: `${mpBase}?group=${encodeURIComponent(g.id)}#listings` }))).map((g, i) => (
       <a
-        href={`${mpBase}?group=${encodeURIComponent(g.id)}#listings`}
+        href={g.href}
         class={`${i === 0 ? 'hidden sm:block' : 'block'} overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed`}
       >
         <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
@@ -162,16 +168,16 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     <section class="pb-20">
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
-          <span data-i18n="web-common.a8e0c5b0a376c055" class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">For customers</span>
-          <h3 data-i18n="web-common.39e925f4243514c1" class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Browse right here</h3>
-          <p data-i18n="web-common.e854620b9a0d829c" class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">Everything works in your browser — explore, book and watch without downloading a thing.</p>
-          <div class="pt-1"><a data-i18n="web-common.b042b5609ceabfc6" href="#listings" class={ctaLime}>Start browsing</a></div>
+          <span class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">{ritualTiles ? 'How it works' : 'For customers'}</span>
+          <h3 class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">{ritualTiles ? 'Performed in your name' : 'Browse right here'}</h3>
+          <p class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">{ritualTiles ? 'Choose a puja or havan, share your name, gotra and wish, and watch it live. Prasad comes to your door.' : 'Everything works in your browser — explore, book and watch without downloading a thing.'}</p>
+          <div class="pt-1"><a href={ritualTiles ? '/how-it-works' : '#listings'} class={ctaLime}>{ritualTiles ? 'See how it works' : 'Start browsing'}</a></div>
         </div>
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
-          <span data-i18n="web-common.4e412dade4ccd047" class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">For creators</span>
-          <h3 data-i18n="web-common.0cd41e9840a28446" class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Sell from your dashboard</h3>
-          <p data-i18n="web-common.20cafa5dfe8c5ea7" class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">Create listings, bookings and AI agents on the web. Going live and sessions happen in the app.</p>
-          <div class="pt-1"><a data-i18n="web-common.4259d2bbd1a3d7d3" href="/sign-up" class={ctaBlue}>Become a creator</a></div>
+          <span class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">{ritualTiles ? 'Our promise' : 'For creators'}</span>
+          <h3 class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">{ritualTiles ? 'Only joy, only blessings' : 'Sell from your dashboard'}</h3>
+          <p class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">{ritualTiles ? 'Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.' : 'Create listings, bookings and AI agents on the web. Going live and sessions happen in the app.'}</p>
+          <div class="pt-1"><a href={ritualTiles ? '/refunds' : '/sign-up'} class={ctaBlue}>{ritualTiles ? 'Refund policy' : 'Become a creator'}</a></div>
         </div>
       </div>
     </section>

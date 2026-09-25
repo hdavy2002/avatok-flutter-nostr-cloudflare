@@ -81,10 +81,7 @@ const showOtp = otpHeadings.length >= 2;
 // the article is the plain-English cousin of an actual policy page — billing
 // and booking-and-paying. Every other section has no single matching policy.
 const RELATED_POLICIES: { href: string; label: string }[] = [
-  { href: '/tokens', label: 'Tokens' },
   { href: '/refunds', label: 'Refunds' },
-  { href: '/payouts', label: 'Payouts' },
-  { href: '/marketplace-terms', label: 'Marketplace terms' },
 ];
 const showRelatedPolicies = sectionId === 'billing' || sectionId === 'booking-and-paying';
 

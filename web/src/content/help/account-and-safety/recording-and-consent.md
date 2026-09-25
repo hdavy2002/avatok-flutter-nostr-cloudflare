@@ -11,7 +11,7 @@ faq:
     a: "No — a call isn't recorded just because it happens on Saathum. It's only recorded if a participant turns on a recording feature, or if your AI receptionist answers on your behalf."
   - q: "Who is responsible for getting consent to record?"
     a: "You are. If you record a call, you must ask everyone on it first and stop if anyone objects — Saathum cannot tell you which country's consent laws apply."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Are your calls recorded by default?

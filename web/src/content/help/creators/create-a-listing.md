@@ -13,7 +13,7 @@ faq:
     a: No. It is only used to generate your AI poster and is never shown publicly.
   - q: Can I sell something without a schedule?
     a: Yes — marketplace listings (buy, sell, social) don't need a category, a schedule or photos to publish; live events and 1:1 sessions do.
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 Saathum has three kinds of listing. **Live events** ("Live events") are a scheduled broadcast with a fixed start time. **Group classes and 1:1 consultations** ("Group classes" and "1:1 consultations") are paid time with an expert, either in a small group or one-to-one, booked against their availability. **Marketplace listings** (buy, sell, social) are simple items or offers with no schedule attached. Start a listing from [My listings](/dashboard/listings) → New listing.

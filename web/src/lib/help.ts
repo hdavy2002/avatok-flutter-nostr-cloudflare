@@ -1,3 +1,4 @@
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] section labels/blurbs.
 // [WEB-HELP-1 2026-09-11] Shared API for the help centre: the section
 // registry, the tree the landing page and sidebar render from, URL helpers,
 // prev/next navigation within a section, and the zero-dependency search
@@ -29,13 +30,13 @@ export const SECTIONS: Record<
   'getting-started': {
     label: 'Getting started',
     order: 1,
-    blurb: 'What Saathum is, how to sign up, and what happens on web versus in the app.',
+    blurb: 'What Saathum is, how to sign up, and choosing between a puja and a havan.',
     tone: 'cream',
   },
   'booking-and-paying': {
     label: 'Booking & paying',
     order: 2,
-    blurb: 'Finding a creator, booking a session or show, and how tokens and payments work.',
+    blurb: 'Choosing a ritual, your sankalp, watching live, replay and prasad.',
     tone: 'cream',
   },
   creators: {
@@ -45,15 +46,15 @@ export const SECTIONS: Record<
     tone: 'lime',
   },
   billing: {
-    label: 'Billing & payouts',
+    label: 'Payments & refunds',
     order: 4,
-    blurb: 'The platform fee, refunds, withdrawing your earnings, and tax basics.',
+    blurb: 'How refunds and cancellations work.',
     tone: 'sky',
   },
   'account-and-safety': {
     label: 'Account & safety',
     order: 5,
-    blurb: 'Verification, recording and consent, reporting a problem, and deleting your account.',
+    blurb: 'Reporting a problem and deleting your account.',
     tone: 'pink',
   },
 };

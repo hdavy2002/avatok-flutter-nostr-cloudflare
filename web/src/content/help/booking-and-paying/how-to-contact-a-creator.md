@@ -11,7 +11,7 @@ faq:
     a: "No — the website does not have messaging. It shows you the creator's Saathum number and a link to open (or download) the app, where the conversation actually happens."
   - q: "Do I see the creator's real phone number?"
     a: "No. Their Saathum number is a stand-in for their real number — neither of you ever sees the other's actual phone number."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Messaging is an app-only feature

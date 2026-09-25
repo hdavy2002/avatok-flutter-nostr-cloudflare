@@ -13,7 +13,7 @@ faq:
     a: "No — you can watch and join right in your browser at saathum.com; the app is for the full experience, including messaging the creator."
   - q: "Where do I choose my Saathum number?"
     a: "In the app. Signing up on the website only creates your account — your Saathum number and the rest of onboarding happen the first time you open the app."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Two surfaces, one account

@@ -16,6 +16,8 @@ faq:
 draft: false
 ---
 
+<!-- rebrand: reviewed -->
+
 ## It's a 30-day grace period, not instant deletion
 
 Tapping **Delete account** in Settings does not wipe your data right away. Saathum schedules the deletion for **30 days later** and marks your account as pending. Nothing about your profile, listings, bookings, or history is touched during those 30 days.
@@ -45,7 +47,7 @@ Some things are intentionally **not** deleted, usually with your identity scrubb
 
 ## Your biometric / liveness data specifically
 
-Your liveness verification evidence is **not** wiped the instant you request deletion. It isn't touched during the 30-day grace period, so if you reactivate you keep your verification; after that it's destroyed on the schedule in the retention policy, which for some users is later than the 30 days. See [Verification & KYC](/help/account-and-safety/verification-and-kyc) and the full [Biometric Data Retention & Destruction Schedule](/biometric-retention) for exact timing.
+Your liveness verification evidence is **not** wiped the instant you request deletion. It isn't touched during the 30-day grace period, so if you reactivate you keep your verification; after that it's destroyed on the schedule in the retention policy, which for some users is later than the 30 days. See the full [Biometric Data Retention & Destruction Schedule](/biometric-retention) for exact timing.
 
 ## What might not be fully automatic yet
 

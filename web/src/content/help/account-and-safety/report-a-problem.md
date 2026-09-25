@@ -1,6 +1,6 @@
 ---
 title: "Report a problem on Saathum"
-description: "How to report a user, a listing, or a billing issue on Saathum — what to include and who reads it."
+description: "How to report a problem with a ritual, a booking or a payment on Saathum — what to include and who reads it."
 section: account-and-safety
 order: 3
 updated: 2026-09-11
@@ -14,23 +14,25 @@ faq:
 draft: false
 ---
 
+<!-- rebrand: reviewed -->
+
 ## Reporting is one tap away
 
 Inside the app, reporting and blocking a user, listing or piece of content is built into the report tool right where you see it — use that first if you can, it gets your report to the right place fastest. Violations of our [Community Guidelines](/community-guidelines) can lead to content removal, feature limits, or account suspension or termination depending on severity.
 
-## Reporting a user or a listing
+## Reporting a problem with a ritual
 
 Use the in-app report tool, or email **support@avatok.ai**. Include as much as you can:
 
-- The account handle or listing you're reporting, with a link if you have one.
+- The ritual you're reporting, with a link if you have one.
 - What happened, and roughly when.
 - Screenshots or other evidence, if you have them.
 
 If you find AI-generated content objectionable, the same address — support@avatok.ai — is where to flag it for review.
 
-## A billing or payout problem
+## A payment problem
 
-For anything about tokens, a charge, a payout, or a failed withdrawal, email **support@avatok.ai** with your account email, what you expected to happen, and what actually happened. See also [Withdrawing your earnings](/help/billing/withdrawing-your-earnings) and the [Payouts & Withdrawals](/payouts) policy.
+For anything about a charge or a refund, email **support@avatok.ai** with your account email, what you expected to happen, and what actually happened. See also [Refunds and cancellations](/help/billing/refunds).
 
 ## Filing a formal complaint (Grievance Redressal)
 

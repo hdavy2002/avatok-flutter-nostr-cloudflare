@@ -34,7 +34,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
 const kind = (listing.kind ?? 'content') as string;
 const isFreeEntry = Boolean(listing.free_entry);
 const verb =
-  kind === 'agent' ? 'Book a session' : kind === 'event' || kind === 'live' ? 'Get your ticket' : 'Book';
+  'Book with my sankalp'; // rebrand: reviewed — [SAATHUM-REBRAND-1] brief §5.11
 
 // [WEB-CHECKOUT-BUG-3] `listing.poster` is a LEGACY/hand-built-only alias the
 // real worker response has never sent (see lib/card.ts's header comment) — it
@@ -97,7 +97,7 @@ const langTag = languageLabel(listing.spoken_lang ?? null);
 const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing.creator.handle}` : null);
 ---
 
-<Base headerAuth="static" title={`${verb} · ${listing.title} · saathum.com`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on saathum.com.`} navStatic={true}>
+<Base headerAuth="static" title={`${verb} · ${listing.title} · saathum.com`} description={`Book ${listing.title} — performed in your name and gotra, watched live, on saathum.com.`} navStatic={true}>
   <main class="mx-auto max-w-5xl px-4 py-8">
     <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
       <!-- What you're booking (server-rendered, instant) -->
@@ -124,8 +124,8 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
           <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
           {listing.creator && (
             <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saathum creator'} size={40} />
-              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saathum creator'}</span>
+              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saathum'} size={40} />
+              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saathum'}</span>
             </a>
           )}
           {(startsAtLabel || durationTag || langTag) && (
@@ -147,8 +147,11 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
         <header class="mb-5">
           <span data-i18n="web-book.99e71f48c48f121b" class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Checkout</span>
           <h2 class="mt-1 font-display font-semibold text-[28px] leading-tight text-ink">{verb}</h2>
-          <p data-i18n="web-book.bb2c4c2f858d305c" class="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            No app, no account hassle — just your email to send the confirmation.
+          <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
+            No app to learn — just your email for the confirmation.
+          </p>
+          <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
+            Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.
           </p>
         </header>
         <BookingFlow client:load listing={listing} />

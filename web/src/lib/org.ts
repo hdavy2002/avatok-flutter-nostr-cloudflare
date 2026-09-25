@@ -97,9 +97,10 @@ export const ORG: OrgConstants = {
     width: 251,
     height: 256,
   },
+  // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   description:
-    'Saathum is a live streaming and 1:1 video consultation platform for devotional and spiritual life — puja, darshan, temple tours, satsang and astrology — built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
-  slogan: 'Apna hunar. Apni kamaai.',
+    'Saathum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door. Operated by Ava Global International, Inc., a Delaware corporation.',
+  slogan: 'A puja for every hope. Performed in your name.',
   foundersDescription: 'Founded by American and Indian founders',
   foundingDate: '2025',
   // [SAATHUM-BRAND-1 2026-09-20] Left as the avatok.ai mailbox on purpose —

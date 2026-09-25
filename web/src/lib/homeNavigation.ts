@@ -15,26 +15,37 @@
 
 /** Menu label for /marketplace — renamed for the puja/havan catalogue. */
 export const MARKETPLACE_LABEL = 'Our Pujas';
+/** Primary header button (brief §5.1). */
+export const BOOK_CTA = { href: '/marketplace', label: 'Book a puja' };
 
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Menu per the Puja & Havan
+// brief §5.1: Pujas · Havans · By intention · How it works · About. Footer keeps
+// Cookies and Grievance Redressal (IT Rules 2021) beyond the brief's Trust list;
+// "Our priests" and "Follow us" wait until a priests page and social accounts exist.
 export const HOME_HEADER_LINKS = [
-  { href: '/marketplace', label: MARKETPLACE_LABEL },
-  { href: '/#joining', label: 'How it works' },
-  { href: '/help', label: 'Help' },
+  { href: '/marketplace?q=Puja', label: 'Pujas' },
+  { href: '/marketplace?q=Havan', label: 'Havans' },
+  { href: '/#experiences', label: 'By intention' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/about', label: 'About' },
 ];
 export const HOME_FOOTER_COLUMNS = [
-  { title: 'Services', links: [
-    { href: '/marketplace', label: MARKETPLACE_LABEL },
-    { href: '/#joining', label: 'How it works' },
-    { href: '/help', label: 'Help centre' },
+  { title: 'Rituals', links: [
+    { href: '/marketplace?q=Puja', label: 'All pujas' },
+    { href: '/marketplace?q=Havan', label: 'All havans' },
+    { href: '/#experiences', label: 'By intention' },
+    { href: '/marketplace?q=Festival', label: 'Festival pujas' },
   ] },
   { title: 'Company', links: [
     { href: '/about', label: 'About' },
+    { href: '/how-it-works', label: 'How it works' },
+    { href: '/help', label: 'Help centre' },
     { href: '/contact', label: 'Contact' },
   ] },
-  { title: 'Legal', links: [
-    { href: '/terms', label: 'Terms of Service' },
-    { href: '/privacy', label: 'Privacy Policy' },
-    { href: '/refunds', label: 'Refunds & cancellations' },
+  { title: 'Trust', links: [
+    { href: '/refunds', label: 'Refund policy' },
+    { href: '/privacy', label: 'Privacy' },
+    { href: '/terms', label: 'Terms' },
     { href: '/cookies', label: 'Cookies' },
     // Required to stay discoverable (India IT Rules 2021 grievance officer).
     { href: '/grievance', label: 'Grievance Redressal' },

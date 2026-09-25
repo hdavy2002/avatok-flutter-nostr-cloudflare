@@ -1,4 +1,5 @@
 ---
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
 import { HOME_FOOTER_COLUMNS } from '../lib/homeNavigation';
 import { isArchivedPath } from '../lib/archivedPages';
 import '../styles/folk-chrome.css';
@@ -151,7 +152,7 @@ const chromeKey = (value: string) => ({
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched
           and keeps its key. */}
-      <p class="bf-tag" data-india-i18n={variant === 'global' && indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "Live spiritual experiences, wherever you are."}</p>
+      <p class="bf-tag" data-india-i18n={variant === 'global' && indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "A puja for every hope. Performed in your name."}</p>
       {!folk && <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Your voice, out to the world.'}</span>}
     </div>
 
@@ -207,7 +208,7 @@ const chromeKey = (value: string) => ({
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{folk ? 'Made in India with Love ❤️ and cutting chai.' : variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
-      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n="web-common.15da1f1c2e9b5f56">SAATHUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Live spiritual experiences, together.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n={folk ? undefined : "web-common.15da1f1c2e9b5f56"}>SAATHUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Performed with devotion in India.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 

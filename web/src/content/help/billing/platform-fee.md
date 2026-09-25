@@ -13,7 +13,7 @@ faq:
     a: "Saathum is in testing and is moving to a new fee structure, so the fee shown while pricing a listing isn't yet the one used at payout. Ask support@avatok.ai to confirm the split for a specific booking."
   - q: "Does Saathum keep changing the fee without telling me?"
     a: "No — the fee for a booking is fixed at the moment the buyer pays and doesn't change afterwards. Only the rate for future bookings can change."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## The short version

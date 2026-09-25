@@ -377,28 +377,28 @@ function ExploreGridInner({
                 {usingSearch ? (
                   <>
                     <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                      No events for “{q.trim()}” yet.
+                      No rituals match “{q.trim()}” yet.
                     </p>
                     <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
-                      Know a teacher, priest or temple who could host one?
+                      Try another intention or see upcoming festivals.
                     </p>
                     <div className="mt-4 flex flex-wrap items-center gap-4">
                       <a
-                        href="/organisers"
+                        href="/#experiences"
                         className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-                      >Become an organiser</a>
-                      <a href="/marketplace" className="text-blueInk underline">See all events</a>
+                      >Browse by intention</a>
+                      <a href="/marketplace?q=Festival" className="text-blueInk underline">See festival pujas</a>
                     </div>
                   </>
                 ) : (
                   <>
                     <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                      {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Nothing found, boss.") : uiT("web-marketplace.b35908a94a11f32d","The shop's still being set up.")}
+                      {/* rebrand: reviewed — [SAATHUM-REBRAND-1] */}{narrowed ? "No rituals match yet." : "New rituals are on their way."}
                     </p>
                     <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
                       {narrowed
-                        ? uiT("web-marketplace.81deae8ffc16e5d4","This filter combination is completely empty. Try loosening a filter.")
-                        : uiT("web-marketplace.4b46fe3be22fa4ef","No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.")}
+                        ? "Try another intention or see upcoming festivals."
+                        : "Our priests are preparing the next pujas and havans. Check back soon, or see upcoming festivals."}
                     </p>
                     <div className="mt-4">
                       {narrowed ? (

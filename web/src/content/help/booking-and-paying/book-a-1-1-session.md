@@ -11,7 +11,7 @@ faq:
     a: "The listing price plus GST is taken when you confirm the booking and held in escrow — nothing is deducted minute by minute during the call."
   - q: "Where does the session actually happen?"
     a: "In your browser, at /session/<booking id> — you do a quick camera and mic check, then wait there until the creator joins."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Picking a slot

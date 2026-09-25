@@ -13,7 +13,7 @@ faq:
     a: "No withdrawal workflow is currently available. Future availability and verification requirements will be published here first."
   - q: "What happens if my payout fails?"
     a: "There is no payout workflow to fail or return at present. Future failure handling will be defined before withdrawals become available."
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## The full policy

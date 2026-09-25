@@ -1,4 +1,5 @@
 ---
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
 import { publicImage } from '../lib/config';
 // [MARKET-BAZAAR-1 2026-08-31] The marketplace hero, ported from
 // design/marketplace/Saathum Marketplace.dc.html.
@@ -38,8 +39,8 @@ import TruckBorder from './TruckBorder.astro';
 
 const eyebrow =
   liveCount && liveCount > 0
-    ? `Marketplace · ${liveCount.toLocaleString('en-IN')} live now`
-    : 'Marketplace';
+    ? `Our pujas & havans · ${liveCount.toLocaleString('en-IN')} live now`
+    : 'Our pujas & havans';
 
 // Anton, positive tracking. Kept as one object so the h1 and the section
 // headings elsewhere cannot drift apart.
@@ -63,44 +64,44 @@ const displayType = 'font-display font-normal uppercase';
       <h1
         class={`m-0 ${displayType} text-[clamp(46px,6.4vw,88px)] leading-[1.12] tracking-[0.055em] [word-spacing:0.2em] text-ink`}
       >
-        <ui-copy style="display:contents" data-i18n="web-common.23c164dcd2eb2899">The bazaar</ui-copy><br />
-        <span data-i18n="web-common.b4179a9f943e416a" class="text-card [text-shadow:6px_6px_0_var(--zine-ink)]">is open.</span>
+        <ui-copy style="display:contents">Performed</ui-copy><br />
+        <span class="text-card [text-shadow:6px_6px_0_var(--zine-ink)]">in your name.</span>
       </h1>
 
-      <p data-i18n="web-common.c0a8242adcd032f9"
+      <p
         class="mt-6 max-w-[50ch] text-pretty font-body text-[19px] font-medium leading-[1.5] text-terracottaBody"
       >
-        Live streams, classes, consultations, AI agents and ticketed shows —
-        book your seat or jump straight into a live show. Scene sorted.
+        Choose a puja or havan, tell us your name, gotra and wish, and our
+        priests perform it at a real altar while you watch live.
       </p>
 
       <div class="mt-5 flex flex-wrap items-center gap-5">
-        <span data-i18n="web-common.d6adcf64d2ced92c"
+        <span
           class="font-label text-[21px] font-extrabold tracking-[0.04em] text-card [text-shadow:2px_2px_0_var(--zine-ink)]"
           lang="hi"
         >
-          Everything, right here — live.
+          Your name in the sankalp.
         </span>
         {/* The comp's handwritten aside, in Kalam and rotated -3°. Pure
             flavour — it states no fact about the marketplace, which is why it
             survived the pass that cut the invented creator count. */}
-        <span data-i18n="web-common.2f0562c2287041f9" class="inline-block -rotate-3 font-hand text-[19px] text-terracottaBody">
-          From Delhi to Toronto, it's all here →
+        <span class="inline-block -rotate-3 font-hand text-[19px] text-terracottaBody">
+          Prasad at your door →
         </span>
       </div>
 
       <div class="mt-7 flex flex-wrap gap-3">
-        <a data-i18n="web-common.92c0fa05416395be"
+        <a
           href={browseHref}
           class="inline-flex select-none items-center justify-center rounded-zine border-zineLg border-ink bg-lime px-7 py-4 font-display text-[16px] font-normal uppercase leading-none tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
         >
-          Browse the bazaar
+          See all rituals
         </a>
-        <a data-i18n="web-common.fe40b116aac16e84"
+        <a
           href={liveHref}
           class="inline-flex select-none items-center justify-center rounded-zine border-zineLg border-ink bg-card px-7 py-4 font-display text-[16px] font-normal uppercase leading-none tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
         >
-          Who's live
+          Live now
         </a>
       </div>
     </div>

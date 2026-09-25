@@ -13,7 +13,7 @@ faq:
     a: For live shows and 1:1 sessions, the minimum is 49 tokens per hour.
   - q: Can I list something for free?
     a: The free-listing option exists in the wizard, but it's currently limited to test accounts — on a regular account you'll need to set a price to publish.
-draft: false
+draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 Every live show and 1:1 session on Saathum is priced **per hour, per person**, in whole tokens. Saathum uses 100 Tokens = $1 as an internal accounting anchor. Buyers see a server-owned local-currency quote at checkout, with the quote and payment snapshot recorded immutably.

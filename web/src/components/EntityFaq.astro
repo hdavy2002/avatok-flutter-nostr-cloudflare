@@ -1,4 +1,5 @@
 ---
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
 /**
  * [SAATHUM-BRAND-1 2026-09-20] "What is Saathum?" — entity definition block.
  *
@@ -21,19 +22,19 @@ import { ORG } from '../lib/org';
 const faqs: Array<{ q: string; a: string }> = [
   {
     q: 'What is Saathum?',
-    a: `Saathum (saathum.com) is a live streaming and 1:1 video consultation platform for devotional and spiritual life — puja and darshan, temple tours, satsang and festivals, and astrology and spiritual-guidance sessions. Creators publish a listing, people book or join it, and the creator gets paid.`,
+    a: `Saathum (saathum.com) performs pujas and havans for you. You choose a ritual — for studies, a fresh start, prosperity, health, family, peace or a festival — share your name, gotra and wish, and our priests perform it at a real altar while you watch live. Prasad is sent to your door.`,
   },
   {
     q: 'Who runs Saathum?',
     a: `Saathum was founded by American and Indian founders and is operated by ${ORG.legalName}, a Delaware corporation. Its registered-agent address is ${ORG.address.street}, ${ORG.address.locality}, ${ORG.address.region} ${ORG.address.postalCode}. Contact: ${ORG.email}.`,
   },
   {
-    q: 'What can I do on Saathum?',
-    a: `Two things. Earn: create a free listing and get paid to host a live devotional event or run 1:1 astrology and spiritual-guidance consultations. Book: browse the marketplace, join a live event or book a creator's time in a slot they have opened on their calendar.`,
+    q: 'What can I book on Saathum?',
+    a: `Pujas and havans only — positive, benefic rituals performed in your name and gotra, streamed live, with a 7-day replay and optional prasad delivery. We do not offer astrology, private sessions or fierce rituals.`,
   },
   {
-    q: 'Is Saathum free?',
-    a: `Creating an account and publishing a listing is free. Buyers pay in tokens when they book or join a paid session. Saathum uses 100 Tokens = $1 as an internal accounting anchor; local-currency checkout uses a server-owned FX quote, and withdrawal semantics are not yet available.`,
+    q: 'How do I pay?',
+    a: `You see the full price before you book and pay online at checkout. Refunds follow our published refund policy.`,
   },
 ];
 
@@ -53,7 +54,7 @@ const faqLd = {
 <section class="entity-faq" id="what-is-saathum" aria-labelledby="entity-faq-title">
   <h2 data-i18n="web-common.0ff34d5107c1600d" id="entity-faq-title">What is Saathum?</h2>
   <p>
-    <strong>Saathum</strong> <ui-copy style="display:contents" data-i18n="web-common.b29ef72e7a79fd4d">is the name of this platform, at</ui-copy> <a data-i18n="web-common.4d319a0fb45f536c" href="https://saathum.com/">saathum.com</a><ui-copy style="display:contents" data-i18n="web-common.cdb4ee2aea69cc6a">.</ui-copy>
+    <strong>Saathum</strong> <ui-copy style="display:contents">is the name of this puja and havan service, at</ui-copy> <a data-i18n="web-common.4d319a0fb45f536c" href="https://saathum.com/">saathum.com</a><ui-copy style="display:contents" data-i18n="web-common.cdb4ee2aea69cc6a">.</ui-copy>
   </p>
   <dl>
     {faqs.map((f) => (

@@ -10,36 +10,40 @@ import GrandHero from '../components/GrandHero.astro';
 import { publicImage } from '../lib/config';
 import '../styles/saathum-folk.css';
 
+// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service brief.
+// Intention cards (brief §5.3) in the existing six-card design.
 const categories = [
-  { name: 'puja', label: 'Puja & Archana', term: 'Puja' },
-  { name: 'aarti', label: 'Aarti & Darshan', term: 'Aarti' },
-  { name: 'bhajan', label: 'Bhajan & Kirtan', term: 'Bhajan' },
-  { name: 'satsang', label: 'Satsang', term: 'Satsang' },
-  { name: 'festival', label: 'Festivals', term: 'Festival' },
-  { name: 'yoga', label: 'Yoga & Meditation', term: 'Yoga' },
+  { name: 'puja', label: 'Success in studies', term: 'Studies' },
+  { name: 'festival', label: 'A fresh start', term: 'Fresh start' },
+  { name: 'aarti', label: 'Prosperity', term: 'Prosperity' },
+  { name: 'yoga', label: 'Health & peace', term: 'Health' },
+  { name: 'satsang', label: 'Love & family', term: 'Family' },
+  { name: 'bhajan', label: 'Festival pujas', term: 'Festival' },
 ] as const;
 
+// Illustrative examples only (labelled on the page) — never bookable inventory.
+const includes = 'Includes: sankalp in your name · live stream · prasad (optional)';
 const listings = [
-  { name: 'aarti', artwork: '/assets/saathum-booking/listing-aarti.png', title: 'An evening by the Ganga', label: 'Aarti & Darshan', term: 'Aarti', host: 'Pandit Raghav', city: 'Varanasi', price: '₹299', schedule: 'Live now', scheduleTone: 'live', timing: 'Today · 7:30 PM', rating: '4.9', reviews: '128', description: 'A glowing riverside aarti with bells, lamps and a view of the Ganga at dusk.' },
-  { name: 'puja', artwork: '/assets/saathum-booking/listing-puja.png', title: 'Morning puja, from home', label: 'Puja & Archana', term: 'Puja', host: 'Maa Sharda Seva', city: 'Haridwar', price: '₹199', schedule: 'Starts in 2h', scheduleTone: 'soon', timing: 'Today · 8:00 AM', rating: '4.8', reviews: '96', description: 'Begin the day with a personal sankalp, fresh flowers and a gentle home puja.' },
-  { name: 'bhajan', artwork: '/assets/saathum-booking/listing-bhajan.png', title: 'Bhajans that bring us together', label: 'Bhajan & Kirtan', term: 'Bhajan', host: 'Meera & The Mandali', city: 'Jaipur', price: '₹249', schedule: 'Live now', scheduleTone: 'live', timing: 'Today · 6:00 PM', rating: '4.9', reviews: '214', description: 'Sing along to familiar bhajans with a warm live group from a Jaipur temple.' },
-  { name: 'satsang', artwork: '/assets/saathum-booking/category-satsang.png', title: 'An hour of quiet satsang', label: 'Satsang', term: 'Satsang', host: 'Swami Anant', city: 'Rishikesh', price: '₹349', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Tomorrow · 6:30 AM', rating: '4.7', reviews: '74', description: 'A small, thoughtful gathering for reflection, questions and a calmer start.' },
-  { name: 'festival', artwork: '/assets/saathum-booking/category-festival.png', title: 'Festival lights, wherever you are', label: 'Festivals', term: 'Festival', host: 'Asha Cultural House', city: 'Delhi', price: '₹399', schedule: 'This weekend', scheduleTone: 'soon', timing: 'Sat · 8:00 PM', rating: '4.8', reviews: '153', description: 'Bring the family together for stories, music and festival rituals streamed live.' },
-  { name: 'yoga', artwork: '/assets/saathum-booking/category-yoga.png', title: 'Sunrise yoga by the river', label: 'Yoga & Meditation', term: 'Yoga', host: 'Anaya Wellness', city: 'Pune', price: '₹179', schedule: '3 seats left', scheduleTone: 'limited', timing: 'Sun · 6:00 AM', rating: '4.9', reviews: '61', description: 'Move, breathe and settle into a devotional sunrise practice for every level.' },
-  { name: 'aarti', artwork: '/assets/saathum-booking/category-aarti.png', title: 'Deepdaan on the ghats', label: 'Aarti & Darshan', term: 'Aarti', host: 'Ganga Jyoti Trust', city: 'Varanasi', price: '₹229', schedule: 'Tonight', scheduleTone: 'soon', timing: 'Today · 8:15 PM', rating: '4.8', reviews: '89', description: 'Offer a lamp in your name and watch the evening river ceremony unfold.' },
-  { name: 'puja', artwork: '/assets/saathum-bright/ganesh.png', title: 'Ganesh puja for new beginnings', label: 'Puja & Archana', term: 'Puja', host: 'Shree Ganesh Seva', city: 'Mumbai', price: '₹299', schedule: 'Book now', scheduleTone: 'open', timing: 'Fri · 9:00 AM', rating: '4.9', reviews: '112', description: 'A joyful, guided Ganesh puja for homes, milestones and fresh starts.' },
-  { name: 'bhajan', artwork: '/assets/ideas/guides/bhajan-ki-mehfil-card.jpg', title: 'A softer evening with mantra', label: 'Bhajan & Kirtan', term: 'Bhajan', host: 'Kirtan by Nandini', city: 'Bengaluru', price: '₹149', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Tomorrow · 7:00 PM', rating: '4.8', reviews: '47', description: 'Slow down with live mantra, harmonium and a welcoming circle of listeners.' },
+  { name: 'puja', artwork: '/assets/saathum-bright/ganesh.png', title: 'Ganapati Havan for a fresh start', deity: 'Lord Ganesha', term: 'Havan', city: 'Haridwar', price: '₹1,100', schedule: 'Book now', scheduleTone: 'open', timing: 'Fri · 9:00 AM IST', rating: '4.9', reviews: '112' },
+  { name: 'puja', artwork: '/assets/saathum-booking/listing-puja.png', title: 'Saraswati Puja for success in studies', deity: 'Goddess Saraswati', term: 'Puja', city: 'Varanasi', price: '₹501', schedule: 'Starts in 2h', scheduleTone: 'soon', timing: 'Today · 8:00 AM IST', rating: '4.8', reviews: '96' },
+  { name: 'aarti', artwork: '/assets/saathum-booking/listing-aarti.png', title: 'Lakshmi Puja for prosperity', deity: 'Goddess Lakshmi', term: 'Puja', city: 'Haridwar', price: '₹501', schedule: 'Live now', scheduleTone: 'live', timing: 'Today · 7:30 PM IST', rating: '4.9', reviews: '128' },
+  { name: 'aarti', artwork: '/assets/saathum-booking/category-aarti.png', title: 'Mahamrityunjaya Havan for good health', deity: 'Lord Shiva', term: 'Havan', city: 'Varanasi', price: '₹2,100', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Tomorrow · 6:30 AM IST', rating: '4.7', reviews: '74' },
+  { name: 'puja', artwork: '/assets/saathum-booking/category-puja.png', title: 'Satyanarayan Puja for family blessings', deity: 'Lord Vishnu', term: 'Puja', city: 'Rishikesh', price: '₹751', schedule: 'This weekend', scheduleTone: 'soon', timing: 'Sat · 10:00 AM IST', rating: '4.8', reviews: '153' },
+  { name: 'puja', artwork: '/assets/saathum-booking/listing-puja.png', title: 'Hanuman Puja for peace of mind', deity: 'Lord Hanuman', term: 'Puja', city: 'Haridwar', price: '₹501', schedule: '3 seats left', scheduleTone: 'limited', timing: 'Tue · 7:00 AM IST', rating: '4.9', reviews: '61' },
+  { name: 'puja', artwork: '/assets/saathum-bright/ganesh.png', title: 'Griha Pravesh Puja for your new home', deity: 'Lord Ganesha', term: 'Puja', city: 'Rishikesh', price: '₹1,100', schedule: 'Book now', scheduleTone: 'open', timing: 'Thu · 9:00 AM IST', rating: '4.8', reviews: '89' },
+  { name: 'festival', artwork: '/assets/saathum-booking/category-festival.png', title: 'Diwali Lakshmi Puja', deity: 'Goddess Lakshmi', term: 'Festival', city: 'Varanasi', price: '₹1,100', schedule: 'Tonight', scheduleTone: 'soon', timing: 'Today · 7:00 PM IST', rating: '4.9', reviews: '214' },
+  { name: 'aarti', artwork: '/assets/saathum-booking/listing-aarti.png', title: 'Shravan Rudrabhishek', deity: 'Lord Shiva', term: 'Puja', city: 'Haridwar', price: '₹1,500', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Mon · 6:00 AM IST', rating: '4.8', reviews: '47' },
 ] as const;
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga: 'bhajan' } as Record<string, string>)[name] ?? name;
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
-import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 ---
-<Base title="Saathum | Book Hindu religious experiences online"
-  description="Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are."
+<Base title="Saathum — Book a Puja or Havan Performed in Your Name, Live"
+  description="Choose a puja or havan for exams, home, health, prosperity or peace. Our priests perform it in your name and gotra at a real altar while you watch live. Prasad delivered to your door."
   image={publicImage('/assets/saathum-grand/hero.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="A sunset Ganga aarti framed by a grand Indian arch."
+  imageAlt="Lamps glowing at a riverside altar at sunset, framed by an ornate Indian arch."
   chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
@@ -47,22 +51,21 @@ import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
   </Fragment>
   <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome
-      links={[{ href: '/marketplace', label: MARKETPLACE_LABEL }, { href: '/#experiences', label: 'Experiences' }, { href: '/#joining', label: 'How it works' }]} />
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content">
       <section class="grand-hero" aria-labelledby="grand-title" data-home-section="hero">
         <div class="grand-hero-copy">
-          <p class="grand-eyebrow">LIVE FROM INDIA · JOIN FROM ANYWHERE</p>
-          <h1 id="grand-title">Close to your roots.<br /><em>Wherever you are.</em></h1>
-          <p class="grand-lead">Book live pujas, aartis and satsangs from India. Join from wherever you call home.</p>
+          <p class="grand-eyebrow">IN YOUR NAME · WATCHED LIVE</p>
+          <h1 id="grand-title">A puja for every hope.<br /><em>Performed in your name.</em></h1>
+          <p class="grand-lead">Tell us your wish. Our priests perform it at a real altar while you watch live.</p>
           <div class="grand-actions">
-            <a class="grand-button" href="/marketplace" data-home-cta="hero-explore-events">Explore events <span aria-hidden="true">→</span></a>
-            <a class="grand-link" href="#experiences" data-home-cta="hero-find-experience">Find your experience <span aria-hidden="true">→</span></a>
+            <a class="grand-button" href="/marketplace" data-home-cta="hero-choose-puja">Choose a puja <span aria-hidden="true">→</span></a>
+            <a class="grand-link" href="/how-it-works" data-home-cta="hero-how-it-works">How it works <span aria-hidden="true">→</span></a>
           </div>
-          <p class="grand-quiet">Different places. Same devotion.</p>
+          <p class="grand-quiet">Your name in the sankalp. Prasad at your door.</p>
         </div>
         <div class="grand-hero-art">
-          <GrandHero eager sizes="(max-width: 600px) 94vw, 52vw" alt="A sunset Ganga aarti glowing beneath an ornate Indian arch, with a peacock and elephant in the foreground." />
+          <GrandHero eager sizes="(max-width: 600px) 94vw, 52vw" alt="Lamps glowing at a riverside altar at sunset beneath an ornate Indian arch, with a peacock and elephant in the foreground." />
         </div>
       </section>
 
@@ -70,11 +73,11 @@ import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
 
       <section class="grand-experiences" id="experiences" aria-labelledby="grand-experiences-title" data-home-section="experiences">
         <div class="grand-section-heading">
-          <h2 id="grand-experiences-title"><span aria-hidden="true">✽</span> Find your spiritual moment <span aria-hidden="true">✽</span></h2>
+          <h2 id="grand-experiences-title"><span aria-hidden="true">✽</span> What would you like to welcome into your life? <span aria-hidden="true">✽</span></h2>
         </div>
         <div class="grand-category-grid">
-          {categories.map(category => <a class="grand-category" href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase()}>
-            <BookingArtwork kind="category" name={category.name} alt={category.label + ' devotional scene in an ornate Indian arch.'} sizes="(max-width: 600px) 46vw, (max-width: 1100px) 30vw, 15vw" />
+          {categories.map(category => <a class="grand-category" href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase().replace(/\s+/g, '-')}>
+            <BookingArtwork kind="category" name={category.name} alt="" sizes="(max-width: 600px) 46vw, (max-width: 1100px) 30vw, 15vw" />
             <div class="grand-category-copy"><h3>{category.label}</h3><span class="grand-arrow" aria-hidden="true">↗</span></div>
           </a>)}
         </div>
@@ -83,54 +86,54 @@ import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
       <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="home_events">
         <div class="grand-moments-inner">
           <div class="grand-section-heading">
-            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Moments to look forward to</h2>
-            <a class="grand-link" href="/marketplace" data-home-cta="all-events">View all events <span aria-hidden="true">→</span></a>
+            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Upcoming live pujas &amp; havans</h2>
+            <a class="grand-link" href="/marketplace" data-home-cta="all-rituals">See all pujas &amp; havans <span aria-hidden="true">→</span></a>
           </div>
           <div class="grand-listing-grid">
             {listings.map((listing, i) => <article class="grand-listing" data-listing-index={i}>
               <div class="grand-listing-art-wrap">
-                <a class="grand-listing-art" href={search(listing.term)} aria-label={listing.title + ' — explore ' + listing.label} data-home-cta={'moment-' + listing.term.toLowerCase()}>
+                <a class="grand-listing-art" href={search(listing.term)} aria-label={listing.title + ' — see ' + listing.term.toLowerCase() + ' rituals'} data-home-cta={'ritual-' + listing.term.toLowerCase()}>
                   <span class:list={['grand-sample-badge', 'grand-sample-badge--' + listing.scheduleTone]}>{listing.schedule}</span>
-                  <BookingArtwork kind="listing" name={listing.name} sourcePath={listing.artwork} alt={listing.title + ' devotional experience from India.'} sizes="(max-width: 600px) 92vw, 31vw" />
+                  <BookingArtwork kind="listing" name={listing.name} sourcePath={listing.artwork} alt={listing.title + ', performed live at an altar in ' + listing.city + '.'} sizes="(max-width: 600px) 92vw, 31vw" />
                 </a>
-                <button class="grand-favourite" type="button" aria-label={'Add ' + listing.title + ' to favourites'} aria-pressed="false" data-favorite="true">♡</button>
+                <button class="grand-favourite" type="button" aria-label={'Save ' + listing.title} aria-pressed="false" data-favorite="true">♡</button>
               </div>
               <div class="grand-listing-copy">
                 <div class="grand-listing-heading"><h3><a href={search(listing.term)}>{listing.title}</a></h3><span class="grand-listing-price">{listing.price}</span></div>
-                <div class="grand-listing-host"><img src={publicImage(`/assets/saathum-booking/listing-${avatarFor(listing.name)}.png`, { width: 72, fit: 'cover' })} alt="" width="32" height="32" /> <span>{listing.host}</span></div>
-                <p class="grand-listing-description">{listing.description}</p>
+                <div class="grand-listing-host"><img src={publicImage(`/assets/saathum-booking/listing-${avatarFor(listing.name)}.png`, { width: 72, fit: 'cover' })} alt="" width="32" height="32" /> <span>{listing.deity}</span></div>
+                <p class="grand-listing-description">{includes}</p>
                 <div class="grand-listing-info"><span class="grand-city-pill">● {listing.city}</span><span class="grand-listing-time">{listing.timing}</span></div>
                 <div class="grand-listing-footer"><span class="grand-rating" aria-label={listing.rating + ' out of 5 from ' + listing.reviews + ' reviews'}>★ {listing.rating} <small>({listing.reviews})</small></span><a class="grand-booking-link" href={search(listing.term)} data-home-cta={'sample-book-' + listing.term.toLowerCase()}>Book now <span aria-hidden="true">→</span></a></div>
               </div>
             </article>)}
           </div>
-          <p class="grand-editorial-note">These are illustrative moments. Browse the marketplace for current events, hosts and availability.</p>
-          <noscript><p><a href="/marketplace">Browse all events</a> and book your place.</p></noscript>
+          <p class="grand-editorial-note">These are illustrative examples. Book your sankalp before the ritual begins — see all pujas &amp; havans for current dates and prices.</p>
+          <noscript><p><a href="/marketplace">See all pujas &amp; havans</a> and book your sankalp.</p></noscript>
         </div>
       </section>
 
       <section class="grand-belonging" id="benefits" aria-labelledby="grand-benefits-title" data-home-section="benefits">
         <div class="grand-belonging-inner">
-          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="A mature woman spiritual teacher seated with women participants in colorful Indian folk art." /></div>
-          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">Far from home.<br />Close to your traditions.</h2><p>Familiar voices, shared rituals, meaningful moments.</p></div>
+          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="A woman teacher seated with women in prayer, in colourful Indian folk art." /></div>
+          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">Done properly,<br />even from far away.</h2><p>Your name spoken at the altar, wherever you are.</p></div>
           <div class="grand-joining" id="joining" data-home-section="joining">
-            <h2 class="grand-visually-hidden">Three simple steps to join live.</h2>
-            <ol class="grand-step-grid" aria-label="How to join a live event">
-              <li><a href="/marketplace" data-home-cta="joining-explore"><FolkIcon kind="search" /><span class="grand-step-number">01</span><span class="grand-step-label">Explore</span></a></li>
-              <li><a href="/help/booking-and-paying/find-a-creator-or-show" data-home-cta="joining-book"><FolkIcon kind="ticket" /><span class="grand-step-number">02</span><span class="grand-step-label">Book</span></a></li>
-              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="joining-help"><FolkIcon kind="live" /><span class="grand-step-number">03</span><span class="grand-step-label">Join live</span></a></li>
+            <h2 class="grand-visually-hidden">Performed for you, in three simple steps.</h2>
+            <ol class="grand-step-grid" aria-label="Performed for you, in three simple steps">
+              <li><a href="/marketplace" data-home-cta="steps-choose"><FolkIcon kind="search" /><span class="grand-step-number">01</span><span class="grand-step-label">Choose</span></a></li>
+              <li><a href="/help/booking-and-paying/find-a-creator-or-show" data-home-cta="steps-sankalp"><FolkIcon kind="ticket" /><span class="grand-step-number">02</span><span class="grand-step-label">Sankalp</span></a></li>
+              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch"><FolkIcon kind="live" /><span class="grand-step-number">03</span><span class="grand-step-label">Watch live</span></a></li>
             </ol>
           </div>
         </div>
       </section>
 
-      <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="organise_invite">
+      <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
         <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
-        <div class="grand-organise-copy"><h2 id="grand-organise-title">Bring your community together.</h2><p>Host a spiritual experience on Saathum.</p><a class="grand-button" href="/organisers" data-home-cta="organise-invite">Become an organiser <span aria-hidden="true">↗</span></a></div>
+        <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Every ritual we perform is benefic. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
         <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 
-      <p class="grand-booking-note">Saathum is a marketplace where event organisers sell tickets to live online spiritual events. Attendees book and pay online; refunds follow our <a href="/refunds">published policy</a>.</p>
+      <p class="grand-booking-note">Saathum performs pujas and havans for you, in your name. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>
@@ -141,7 +144,7 @@ import { MARKETPLACE_LABEL } from '../lib/homeNavigation';
         const active = button.getAttribute('aria-pressed') === 'true';
         button.setAttribute('aria-pressed', String(!active));
         button.textContent = active ? '♡' : '♥';
-        button.setAttribute('aria-label', active ? 'Add to favourites' : 'Remove from favourites');
+        button.setAttribute('aria-label', active ? 'Save this ritual' : 'Remove from saved');
       });
     });
   </script>

@@ -16,6 +16,8 @@ faq:
 draft: false
 ---
 
+<!-- rebrand: reviewed -->
+
 ## What you need
 
 To [create an account](/sign-up) on saathum.com you need three things: your first and last name, an email address you can check, and an Indian mobile number. Both the email and the mobile number are verified with a one-time code before the account is created — there's no password to set or remember.
@@ -35,7 +37,7 @@ Verifying a real mobile number is how Saathum confirms you're a genuine person a
 
 ## What happens after you sign up
 
-Creating your account on the web is the first step, not the whole thing. Once it's created, you land on the [marketplace](/marketplace) (or your dashboard, if you signed up to be a creator) — but **onboarding, and choosing your Saathum number, happen the first time you open the Saathum app**, not on the website. If you don't have the app yet, the website will point you to it once your account is ready. See [Web vs. the app](/help/getting-started/web-vs-app) for the full picture of what runs where.
+Creating your account on the web is the first step, not the whole thing. Once it's created, you land on [Our Pujas](/marketplace), ready to choose a ritual. You can book, pay and watch right in your browser — no app needed. See [Choosing and booking a ritual](/help/booking-and-paying/find-a-creator-or-show).
 
 ## Already have an account?
 

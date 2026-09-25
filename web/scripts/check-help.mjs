@@ -37,7 +37,8 @@ try {
   throw new Error('search.json failed to parse: ' + err.message);
 }
 assert(Array.isArray(searchDocs), 'search.json must be an array');
-assert(searchDocs.length >= 15, `search.json must have >= 15 entries, got ${searchDocs.length}`);
+// [SAATHUM-REBRAND-1 2026-09-25] Creator/marketplace articles are archived (draft); the puja service has 9.
+assert(searchDocs.length >= 8, `search.json must have >= 8 entries, got ${searchDocs.length}`);
 for (const doc of searchDocs) {
   assert(typeof doc.url === 'string' && doc.url.startsWith('/'), 'search.json entry missing a valid url: ' + JSON.stringify(doc));
   const target = resolve(root, '.' + doc.url, 'index.html');
