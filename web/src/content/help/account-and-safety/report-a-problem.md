@@ -52,7 +52,6 @@ Full detail, including what happens after you file and how to escalate, is in ou
 
 - **General support and feedback** — support@saathum.com, or the [Contact us](/contact) form.
 - **Privacy and data requests** — privacy@saathum.com.
-- **Copyright infringement** — see [DMCA / Copyright](/dmca).
 - **Anything else** — hello@saathum.com.
 
 If someone is in immediate danger, contact your local emergency services first — Saathum is not an emergency service.

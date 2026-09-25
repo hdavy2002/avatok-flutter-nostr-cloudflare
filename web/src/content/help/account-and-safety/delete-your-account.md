@@ -47,7 +47,7 @@ Some things are intentionally **not** deleted, usually with your identity scrubb
 
 ## Your biometric / liveness data specifically
 
-Your liveness verification evidence is **not** wiped the instant you request deletion. It isn't touched during the 30-day grace period, so if you reactivate you keep your verification; after that it's destroyed on the schedule in the retention policy, which for some users is later than the 30 days. See the full [Biometric Data Retention & Destruction Schedule](/biometric-retention) for exact timing.
+Your liveness verification evidence is **not** wiped the instant you request deletion. It isn't touched during the 30-day grace period, so if you reactivate you keep your verification; after that it's destroyed on the schedule in the retention policy, which for some users is later than the 30 days.
 
 ## What might not be fully automatic yet
 
