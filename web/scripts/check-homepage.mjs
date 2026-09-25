@@ -29,7 +29,7 @@ assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main headin
 assert.match(html, /<title[^>]*>Saathum — Book a Puja or Havan Performed in Your Name, Live/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /A puja for every hope\. Performed in your name\./, 'Brief H1');
+assert.match(visibleText, /Faith, brought home to you\./, 'Brief H1');
 assert.match(visibleText, /IN YOUR NAME\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
 for (const heading of ['What would you like to welcome into your life?', 'Upcoming live pujas &amp; havans', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);

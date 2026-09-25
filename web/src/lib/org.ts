@@ -101,7 +101,7 @@ export const ORG: OrgConstants = {
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   description:
     'Saathum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door.',
-  slogan: 'A puja for every hope. Performed in your name.',
+  slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',
   // [SAATHUM-BRAND-1 2026-09-20] Left as the avatok.ai mailbox on purpose —
