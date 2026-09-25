@@ -41,6 +41,7 @@ export const prerender = false;
 
 import Base from '../layouts/Base.astro';
 import MarketplaceBrowse from '../components/MarketplaceBrowse.astro';
+import { MARKETPLACE_SEO } from '../lib/seo/catalog';
 
 // [MKT-3GROUP-WEB-1 2026-09-05] ?group= replaces ?vertical= (which replaced
 // ?category= and ?kind=). The page's taxonomy is now the THREE marketplace
@@ -54,10 +55,7 @@ const q = Astro.url.searchParams.get('q')?.trim() || undefined;
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 ---
 
-<Base
-  title="Our Pujas & Havans · Saathum"
-  description="Choose a puja or havan for studies, a fresh start, prosperity, health, family or peace. Our priests perform it in your name and gotra while you watch live. Prasad delivered to your door."
->
+<Base content={MARKETPLACE_SEO}>
   {/* [MARKET-BAZAAR-1] No max-width and no padding here: the bazaar hero is a
       full-bleed terracotta band with a truck-art strip that has to reach both
       edges of the viewport. MarketplaceBrowse owns the gutters for everything

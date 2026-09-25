@@ -1,63 +1,28 @@
 ---
-// [LIST-PAGE-2] Public scheduled-event share link — an event is a listing, so
-// this now renders through the SAME `ListingDetailView` component /l/<id> and
-// /<handle>/<slug> use, instead of the bespoke countdown-card page that used
-// to live here. That old page's one feature this doesn't have on its own —
-// "Add to calendar" — isn't in the comp; the booking box's join-lead-time line
-// covers "when do I get the link" instead (SPEC-2026-09-02 §1 row 12).
+// Legacy scheduled-event alias. A listing has one canonical public URL, so
+// every /e/<id> request converges in one hop instead of publishing duplicate
+// HTML, metadata and structured data.
 export const prerender = false;
 
-import Base from '../../layouts/Base.astro';
-import { getListingCompanions } from '../../lib/listingCompanions';
-import { scheduleStateOf } from '../../lib/card';
-import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListing, ApiError } from '../../lib/apiClient';
-import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
+import { listingPath } from '../../lib/urls';
 import type { Listing } from '../../lib/types';
 
 const { event } = Astro.params;
-
 let listing: Listing | null = null;
-let notFound = false;
 try {
   listing = await getListing(event!);
-} catch (e) {
-  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
-  else throw e;
+} catch (error) {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
+    return new Response('Event not found', { status: error.status });
+  }
+  throw error;
 }
-if (notFound || !listing) return new Response('Event not found', { status: 404 });
 
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-const og = listingOg(listing);
-// [LISTING-EXPIRY-1] A finished or cancelled show keeps a readable page for anyone
-// holding the link, but is no longer something to rank in search.
-const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf(listing));
-// [LISTING-SEO-1 2026-09-06] Same Event + breadcrumb graph as /l/<id>.
-// All three listing URLs render the same component, so they must carry the
-// same structured data — a listing that describes itself differently
-// depending on which of its URLs a crawler reached is worse than one that
-// describes itself not at all.
-const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://saathum.com').toString();
-const eventLd = listingJsonLd(listing, pageUrl);
-const crumbLd = listingBreadcrumbLd(listing, pageUrl);
-
-const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
-const isOwner = Boolean(listing.viewer?.is_owner);
+if (!listing) return new Response('Event not found', { status: 404 });
+return Astro.redirect(listingPath({
+  id: listing.id,
+  handle: listing.creator?.handle ?? null,
+  slug: listing.slug ?? null,
+}), 301);
 ---
-
-<Base title={og.title} description={og.description} image={og.image} noindex={closedListing}>
-  <Fragment slot="head">
-    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
-    <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
-  </Fragment>
-
-  {isOwner && (
-    <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
-      <span data-i18n="web-e.cf3f39ccb027e0bc">YOU OWN THIS LISTING</span>
-      <a data-i18n="web-e.25ea91162e54d14e" href={`/dashboard/listings/new?id=${encodeURIComponent(listing.id)}`} style="text-decoration:underline;">EDIT LISTING →</a>
-    </div>
-  )}
-
-  <ListingDetailsComp listing={listing} reviews={reviewList} slots={slots} browse={browseMore} creatorListings={creatorListings} creatorProfile={creatorProfile} />
-</Base>

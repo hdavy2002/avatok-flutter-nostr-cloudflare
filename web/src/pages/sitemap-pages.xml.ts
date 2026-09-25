@@ -30,7 +30,6 @@
 // getHelpEntries()/helpUrl() (src/lib/help.ts) and are appended in GET
 // below, alongside the static '/help' landing-page entry.
 import type { APIRoute } from 'astro';
-import { creatorIdeas } from '../lib/creatorIdeas';
 import { rituals } from '../lib/ritualGuides';
 // [WEB-HELP-1 2026-09-11] Help routes: '/help' plus one entry per
 // non-draft help article, appended in GET() since collection reads are async.
@@ -45,16 +44,15 @@ const SITE = 'https://saathum.com';
 const ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
-  ['/explore', 'daily', '0.9'],
+  ['/how-it-works', 'monthly', '0.8'],
+  ['/prohibited-services', 'yearly', '0.4'],
   // [SHV2-S8 2026-09-21] AC-12: /organisers added (Spec A5/B4).
   ['/organisers', 'weekly', '0.8'],
-  ['/sign-up', 'monthly', '0.9'],
   ['/about', 'monthly', '0.7'],
   ['/blog', 'weekly', '0.7'],
   // [SAATHUM-GUIDE-1 2026-09-25] Puja & Havan Guide replaced /ideas (now a 301).
   ['/rituals', 'weekly', '0.9'],
   ...rituals.map(ritual => [ritual.href, 'monthly', '0.7'] as [string, string, string]),
-  ...creatorIdeas.map(idea => [idea.href, 'monthly', '0.6'] as [string, string, string]),
   ['/blog/earn-from-day-one', 'monthly', '0.7'],
   ['/blog/real-people-safety', 'monthly', '0.6'],
   ['/blog/ai-in-every-chat', 'monthly', '0.6'],
@@ -82,14 +80,11 @@ const ROUTES: Array<[string, string, string, string?]> = [
 ];
 
 export const GET: APIRoute = async () => {
-  const lastmod = new Date().toISOString().slice(0, 10);
   // [WEB-HELP-1 2026-09-11] '/help' plus one entry per non-draft help
   // article, built at request time from the content collection so this list
   // can never go stale the way a hardcoded one would. Each article carries
-  // its own frontmatter `updated` date as this row's lastmod (4th tuple
-  // element, optional — every other route in ROUTES falls back to today's
-  // build date below) rather than the build date, so lastmod actually
-  // reflects when the content changed.
+  // its own frontmatter `updated` date as this row's lastmod. Routes without
+  // a trustworthy content date omit lastmod instead of publishing build time.
   const helpEntries = await getHelpEntries();
   const helpRoutes: Array<[string, string, string, string?]> = [
     ['/help', 'weekly', '0.8'],
@@ -108,7 +103,7 @@ export const GET: APIRoute = async () => {
     ([path, changefreq, priority, rowLastmod]) =>
       `  <url>\n` +
       `    <loc>${SITE}${path}</loc>\n` +
-      `    <lastmod>${rowLastmod ?? lastmod}</lastmod>\n` +
+      (rowLastmod ? `    <lastmod>${rowLastmod}</lastmod>\n` : '') +
       `    <changefreq>${changefreq}</changefreq>\n` +
       `    <priority>${priority}</priority>\n` +
       `  </url>`,

@@ -8,6 +8,7 @@ import { Avatar, Pill, ListingTile } from '../../components';
 import { getCreator } from '../../lib/apiClient';
 import { ApiError } from '../../lib/apiClient';
 import { creatorOg } from '../../lib/og';
+import { creatorContent } from '../../lib/seo/sources';
 import type { Creator } from '../../lib/types';
 
 const { handle } = Astro.params;
@@ -28,6 +29,8 @@ if (notFound || !creator) {
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 
 const og = creatorOg(creator);
+const content = creatorContent(creator, og.image ? { url: og.image, alt: creator.name ?? `@${creator.handle}` } : undefined);
+if (Astro.url.pathname !== content.canonicalPath) return Astro.redirect(content.canonicalPath, 301);
 const stats = creator.stats;
 const listings = creator.listings ?? [];
 
@@ -39,10 +42,7 @@ function fmt(n?: number | null): string {
 }
 ---
 
-<Base title={og.title} description={og.description} image={og.image}>
-  <Fragment slot="head">
-    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
-  </Fragment>
+<Base content={content}>
 
   <main class="mx-auto max-w-6xl px-4 py-8">
     <!-- Channel header -->

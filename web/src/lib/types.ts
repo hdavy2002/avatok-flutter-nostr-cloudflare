@@ -295,6 +295,8 @@ export interface CardView {
 /** Full listing detail from /api/listings/:id. */
 export interface Listing extends Card {
   description?: string | null;
+  /** Shared anonymous search/sitemap eligibility, computed by the Worker. */
+  discovery?: { indexable: boolean; reason?: 'example' | 'hidden' | 'ended' | 'cancelled' | 'expired'; updated_at?: number };
   /** [LISTING-EXPIRY-1] The server's answer to "can a buyer book this right now?" —
    *  the same rule checkout enforces. Detail response only. */
   booking_open?: boolean;
@@ -368,6 +370,8 @@ export interface Creator {
   stats?: CreatorStats | null;
   listings?: Card[];
   reviews?: Review[];
+  /** True only while at least one listing is eligible for public discovery. */
+  discovery?: { indexable: boolean; reason?: string; updated_at?: number };
 }
 
 /**

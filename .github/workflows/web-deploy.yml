@@ -91,6 +91,12 @@ jobs:
         working-directory: web
         run: node scripts/check-help.mjs
 
+      - name: Check public SEO and AI discovery contracts
+        working-directory: web
+        run: |
+          node scripts/check-seo.mjs
+          node scripts/check-og-runtime.mjs
+
       - name: Check performance and public image contracts
         working-directory: web
         run: |

@@ -263,6 +263,7 @@ export async function getCreator(id: string, auth?: string | null, signal?: Abor
     avatar: (inner.avatar_url as string | null | undefined) ?? (inner.avatar as string | null | undefined) ?? null,
     bio: (inner.bio as string | null | undefined) ?? null,
     country: (inner.country as string | null | undefined) ?? null,
+    discovery: inner.discovery as Creator['discovery'],
     stats: {
       followers: num(inner.follower_count),
       listings: listings.length,

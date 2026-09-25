@@ -11,13 +11,10 @@
 # `User-agent: *` line, so the group was unparseable and its Disallow lines
 # were ignored by every crawler. The intact default group follows.
 #
-# Why the AI crawlers below get an explicit Allow: several of them (GPTBot,
-# Google-Extended, Applebot-Extended, CCBot) are opt-OUT crawlers that
-# publishers commonly block, and an explicit Allow is the unambiguous signal
-# that Saathum wants to be read, quoted and cited when someone asks an assistant
-# how to earn money from home. Do NOT add a Disallow for these without a
-# deliberate decision — it would remove Saathum from ChatGPT, Claude, Perplexity
-# and Google AI Overviews answers.
+# Why the AI crawlers below get an explicit Allow: discovery/search crawlers and
+# model-training crawlers serve different purposes. Saathum currently permits
+# both, while private and transactional product surfaces remain excluded.
+# Permission is not a ranking, citation or recommendation guarantee.
 
 User-agent: *
 Disallow: /dashboard

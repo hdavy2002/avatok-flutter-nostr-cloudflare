@@ -1,0 +1,66 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { API_BASE } from '../../../lib/config';
+import { listingPath } from '../../../lib/urls';
+import type { PublicContent } from '../../../lib/seo/types';
+
+export const prerender = false;
+
+const rawPage = Astro.params.page ?? '';
+if (!/^[1-9]\d{0,4}$/.test(rawPage) || Number(rawPage) > 50_000) {
+  return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+}
+const page = Number(rawPage);
+const pageSize = 100;
+type Row = { id: string; title: string; handle: string | null; slug: string | null };
+let rows: Row[];
+let hasMore = false;
+try {
+  const response = await fetch(`${API_BASE}/api/sitemap/listings?page=${page}&page_size=${pageSize}`);
+  if (!response.ok) throw new Error(`directory ${response.status}`);
+  const data = await response.json() as { listings?: Row[]; has_more?: boolean };
+  rows = Array.isArray(data.listings) ? data.listings : [];
+  hasMore = data.has_more === true;
+} catch (error) {
+  console.error('marketplace_directory_fetch_failed', { error: String((error as Error)?.message ?? error) });
+  return new Response('Directory temporarily unavailable', {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' },
+  });
+}
+if (!rows.length && page > 1) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+
+const canonicalPath = `/marketplace/page/${page}`;
+const content: PublicContent = {
+  kind: 'page', key: `marketplace/page/${page}`, canonicalPath,
+  title: `Ritual directory — page ${page}`,
+  summary: `Browse public pujas and havans on Saathum, page ${page}. Open any ritual to see its details, priest, schedule and current price.`,
+  visibility: 'public',
+  breadcrumbs: [
+    { name: 'Marketplace', path: '/marketplace' },
+    { name: `Directory page ${page}`, path: canonicalPath },
+  ],
+};
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, must-revalidate');
+---
+
+<Base content={content}>
+  <main class="mx-auto max-w-4xl px-4 py-12 sm:px-8">
+    <p class="font-label text-sm font-extrabold uppercase tracking-[0.12em] text-blueInk">Public ritual directory</p>
+    <h1 class="mt-2 font-display text-4xl uppercase tracking-[0.04em] text-ink">Pujas & havans · Page {page}</h1>
+    <p class="mt-4 font-body text-base leading-7 text-inkSoft">Every link below opens the canonical public page for a currently available ritual.</p>
+    <ul class="mt-8 grid gap-3 sm:grid-cols-2">
+      {rows.map((row) => (
+        <li>
+          <a class="block rounded-xl border-2 border-ink bg-card px-5 py-4 font-body font-bold text-ink no-underline shadow-zine-sm hover:-translate-y-0.5" href={listingPath(row)}>
+            {row.title}
+          </a>
+        </li>
+      ))}
+    </ul>
+    <nav aria-label="Directory pages" class="mt-10 flex items-center justify-between font-label font-extrabold uppercase tracking-[0.08em]">
+      {page > 1 ? <a rel="prev" href={`/marketplace/page/${page - 1}`}>← Previous</a> : <a href="/marketplace">← Marketplace</a>}
+      {hasMore ? <a rel="next" href={`/marketplace/page/${page + 1}`}>Next →</a> : <span>End of directory</span>}
+    </nav>
+  </main>
+</Base>

@@ -6,9 +6,8 @@
 // as web/src/pages/l/[id].astro, so this sitemap never disagrees with what the
 // listing page itself calls canonical.
 //
-// On any fetch failure or non-200, returns a VALID EMPTY <urlset> with status
-// 200 (never a 500) — a broken sitemap response is worse to Google than an
-// empty one, and the failure is still visible via console.error.
+// Fetch failures return 503 + Retry-After. A successful empty sitemap would
+// falsely tell crawlers that every previously indexed listing disappeared.
 import type { APIRoute } from 'astro';
 import { API_BASE } from '../lib/config';
 import { listingPath } from '../lib/urls';
@@ -21,31 +20,30 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
-function emptyUrlset(): Response {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>\n`;
-  return new Response(xml, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
+function unavailable(): Response {
+  return new Response('Sitemap temporarily unavailable', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '60' },
   });
 }
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ url }) => {
+  const page = url.searchParams.get('page') ?? '1';
+  const pageSize = url.searchParams.get('page_size') ?? '10000';
+  if (!/^\d+$/.test(page) || !/^\d+$/.test(pageSize)) return new Response('Invalid sitemap page', { status: 400 });
   type Row = { id: string; handle: string | null; slug: string | null; updated_at: number };
   let rows: Row[] = [];
   try {
-    const res = await fetch(`${API_BASE}/api/sitemap/listings`);
+    const res = await fetch(`${API_BASE}/api/sitemap/listings?page=${page}&page_size=${pageSize}`);
     if (!res.ok) {
       console.error('sitemap_listings_fetch_not_ok', { status: res.status });
-      return emptyUrlset();
+      return unavailable();
     }
     const data = (await res.json()) as { listings?: Row[] };
     rows = Array.isArray(data.listings) ? data.listings : [];
   } catch (e) {
     console.error('sitemap_listings_fetch_failed', { error: String((e as any)?.message ?? e) });
-    return emptyUrlset();
+    return unavailable();
   }
 
   const urls = rows.map((r) => {
@@ -66,7 +64,7 @@ export const GET: APIRoute = async () => {
   return new Response(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
     },
   });
 };

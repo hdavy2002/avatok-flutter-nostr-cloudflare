@@ -26,6 +26,7 @@ import HelpTiles from '../../components/help/HelpTiles.astro';
 import HelpFaqStrip from '../../components/help/HelpFaqStrip.astro';
 import { getHelpTree, helpUrl } from '../../lib/help';
 import { ORG } from '../../lib/org';
+import { HELP_SEO } from '../../lib/seo/catalog';
 
 const tree = await getHelpTree();
 
@@ -58,13 +59,10 @@ const POLICY_LINKS = [
   { href: '/privacy', label: 'Privacy policy' },
   { href: '/refunds', label: 'Refunds' },
 ];
+
 ---
 
-<Base
-  title="Help centre"
-  description="Guides for booking, paying, creating and getting paid on Saathum — search or browse by topic."
-  image="/og-editorial.png"
->
+<Base content={HELP_SEO}>
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
 
   <main class="help-page">

@@ -8,6 +8,7 @@ import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
 import GrandHero from '../components/GrandHero.astro';
 import { publicImage, publicImageSrcSet } from '../lib/config';
+import { HOME_HERO, HOME_SEO } from '../lib/homeContent';
 import '../styles/saathum-folk.css';
 
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service brief.
@@ -34,11 +35,7 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 ---
-<Base title="Saathum — Sacred Rituals Performed for You, Watched Live"
-  description="Book a sacred ritual for exams, home, health, prosperity or peace. Our priests perform it for you at a real altar while you watch live, wherever you are. Prasad delivered to your door."
-  image={publicImage('/assets/saathum-grand/hero.png', { width: 1280, fit: 'scale-down', format: 'jpeg' })}
-  imageAlt="Lamps glowing at a riverside altar at sunset, framed by an ornate Indian arch."
-  chrome={false} indiaLandingLanguage={false}>
+<Base content={HOME_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
@@ -49,14 +46,14 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
     <main id="main-content">
       <section class="grand-hero" aria-labelledby="grand-title" data-home-section="hero">
         <div class="grand-hero-copy">
-          <p class="grand-eyebrow">LIVE HAVANS · OPEN TO ALL</p>
-          <h1 id="grand-title">Sab ki aahuti,<br /><em>sab ka ashirwad.</em></h1>
-          <p class="grand-lead">Join live havans for health, prosperity, peace and new beginnings, performed by our priests and shared with devotees everywhere.</p>
+          <p class="grand-eyebrow">{HOME_HERO.eyebrow}</p>
+          <h1 id="grand-title">{HOME_HERO.titleLineOne}<br /><em>{HOME_HERO.titleLineTwo}</em></h1>
+          <p class="grand-lead">{HOME_HERO.lead}</p>
           <div class="grand-actions">
             <a class="grand-button" href="/marketplace?q=Havan" data-home-cta="hero-join-havan">Join a havan <span aria-hidden="true">→</span></a>
             <a class="grand-link" href="/how-it-works" data-home-cta="hero-how-it-works">How it works <span aria-hidden="true">→</span></a>
           </div>
-          <p class="grand-quiet">Watch live · 7-day replay · Prasad at your door.</p>
+          <p class="grand-quiet">{HOME_HERO.proof}</p>
         </div>
         <div class="grand-hero-art">
           <GrandHero eager sizes="(max-width: 600px) 94vw, 52vw" alt="Lamps glowing at a riverside altar at sunset beneath an ornate Indian arch, with a peacock and elephant in the foreground." />

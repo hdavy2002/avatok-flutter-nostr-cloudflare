@@ -11,6 +11,7 @@ import Base from '../../layouts/Base.astro';
 import TruckBorder from '../../components/TruckBorder.astro';
 import { rituals, ritualCategories, ritualTypes, relatedRituals, commitmentFor, muhuratFor, type Ritual } from '../../lib/ritualGuides';
 import { storyFor } from '../../lib/ritualStories';
+import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 import '../../styles/creator-guide.css';
 export function getStaticPaths() {
@@ -22,7 +23,22 @@ const related = relatedRituals(ritual, 3);
 const bookHref = '/marketplace?q=' + encodeURIComponent(ritual.title.replace(/\s*\(.*\)\s*/, ' ').trim());
 const articleTitle = `${ritual.title} — Meaning, Story, Benefits & How to Join Live · Saathum`;
 const articleDescription = `${ritual.description} Why it is offered to ${ritual.deity}, the story behind it, who it is for, and how to join live from anywhere.`;
-const jsonLd = { '@context':'https://schema.org', '@type':'Article', '@id':'https://saathum.com'+ritual.href+'#article', url:'https://saathum.com'+ritual.href, headline:ritual.title, description:articleDescription, datePublished:'2026-09-25', dateModified:'2026-09-25', articleSection:ritualCategories[ritual.category], keywords:ritual.tags.join(', '), isPartOf:{'@id':'https://saathum.com/rituals/#collection'}, image:'https://saathum.com'+ritual.image, author:{'@type':'Organization',name:'Saathum',url:'https://saathum.com/'}, publisher:{'@id':'https://saathum.com/#organization'}, mainEntityOfPage:'https://saathum.com'+ritual.href, inLanguage:'en-IN' };
+const content: PublicContent = {
+  kind: 'article',
+  key: ritual.slug,
+  canonicalPath: ritual.href,
+  title: articleTitle,
+  summary: articleDescription,
+  visibility: 'public',
+  publishedAt: '2026-09-25',
+  modifiedAt: '2026-09-25',
+  image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },
+  breadcrumbs: [
+    { name: 'Puja & Havan Guide', path: '/rituals' },
+    { name: ritual.title, path: ritual.href },
+  ],
+  article: { authorName: 'Saathum', section: ritualCategories[ritual.category], keywords: ritual.tags },
+};
 const keepReady = ['A small lamp or diya', 'An incense stick', 'A fresh flower', 'A glass of water', 'A small sweet to offer'];
 // [SAATHUM-GUIDE-2 2026-09-25] Owner's havan-first model: a HAVAN is an open, shared
 // live event anyone can join (many devotees, one fire, nothing personal); a PUJA
@@ -31,9 +47,7 @@ const isHavan = ritual.type === 'havan';
 const story = storyFor(ritual.slug);
 const HAVAN_FROM = '₹99'; // owner-stated starting price for shared havans
 ---
-<Base title={articleTitle} description={articleDescription} image={ritual.image} imageAlt={ritual.imageAlt} imageWidth={1536} imageHeight={1024} ogType="article">
-  <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  <script slot="head" type="application/ld+json" set:html={JSON.stringify({'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Puja & Havan Guide',item:'https://saathum.com/rituals/'},{'@type':'ListItem',position:2,name:ritual.title,item:'https://saathum.com'+ritual.href}]})} />
+<Base content={content}>
   <main class="idea-page creator-guide" id="main-content" data-ritual-article={ritual.slug}>
     <div class="guide-shell">
       <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/rituals">Puja &amp; Havan Guide</a><span aria-hidden="true">/</span><a href={'/rituals?for=' + ritual.category + '#idea-catalogue'}>{ritualCategories[ritual.category]}</a></nav>

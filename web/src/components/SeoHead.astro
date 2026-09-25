@@ -1,0 +1,49 @@
+---
+import { authoredKey } from '../lib/i18n/authoredKey';
+import { resolveSeo } from '../lib/seo/resolve';
+import { serializeJsonLd } from '../lib/seo/normalize';
+import type { LegacySeoInput, PublicContent } from '../lib/seo/types';
+
+interface Props extends LegacySeoInput {
+  content?: PublicContent;
+  titleMessageKey?: string;
+  descriptionMessageKey?: string;
+  keywords?: string;
+}
+
+const { content, titleMessageKey, descriptionMessageKey, keywords, ...legacy } = Astro.props;
+const seo = await resolveSeo({
+  pathname: Astro.url.pathname,
+  searchParams: Astro.url.searchParams,
+  content,
+  legacy,
+});
+---
+<link rel="canonical" href={seo.canonical} />
+<link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+<meta name="robots" content={seo.robots} />
+<title data-i18n-meta={titleMessageKey ?? authoredKey(seo.title)}>{seo.title}</title>
+<meta data-i18n-meta={descriptionMessageKey ?? authoredKey(seo.description)} name="description" content={seo.description} />
+{keywords && <meta name="keywords" content={keywords} />}
+<meta property="og:type" content={seo.ogType} />
+<meta property="og:site_name" content="Saathum" />
+<meta property="og:locale" content="en_IN" />
+<meta property="og:title" content={seo.title} />
+<meta property="og:description" content={seo.description} />
+<meta property="og:url" content={seo.canonical} />
+<meta property="og:image" content={seo.image.url} />
+<meta property="og:image:secure_url" content={seo.image.url} />
+<meta property="og:image:type" content={seo.image.mime} />
+<meta property="og:image:width" content={seo.image.width} />
+<meta property="og:image:height" content={seo.image.height} />
+<meta property="og:image:alt" content={seo.image.alt} />
+{content?.image && <meta name="saathum:og-art" content={content.image.url} />}
+{content?.image?.revision && <meta name="saathum:og-art-revision" content={content.image.revision} />}
+{content?.publishedAt && <meta property="article:published_time" content={content.publishedAt} />}
+{content?.modifiedAt && <meta property="article:modified_time" content={content.modifiedAt} />}
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={seo.title} />
+<meta name="twitter:description" content={seo.description} />
+<meta name="twitter:image" content={seo.image.url} />
+<meta name="twitter:image:alt" content={seo.image.alt} />
+{seo.indexable && <script type="application/ld+json" set:html={serializeJsonLd(seo.jsonLd)} />}

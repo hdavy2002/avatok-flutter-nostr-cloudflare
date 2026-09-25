@@ -4,8 +4,7 @@
 // (edge-cached 1h server-side) at request time and turns it into a <urlset>.
 // Canonical URL uses the same creatorPath() helper the rest of the site uses.
 //
-// On any fetch failure or non-200, returns a VALID EMPTY <urlset> with status
-// 200 (never a 500) — see sitemap-listings.xml.ts header for why.
+// Fetch failures return 503 + Retry-After; see sitemap-listings.xml.ts.
 import type { APIRoute } from 'astro';
 import { API_BASE } from '../lib/config';
 import { creatorPath } from '../lib/urls';
@@ -18,31 +17,30 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
-function emptyUrlset(): Response {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>\n`;
-  return new Response(xml, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
+function unavailable(): Response {
+  return new Response('Sitemap temporarily unavailable', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '60' },
   });
 }
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ url }) => {
+  const page = url.searchParams.get('page') ?? '1';
+  const pageSize = url.searchParams.get('page_size') ?? '10000';
+  if (!/^\d+$/.test(page) || !/^\d+$/.test(pageSize)) return new Response('Invalid sitemap page', { status: 400 });
   type Row = { handle: string; updated_at: number };
   let rows: Row[] = [];
   try {
-    const res = await fetch(`${API_BASE}/api/sitemap/creators`);
+    const res = await fetch(`${API_BASE}/api/sitemap/creators?page=${page}&page_size=${pageSize}`);
     if (!res.ok) {
       console.error('sitemap_creators_fetch_not_ok', { status: res.status });
-      return emptyUrlset();
+      return unavailable();
     }
     const data = (await res.json()) as { creators?: Row[] };
     rows = Array.isArray(data.creators) ? data.creators : [];
   } catch (e) {
     console.error('sitemap_creators_fetch_failed', { error: String((e as any)?.message ?? e) });
-    return emptyUrlset();
+    return unavailable();
   }
 
   const urls = rows.map((r) => {
@@ -63,7 +61,7 @@ export const GET: APIRoute = async () => {
   return new Response(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
     },
   });
 };

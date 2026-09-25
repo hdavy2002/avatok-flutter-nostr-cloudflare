@@ -235,8 +235,10 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     url: ORG.url,
     name: ORG.name,
     alternateName: 'saathum.com',
-    description,
-    inLanguage: 'en-US',
+    // The WebSite is one stable entity; a page-specific description belongs
+    // on WebPage/Article, never on the site node.
+    description: ORG.description,
+    inLanguage: 'en-IN',
     publisher: { '@id': orgId },
     potentialAction: {
       '@type': 'SearchAction',
@@ -256,7 +258,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     description,
     isPartOf: { '@id': websiteId },
     about: { '@id': orgId },
-    inLanguage: 'en-US',
+    inLanguage: 'en-IN',
     primaryImageOfPage: { '@type': 'ImageObject', url: ogImage },
   };
 

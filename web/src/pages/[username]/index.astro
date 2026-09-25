@@ -1,10 +1,8 @@
 ---
 // [DEMO-PROFILE-1 2026-08-26] Creator profile: /<username>
 //
-// Owner decision: every creator name, avatar and profile affordance on the
-// front page and the listing detail should land here. FOR NOW the page is the
-// bazaar comp from design/live-streaming/ ("Saathum Creator Profile.dc.html") —
-// look and feel only, hardcoded mock data, backend wiring comes later.
+// Legacy bare-handle alias. The real, data-driven and indexable creator page is
+// /c/<handle>; this route validates the handle exists, then redirects there.
 //
 // WHY A DIRECTORY ROUTE
 //   Astro reads pages/[username]/index.astro as the ONE-segment /<username> and
@@ -14,17 +12,12 @@
 //   friends are matched before any dynamic segment — which is the only reason a
 //   bare-handle route at the site root is safe.
 //
-//   The real data-driven creator page is untouched at /c/<handle>
-//   (pages/c/[handle].astro); nothing here replaces it, and links already shared
-//   to it keep working.
+//   Static routes still win, and old bare-handle links keep working without
+//   creating a second indexable profile URL.
 export const prerender = false;
 
-import { renderMockupPage } from '../../lib/mockupPage';
 import { creatorPath } from '../../lib/urls';
 import { getCreator, ApiError } from '../../lib/apiClient';
-// Staged into web/src/generated/ by prebuild — see scripts/copy-design-demo.mjs
-// for why it is generated rather than committed, and why it is not in public/.
-import mockupHtml from '../../generated/creator-profile.dc.html?raw';
 
 const { username } = Astro.params;
 
@@ -47,14 +40,8 @@ try {
   throw e;
 }
 
-// Cards on a profile belong to THIS creator, so both link kinds are scoped to
-// the handle in the URL rather than the shared demo creator.
-const handle = encodeURIComponent(username!);
-return renderMockupPage({
-  siteUrl: Astro.url,
-  html: mockupHtml,
-  title: `@${username} · Saathum`,
-  listingHref: `/${handle}/mock-listing`,
-  profileHref: creatorPath(username!),
-});
+// [WEB-SEO-AUTO-1] One creator, one crawlable URL. The old route rendered a
+// hardcoded demo profile at a second 200 URL; keep old links working via a
+// permanent redirect to the real data-driven canonical page.
+return Astro.redirect(creatorPath(username!), 301);
 ---

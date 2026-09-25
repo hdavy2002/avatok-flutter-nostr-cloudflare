@@ -8,23 +8,43 @@
 // generated at request time from live D1 rows — so they are separate
 // prerender=false routes that fetch the Worker's /api/sitemap/* endpoints.
 //
-// This index itself stays prerendered (static, tiny, never changes shape).
-// robots.txt's `Sitemap:` line keeps pointing at this same /sitemap.xml URL.
+// The index is runtime-generated from the Worker's count-only manifest so it
+// automatically expands past 10,000 listings/creators without a code change.
 import type { APIRoute } from 'astro';
+import { API_BASE } from '../lib/config';
 
-export const prerender = true;
+export const prerender = false;
 
 const SITE = 'https://saathum.com';
 
-const SITEMAPS = ['/sitemap-pages.xml', '/sitemap-listings.xml', '/sitemap-creators.xml'];
+const PAGE_SIZE = 10_000;
 
-export const GET: APIRoute = () => {
-  const lastmod = new Date().toISOString().slice(0, 10);
-  const entries = SITEMAPS.map(
+export const GET: APIRoute = async () => {
+  let manifest: { listings: { pages: number }; creators: { pages: number } };
+  try {
+    const response = await fetch(`${API_BASE}/api/sitemap/manifest?page_size=${PAGE_SIZE}`);
+    if (!response.ok) throw new Error(`manifest ${response.status}`);
+    manifest = await response.json() as typeof manifest;
+    if (!Number.isSafeInteger(manifest.listings?.pages) || !Number.isSafeInteger(manifest.creators?.pages)) {
+      throw new Error('invalid manifest');
+    }
+  } catch (error) {
+    console.error('sitemap_manifest_fetch_failed', { error: String((error as Error)?.message ?? error) });
+    return new Response('Sitemap temporarily unavailable', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '60' },
+    });
+  }
+  const sitemaps = [
+    '/sitemap-pages.xml',
+    '/sitemap-directory.xml',
+    ...Array.from({ length: manifest.listings.pages }, (_, index) => `/sitemap-listings.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
+    ...Array.from({ length: manifest.creators.pages }, (_, index) => `/sitemap-creators.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
+  ];
+  const entries = sitemaps.map(
     (path) =>
       `  <sitemap>\n` +
       `    <loc>${SITE}${path}</loc>\n` +
-      `    <lastmod>${lastmod}</lastmod>\n` +
       `  </sitemap>`,
   ).join('\n');
 
@@ -35,7 +55,7 @@ export const GET: APIRoute = () => {
   return new Response(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
     },
   });
 };

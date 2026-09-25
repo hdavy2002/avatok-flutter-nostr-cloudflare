@@ -1,5 +1,4 @@
 ---
-import { authoredKey } from '../lib/i18n/authoredKey';
 import '../styles/tokens.css';
 import '../styles/global.css';
 // [UI-MOTION-1 2026-09-10] Imported HERE, not via @import in global.css — see
@@ -15,9 +14,10 @@ import '../styles/motion.css';
 // old zine chrome back; delete it once that's ruled out.
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import SeoHead from '../components/SeoHead.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
-import { ORG, orgJsonLd } from '../lib/org';
-import { isArchivedPath } from '../lib/archivedPages';
+import { ORG } from '../lib/org';
+import type { PublicContent } from '../lib/seo/types';
 
 export interface Props {
   title?: string;
@@ -29,7 +29,9 @@ export interface Props {
   imageAlt?: string;
   imageWidth?: number;
   imageHeight?: number;
-  ogType?: "website" | "article";
+  ogType?: "website" | "article" | "profile";
+  /** Normal content fields used to derive all search/share metadata. */
+  content?: PublicContent;
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
   /**
@@ -79,6 +81,7 @@ const {
   imageWidth,
   imageHeight,
   ogType = "website",
+  content,
   chrome = true,
   headerAuth = 'auto',
   navStatic = false,
@@ -90,30 +93,6 @@ const {
   indiaLandingLanguage = true,
 } = Astro.props;
 
-// [SAATHUM-ARCHIVE-1 2026-09-25] Archived marketplace pages stay reachable but
-// are kept out of search — see src/lib/archivedPages.ts.
-const noindex = noindexProp || isArchivedPath(Astro.url.pathname);
-
-const canonical = new URL(Astro.url.pathname, Astro.site ?? ORG.url).toString();
-// [WEB-SEO-2] See the <title> note below. Case-insensitive so any casing of
-// the brand name counts as already branded.
-const pageTitle = new RegExp(ORG.name, 'i').test(title) ? title : `${title} · ${ORG.name}`;
-// og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
-// drop a relative path, which is why shared links used to render with no card.
-//
-// [WEB-SEO-1 2026-08-27] It also now DEFAULTS to the brand card instead of being
-// undefined. Before this, any page that forgot to pass `image` emitted no
-// og:image at all and shared as a bare grey link with `twitter:card=summary`.
-const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? ORG.url).toString();
-
-// [WEB-SEO-5 2026-09-10] Organization/WebSite/WebPage JSON-LD now built from
-// the single source of truth in `../lib/org.ts` (`ORG` + `orgJsonLd()`)
-// instead of being defined inline here. To change a brand fact — add the
-// Pvt Ltd legal name once registered, add an Instagram URL, a street
-// address, etc. — edit `org.ts`, not this file. All of the original
-// reasoning (naming rule, sameAs policy, knowledge-panel field notes) now
-// lives as comments on `org.ts`.
-const orgLd = orgJsonLd({ canonical, title, description, ogImage });
 ---
 
 <!doctype html>
@@ -122,39 +101,23 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/app-logo2.png" type="image/png" />
-    <link rel="canonical" href={canonical} />
-    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
-    {noindex
-      ? <meta name="robots" content="noindex, nofollow" />
-      : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />}
-    {/* [WEB-SEO-2] Every title carries the brand once. Sitelinks (the row of
-        page links under the main result) are built from titles; "Contact us"
-        or "Tokens & Wallet" with no brand read as generic and get dropped. A
-        page that already names the brand keeps its title untouched. */}
-    <title data-i18n-meta={titleMessageKey ?? authoredKey(pageTitle)}>{pageTitle}</title>
-    <meta data-i18n-meta={descriptionMessageKey ?? authoredKey(description)} name="description" content={description} />
-    <meta name="keywords" content={keywords} />
-
-    <!-- Per-page social meta — pages can add more via the `head` slot. -->
-    <meta property="og:type" content={ogType} />
-    <meta property="og:site_name" content={ORG.name} />
-    <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content={pageTitle} />
-    <meta property="og:description" content={description} />
-    <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={ogImage} />
-    <meta property="og:image:secure_url" content={ogImage} />
-    <meta property="og:image:alt" content={imageAlt} />
-    {imageWidth && <meta property="og:image:width" content={imageWidth} />}
-    {imageHeight && <meta property="og:image:height" content={imageHeight} />}
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={pageTitle} />
-    <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={ogImage} />
-    <meta name="twitter:image:alt" content={imageAlt} />
-
-    {/* [WEB-SEO-1] Organization + WebSite structured data on every page. */}
-    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}
+    {/* [WEB-SEO-AUTO-1] One resolver emits the complete metadata set. New
+        public routes pass ordinary content data; unclassified routes fail
+        closed to noindex instead of inheriting misleading homepage metadata. */}
+    <SeoHead
+      content={content}
+      title={title}
+      titleMessageKey={titleMessageKey}
+      description={description}
+      descriptionMessageKey={descriptionMessageKey}
+      image={image}
+      imageAlt={imageAlt}
+      imageWidth={imageWidth}
+      imageHeight={imageHeight}
+      ogType={ogType}
+      noindex={noindexProp}
+      keywords={keywords}
+    />
 
     {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:
         those faces are no longer referenced by any token, so preloading them

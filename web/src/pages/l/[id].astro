@@ -10,10 +10,10 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import { getListingCompanions } from '../../lib/listingCompanions';
-import { scheduleStateOf } from '../../lib/card';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListing, ApiError } from '../../lib/apiClient';
-import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
+import { listingOg } from '../../lib/og';
+import { listingContent } from '../../lib/seo/sources';
 import { listingPath } from '../../lib/urls';
 import type { Listing } from '../../lib/types';
 
@@ -46,17 +46,7 @@ if (canonicalPath !== `/l/${encodeURIComponent(listing.id)}`) {
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
-// [LISTING-EXPIRY-1] A finished or cancelled show keeps a readable page for anyone
-// holding the link, but is no longer something to rank in search.
-const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf(listing));
-// [LISTING-SEO-1 2026-09-06] Event + breadcrumb structured data, so Google can
-// build a rich result and answer engines can state what this page IS rather
-// than guessing from the prose. Built from the SAME listing object the page
-// renders, so the markup and the visible page can never disagree — a mismatch
-// is what gets rich results suppressed.
-const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://saathum.com').toString();
-const eventLd = listingJsonLd(listing, pageUrl);
-const crumbLd = listingBreadcrumbLd(listing, pageUrl);
+const content = listingContent(listing, og.image ? { url: og.image, alt: listing.title } : undefined);
 
 // [LISTING-DETAILS-COMP-1] Same fail-soft companion fetches ListingDetailView
 // already used — a 404/503/network error on any of these hides its section
@@ -65,12 +55,7 @@ const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 
-<Base title={og.title} description={og.description} image={og.image} noindex={closedListing}>
-  <Fragment slot="head">
-    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
-    <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
-  </Fragment>
+<Base content={content}>
 
   {/* [BETA-TESTMODE-1 2026-09-14] Beta status on the listing itself, so a buyer knows
       before he reaches checkout. Deliberately makes NO claim about test mode: this page

@@ -13,6 +13,7 @@ const payRoute = readFileSync(resolve(root, "src/routes/pay.ts"), "utf8");
 const cashfreeRoute = readFileSync(resolve(root, "src/routes/cashfree.ts"), "utf8");
 const lifecycleRoute = readFileSync(resolve(root, "src/routes/commercial_lifecycle.ts"), "utf8");
 const sitemapRoute = readFileSync(resolve(root, "src/routes/sitemap.ts"), "utf8");
+const publicDiscovery = readFileSync(resolve(root, "src/lib/public_discovery.ts"), "utf8");
 const configRoute = readFileSync(resolve(root, "src/routes/config.ts"), "utf8");
 const liveRoute = readFileSync(resolve(root, "src/routes/live.ts"), "utf8");
 const migration = readFileSync(resolve(root, "migrations/2026-09-18-listing-is-example.sql"), "utf8");
@@ -122,7 +123,8 @@ describe("[WEB-GATEWAY-E] badged example listings", () => {
   });
 
   it("excludes example listings from the public sitemap", () => {
-    expect(sitemapRoute).toContain("l.is_example=0");
+    expect(sitemapRoute).toContain('publicListingEligibilitySql("l", "?1")');
+    expect(publicDiscovery).toContain(".is_example,0)<>0 THEN 'example'");
   });
 
   it("declares the owner visibility switch, default on, boolean (not numericKeys)", () => {
@@ -185,8 +187,9 @@ describe("[WEB-GATEWAY-FIX1] closing the remaining example-listing gaps", () => 
     expect(fn).toContain("hiddenListingFilter(where)");
   });
 
-  it("wires hiddenListingFilter into sitemapListings", () => {
-    expect(sitemapRoute).toContain("hiddenListingFilter(where)");
+  it("uses the shared hidden-listing authority for both sitemap feeds", () => {
+    expect(sitemapRoute).toContain('publicListingEligibilitySql("l", "?1")');
+    expect(publicDiscovery).toContain("'$.hide_from_marketplace'");
   });
 
   it("never touches getListing (listing detail) or the HDFC/gateway smoke routes", () => {

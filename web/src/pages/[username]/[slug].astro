@@ -10,10 +10,10 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import { getListingCompanions } from '../../lib/listingCompanions';
-import { scheduleStateOf } from '../../lib/card';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListingBySlug, ApiError } from '../../lib/apiClient';
-import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
+import { listingOg } from '../../lib/og';
+import { listingContent } from '../../lib/seo/sources';
 import type { Listing } from '../../lib/types';
 
 const { username, slug } = Astro.params;
@@ -37,28 +37,14 @@ if (notFound || !listing) return new Response('Listing not found', { status: 404
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
-// [LISTING-EXPIRY-1] A finished or cancelled show keeps a readable page for anyone
-// holding the link, but is no longer something to rank in search.
-const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf(listing));
-// [LISTING-SEO-1 2026-09-06] Same Event + breadcrumb graph as /l/<id>.
-// All three listing URLs render the same component, so they must carry the
-// same structured data — a listing that describes itself differently
-// depending on which of its URLs a crawler reached is worse than one that
-// describes itself not at all.
-const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://saathum.com').toString();
-const eventLd = listingJsonLd(listing, pageUrl);
-const crumbLd = listingBreadcrumbLd(listing, pageUrl);
+const content = listingContent(listing, og.image ? { url: og.image, alt: listing.title } : undefined);
+if (Astro.url.pathname !== content.canonicalPath) return Astro.redirect(content.canonicalPath, 301);
 
 const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 
-<Base title={og.title} description={og.description} image={og.image} noindex={closedListing}>
-  <Fragment slot="head">
-    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
-    <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
-  </Fragment>
+<Base content={content}>
 
   {isOwner && (
     <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">

@@ -9,6 +9,7 @@ export const prerender = true;
 import Base from '../../layouts/Base.astro';
 import TruckBorder from '../../components/TruckBorder.astro';
 import { rituals, ritualCategories, ritualTypes, ritualBySlug } from '../../lib/ritualGuides';
+import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 const havanArt = ritualBySlug('ganapati-havan')!;
 const gangaArt = ritualBySlug('ganga-puja')!;
@@ -16,9 +17,18 @@ const havanCount = rituals.filter(r => r.type === 'havan').length;
 const pujaCount = rituals.filter(r => r.type === 'puja').length;
 const pageTitle = 'The Puja & Havan Guide — Meaning, Benefits & How to Take Part · Saathum';
 const pageDescription = `Explore ${havanCount} havans and ${pujaCount} pujas: the deity, the blessings devotees seek, who each ritual is for, the best time, and how to join live from anywhere with prasad sent to your door.`;
+const content: PublicContent = {
+  kind: 'page',
+  key: 'rituals',
+  canonicalPath: '/rituals',
+  title: pageTitle,
+  summary: pageDescription,
+  visibility: 'public',
+  image: { url: havanArt.image, alt: havanArt.imageAlt, revision: 'ritual-guide-v1' },
+};
 const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':'https://saathum.com/rituals/#collection', url:'https://saathum.com/rituals/', name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:'https://saathum.com'+havanArt.image, isPartOf:{'@id':'https://saathum.com/#website'}, mainEntity:{'@type':'ItemList', numberOfItems:rituals.length, itemListElement:rituals.map((ritual,index)=>({'@type':'ListItem',position:index+1,url:'https://saathum.com'+ritual.href,name:ritual.title}))} };
 ---
-<Base title={pageTitle} description={pageDescription} image={havanArt.image} imageAlt={havanArt.imageAlt} imageWidth={1536} imageHeight={1024}>
+<Base content={content}>
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(collection)} />
   <main class="idea-page ritual-guide-page" id="main-content">
     <section class="idea-hero idea-shell" aria-labelledby="idea-title">

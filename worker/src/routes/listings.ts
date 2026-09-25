@@ -59,6 +59,7 @@ import { emailBookingConfirmed } from "../cal/emails";
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
 import { scheduleState, bookability, eventWindow, endMsSql, notEndedSql, notStuckLiveSql, END_GRACE_MS } from "../lib/listing_schedule";
+import { publicDiscoveryReasonSql, publicDiscoveryProjection, publicListingEligibilitySql } from "../lib/public_discovery";
 import { refundOpenOrdersForListing } from "./commercial_lifecycle";
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
 // Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
@@ -3990,6 +3991,13 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const uid = await maybeUid(req, env);
   const r = await metaSession(env).prepare(`${CARD_SELECT} WHERE l.id=?1`).bind(id).first<any>();
   if (!r) return json({ error: "not found" }, 404);
+  // Compute anonymous discovery from the same predicate used by both sitemaps.
+  // This safe projection never exposes attrs or moderation fields to readers.
+  const discoveryRow = await metaSession(env).prepare(
+    `SELECT ${publicDiscoveryReasonSql("l", "?2")} AS reason, l.updated_at, l.publication_version
+       FROM listings l WHERE l.id=?1`,
+  ).bind(id, Date.now()).first<{ reason: string | null; updated_at: number; publication_version: number | null }>();
+  if (!discoveryRow) return json({ error: "not found" }, 404);
   const isOwner = uid === r.creator_id;
   // Public details pages must only expose listings that have completed the
   // creator/admin approval flow.  The owner can still preview any state from
@@ -4002,10 +4010,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
     // a draft the creator cancelled before review never became public and must not
     // start leaking through its URL now. Everything else keeps the old 404.
     const closed = ["completed", "cancelled"].includes(String(r.status));
-    const wasPublic = closed
-      ? Number((await metaSession(env).prepare("SELECT publication_version FROM listings WHERE id=?1")
-        .bind(id).first<{ publication_version: number | null }>())?.publication_version ?? 0) > 0
-      : false;
+    const wasPublic = closed && Number(discoveryRow.publication_version ?? 0) > 0;
     if (!wasPublic) return json({ error: "not found" }, 404);
   }
   const promos = await promosForCards(env, [id]);
@@ -4125,6 +4130,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   return json({
     listing: {
       ...card, description: r.description ?? "",
+      discovery: publicDiscoveryProjection(discoveryRow),
       intent, detail_template: detailTemplate, price_semantics: priceSemantics,
       booking_open: sellable.ok,
       booking_closed_reason: sellable.ok ? null : sellable.reason,
@@ -4212,9 +4218,20 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
     track(env, uid ?? "guest", "creator_channel_viewed", APP, { creator_id: id, guest: !uid, country: g.country, city: g.city });
   }
   const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
+  // Creator indexing must have at least one genuinely discoverable listing,
+  // independent of examples=1, viewer identity and the 50-card presentation cap.
+  const discovery = await metaSession(env).prepare(
+    `SELECT COUNT(*) AS eligible_count, MAX(l.updated_at) AS updated_at FROM listings l
+      WHERE l.creator_id=?1 AND ${publicListingEligibilitySql("l", "?2")}`,
+  ).bind(id, Date.now()).first<{ eligible_count: number; updated_at: number | null }>();
+  if (!discovery) throw new Error("creator_discovery_unavailable");
   return json({
     creator: {
       uid: user.uid, handle: user.handle, name: user.display_name, avatar_url: user.avatar_url,
+      discovery: publicDiscoveryProjection({
+        reason: discovery.eligible_count > 0 && String(user.handle ?? "").trim() ? null : "unpublished",
+        updated_at: discovery.updated_at,
+      }),
       bio: prof?.bio ?? user.bio ?? null,
       kyc_verified: kyc?.status === "verified",
       public_fields: parseJson(prof?.public_fields, {} as Record<string, unknown>),

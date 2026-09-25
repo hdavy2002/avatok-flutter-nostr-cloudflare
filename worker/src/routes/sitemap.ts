@@ -1,65 +1,72 @@
-// [WEB-SEO-3 2026-09-10] Dynamic sitemap feeds for user listings and creators.
-//
-// The static hand-rolled web/src/pages/sitemap-pages.xml.ts (see its header)
-// only covers fixed marketing routes — it explicitly cannot enumerate
-// per-listing (/l/[id]) or per-creator (/c/[handle]) pages because those are
-// generated at request time. These two endpoints are that "second sitemap fed
-// by the Worker's listings API" its header comment calls for.
-//
-// PUBLIC predicate mirrors exploreBrowse (routes/listings.ts ~line 3370):
-// status IN ('published','live') and not expired. No auth, no per-user data.
-//
-// Both routes are wrapped in cached(..., 3600) at the index.ts call site, so
-// this file itself does no caching — it just answers the query.
+// [WEB-SEO-AUTO-1] Public sitemap feeds. Unpaginated callers receive page one.
+// The dispatch layer caches each query URL. Database failures propagate rather
+// than publishing a successful empty sitemap that could remove indexed URLs.
 import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
-import { notEndedSql } from "../lib/listing_schedule";
-import { hiddenListingFilter } from "./listings";
+import { publicListingEligibilitySql, publicDiscoveryProjection, sitemapPage } from "../lib/public_discovery";
 
-const MAX_ROWS = 45000;
+const ELIGIBLE = publicListingEligibilitySql("l", "?1");
+const CREATOR_HANDLE = "u.handle IS NOT NULL AND TRIM(u.handle)<>''";
+const invalidPage = () => json({ error: "invalid_sitemap_page" }, 400);
 
-// GET /api/sitemap/listings — public listings for the listings sitemap.
-export async function sitemapListings(env: Env): Promise<Response> {
-  const where = [
-    "l.status IN ('published','live')",
-    "l.is_example=0", // [WEB-GATEWAY-E] badged examples carry their own noindex meta instead
-    "(l.expires_at IS NULL OR l.expires_at > ?1)",
-    notEndedSql("l", "?1"), // [LISTING-EXPIRY-1] no ended shows in the sitemap
-  ];
-  hiddenListingFilter(where); // [WEB-GATEWAY-FIX1] hidden listings never appear in the sitemap
+// GET /api/sitemap/listings?page=1&page_size=10000
+export async function sitemapListings(env: Env, req?: Request): Promise<Response> {
+  const paging = sitemapPage(req);
+  if (!paging) return invalidPage();
   const rs = await metaDb(env).prepare(
-    `SELECT l.id, u.handle AS handle, l.slug, l.updated_at
+    `SELECT l.id, l.title, u.handle AS handle, l.slug, l.updated_at
        FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
-      WHERE ${where.join(" AND ")}
-      ORDER BY l.updated_at DESC
-      LIMIT ?2`,
-  ).bind(Date.now(), MAX_ROWS).all<any>();
-  const listings = (rs.results ?? []).map((r) => ({
+      WHERE ${ELIGIBLE}
+      ORDER BY l.id ASC
+      LIMIT ?2 OFFSET ?3`,
+  ).bind(Date.now(), paging.page_size + 1, paging.offset).all<any>();
+  if (rs.success === false || !Array.isArray(rs.results)) throw new Error("sitemap_listings_unavailable");
+  const listings = rs.results.slice(0, paging.page_size).map((r) => ({
     id: String(r.id),
+    title: String(r.title || 'Public ritual'),
     handle: r.handle ?? null,
     slug: r.slug ?? null,
-    updated_at: Number(r.updated_at ?? 0),
+    updated_at: publicDiscoveryProjection({ reason: null, updated_at: r.updated_at }).updated_at,
   }));
-  return json({ listings });
+  return json({ listings, page: paging.page, page_size: paging.page_size, has_more: rs.results.length > paging.page_size });
 }
 
-// GET /api/sitemap/creators — distinct creator handles with >=1 public listing.
-export async function sitemapCreators(env: Env): Promise<Response> {
+// GET /api/sitemap/creators?page=1&page_size=10000
+export async function sitemapCreators(env: Env, req?: Request): Promise<Response> {
+  const paging = sitemapPage(req);
+  if (!paging) return invalidPage();
   const rs = await metaDb(env).prepare(
     `SELECT u.handle AS handle, MAX(l.updated_at) AS updated_at
        FROM listings l JOIN users u ON u.uid = l.creator_id
-      WHERE l.status IN ('published','live')
-        AND (l.expires_at IS NULL OR l.expires_at > ?1)
-        AND ${notEndedSql("l", "?1")}
-        AND u.handle IS NOT NULL
+      WHERE ${ELIGIBLE} AND ${CREATOR_HANDLE}
       GROUP BY u.handle
-      ORDER BY updated_at DESC
-      LIMIT ?2`,
-  ).bind(Date.now(), MAX_ROWS).all<any>();
-  const creators = (rs.results ?? []).map((r) => ({
+      ORDER BY u.handle ASC
+      LIMIT ?2 OFFSET ?3`,
+  ).bind(Date.now(), paging.page_size + 1, paging.offset).all<any>();
+  if (rs.success === false || !Array.isArray(rs.results)) throw new Error("sitemap_creators_unavailable");
+  const creators = rs.results.slice(0, paging.page_size).map((r) => ({
     handle: String(r.handle),
-    updated_at: Number(r.updated_at ?? 0),
+    updated_at: publicDiscoveryProjection({ reason: null, updated_at: r.updated_at }).updated_at,
   }));
-  return json({ creators });
+  return json({ creators, page: paging.page, page_size: paging.page_size, has_more: rs.results.length > paging.page_size });
+}
+
+// GET /api/sitemap/manifest?page_size=10000 — only counts, never a capped URL list.
+export async function sitemapManifest(env: Env, req?: Request): Promise<Response> {
+  const paging = sitemapPage(req);
+  if (!paging) return invalidPage();
+  const counts = await metaDb(env).prepare(
+    `SELECT COUNT(*) AS listings, COUNT(DISTINCT CASE WHEN ${CREATOR_HANDLE} THEN u.handle END) AS creators
+       FROM listings l LEFT JOIN users u ON u.uid=l.creator_id
+      WHERE ${ELIGIBLE}`,
+  ).bind(Date.now()).first<{ listings: number; creators: number }>();
+  if (!counts || !Number.isSafeInteger(counts.listings) || !Number.isSafeInteger(counts.creators)) {
+    throw new Error("sitemap_manifest_unavailable");
+  }
+  return json({
+    page_size: paging.page_size,
+    listings: { count: counts.listings, pages: Math.ceil(counts.listings / paging.page_size) },
+    creators: { count: counts.creators, pages: Math.ceil(counts.creators / paging.page_size) },
+  });
 }
