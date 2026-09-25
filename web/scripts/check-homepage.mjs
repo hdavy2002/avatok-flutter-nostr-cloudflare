@@ -79,7 +79,7 @@ assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image 
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label renamed.
-for (const [label, href] of [['Pujas &amp; Havans','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
+for (const [label, href] of [['Our Pujas','/marketplace'],['Experiences','/#experiences'],['How it works','/#joining']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }

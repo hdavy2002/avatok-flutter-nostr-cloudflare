@@ -14,7 +14,7 @@
 // duplicate Terms/Privacy links.
 
 /** Menu label for /marketplace — renamed for the puja/havan catalogue. */
-export const MARKETPLACE_LABEL = 'Pujas & Havans';
+export const MARKETPLACE_LABEL = 'Our Pujas';
 
 export const HOME_HEADER_LINKS = [
   { href: '/marketplace', label: MARKETPLACE_LABEL },
