@@ -30,7 +30,7 @@ export async function checkOrganisersBrowser(browser) {
     assert.equal(await page.locator('.experience-topics-grid--organiser .rail-idea').count(), 13, name + ': every spiritual topic retained');
     assert.equal(await page.locator('#faq details').count(), 7);
     assert.equal(await page.locator('#guides a[href^="/blog/creator-ideas/"]').count(), 4);
-    for (const label of ['Payouts','Careers','Grievance Redressal','Tokens & Wallet']) assert(await page.locator('footer').getByRole('link', {name:label,exact:true}).isVisible(), name + ': complete footer ' + label);
+    for (const label of ['Our Pujas','Grievance Redressal','Refunds & cancellations','Contact']) assert(await page.locator('footer').getByRole('link', {name:label,exact:true}).isVisible(), name + ': complete footer ' + label);
     assert.equal(await page.locator('#organisers-hero .avh-auth-out').getAttribute('href'), '/sign-up');
     assert(await page.locator('#organisers-hero .avh-auth-out').isVisible());
     assert(!(await page.locator('#organisers-hero .avh-auth-in').isVisible()));

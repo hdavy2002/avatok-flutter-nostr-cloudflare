@@ -85,7 +85,7 @@ try {
     assert.equal(geometry.broken, 0, name + ': all artwork loads');
     assert.match(geometry.heading, /Close to your roots/);
     assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': Comfortaa headings');
-    assert.match(await page.locator('.folk-site').evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': Nunito body');
+    assert.match(await page.locator('.folk-site').first().evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': Nunito body');
     assert(await page.locator('[data-grand-artwork="hero"]').isVisible(), name + ': grand hero is visible');
     const categoryArt = await page.locator('.booking-artwork--category').evaluateAll(elements => elements.map(image => {
       const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
@@ -112,7 +112,8 @@ try {
     assert(await page.locator('.grand-belonging #joining').isVisible(), name + ': joining steps share the sage band');
     assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
     const footer = page.locator('footer');
-    for (const label of ['Grievance Redressal', 'Child Safety', 'Cookies', 'Payouts', 'Careers']) {
+    // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan footer: Child Safety, Payouts, Careers archived.
+    for (const label of ['Our Pujas', 'Grievance Redressal', 'Cookies', 'Refunds & cancellations', 'Contact']) {
       assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
     }
     const footerBoxes = await footer.locator('.bf-col, .bf-legal-links').evaluateAll(elements => elements.map(el => {
@@ -126,7 +127,7 @@ try {
       assert.equal(box.shadow, 'none', name + ': footer menu has no card shadow');
     }
     assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 248, 232)', name + ': cream reference footer');
-    assert(await footer.locator('.bf-legal-links a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 13), name + ': footer links remain readable');
+    assert(await footer.locator('.bf-col a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 13), name + ': footer links remain readable');
     const borderBackgrounds = await page.evaluate(async expectedPath => {
       const decode = (element, pseudo) => new Promise(resolve => {
         const css = getComputedStyle(element, pseudo).backgroundImage;
