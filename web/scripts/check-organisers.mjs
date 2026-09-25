@@ -78,6 +78,6 @@ assert.match(html, /Made in India with Love ❤️ and cutting chai\./);
 const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex, off the menus) but still renders; its
 // footer is the shared Puja & Havan footer.
-for (const href of ['/marketplace','/cookies','/refunds','/grievance','/terms','/privacy']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
+for (const href of ['/marketplace?q=Puja','/cookies','/refunds','/grievance','/terms','/privacy']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
 assert.match(html, /name="robots" content="noindex, nofollow"/, '/organisers is archived (noindex)');
 console.log('/organisers approved folk design and complete footer passed.');
