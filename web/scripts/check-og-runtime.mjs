@@ -1,20 +1,38 @@
 // Exercise the built Astro endpoint inside workerd. Importing the renderer in
 // Node is insufficient: this catches missing WASM modules and bundling defects.
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Miniflare } from 'miniflare';
 
-const entry = resolve('dist/_worker.js/index.js');
+const workerRoot = resolve('dist/_worker.js');
+const entry = resolve(workerRoot, 'index.js');
 assert(existsSync(entry), `Missing built Cloudflare worker: ${entry}`);
 
+function walkFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((item) => {
+    const path = resolve(directory, item.name);
+    return item.isDirectory() ? walkFiles(path) : [path];
+  });
+}
+
+function moduleType(path) {
+  if (path.endsWith('.wasm')) return 'CompiledWasm';
+  if (path.endsWith('.txt')) return 'Text';
+  if (path.endsWith('.bin')) return 'Data';
+  if (path.endsWith('.js') || path.endsWith('.mjs')) return 'ESModule';
+  return null;
+}
+
+// Astro's renderer registry uses a computed dynamic import. Miniflare cannot
+// discover those chunks from scriptPath, so register the complete Pages bundle.
+const modules = [entry, ...walkFiles(workerRoot).filter((path) => path !== entry)]
+  .map((path) => ({ type: moduleType(path), path }))
+  .filter((module) => module.type !== null);
+
 const runtime = new Miniflare({
-  scriptPath: entry,
-  modules: true,
-  modulesRules: [
-    { type: 'ESModule', include: ['**/*.js', '**/*.mjs'], fallthrough: true },
-    { type: 'CompiledWasm', include: ['**/*.wasm'], fallthrough: true },
-  ],
+  modules,
+  modulesRoot: workerRoot,
   // Keep these aligned with web/wrangler.toml; nodejs_compat breaks this app's
   // React edge renderer and must not make CI more permissive than production.
   compatibilityDate: '2025-05-05',
