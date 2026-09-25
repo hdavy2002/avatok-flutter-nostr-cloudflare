@@ -315,8 +315,8 @@ assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Saathum | Book Hindu religious experiences online', 'A4 og:title');
-assert.equal(meta(html, 'og:description'), 'Book live Hindu religious experiences from India. Explore pujas, aartis, bhajans and satsangs, then join from wherever you are.', 'A4 og:description');
+assert.equal(meta(html, 'og:title'), 'Saathum — Book a Puja or Havan Performed in Your Name, Live', 'A4 og:title (SAATHUM-REBRAND-1)');
+assert.equal(meta(html, 'og:description'), 'Choose a puja or havan for exams, home, health, prosperity or peace. Our priests perform it in your name and gotra at a real altar while you watch live. Prasad delivered to your door.', 'A4 og:description (SAATHUM-REBRAND-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
