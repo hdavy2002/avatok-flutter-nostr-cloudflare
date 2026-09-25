@@ -28,6 +28,7 @@ import BlockerPanel from './BlockerPanel';
 import EditPanel from './EditPanel';
 import DeletePanel from './DeletePanel';
 import CopyPanel from './CopyPanel';
+import YouTubePanel from './YouTubePanel';
 import type { AdminListingDetailResponse, ListingRow } from './adminListingsShared';
 
 export default function AdminListings() {
@@ -316,6 +317,8 @@ export default function AdminListings() {
                   checked={listingChecked}
                   publishable={detail.publishable}
                 />
+                {/* [DASH2-EVENTS] Unlisted YouTube live/replay for Dashboard 2. */}
+                <YouTubePanel listingId={detail.listing.id} withAuth={withAuth} />
                 <PosterPanel
                   poster={detail.poster}
                   listingTitle={detail.listing.title as string | undefined}
