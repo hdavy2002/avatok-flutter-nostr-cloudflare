@@ -1,0 +1,95 @@
+/* Dashboard 2 event screens — [DASH2-EVENTS 2026-09-25].
+ * Shimmer skeletons, the LIVE blip, flip digits and the guarded player's
+ * pseudo-fullscreen. Tokens only (no raw hex); every animation is switched off
+ * under prefers-reduced-motion. */
+
+.dash2 .d2-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted));
+}
+.dash2 .d2-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, hsl(var(--card) / 0.75), transparent);
+  animation: d2-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes d2-shimmer { to { transform: translateX(100%); } }
+
+/* LIVE blip: a solid dot with an expanding ring. */
+.dash2 .d2-live-blip {
+  position: relative;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+}
+.dash2 .d2-live-blip::before,
+.dash2 .d2-live-blip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: hsl(var(--primary) / 0.55);
+  animation: d2-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.dash2 .d2-live-blip::after { animation-delay: 0.8s; }
+@keyframes d2-ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
+
+/* Flip-style countdown digit tile. */
+.dash2 .d2-flip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-width: 1.35em;
+  height: 1.6em;
+  border-radius: 6px;
+  background: linear-gradient(180deg, hsl(var(--scrim) / 0.72) 0 50%, hsl(var(--scrim) / 0.86) 50% 100%);
+  box-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.08), 0 2px 6px hsl(var(--scrim) / 0.35);
+  font-variant-numeric: tabular-nums;
+}
+.dash2 .d2-flip::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 1px;
+  background: hsl(var(--scrim) / 0.9);
+}
+
+/* Horizontal scroll rows without a visible scrollbar. */
+.dash2 .d2-scroll-row { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.dash2 .d2-scroll-row::-webkit-scrollbar { display: none; }
+
+/* Guarded player: pseudo-fullscreen for browsers (iPhone Safari) that cannot
+ * put an arbitrary element in fullscreen. Our wrapper — overlay included —
+ * covers the viewport, so the click shield stays in force. */
+.d2-player-pseudo-fs {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+  background: hsl(var(--scrim, 193 45% 16%));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.d2-player-pseudo-fs .d2-player-frame { width: 100%; max-height: 100dvh; }
+.d2-player:fullscreen { background: hsl(var(--scrim, 193 45% 16%)); display: flex; align-items: center; justify-content: center; }
+.d2-player:fullscreen .d2-player-frame { width: 100%; max-height: 100vh; }
+.d2-player .d2-player-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+.d2-player input[type='range'] { accent-color: hsl(var(--primary, 3 69% 46%)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash2 .d2-shimmer::after,
+  .dash2 .d2-live-blip::before,
+  .dash2 .d2-live-blip::after { animation: none; }
+}
