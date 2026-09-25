@@ -1,6 +1,6 @@
 ---
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
-import { publicImage } from '../lib/config';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 // [MARKET-BAZAAR-1 2026-08-31] The marketplace hero, ported from
 // design/marketplace/Saathum Marketplace.dc.html.
 //
@@ -110,12 +110,14 @@ const displayType = 'font-display font-normal uppercase';
       {/* Decorative only — the welcome it renders is already in the h1 above,
           so alt="" keeps a screen reader from reading the hero twice. */}
       <img
-        src={publicImage('/suswagatam.png', { width: 998, fit: 'scale-down' })}
+        src={publicImage('/marketplace/art/welcome-sticker-realistic.png', { width: 998, fit: 'scale-down' })}
+        srcset={publicImageSrcSet('/marketplace/art/welcome-sticker-realistic.png', [320, 480, 720, 998], { fit: 'scale-down' })}
+        sizes="(max-width: 639px) 82vw, 28vw"
         alt=""
-        width="998"
-        height="668"
+        width="1536"
+        height="1024"
         loading="eager"
-        class="block w-[clamp(200px,25vw,330px)] -rotate-3 [filter:drop-shadow(6px_7px_0_rgba(22,22,20,.55))]"
+        class="block w-[clamp(220px,28vw,390px)] -rotate-2 [filter:drop-shadow(6px_7px_0_rgba(22,22,20,.4))]"
       />
     </div>
   </div>

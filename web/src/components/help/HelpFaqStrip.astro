@@ -1,8 +1,8 @@
 ---
 import { authoredKey } from '../../lib/i18n/authoredKey';
-import { publicImage } from '../../lib/config';
+import { publicImage, publicImageSrcSet } from '../../lib/config';
 // [WEB-HELP-2 2026-09-11] "Frequently asked" strip: the brick banner (with
-// the real TruckBorder "eyes" strip and the log-kya-kahenge-wide.jpg art)
+// the real TruckBorder "eyes" strip and a positive spiritual help sticker)
 // from design/help-centre/Main.dc.html, followed by a native <details>
 // accordion built from EVERY help entry's `faq:` frontmatter — not just the
 // mockup's curated 6-card "Popular questions" preview, though the first 6
@@ -54,12 +54,14 @@ while (preview.length < 6 && rest.length > 0) {
             <ui-copy style="display:contents" data-i18n="web-common.66b51bbb80f8952d">Frequently</ui-copy><br /><span data-i18n="web-common.c66790da5943c446">asked</span>
           </h2>
         </div>
-        <img data-india-i18n-attr="alt:web-common.5ed88592e974898e"
+        <img
           class="help-faq-banner-art"
-          src={publicImage('/help/art/log-kya-kahenge-wide.jpg', { width: 621, fit: 'scale-down' })}
-          alt="Illustration — what will people say — the help centre's FAQ banner."
-          width="621"
-          height="360"
+          src={publicImage('/help/art/help-faq-positive.png', { width: 640, fit: 'scale-down' })}
+          srcset={publicImageSrcSet('/help/art/help-faq-positive.png', [320, 480, 640, 900], { fit: 'scale-down' })}
+          sizes="(max-width: 900px) min(100vw - 80px, 320px), 432px"
+          alt="Realistic die-cut sticker of an auspicious kalash, diya, lotus flowers and an open book."
+          width="1536"
+          height="1024"
           loading="lazy"
         />
       </div>
@@ -146,12 +148,12 @@ while (preview.length < 6 && rest.length > 0) {
   .help-faq-banner-art {
     flex: none;
     display: block;
-    width: 26.875rem;
+    width: 27rem;
     height: auto;
-    border: 0.1875rem solid var(--ink);
-    border-radius: 1rem;
-    box-shadow: 0.3125rem 0.375rem 0 var(--ink);
-    transform: rotate(-1.5deg);
+    max-height: 19rem;
+    object-fit: contain;
+    filter: drop-shadow(0.3125rem 0.375rem 0 rgba(22, 22, 20, 0.38));
+    transform: rotate(-2deg);
   }
 
   /* [WEB-HELP-2 review] 1-column by default, 3-column >=900px — the
