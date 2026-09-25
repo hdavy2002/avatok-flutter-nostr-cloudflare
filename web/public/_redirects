@@ -16,7 +16,6 @@
 /live-events/*                /marketplace   301
 /creator-resources            /ideas         301
 /creator-resources/*          /ideas         301
-/how-it-works                 /about         301
 /coming-soon                  /              301
 
 # [WEB-INDIA-HOME-1] One canonical creator homepage.
