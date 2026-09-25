@@ -12,8 +12,14 @@
 // so users are re-asked. Nobody may be held to a period they never saw.
 //
 // Spec: Specs/SPEC-2026-07-10-identity-gating.md §10
-export const prerender = true;
+export const prerender = false;
 import Content from '../layouts/Content.astro';
+// [SAATHUM-ENTITY-1 2026-09-25] Page removed by owner — archived, NOT deleted. Cloudflare serves a
+// prerendered file before _redirects, so the page itself answers with a 301 home.
+// To restore: set REMOVED = false (and put prerender back to true).
+const REMOVED = true;
+if (REMOVED) return Astro.redirect('/', 301);
+
 ---
 
 <Content

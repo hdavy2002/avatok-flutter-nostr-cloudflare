@@ -73,7 +73,8 @@ function walkHtmlFiles(dir) {
 // is just as real as one inside /help. Each page must actually exist AND
 // render the crosslink (not just build) — a missing `helpHref` prop would
 // build fine and pass silently otherwise.
-const POLICY_PAGES = ['tokens', 'refunds', 'payouts', 'pricing-fees'];
+// [SAATHUM-ENTITY-1 2026-09-25] tokens and payouts are removed (they 301 home), so only these are built.
+const POLICY_PAGES = ['refunds', 'pricing-fees'];
 const policyHtmlFiles = POLICY_PAGES.map((slug) => resolve(root, slug, 'index.html'));
 for (const file of policyHtmlFiles) {
   assert(existsSync(file), `Missing built policy page: ${file}`);
