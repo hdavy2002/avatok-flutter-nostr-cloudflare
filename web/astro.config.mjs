@@ -28,6 +28,12 @@ export default defineConfig({
   markdown: { remarkPlugins: [remarkUiCopy] },
   adapter: cloudflare({
     imageService: 'passthrough',
+    // [SAATHUM-GUIDE-2 2026-09-25] The site sits at Cloudflare's 100-rule
+    // _routes.json ceiling, so Astro's per-page excludes overflowed and every
+    // prerendered /rituals/<slug> article went to the Function — which 404s.
+    // One wildcard keeps all 55 guide articles on the static asset path.
+    // Keep this; check-homepage.mjs asserts it.
+    routes: { extend: { exclude: [{ pattern: '/rituals/*' }, { pattern: '/blog/creator-ideas/*' }] } }, // /blog/creator-ideas/* is all prerendered (archived guides) — one wildcard frees ~85 rules
   }),
   integrations: [
     react(),

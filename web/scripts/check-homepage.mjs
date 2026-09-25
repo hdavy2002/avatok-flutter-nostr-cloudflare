@@ -244,6 +244,10 @@ console.log('Exact original artwork checks passed: hero, middle sections and all
 // SSR 301 → /rituals, so it has no prerendered file. The creator checks that
 // stood here are in git history (c32524ca) for restore.
 assert(!existsSync(resolve(root, 'ideas/index.html')), '/ideas is a redirect, not a prerendered page');
+// [SAATHUM-GUIDE-2] Articles 404'd in prod when /rituals/* overflowed the 100-rule _routes.json.
+const routesJson = JSON.parse(readFileSync(resolve(root, '_routes.json'), 'utf8'));
+assert(routesJson.exclude.includes('/rituals/*'), '_routes.json must exclude /rituals/* (else articles hit the Function and 404)');
+assert(routesJson.include.length + routesJson.exclude.length <= 100, 'Cloudflare 100-rule _routes.json ceiling');
 const guide = normalizeBuiltImages(readFileSync(resolve(root, 'rituals/index.html'), 'utf8'), { root });
 assert.equal((guide.match(/data-idea-card/g) || []).length, 55, 'All 55 rituals (30 havans + 25 pujas) are in the guide');
 assert.equal((guide.match(/data-format="havan"/g) || []).length, 31, '30 havan cards + the Havans filter');
@@ -271,10 +275,14 @@ for (const href of ritualLinks) {
  const article = normalizeBuiltImages(readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8'), { root });
  assert.equal((article.match(/<h1[ >]/g) || []).length, 1, 'One article heading: ' + href);
  assert.match(article, new RegExp('data-ritual-article="' + slug + '"'), 'Article identity: ' + href);
- for (const section of ['about','blessings','who','when','altar','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
+ for (const section of ['about','why-deity','blessings','who','when','altar','value','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
  assert.match(article, /avh--sticky/, 'Shared article header: ' + href);
  assert.match(article, /class="bazaar-footer bazaar-footer--folk"/, 'Shared article footer: ' + href);
  assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
+ // [SAATHUM-GUIDE-2] Havans are open shared events (power of many, from ₹99); pujas are private.
+ if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from ₹99/, 'Havan price anchor: ' + href); }
+ assert.match(article, /The story behind it/, 'Deity story: ' + href);
+ assert.match(article, /temple priests/, 'Temple priests explained: ' + href);
  assert.match(article, /href="\/refunds"/, 'Refund policy link: ' + href);
  assert.match(article, /internationally/, 'International prasad courier explained: ' + href);
  assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
