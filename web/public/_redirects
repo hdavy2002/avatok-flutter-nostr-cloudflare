@@ -14,8 +14,8 @@
 /videos                       /marketplace   301
 /video-sessions/*             /marketplace   301
 /live-events/*                /marketplace   301
-/creator-resources            /ideas         301
-/creator-resources/*          /ideas         301
+/creator-resources            /rituals         301
+/creator-resources/*          /rituals         301
 /coming-soon                  /              301
 
 # [WEB-INDIA-HOME-1] One canonical creator homepage.
@@ -24,12 +24,12 @@
 
 # [WEB-GATEWAY-RESTORE-TEXT] Creator-idea guides unpublished as unsafe
 # (companionship/listening/loneliness sessions, or styling/draping sessions).
-/blog/creator-ideas/dil-ki-baat            /ideas   301
-/blog/creator-ideas/nri-homesick-adda      /ideas   301
-/blog/creator-ideas/saree-draping-help     /ideas   301
-/blog/creator-ideas/style-your-own-wardrobe /ideas  301
-/blog/creator-ideas/saree-draping-circle   /ideas   301
-/blog/creator-ideas/shaam-ka-adda          /ideas   301
+/blog/creator-ideas/dil-ki-baat            /rituals   301
+/blog/creator-ideas/nri-homesick-adda      /rituals   301
+/blog/creator-ideas/saree-draping-help     /rituals   301
+/blog/creator-ideas/style-your-own-wardrobe /rituals  301
+/blog/creator-ideas/saree-draping-circle   /rituals   301
+/blog/creator-ideas/shaam-ka-adda          /rituals   301
 
 # [SAATHUM-ENTITY-1 2026-09-25] Owner removed these pages; files kept (archived).
 /tokens / 301

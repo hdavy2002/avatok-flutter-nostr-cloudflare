@@ -1,6 +1,13 @@
 ---
 import { publicImage, publicImageSrcSet } from '../lib/config';
-export const prerender = true;
+// [SAATHUM-GUIDE-1 2026-09-25] OWNER DECISION: the creator-ideas page is rebranded
+// as the Puja & Havan Guide at /rituals. This file is kept (NOT deleted) for
+// restore; it answers 301 → /rituals itself because Cloudflare serves a
+// prerendered file before _redirects. To restore: REMOVED = false and put
+// prerender back to true.
+export const prerender = false;
+const REMOVED = true;
+if (REMOVED) return Astro.redirect('/rituals', 301);
 import Base from '../layouts/Base.astro';
 import TruckBorder from '../components/TruckBorder.astro';
 import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';

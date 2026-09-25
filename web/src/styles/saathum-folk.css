@@ -203,3 +203,17 @@
 @media (prefers-reduced-motion: reduce) {
   .folk-site[data-design="saathum-reference-v5"] *, .folk-site[data-design="saathum-reference-v5"] *::before, .folk-site[data-design="saathum-reference-v5"] *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* [SAATHUM-GUIDE-1 2026-09-25] Homepage havan knowledge cards — same card design
+   as the listing cards; only the grid (8 cards → 4 across) and a 3-line description. */
+.folk-site[data-design="saathum-reference-v5"] .grand-listing-grid--havans { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.folk-site[data-design="saathum-reference-v5"] .grand-havan .grand-listing-art img { background: #f3e2c3; }
+.folk-site[data-design="saathum-reference-v5"] .grand-havan .grand-listing-description { -webkit-line-clamp: 3; min-height: 57px; }
+.folk-site[data-design="saathum-reference-v5"] .grand-havan .grand-booking-link { flex: 0 0 auto; white-space: nowrap; }
+.folk-site[data-design="saathum-reference-v5"] .grand-havan-more { display: flex; justify-content: center; margin-top: 22px; }
+@media (max-width: 1100px) {
+  .folk-site[data-design="saathum-reference-v5"] .grand-listing-grid--havans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .folk-site[data-design="saathum-reference-v5"] .grand-listing-grid--havans { grid-template-columns: 1fr; }
+}

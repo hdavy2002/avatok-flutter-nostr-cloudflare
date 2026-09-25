@@ -1,0 +1,78 @@
+---
+// [SAATHUM-GUIDE-1 2026-09-25] The Puja & Havan Guide — knowledge page for
+// every ritual Saathum performs. Rebrand of the old creator /ideas page: same
+// layout and styles (creator-ideas.css), new content. /ideas now 301s here.
+// NOTE FOR AI: this page EXPLAINS rituals; it never sells a slot. Booking
+// (prices, dates) lives on /marketplace ("Our Pujas"). Data: lib/ritualGuides.ts.
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+export const prerender = true;
+import Base from '../../layouts/Base.astro';
+import TruckBorder from '../../components/TruckBorder.astro';
+import { rituals, ritualCategories, ritualTypes, ritualBySlug } from '../../lib/ritualGuides';
+import '../../styles/creator-ideas.css';
+const havanArt = ritualBySlug('ganapati-havan')!;
+const gangaArt = ritualBySlug('ganga-puja')!;
+const havanCount = rituals.filter(r => r.type === 'havan').length;
+const pujaCount = rituals.filter(r => r.type === 'puja').length;
+const pageTitle = 'The Puja & Havan Guide — Meaning, Benefits & How to Take Part · Saathum';
+const pageDescription = `Explore ${havanCount} havans and ${pujaCount} pujas: the deity, the blessings devotees seek, who each ritual is for, the best time, and how to join live from anywhere with prasad sent to your door.`;
+const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':'https://saathum.com/rituals/#collection', url:'https://saathum.com/rituals/', name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:'https://saathum.com'+havanArt.image, isPartOf:{'@id':'https://saathum.com/#website'}, mainEntity:{'@type':'ItemList', numberOfItems:rituals.length, itemListElement:rituals.map((ritual,index)=>({'@type':'ListItem',position:index+1,url:'https://saathum.com'+ritual.href,name:ritual.title}))} };
+---
+<Base title={pageTitle} description={pageDescription} image={havanArt.image} imageAlt={havanArt.imageAlt} imageWidth={1536} imageHeight={1024}>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(collection)} />
+  <main class="idea-page ritual-guide-page" id="main-content">
+    <section class="idea-hero idea-shell" aria-labelledby="idea-title">
+      <div class="idea-hero-copy">
+        <p class="idea-kicker">The Puja &amp; Havan Guide</p>
+        <h1 id="idea-title"><span class="idea-title-line">Every ritual.</span><span class="idea-title-line idea-title-line--accent">Explained with love.</span></h1>
+        <p>What each havan and puja means, the blessings devotees seek from it,<br /> and how you can be part of it live — from anywhere in the world.</p>
+        <a class="idea-button" href="#idea-catalogue">Find your ritual <span aria-hidden="true">↓</span></a>
+        <p class="idea-handwritten">Your name at the altar.<br />Your family’s blessings.</p>
+      </div>
+      <div class="idea-hero-art" aria-hidden="true">
+        <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(havanArt.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" fetchpriority="high" /></div><span>The sacred fire, live.</span></div>
+        <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(gangaArt.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" /></div><span>Lamps on the Ganga, for you.</span></div>
+        <div class="idea-stamp">Joy. Peace.<br />Prosperity.</div>
+      </div>
+    </section>
+    <section class="idea-shell idea-intro" aria-label="About this guide"><div style="grid-column:1/-1"><h2>A puja for every hope</h2><p>For thousands of years, families have turned to havans and pujas to begin something new, to give thanks, to pray for someone they love, or simply to invite peace into the home. This guide explains each ritual Saathum performs — who the deity is, the blessings devotees traditionally seek, who it suits, the most auspicious time, and what our priests offer at the altar. Every ritual we perform is benefic and joyful. Blessings described are those sought in tradition; we never promise outcomes.</p></div></section>
+    <TruckBorder kind="lotus" />
+    <section class="idea-shell idea-intro" aria-label="Havan, puja and sankalp">
+      <div><span class="idea-format live">Havan</span><p>A fire ritual. Offerings of ghee, grains and herbs are made into the sacred fire with each mantra — the fire carries your prayer.</p></div>
+      <div><span class="idea-format private">Puja</span><p>Worship with flowers, lamp, incense and food. Gentler and often shorter — a lovely first ritual for any family.</p></div>
+      <div><span class="idea-format group">Sankalp</span><p>Your name, gotra and wish, spoken aloud by our priest at the start — so the ritual is performed for you and your family.</p></div>
+    </section>
+    <section class="idea-shell idea-daily" aria-labelledby="daily-title">
+      <span class="idea-daily-label">From anywhere</span>
+      <div><h2 id="daily-title">Watch live. Chant along. Receive prasad.</h2><p>Join the stream from your living room in Delhi, Dubai or Dallas. Light a lamp, listen to the mantras and pray with us. Prasad and sacred items are couriered to your door — across India and internationally.</p></div>
+      <a href="/how-it-works">How it works <span aria-hidden="true">↗</span></a>
+    </section>
+    <section class="idea-shell idea-catalogue" id="idea-catalogue" aria-labelledby="catalogue-title">
+      <div class="idea-section-heading"><div><p class="idea-kicker">Read. Choose. Receive blessings.</p><h2 id="catalogue-title">Which ritual is right for you?</h2></div><p>{havanCount} havans · {pujaCount} pujas<br />Each one explained in full.</p></div>
+      <div class="idea-controls" data-idea-controls hidden>
+        <div class="idea-format-filters" role="group" aria-label="Filter by ritual type">
+          <button type="button" data-format="all" aria-pressed="true">All rituals</button>
+          {Object.entries(ritualTypes).map(([key,label]) => <button type="button" data-format={key} aria-pressed="false">{label}s</button>)}
+        </div>
+        <div class="idea-search-row">
+          <label class="idea-search">Search<input id="idea-search" type="search" placeholder="Try exams, Lakshmi, new home, Shiva…" autocomplete="off" /></label>
+          <label>Your intention<select id="idea-topic"><option value="all">All intentions</option>{Object.entries(ritualCategories).map(([key,label]) => <option value={key}>{label}</option>)}</select></label>
+        </div>
+        <p class="idea-result-count" id="idea-results" aria-live="polite"></p>
+      </div>
+      <div class="idea-grid">
+        {rituals.map((ritual) => <article class="idea-card" id={ritual.slug} data-idea-card data-format={ritual.type} data-topic={ritual.category} data-tags={[ritual.deity, ...ritual.tags].join(' ')}>
+          <a class="idea-card-link" href={ritual.href} aria-labelledby={`${ritual.slug}-title`} data-ritual-guide={ritual.slug}><div class="idea-picture" aria-hidden="true"><img src={publicImage(ritual.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(ritual.image, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+          <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format', ritual.type === 'havan' ? 'live' : 'private']}>{ritualTypes[ritual.type]}</span><span>{ritualCategories[ritual.category]}</span></div><h3 id={`${ritual.slug}-title`}>{ritual.title}</h3><p>{ritual.description}</p><span class="idea-read-guide">Read more <span aria-hidden="true">↗</span></span></div></a>
+        </article>)}
+      </div>
+      <div class="idea-empty" hidden><h3>No rituals match just yet.</h3><p>Try another word or a different intention.</p><button type="button" id="idea-reset">Show all rituals</button></div>
+      <div class="idea-more-row"><button class="idea-button idea-more" type="button" hidden>Show more rituals</button></div>
+      <noscript><p class="idea-result-count">All {rituals.length} rituals are shown. Browser JavaScript enables search and filters.</p></noscript>
+    </section>
+    <section class="idea-shell idea-closing"><p class="idea-handwritten">Performed for you. Watched with your family.</p><h2>Found the one for you?</h2><p>Choose a date, share your sankalp, and we will take care of the rest.</p><div><a class="idea-button" href="/marketplace" data-ritual-cta="book">Book a puja</a><a class="idea-market-link" href="/how-it-works" data-ritual-cta="how-it-works">How it works ↗</a></div></section>
+  </main>
+  <script>
+    import '../../lib/ritualGuidePage';
+  </script>
+</Base>

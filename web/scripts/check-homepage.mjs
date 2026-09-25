@@ -31,7 +31,7 @@ assert.match(html, /<title[^>]*>Saathum — Sacred Rituals Performed for You, Wa
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Faith, brought home to you\./, 'Brief H1');
 assert.match(visibleText, /PERFORMED FOR YOU\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
-for (const heading of ['What would you like to welcome into your life?', 'Upcoming live pujas &amp; havans', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
+for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
 assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking design identity');
@@ -56,7 +56,9 @@ assert(grandHeroMetadata.hasAlpha, 'Grand hero retains transparent foreground');
 assert.equal(grandHeroMetadata.width, 1214, 'Grand hero width is recorded');
 assert.equal(grandHeroMetadata.height, 1295, 'Grand hero height is recorded');
 assert(html.includes('saathum-grand/hero.png'), 'Exact grand hero source is referenced');
-for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']], ['listing', ['aarti', 'puja']]]) {
+// [SAATHUM-GUIDE-1 2026-09-25] Listing art left the homepage with the sample listing cards;
+// the havan cards use /assets/saathum-rituals/ (checked below and in check-homepage-browser.mjs).
+for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']]]) {
   for (const name of names) {
     const path = resolve(root, 'assets/saathum-booking', kind + '-' + name + '.png');
     assert(existsSync(path), 'Booking artwork exists: ' + kind + '-' + name);
@@ -98,9 +100,13 @@ assert.match(visibleText, /Saathum performs pujas and havans for you\./, 'Servic
 assert.match(visibleText, /You book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
 assert.match(visibleText, /Saathum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
 
-// Screenshot examples are clearly editorial samples, never invented bookable inventory.
-assert.match(visibleText, /These are illustrative examples\./, 'Reference ritual examples are visibly identified');
-assert.match(visibleText, /Live now|Starts in|Tomorrow|This weekend|Book now/, 'Listing availability labels remain visible');
+// [SAATHUM-GUIDE-1 2026-09-25] Owner replaced the sample listing cards with eight
+// havan KNOWLEDGE cards that open the Puja & Havan Guide — no prices, no fake slots.
+const havanReadLinks = [...html.matchAll(/class="grand-booking-link" href="(\/rituals\/[a-z0-9-]+)"/g)].map(m => m[1]);
+assert.equal(havanReadLinks.length, 8, 'Eight havan cards each link to their guide article');
+assert(havanReadLinks.every(href => /-havan$/.test(href)), 'Homepage guide cards are all havans');
+assert.match(html, /href="\/rituals"[^>]*>Explore more havans &amp; pujas/, 'Explore more havans & pujas button links to /rituals');
+assert.doesNotMatch(visibleText, /Live now|Starts in|seats left/, 'No invented availability labels on the knowledge cards');
 assert.doesNotMatch(bodyHtml, /href="\/(?:l|listing)\/sample[^"\s]*"/, 'Samples must not invent listing destinations');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const id of ['main-content', 'home-events', 'experiences', 'benefits', 'joining', 'organise-invite']) {
@@ -117,7 +123,7 @@ const topicSearchTerms = [...html.matchAll(/href="\/marketplace\?q=([^"&]+)"/g)]
 for (const term of ['Puja', 'Havan', 'Studies', 'Fresh start', 'Prosperity', 'Health', 'Family', 'Festival']) {
   assert(topicSearchTerms.includes(term), 'Reference category searches marketplace: ' + term);
 }
-assert.match(html, /<noscript>[\s\S]*?href="\/marketplace/, 'No-JS users can still reach the marketplace');
+assert.match(html, /<a class="grand-button" href="\/marketplace"/, 'No-JS users can still reach the marketplace (plain link, no script needed)');
 // [SAATHUM-ARCHIVE-1 2026-09-25] /pricing-fees and the join-a-live-show help link left the menus.
 for (const href of ['/marketplace', '/help', '/refunds', '/terms']) {
   assert(html.includes('href="' + href + '"'), 'Essential marketplace destination remains reachable: ' + href);
@@ -161,7 +167,7 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: grand hero, open sections, labelled samples, anchors and India redirects.');
+console.log('Homepage checks passed: grand hero, open sections, havan guide cards, anchors and India redirects.');
 
 const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -233,86 +239,59 @@ for (const [name, crop] of Object.entries(originalManifest.crops)) {
 }
 console.log('Exact original artwork checks passed: hero, middle sections and all eight idea cards.');
 
-// Creator inspiration is a separate editorial route, never fake marketplace inventory.
-const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'), 'utf8'), { root });
-assert.equal((ideas.match(/data-idea-card/g) || []).length, 109, 'All 109 creator ideas are present');
-assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
-assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-// [SAATHUM-CHROME-1] The landing-page (folk) footer is now the site standard.
-assert.match(ideas, /class="bazaar-footer bazaar-footer--folk"/, 'Ideas uses shared footer');
-assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
-assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
-assert.match(ideas, /data-topic="daily"/, 'Daily-life ideas included');
-for (const format of ['live','private','group']) assert.match(ideas, new RegExp('data-format="' + format + '"'), 'Missing format ' + format);
-assert(existsSync(resolve(root,'assets/ideas/creator-atlas.jpg')), 'Creator illustration atlas exists');
-console.log('Creator ideas checks passed: 109 cards, three formats, shared chrome, artwork and hero link.');
-
-// Every idea links to an individually illustrated, prerendered article.
-const guideLinks = [...ideas.matchAll(/href="(\/blog\/creator-ideas\/[^"]+)"/g)].map(m=>m[1]);
-assert.equal(new Set(guideLinks).size,109,'Every idea has its own article');
-const imagePaths = new Set();
-const imageHashes = new Set();
-for (const href of new Set(guideLinks)) {
- const article = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
- assert.equal((article.match(/<h1[ >]/g)||[]).length,1,'One article heading: '+href);
- assert.match(article,/data-creator-guide="idea-\d+"/,'Article identity');
- assert.match(article,/avh--sticky/,'Shared article header');
- assert.match(article,/class="bazaar-footer bazaar-footer--folk"/,'Shared article footer');
- for (const section of ['offer','plan','equipment','return','earnings','start']) assert(article.includes('id="'+section+'"'),'Missing '+section+' in '+href);
- const hero = article.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/);
- assert(hero,'Article hero: '+href);
- assert(!imagePaths.has(hero[1]),'Repeated article artwork: '+hero[1]);
- imagePaths.add(hero[1]);
- const bytes = readFileSync(resolve(root,hero[1].slice(1)));
- const hash = createHash('sha256').update(bytes).digest('hex');
- assert(!imageHashes.has(hash),'Duplicate image bytes: '+hero[1]);
- imageHashes.add(hash);
- assert.match(article,/BlogPosting/,'Article structured data');
- assert.match(article,/href="\/pricing"/,'Pricing information link');
- assert.doesNotMatch(article,/data-earnings-example|₹|20%|10,000/,'No unresolved fee or earnings figures in articles');
- assert.doesNotMatch(article,/guide-earnings-slot/,'No empty earnings placeholder');
- assert.match(article,/href="\/sign-up"/,'Article creator CTA');
- assert.doesNotMatch(article,/creator-atlas\.jpg/,'No repeated atlas artwork');
-}
-assert.doesNotMatch(ideas,/creator-atlas\.jpg/,'No repeated atlas on idea cards');
-console.log('109 unique article routes, hero images, sections and shared chrome passed.');
-
-// [WEB-SEO-3] /sitemap.xml is now a sitemapindex; the static page URLs live in
-// /sitemap-pages.xml. Check both exist and that the index points at the pages file.
+// [SAATHUM-GUIDE-1 2026-09-25] The creator /ideas page (and its /blog/creator-ideas
+// articles) was replaced by the Puja & Havan Guide at /rituals. /ideas is now an
+// SSR 301 → /rituals, so it has no prerendered file. The creator checks that
+// stood here are in git history (c32524ca) for restore.
+assert(!existsSync(resolve(root, 'ideas/index.html')), '/ideas is a redirect, not a prerendered page');
+const guide = normalizeBuiltImages(readFileSync(resolve(root, 'rituals/index.html'), 'utf8'), { root });
+assert.equal((guide.match(/data-idea-card/g) || []).length, 55, 'All 55 rituals (30 havans + 25 pujas) are in the guide');
+assert.equal((guide.match(/data-format="havan"/g) || []).length, 31, '30 havan cards + the Havans filter');
+assert.equal((guide.match(/data-format="puja"/g) || []).length, 26, '25 puja cards + the Pujas filter');
+assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main heading');
+assert.match(guide, /class="bazaar-footer bazaar-footer--folk"/, 'Guide uses shared footer');
+assert.match(guide, /avh--sticky/, 'Guide uses shared header');
+assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
+assert.match(guide, /CollectionPage/);
+assert.match(guide, /ItemList/);
+assert(meta(guide, 'og:title') && meta(guide, 'og:description'));
+const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)"/g)].map(m => m[1]))];
+assert.equal(ritualLinks.length, 55, 'Every ritual has its own article');
+const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 const sitemapIndex = readFileSync(resolve(root,'sitemap.xml'),'utf8');
 assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
 assert(sitemapIndex.includes('https://saathum.com/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
-const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
-// [SAATHUM-REBRAND-1 2026-09-25] Creator guides (/blog/*, /ideas) are archived — noindex, out of the sitemap.
-for (const href of new Set(guideLinks)) assert(!sitemap.includes('https://saathum.com'+href),'Archived guide must not be in sitemap: '+href);
-// [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex) — kept out of the sitemap.
+assert(sitemap.includes('<loc>https://saathum.com/rituals</loc>'), 'Guide is in the sitemap');
+assert(!sitemap.includes('https://saathum.com/ideas<'), 'Retired /ideas is out of the sitemap');
+assert(!sitemap.includes('https://saathum.com/blog/creator-ideas/'), 'Archived creator guides stay out of the sitemap');
 assert(!sitemap.includes('https://saathum.com/organisers'), '/organisers archived: not in sitemap');
-for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
- assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
+const ritualImages = new Set();
+for (const href of ritualLinks) {
+ const slug = href.split('/').pop();
+ const article = normalizeBuiltImages(readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8'), { root });
+ assert.equal((article.match(/<h1[ >]/g) || []).length, 1, 'One article heading: ' + href);
+ assert.match(article, new RegExp('data-ritual-article="' + slug + '"'), 'Article identity: ' + href);
+ for (const section of ['about','blessings','who','when','altar','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
+ assert.match(article, /avh--sticky/, 'Shared article header: ' + href);
+ assert.match(article, /class="bazaar-footer bazaar-footer--folk"/, 'Shared article footer: ' + href);
+ assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
+ assert.match(article, /href="\/refunds"/, 'Refund policy link: ' + href);
+ assert.match(article, /internationally/, 'International prasad courier explained: ' + href);
+ assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
+ assert.equal(meta(article, 'og:type'), 'article');
+ assert.match(article, /BreadcrumbList/);
+ assert(sitemap.includes('https://saathum.com' + href + '<'), 'Article in sitemap: ' + href);
+ // Artwork: one file per ritual at /assets/saathum-rituals/<slug>.png, landscape, unique.
+ const file = resolve(root, 'assets/saathum-rituals', slug + '.png');
+ assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
+ const art = await sharp(file).metadata();
+ assert(art.width > art.height, 'Ritual artwork is landscape: ' + slug + '.png');
+ const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
+ assert(!ritualImages.has(hash), 'Duplicate ritual artwork bytes: ' + slug + '.png');
+ ritualImages.add(hash);
+ assert(article.includes('saathum-rituals/' + slug + '.png'), 'Article shows its own artwork: ' + href);
 }
-
-// Share previews and machine-readable discovery must match visible articles.
-for (const href of new Set(guideLinks)) {
- const page = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
- const hero = page.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/)[1];
- assert.equal(meta(page,'og:image'),'https://saathum.com'+hero,'Hero and OG image match');
- assert.equal(meta(page,'twitter:image'),meta(page,'og:image'));
- assert.equal(meta(page,'og:type'),'article');
- assert(meta(page,'og:title') && meta(page,'og:description'),'Share title and description');
- assert.equal(meta(page,'description'),meta(page,'og:description'));
- assert.equal(meta(page,'og:image:width'),'1536');
- assert.equal(meta(page,'og:image:height'),'1024');
- assert.match(page,/BreadcrumbList/);
- assert.match(page,/datePublished/);
- const index = readFileSync(resolve(root,'llms-creator-ideas.txt'),'utf8');
- assert(index.includes('https://saathum.com'+href),'AI-readable article index');
-}
-assert.match(ideas,/CollectionPage/);
-assert.match(ideas,/ItemList/);
-assert(meta(ideas,'og:image')?.includes('/assets/ideas/guides/'),'Ideas-specific preview image');
-assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
-assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
-console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
+console.log('Puja & Havan Guide checks passed: 55 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
 assert.equal(meta(html, 'og:title'), 'Saathum — Sacred Rituals Performed for You, Watched Live', 'A4 og:title (SAATHUM-REBRAND-1)');

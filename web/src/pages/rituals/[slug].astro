@@ -1,0 +1,73 @@
+---
+// [SAATHUM-GUIDE-1 2026-09-25] One knowledge article per ritual. Reuses the old
+// creator-guide layout (creator-guide.css) so the design stays identical.
+// NOTE FOR AI: content comes from lib/ritualGuides.ts. The image path is fixed
+// by slug (/assets/saathum-rituals/<slug>.png) — drop the file in and it shows.
+// Copy rules: benefic only, "traditionally sought" benefits, no guaranteed
+// outcomes, no medical claims.
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+export const prerender = true;
+import Base from '../../layouts/Base.astro';
+import TruckBorder from '../../components/TruckBorder.astro';
+import { rituals, ritualCategories, ritualTypes, relatedRituals, commitmentFor, muhuratFor, type Ritual } from '../../lib/ritualGuides';
+import '../../styles/creator-ideas.css';
+import '../../styles/creator-guide.css';
+export function getStaticPaths() {
+  return rituals.map(ritual => ({ params: { slug: ritual.slug }, props: { ritual } }));
+}
+const { ritual } = Astro.props as { ritual: Ritual };
+const kind = ritualTypes[ritual.type].toLowerCase();
+const related = relatedRituals(ritual, 3);
+const bookHref = '/marketplace?q=' + encodeURIComponent(ritual.title.replace(/\s*\(.*\)\s*/, ' ').trim());
+const articleTitle = `${ritual.title} — Meaning, Benefits, Best Time & Live Participation · Saathum`;
+const articleDescription = `${ritual.description} Who it is for, when to perform it, and how to join live from anywhere with prasad sent to your door.`;
+const jsonLd = { '@context':'https://schema.org', '@type':'Article', '@id':'https://saathum.com'+ritual.href+'#article', url:'https://saathum.com'+ritual.href, headline:ritual.title, description:articleDescription, datePublished:'2026-09-25', dateModified:'2026-09-25', articleSection:ritualCategories[ritual.category], keywords:ritual.tags.join(', '), isPartOf:{'@id':'https://saathum.com/rituals/#collection'}, image:'https://saathum.com'+ritual.image, author:{'@type':'Organization',name:'Saathum',url:'https://saathum.com/'}, publisher:{'@id':'https://saathum.com/#organization'}, mainEntityOfPage:'https://saathum.com'+ritual.href, inLanguage:'en-IN' };
+const keepReady = ['A small lamp or diya', 'An incense stick', 'A fresh flower', 'A glass of water', 'A small sweet to offer'];
+---
+<Base title={articleTitle} description={articleDescription} image={ritual.image} imageAlt={ritual.imageAlt} imageWidth={1536} imageHeight={1024} ogType="article">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify({'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Puja & Havan Guide',item:'https://saathum.com/rituals/'},{'@type':'ListItem',position:2,name:ritual.title,item:'https://saathum.com'+ritual.href}]})} />
+  <main class="idea-page creator-guide" id="main-content" data-ritual-article={ritual.slug}>
+    <div class="guide-shell">
+      <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/rituals">Puja &amp; Havan Guide</a><span aria-hidden="true">/</span><a href={'/rituals?for=' + ritual.category + '#idea-catalogue'}>{ritualCategories[ritual.category]}</a></nav>
+      <header class="guide-heading">
+        <p class="idea-kicker">{ritual.deity}</p>
+        <div class="idea-chips"><span class:list={['idea-format', ritual.type === 'havan' ? 'live' : 'private']}>{ritualTypes[ritual.type]}</span><span>{ritualCategories[ritual.category]}</span><span>{ritual.duration}</span></div>
+        <h1>{ritual.title}</h1>
+        <p class="guide-lead">{ritual.description}</p>
+        <p class="guide-byline">Performed live by Saathum’s own priests · With your personal sankalp · Prasad to your door</p>
+      </header>
+      <figure class="guide-hero"><img src={publicImage(ritual.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(ritual.image, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1440px) 92vw, 1320px" alt={ritual.imageAlt} width="1536" height="1024" fetchpriority="high" /><figcaption>{ritual.deity} · May every blessing find its way to you.</figcaption></figure>
+      <div class="guide-layout">
+        <aside class="guide-sidebar" aria-label="Article navigation">
+          <p class="idea-kicker">In this guide</p>
+          <nav><a href="#about">About this {kind}</a><a href="#blessings">Blessings devotees seek</a><a href="#who">Who should do it</a><a href="#when">Best time</a><a href="#altar">At the altar</a><a href="#from-home">Taking part from home</a><a href="#prasad">Prasad at your door</a><a href="#good-to-know">Good to know</a></nav>
+          <p class="guide-note">Only joy.<br />Only blessings.</p>
+        </aside>
+        <div class="guide-body">
+          <section id="about"><p class="idea-kicker">01 · The ritual</p><h2>About the {ritual.title}</h2><p>{ritual.description}</p><p>The {kind} is offered to <strong>{ritual.deity}</strong>. {ritual.type === 'havan'
+            ? 'In a havan, the priest offers ghee, grains and sacred herbs into the consecrated fire with every mantra. In tradition, Agni — the fire — carries each offering and prayer to the divine. It is one of the oldest and most joyful ways to pray.'
+            : 'In a puja, the deity is lovingly welcomed and honoured with flowers, lamp, incense, food and prayer — the way you would welcome a most beloved guest into your home.'}</p></section>
+          <section id="blessings"><p class="idea-kicker">02 · Blessings</p><h2>The blessings devotees seek</h2><p>Families have performed the {ritual.title} for generations. These are the blessings traditionally sought from it:</p><ol class="guide-steps">{ritual.benefits.map(benefit => <li>{benefit}.</li>)}</ol>{ritual.note && <div class="guide-audience"><strong>Please note</strong><p>{ritual.note}</p></div>}<p>A ritual is an act of faith and gratitude. We describe blessings as tradition describes them; Saathum never promises a particular outcome.</p></section>
+          <section id="who"><p class="idea-kicker">03 · For you?</p><h2>Who should do it</h2><div class="guide-audience"><strong>Especially lovely for</strong><p>{ritual.whoFor}</p></div><p>You can book it for yourself, or in the name of someone you love — a child before exams, parents far away, a sibling starting a business. Their name is spoken in the sankalp, wherever they are.</p></section>
+          <section id="when"><p class="idea-kicker">04 · Timing</p><h2>The best time to perform it</h2><p>{ritual.bestTime}</p><div class="guide-maths"><h3>At a glance</h3><dl><div><dt>Duration</dt><dd>{ritual.duration}</dd></div><div><dt>Commitment</dt><dd>{commitmentFor(ritual).split(' — ')[0]}</dd></div><div><dt>Muhurat</dt><dd>{muhuratFor(ritual).split(' — ')[0]}</dd></div><div><dt>Performed for you</dt><dd>Yes</dd></div></dl><small>{commitmentFor(ritual)}. {muhuratFor(ritual)}.</small></div></section>
+          <section id="altar"><p class="idea-kicker">05 · At the altar</p><h2>Who performs it, and how</h2><p>Your {kind} is performed by Saathum’s own priests at a properly prepared altar — never outsourced, never rushed. It begins with your <strong>sankalp</strong>: the priest speaks your name, your gotra, your family members’ names and your wish aloud, dedicating the ritual to you.</p><div class="guide-audience"><strong>Traditional offerings used</strong><p>{ritual.offerings}</p></div><p>Everything needed is arranged by us. You do not need to buy or send anything.</p></section>
+          <section id="from-home"><p class="idea-kicker">06 · From anywhere</p><h2>Taking part from home, live</h2><p>Distance is no barrier to devotion. Wherever you are — in India or abroad — you can be part of the ritual as it happens.</p><ol class="guide-steps"><li>Book the {kind} and share your sankalp details: names, gotra and your wish.</li><li>On the day, join the live stream from your phone, tablet or TV.</li><li>Sit facing the screen, light a lamp and pray along. Listening to the mantras with a calm, open heart is itself a beautiful form of participation.</li><li>Fold your hands for the aarti at the end and receive the blessing.</li><li>Missed a moment? Watch the replay for 7 days.</li></ol><div class="guide-audience"><strong>Keep ready at home (optional)</strong><p>{keepReady.join(' · ')}.</p></div><p>Can’t watch live? That is perfectly fine — the ritual is performed in your name all the same.</p></section>
+          <section id="prasad"><p class="idea-kicker">07 · Prasad</p><h2>Prasad at your door</h2><p>After the ritual, the blessed prasad and sacred items — such as a sacred thread, kumkum or vibhuti, where the ritual uses them — are packed with care and sent to you by courier. We deliver across India, and internationally too, so families living abroad can receive the blessing at home.</p></section>
+          <section id="good-to-know"><p class="idea-kicker">08 · Good to know</p><h2>Before you book</h2><p>Many families avoid new rituals during a period of mourning (sutak) in the family, and during solar or lunar eclipse hours. Some traditions also avoid new-beginning rituals during Pitru Paksha and Kharmas. If you are unsure, tell us — we will help you choose a good date.</p><p>Cancelled plans? You get a full refund if you cancel at least 24 hours before the scheduled start — see our <a href="/refunds">refund policy</a>.</p></section>
+          <div class="guide-ticket"><p class="guide-note">Performed for you.</p><h2>Book the {ritual.title}</h2><p>Choose a date, share your sankalp, and watch it performed live — with prasad sent to your door.</p><a class="idea-button" href={bookHref} data-ritual-book={ritual.slug}>Book this {kind} ↗</a><a class="guide-back" href="/rituals">Explore more havans &amp; pujas</a></div>
+        </div>
+      </div>
+    </div>
+    <TruckBorder kind="lotus" />
+    {related.length > 0 && <section class="guide-shell guide-related" aria-labelledby="related-title"><p class="idea-kicker">You may also love</p><h2 id="related-title">More rituals for {ritualCategories[ritual.category].toLowerCase()}</h2><div class="idea-grid">{related.map(item => <article class="idea-card"><a class="idea-card-link" href={item.href}><div class="idea-picture"><img src={publicImage(item.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" loading="lazy" decoding="async" /></div><div class="idea-card-copy"><span class:list={['idea-format', item.type === 'havan' ? 'live' : 'private']}>{ritualTypes[item.type]}</span><h3>{item.title}</h3><p>{item.description}</p><span class="idea-read-guide">Read more ↗</span></div></a></article>)}</div></section>}
+  </main>
+  <script>
+    import { capture } from '../../lib/analytics';
+    const article = document.querySelector<HTMLElement>('[data-ritual-article]');
+    if (article) {
+      capture('ritual_article_view', { ritual: article.dataset.ritualArticle });
+      article.querySelector('[data-ritual-book]')?.addEventListener('click', () => capture('ritual_article_book', { ritual: article.dataset.ritualArticle }));
+    }
+  </script>
+</Base>

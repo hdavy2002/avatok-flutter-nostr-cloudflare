@@ -96,13 +96,14 @@ try {
       assert(Math.abs(art.width - art.height) < 2, name + ': category scene remains square #' + index);
       if (width <= 600) assert(art.width >= 110, name + ': phone category art stays legible #' + index);
     }
-    const listingArt = await page.locator('.booking-artwork--listing').evaluateAll(elements => elements.map(image => {
+    // [SAATHUM-GUIDE-1 2026-09-25] Eight havan knowledge cards (art from /assets/saathum-rituals/).
+    const listingArt = await page.locator('.grand-havan .grand-listing-art img').evaluateAll(elements => elements.map(image => {
       const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
     }));
-    assert.equal(listingArt.length, 9, name + ': nine listing photos');
+    assert.equal(listingArt.length, 8, name + ': eight havan cards');
     for (const [index, art] of listingArt.entries()) {
-      assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': listing photo paints #' + index);
-      assert(art.width > art.height, name + ': listing photo is landscape #' + index);
+      assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': havan art paints #' + index);
+      assert(art.width > art.height, name + ': havan art is landscape #' + index);
     }
     assert.equal(await page.locator('.grand-listing').evaluateAll(els => els.filter(el => getComputedStyle(el).transform !== 'none').length), 0, name + ': listings stay straight');
     assert.equal(await page.locator('.folk-seal, .folk-handnote, .folk-event-stamp').count(), 0, name + ': no retired stamps');
@@ -150,7 +151,7 @@ try {
         listings: [...document.querySelectorAll('.grand-listing')].map(el => Math.round(el.getBoundingClientRect().top)),
       }));
       assert.equal(new Set(rows.categories).size, 1, name + ': all six categories occupy one row');
-      assert.equal(new Set(rows.listings).size, 3, name + ': nine listings occupy three rows');
+      assert.equal(new Set(rows.listings).size, 2, name + ': eight havan cards occupy two rows of four'); // SAATHUM-GUIDE-1
     }
     if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': sage community strip remains compact');
     if (width >= 1920) {

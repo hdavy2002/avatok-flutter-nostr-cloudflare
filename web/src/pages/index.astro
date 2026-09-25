@@ -7,7 +7,7 @@ import FolkArtwork from '../components/FolkArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
 import GrandHero from '../components/GrandHero.astro';
-import { publicImage } from '../lib/config';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 import '../styles/saathum-folk.css';
 
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service brief.
@@ -21,22 +21,16 @@ const categories = [
   { name: 'bhajan', label: 'Festival pujas', term: 'Festival' },
 ] as const;
 
-// Illustrative examples only (labelled on the page) — never bookable inventory.
-const includes = 'Includes: sankalp in your name · live stream · prasad (optional)';
-const listings = [
-  { name: 'puja', artwork: '/assets/saathum-bright/ganesh.png', title: 'Ganapati Havan for a fresh start', deity: 'Lord Ganesha', term: 'Havan', city: 'Haridwar', price: '₹1,100', schedule: 'Book now', scheduleTone: 'open', timing: 'Fri · 9:00 AM IST', rating: '4.9', reviews: '112' },
-  { name: 'puja', artwork: '/assets/saathum-booking/listing-puja.png', title: 'Saraswati Puja for success in studies', deity: 'Goddess Saraswati', term: 'Puja', city: 'Varanasi', price: '₹501', schedule: 'Starts in 2h', scheduleTone: 'soon', timing: 'Today · 8:00 AM IST', rating: '4.8', reviews: '96' },
-  { name: 'aarti', artwork: '/assets/saathum-booking/listing-aarti.png', title: 'Lakshmi Puja for prosperity', deity: 'Goddess Lakshmi', term: 'Puja', city: 'Haridwar', price: '₹501', schedule: 'Live now', scheduleTone: 'live', timing: 'Today · 7:30 PM IST', rating: '4.9', reviews: '128' },
-  { name: 'aarti', artwork: '/assets/saathum-booking/category-aarti.png', title: 'Mahamrityunjaya Havan for good health', deity: 'Lord Shiva', term: 'Havan', city: 'Varanasi', price: '₹2,100', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Tomorrow · 6:30 AM IST', rating: '4.7', reviews: '74' },
-  { name: 'puja', artwork: '/assets/saathum-booking/category-puja.png', title: 'Satyanarayan Puja for family blessings', deity: 'Lord Vishnu', term: 'Puja', city: 'Rishikesh', price: '₹751', schedule: 'This weekend', scheduleTone: 'soon', timing: 'Sat · 10:00 AM IST', rating: '4.8', reviews: '153' },
-  { name: 'puja', artwork: '/assets/saathum-booking/listing-puja.png', title: 'Hanuman Puja for peace of mind', deity: 'Lord Hanuman', term: 'Puja', city: 'Haridwar', price: '₹501', schedule: '3 seats left', scheduleTone: 'limited', timing: 'Tue · 7:00 AM IST', rating: '4.9', reviews: '61' },
-  { name: 'puja', artwork: '/assets/saathum-bright/ganesh.png', title: 'Griha Pravesh Puja for your new home', deity: 'Lord Ganesha', term: 'Puja', city: 'Rishikesh', price: '₹1,100', schedule: 'Book now', scheduleTone: 'open', timing: 'Thu · 9:00 AM IST', rating: '4.8', reviews: '89' },
-  { name: 'festival', artwork: '/assets/saathum-booking/category-festival.png', title: 'Diwali Lakshmi Puja', deity: 'Goddess Lakshmi', term: 'Festival', city: 'Varanasi', price: '₹1,100', schedule: 'Tonight', scheduleTone: 'soon', timing: 'Today · 7:00 PM IST', rating: '4.9', reviews: '214' },
-  { name: 'aarti', artwork: '/assets/saathum-booking/listing-aarti.png', title: 'Shravan Rudrabhishek', deity: 'Lord Shiva', term: 'Puja', city: 'Haridwar', price: '₹1,500', schedule: 'Tomorrow', scheduleTone: 'soon', timing: 'Mon · 6:00 AM IST', rating: '4.8', reviews: '47' },
-] as const;
+// [SAATHUM-GUIDE-1 2026-09-25] OWNER DECISION: the "Upcoming live pujas & havans"
+// listing cards were replaced by eight HAVAN KNOWLEDGE cards (title, deity,
+// description, Read more → /rituals/<slug>), plus an "Explore more havans &
+// pujas" button → /rituals (the Puja & Havan Guide, which replaced /ideas).
+// Cards + images come from lib/ritualGuides.ts (featuredHavans) — images at
+// /assets/saathum-rituals/<slug>.png. The old sample listing cards (prices,
+// ratings, schedule badges) are in git history at c32524ca for restore.
+import { featuredHavans, ritualCategoryShort } from '../lib/ritualGuides';
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
-const avatarFor = (name: string) => ({ satsang: 'aarti', festival: 'puja', yoga: 'bhajan' } as Record<string, string>)[name] ?? name;
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 ---
@@ -83,32 +77,29 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
         </div>
       </section>
 
-      <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="home_events">
+      <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="havans">
+        <!-- NOTE FOR AI: knowledge cards, NOT bookable listings. Each opens the ritual's
+             article in the Puja & Havan Guide. Data + images: lib/ritualGuides.ts. -->
         <div class="grand-moments-inner">
           <div class="grand-section-heading">
-            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Upcoming live pujas &amp; havans</h2>
-            <a class="grand-link" href="/marketplace" data-home-cta="all-rituals">See all pujas &amp; havans <span aria-hidden="true">→</span></a>
+            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Sacred havans we perform for you</h2>
           </div>
-          <div class="grand-listing-grid">
-            {listings.map((listing, i) => <article class="grand-listing" data-listing-index={i}>
+          <div class="grand-listing-grid grand-listing-grid--havans">
+            {featuredHavans.map((havan, i) => <article class="grand-listing grand-havan" data-havan-index={i}>
               <div class="grand-listing-art-wrap">
-                <a class="grand-listing-art" href={search(listing.term)} aria-label={listing.title + ' — see ' + listing.term.toLowerCase() + ' rituals'} data-home-cta={'ritual-' + listing.term.toLowerCase()}>
-                  <span class:list={['grand-sample-badge', 'grand-sample-badge--' + listing.scheduleTone]}>{listing.schedule}</span>
-                  <BookingArtwork kind="listing" name={listing.name} sourcePath={listing.artwork} alt={listing.title + ', performed live at an altar in ' + listing.city + '.'} sizes="(max-width: 600px) 92vw, 31vw" />
+                <a class="grand-listing-art" href={havan.href} tabindex="-1" aria-hidden="true" data-home-cta={'havan-art-' + havan.slug}>
+                  <img src={publicImage(havan.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(havan.image, [420, 640, 900], { fit: 'scale-down' })} sizes="(max-width: 600px) 92vw, (max-width: 1100px) 46vw, 23vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" />
                 </a>
-                <button class="grand-favourite" type="button" aria-label={'Save ' + listing.title} aria-pressed="false" data-favorite="true">♡</button>
               </div>
               <div class="grand-listing-copy">
-                <div class="grand-listing-heading"><h3><a href={search(listing.term)}>{listing.title}</a></h3><span class="grand-listing-price">{listing.price}</span></div>
-                <div class="grand-listing-host"><img src={publicImage(`/assets/saathum-booking/listing-${avatarFor(listing.name)}.png`, { width: 72, fit: 'cover' })} alt="" width="32" height="32" /> <span>{listing.deity}</span></div>
-                <p class="grand-listing-description">{includes}</p>
-                <div class="grand-listing-info"><span class="grand-city-pill">● {listing.city}</span><span class="grand-listing-time">{listing.timing}</span></div>
-                <div class="grand-listing-footer"><span class="grand-rating" aria-label={listing.rating + ' out of 5 from ' + listing.reviews + ' reviews'}>★ {listing.rating} <small>({listing.reviews})</small></span><a class="grand-booking-link" href={search(listing.term)} data-home-cta={'sample-book-' + listing.term.toLowerCase()}>Book now <span aria-hidden="true">→</span></a></div>
+                <div class="grand-listing-heading"><h3><a href={havan.href}>{havan.title}</a></h3></div>
+                <div class="grand-listing-host"><span>{havan.deity}</span></div>
+                <p class="grand-listing-description">{havan.description}</p>
+                <div class="grand-listing-footer"><span class="grand-city-pill">● {ritualCategoryShort[havan.category]}</span><a class="grand-booking-link" href={havan.href} aria-label={'Read more about the ' + havan.title} data-home-cta={'havan-read-' + havan.slug}>Read more <span aria-hidden="true">→</span></a></div>
               </div>
             </article>)}
           </div>
-          <p class="grand-editorial-note">These are illustrative examples. Book your sankalp before the ritual begins — see all pujas &amp; havans for current dates and prices.</p>
-          <noscript><p><a href="/marketplace">See all pujas &amp; havans</a> and book your sankalp.</p></noscript>
+          <div class="grand-havan-more"><a class="grand-button" href="/rituals" data-home-cta="explore-havans-pujas">Explore more havans &amp; pujas <span aria-hidden="true">→</span></a></div>
         </div>
       </section>
 

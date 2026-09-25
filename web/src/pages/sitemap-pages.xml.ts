@@ -31,6 +31,7 @@
 // below, alongside the static '/help' landing-page entry.
 import type { APIRoute } from 'astro';
 import { creatorIdeas } from '../lib/creatorIdeas';
+import { rituals } from '../lib/ritualGuides';
 // [WEB-HELP-1 2026-09-11] Help routes: '/help' plus one entry per
 // non-draft help article, appended in GET() since collection reads are async.
 import { getHelpEntries, helpUrl } from '../lib/help';
@@ -50,7 +51,9 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ['/sign-up', 'monthly', '0.9'],
   ['/about', 'monthly', '0.7'],
   ['/blog', 'weekly', '0.7'],
-  ['/ideas', 'weekly', '0.8'],
+  // [SAATHUM-GUIDE-1 2026-09-25] Puja & Havan Guide replaced /ideas (now a 301).
+  ['/rituals', 'weekly', '0.9'],
+  ...rituals.map(ritual => [ritual.href, 'monthly', '0.7'] as [string, string, string]),
   ...creatorIdeas.map(idea => [idea.href, 'monthly', '0.6'] as [string, string, string]),
   ['/blog/earn-from-day-one', 'monthly', '0.7'],
   ['/blog/real-people-safety', 'monthly', '0.6'],
