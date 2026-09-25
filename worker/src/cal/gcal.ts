@@ -20,9 +20,13 @@ const WEBHOOK = "https://api.avatok.ai/webhooks/gcal";
 const DAY = 86_400_000;
 const SYNC_HORIZON_DAYS = 90;
 const FULL_RECONCILE_MS = DAY;
+// [GOOGLE-OAUTH-LEASTPRIV-1 2026-09-25] Owner decision: Calendar scopes
+// (calendar.events + calendar.calendarlist.readonly) are DROPPED. Saathum runs
+// its own pujas with its own priests, so creator calendar sync is unused, and
+// Google's OAuth review demanded least privilege. Only the non-sensitive
+// drive.file scope is requested now. Do not re-add a Calendar scope without the
+// owner re-opening Google OAuth verification (demo video + justification).
 const SCOPE = [
-  "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
   "https://www.googleapis.com/auth/drive.file",
 ].join(" ");
 const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.file";
@@ -103,7 +107,7 @@ export async function gcalConnect(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GCAL_TOKEN_KEY) return json({ error: "Google Calendar is not configured" }, 503);
   const exp = Date.now() + 600_000, reqUrl = new URL(req.url), wantApp = reqUrl.searchParams.get("return") === "app"; const driveOnly = (reqUrl.pathname.includes("/ava/drive/") || reqUrl.searchParams.get("scope") === "drive") && reqUrl.searchParams.get("scope") !== "full"; const sig = await hmacHex(env, ctx.uid + "." + exp); const state = `${ctx.uid}.${exp}.${sig}${wantApp ? ".app" : ""}`;
   const u = new URL(GAUTH); u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID); u.searchParams.set("redirect_uri", REDIRECT); u.searchParams.set("response_type", "code"); u.searchParams.set("scope", driveOnly ? SCOPE_DRIVE : SCOPE); u.searchParams.set("access_type", "offline"); u.searchParams.set("prompt", "consent"); u.searchParams.set("include_granted_scopes", "true"); u.searchParams.set("state", state);
-  await track(env, ctx.uid, "gcal_connect_url", driveOnly ? "avastorage" : "avacalendar", { drive_only: driveOnly, scope_mode: driveOnly ? "drive.file" : "calendar.events+calendarlist.readonly+drive.file", sensitive_scope: !driveOnly, return_app: wantApp, path: reqUrl.pathname }); return json({ url: u.toString() });
+  await track(env, ctx.uid, "gcal_connect_url", driveOnly ? "avastorage" : "avacalendar", { drive_only: driveOnly, scope_mode: "drive.file", sensitive_scope: false, return_app: wantApp, path: reqUrl.pathname }); return json({ url: u.toString() });
 }
 export async function gcalCallback(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url), code = url.searchParams.get("code") || "", state = url.searchParams.get("state") || ""; const [uid, expS, sig, flow] = state.split("."); const isApp = flow === "app"; const back = (err?: string) => isApp ? new Response(null, { status: 302, headers: { Location: `avatokauth://drive-connected${err ? `?error=${encodeURIComponent(err)}` : ""}` } }) : null;

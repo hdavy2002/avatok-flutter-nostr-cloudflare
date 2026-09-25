@@ -9,7 +9,7 @@ import Content from '../layouts/Content.astro';
   description="What Saathum collects, why we collect it, how we protect it, and the control you have over your information."
   image="/og/privacy.png"
   lead="How the Saathum team collects, uses, and protects your information while we test an early product with a small group of invited users."
-  updated="2026-09-10"
+  updated="2026-09-25"
 >
   <p data-i18n="web-privacy.e4bc847d00bc3f7f">
     This Privacy Policy explains how the Saathum founding team ("Saathum", "we", "us", or "our")
@@ -61,38 +61,35 @@ import Content from '../layouts/Content.astro';
 
   <h2 data-i18n="web-privacy.6ff5e2e8a5f9acf0">3. Google APIs and Google user data</h2>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.f69eb40a3d7ab571">If you choose to connect a Google Account, Saathum uses Google OAuth to provide the specific
-    feature you request. Saathum may read your subscribed calendar list so you can choose a
-    calendar, read calendar event details needed to check availability, and create or update
-    calendar events for bookings or other calendar actions you explicitly start. Saathum may also
-    use Google Drive's restricted</ui-copy> <code>drive.file</code> <ui-copy style="display:contents" data-i18n="web-privacy.4537f2fdaf3a2e58">access for files that you create with
-    Saathum or select for use in a Saathum feature. We do not use Google data for advertising,
-    sell it, or use it to determine creditworthiness.</ui-copy>
+    If you choose to connect a Google Account, Saathum uses Google OAuth and requests only
+    Google Drive's limited <code>drive.file</code> access. This lets Saathum create files in your
+    Google Drive when you ask it to (for example, saving a booking receipt) and open only the
+    files that Saathum created or that you explicitly select. Saathum cannot see, read or change
+    any other file in your Google Drive. Saathum does not request access to your Google Calendar,
+    Gmail, Contacts or any other Google service.
   </p>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.4a79f5f08c679fed">Google data is used only to provide the requested Saathum feature, is transmitted over encrypted
-    connections, and is not transferred to another app except as necessary for that feature and its
-    contracted service providers. Saathum's use and transfer to any other app of information
-    received from Google APIs will adhere to the</ui-copy>
-    <a data-i18n="web-privacy.1fd7fd2453f42f84" href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a><ui-copy style="display:contents" data-i18n="web-privacy.f4118fe5decfe497">,
-    including the Limited Use requirements.</ui-copy>
+    Google user data is used only to provide the feature you requested, is transmitted over
+    encrypted connections, and is never sold, used for advertising, used to determine
+    creditworthiness, or transferred to anyone else except as necessary to provide that feature
+    or where required by law. Saathum's use and transfer to any other app of information
+    received from Google APIs will adhere to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.
   </p>
   <p>
-    Google Calendar and Drive data is not used to train, fine-tune, or improve a
-    generalized or foundational AI model. When an explicitly requested Saathum AI
-    feature needs Google-derived content, the request is sent only through
-    provider routes configured for zero data retention and no provider data
-    collection, or through Cloudflare Workers AI. Cloudflare states that Workers
-    AI customer content is not used to train its models or improve Cloudflare or
-    third-party services without explicit consent. Optional AI providers that do
-    not meet these controls are not eligible to receive Google-derived content.
+    <strong>Google user data and AI.</strong> Saathum does not send any data received from Google
+    APIs to any AI or machine-learning model &mdash; neither a self-hosted model nor a
+    third-party AI service &mdash; and does not use Google user data to train, fine-tune or
+    improve any AI model, whether generalized, foundational or Saathum's own.
   </p>
   <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.a47c2e4f04bb845f">You can disconnect Google at any time from Saathum's calendar settings or from your Google
-    Account's third-party connections. When disconnected, Saathum stops making new Google API
-    requests for that connection. You can ask us to delete stored Google-related data and tokens by
-    contacting</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a><ui-copy style="display:contents" data-i18n="web-privacy.98596f95d6d2f1dd">; tokens are encrypted at
-    rest and are deleted when the connection is removed, subject to legally required retention.</ui-copy>
+    You can disconnect Google at any time from Saathum's settings or from your Google
+    Account's third-party connections (myaccount.google.com/connections). When disconnected,
+    Saathum stops making Google API requests for that connection. You can ask us to delete
+    stored Google-related data and tokens by contacting
+    <a href="mailto:support@saathum.com">support@saathum.com</a>; tokens are encrypted at rest and
+    are deleted when the connection is removed, subject to legally required retention.
   </p>
 
   <h2 data-i18n="web-privacy.6b0438d77b09ae00">4. AI features and your data</h2>
@@ -106,6 +103,15 @@ import Content from '../layouts/Content.astro';
     shown inside the relevant feature. Where a feature is explicitly described as end-to-end
     encrypted, processing remains limited to the participating devices except where you choose to
     share that content with Ava.</ui-copy>
+  </p>
+
+  <p>
+    <strong>Which AI services we use.</strong> Saathum does not run its own self-hosted AI model.
+    AI features use third-party AI services acting as our service providers: Cloudflare
+    Workers AI, OpenAI and Google Gemini (and, for some features, OpenRouter and Groq). We send
+    these providers only the content needed for the AI feature you use. As
+    explained in section 3, data received from Google APIs is never sent to any of these AI
+    services.
   </p>
 
   <h2 data-i18n="web-privacy.03aa2b9c8c79c6bf">5. How we share information</h2>
