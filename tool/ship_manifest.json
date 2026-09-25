@@ -6802,7 +6802,7 @@
   "DASH2-API": {
     "description": "[DASH2-API] Saathum customer dashboard (Dashboard 2) worker API: /api/me/{catalog,events,payments,payments/:id,payments/:id/refund-request,payments/:id/receipt.pdf,profile,vpas,phone/start,phone/confirm} + POST /api/admin/refunds/:payment_id (worker/src/routes/me_dashboard.ts). Payments read from orders + commercial_policy_snapshots + hdfc_sms_payment_intents; receipts are pdf-lib PDFs cached in R2 DIGITAL. Web surface is gated by dashboard2Enabled (default false).",
     "two_sided": false,
-    "min_devices_on_build": 0,
+    "min_devices_on_build": 1,
     "flags": [
       "dashboard2Enabled"
     ],
@@ -6820,6 +6820,148 @@
         "equals": "swapped",
         "min_events": 1,
         "note": "A phone change completed end to end (OTP to the new number, one-batch swap). outcome values other than swapped on step=confirm are failures."
+      }
+    ]
+  },
+  "DASH2-FOUNDATION": {
+    "description": "[DASH2-FOUNDATION] Dashboard 2 shell, nav, login-lands-on-/dashboard and logout-to-/ behind dashboard2Enabled (default false); shadcn/ui primitives and saathum tokens.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_login_landed",
+        "property": "screen",
+        "equals": "book",
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "Owner rule: every login lands on Book events. The slack covers users who were sent to sign in from a specific dashboard page (e.g. Billing from a receipt email) and are correctly returned there."
+      },
+      {
+        "event": "dash2_view",
+        "property": "screen",
+        "in": [
+          "book",
+          "my-events",
+          "past",
+          "billing",
+          "profile"
+        ],
+        "min_events": 1
+      },
+      {
+        "event": "dash2_logout",
+        "property": "$current_url",
+        "exists": true,
+        "min_events": 1,
+        "note": "Logout fired from /sign-out after a dashboard session."
+      }
+    ]
+  },
+  "DASH2-ARCHIVE-1": {
+    "description": "[DASH2-ARCHIVE-1] v1 dashboard pages archived under web/src/pages/archive/dashboard-v1 with flag-aware redirects of old v1 URLs to the nearest Dashboard 2 screen.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_view",
+        "property": "screen",
+        "in": [
+          "book",
+          "my-events",
+          "past",
+          "billing",
+          "profile"
+        ],
+        "min_events": 1,
+        "note": "Old v1 URLs redirect into Dashboard 2 screens; a view of a known screen proves the redirect target renders."
+      }
+    ]
+  },
+  "DASH2-EVENTS": {
+    "description": "[DASH2-EVENTS] My events / Past events screens: server-computed state, Join (YouTube player behind our overlay) and replay of the event's unlisted YouTube video for seat holders only.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_join_click",
+        "property": "event_id",
+        "exists": true,
+        "min_events": 1
+      },
+      {
+        "event": "dash2_replay_play",
+        "property": "event_id",
+        "exists": true,
+        "min_events": 1
+      }
+    ]
+  },
+  "DASH2-BILLING": {
+    "description": "[DASH2-BILLING] Billing screen: payment list with filters and cursor paging, payment detail, receipt PDF download and refund request (24h rule).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_receipt_download",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1
+      },
+      {
+        "event": "dash2_refund_request",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "ok:false carries the refusal reason (refund_window_closed etc.)."
+      }
+    ]
+  },
+  "DASH2-PROFILE": {
+    "description": "[DASH2-PROFILE] Profile screen: name, sankalp details (gotra/family), address, notification prefs, saved UPI ids and phone change by OTP to the new number.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_phone_change",
+        "property": "outcome",
+        "equals": "swapped",
+        "where": {
+          "step": "confirm"
+        },
+        "min_events": 1,
+        "note": "Server-side event from routes/me_dashboard.ts: the one-batch phone swap completed."
+      }
+    ]
+  },
+  "DASH2-PWA": {
+    "description": "[DASH2-PWA] Installable dashboard: web manifest, service worker registration and install prompt (Android beforeinstallprompt, iOS add-to-home-screen hint).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_pwa_install",
+        "property": "action",
+        "equals": "installed",
+        "min_events": 1,
+        "note": "appinstalled fired: a real install, not just the prompt being shown."
       }
     ]
   }
