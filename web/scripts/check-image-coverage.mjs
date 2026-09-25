@@ -40,6 +40,10 @@ function checkSrcset(value, file) {
   for (const match of value.matchAll(/(?:^|,\s+)(\S+?)(?:\s+\d+(?:\.\d+)?[wx])?(?=,\s+|$)/g)) check(match[1], file);
 }
 for (const file of walk(join(web, 'dist')).filter(file => /\.(html|css)$/.test(file))) {
+  // [DASH2-OFFLINE-IMG-1] The PWA offline shell is shown with NO network: its
+  // icon must be the exact raw path sw.js precaches (SHELL), never a
+  // /cdn-cgi/image transform that cannot be fetched offline.
+  if (relative(web, file) === join('dist', 'offline.html')) continue;
   const text = readFileSync(file, 'utf8');
   if (file.endsWith('.html')) {
     // Social meta/link unfurls intentionally stay JPEG. Only browser media here.
