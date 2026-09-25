@@ -283,7 +283,8 @@ const sitemapIndex = readFileSync(resolve(root,'sitemap.xml'),'utf8');
 assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
 assert(sitemapIndex.includes('https://saathum.com/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
-for (const href of new Set(guideLinks)) assert(sitemap.includes('https://saathum.com'+href),'Guide missing from sitemap: '+href);
+// [SAATHUM-REBRAND-1 2026-09-25] Creator guides (/blog/*, /ideas) are archived — noindex, out of the sitemap.
+for (const href of new Set(guideLinks)) assert(!sitemap.includes('https://saathum.com'+href),'Archived guide must not be in sitemap: '+href);
 // [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex) — kept out of the sitemap.
 assert(!sitemap.includes('https://saathum.com/organisers'), '/organisers archived: not in sitemap');
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
