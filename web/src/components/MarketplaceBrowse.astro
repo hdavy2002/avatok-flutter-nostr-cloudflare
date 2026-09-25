@@ -54,7 +54,7 @@ const mpBase = `${hrefBase}/marketplace`;
 // every time someone taps it. See marketGroups.ts.
 const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 const RITUAL_TILES = [
-  { label: 'Pujas', zone: 'Performed in your name', href: `${hrefBase}/marketplace?q=Puja#listings`, image: '/marketplace/art/puja.png', alt: 'Puja thali with diya, lotus, kumkum, rice and marigolds' },
+  { label: 'Pujas', zone: 'Performed for you', href: `${hrefBase}/marketplace?q=Puja#listings`, image: '/marketplace/art/puja.png', alt: 'Puja thali with diya, lotus, kumkum, rice and marigolds' },
   { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings`, image: '/marketplace/art/havan.png', alt: 'Havan kund with a calm sacred flame, mango wood and marigold garland' },
 ];
 
@@ -185,7 +185,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
           <span class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">{ritualTiles ? 'How it works' : 'For customers'}</span>
-          <h3 class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">{ritualTiles ? 'Performed in your name' : 'Browse right here'}</h3>
+          <h3 class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">{ritualTiles ? 'Performed for you' : 'Browse right here'}</h3>
           <p class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">{ritualTiles ? 'Choose a puja or havan, share your name, gotra and wish, and watch it live. Prasad comes to your door.' : 'Everything works in your browser — explore, book and watch without downloading a thing.'}</p>
           <div class="pt-1"><a href={ritualTiles ? '/how-it-works' : '#listings'} class={ctaLime}>{ritualTiles ? 'See how it works' : 'Start browsing'}</a></div>
         </div>

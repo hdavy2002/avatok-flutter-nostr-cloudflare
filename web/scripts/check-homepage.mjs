@@ -26,11 +26,11 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, /<title[^>]*>Saathum — Book a Puja or Havan Performed in Your Name, Live/, 'Puja service page title');
+assert.match(html, /<title[^>]*>Saathum — Sacred Rituals Performed for You, Watched Live/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Faith, brought home to you\./, 'Brief H1');
-assert.match(visibleText, /IN YOUR NAME\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
+assert.match(visibleText, /PERFORMED FOR YOU\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
 for (const heading of ['What would you like to welcome into your life?', 'Upcoming live pujas &amp; havans', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
@@ -94,7 +94,7 @@ for (const href of ['/grievance','/about','/careers','/marketplace-terms','/cons
   assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
-assert.match(visibleText, /Saathum performs pujas and havans for you, in your name\./, 'Service role is explained');
+assert.match(visibleText, /Saathum performs pujas and havans for you\./, 'Service role is explained');
 assert.match(visibleText, /You book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
 assert.match(visibleText, /Saathum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
 
@@ -315,8 +315,8 @@ assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 109 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Saathum — Book a Puja or Havan Performed in Your Name, Live', 'A4 og:title (SAATHUM-REBRAND-1)');
-assert.equal(meta(html, 'og:description'), 'Choose a puja or havan for exams, home, health, prosperity or peace. Our priests perform it in your name and gotra at a real altar while you watch live. Prasad delivered to your door.', 'A4 og:description (SAATHUM-REBRAND-1)');
+assert.equal(meta(html, 'og:title'), 'Saathum — Sacred Rituals Performed for You, Watched Live', 'A4 og:title (SAATHUM-REBRAND-1)');
+assert.equal(meta(html, 'og:description'), 'Book a sacred ritual for exams, home, health, prosperity or peace. Our priests perform it for you at a real altar while you watch live, wherever you are. Prasad delivered to your door.', 'A4 og:description (SAATHUM-REBRAND-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
