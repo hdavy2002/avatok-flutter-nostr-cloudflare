@@ -60,7 +60,7 @@ If you want confirmation that your data was fully removed, or you believe someth
 
 ## Ask for a manual check or purge
 
-Email **privacy@saathum.com** (or grievance@saathum.com for a formal complaint) with your account email and what you'd like checked or removed. This is the right route for confirming a deletion actually completed, or flagging data you believe is still hanging around after your grace period ended. See [Report a problem](/help/account-and-safety/report-a-problem) and our [Grievance Redressal](/grievance) policy for what to include and the timelines we work to.
+Email **privacy@saathum.com** with your account email and what you'd like checked or removed. This is the right route for confirming a deletion actually completed, or flagging data you believe is still hanging around after your grace period ended. See [Report a problem](/help/account-and-safety/report-a-problem) for what to include and the timelines we work to.
 
 ## Changed your mind before you even deleted?
 

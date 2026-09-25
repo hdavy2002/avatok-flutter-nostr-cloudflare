@@ -46,7 +46,6 @@ export const HOME_FOOTER_COLUMNS = [
     { href: '/privacy', label: 'Privacy' },
     { href: '/terms', label: 'Terms' },
     { href: '/cookies', label: 'Cookies' },
-    // Required to stay discoverable (India IT Rules 2021 grievance officer).
-    { href: '/grievance', label: 'Grievance Redressal' },
+    // [SAATHUM-ENTITY-1 2026-09-25] Grievance Redressal page removed by owner.
   ] },
 ];

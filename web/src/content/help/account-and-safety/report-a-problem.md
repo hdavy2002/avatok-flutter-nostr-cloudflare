@@ -46,7 +46,6 @@ Include what you can: your full name and the email/phone linked to your account,
 - Resolution — within **15 days**.
 - Non-consensual intimate imagery (nudity, a sexual act, or impersonation, including morphed or AI-generated images) — acted on within **24 hours**.
 
-Full detail, including what happens after you file and how to escalate, is in our [Grievance Redressal](/grievance) policy.
 
 ## Other ways to reach us
 
