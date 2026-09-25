@@ -105,7 +105,17 @@ export function buildPaymentsQuery(uid: string, now: number, f: PaymentFilters):
   const where: string[] = [];
   const add = (frag: (n: string) => string, v: unknown) => { binds.push(v); where.push(frag(`?${binds.length}`)); };
   if (f.id) add((n) => `p.id=${n}`, f.id);
-  if (f.q && f.q.trim()) add((n) => `(lower(p.event_title) LIKE ${n} OR p.utr LIKE ${n})`, `%${f.q.trim().toLowerCase().slice(0, 80).replace(/[%_]/g, "")}%`);
+  if (f.q && f.q.trim()) {
+    // Title / UTR: substring. Listing id, order id and payment id: exact or prefix
+    // (ids are opaque; a substring match on them would be noise). LIKE wildcards in the
+    // input are ESCAPED, so "L_soon" means that literal id and "%" matches nothing.
+    const q = f.q.trim().slice(0, 80).replace(/[\\%_]/g, (ch) => "\\" + ch);
+    binds.push(`%${q.toLowerCase()}%`); const sub = `?${binds.length}`;
+    binds.push(`${q}%`); const pre = `?${binds.length}`;
+    const like = (col: string, ref: string) => `${col} LIKE ${ref} ESCAPE '\\'`;
+    where.push(`(${like("lower(p.event_title)", sub)} OR ${like("p.utr", sub)}
+      OR ${like("p.listing_id", pre)} OR ${like("p.order_id", pre)} OR ${like("p.id", pre)})`);
+  }
   if (f.cat) add((n) => `p.category=${n}`, f.cat);
   if (f.status) {
     const list = f.status.split(",").map((s) => s.trim()).filter((s) => STATUSES.has(s));

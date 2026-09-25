@@ -128,6 +128,16 @@ describe("payments read model", () => {
     expect((await payments(db, "alice", { q: "rudra" })).map((r) => r.id).sort()).toEqual(["i2", "o2"]);
     expect((await payments(db, "alice", { q: "512345" })).map((r) => r.id)).toEqual(["i1"]);
     expect((await payments(db, "alice", { cat: "puja" })).map((r) => r.id)).toEqual(["i1"]);
+    // q also matches the event (listing) id and the order id, exact or prefix.
+    expect((await payments(db, "alice", { q: "L_soon" })).map((r) => r.id).sort()).toEqual(["i2", "o2"]);
+    expect((await payments(db, "alice", { q: "L_so" })).map((r) => r.id).sort()).toEqual(["i2", "o2"]);
+    expect((await payments(db, "alice", { q: "o1" })).map((r) => r.id)).toEqual(["i1"]); // order o1 behind intent i1
+    expect((await payments(db, "alice", { q: "o3" })).map((r) => r.id)).toEqual(["o3"]);
+    expect((await payments(db, "alice", { q: "soon" })).map((r) => r.id)).toEqual([]); // ids are prefix-only
+    expect((await payments(db, "bob", { q: "o1" })).map((r) => r.id)).toEqual([]);   // never another account's order
+    expect((await payments(db, "alice", { q: "%" })).length).toBe(0);                 // wildcards are literal
+    expect((await payments(db, "alice", { q: "L%" })).length).toBe(0);
+    expect((await payments(db, "alice", { q: "L_oon" })).length).toBe(0);            // "_" is not a wildcard
     expect((await payments(db, "alice", { minPaise: 100000 })).map((r) => r.id).sort()).toEqual(["i2", "o2"]);
     expect((await payments(db, "alice", { eventFrom: NOW, eventTo: NOW + 3 * H })).map((r) => r.id).sort()).toEqual(["i2", "o2"]);
   });
