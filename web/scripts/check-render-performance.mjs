@@ -46,7 +46,7 @@ if (built) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');
   }
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  assert.equal(heading, 'Faith, brought home to you.', 'Grand homepage H1 reaches the built page'); // SAATHUM-REBRAND-1
+  assert.equal(heading, 'Sab ki aahuti, sab ka ashirwad.', 'Grand homepage H1 reaches the built page'); // SAATHUM-REBRAND-1
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

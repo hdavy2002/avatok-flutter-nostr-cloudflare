@@ -29,8 +29,8 @@ assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main headin
 assert.match(html, /<title[^>]*>Saathum — Sacred Rituals Performed for You, Watched Live/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Faith, brought home to you\./, 'Brief H1');
-assert.match(visibleText, /PERFORMED FOR YOU\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*WATCHED LIVE/, 'Hero eyebrow');
+assert.match(visibleText, /Sab ki aahuti, sab ka ashirwad\./, 'Brief H1');
+assert.match(visibleText, /LIVE HAVANS\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*OPEN TO ALL/, 'Hero eyebrow');
 for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
