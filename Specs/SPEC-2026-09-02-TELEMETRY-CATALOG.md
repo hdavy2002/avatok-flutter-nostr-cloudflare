@@ -823,3 +823,19 @@ never a UTR, never the refund reason text.
 | `dash2_receipt_generated` | `payment_id, receipt_no, stamp, regenerated, bytes` | **Success value.** A receipt PDF was rendered and stored in R2 `DIGITAL`. `stamp: 'PAID' \| 'REFUNDED'`; `regenerated: true` when an earlier PAID copy was replaced after a refund. Cache hits emit nothing. |
 | `dash2_phone_change` | `step, ok, outcome, phone_masked, …` | `step: 'start'` — `outcome: 'sent' \| 'phone_taken' \| 'rate_limited' \| 'global_breaker' \| 'provider_error'`. `step: 'confirm'` — `outcome: 'swapped'` (**success value**) \| `'mismatch' \| 'expired' \| 'provider_unreachable' \| 'phone_taken'`. |
 | `dash2_video_link_set` | `listing_id, cleared` | Admin set (`cleared: false`) or removed (`cleared: true`) an event's unlisted YouTube video via `PUT /api/admin/listings/:id/youtube`. Distinct uid = the ADMIN. Never the URL. |
+
+## Dashboard 2 — event screens, WEB half (`[DASH2-EVENTS]`, 2026-09-25)
+
+Emitted from `web/src/islands/dashboard2/{BookEvents,MyEvents,PastEvents}.tsx` and
+`web/src/islands/admin/YouTubePanel.tsx` through `web/src/lib/analytics.ts` (same
+super-properties as every web event: `email`, `clerk_uid`, `trace_id`, …).
+
+| Event | Props | Note |
+|---|---|---|
+| `dash2_search` | `q, q_len, results, active_filters` | One per distinct committed search (250ms debounce) after the catalog answered. `results: 0` = the empty state was shown. |
+| `dash2_filter_apply` | `filter, surface, cats, from, to, tod, min, max, active_count` | `surface: 'bar' \| 'drawer' \| 'rail'`. `filter` names what changed (`cat`, `from,to`, `tod`, `min,max`, `drawer`, `clear`). `from/to` are IST dates, `min/max` rupees. |
+| `dash2_join_click` | `event_id, order_id, state, via, seconds_from_start` | **Success value:** `state: 'live'` with `seconds_from_start` ≥ 0. `via: 'player' \| 'link'`. Negative `seconds_from_start` = opened in the 15-minute get-ready window. |
+| `dash2_add_to_calendar` | `event_id` | `.ics` downloaded from the get-ready window. |
+| `dash2_replay_play` | `event_id, order_id, surface` | Past-event recording opened (`surface: 'dialog' \| 'drawer'`). |
+| `dash2_replay_error` | `event_id, code, ms_after_open?, surface?` | YouTube player error. `code` 101/150 = embedding disabled on the video (fix on YouTube), 100 = removed/private, 2 = bad id, -1 = the IFrame API failed to load (network/CSP). Also fires from the live/upcoming player with `surface: 'live' \| 'upcoming'`. |
+| `admin_youtube_link_saved` | `listing_id, cleared, ok, error?` | Client half of `dash2_video_link_set`: records the FAILED saves too (`ok: false`, `error: 'invalid_youtube_url'` …). |
