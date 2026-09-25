@@ -8,7 +8,7 @@ keywords: ["report", "block", "complaint", "grievance", "abuse", "contact suppor
 audience: both
 faq:
   - q: "Who do I email to report abuse or unsafe content?"
-    a: "support@saathum.com, or use the in-app report tool — for a formal complaint under Indian law, email support@saathum.com instead."
+    a: "support@saathum.com, or use the in-app report tool — for a formal complaint under Indian law, email grievance@saathum.com instead."
   - q: "How fast will a formal grievance be acknowledged?"
     a: "Within 24 hours, with a resolution within 15 days of receipt. Complaints about non-consensual intimate imagery are acted on within 24 hours."
 draft: false
@@ -36,7 +36,7 @@ For anything about a charge or a refund, email **support@saathum.com** with your
 
 ## Filing a formal complaint (Grievance Redressal)
 
-For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saathum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **support@saathum.com** with the subject line *Grievance*. This reaches Saathum's Grievance Officer, **Depika Singh**, directly.
+For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saathum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance@saathum.com** with the subject line *Grievance*. This reaches Saathum's Grievance Officer, **Depika Singh**, directly.
 
 Include what you can: your full name and the email/phone linked to your account, a clear description of the harm, the exact location of the content (link, handle, group, approximate date/time), any evidence you have, and the outcome you're seeking. One complaint per issue keeps the record clear.
 
@@ -51,8 +51,8 @@ Full detail, including what happens after you file and how to escalate, is in ou
 ## Other ways to reach us
 
 - **General support and feedback** — support@saathum.com, or the [Contact us](/contact) form.
-- **Privacy and data requests** — support@saathum.com.
+- **Privacy and data requests** — privacy@saathum.com.
 - **Copyright infringement** — see [DMCA / Copyright](/dmca).
-- **Anything else** — support@saathum.com.
+- **Anything else** — hello@saathum.com.
 
 If someone is in immediate danger, contact your local emergency services first — Saathum is not an emergency service.
