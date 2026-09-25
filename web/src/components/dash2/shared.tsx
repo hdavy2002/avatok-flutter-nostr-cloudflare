@@ -174,7 +174,7 @@ export function EmptyState({ icon, title, body, action }: { icon: ReactNode; tit
   return (
     <div className="dash-surface relative flex flex-col items-center gap-3 overflow-hidden px-6 py-12 text-center">
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-secondary/60 to-transparent" />
-      <span className="relative flex h-14 w-14 items-center justify-center rounded-full border border-border/60 bg-card text-grand-teal shadow-[var(--dash-shadow)]">
+      <span className="relative flex h-14 w-14 items-center justify-center rounded-full border border-border/60 bg-card text-grand-teal shadow-[var(--dash-shadow,none)]">
         {icon}
       </span>
       <p className="relative font-dash text-lg font-bold text-grand-teal">{title}</p>

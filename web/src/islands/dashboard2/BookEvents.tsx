@@ -358,7 +358,7 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
   }, [reduce, value]);
   return (
     <div className={cn(
-      'group relative flex h-14 flex-1 items-center rounded-full border bg-card shadow-[var(--dash-shadow)] transition-all sm:h-16',
+      'group relative flex h-14 flex-1 items-center rounded-full border bg-card shadow-[var(--dash-shadow,none)] transition-all sm:h-16',
       focused ? 'border-accent ring-4 ring-accent/15' : 'border-border/60 hover:border-border',
     )}>
       <Search className="pointer-events-none absolute left-5 h-5 w-5 text-grand-teal" />
@@ -404,8 +404,8 @@ function CategoryRail({ categories, selected, total, onPick }: {
   const tile = (active: boolean) => cn(
     'relative flex min-w-[132px] shrink-0 snap-start flex-col items-start gap-2 overflow-hidden rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
     active
-      ? 'border-accent bg-accent text-accent-foreground shadow-[var(--dash-shadow-lg)]'
-      : 'border-border/50 bg-card text-foreground shadow-[var(--dash-shadow)] hover:-translate-y-0.5 hover:border-border hover:shadow-[var(--dash-shadow-lg)] motion-reduce:hover:translate-y-0',
+      ? 'border-accent bg-accent text-accent-foreground shadow-[var(--dash-shadow-lg,none)]'
+      : 'border-border/50 bg-card text-foreground shadow-[var(--dash-shadow,none)] hover:-translate-y-0.5 hover:border-border hover:shadow-[var(--dash-shadow-lg,none)] motion-reduce:hover:translate-y-0',
   );
   const all = selected.length === 0;
   return (
@@ -435,7 +435,7 @@ function ListingCard({ l, className }: { l: Listing; className?: string }) {
   const lowSeats = l.seats_left != null && l.seats_left <= 5;
   return (
     <article className={cn(
-      'group relative flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[var(--dash-shadow)] transition-all duration-300 hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+      'group relative flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[var(--dash-shadow,none)] transition-all duration-300 hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg,none)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
       className,
     )}>
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">

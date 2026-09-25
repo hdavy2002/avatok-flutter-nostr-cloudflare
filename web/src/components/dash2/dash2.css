@@ -49,8 +49,8 @@
   min-width: 1.35em;
   height: 1.6em;
   border-radius: 6px;
-  background: linear-gradient(180deg, hsl(var(--scrim) / 0.72) 0 50%, hsl(var(--scrim) / 0.86) 50% 100%);
-  box-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.08), 0 2px 6px hsl(var(--scrim) / 0.35);
+  background: linear-gradient(180deg, hsl(var(--scrim, 193 45% 16%) / 0.72) 0 50%, hsl(var(--scrim, 193 45% 16%) / 0.86) 50% 100%);
+  box-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.08), 0 2px 6px hsl(var(--scrim, 193 45% 16%) / 0.35);
   font-variant-numeric: tabular-nums;
 }
 .dash2 .d2-flip::after {
@@ -58,7 +58,7 @@
   position: absolute;
   inset: 50% 0 auto 0;
   height: 1px;
-  background: hsl(var(--scrim) / 0.9);
+  background: hsl(var(--scrim, 193 45% 16%) / 0.9);
 }
 
 /* Horizontal scroll rows without a visible scrollbar. */

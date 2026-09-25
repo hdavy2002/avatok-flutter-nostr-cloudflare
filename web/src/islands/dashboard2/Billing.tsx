@@ -82,8 +82,8 @@ const STATUS_META: Record<PayStatus, { label: string; cls: string; dot: string }
   // Amber: the landing gold warmed towards the landing red (no raw hex).
   refund_requested: {
     label: 'Refund requested',
-    cls: 'bg-[color-mix(in_srgb,var(--grand-gold)_58%,var(--grand-red))] text-primary-foreground',
-    dot: 'bg-[color-mix(in_srgb,var(--grand-gold)_58%,var(--grand-red))]',
+    cls: 'bg-[color-mix(in_srgb,var(--grand-gold,#d1ae70)_58%,var(--grand-red,#c82c25))] text-primary-foreground',
+    dot: 'bg-[color-mix(in_srgb,var(--grand-gold,#d1ae70)_58%,var(--grand-red,#c82c25))]',
   },
   refunded: { label: 'Refunded', cls: 'bg-secondary text-secondary-foreground', dot: 'bg-secondary' },
 };
@@ -424,7 +424,7 @@ function PaymentRow({
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={reduce ? { duration: 0 } : { duration: 0.22, delay: Math.min(index, 8) * 0.03 }}
-      className={cn('dash-surface overflow-hidden transition-shadow', open && 'shadow-[var(--dash-shadow-lg)] ring-1 ring-accent/30')}
+      className={cn('dash-surface overflow-hidden transition-shadow', open && 'shadow-[var(--dash-shadow-lg,none)] ring-1 ring-accent/30')}
     >
       <Collapsible open={open} onOpenChange={onToggle}>
         <CollapsibleTrigger asChild>
@@ -640,7 +640,7 @@ function ListSkeleton() {
 function EmptyState({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
   return (
     <div className="dash-surface flex flex-col items-center px-6 py-12 text-center">
-      <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground shadow-[var(--dash-shadow)]">
+      <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground shadow-[var(--dash-shadow,none)]">
         {filtered ? <SearchX className="h-7 w-7" /> : <FileText className="h-7 w-7" />}
       </span>
       <h2 className="font-dash text-[18px] font-bold text-grand-teal">{filtered ? 'Nothing matches these filters' : 'No payments yet'}</h2>

@@ -18,7 +18,10 @@ const zine = require('./tailwind.zine.cjs');
 //    right thing in both worlds. Only `card.foreground` is new.
 //  - borderRadius lg/md/sm fall back to Tailwind's own defaults (8px/6px/2px)
 //    when --radius is unset, i.e. everywhere outside `.dash2`.
-const hsl = (v: string) => `hsl(var(--${v}) / <alpha-value>)`;
+// Fallbacks keep every generated utility self-contained: the site-wide CSS
+// bundle must never use a bare var() a page doesn't define (check-help.mjs).
+const FALLBACK: Record<string, string> = {"border": "38 51% 63%", "input": "38 51% 63%", "ring": "185 86% 19%", "background": "42 100% 95%", "foreground": "193 45% 16%", "primary": "3 69% 46%", "primary-foreground": "0 0% 100%", "secondary": "81 32% 86%", "secondary-foreground": "193 45% 16%", "destructive": "3 69% 46%", "destructive-foreground": "0 0% 100%", "muted": "40 62% 91%", "muted-foreground": "193 20% 36%", "accent": "185 86% 19%", "accent-foreground": "42 100% 95%", "popover": "42 100% 98.5%", "popover-foreground": "193 45% 16%", "scrim": "193 45% 16%", "card-foreground": "193 45% 16%"};
+const hsl = (v: string) => `hsl(var(--${v}, ${FALLBACK[v]}) / <alpha-value>)`;
 const shadcnColors = {
   border: hsl('border'),
   input: hsl('input'),
@@ -35,12 +38,12 @@ const shadcnColors = {
   card: { DEFAULT: zine.colors.card, foreground: hsl('card-foreground') },
   // Named landing tokens, for dashboard chrome (gold rules, teal marker...).
   grand: {
-    cream: 'var(--grand-cream)',
-    teal: 'var(--grand-teal)',
-    ink: 'var(--grand-ink)',
-    red: 'var(--grand-red)',
-    sage: 'var(--grand-sage)',
-    gold: 'var(--grand-gold)',
+    cream: 'var(--grand-cream, #fff8e8)',
+    teal: 'var(--grand-teal, #07545b)',
+    ink: 'var(--grand-ink, #17343c)',
+    red: 'var(--grand-red, #c82c25)',
+    sage: 'var(--grand-sage, #dfe7d0)',
+    gold: 'var(--grand-gold, #d1ae70)',
   },
 };
 
@@ -63,8 +66,8 @@ export default {
         dashbody: ['Nunito', 'system-ui', 'sans-serif'],
       },
       keyframes: {
-        'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-collapsible-content-height)' } },
-        'accordion-up': { from: { height: 'var(--radix-collapsible-content-height)' }, to: { height: '0' } },
+        'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-collapsible-content-height, auto)' } },
+        'accordion-up': { from: { height: 'var(--radix-collapsible-content-height, auto)' }, to: { height: '0' } },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',

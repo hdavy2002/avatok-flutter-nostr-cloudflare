@@ -35,7 +35,7 @@ function VideoCard({ item, index, onOpen }: { item: EventItem; index: number; on
         )}
         <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/15 to-transparent" />
         {vid ? (
-          <span aria-hidden="true" className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--dash-shadow-lg)] ring-4 ring-primary/20 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+          <span aria-hidden="true" className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--dash-shadow-lg,none)] ring-4 ring-primary/20 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
             <Play className="ml-0.5 h-6 w-6 fill-current" />
           </span>
         ) : (
@@ -57,7 +57,7 @@ function VideoCard({ item, index, onOpen }: { item: EventItem; index: number; on
       </div>
     </>
   );
-  const cls = 'group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[var(--dash-shadow)] transition-all duration-300 motion-reduce:transition-none';
+  const cls = 'group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[var(--dash-shadow,none)] transition-all duration-300 motion-reduce:transition-none';
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 12 }}
@@ -69,7 +69,7 @@ function VideoCard({ item, index, onOpen }: { item: EventItem; index: number; on
           type="button"
           onClick={() => onOpen(item)}
           aria-label={`Watch ${item.listing.title}`}
-          className={cn(cls, 'hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:translate-y-0')}
+          className={cn(cls, 'hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg,none)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:translate-y-0')}
         >
           {body}
         </button>

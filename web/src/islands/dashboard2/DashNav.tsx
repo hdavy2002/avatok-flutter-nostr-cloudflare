@@ -126,10 +126,10 @@ function Logo({ compact = false }: { compact?: boolean }) {
 function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; ready: boolean }) {
   const reduce = useReducedMotion();
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w)] flex-col border-r border-border/50 bg-card px-4 py-5 lg:flex">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col border-r border-border/50 bg-card px-4 py-5 lg:flex">
       <div className="px-2"><Logo /></div>
 
-      <div className="mt-6 rounded-xl border border-border/50 bg-background p-3 shadow-[var(--dash-shadow)]">
+      <div className="mt-6 rounded-xl border border-border/50 bg-background p-3 shadow-[var(--dash-shadow,none)]">
         {ready && who ? (
           <div className="flex items-center gap-3">
             <UserAvatar who={who} />
@@ -163,7 +163,7 @@ function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; rea
               {on && (
                 <motion.span
                   layoutId="dash2-active"
-                  className="absolute inset-0 rounded-lg bg-accent shadow-[var(--dash-shadow)]"
+                  className="absolute inset-0 rounded-lg bg-accent shadow-[var(--dash-shadow,none)]"
                   initial={reduce ? false : { opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
@@ -191,7 +191,7 @@ function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; rea
 function Rail({ active }: { active: DashKey }) {
   const items = [...DASH_NAV.map((i) => ({ ...i, logout: false })), { key: 'logout', label: DASH_LOGOUT.label, short: '', href: DASH_LOGOUT.href, icon: DASH_LOGOUT.icon, logout: true }];
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w)] flex-col items-center border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w,72px)] flex-col items-center border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
       <Logo compact />
       <TooltipProvider delayDuration={150}>
         <nav aria-label="Dashboard" className="mt-6 flex flex-1 flex-col items-center gap-2">
@@ -208,7 +208,7 @@ function Rail({ active }: { active: DashKey }) {
                     className={cn(
                       'relative flex h-12 w-12 items-center justify-center rounded-xl no-underline transition-colors',
                       it.logout && 'mt-auto text-primary hover:bg-primary/10',
-                      !it.logout && (on ? 'bg-accent text-accent-foreground shadow-[var(--dash-shadow)]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'),
+                      !it.logout && (on ? 'bg-accent text-accent-foreground shadow-[var(--dash-shadow,none)]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'),
                     )}
                   >
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
@@ -252,7 +252,7 @@ function PhoneBars({ active, who }: { active: DashKey; who: Who | null }) {
               href={it.href}
               aria-current={on ? 'page' : undefined}
               className={cn(
-                'relative flex h-[var(--dash-tabbar-h)] min-w-[44px] flex-col items-center justify-center gap-1 text-[11px] font-bold no-underline',
+                'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 text-[11px] font-bold no-underline',
                 on ? 'text-accent' : 'text-muted-foreground',
               )}
             >

@@ -98,7 +98,7 @@ function FlipGroup({ value, label }: { value: number; label: string }) {
       <span className="flex gap-0.5 text-[22px] font-extrabold leading-none sm:text-[26px]">
         {s.split('').map((c, i) => <FlipDigit key={i} ch={c} />)}
       </span>
-      <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] [color:hsl(var(--accent-foreground)/0.75)]">{label}</span>
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] [color:hsl(var(--accent-foreground,0_0%_100%)/0.75)]">{label}</span>
     </span>
   );
 }
@@ -112,7 +112,7 @@ function Countdown({ startsAt, now }: { startsAt: number; now: number }) {
   if (diff > DAY_MS) {
     return (
       <span className="inline-flex items-baseline gap-1.5 text-grand-cream" aria-label={`Starts in ${d} days ${h} hours`}>
-        <span className="text-[13px] font-bold uppercase tracking-[0.1em] [color:hsl(var(--accent-foreground)/0.8)]">Starts in</span>
+        <span className="text-[13px] font-bold uppercase tracking-[0.1em] [color:hsl(var(--accent-foreground,0_0%_100%)/0.8)]">Starts in</span>
         <span className="text-[24px] font-extrabold leading-none">{d}</span><span className="text-[13px] font-bold">{d === 1 ? 'day' : 'days'}</span>
         <span className="text-[24px] font-extrabold leading-none">{h}</span><span className="text-[13px] font-bold">{h === 1 ? 'hr' : 'hrs'}</span>
       </span>
@@ -158,12 +158,12 @@ function LiveSpotlight({ item, now }: { item: EventItem; now: number }) {
       initial={reduce ? false : { opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className="relative overflow-hidden rounded-3xl border-2 border-primary/50 bg-card shadow-[var(--dash-shadow-lg)]"
+      className="relative overflow-hidden rounded-3xl border-2 border-primary/50 bg-card shadow-[var(--dash-shadow-lg,none)]"
     >
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent" />
       <div className="relative flex flex-col gap-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-3.5 rounded-full border border-primary/40 bg-primary/10 py-2 pl-4 pr-5 text-primary shadow-[var(--dash-shadow)]">
+          <span className="inline-flex items-center gap-3.5 rounded-full border border-primary/40 bg-primary/10 py-2 pl-4 pr-5 text-primary shadow-[var(--dash-shadow,none)]">
             <span className="d2-live-blip !h-[18px] !w-[18px]" aria-hidden="true" />
             <span className="text-[18px] font-extrabold tracking-[0.18em]">LIVE</span>
           </span>
@@ -182,7 +182,7 @@ function LiveSpotlight({ item, now }: { item: EventItem; now: number }) {
               videoId={vid}
               title={item.listing.title}
               poster={img}
-              className="shadow-[var(--dash-shadow-lg)]"
+              className="shadow-[var(--dash-shadow-lg,none)]"
               onError={(code) => capture('dash2_replay_error', { event_id: item.listing.id, code, surface: 'live' })}
             />
           </div>
@@ -212,7 +212,7 @@ function LiveSpotlight({ item, now }: { item: EventItem; now: number }) {
 function PendingCard({ item }: { item: EventItem }) {
   const img = listingImage(item.listing.image_url, 640);
   return (
-    <article className="flex gap-4 overflow-hidden rounded-2xl border border-dashed border-border bg-card p-4 shadow-[var(--dash-shadow)]">
+    <article className="flex gap-4 overflow-hidden rounded-2xl border border-dashed border-border bg-card p-4 shadow-[var(--dash-shadow,none)]">
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-muted sm:h-24 sm:w-24">
         {img ? <img src={img} alt="" className="h-full w-full object-cover opacity-80" /> : <Flame className="m-auto h-full w-8 text-grand-teal opacity-50" />}
       </div>
@@ -235,7 +235,7 @@ function UpcomingCard({ item, now }: { item: EventItem; now: number }) {
   const vid = item.youtube_video_id;
   return (
     <article className={cn(
-      'group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-[var(--dash-shadow)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--dash-shadow-lg)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+      'group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-[var(--dash-shadow,none)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--dash-shadow-lg,none)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
       getReady ? 'border-primary/50 ring-2 ring-primary/15' : 'border-border/50 hover:border-border',
     )}>
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">

@@ -120,9 +120,9 @@ export default function InstallPrompt() {
           animate={{ opacity: 1, y: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
           transition={{ duration: reduce ? 0 : 0.25 }}
-          className="fixed inset-x-3 z-50 bottom-[calc(var(--dash-tabbar-h)+env(safe-area-inset-bottom,0px)+12px)] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[380px]"
+          className="fixed inset-x-3 z-50 bottom-[calc(var(--dash-tabbar-h,64px)+env(safe-area-inset-bottom,0px)+12px)] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[380px]"
         >
-          <div className="dash-surface relative overflow-hidden p-4 shadow-[var(--dash-shadow-lg)]">
+          <div className="dash-surface relative overflow-hidden p-4 shadow-[var(--dash-shadow-lg,none)]">
             <div aria-hidden className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-grand-gold via-grand-red/60 to-grand-teal" />
             <button
               type="button"
@@ -133,7 +133,7 @@ export default function InstallPrompt() {
               <X className="h-4 w-4" />
             </button>
             <div className="flex items-start gap-3 pr-8">
-              <img src="/icons/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl shadow-[var(--dash-shadow)]" />
+              <img src="/icons/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl shadow-[var(--dash-shadow,none)]" />
               <div className="min-w-0">
                 <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Add Saathum to your home screen</h2>
                 <p className="mt-1 text-[13px] font-semibold text-muted-foreground">Open your pujas in one tap, full screen, like an app.</p>

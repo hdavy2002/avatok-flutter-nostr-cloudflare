@@ -372,7 +372,7 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
             type="button"
             onClick={() => { play(); poke(); }}
             aria-label={state === S.PAUSED ? 'Resume' : 'Play'}
-            className="absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--dash-shadow-lg)] ring-4 ring-accent-foreground/25 transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-grand-gold motion-reduce:transition-none motion-reduce:hover:scale-100 sm:h-20 sm:w-20"
+            className="absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--dash-shadow-lg,none)] ring-4 ring-accent-foreground/25 transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-grand-gold motion-reduce:transition-none motion-reduce:hover:scale-100 sm:h-20 sm:w-20"
           >
             {pendingPlay || state === S.BUFFERING ? <Loader2 className="h-8 w-8 animate-spin" /> : <Play className="ml-1 h-8 w-8 fill-current" />}
           </button>

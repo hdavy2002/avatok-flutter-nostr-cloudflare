@@ -57,7 +57,7 @@ const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fi
   <div class="dash2 dash2-root min-h-screen bg-background text-foreground" data-dash2-screen={active} style={`--folk-border-url:url(${ribbon})`}>
     <DashNav client:load active={active} />
 
-    <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w)] sm:pt-0 lg:pl-[var(--dash-sidebar-w)]">
+    <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
       <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
         <header class="mb-6 sm:mb-8">
           <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>

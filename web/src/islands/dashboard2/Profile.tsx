@@ -501,7 +501,7 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
                 <motion.span
                   initial={reduce ? false : { scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                   transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 18 }}
-                  className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-[var(--dash-shadow-lg)]"
+                  className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-[var(--dash-shadow-lg,none)]"
                 >
                   <CircleCheckBig className="h-8 w-8" />
                 </motion.span>
