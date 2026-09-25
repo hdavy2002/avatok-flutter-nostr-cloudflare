@@ -80,5 +80,5 @@ const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] /organisers is archived (noindex, off the menus) but still renders; its
 // footer is the shared Puja & Havan footer.
 for (const href of ['/marketplace?q=Puja','/cookies','/refunds','/terms','/privacy']) assert(footer.includes('href="' + href + '"'), 'Organiser footer keeps ' + href);
-assert.match(html, /name="robots" content="noindex, nofollow"/, '/organisers is archived (noindex)');
+assert.match(html, /name="robots" content="noindex, follow"/, '/organisers is archived but keeps crawl paths followable');
 console.log('/organisers approved folk design and complete footer passed.');
