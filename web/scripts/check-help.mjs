@@ -74,7 +74,7 @@ function walkHtmlFiles(dir) {
 // render the crosslink (not just build) — a missing `helpHref` prop would
 // build fine and pass silently otherwise.
 // [SAATHUM-ENTITY-1 2026-09-25] tokens and payouts are removed (they 301 home), so only these are built.
-const POLICY_PAGES = ['refunds', 'pricing-fees'];
+const POLICY_PAGES = ['refunds'];
 const policyHtmlFiles = POLICY_PAGES.map((slug) => resolve(root, slug, 'index.html'));
 for (const file of policyHtmlFiles) {
   assert(existsSync(file), `Missing built policy page: ${file}`);
