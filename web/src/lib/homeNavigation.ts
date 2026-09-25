@@ -27,7 +27,7 @@ export const HOME_HEADER_LINKS = [
   { href: '/marketplace?q=Havan', label: 'Havans' },
   { href: '/#experiences', label: 'By intention' },
   { href: '/how-it-works', label: 'How it works' },
-  { href: '/about', label: 'About' },
+  // [SAATHUM-ARCHIVE-2 2026-09-25] About removed from menus by owner (page archived).
 ];
 export const HOME_FOOTER_COLUMNS = [
   { title: 'Rituals', links: [
@@ -37,7 +37,6 @@ export const HOME_FOOTER_COLUMNS = [
     { href: '/marketplace?q=Festival', label: 'Festival pujas' },
   ] },
   { title: 'Company', links: [
-    { href: '/about', label: 'About' },
     { href: '/how-it-works', label: 'How it works' },
     { href: '/help', label: 'Help centre' },
     { href: '/contact', label: 'Contact' },

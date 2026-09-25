@@ -80,17 +80,17 @@ assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image 
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label renamed.
-for (const [label, href] of [['Pujas','/marketplace?q=Puja'],['Havans','/marketplace?q=Havan'],['By intention','/#experiences'],['How it works','/how-it-works'],['About','/about']]) {
+for (const [label, href] of [['Pujas','/marketplace?q=Puja'],['Havans','/marketplace?q=Havan'],['By intention','/#experiences'],['How it works','/how-it-works']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/about','/how-it-works','/help','/contact','/terms','/privacy','/cookies','/refunds','/grievance']) {
+for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/help','/contact','/terms','/privacy','/cookies','/refunds','/grievance']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
-for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
+for (const href of ['/about','/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
   assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
