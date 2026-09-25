@@ -54,8 +54,8 @@ const mpBase = `${hrefBase}/marketplace`;
 // every time someone taps it. See marketGroups.ts.
 const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 const RITUAL_TILES = [
-  { label: 'Pujas', zone: 'Performed for you', href: `${hrefBase}/marketplace?q=Puja#listings`, image: '/marketplace/art/puja.png', alt: 'Puja thali with diya, lotus, kumkum, rice and marigolds' },
-  { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings`, image: '/marketplace/art/havan.png', alt: 'Havan kund with a calm sacred flame, mango wood and marigold garland' },
+  { label: 'Pujas', zone: 'Performed for you', href: `${hrefBase}/marketplace?q=Puja#listings`, image: '/marketplace/art/puja-sticker-v2.png', alt: 'Puja thali with diya, lotus, kumkum, rice and marigolds' },
+  { label: 'Havans', zone: 'Sacred fire, Vedic mantras', href: `${hrefBase}/marketplace?q=Havan#listings`, image: '/marketplace/art/havan-sticker-v2.png', alt: 'Havan kund with a calm sacred flame, mango wood and marigold garland' },
 ];
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
@@ -114,8 +114,8 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
               srcset={publicImageSrcSet(g.image, [320, 480, 720, 960], { fit: 'scale-down' })}
               sizes="(max-width: 639px) 92vw, 46vw"
               alt={g.alt}
-              width="1774"
-              height="887"
+              width="1536"
+              height="1024"
               loading="eager"
               decoding="async"
               class="block aspect-[2/1] w-full object-contain"
