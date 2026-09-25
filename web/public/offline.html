@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<title>You're offline · Saathum</title>
+<!-- [DASH2-PWA 2026-09-25] Shown by public/sw.js when a page can't load. Self-contained:
+     no network needed. Colours are the Saathum tokens (saathum-tokens.css) as HSL. -->
+<style>
+  @font-face { font-family: 'Comfortaa'; font-weight: 700; font-display: swap; src: url('/fonts/Comfortaa-Bold.ttf') format('truetype'); }
+  @font-face { font-family: 'Nunito'; font-weight: 700; font-display: swap; src: url('/fonts/Nunito-Bold.woff2') format('woff2'); }
+  :root {
+    --cream: hsl(42 100% 95%);
+    --card: hsl(42 100% 98.5%);
+    --ink: hsl(193 45% 16%);
+    --muted: hsl(193 20% 36%);
+    --teal: hsl(185 86% 19%);
+    --gold: hsl(38 51% 63%);
+    --red: hsl(3 69% 46%);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 24px 16px; background: var(--cream); color: var(--ink);
+    font-family: 'Nunito', system-ui, sans-serif; font-weight: 700;
+  }
+  .card {
+    width: 100%; max-width: 420px; text-align: center; background: var(--card);
+    border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent); border-radius: 18px;
+    padding: 36px 24px 28px; position: relative; overflow: hidden;
+    box-shadow: 0 1px 2px hsl(193 45% 16% / 0.06), 0 18px 40px -18px hsl(193 45% 16% / 0.28);
+  }
+  .card::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: linear-gradient(90deg, var(--gold), color-mix(in srgb, var(--red) 60%, transparent), var(--teal)); }
+  img { width: 72px; height: 72px; object-fit: contain; }
+  h1 { font-family: 'Comfortaa', system-ui, sans-serif; font-weight: 700; color: var(--teal); font-size: 24px; line-height: 1.2; letter-spacing: 0.01em; margin: 16px 0 8px; }
+  p { color: var(--muted); font-size: 15px; line-height: 1.55; margin: 0 0 22px; }
+  button {
+    font: inherit; font-weight: 800; letter-spacing: 0.02em; cursor: pointer; border: 0; border-radius: 10px;
+    min-height: 46px; padding: 0 22px; background: var(--teal); color: var(--cream);
+  }
+  button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  small { display: block; margin-top: 16px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <img src="/icons/icon-192.png" alt="" width="72" height="72" />
+    <h1>You're offline</h1>
+    <p>Saathum can't reach the internet right now. Check your connection and we'll take you right back.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+    <small>Your bookings and payments are safe.</small>
+  </main>
+  <script>window.addEventListener('online', function () { location.reload(); });</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "Saathum",
+  "short_name": "Saathum",
+  "description": "Book pujas and havans, join them live and keep your receipts.",
+  "id": "/dashboard",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff8e8",
+  "theme_color": "#fff8e8",
+  "lang": "en-IN",
+  "categories": ["lifestyle"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
