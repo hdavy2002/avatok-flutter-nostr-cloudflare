@@ -1583,6 +1583,10 @@ export interface PlatformConfig {
   // inAppUpdateEnabled, found 2026-07-15). Default OFF per FREE LAUNCH (marketplace
   // hidden); flip ON in KV (staging first) when the marketplace goes public.
   marketplaceEnabled: boolean;
+  // [DASH2-FOUNDATION 2026-09-25] Web /dashboard renders Dashboard 2 (customer
+  // dashboard, Specs/SPEC-2026-09-25-DASHBOARD-2.md) when true, else the archived
+  // v1 overview. Read server-side by web/src/lib/serverFlags.ts. Default OFF.
+  dashboard2Enabled: boolean;
   // Independent server-side brakes. UI visibility is never a rollback or
   // authorization mechanism; stop new writes while existing content stays readable.
   marketplacePublishEnabled: boolean;
@@ -2535,6 +2539,8 @@ const DEFAULTS: PlatformConfig = {
   // Creator marketplace (/api/marketplace/*) — DARK, per FREE LAUNCH. The kill switch
   // marketplace.ts always claimed to have; it did not exist until now.
   marketplaceEnabled: false,
+  // [DASH2-FOUNDATION 2026-09-25] Dashboard 2 on the web /dashboard — dark until the owner flips it.
+  dashboard2Enabled: false,
   marketplacePublishEnabled: false,
   marketplaceNegotiationEnabled: false,
   marketplaceDealDeliveryV2: false,
