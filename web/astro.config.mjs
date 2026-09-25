@@ -44,6 +44,22 @@ export default defineConfig({
   ],
   vite: {
     plugins: [publicImageCss()],
+    build: {
+      rollupOptions: {
+        output: {
+          // [WEB-SEO-AUTO-1] cf-workers-og imports its Workers-safe WASM from an
+          // entry named `index`. The Cloudflare adapter tracks WASM rewrites by
+          // Rollup chunk name, while this app also has a browser chunk named
+          // `index`; that collision makes the adapter look for the browser file
+          // inside _worker.js. Give the server-only OG runtime a stable,
+          // collision-free chunk name. This is harmless in the client build,
+          // where cf-workers-og is never imported.
+          manualChunks(id) {
+            if (id.includes('/node_modules/cf-workers-og/')) return 'og-renderer';
+          },
+        },
+      },
+    },
     ssr: {
       // Clerk's React SDK MUST be bundled into the SSR worker. Marking it
       // `external` makes the Cloudflare worker `import '@clerk/clerk-react'` at
