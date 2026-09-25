@@ -6,7 +6,10 @@
     "shipped": "2026-09-20",
     "two_sided": false,
     "min_devices_on_build": 0,
-    "flags": ["subscriptionPlansEnabled", "teamsEnabled"],
+    "flags": [
+      "subscriptionPlansEnabled",
+      "teamsEnabled"
+    ],
     "no_telemetry": "Both new flags default false, i.e. identical observable behaviour to before this change: subscribeCheckout already unconditionally returned 503 payments_disabled, subscribeAndroidVerify was already gated dark by billingOn()/MONEY_IN_DISABLED, getPlans was already gated dark by MONEY_IN_DISABLED, and every /api/team/* route was already gated dark by teamIvrEnabled=false. This commit adds an additional, independently-false AND-gate ahead of each so a future flip of billingEnabled or teamIvrEnabled (for the surviving avaTOK/other product line) cannot silently resurrect these two features inside Saathum. There is no new response shape, no new error code surfaced to a real client (subscription_plans_disabled/teamsEnabled 200 enabled:false are only reachable once the flags in question are true, which they are not), and nothing to assert client-side today. The flags themselves are verifiable directly: `ALLOW_PROD=1 scripts/flags.sh get` (or the staging equivalent) must show both false, and `curl -s -H 'Cache-Control: no-cache' \"https://api.avatok.ai/api/config?cb=$RANDOM\"` must echo subscriptionPlansEnabled:false and teamsEnabled:false once this deploys."
   },
   "AVATALK-CHAT-ONLY-1": {
@@ -6795,5 +6798,29 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Operational workflow and evidence documentation; validate by successful CI/deploy runs and immutable seed digest, not synthetic user events."
+  },
+  "DASH2-API": {
+    "description": "[DASH2-API] Saathum customer dashboard (Dashboard 2) worker API: /api/me/{catalog,events,payments,payments/:id,payments/:id/refund-request,payments/:id/receipt.pdf,profile,vpas,phone/start,phone/confirm} + POST /api/admin/refunds/:payment_id (worker/src/routes/me_dashboard.ts). Payments read from orders + commercial_policy_snapshots + hdfc_sms_payment_intents; receipts are pdf-lib PDFs cached in R2 DIGITAL. Web surface is gated by dashboard2Enabled (default false).",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_receipt_generated",
+        "property": "stamp",
+        "equals": "PAID",
+        "min_events": 1,
+        "note": "A real customer downloaded a receipt for a paid booking and the PDF rendered + stored in R2."
+      },
+      {
+        "event": "dash2_phone_change",
+        "property": "outcome",
+        "equals": "swapped",
+        "min_events": 1,
+        "note": "A phone change completed end to end (OTP to the new number, one-batch swap). outcome values other than swapped on step=confirm are failures."
+      }
+    ]
   }
 }

@@ -36,13 +36,13 @@ import { track } from "../hooks";
 const APP = "avatok";
 const TF_BASE = "https://2factor.in/API/V1";
 
-const OTP_TTL_MS = 10 * 60_000;
-const RESEND_GAP_MS = 30_000;
-const HOUR_MS = 3_600_000;
-const MAX_SENDS_PER_UID_HOUR = 5;
-const MAX_SENDS_PER_PHONE_HOUR = 5;
-const MAX_SENDS_GLOBAL_HOUR = 300;
-const MAX_VERIFY_ATTEMPTS = 5;
+export const OTP_TTL_MS = 10 * 60_000;
+export const RESEND_GAP_MS = 30_000;
+export const HOUR_MS = 3_600_000;
+export const MAX_SENDS_PER_UID_HOUR = 5;
+export const MAX_SENDS_PER_PHONE_HOUR = 5;
+export const MAX_SENDS_GLOBAL_HOUR = 300;
+export const MAX_VERIFY_ATTEMPTS = 5;
 
 /**
  * Web accounts created at or after this moment must have a verified phone.
@@ -66,7 +66,7 @@ function mask(e164: string): string {
 
 type TfResponse = { Status?: string; Details?: string };
 
-async function twoFactor(env: Env, path: string): Promise<TfResponse | null> {
+export async function twoFactor(env: Env, path: string): Promise<TfResponse | null> {
   try {
     const r = await fetch(`${TF_BASE}/${encodeURIComponent(env.TWOFACTOR_API_KEY ?? "")}/${path}`, {
       signal: AbortSignal.timeout(10_000),
@@ -77,8 +77,8 @@ async function twoFactor(env: Env, path: string): Promise<TfResponse | null> {
   }
 }
 
-/** Is this number verified on a different, live account? */
-async function phoneTakenByOther(env: Env, hash: string, uid: string): Promise<boolean> {
+/** Is this number verified on a different, live account? (Also used by [DASH2-API] phone change.) */
+export async function phoneTakenByOther(env: Env, hash: string, uid: string): Promise<boolean> {
   const row = await env.DB_META.prepare(
     `SELECT cv.uid FROM contact_verification cv
        LEFT JOIN deletion_requests d ON d.uid = cv.uid

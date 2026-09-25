@@ -806,3 +806,19 @@ No new worker events. `POST /api/listings/copy-review` already emits
 those rows now carry app traffic as well as web traffic and are separated by
 the `platform` / `service_name` super-properties, not by a new event name.
 `POST /api/listings/:id/promotions` already emits `listing_promo_created`.
+
+## Dashboard 2 — customer dashboard, WORKER half (`[DASH2-API]`, 2026-09-25)
+
+Spec: `Specs/SPEC-2026-09-25-DASHBOARD-2.md`. Emitted from
+`worker/src/routes/me_dashboard.ts` with `trackUser` (event + `$set` carry the
+caller's email, resolved via `lib/identity.ts emailFor`), `app_name: 'saathum'`.
+Uncaught route errors → handled `$exception` via `hooks.trackException` with
+`extra.area: 'dash2'`. Never a phone number in clear (masked `+91 98•••••210`),
+never a UTR, never the refund reason text.
+
+| Event | Props | Note |
+|---|---|---|
+| `dash2_refund_request` | `payment_id, order_id, listing_id, ok, reason_code?, amount_paise, has_refund_vpa, hours_before_event` | **Success value: `ok: true`.** Customer asked for a refund (only allowed ≥24h before the event). `ok: false` rows carry `reason_code` (`refund_window_closed`, `not_paid`, `refund_already_requested`, `already_refunded`, `no_event_time`). |
+| `dash2_refund_recorded` | `payment_id, order_id, amount_paise, admin_uid` | Admin entered the refund UTR after refunding by hand from the bank app. Distinct uid = the CUSTOMER, so the customer's email pulls it. |
+| `dash2_receipt_generated` | `payment_id, receipt_no, stamp, regenerated, bytes` | **Success value.** A receipt PDF was rendered and stored in R2 `DIGITAL`. `stamp: 'PAID' \| 'REFUNDED'`; `regenerated: true` when an earlier PAID copy was replaced after a refund. Cache hits emit nothing. |
+| `dash2_phone_change` | `step, ok, outcome, phone_masked, …` | `step: 'start'` — `outcome: 'sent' \| 'phone_taken' \| 'rate_limited' \| 'global_breaker' \| 'provider_error'`. `step: 'confirm'` — `outcome: 'swapped'` (**success value**) \| `'mismatch' \| 'expired' \| 'provider_unreachable' \| 'phone_taken'`. |

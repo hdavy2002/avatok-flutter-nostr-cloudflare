@@ -55,6 +55,7 @@ import { adminListings, adminListingAction, adminListingDetail, adminEditListing
 import { listingReview } from "./routes/listing_review";
 import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
 import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp"; // [WEB-PHONE-OTP-1]
+import { meDashboardRoute } from "./routes/me_dashboard"; // [DASH2-API]
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
@@ -962,6 +963,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
+      // [DASH2-API 2026-09-25] Saathum customer dashboard (Dashboard 2) — routes/me_dashboard.ts.
+      if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/")) {
+        const r = await meDashboardRoute(req, env, p);
+        if (r) return r;
+      }
       if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
       if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
       // Account key escrow — makes the aek (and thus every uid-keyed vault blob)
