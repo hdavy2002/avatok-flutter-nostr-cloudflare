@@ -21,7 +21,7 @@ export async function sitemapListings(env: Env, req?: Request): Promise<Response
       ORDER BY l.id ASC
       LIMIT ?2 OFFSET ?3`,
   ).bind(Date.now(), paging.page_size + 1, paging.offset).all<any>();
-  if (rs.success === false || !Array.isArray(rs.results)) throw new Error("sitemap_listings_unavailable");
+  if (!Array.isArray(rs.results)) throw new Error("sitemap_listings_unavailable");
   const listings = rs.results.slice(0, paging.page_size).map((r) => ({
     id: String(r.id),
     title: String(r.title || 'Public ritual'),
@@ -44,7 +44,7 @@ export async function sitemapCreators(env: Env, req?: Request): Promise<Response
       ORDER BY u.handle ASC
       LIMIT ?2 OFFSET ?3`,
   ).bind(Date.now(), paging.page_size + 1, paging.offset).all<any>();
-  if (rs.success === false || !Array.isArray(rs.results)) throw new Error("sitemap_creators_unavailable");
+  if (!Array.isArray(rs.results)) throw new Error("sitemap_creators_unavailable");
   const creators = rs.results.slice(0, paging.page_size).map((r) => ({
     handle: String(r.handle),
     updated_at: publicDiscoveryProjection({ reason: null, updated_at: r.updated_at }).updated_at,
