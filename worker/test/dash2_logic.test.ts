@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   eventState, refundEligibility, normalizeVpa, encodeCursor, decodeCursor, maskE164,
   paymentStatus, rupeesParamToPaise, istTimeOfDay, nextReceiptNo, formatRupeesAscii,
-  winAnsiSafe, validateProfilePatch, REFUND_WINDOW_MS,
+  winAnsiSafe, validateProfilePatch, REFUND_WINDOW_MS, parseYoutubeVideoId,
 } from "../src/lib/me_dashboard_logic";
 import { coverImageUrl, shapeListing } from "../src/lib/me_dashboard_data";
 
@@ -142,4 +142,21 @@ describe("receipt PDF", () => {
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
     expect(bytes.byteLength).toBeGreaterThan(1000);
   });
+});
+
+describe("parseYoutubeVideoId", () => {
+  const ID = "dQw4w9WgXcQ";
+  it.each([
+    ID, ` ${ID} `,
+    `https://www.youtube.com/watch?v=${ID}`, `https://youtube.com/watch?feature=share&v=${ID}&t=42`,
+    `https://m.youtube.com/watch?v=${ID}`, `youtube.com/watch?v=${ID}`,
+    `https://youtu.be/${ID}`, `https://youtu.be/${ID}?si=abc`,
+    `https://www.youtube.com/live/${ID}?feature=shared`, `https://www.youtube.com/embed/${ID}`,
+    `https://www.youtube-nocookie.com/embed/${ID}`, `https://youtube.com/shorts/${ID}`,
+  ])("parses %s", (url) => expect(parseYoutubeVideoId(url)).toBe(ID));
+  it.each([
+    "", "abc", `${ID}x`, "https://vimeo.com/12345678901", `https://evil.com/watch?v=${ID}`,
+    "https://www.youtube.com/playlist?list=PL123", "https://www.youtube.com/watch?v=short",
+    `javascript:alert(1)//${ID}`, `https://youtube.com.evil.com/watch?v=${ID}`, null, 42,
+  ])("rejects %s", (url) => expect(parseYoutubeVideoId(url)).toBeNull());
 });

@@ -59,7 +59,7 @@ function setup() {
   `);
   db.exec(mig("contact_verification.sql"));
   db.exec(mig("2026-09-17-hdfc-sms-payments.sql"));
-  for (const f of ["refunds", "receipts", "user-profile-extras", "user-addresses", "user-vpas", "push-subscriptions"]) db.exec(mig(`2026-09-25-dash2-${f}.sql`));
+  for (const f of ["event-videos", "refunds", "receipts", "user-profile-extras", "user-addresses", "user-vpas", "push-subscriptions"]) db.exec(mig(`2026-09-25-dash2-${f}.sql`));
   db.exec(`
     INSERT INTO listing_categories VALUES ('puja','Puja',1,1),('havan','Havan',2,1);
     INSERT INTO listings (id,kind,title,category,price,starts_at,duration_min,status) VALUES
@@ -157,6 +157,15 @@ describe("events read model", () => {
     expect(rows.find((r) => r.order_id === "o4").payment_id).toBeNull();
     expect(rows.find((r) => r.order_id === "o3").replay_state).toBe("available");
     expect(rows.find((r) => r.payment_id === "i2").paid).toBe(0);
+  });
+  it("carries the YouTube id on seat rows only, never on an unpaid intent row", async () => {
+    const { raw, db } = setup();
+    raw.exec(`INSERT INTO event_videos (listing_id,youtube_video_id,updated_at) VALUES ('L_soon','dQw4w9WgXcQ',1),('L_past','abcdefghijk',1)`);
+    const rows = (await db.prepare(EVENTS_SQL).bind("alice", NOW).all()).results as any[];
+    expect(rows.find((r) => r.order_id === "o2").youtube_video_id).toBe("dQw4w9WgXcQ");
+    expect(rows.find((r) => r.payment_id === "i2").youtube_video_id).toBeNull();
+    expect(rows.find((r) => r.order_id === "o3").youtube_video_id).toBe("abcdefghijk");
+    expect(rows.find((r) => r.order_id === "o1").youtube_video_id).toBeNull();
   });
 });
 

@@ -21,7 +21,7 @@ import {
 import {
   eventState, isUpcomingScope, refundEligibility, normalizeVpa, encodeCursor, decodeCursor,
   maskE164, rupeesParamToPaise, msParam, istTimeOfDay, istYear, PAGE_SIZE,
-  PHONE_SENDS_PER_WINDOW, PHONE_SEND_WINDOW_MS, validateProfilePatch, type TimeOfDay,
+  PHONE_SENDS_PER_WINDOW, PHONE_SEND_WINDOW_MS, validateProfilePatch, parseYoutubeVideoId, type TimeOfDay,
 } from "../lib/me_dashboard_logic";
 import {
   buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, type PaymentRow,
@@ -136,8 +136,11 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
     const item: Record<string, unknown> = {
       order_id: r.order_id ?? null, payment_id: r.payment_id, listing, state, schedule_state: schedule,
       starts_at: listing.starts_at, ends_at: endsAt,
-      replay: { available: state === "ended" && r.replay_state === "available" },
+      // Owner decision 2026-09-25: the event's unlisted YouTube video serves live AND replay.
+      replay: { available: state === "ended" && (r.replay_state === "available" || (paid && !!r.youtube_video_id)) },
     };
+    // Only to a seat holder (paid or free). Unpaid pending_payment rows never carry it.
+    if (paid && typeof r.youtube_video_id === "string" && r.youtube_video_id) item.youtube_video_id = r.youtube_video_id;
     // The customer joins from the web live page (lib/commercial_notifications.ts link).
     if (paid && (state === "upcoming" || state === "live")) item.join_url = `/live/${encodeURIComponent(listing.id)}`;
     return item;
@@ -626,6 +629,39 @@ export async function adminRecordRefund(req: Request, env: Env, paymentId: strin
 }
 
 // ---------------------------------------------------------------------------
+// GET|PUT /api/admin/listings/:id/youtube  {url}   (url:'' clears)
+// ---------------------------------------------------------------------------
+export async function adminEventVideo(req: Request, env: Env, listingId: string): Promise<Response> {
+  const admin = await requireAdmin(req, env);
+  if (admin instanceof Response) return err(admin.status, admin.status === 403 ? "admin_only" : "unauthorized", "Admins only.");
+  if (!listingId || listingId.length > 200) return err(404, "not_found", "No such listing.");
+  const db = env.DB_META;
+  if (req.method === "GET") {
+    const row = await db.prepare("SELECT youtube_video_id, source_url FROM event_videos WHERE listing_id=?1").bind(listingId).first<{ youtube_video_id: string; source_url: string | null }>();
+    return json(row ? { youtube_video_id: row.youtube_video_id, url: row.source_url ?? `https://www.youtube.com/watch?v=${row.youtube_video_id}` } : {});
+  }
+  const b = await body(req, 2048);
+  if (!b || typeof b.url !== "string") return err(400, "invalid_request", "Send {url}.", { field: "url" });
+  const listing = await db.prepare("SELECT id FROM listings WHERE id=?1").bind(listingId).first();
+  if (!listing) return err(404, "not_found", "No such listing.");
+  const url = b.url.trim();
+  if (!url) {
+    await db.prepare("DELETE FROM event_videos WHERE listing_id=?1").bind(listingId).run();
+    await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: true });
+    return json({ ok: true, youtube_video_id: null });
+  }
+  const id = parseYoutubeVideoId(url);
+  if (!id) return err(400, "invalid_youtube_url", "Paste a YouTube video or live link (or the 11-character video id).", { field: "url" });
+  await db.prepare(
+    `INSERT INTO event_videos (listing_id, youtube_video_id, source_url, updated_at, admin_uid) VALUES (?1,?2,?3,?4,?5)
+     ON CONFLICT(listing_id) DO UPDATE SET youtube_video_id=excluded.youtube_video_id, source_url=excluded.source_url,
+       updated_at=excluded.updated_at, admin_uid=excluded.admin_uid`,
+  ).bind(listingId, id, url.slice(0, 500), Date.now(), admin.uid).run();
+  await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: false });
+  return json({ ok: true, youtube_video_id: id });
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher — registered in index.ts next to /api/me.
 // ---------------------------------------------------------------------------
 export async function meDashboardRoute(req: Request, env: Env, p: string): Promise<Response | null> {
@@ -656,6 +692,11 @@ export async function meDashboardRoute(req: Request, env: Env, p: string): Promi
     if (p === "/api/me/phone/start" && m === "POST") return await mePhoneStart(req, env);
     if (p === "/api/me/phone/confirm" && m === "POST") return await mePhoneConfirm(req, env);
     if (p === "/api/me/phone" && m === "DELETE") return await mePhoneDelete(req, env);
+    if (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube") && (m === "GET" || m === "PUT")) {
+      const id = p.slice("/api/admin/listings/".length, -"/youtube".length);
+      if (id && !id.includes("/")) return await adminEventVideo(req, env, decodeURIComponent(id));
+      return null;
+    }
     if (p.startsWith("/api/admin/refunds/") && m === "POST") return await adminRecordRefund(req, env, seg("/api/admin/refunds/"));
     return null;
   } catch (e) {

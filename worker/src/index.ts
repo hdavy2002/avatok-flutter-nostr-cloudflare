@@ -964,7 +964,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
       // [DASH2-API 2026-09-25] Saathum customer dashboard (Dashboard 2) — routes/me_dashboard.ts.
-      if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/")) {
+      if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/")
+          || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {
         const r = await meDashboardRoute(req, env, p);
         if (r) return r;
       }

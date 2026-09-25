@@ -147,13 +147,15 @@ SELECT o.id AS order_id,
        1 AS paid, o.created_at AS booked_at, l.*,
        c.label AS category_label,
        (SELECT s.replay_state FROM commercial_sessions s WHERE s.listing_id=l.id AND s.kind='live_event' ORDER BY s.session_version DESC LIMIT 1) AS replay_state,
+       -- [DASH2-API] Seat holders only: this branch is the caller's own paid/free seats.
+       (SELECT v.youtube_video_id FROM event_videos v WHERE v.listing_id=l.id) AS youtube_video_id,
        ${endMsSql("l")} AS ends_ms
   FROM orders o JOIN listings l ON l.id=o.listing_id
   LEFT JOIN listing_categories c ON c.id=l.category
  WHERE o.buyer_id=?1 AND l.kind='live_event' AND o.status IN ('held','free','released')
    AND o.listing_id<>'${SMOKE_LISTING_ID}'
 UNION ALL
-SELECT NULL, h.intent_id, 0, h.created_at, l.*, c.label, NULL, ${endMsSql("l")}
+SELECT NULL, h.intent_id, 0, h.created_at, l.*, c.label, NULL, NULL, ${endMsSql("l")}
   FROM hdfc_sms_payment_intents h JOIN listings l ON l.id=h.listing_id
   LEFT JOIN listing_categories c ON c.id=l.category
  WHERE h.uid=?1 AND h.commercial_order_id IS NULL AND l.kind='live_event' AND h.listing_id<>'${SMOKE_LISTING_ID}'

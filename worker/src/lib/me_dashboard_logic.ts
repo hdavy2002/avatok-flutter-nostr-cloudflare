@@ -227,3 +227,28 @@ export function validateProfilePatch(b: Record<string, unknown>): { patch: Recor
   }
   return { patch };
 }
+
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+/**
+ * [DASH2-API] YouTube link -> 11-char video id, or null. Accepts watch?v=, youtu.be/<id>,
+ * youtube.com/live|embed|shorts|v/<id> (www., m., music. and youtube-nocookie.com hosts)
+ * and a bare id. Anything else (other hosts, playlists without v=, bad ids) is null.
+ */
+export function parseYoutubeVideoId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s || s.length > 500) return null;
+  if (YT_ID.test(s)) return s;
+  let u: URL;
+  try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s}`); } catch { return null; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  const host = u.hostname.toLowerCase().replace(/^(www\.|m\.|music\.)/, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+  let id: string | null = null;
+  if (host === "youtu.be") id = parts[0] ?? null;
+  else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    if (parts[0] === "watch") id = u.searchParams.get("v");
+    else if (["live", "embed", "shorts", "v"].includes(parts[0] ?? "")) id = parts[1] ?? null;
+  }
+  return id && YT_ID.test(id) ? id : null;
+}
