@@ -39,6 +39,7 @@ import { useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
+import { postLoginTarget } from '../../lib/authRedirect';
 import {
   Field, Button, Divider, GoogleButton, CodeStep,
   validateEmail, useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
@@ -49,18 +50,16 @@ import {
   type PwlMode, type PwlSignIn, type PwlSignUp,
 } from './passwordless';
 
-/** Where to land after a successful sign-in. Honours ?next=/some/path. */
+/** Where to land after a successful sign-in. Honours ?redirect_url= / ?next= (same-origin only).
+ *
+ * [WEB-AUTH-LANDING-1 2026-08-28] Signing in lands on the DASHBOARD, not the
+ * public marketplace. [DASH2-FOUNDATION 2026-09-25, owner decision] ALWAYS
+ * /dashboard (Book events) — the old IN-country detour to /india is gone —
+ * unless the visitor was sent here from a specific page (e.g. checkout).
+ * lib/authRedirect.ts also closes the `next=//evil.example` open redirect the
+ * old `startsWith('/')` check allowed. */
 function nextUrl(): string {
-  try {
-    const n = new URLSearchParams(location.search).get('next');
-    if (n && n.startsWith('/')) return n;
-  } catch { /* SSR */ }
-  // [WEB-AUTH-LANDING-1 2026-08-28] Signing in lands on the DASHBOARD, not the
-  // public marketplace. /marketplace is a static design comp with a painted-in
-  // "Log in / Sign up" header and no Clerk island, so a freshly signed-in user
-  // landed on a page that still looked signed-out — which reads as "the login
-  // silently failed".
-  return '/dashboard';
+  return postLoginTarget();
 }
 
 function Inner() {
@@ -159,7 +158,7 @@ function Inner() {
       if (user && !savedCountry) {
         try { await user.update({ unsafeMetadata: { ...(user.unsafeMetadata ?? {}), country: 'GLOBAL' } }); } catch { /* routing still succeeds */ }
       }
-      location.href = finishUrl(savedCountry === 'IN' ? '/india' : nextUrl());
+      location.href = finishUrl(nextUrl());
     } catch (err) {
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
       setFormError(message);
@@ -194,8 +193,7 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
-      const savedCountry = String((user?.unsafeMetadata as { country?: unknown } | undefined)?.country ?? '').toUpperCase();
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(savedCountry === 'IN' ? '/india' : nextUrl())); // [WEB-PHONE-OTP-1]
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(nextUrl())); // [WEB-PHONE-OTP-1]
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }

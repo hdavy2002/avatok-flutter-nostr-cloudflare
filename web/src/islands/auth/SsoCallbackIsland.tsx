@@ -15,14 +15,11 @@ import { UiText } from "../../lib/i18n/react";
  */
 import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
+import { postLoginTarget } from '../../lib/authRedirect';
 
+/** [DASH2-FOUNDATION 2026-09-25] ?redirect_url= / ?next=, same-origin only; else /dashboard. */
 function safeNext(): string {
-  try {
-    const n = new URLSearchParams(location.search).get('next');
-    // Only same-site paths. An absolute URL here would be an open redirect.
-    if (n && n.startsWith('/') && !n.startsWith('//')) return n;
-  } catch { /* SSR */ }
-  return '/dashboard';
+  return postLoginTarget();
 }
 
 export function SsoCallbackIsland() {

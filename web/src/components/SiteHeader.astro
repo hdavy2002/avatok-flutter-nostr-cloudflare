@@ -188,7 +188,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
         No Clerk island is needed for this any more, which also removes the
         double-<ClerkProvider> crash that forced the `static` mode to exist. */}
     <Fragment>
-      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
+      <a class="avh-cta avh-auth-out" href="/sign-in" data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
       <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : BOOK_CTA.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? 'chrome.signup' : undefined}>{variant === 'global' ? 'Sign up' : BOOK_CTA.label}</a>
       <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
@@ -230,7 +230,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
       phone was shown "Log in / Sign up" with no way to reach their dashboard or
       sign out. CSS-driven state fixes it with no provider at all. */}
   <Fragment>
-    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
+    <a class="avh-mobile-auth avh-auth-out" href="/sign-in" data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>{referenceHome ? 'Sign in' : 'Log in'}</a>
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : BOOK_CTA.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? 'chrome.signup' : undefined}>{variant === 'global' ? 'Sign up' : BOOK_CTA.label}</a>
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-mobile-auth avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>

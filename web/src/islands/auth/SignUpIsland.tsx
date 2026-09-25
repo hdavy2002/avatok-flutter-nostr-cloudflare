@@ -59,6 +59,7 @@ import {
   sendPhoneCode, verifyPhoneCode, getPhoneStatus, apiMessage, apiCode,
   type PwlSignIn,
 } from './passwordless';
+import { DEFAULT_LANDING, safeSameOriginPath } from '../../lib/authRedirect';
 
 /* [WEB-PHONE-OTP-1 2026-09-10] ONE SCREEN, TWO INLINE CODES (owner decision).
  * The separate "Check your email" step is gone. Now:
@@ -77,9 +78,11 @@ import {
 
 type Step = 'idle' | 'sending' | 'code' | 'verifying' | 'verified';
 
-/** Creators go to the studio; friends go browsing. */
-function landingFor(role: Role): string {
-  return role === 'creator' ? '/dashboard' : '/marketplace';
+/** [DASH2-FOUNDATION 2026-09-25, owner decision] Everyone lands on /dashboard
+ * (Book events). Customers used to go to /marketplace; `role` is kept in the
+ * signature so the Google hand-off still carries it through finishUrl. */
+function landingFor(_role: Role): string {
+  return DEFAULT_LANDING;
 }
 
 function readParams(): { finish: boolean; next: string | null; role: Role | null; country: string | null } {
@@ -89,7 +92,8 @@ function readParams(): { finish: boolean; next: string | null; role: Role | null
     const r = q.get('role');
     return {
       finish: q.get('finish') === '1',
-      next: n && n.startsWith('/') && !n.startsWith('//') ? n : null,
+      // [DASH2-FOUNDATION] redirect_url (preferred) or next; same-origin only.
+      next: safeSameOriginPath(q.get('redirect_url')) ?? safeSameOriginPath(n),
       role: r === 'creator' || r === 'friend' ? r : null,
       country: (q.get('country') || '').toUpperCase() || null,
     };
@@ -248,9 +252,10 @@ function Inner() {
   const phoneResendIn = useCountdown(phoneResendAt);
 
   const destination = () => {
+    // [DASH2-FOUNDATION 2026-09-25] No more IN-country detour to /india: the
+    // owner rule is "login always lands on /dashboard unless sent from a page".
     if (params.next) return params.next;
-    const country = String((user?.unsafeMetadata as { country?: unknown } | undefined)?.country ?? params.country ?? '').toUpperCase();
-    return country === 'IN' ? '/india' : landingFor(role);
+    return landingFor(role);
   };
 
   function clearErr(...keys: string[]) {
@@ -309,7 +314,7 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(landingFor(role), role));
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(params.next ?? landingFor(role), role));
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }

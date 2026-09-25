@@ -101,6 +101,14 @@ function Inner() {
     if (!isLoaded) return;
 
     void (async () => {
+      // [DASH2-FOUNDATION 2026-09-25] dash2_logout — Dashboard 2's Logout links
+      // here with ?from=dash2. Emitted BEFORE signOut()/reset() so the event is
+      // still attributed to the signed-in person.
+      try {
+        if (new URLSearchParams(location.search).get('from') === 'dash2') {
+          capture('dash2_logout', { referrer_path: document.referrer ? new URL(document.referrer).pathname : null });
+        }
+      } catch { /* malformed referrer — the sign-out itself must still run */ }
       try {
         await clerk.signOut();
         capture('auth_signout', {});
