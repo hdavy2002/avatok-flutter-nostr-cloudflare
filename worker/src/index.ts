@@ -1398,7 +1398,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [WEB-APP-ONBOARD-1] The app reporting that a web-born account has now
       // been through onboarding. This is the only thing that lifts the gate.
       if (p === "/api/account/app-onboarded" && req.method === "POST") return await webAccountAppOnboarded(req, env);
-      { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1], ctx); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1]); if (m && req.method === "DELETE") return await adminPurgeListing(req, env, m[1]); }
+      { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1], ctx); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1], ctx); if (m && req.method === "DELETE") return await adminPurgeListing(req, env, m[1]); }
       // [REVIEW-MOD-1] Review moderation queue. Reviews land 'pending' and are
       // invisible to the public until approved here — see routes/admin_reviews.ts.
       if (p === "/api/admin/reviews" && req.method === "GET") return await adminReviews(req, env);

@@ -2,6 +2,7 @@ import { ORG } from '../org';
 import { ApiError, getCreator, getListing } from '../apiClient';
 import { creatorOg, listingOg } from '../og';
 import { ritualBySlug } from '../ritualGuides';
+import { ritualAd } from '../ritualAdHooks';
 import { getHelpEntries, helpUrl, SECTIONS, type HelpSectionId } from '../help';
 import { plainText, stableRevision, truncateAtWord } from './normalize';
 import { buildSeoGraph } from './schema';
@@ -41,12 +42,14 @@ function ogRecordFor(content: PublicContent, title?: string, description?: strin
     contentRevision: stableRevision([
       content.kind, key, resolvedTitle, resolvedDescription, content.modifiedAt,
       content.publishedAt, content.image?.revision, 'seo-og-v1',
+      content.ad?.hook, content.ad?.price,
     ]),
     art: content.image ? {
       url: content.image.url,
       revision: [content.image.revision, publicArtRevision(content.image.url)].filter(Boolean).join(':'),
       alt: content.image.alt,
     } : undefined,
+    ad: content.ad?.hook ? { hook: content.ad.hook, ...(content.ad.price ? { price: content.ad.price } : {}) } : undefined,
   };
 }
 
@@ -184,6 +187,7 @@ export async function resolveOgRecord(kind: string, key: string): Promise<OgReso
         visibility: 'public', publishedAt: '2026-09-25', modifiedAt: '2026-09-25',
         image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },
         article: { authorName: ORG.name, section: ritual.type === 'havan' ? 'Havans' : 'Pujas', keywords: ritual.tags },
+        ad: ritualAd(ritual),
       });
     }
     if (kind === 'help') {

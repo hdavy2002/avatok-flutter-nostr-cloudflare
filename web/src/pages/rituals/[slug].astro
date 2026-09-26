@@ -11,6 +11,7 @@ import Base from '../../layouts/Base.astro';
 import TruckBorder from '../../components/TruckBorder.astro';
 import { rituals, ritualCategories, ritualTypes, relatedRituals, commitmentFor, muhuratFor, type Ritual } from '../../lib/ritualGuides';
 import { storyFor } from '../../lib/ritualStories';
+import { ritualAd } from '../../lib/ritualAdHooks';
 import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 import '../../styles/creator-guide.css';
@@ -38,6 +39,9 @@ const content: PublicContent = {
     { name: ritual.title, path: ritual.href },
   ],
   article: { authorName: 'Saathum', section: ritualCategories[ritual.category], keywords: ritual.tags },
+  // [OG-AD-HOOK-1] Must match lib/seo/resolve.ts (same helper) or the og:image
+  // URL's revision hash would differ from what the OG endpoint computes.
+  ad: ritualAd(ritual),
 };
 const keepReady = ['A small lamp or diya', 'An incense stick', 'A fresh flower', 'A glass of water', 'A small sweet to offer'];
 // [SAATHUM-GUIDE-2 2026-09-25] Owner's havan-first model: a HAVAN is an open, shared

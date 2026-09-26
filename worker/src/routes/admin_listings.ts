@@ -13,6 +13,7 @@ import { readConfig } from "./config";
 // function the creator's own publish endpoint calls.
 import { publishListingAuthoritative, reviewedContentHash, normListingFields, polishListingCopy, runAutoPosterGeneration } from "./listings";
 import { listingBlockers } from "../lib/listing_blockers";
+import { adminHook, ensureListingAdHook } from "../lib/listing_ad_hook";
 // [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
 // with no source-status guard at all.
@@ -277,12 +278,41 @@ const ADMIN_EDITABLE = new Set([
  * an admin_audit row, plus a PostHog event. "Who did what" was the owner's
  * actual worry, and a diff answers it better than a status flip.
  */
-export async function adminEditListing(req: Request, env: Env, id: string): Promise<Response> {
+export async function adminEditListing(req: Request, env: Env, id: string, exec?: ExecutionContext): Promise<Response> {
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
   const body = await req.json().catch(() => ({})) as any;
   const db = env.DB_META;
   const row = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!row) return json({ error: "not found" }, 404);
+
+  // [OG-AD-HOOK-1] `ad_hook` — the one-line ad printed on the share card. It lives
+  // in attrs (server-owned), not a column, so it is handled here rather than
+  // through ADMIN_EDITABLE. A string sets it by hand (AI never overwrites a
+  // hand-written line); null/"" asks the AI to write a fresh one.
+  {
+    const patchIn = body && typeof body.fields === "object" && body.fields ? body.fields : body;
+    if (patchIn && Object.prototype.hasOwnProperty.call(patchIn, "ad_hook")) {
+      const value = patchIn.ad_hook;
+      delete patchIn.ad_hook;
+      if (value === null || value === "") {
+        await db.prepare("UPDATE listings SET attrs=json_remove(COALESCE(NULLIF(attrs,''),'{}'),'$.ad_hook') WHERE id=?1").bind(id).run();
+        await ensureListingAdHook(env, id, a.uid, { force: true });
+      } else {
+        const hook = adminHook(value);
+        if ("error" in hook) return json({ error: "bad_ad_hook", message: hook.error, field: "ad_hook" }, 400);
+        await db.prepare("UPDATE listings SET attrs=json_set(COALESCE(NULLIF(attrs,''),'{}'),'$.ad_hook',json(?2)) WHERE id=?1")
+          .bind(id, JSON.stringify(hook)).run();
+      }
+      safeTrack(env, a.uid, "listing_admin_ad_hook", { listing_id: id, admin_id: a.uid, mode: value ? "manual" : "regenerate" });
+      const others = Object.keys(patchIn).filter((k) => k !== "action" && k !== "fields");
+      if (!others.length) {
+        const fresh = await db.prepare("SELECT attrs FROM listings WHERE id=?1").bind(id).first<any>();
+        let freshAttrs: any = {};
+        try { freshAttrs = fresh?.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { /* empty */ }
+        return json({ ok: true, listing_id: id, changed: ["ad_hook"], ad_hook: freshAttrs.ad_hook ?? null });
+      }
+    }
+  }
 
   // A cancelled or completed listing is history. Editing one would rewrite what
   // a buyer already saw and, for completed, what they already paid for.
@@ -438,6 +468,12 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
     // the bug this property exists to make visible rather than discoverable.
     rebound: wasBound,
   });
+
+  // [OG-AD-HOOK-1] The ad line quotes the title/description; rewrite it when they change.
+  if (["title", "blurb", "description", "category"].some((k) => k in changes)) {
+    const adWork = ensureListingAdHook(env, id, a.uid, { force: true });
+    if (exec && typeof exec.waitUntil === "function") exec.waitUntil(adWork); else void adWork;
+  }
 
   // The whole reason an admin edits is to make a listing publishable, so answer
   // the question they are actually asking rather than making them click again.
@@ -846,6 +882,12 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
   }
   if (action === "approve_listing" || action === "check_listing") {
     safeTrack(env, a.uid, "legacy_listing_approval", { listing_id: id, check: action === "check_listing" });
+    // [OG-AD-HOOK-1] Listings approved without passing submit (older rows, admin-made
+    // listings) get their share-card ad line here. No-op when one already exists.
+    {
+      const adWork = ensureListingAdHook(env, id, a.uid);
+      if (exec && typeof exec.waitUntil === "function") exec.waitUntil(adWork); else void adWork;
+    }
     if (generatePosterAfterApproval) {
       const work = runAutoPosterGeneration(env, {
         listingId: id,

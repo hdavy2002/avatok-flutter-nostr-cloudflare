@@ -63,6 +63,9 @@ export interface PublicContent {
   article?: ArticleFacts;
   listing?: ListingFacts;
   creator?: CreatorFacts;
+  /** [OG-AD-HOOK-1] One-line ad printed ON the share image (the title/description
+   *  already show under it in WhatsApp). `price` is display-ready, e.g. "₹111". */
+  ad?: { hook: string; price?: string };
 }
 
 export interface SeoImage {

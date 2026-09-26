@@ -29,6 +29,7 @@
 //   POST/DELETE /api/creators/:id/block  A4 buyer-side block
 //   PUT    /api/creators/me              A7 channel editor
 //   POST   /api/report                   A4 → user_reports pipeline
+import { ensureListingAdHook } from "../lib/listing_ad_hook";
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail, requireKyc } from "../authz";
@@ -291,7 +292,8 @@ function encodeAttrs(v: unknown): { json: string | null; error?: string } {
 //
 // If another key is ever found to need the same protection, add it here — do not
 // assume `poster` is the only one.
-const RESERVED_ATTRS_KEYS = ["poster"] as const;
+// [OG-AD-HOOK-1] `ad_hook` is server-written (lib/listing_ad_hook.ts) — the share-card ad line.
+const RESERVED_ATTRS_KEYS = ["poster", "ad_hook"] as const;
 
 /** Strip server-owned keys from creator-supplied `attrs` and splice the server's
  *  own current value back in, so a creator can neither forge nor erase them.
@@ -2272,6 +2274,13 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
     if (exec && typeof exec.waitUntil === "function") exec.waitUntil(work);
     else void work;
   }
+
+  // [OG-AD-HOOK-1] Write the share-card ad line off the request path. The polished
+  // copy is already in the row; force a rewrite so an edited listing's ad matches
+  // its new title (an admin-typed line is never overwritten).
+  const adWork = ensureListingAdHook(env, id, ctx.uid, { force: true });
+  if (exec && typeof exec.waitUntil === "function") exec.waitUntil(adWork);
+  else void adWork;
 
   return json({ ok: true, id, status: "pending_review" });
 }

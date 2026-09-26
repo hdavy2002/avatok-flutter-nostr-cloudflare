@@ -6964,5 +6964,23 @@
         "note": "appinstalled fired: a real install, not just the prompt being shown."
       }
     ]
+  },
+  "OG-AD-HOOK-1": {
+    "description": "[OG-AD-HOOK-1] Share cards are ads: one AI-written devotional line + real price pill. Worker writes attrs.ad_hook on listing submit/approve/admin edit (lib/listing_ad_hook.ts); articles use web/src/lib/ritualAdHooks.ts.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "aiEnabled",
+      "listingAiReviewEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_ad_hook_written",
+        "property": "ai_status",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Worker wrote an AI hook that passed the copy rules; 'rules' fallbacks carry other ai_status values."
+      }
+    ]
   }
 }

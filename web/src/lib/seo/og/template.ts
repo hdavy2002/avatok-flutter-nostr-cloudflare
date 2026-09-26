@@ -14,7 +14,43 @@ function copy(value: string | undefined, limit: number): string {
   return points.length <= limit ? text : points.slice(0, limit - 3).join('').trimEnd() + '...';
 }
 
+/**
+ * [OG-AD-HOOK-1 2026-09-26, owner decision] When the record carries an `ad`, the
+ * card is an advert, not a repeat of the title: WhatsApp already prints og:title
+ * and og:description under the image. One big devotional line, a saffron
+ * "Join live · ₹111" pill, and the ritual's own art — larger than on the plain card.
+ */
+function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord['ad']>) {
+  const hook = copy(ad.hook, 90);
+  const price = copy(ad.price, 16);
+  const size = hook.length > 58 ? 50 : hook.length > 40 ? 56 : 62;
+  return h('div', { style: {
+    width: 1200, height: 630, display: 'flex', position: 'relative', overflow: 'hidden',
+    backgroundColor: '#fff8e8', color: '#304d35', fontFamily: 'Comfortaa', fontWeight: 700,
+    padding: 40, border: '12px solid #b94427',
+  } },
+    h('div', { style: { display: 'flex', flexDirection: 'column', width: 600, paddingRight: 34 } },
+      h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, 'Saathum'),
+      h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginTop: 12 } }, 'JOIN LIVE, FROM ANYWHERE'),
+      h('div', { style: { display: 'flex', flex: 1, alignItems: 'center' } },
+        h('div', { style: { display: 'flex', fontSize: size, lineHeight: 1.2, color: '#304d35', maxHeight: 300, overflow: 'hidden' } }, hook),
+      ),
+      h('div', { style: { display: 'flex', alignItems: 'center' } },
+        h('div', { style: {
+          display: 'flex', alignItems: 'center', backgroundColor: '#b94427', color: '#fff8e8',
+          fontSize: 30, padding: '16px 30px', borderRadius: 999,
+        } }, price ? `Join live · ${price}` : 'Join live'),
+        h('div', { style: { display: 'flex', marginLeft: 22, fontSize: 21, color: '#ab3421' } }, 'saathum.com'),
+      ),
+    ),
+    h('div', { style: { display: 'flex', flex: 1, backgroundColor: '#f4dbad', borderRadius: '240px 240px 18px 18px', overflow: 'hidden', border: '5px solid #d39f53' } },
+      h('img', { src: artwork, width: 506, height: 526, style: { width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' } }),
+    ),
+  );
+}
+
 export function ogTemplate(record: OgRecord, artwork: string) {
+  if (record.ad?.hook) return adTemplate(record, artwork, record.ad);
   const title = copy(record.title, 105) || 'Sacred rituals, shared live';
   const description = copy(record.description, 150);
   return h('div', { style: {

@@ -49,7 +49,24 @@ export function listingContent(listing: Listing, image?: { url: string; alt: str
       creatorName,
       listingType: starts ? 'event' : 'service',
     },
+    ad: listingAd(listing, visiblePrice),
   };
+}
+
+/** [OG-AD-HOOK-1] attrs.ad_hook is written by the worker (lib/listing_ad_hook.ts,
+ *  AI on submit/approval). The price is the listing's REAL price, never the model's. */
+function listingAd(listing: Listing, price: number | null | undefined): PublicContent['ad'] {
+  const raw = (listing as any).attrs?.ad_hook;
+  const hook = typeof raw?.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim().slice(0, 90) : '';
+  if (!hook) return undefined;
+  const currency = String((listing as any).currency_display ?? listing.currency ?? 'INR').toUpperCase();
+  const amount = Number(price);
+  const free = Boolean(listing.free_entry) || amount === 0;
+  const label = free ? 'Free'
+    : Number.isFinite(amount) && amount > 0
+      ? (['INR', 'TOKENS', 'TOKEN', 'COINS', 'COIN', 'AVACOIN'].includes(currency) ? `₹${amount.toLocaleString('en-IN')}` : `${currency} ${amount}`)
+      : undefined;
+  return label ? { hook, price: label } : { hook };
 }
 
 export function creatorContent(creator: Creator, image?: { url: string; alt: string }): PublicContent {

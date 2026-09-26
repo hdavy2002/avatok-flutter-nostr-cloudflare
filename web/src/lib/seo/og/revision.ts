@@ -4,7 +4,8 @@ import type { OgRecord } from './types';
 // Bump when layout, sanitization or rendering behavior changes.
 // saathum-og-2: [SEO-OG-ART-1] per-article/listing artwork actually renders; new
 // URLs force WhatsApp/Facebook to drop the cached brand-hero cards.
-export const TEMPLATE_REVISION = 'saathum-og-2';
+// saathum-og-3: [OG-AD-HOOK-1] ad layout (hook + price pill) for articles/listings.
+export const TEMPLATE_REVISION = 'saathum-og-3';
 export const RENDERER_REVISION = 'cf-workers-og-3.0.1';
 
 export async function sha256(bytes: Uint8Array | string): Promise<string> {
@@ -19,6 +20,7 @@ export function ogRevision(record: OgRecord): Promise<string> {
     TEMPLATE_REVISION, RENDERER_REVISION, fontRevision, assetRevision,
     record.kind, record.key, record.title, record.description ?? '', record.canonicalPath,
     record.contentRevision, record.art?.url ?? '', record.art?.revision ?? '',
+    record.ad?.hook ?? '', record.ad?.price ?? '',
   ]));
 }
 

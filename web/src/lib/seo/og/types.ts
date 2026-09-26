@@ -7,6 +7,8 @@ export interface OgRecord {
   canonicalPath: string;
   contentRevision: string;
   art?: { url: string; revision?: string; alt?: string };
+  /** [OG-AD-HOOK-1] When present the card renders as an ad: hook + price pill. */
+  ad?: { hook: string; price?: string };
 }
 
 export type OgResolveResult =

@@ -157,7 +157,9 @@ const MEDIA_TEXT_FEATURES = new Set(["media_doc_summarize", "media_doc_translate
 // `cfText()` reading the OpenAI `choices` shape ([REASONER-CHOICES-1] in
 // ./types.ts) and an empty primary answer now trying the ALT
 // ([REASONER-EMPTY-FALLBACK-1] in ./core.ts).
-const NON_THINKING_FIRST_FEATURES = new Set(["listing_copy_review"]);
+// [OG-AD-HOOK-1] listing_ad_hook: a one-line headline; a thinking model would
+// burn its 80-token budget on scratchpad and return "".
+const NON_THINKING_FIRST_FEATURES = new Set(["listing_copy_review", "listing_ad_hook"]);
 
 /** Primary model for NON_THINKING_FIRST_FEATURES. Defaults to the reasoner ALT
  *  (google/gemini-2.5-flash-lite) so there is ONE place that names it; override
