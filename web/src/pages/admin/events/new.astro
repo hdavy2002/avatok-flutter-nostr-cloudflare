@@ -1,0 +1,11 @@
+---
+// /admin/events/new — [ADMIN2-EVENTS 2026-09-26] create a puja/havan (saved as a draft,
+// published from the same form without a review loop). Specs/SPEC-2026-09-26-ADMIN-2.md.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import EventForm from '../../../islands/admin2/EventForm.tsx';
+---
+
+<Admin2 title="New event" active="events" subtitle="Fill in the details, save a draft, and publish when it's ready.">
+  <EventForm client:load />
+</Admin2>

@@ -7141,5 +7141,44 @@
       }
     ],
     "_verified_at": "web/src/islands/admin2/peopleKit.tsx ExportButton: capture('admin2_export', {kind, ok, bytes, filtered, ms}); web/src/layouts/Admin2.astro capture('admin2_view', {screen})"
+  },
+  "ADMIN2-EVENTS": {
+    "description": "[ADMIN2-EVENTS] /admin/events (tabs Upcoming/Live/Past/Drafts/Cancelled, search, category filter, cards with cover, IST time, price, seats booked, status, YouTube icon, Edit/Copy link/View on site/Bookings) and /admin/events/new + /admin/events/[id] (one shadcn form: title, category, deity, short/long description, cover upload or AI poster, IST date+time, duration, price, capacity, performed by, unlisted YouTube link via PUT /api/admin/listings/:id/youtube; Save draft, Publish, Unpublish, Cancel with confirm; live listing_blockers panel). Worker routes/admin2_events.ts: GET/POST /api/admin/v2/events, GET /api/admin/v2/events/meta, GET/PUT /api/admin/v2/events/:id, POST .../:id/{publish,unpublish,cancel,poster}. Publish chains createListing -> adminEditListing -> listing_blockers -> approve_listing -> publish (publishListingAuthoritative) as the admin; cancel refunds open orders first. Admin-only (ADMIN_UIDS), not flag-gated. No migration.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "equals": "events",
+        "min_events": 1,
+        "note": "The Events list or form loads."
+      },
+      {
+        "event": "admin2_event_saved",
+        "property": "action",
+        "in": [
+          "create",
+          "update",
+          "publish",
+          "unpublish",
+          "cancel",
+          "youtube",
+          "poster_generate",
+          "poster_keep"
+        ],
+        "min_events": 1,
+        "note": "Client-side: an admin saved/published/cancelled an event (ok:true|false)."
+      },
+      {
+        "event": "admin2_event_published",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Server-side (worker track, app saathum): an admin event went live through publishListingAuthoritative."
+      }
+    ],
+    "_verified_at": "web/src/islands/admin2/EventForm.tsx capture('admin2_event_saved', {action, ok}); worker/src/routes/admin2_events.ts safeTrack('admin2_event_published'|'admin2_event_publish_blocked'|'admin2_event_cancelled'...); failures -> trackException via routes/admin2.ts admin2Route (extra.area='admin2')"
   }
 }
