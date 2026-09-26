@@ -6,6 +6,8 @@ import { rateLimit } from '../money';
 import { requireAdmin } from './admin_money';
 import { hmacSha256Hex,sha256Hex,constantTimeEqual } from '../lib/payments/types';
 import { SMOKE_LISTING,UUID,policy,currentIntent,readIntent,legacyIntent,publicIntent,createIntent,saveReference,normalizeReference,parseReference,parsePayerVpa,receiptCandidates,parseAmountPaise,isHdfcSender,hasAccountSuffix,matchIntent,boundedBody,timestampInterval,storeEvidence } from '../lib/hdfc_sms_smoke';
+import { finalizeSaathumCheckoutByIntent } from './saathum_checkout';
+import { trackException } from '../hooks';
 export const UPI_SMOKE_TEST_LISTING_ID=SMOKE_LISTING;
 const failure=(error:string,status=503)=>json({error,retryable:status===503||status===429},status);
 async function limited(env:Env,bucket:string,max:number):Promise<Response|null>{
@@ -96,6 +98,18 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
    if(candidates.results.length){const i=candidates.results[0];await matchIntent(db,i.intent_id,i.uid,p,now);}
    receipt=await db.prepare('SELECT * FROM hdfc_sms_smoke_receipts WHERE message_hash=?').bind(receipt.message_hash).first<typeof receipt>();
    if(!receipt)return failure('match_retry_required');
+  }
+  // [SAATHUM-CHECKOUT-API 2026-09-26] This evidence row might instead belong to a
+  // Saa Thum checkout waiting on this exact (account, reference, amount) — see
+  // worker/migrations/2026-09-26-saathum-checkout.sql for why Saa Thum keeps its
+  // own payment-matching state rather than a row in hdfc_sms_smoke_intents.
+  // Best-effort and independent of the smoke-engine match above: never breaks the
+  // SMS device's ack either way.
+  if(receipt.disposition==='accepted'&&receipt.bank_reference){
+   try{
+    const waiting=await db.prepare(`SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND amount_paise=?3 AND status='awaiting_payment'`).bind(receipt.receiving_account_key,receipt.bank_reference,receipt.amount_paise).first<{checkout_id:string}>();
+    if(waiting)await finalizeSaathumCheckoutByIntent(env,waiting.checkout_id);
+   }catch(err){await trackException(env,err,{route:'/api/sms/incoming',handled:true,app_name:'saathum'});}
   }
   if(receipt.disposition==='legacy')return ack(receipt.message_hash,'review_pending','unmatched','legacy_unverified');
   if(receipt.disposition!=='accepted')return ack(receipt.message_hash,'review_pending','unmatched',receipt.reason_code);

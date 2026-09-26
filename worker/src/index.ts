@@ -82,6 +82,13 @@ import { hdfcSmsQr } from "./routes/hdfc_sms_qr";
 import { hdfcPublicOrder, hdfcPublicStatus, hdfcPublicClaim, hdfcPublicRecheck } from "./routes/hdfc_sms_public";
 import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
 import { hdfcCustomerRedeem, hdfcCustomerCurrent, hdfcCustomerOrder, hdfcCustomerStatus, hdfcCustomerClaim, hdfcCustomerRecheck } from "./routes/hdfc_sms_customer_test";
+// [SAATHUM-CHECKOUT-API 2026-09-26] Saa Thum event checkout (quote/checkout/UPI/receipt).
+import { saathumChadhavaPublic } from "./routes/saathum_chadhava";
+import {
+  saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
+  saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
+  runSaathumReminders,
+} from "./routes/saathum_checkout";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -514,6 +521,13 @@ export default {
         // a bad tick must not take the rest of the cron down.
         // [DASH2-PUSH] T-15 + go-live web push reminders (lib/web_push.ts; never throws).
         runPushReminders(env).then((r) => { if (r.sent) console.log("[dash2-push]", JSON.stringify(r)); }).catch(() => undefined),
+        // [SAATHUM-CHECKOUT-API follow-up] T-35 "starting in 30 minutes" email for
+        // confirmed Saa Thum checkouts. Runs every tick (crons = */5 * * * *,
+        // wrangler.toml); reminder_sent_at is the idempotency guard, same pattern
+        // as the other cron sweeps above. Never throws.
+        runSaathumReminders(env)
+          .then((r) => { if (r.sent) console.log("[saathum-reminders]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[saathum-reminders] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
       ]),
@@ -980,6 +994,23 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       }
       // [ADMIN2-API 2026-09-26] Admin 2 (Saa Thum admin dashboard) — routes/admin2.ts route table.
       if (p === "/api/admin/whoami" || p.startsWith("/api/admin/v2/")) { const r = await admin2Route(req, env, p); if (r) return r; }
+      // [SAATHUM-CHECKOUT-API 2026-09-26] Saa Thum event checkout. NOT behind
+      // hdfcSmsRailEnabled (that kill switch only covers the /api/pay/hdfc-sms/*
+      // and /api/sms/* smoke-harness family) — Saa Thum keeps its own payment
+      // matching state (see worker/migrations/2026-09-26-saathum-checkout.sql).
+      if (p === "/api/saathum/chadhava" && req.method === "GET") return await saathumChadhavaPublic(req, env);
+      if (p === "/api/saathum/checkout/config" && req.method === "GET") return await saathumCheckoutConfig(req, env);
+      if (p === "/api/saathum/checkout/quote" && req.method === "POST") return await saathumCheckoutQuote(req, env);
+      if (p === "/api/saathum/checkout" && req.method === "POST") return await saathumCheckoutCreate(req, env);
+      if (p === "/api/saathum/my-checkouts" && req.method === "GET") return await saathumMyCheckouts(req, env);
+      if (p.startsWith("/api/saathum/checkout/")) {
+        const rest = p.slice("/api/saathum/checkout/".length).split("/");
+        const checkoutId = rest[0];
+        if (rest.length === 1 && req.method === "GET") return await saathumCheckoutGet(req, env, checkoutId);
+        if (rest.length === 2 && rest[1] === "utr" && req.method === "POST") return await saathumCheckoutUtr(req, env, checkoutId);
+        if (rest.length === 2 && rest[1] === "address" && req.method === "PUT") return await saathumCheckoutAddress(req, env, checkoutId);
+        if (rest.length === 2 && rest[1] === "receipt.pdf" && req.method === "GET") return await saathumCheckoutReceiptPdf(req, env, checkoutId);
+      }
       if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
       if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
       // Account key escrow — makes the aek (and thus every uid-keyed vault blob)
@@ -1285,7 +1316,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // Flip the flag to restore; nothing below was deleted. See REPORT.md.
       if (p.startsWith("/api/pay/hdfc-sms/") || p === "/api/sms/incoming" || p === "/api/sms/heartbeat") {
         const hdfcCfg = await readConfig(env);
-        if (!hdfcCfg.hdfcSmsRailEnabled) return json({ error: "gone", reason: "hdfc_sms_rail_disabled" }, 410);
+        // [SAATHUM-CHECKOUT-API 2026-09-26] The bank-SMS ingress (HMAC-signed by the
+        // companion phone) is also how Saa Thum checkouts are verified, so it opens when
+        // saathumSmsIngestEnabled is on even while the ₹1 smoke harness stays dark.
+        const smsIngress = p === "/api/sms/incoming" || p === "/api/sms/heartbeat";
+        if (!hdfcCfg.hdfcSmsRailEnabled && !(smsIngress && hdfcCfg.saathumSmsIngestEnabled)) {
+          return json({ error: "gone", reason: "hdfc_sms_rail_disabled" }, 410);
+        }
         // Anonymous test state is capability-scoped; customer/admin routes retain
         // their account gates and SMS/heartbeat retain companion HMAC checks.
         if (p === "/api/pay/hdfc-sms/qr" && req.method === "GET") return await hdfcSmsQr(req, env);

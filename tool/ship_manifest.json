@@ -7274,5 +7274,99 @@
       }
     ],
     "_verified_at": "web/src/islands/admin2/EventForm.tsx onPickArticle capture(); worker/src/routes/admin2_events.ts refreshSeo safeTrack(); worker/test/admin2_events.test.ts"
+  },
+  "SAATHUM-CHADHAVA": {
+    "description": "[SAATHUM-CHADHAVA] Chadhava catalogue (saathum_chadhava table, admin CRUD /api/admin/v2/chadhava, public GET /api/saathum/chadhava, /admin/chadhava page) + event form: Video download (replaces replay), Public/Private (private = 1 seat), per-event prasad price (default 99), video download link editable after the event.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_chadhava_saved",
+        "property": "action",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin created/edited a chadhava product."
+      }
+    ],
+    "_verified_at": "worker/src/routes/saathum_chadhava.ts; web/src/islands/admin2/Chadhava.tsx; worker/test/saathum_chadhava.test.ts"
+  },
+  "SAATHUM-CHECKOUT-API": {
+    "description": "[SAATHUM-CHECKOUT-API] Saa Thum checkout backend: quote (ticket+chadhava+dakshina+prasad, GST 18% via saathumGstEnabled), checkout, UPI QR at the exact total, 12-digit UTR verified against HDFC bank SMS evidence, seat provisioned via provisionFromGatewayPurchase(hdfc_sms), payment mirrored for Dashboard 2 billing, PDF receipt + confirmation email, 30-min reminder email cron, address edit until start. SMS ingress opened via saathumSmsIngestEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_created",
+        "property": "total_rupees",
+        "exists": true,
+        "min_events": 1,
+        "note": "A customer reached the QR step."
+      },
+      {
+        "event": "saathum_checkout_confirmed",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A payment was matched and the seat provisioned."
+      }
+    ],
+    "_verified_at": "worker/src/routes/saathum_checkout.ts; worker/test/saathum_checkout.test.ts"
+  },
+  "SAATHUM-EVENT-PAGE": {
+    "description": "[SAATHUM-EVENT-PAGE] New /book/<id> event page for live events (big photo, countdown, booking panel with all card blips + tooltips, about/benefits/how it works/chadhava/prasad/FAQ, stickers); Book-now card: Video download + Public/Private ticks with tooltips, Book button to /book/<id>/checkout.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "event_page_view",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Someone opened an event page."
+      }
+    ],
+    "_verified_at": "web/src/components/eventpage/EventPage.astro; web/src/islands/home/BookNowShelf.tsx"
+  },
+  "SAATHUM-CHECKOUT-UI": {
+    "description": "[SAATHUM-CHECKOUT-UI] /book/<id>/checkout step flow: sign in (email code) + mobile verify, sankalp, offerings (chadhava, dakshina, prasad + address), review with GST and required Terms/Refund checkboxes, UPI QR + UTR, done with receipt download.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_step",
+        "property": "step",
+        "exists": true,
+        "min_events": 1,
+        "note": "Customer moved through checkout steps."
+      },
+      {
+        "event": "saathum_checkout_done",
+        "property": "listing_id",
+        "exists": false,
+        "min_events": 1,
+        "note": "Customer reached the Done screen."
+      }
+    ],
+    "_verified_at": "web/src/islands/saathum-checkout/SaathumCheckout.tsx"
+  },
+  "SAATHUM-DASH-DOWNLOAD": {
+    "description": "[SAATHUM-DASH-DOWNLOAD] Dashboard 2: Download video on past events, prasad address change on upcoming bookings until start, checkout receipt download, profile address label.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dash2_video_download",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A devotee downloaded a past event's video."
+      }
+    ],
+    "_verified_at": "web/src/islands/dashboard2/PastEvents.tsx; web/src/islands/dashboard2/MyEvents.tsx"
   }
 }

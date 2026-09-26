@@ -74,6 +74,16 @@ export interface PlatformConfig {
    */
   gstEnabled: boolean;
   gstRatePct: number;
+  /** [SAATHUM-CHECKOUT-API 2026-09-26] Separate from `gstEnabled` above (which
+   * stays false until avaTOK/AvaGlobal has a GSTIN). Saa Thum is billed under a
+   * different, GST-registered entity, so its cart GST is gated on its own flag —
+   * owner decision 2026-09-26, default true — but still uses the shared
+   * `gstRatePct` (prod = 18). See SPEC-2026-09-26-SAATHUM-CHECKOUT.md §6. */
+  saathumGstEnabled: boolean;
+  /** [SAATHUM-CHECKOUT-API 2026-09-26] Opens the HMAC-signed bank-SMS ingress
+   *  (/api/sms/incoming, /api/sms/heartbeat) for Saa Thum checkout verification even
+   *  while hdfcSmsRailEnabled keeps the ₹1 smoke harness dark. Kill switch. Default true. */
+  saathumSmsIngestEnabled: boolean;
   /**
    * [PAY-CASHFREE-1] Inbound UPI through Cashfree. BOTH default false, and both are
    * additionally gated on real CASHFREE_* credentials being present — a half-configured
@@ -2046,6 +2056,10 @@ const DEFAULTS: PlatformConfig = {
   // that decides whether a real person is charged a tax we cannot yet remit.
   gstEnabled: false,
   gstRatePct: 18,
+  // [SAATHUM-CHECKOUT-API 2026-09-26] See the interface comment. Saa Thum's own
+  // GST charge, independent of avaTOK's (still-unregistered) gstEnabled.
+  saathumGstEnabled: true,
+  saathumSmsIngestEnabled: true,
   // [PAY-CASHFREE-1] See the interface comment. Both OFF until the sandbox has been
   // exercised end to end and real credentials are configured.
   cashfreeEnabled: false,
