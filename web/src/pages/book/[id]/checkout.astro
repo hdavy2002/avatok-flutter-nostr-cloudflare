@@ -1,0 +1,125 @@
+---
+// [SAATHUM-CHECKOUT-UI 2026-09-26] /book/[id]/checkout — the new Saa Thum
+// checkout for live events (Specs/SPEC-2026-09-26-SAATHUM-CHECKOUT.md). SSR
+// loads the listing exactly like ../[id].astro (same 404 handling, same
+// cache header) so the summary column is instant; the interactive step
+// machine lives in islands/saathum-checkout/SaathumCheckout.tsx.
+//
+// Any listing that ISN'T a live event keeps the existing checkout: this page
+// mounts the untouched BookingFlow island for it rather than a Saa Thum step
+// machine it doesn't have data for. B2/A1 own listing.kind values elsewhere;
+// this file only branches on it.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import { cfImage } from '../../../lib/config';
+import { getListing, ApiError } from '../../../lib/apiClient';
+import type { CoverMedia, Listing } from '../../../lib/types';
+import BookingFlow from '../../../islands/checkout/BookingFlow.tsx';
+import { SaathumCheckout } from '../../../islands/saathum-checkout/SaathumCheckout.tsx';
+
+const { id } = Astro.params;
+
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+
+if (notFound || !listing) {
+  return new Response('Listing not found', { status: 404 });
+}
+
+// The shell is public/cacheable; the island's own checkout data (quote,
+// checkout status, payment) is never cached — noindex + no-store below.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const kind = (listing.kind ?? 'content') as string;
+const isLiveEvent = kind === 'live_event';
+
+function firstCoverUrl(media: CoverMedia[] | null | undefined): string | null {
+  for (const m of media ?? []) {
+    const url = m?.url ?? (m as unknown as { r2_key?: string } | null)?.r2_key;
+    if (typeof url === 'string' && url) return url;
+  }
+  return null;
+}
+const coverUrl = listing.poster || firstCoverUrl(listing.cover_media);
+
+// Same host-timezone rule as [id].astro / the listing detail page.
+const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
+const tz = listing.timezone || 'Asia/Kolkata';
+function toMs(t?: number | null): number | null { if (t == null) return null; return t < 1e12 ? t * 1000 : t; }
+function tzAbbr(ms: number, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date(ms));
+    const raw = parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+    return TZ_ABBR[timeZone] ?? raw;
+  } catch { return ''; }
+}
+function formatListingTime(ms: number, timeZone: string): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    const datePart = new Intl.DateTimeFormat('en-IN', { timeZone, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+    const timePart = new Intl.DateTimeFormat('en-IN', { timeZone, hour: 'numeric', minute: '2-digit' }).format(d);
+    const abbr = tzAbbr(ms, timeZone);
+    return `${datePart} · ${timePart}${abbr ? ` ${abbr}` : ''}`;
+  } catch { return d.toISOString(); }
+}
+const startMs = toMs(listing.starts_at);
+const startsAtLabel = startMs != null ? formatListingTime(startMs, tz) : null;
+
+const backHref = `/book/${encodeURIComponent(listing.id)}`;
+---
+
+<Base
+  headerAuth="static"
+  title={`Checkout · ${listing.title} · saathum.com`}
+  description={`Complete your booking for ${listing.title} on saathum.com.`}
+  navStatic={true}
+  noindex={true}
+>
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    {isLiveEvent ? (
+      <div class="sthc-layout">
+        <aside class="sthc-summary">
+          <div class="sthc-summary-art">
+            {coverUrl ? (
+              <img src={cfImage(coverUrl, { width: 480, fit: 'cover' })} alt={listing.title} />
+            ) : null}
+          </div>
+          <h4>{listing.title}</h4>
+          {startsAtLabel && <p>{startsAtLabel}</p>}
+          <a href={backHref}>&larr; Back to event</a>
+        </aside>
+        <section>
+          <SaathumCheckout client:load listingId={listing.id} />
+        </section>
+      </div>
+    ) : (
+      <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
+        <aside class="md:sticky md:top-20 self-start">
+          <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
+            <div class="relative aspect-[4/5] w-full">
+              {coverUrl && <img src={cfImage(coverUrl, { width: 680, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />}
+            </div>
+          </div>
+          <h1 class="mt-4 font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
+        </aside>
+        <section>
+          <BookingFlow client:load listing={listing} />
+        </section>
+      </div>
+    )}
+  </main>
+</Base>
+
+<style>
+  /* Minimal shell CSS; the step machine's own look lives in
+     islands/saathum-checkout/checkout.css, scoped under .sthc. */
+  .sthc-layout { max-width: 900px; margin: 0 auto; }
+</style>
