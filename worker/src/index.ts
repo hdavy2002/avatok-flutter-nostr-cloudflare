@@ -56,6 +56,7 @@ import { listingReview } from "./routes/listing_review";
 import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
 import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp"; // [WEB-PHONE-OTP-1]
 import { meDashboardRoute } from "./routes/me_dashboard"; // [DASH2-API]
+import { admin2Route } from "./routes/admin2"; // [ADMIN2-API]
 import { mePushRoute } from "./routes/me_push"; import { runPushReminders } from "./lib/web_push"; // [DASH2-PUSH]
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
@@ -977,6 +978,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const r = await meDashboardRoute(req, env, p);
         if (r) return r;
       }
+      // [ADMIN2-API 2026-09-26] Admin 2 (Saa Thum admin dashboard) — routes/admin2.ts route table.
+      if (p === "/api/admin/whoami" || p.startsWith("/api/admin/v2/")) { const r = await admin2Route(req, env, p); if (r) return r; }
       if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
       if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
       // Account key escrow — makes the aek (and thus every uid-keyed vault blob)
