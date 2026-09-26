@@ -1,0 +1,115 @@
+/* [SAATHUM-BOOKNOW-1 2026-09-26] Homepage "Book now" section.
+   Pale chandan-cream ground so it reads as the OPPOSITE of the dark indigo
+   havans section below and the terracotta intention band above. Cards are
+   white-bordered "stickers" with a lifted warm shadow. */
+.bn-section {
+  --bn-ink: #5a1f14; --bn-sub: #6b4a2b; --bn-red: #b3261e;
+  position: relative; color: var(--bn-ink);
+  padding: 40px clamp(16px, 7vw, 140px) 44px;
+  background:
+    radial-gradient(1200px 380px at 50% 0%, #ffffffb3, transparent 70%),
+    linear-gradient(160deg, #f8ead0 0%, #eed7ad 100%);
+  border-bottom: 3px solid #d1ae70;
+}
+.bn-section::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .14;
+  background-image: radial-gradient(circle, #a5602a 1.2px, transparent 1.6px); background-size: 22px 22px;
+}
+.bn-inner { position: relative; max-width: 1840px; margin: auto; }
+.bn-head { margin-bottom: 22px; }
+.bn-head h2 { margin: 0; font-family: Comfortaa, sans-serif; font-weight: 600; font-size: clamp(26px, 2.8vw, 40px); line-height: 1.15; color: var(--bn-ink); }
+.bn-head h2 span { color: #c9481f; }
+.bn-head p { margin: 6px 0 0; font: 700 15px/1.4 Nunito, sans-serif; color: var(--bn-sub); }
+.bn-head .bn-sample-note { display: inline-block; margin-top: 10px; padding: 4px 10px; border-radius: 999px; background: #fff3c4; border: 1px dashed #c9a13a; font-size: 13px; }
+
+.bn-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
+.bn-grid--1 { grid-template-columns: minmax(0, 460px); }
+.bn-grid--2 { grid-template-columns: repeat(2, minmax(0, 460px)); }
+.bn-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.bn-card {
+  display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+  background: #fffdf8; color: #17343c; border: 6px solid #fff; border-radius: 18px;
+  box-shadow: 0 2px 0 #0000000d, 0 18px 36px #5a2c0f47, 0 4px 10px #5a2c0f2e;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.bn-card:hover { transform: translateY(-4px) rotate(-.3deg); box-shadow: 0 2px 0 #0000000d, 0 26px 46px #5a2c0f5c, 0 6px 14px #5a2c0f33; }
+@media (prefers-reduced-motion: reduce) { .bn-card, .bn-card:hover { transition: none; transform: none; } }
+
+.bn-art { position: relative; display: block; aspect-ratio: 4 / 3; color: #fff; text-decoration: none; background: #3a2418; }
+.bn-art img, .bn-art-empty { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.bn-art-empty { background: linear-gradient(135deg, #a54c2e, #5a1f14); }
+.bn-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #0000004d 0%, transparent 28%, transparent 42%, #140a06eb 100%); }
+.bn-top { position: absolute; z-index: 2; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 8px; }
+.bn-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font: 900 12px Nunito, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+.bn-pill--live { background: #d7261e; color: #fff; box-shadow: 0 2px 8px #0006; }
+.bn-pill--live i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: bn-pulse 1.4s infinite; }
+.bn-pill--one { background: #1f4d4a; color: #fff; }
+.bn-pill--soft { background: #fffaf0e6; color: #5a2d12; letter-spacing: .04em; }
+@keyframes bn-pulse { 50% { opacity: .25; } }
+
+.bn-when { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: 10px; }
+.bn-date { display: flex; align-items: center; gap: 6px; font: 800 14px/1.3 Nunito, sans-serif; text-shadow: 0 1px 3px #000a; }
+.bn-date svg { width: 16px; height: 16px; flex: none; }
+.bn-cd-label { display: block; margin-top: 6px; font: 800 11px Nunito, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #F6B93B; text-shadow: 0 1px 3px #000c; }
+.bn-cd-label--live { font-size: 13px; letter-spacing: .04em; }
+.bn-cd { display: flex; align-items: flex-start; margin-top: 3px; }
+.bn-cd-group { display: inline-flex; align-items: flex-start; }
+.bn-cd em { font: 900 18px Nunito, sans-serif; font-style: normal; padding: 4px 3px 0; opacity: .8; }
+.bn-cd-cell { min-width: 40px; text-align: center; padding: 3px 4px 2px; border-radius: 8px; background: #fffaf01f; border: 1px solid #fffaf040; backdrop-filter: blur(4px); }
+.bn-cd-cell b { display: block; font: 900 20px/1.1 Nunito, sans-serif; font-variant-numeric: tabular-nums; }
+.bn-cd-cell small { font: 700 10px Nunito, sans-serif; opacity: .85; }
+.bn-cd-cell--sec b { color: #ff7a95; }
+
+.bn-body { display: flex; flex-direction: column; gap: 10px; flex: 1; padding: 14px 16px 16px; }
+.bn-title { margin: 0; font-family: Comfortaa, sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2; }
+.bn-title a { color: #173f3f; text-decoration: none; }
+.bn-title a:hover { text-decoration: underline; }
+.bn-deity { margin-top: -6px; font: 800 12px Nunito, sans-serif; color: #7a4a1e; }
+.bn-desc { margin: 0; font: 500 14.5px/1.45 Nunito, sans-serif; color: #3c4a4c; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bn-blips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bn-blip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; background: #f3e7d2; color: #2c3b3d; font: 700 12.5px Nunito, sans-serif; }
+.bn-blip svg { width: 14px; height: 14px; flex: none; }
+.bn-blip a { color: inherit; }
+.bn-blip--star { background: #fff1c9; }
+.bn-blip--booked { background: #e2efe3; color: #1d5a3a; }
+.bn-feats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px 12px; border: 1px dashed #d8c3a0; border-radius: 12px; background: #fff; }
+.bn-feat { display: flex; align-items: center; gap: 6px; font: 700 12.5px/1.25 Nunito, sans-serif; color: #2c3b3d; }
+.bn-feat--off { color: #8a8378; }
+.bn-yes, .bn-no { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; color: #fff; }
+.bn-yes { background: #1e8a4c; } .bn-no { background: #b9b0a3; }
+.bn-yes svg, .bn-no svg { width: 11px; height: 11px; }
+.bn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bn-price-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
+.bn-price small { display: block; font: 800 11px Nunito, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7a6a55; }
+.bn-price b { font: 900 28px/1 Nunito, sans-serif; color: #9b1c14; }
+.bn-icons { display: flex; gap: 6px; }
+.bn-ib { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; }
+.bn-ib svg { width: 20px; height: 20px; }
+.bn-ib--wa { background: #25D366; color: #fff; }
+.bn-ib--bell { background: #f3e7d2; color: #5a2d12; }
+.bn-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 8px; border-radius: 12px; font: 900 14px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; }
+.bn-btn--book { background: var(--bn-red); color: #fff; box-shadow: 0 3px 0 #7a150f; }
+.bn-btn--ben { border: 2px solid #173f3f; color: #173f3f; }
+.bn-foot { margin-top: -2px; text-align: center; font: 600 11.5px/1.35 Nunito, sans-serif; color: #7a6a55; }
+
+.bn-more { display: flex; justify-content: center; margin-top: 30px; }
+.bn-more-btn { padding: 14px 28px; border-radius: 999px; background: #F6B93B; color: #3a1d0e; font: 900 16px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; box-shadow: 0 4px 0 #a8741a, 0 10px 22px #7a4a1a40; }
+
+/* 4 across only on wide screens; iPad + small laptops get 2; phones get 1. */
+@media (max-width: 1399px) { .bn-grid, .bn-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .bn-section { padding: 30px 16px 34px; }
+  .bn-grid, .bn-grid--1, .bn-grid--2, .bn-grid--3 { grid-template-columns: 1fr; gap: 20px; }
+  .bn-more-btn { width: 100%; }
+}
+
+/* The folk site sets `.folk-site[data-design] a { color: inherit }` (0,2,1),
+   which beat the single-class rules above. Re-assert link colours at 0,3,1. */
+.folk-site .bn-section a.bn-art { color: #fff; }
+.folk-site .bn-section a.bn-btn--book { color: #fff; }
+.folk-site .bn-section a.bn-btn--ben, .folk-site .bn-section .bn-title a { color: #173f3f; }
+.folk-site .bn-section a.bn-ib--wa { color: #fff; }
+.folk-site .bn-section a.bn-ib--bell { color: #5a2d12; }
+.folk-site .bn-section a.bn-more-btn { color: #3a1d0e; }
