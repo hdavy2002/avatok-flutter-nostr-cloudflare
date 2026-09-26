@@ -2,7 +2,9 @@ import { assetRevision, fontRevision } from './assets.generated';
 import type { OgRecord } from './types';
 
 // Bump when layout, sanitization or rendering behavior changes.
-export const TEMPLATE_REVISION = 'saathum-og-1';
+// saathum-og-2: [SEO-OG-ART-1] per-article/listing artwork actually renders; new
+// URLs force WhatsApp/Facebook to drop the cached brand-hero cards.
+export const TEMPLATE_REVISION = 'saathum-og-2';
 export const RENDERER_REVISION = 'cf-workers-og-3.0.1';
 
 export async function sha256(bytes: Uint8Array | string): Promise<string> {

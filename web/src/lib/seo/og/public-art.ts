@@ -81,8 +81,53 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/** Minimal view of the Pages static-asset binding (env.ASSETS). */
+export interface AssetFetcher { fetch(input: Request | URL | string, init?: RequestInit): Promise<Response> }
+
+/** Bounded read of one image response; returns a data: URI or null. */
+async function readBoundedImage(response: Response): Promise<string | null> {
+  const type = (response.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  const size = response.headers.get('Content-Length');
+  if (!response.ok || !response.body || !['image/png','image/jpeg'].includes(type) ||
+      (size !== null && (!/^\d+$/.test(size) || Number(size) > MAX_BYTES))) {
+    await response.body?.cancel();
+    return null;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let count = 0;
+  try {
+    while (true) {
+      const { done, value: chunk } = await reader.read();
+      if (done) break;
+      count += chunk.byteLength;
+      if (count > MAX_BYTES) { await reader.cancel(); return null; }
+      chunks.push(chunk);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(count);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  return safeRaster(bytes, type) ? `data:${type};base64,${bytesToBase64(bytes)}` : null;
+}
+
+/**
+ * [SEO-OG-ART-1] Same-site artwork is read from the Pages ASSETS binding as the
+ * pre-shrunk /_og-art/<sha>.jpg that scripts/prepare-og-art.mjs builds. The old
+ * path — fetching https://saathum.com/cdn-cgi/image/... from inside the Function —
+ * never works in workerd, so every article card fell back to the brand hero.
+ */
+async function fetchOwnArt(rawPath: string, assets: AssetFetcher): Promise<string | null> {
+  const match = rawPath.match(/^\/_images\/([a-f0-9]{64})\.(?:png|jpe?g|webp|avif)$/i);
+  if (!match) return null;
+  try {
+    const response = await assets.fetch(new Request(`${ORIGIN}/_og-art/${match[1].toLowerCase()}.jpg`, { method: 'GET' }));
+    return await readBoundedImage(response);
+  } catch { return null; }
+}
+
 /** No cookies, auth, arbitrary hosts, SVG, request forwarding or unbounded downloads. */
-export async function fetchPublicArt(value: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+export async function fetchPublicArt(value: string, fetcher: typeof fetch = fetch, assets?: AssetFetcher): Promise<string | null> {
   let url = approvedArtUrl(value);
   if (!url) return null;
   let rawPath = unwrapTransform(url.pathname);
@@ -90,6 +135,10 @@ export async function fetchPublicArt(value: string, fetcher: typeof fetch = fetc
   // A committed source asset is mutable by filename; fetch the same immutable
   // content-addressed object that publicArtRevision() put into the OG URL hash.
   if (url.origin === ORIGIN) rawPath = String((manifest as Record<string, string>)[rawPath] ?? rawPath);
+  if (url.origin === ORIGIN && assets) {
+    const own = await fetchOwnArt(rawPath, assets);
+    if (own) return own;
+  }
   url = new URL(`/cdn-cgi/image/format=jpeg,quality=80,width=900,fit=scale-down${rawPath}`, url.origin);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -107,29 +156,7 @@ export async function fetchPublicArt(value: string, fetcher: typeof fetch = fetc
         if (!url) return null;
         continue;
       }
-      const type = (response.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
-      const size = response.headers.get('Content-Length');
-      if (!response.ok || !response.body || !['image/png','image/jpeg'].includes(type) ||
-          (size !== null && (!/^\d+$/.test(size) || Number(size) > MAX_BYTES))) {
-        await response.body?.cancel();
-        return null;
-      }
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let count = 0;
-      try {
-        while (true) {
-          const { done, value: chunk } = await reader.read();
-          if (done) break;
-          count += chunk.byteLength;
-          if (count > MAX_BYTES) { await reader.cancel(); return null; }
-          chunks.push(chunk);
-        }
-      } finally { reader.releaseLock(); }
-      const bytes = new Uint8Array(count);
-      let offset = 0;
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-      return safeRaster(bytes, type) ? `data:${type};base64,${bytesToBase64(bytes)}` : null;
+      return await readBoundedImage(response);
     }
   } catch { return null; }
   finally { clearTimeout(timer); }

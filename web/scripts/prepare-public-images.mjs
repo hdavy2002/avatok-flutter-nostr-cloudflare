@@ -9,7 +9,7 @@ const manifest = {};
 const inventory = [];
 async function walk(dir) {
   for (const item of await readdir(dir, { withFileTypes: true })) {
-    if (item.name.startsWith('.') || item.name === '_images') continue;
+    if (item.name.startsWith('.') || item.name === '_images' || item.name === '_og-art') continue;
     const source = join(dir, item.name);
     if (item.isDirectory()) { await walk(source); continue; }
     if (!item.isFile() || !/\.(png|jpe?g|webp|avif)$/i.test(item.name)) continue;

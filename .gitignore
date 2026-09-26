@@ -256,4 +256,5 @@ tools/**/*.mp3
 
 # Generated at web prebuild from tracked originals.
 web/public/_images/
+web/public/_og-art/
 web/image-delivery-report.json

@@ -1,7 +1,7 @@
 // Exercise the built Astro endpoint inside workerd. Importing the renderer in
 // Node is insufficient: this catches missing WASM modules and bundling defects.
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Miniflare } from 'miniflare';
 
@@ -38,8 +38,16 @@ const runtime = new Miniflare({
   compatibilityDate: '2025-05-05',
   kvNamespaces: ['SESSION'],
   cf: false,
-  // The OG route does not read assets; this mirrors Pages' binding defensively.
-  serviceBindings: { ASSETS: async () => new Response('Not found', { status: 404 }) },
+  // [SEO-OG-ART-1] The OG route reads the page's own artwork from ASSETS
+  // (/_og-art/<sha>.jpg). Serve dist/ exactly like Pages does.
+  serviceBindings: {
+    ASSETS: async (request) => {
+      const path = resolve('dist', '.' + new URL(request.url).pathname);
+      if (!path.startsWith(resolve('dist')) || !existsSync(path)) return new Response('Not found', { status: 404 });
+      const type = path.endsWith('.jpg') ? 'image/jpeg' : path.endsWith('.png') ? 'image/png' : 'application/octet-stream';
+      return new Response(readFileSync(path), { headers: { 'Content-Type': type } });
+    },
+  },
 });
 
 try {
@@ -55,6 +63,16 @@ try {
   assert.equal(view.getUint32(16), 1200, 'OG runtime image width mismatch');
   assert.equal(view.getUint32(20), 630, 'OG runtime image height mismatch');
   console.log(`OG workerd endpoint OK: ${bytes.byteLength} bytes.`);
+
+  // [SEO-OG-ART-1] A ritual article must render its OWN picture, not the brand
+  // hero. Before this check every article card shipped with X-SEO-OG-Fallback: art.
+  const article = await runtime.dispatchFetch('https://saathum.com/og/article/saraswati-havan.png');
+  if (article.status !== 200) assert.fail(`Article OG endpoint returned ${article.status}: ${await article.text()}`);
+  assert.equal(article.headers.get('x-seo-og-fallback'), null, 'Article OG card fell back instead of using the ritual artwork');
+  const home = await runtime.dispatchFetch('https://saathum.com/og/home/home.png');
+  const [a, h] = [new Uint8Array(await article.arrayBuffer()), new Uint8Array(await home.arrayBuffer())];
+  assert.notDeepEqual(a.subarray(0, 4096), h.subarray(0, 4096), 'Article card is byte-identical to the home card');
+  console.log(`OG article artwork OK: ${a.byteLength} bytes (home ${h.byteLength}).`);
 } finally {
   await runtime.dispose();
 }

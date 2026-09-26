@@ -11,7 +11,7 @@
     "export-tokens": "node scripts/export-zine-tokens.mjs",
     "predev": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs",
     "dev": "astro dev",
-    "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs && node scripts/prepare-global-art.mjs && node scripts/prepare-seo-assets.mjs && node scripts/prepare-public-images.mjs && node scripts/check-image-urls.mjs",
+    "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs && node scripts/prepare-global-art.mjs && node scripts/prepare-seo-assets.mjs && node scripts/prepare-public-images.mjs && node scripts/prepare-og-art.mjs && node scripts/check-image-urls.mjs",
     "build": "astro build",
     "postbuild": "node scripts/dedupe-routes-json.mjs",
     "preview": "astro preview",

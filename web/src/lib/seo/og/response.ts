@@ -1,5 +1,5 @@
 import { fallbackBase64, heroDataUri } from './assets.generated';
-import { fetchPublicArt } from './public-art';
+import { fetchPublicArt, type AssetFetcher } from './public-art';
 import { decodeBase64, renderOgPng } from './renderer';
 import { ogImagePath, ogRevision, sha256 } from './revision';
 import type { OgResolver } from './types';
@@ -14,7 +14,7 @@ function errorResponse(status: number): Response {
 }
 
 /** Request only identifies a registered public record; copy and artwork come from the resolver. */
-export async function ogResponse(request: Request, kind: string, key: string, resolve: OgResolver): Promise<Response> {
+export async function ogResponse(request: Request, kind: string, key: string, resolve: OgResolver, assets?: AssetFetcher): Promise<Response> {
   const url = new URL(request.url);
   const keys = [...url.searchParams.keys()];
   const version = url.searchParams.get('v');
@@ -37,7 +37,7 @@ export async function ogResponse(request: Request, kind: string, key: string, re
   let fallback: 'art' | 'render' | undefined;
   let art = heroDataUri;
   if (record.art?.url) {
-    const fetched = await fetchPublicArt(record.art.url);
+    const fetched = await fetchPublicArt(record.art.url, fetch, assets);
     if (fetched) art = fetched;
     else fallback = 'art';
   }
