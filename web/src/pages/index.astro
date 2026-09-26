@@ -29,7 +29,11 @@ const categories = [
 // Cards + images come from lib/ritualGuides.ts (featuredHavans) — images at
 // /assets/saathum-rituals/<slug>.png. The old sample listing cards (prices,
 // ratings, schedule badges) are in git history at c32524ca for restore.
-import { featuredHavans, ritualCategoryShort } from '../lib/ritualGuides';
+import { featuredHavans, ritualCategoryShort, rituals } from '../lib/ritualGuides';
+// [SAATHUM-BOOKNOW-1 2026-09-26] "Book now" shelf — real upcoming listings, hidden when there are none.
+import BookNowShelf from '../islands/home/BookNowShelf';
+const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: publicImage(r.image, { width: 900, fit: 'scale-down' }) }));
+const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'navagraha-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: publicImage(h.image, { width: 900, fit: 'scale-down' }) }));
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
@@ -73,6 +77,11 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
           </a>)}
         </div>
       </section>
+      <div class="grand-divider grand-divider--after-experiences" aria-hidden="true"></div>
+
+      <!-- NOTE FOR AI: [SAATHUM-BOOKNOW-1] up to 4 real bookable listings (live/1:1) from /api/explore.
+           Renders NOTHING when none are listed. Add ?booknow=preview to see sample cards. -->
+      <BookNowShelf client:idle guides={bookNowGuides} samples={bookNowSamples} exploreHref="/marketplace" />
 
       <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="havans">
         <!-- NOTE FOR AI: knowledge cards, NOT bookable listings. Each opens the ritual's

@@ -32,7 +32,7 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-hero-art { min-width: 0; align-self: end; display: flex; align-items: flex-end; justify-content: center; }
 .folk-site[data-design="saathum-reference-v5"] .grand-hero-image { display: block; width: 100%; height: auto; max-height: 800px; object-fit: contain; object-position: center bottom; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences, .folk-site[data-design="saathum-reference-v5"] .grand-moments-inner { max-width: 1840px; margin: auto; padding-inline: var(--grand-gutter); }
-.folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 25px 26px; position: relative; z-index: 0; }
+.folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 25px 48px; /* [SAATHUM-BOOKNOW-1] was 26px — room above the new bottom border */ position: relative; z-index: 0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-experiences::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%); background: #A54C2E; z-index: -1; }
 .folk-site[data-design="saathum-reference-v5"] .grand-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 17px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-section-heading h2 span { color: var(--grand-red); font-size: .8em; }
@@ -164,7 +164,7 @@
   .folk-site[data-design="saathum-reference-v5"] .grand-button { font-size: 17px; padding: 13px 18px; }
   .folk-site[data-design="saathum-reference-v5"] .grand-quiet { margin-top: 20px; font-size: 16px; }
   .folk-site[data-design="saathum-reference-v5"] .grand-hero-image { width: min(100%, 470px); }
-  .folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 22px; }
+  .folk-site[data-design="saathum-reference-v5"] .grand-experiences { padding-block: 22px 40px; }
   .folk-site[data-design="saathum-reference-v5"] .grand-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .folk-site[data-design="saathum-reference-v5"] .grand-category-copy { padding: 8px 8px 12px; }
   .folk-site[data-design="saathum-reference-v5"] .grand-category-copy h3 { font-size: 15px; }
