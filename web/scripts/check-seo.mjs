@@ -75,6 +75,9 @@ const dynamicCoverage = new Map([
   ['src/pages/[username]/[slug].astro', 'sitemap-listings.xml'],
   ['src/pages/c/[handle].astro', 'sitemap-creators.xml'],
   ['src/pages/marketplace/page/[page].astro', 'sitemap-directory.xml'],
+  // [SAATHUM-EVENT-PAGE 2026-09-26] /book/<id> event page: listingContent() canonical is the
+  // listing URL (/l/<id> or /<handle>/<slug>), which sitemap-listings.xml already enumerates.
+  ['src/pages/book/[id].astro', 'sitemap-listings.xml'],
 ]);
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
