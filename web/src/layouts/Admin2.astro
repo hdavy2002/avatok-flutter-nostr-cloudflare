@@ -1,0 +1,131 @@
+---
+// Admin 2 shell — [ADMIN2-SHELL 2026-09-26]. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md
+// ("Shell usage"). Same look as layouts/Dashboard2.astro (saathum-tokens.css + shadcn).
+//
+//   <Admin2 title="Events" active="events" subtitle="…">
+//     <Fragment slot="actions"><a href="/admin/events/new" class="…">New event</a></Fragment>
+//     <AdminEvents client:load />
+//   </Admin2>
+//
+// - `active` ∈ 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices'.
+// - AdminNav owns the page's ONLY <ClerkProvider> and the admin guard (GET /api/admin/whoami).
+//   Screen islands must not mount their own ClerkIsland; use adminApi() from islands/admin2/adminApi.
+// - Until the guard says "ok", the page content and the actions slot are hidden; a 403 shows the
+//   "You don't have admin access" card instead.
+// - A sonner <Toaster/> is mounted here; call `toast()` from components/ui/sonner.
+import Base from './Base.astro';
+import AdminNav from '../islands/admin2/AdminNav.tsx';
+import DashToaster from '../islands/dashboard2/DashToaster.tsx';
+import type { AdminKey } from '../islands/admin2/nav';
+import { publicImage } from '../lib/config';
+import '../styles/saathum-tokens.css';
+
+export interface Props {
+  /** Page title (tab) and default heading. */
+  title: string;
+  /** Visible heading; defaults to `title`. */
+  heading?: string;
+  /** One-line caption under the heading. */
+  subtitle?: string;
+  active: AdminKey;
+}
+const { title, heading, subtitle, active } = Astro.props;
+const hasActions = Astro.slots.has('actions');
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' });
+---
+
+<Base title={`${title} · Saa Thum Admin`} chrome={false} noindex={true} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="hsl(42, 100%, 95%)" />
+  </Fragment>
+  {/* Radix portals (dialogs, popovers, selects, sheets) render into <body>, outside the
+      .dash2 root, so body carries the scope too. Runs before paint. */}
+  <script is:inline>document.body.classList.add('dash2');</script>
+
+  <div
+    class="dash2 dash2-root admin2-root min-h-screen bg-background text-foreground"
+    data-admin2-root
+    data-admin2-state="loading"
+    data-admin2-screen={active}
+    style={`--folk-border-url:url(${ribbon})`}
+  >
+    <AdminNav client:load active={active} />
+
+    <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
+      <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
+        <header class="mb-6 sm:mb-8">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div class="min-w-0">
+              <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>
+              {subtitle && <p class="mt-2 max-w-2xl text-[15px] font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
+            </div>
+            {hasActions && <div class="admin2-actions flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
+          </div>
+          <div class="dash-ribbon mt-5" aria-hidden="true"></div>
+        </header>
+
+        {/* Gate states — AdminNav flips data-admin2-state on the root. */}
+        <div class="admin2-gate" data-gate="loading" aria-busy="true" aria-live="polite">
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="admin2-pulse h-28 rounded-xl bg-muted"></div>
+            <div class="admin2-pulse h-28 rounded-xl bg-muted"></div>
+            <div class="admin2-pulse h-28 rounded-xl bg-muted"></div>
+            <div class="admin2-pulse h-28 rounded-xl bg-muted"></div>
+          </div>
+          <span class="sr-only">Checking admin access…</span>
+        </div>
+
+        <div class="admin2-gate" data-gate="denied" role="alert">
+          <div class="mx-auto max-w-lg rounded-xl border border-border bg-card p-6 text-center shadow-[var(--dash-shadow,none)] sm:p-8">
+            <img src="/diya-logo.png" alt="" width="56" height="56" class="mx-auto h-14 w-14 object-contain" />
+            <h2 class="mt-4 font-dash text-[22px] font-bold text-grand-teal">You don't have admin access</h2>
+            <p class="mt-2 text-[15px] font-semibold leading-relaxed text-muted-foreground">
+              This area is for the Saa Thum team. If you should have access, ask the owner to add your account.
+            </p>
+            <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <a href="/dashboard" class="inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 font-dashbody text-sm font-bold text-primary-foreground no-underline shadow-sm hover:bg-primary/90">Go to my dashboard</a>
+              <a href="/sign-out?from=admin2" class="inline-flex h-11 items-center justify-center rounded-md border border-border bg-card px-5 font-dashbody text-sm font-bold text-foreground no-underline hover:bg-muted">Use another account</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin2-gate" data-gate="error" role="alert">
+          <div class="mx-auto max-w-lg rounded-xl border border-border bg-card p-6 text-center sm:p-8">
+            <h2 class="font-dash text-[22px] font-bold text-grand-teal">We couldn't check your access</h2>
+            <p class="mt-2 text-[15px] font-semibold leading-relaxed text-muted-foreground">Check your connection and try again.</p>
+            <button type="button" onclick="location.reload()" class="mt-6 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 font-dashbody text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90">Try again</button>
+          </div>
+        </div>
+
+        <div class="admin2-content">
+          <slot />
+        </div>
+      </main>
+    </div>
+
+    <DashToaster client:load />
+  </div>
+
+  <style is:global>
+    .admin2-root .admin2-gate { display: none; }
+    .admin2-root[data-admin2-state='loading'] .admin2-gate[data-gate='loading'],
+    .admin2-root[data-admin2-state='denied'] .admin2-gate[data-gate='denied'],
+    .admin2-root[data-admin2-state='error'] .admin2-gate[data-gate='error'] { display: block; }
+    .admin2-root:not([data-admin2-state='ok']) .admin2-content,
+    .admin2-root:not([data-admin2-state='ok']) .admin2-actions { display: none; }
+    .admin2-root .admin2-pulse { animation: admin2-pulse 1.4s ease-in-out infinite; }
+    @keyframes admin2-pulse { 50% { opacity: 0.55; } }
+    @media (prefers-reduced-motion: reduce) { .admin2-root .admin2-pulse { animation: none; } }
+  </style>
+
+  <script>
+    // admin2_view {screen, load_ms} — one per Admin 2 page load.
+    import { capture } from '../lib/analytics';
+    const screen = document.querySelector<HTMLElement>('[data-admin2-screen]')?.dataset.admin2Screen;
+    if (screen) capture('admin2_view', { screen, load_ms: Math.round(performance.now()) });
+  </script>
+</Base>
