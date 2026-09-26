@@ -63,8 +63,6 @@ const privatePreviewFiles = new Set([
   'islands/checkout/GatewayPicker.tsx',
 ]);
 const derived = new Map([
-  ['islands/dashboard/MyFavourites.tsx', new Set(['thumb'])],
-  ['islands/admin/SubmissionPanel.tsx', new Set(['faceUrl'])],
   ['layouts/Help.astro', new Set(['stampImage'])],
 ]);
 // Built HTML/CSS is authoritative for public browser images; source expressions
