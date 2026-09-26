@@ -8,18 +8,179 @@
 //  - Re-polls every 30s while the tab is visible (Page Visibility API), and once
 //    more as soon as a countdown reaches zero.
 //  - dash2_join_click {event_id, seconds_from_start}.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, BellRing, CalendarDays, CalendarPlus, Clock, Flame, Loader2, Play, Radio, Ticket } from 'lucide-react';
-import { capture } from '../../lib/analytics';
+import {
+  ArrowRight, BellRing, CalendarDays, CalendarPlus, Clock, Download, Flame, Loader2, Package, Play, Radio, Ticket,
+} from 'lucide-react';
+import { ApiError } from '../../lib/apiClient';
+import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { toast } from '../../components/ui/sonner';
 import {
-  authedRequest, EmptyState, ErrorState, errorMessage, fmtDuration, fmtIstDateTime, listingImage, Shimmer,
-  type EventItem, type EventsResponse,
+  authedBlob, authedRequest, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtAddressOneLine, fmtDuration,
+  fmtIstDateTime, listingImage, putSaathumCheckoutAddress, Shimmer, type EventItem, type EventsResponse,
+  type SaathumAddress, type SaathumCheckoutSummary,
 } from '../../components/dash2/shared';
 import { YouTubeGuardedPlayer, type GuardedPlayerHandle } from '../../components/dash2/YouTubeGuardedPlayer';
+
+/** The one Saa Thum checkout backing this listing for "my events" purposes — prefer the
+ * newest CONFIRMED checkout (prasad/receipt/sankalp only make sense once paid), falling
+ * back to the newest of any status so a not-yet-confirmed prasad address can still show.
+ * No match (a non-Saa-Thum booking, or my-checkouts unavailable) → null, no UI added. */
+function checkoutFor(checkouts: SaathumCheckoutSummary[], listingId: string): SaathumCheckoutSummary | null {
+  const matches = checkouts.filter((c) => c.listing.id === listingId);
+  if (!matches.length) return null;
+  const confirmed = matches.filter((c) => c.status === 'confirmed');
+  const pool = confirmed.length ? confirmed : matches;
+  return pool.reduce((best, c) => (c.created_at > best.created_at ? c : best));
+}
+
+const PIN_RE = /^\d{6}$/;
+const PHONE_RE = /^[6-9]\d{9}$/;
+
+interface AddressDraft { name: string; phone: string; line1: string; line2: string; city: string; state: string; pincode: string }
+function draftFromAddress(a: SaathumAddress | null): AddressDraft {
+  return { name: a?.name ?? '', phone: a?.phone ?? '', line1: a?.line1 ?? '', line2: a?.line2 ?? '', city: a?.city ?? '', state: a?.state ?? '', pincode: a?.pincode ?? '' };
+}
+
+function AddressDialog({
+  open, onOpenChange, checkout, onSaved,
+}: { open: boolean; onOpenChange: (o: boolean) => void; checkout: SaathumCheckoutSummary; onSaved: (c: SaathumCheckoutSummary) => void }) {
+  const [d, setD] = useState<AddressDraft>(() => draftFromAddress(checkout.address));
+  const [fieldErr, setFieldErr] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (open) { setD(draftFromAddress(checkout.address)); setFieldErr({}); } }, [open, checkout.address]);
+  const up = (p: Partial<AddressDraft>) => setD((c) => ({ ...c, ...p }));
+
+  const submit = async () => {
+    const t = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.trim()])) as AddressDraft;
+    const errs: Record<string, string> = {};
+    if (!t.name) errs.name = 'Enter the name for delivery.';
+    if (!PHONE_RE.test(t.phone)) errs.phone = 'Enter a 10-digit mobile number.';
+    if (!t.line1) errs.line1 = 'Enter the first address line.';
+    if (!t.city) errs.city = 'Enter the city.';
+    if (!t.state) errs.state = 'Enter the state.';
+    if (!PIN_RE.test(t.pincode)) errs.pincode = 'Enter a 6-digit PIN code.';
+    if (Object.keys(errs).length) { setFieldErr(errs); return; }
+    setSaving(true);
+    try {
+      const address: SaathumAddress = { name: t.name, phone: t.phone, line1: t.line1, line2: t.line2 || null, city: t.city, state: t.state, pincode: t.pincode };
+      const updated = await putSaathumCheckoutAddress(checkout.checkout_id, address);
+      capture('dash2_prasad_address_changed', { ok: true });
+      onSaved(updated);
+      onOpenChange(false);
+      toast.success('Address updated');
+    } catch (e) {
+      capture('dash2_prasad_address_changed', { ok: false, reason: e instanceof ApiError ? e.error : 'network' });
+      if (!(e instanceof ApiError) || e.status >= 500) captureException(e, { where: 'dash2_prasad_address_changed' });
+      toast.error(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const F = (k: keyof AddressDraft, label: string, extra: Partial<ComponentProps<typeof Input>> = {}) => (
+    <div>
+      <Label htmlFor={`prasad-${k}`} className="text-[13px] font-bold">{label}</Label>
+      <div className="mt-1.5">
+        <Input
+          id={`prasad-${k}`}
+          value={d[k]}
+          onChange={(e) => up({ [k]: e.target.value } as Partial<AddressDraft>)}
+          aria-invalid={!!fieldErr[k]}
+          aria-describedby={fieldErr[k] ? `prasad-${k}-err` : undefined}
+          {...extra}
+        />
+      </div>
+      {fieldErr[k] && <p id={`prasad-${k}-err`} className="mt-1 text-[12.5px] font-bold text-destructive">{fieldErr[k]}</p>}
+    </div>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-grand-teal">Change prasad address</DialogTitle>
+          <DialogDescription>Prasad ships the same day as the havan. You can change this address any time before it starts.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {F('name', 'Full name')}
+          {F('phone', 'Mobile number', { inputMode: 'numeric', maxLength: 10, placeholder: '98765 43210' })}
+          <div className="sm:col-span-2">{F('line1', 'Address line 1')}</div>
+          <div className="sm:col-span-2">{F('line2', 'Address line 2 (optional)')}</div>
+          {F('city', 'City')}
+          {F('state', 'State')}
+          {F('pincode', 'PIN code', { inputMode: 'numeric', maxLength: 6 })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={() => void submit()} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : null} Save address</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Prasad to: …" / "Change address" for a Saa Thum checkout that opted into prasad.
+ * No prasad on this checkout → renders nothing. */
+function PrasadBlock({ checkout, now, onUpdated }: { checkout: SaathumCheckoutSummary; now: number; onUpdated: (c: SaathumCheckoutSummary) => void }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  if (!checkout.prasad) return null;
+  const started = checkout.listing.starts_at != null && checkout.listing.starts_at <= now;
+  const canEdit = checkout.can_edit_address && !started;
+  return (
+    <div className="mt-1 space-y-2 rounded-xl border border-border/50 bg-secondary/40 p-3">
+      <p className="flex items-start gap-2 text-[13px] font-semibold text-foreground">
+        <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        {checkout.address ? <>Prasad to: <span className="font-extrabold">{fmtAddressOneLine(checkout.address)}</span></> : 'Add a prasad delivery address'}
+      </p>
+      {canEdit ? (
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>Change address</Button>
+      ) : (
+        <p className="text-[12.5px] font-semibold text-muted-foreground">Prasad ships the same day as the havan.</p>
+      )}
+      <AddressDialog open={dialogOpen} onOpenChange={setDialogOpen} checkout={checkout} onSaved={onUpdated} />
+    </div>
+  );
+}
+
+/** Receipt download for a confirmed Saa Thum checkout. Not confirmed yet → nothing. */
+function ReceiptButton({ checkout }: { checkout: SaathumCheckoutSummary }) {
+  const [busy, setBusy] = useState(false);
+  if (checkout.status !== 'confirmed') return null;
+  const download = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { blob, filename } = await authedBlob(`/api/saathum/checkout/${encodeURIComponent(checkout.checkout_id)}/receipt.pdf`);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename ?? `saathum-receipt-${checkout.checkout_id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      capture('dash2_receipt_download', { source: 'checkout', ok: true });
+    } catch (e) {
+      capture('dash2_receipt_download', { source: 'checkout', ok: false });
+      captureException(e, { where: 'dash2_receipt_download' });
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="ghost" size="sm" onClick={() => void download()} disabled={busy} className="w-fit">
+      {busy ? <Loader2 className="animate-spin" /> : <Download />} Receipt
+    </Button>
+  );
+}
 
 const POLL_MS = 30_000;
 const GET_READY_MS = 15 * 60_000;
@@ -130,8 +291,8 @@ function Countdown({ startsAt, now }: { startsAt: number; now: number }) {
 }
 
 // ─────────────────────────── cards ───────────────────────────
-function SankalpLine({ item }: { item: EventItem }) {
-  const s = item.sankalp;
+function SankalpLine({ item, checkout }: { item: EventItem; checkout?: SaathumCheckoutSummary | null }) {
+  const s = checkout?.sankalp ?? item.sankalp;
   if (!s?.name) return null;
   return (
     <p className="text-[13px] font-semibold text-muted-foreground">
@@ -141,7 +302,9 @@ function SankalpLine({ item }: { item: EventItem }) {
   );
 }
 
-function LiveSpotlight({ item, now }: { item: EventItem; now: number }) {
+function LiveSpotlight({
+  item, now, checkout, onCheckoutUpdated,
+}: { item: EventItem; now: number; checkout: SaathumCheckoutSummary | null; onCheckoutUpdated: (c: SaathumCheckoutSummary) => void }) {
   const playerRef = useRef<GuardedPlayerHandle>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -173,7 +336,9 @@ function LiveSpotlight({ item, now }: { item: EventItem; now: number }) {
         <div>
           <h2 className="font-dash text-[22px] font-bold leading-[1.2] text-grand-teal sm:text-[28px]">{item.listing.title}</h2>
           {item.listing.deity && <p className="mt-1 text-[14px] font-bold text-primary">{item.listing.deity}</p>}
-          <div className="mt-1"><SankalpLine item={item} /></div>
+          <div className="mt-1"><SankalpLine item={item} checkout={checkout} /></div>
+          {checkout && <PrasadBlock checkout={checkout} now={now} onUpdated={onCheckoutUpdated} />}
+          {checkout && <ReceiptButton checkout={checkout} />}
         </div>
         {vid ? (
           <div ref={wrapRef}>
@@ -227,7 +392,9 @@ function PendingCard({ item }: { item: EventItem }) {
   );
 }
 
-function UpcomingCard({ item, now }: { item: EventItem; now: number }) {
+function UpcomingCard({
+  item, now, checkout, onCheckoutUpdated,
+}: { item: EventItem; now: number; checkout: SaathumCheckoutSummary | null; onCheckoutUpdated: (c: SaathumCheckoutSummary) => void }) {
   const [showPlayer, setShowPlayer] = useState(false);
   const img = listingImage(item.listing.image_url, 900);
   const diff = item.starts_at != null ? item.starts_at - now : null;
@@ -254,8 +421,10 @@ function UpcomingCard({ item, now }: { item: EventItem; now: number }) {
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="line-clamp-2 font-dash text-[17px] font-bold leading-[1.25]">{item.listing.title}</h3>
         {item.listing.deity && <p className="text-[13px] font-bold text-primary">{item.listing.deity}</p>}
-        <SankalpLine item={item} />
+        <SankalpLine item={item} checkout={checkout} />
         {item.listing.duration_min ? <p className="flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Clock className="h-3.5 w-3.5" /> {fmtDuration(item.listing.duration_min)}</p> : null}
+        {checkout && <PrasadBlock checkout={checkout} now={now} onUpdated={onCheckoutUpdated} />}
+        {checkout && <ReceiptButton checkout={checkout} />}
         {getReady && (
           <div className="mt-2 space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
             <p className="flex items-start gap-2 text-[14px] font-bold text-foreground">
@@ -308,11 +477,16 @@ function ListSkeleton() {
 // ─────────────────────────── screen ───────────────────────────
 export default function MyEvents() {
   const [data, setData] = useState<EventsResponse | null>(null);
+  const [checkouts, setCheckouts] = useState<SaathumCheckoutSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const inflight = useRef<AbortController | null>(null);
+
+  const onCheckoutUpdated = useCallback((updated: SaathumCheckoutSummary) => {
+    setCheckouts((prev) => prev.map((c) => (c.checkout_id === updated.checkout_id ? { ...c, ...updated } : c)));
+  }, []);
 
   const load = useCallback(async (silent: boolean) => {
     inflight.current?.abort();
@@ -344,6 +518,11 @@ export default function MyEvents() {
     document.addEventListener('visibilitychange', tick);
     return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); inflight.current?.abort(); };
   }, [load]);
+
+  // Independent of /api/me/events — my-checkouts may 404/fail until A1 (SAATHUM-CHECKOUT-API)
+  // deploys, and fetchMyCheckoutsSafe() swallows that to [] so this screen keeps rendering
+  // exactly as it does today, minus the prasad/receipt extras.
+  useEffect(() => { void fetchMyCheckoutsSafe().then(setCheckouts); }, []);
 
   // 1s clock, skew-corrected.
   useEffect(() => {
@@ -383,7 +562,15 @@ export default function MyEvents() {
     <div className="space-y-8 font-dashbody">
       {live.length > 0 && (
         <section className="space-y-5" aria-label="Live now">
-          {live.map((i) => <LiveSpotlight key={i.order_id ?? i.listing.id} item={i} now={now} />)}
+          {live.map((i) => (
+            <LiveSpotlight
+              key={i.order_id ?? i.listing.id}
+              item={i}
+              now={now}
+              checkout={checkoutFor(checkouts, i.listing.id)}
+              onCheckoutUpdated={onCheckoutUpdated}
+            />
+          ))}
         </section>
       )}
       {rest.length > 0 && (
@@ -392,7 +579,15 @@ export default function MyEvents() {
           <div className="grid gap-5 md:grid-cols-2">
             {rest.map((i) => i.state === 'pending_payment'
               ? <PendingCard key={i.payment_id ?? i.order_id ?? i.listing.id} item={i} />
-              : <UpcomingCard key={i.order_id ?? i.listing.id} item={i} now={now} />)}
+              : (
+                <UpcomingCard
+                  key={i.order_id ?? i.listing.id}
+                  item={i}
+                  now={now}
+                  checkout={checkoutFor(checkouts, i.listing.id)}
+                  onCheckoutUpdated={onCheckoutUpdated}
+                />
+              ))}
           </div>
         </section>
       )}

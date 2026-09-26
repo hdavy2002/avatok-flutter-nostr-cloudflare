@@ -8,7 +8,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { AlertTriangle, RotateCw } from 'lucide-react';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { request, ApiError, type RequestOptions } from '../../lib/apiClient';
-import { cfImage } from '../../lib/config';
+import { cfImage, API_BASE } from '../../lib/config';
+import { captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import './dash2.css';
@@ -48,6 +49,85 @@ export interface EventItem {
   youtube_video_id?: string;
 }
 export interface EventsResponse { now: number; items: EventItem[] }
+
+// ─────────────────────────── Saa Thum checkout (SAATHUM-DASH-DOWNLOAD) ───────────────────────────
+// Contract: Specs/SPEC-2026-09-26-SAATHUM-CHECKOUT.md. `GET /api/saathum/my-checkouts` may
+// 404/fail until A1 (SAATHUM-CHECKOUT-API) deploys — every caller MUST treat that as "no
+// Saa Thum checkout data" and render the dashboard exactly as it does today.
+export interface SaathumAddress {
+  name: string; phone: string; line1: string; line2?: string | null; city: string; state: string; pincode: string;
+}
+export interface SaathumSankalp { name: string; gotra?: string; family?: string[]; wish?: string }
+export interface SaathumQuoteLine {
+  kind: 'ticket' | 'chadhava' | 'dakshina' | 'prasad'; id?: string; label: string; qty: number;
+  unit_rupees: number; amount_rupees: number;
+}
+export interface SaathumQuote {
+  lines: SaathumQuoteLine[]; subtotal_rupees: number; gst_rate_pct: number; gst_rupees: number; total_rupees: number;
+}
+export type SaathumCheckoutStatus = 'awaiting_payment' | 'confirmed' | 'review_pending' | 'expired';
+/** `CheckoutSummary` from GET /api/saathum/my-checkouts, and close enough to the full
+ * `Checkout` (PUT .../address's response) that both can be read with this one type —
+ * the fields this UI touches (address, can_edit_address, sankalp, receipt_url) are on both. */
+export interface SaathumCheckoutSummary {
+  checkout_id: string;
+  listing: { id: string; title: string; starts_at: number | null; duration_min?: number | null; cover_url?: string | null };
+  status: SaathumCheckoutStatus;
+  quote: SaathumQuote;
+  sankalp: SaathumSankalp;
+  prasad: boolean;
+  address: SaathumAddress | null;
+  can_edit_address: boolean;
+  receipt_url: string | null;
+  confirmed_at: number | null;
+  created_at: number;
+  /** Only present on my-checkouts' CheckoutSummary shape (confirmed + event ended). */
+  video_download_url?: string | null;
+}
+
+/** GET /api/saathum/my-checkouts, newest first — never throws. A failure (including a
+ * 404 before A1 ships) is reported and swallowed to an empty list so Dashboard 2 keeps
+ * rendering exactly as it does without Saa Thum checkout data. */
+export async function fetchMyCheckoutsSafe(): Promise<SaathumCheckoutSummary[]> {
+  try {
+    const r = await authedRequest<{ items: SaathumCheckoutSummary[] }>('/api/saathum/my-checkouts', { timeoutMs: 15000 });
+    return r?.items ?? [];
+  } catch (e) {
+    captureException(e, { where: 'saathum_my_checkouts' });
+    return [];
+  }
+}
+
+/** PUT /api/saathum/checkout/:id/address — throws ApiError (e.g. 409 address_locked) on failure. */
+export async function putSaathumCheckoutAddress(checkoutId: string, address: SaathumAddress): Promise<SaathumCheckoutSummary> {
+  const r = await authedRequest<{ checkout: SaathumCheckoutSummary }>(
+    `/api/saathum/checkout/${encodeURIComponent(checkoutId)}/address`, { method: 'PUT', body: { address } },
+  );
+  return r.checkout;
+}
+
+/** Fetch a binary route WITH the auth header (a plain link/anchor can't carry the bearer). */
+export async function authedBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const auth = await getActiveTokenWaited();
+  if (!auth) throw new NoSessionError();
+  const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${auth}` }, cache: 'no-store' });
+  if (!res.ok) {
+    let respBody: unknown;
+    try { respBody = await res.json(); } catch { /* not json */ }
+    const code = respBody && typeof respBody === 'object' && 'error' in respBody
+      ? String((respBody as { error: unknown }).error) : res.statusText;
+    throw new ApiError(res.status, code || 'request_failed', respBody);
+  }
+  const cd = res.headers.get('content-disposition') ?? '';
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  return { blob: await res.blob(), filename: m?.[1] ?? null };
+}
+
+/** "12 MG Road, Near Temple, Dehradun, Uttarakhand 248001" */
+export function fmtAddressOneLine(a: SaathumAddress): string {
+  return [a.line1, a.line2, a.city, [a.state, a.pincode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
 
 // ─────────────────────────── fetch ───────────────────────────
 export class NoSessionError extends Error {

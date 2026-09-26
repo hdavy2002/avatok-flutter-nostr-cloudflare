@@ -673,8 +673,8 @@ function AddressCard({ profile, onSaved }: { profile: Profile; onSaved: (p: Prof
   const inv = (k: string) => ({ 'aria-invalid': !!fieldErr[`address.${k}`], 'aria-describedby': fieldErr[`address.${k}`] ? `ad-${k}-err` : undefined });
 
   return (
-    <ProfileCard id="address" icon={<MapPin className="h-5 w-5" />} title="Billing & prasad address"
-      description="Printed on your receipts, and where we send prasad."
+    <ProfileCard id="address" icon={<MapPin className="h-5 w-5" />} title="Prasad & billing address"
+      description="Prasad is shipped the same day as your havan. You can change your address any time before it starts."
       dirty={dirty} saving={saving || removing} onSave={submit} onReset={reset}
       footer={a && !dirty ? (
         <Button variant="ghost" className="text-primary sm:mr-auto" disabled={saving || removing} onClick={() => void removeAddress()}>

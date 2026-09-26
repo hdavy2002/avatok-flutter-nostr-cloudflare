@@ -7,7 +7,7 @@
 // dash2_replay_play / dash2_replay_error.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, CalendarDays, Clock, Film, History, Play } from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock, Download, Film, History, Play } from 'lucide-react';
 import { capture } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Badge } from '../../components/ui/badge';
@@ -15,14 +15,26 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
 import {
-  authedRequest, EmptyState, ErrorState, errorMessage, fmtDuration, fmtIstDate, fmtIstDateTime, listingImage,
-  Shimmer, useIsPhone, youtubeThumb, type EventItem, type EventsResponse,
+  authedRequest, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtDuration, fmtIstDate, fmtIstDateTime,
+  listingImage, Shimmer, useIsPhone, youtubeThumb, type EventItem, type EventsResponse, type SaathumCheckoutSummary,
 } from '../../components/dash2/shared';
 import { YouTubeGuardedPlayer } from '../../components/dash2/YouTubeGuardedPlayer';
 
-function VideoCard({ item, index, onOpen }: { item: EventItem; index: number; onOpen: (i: EventItem) => void }) {
+/** The newest CONFIRMED Saa Thum checkout for this listing, if any — used only to
+ * decide whether "Download video" / "Video coming soon" shows on a past-event card.
+ * A listing with no matching checkout keeps today's behaviour exactly (no row added). */
+function findCheckout(checkouts: SaathumCheckoutSummary[], listingId: string): SaathumCheckoutSummary | null {
+  const matches = checkouts.filter((c) => c.listing.id === listingId && c.status === 'confirmed');
+  if (!matches.length) return null;
+  return matches.reduce((best, c) => (c.created_at > best.created_at ? c : best));
+}
+
+function VideoCard({
+  item, index, onOpen, checkout,
+}: { item: EventItem; index: number; onOpen: (i: EventItem) => void; checkout: SaathumCheckoutSummary | null }) {
   const reduce = useReducedMotion();
   const vid = item.youtube_video_id;
+  const downloadUrl = checkout?.video_download_url ?? null;
   const thumb = vid ? youtubeThumb(vid) : listingImage(item.listing.image_url, 640);
   const duration = fmtDuration(item.listing.duration_min);
   const body = (
@@ -58,24 +70,45 @@ function VideoCard({ item, index, onOpen }: { item: EventItem; index: number; on
     </>
   );
   const cls = 'group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-[var(--dash-shadow,none)] transition-all duration-300 motion-reduce:transition-none';
+  const clickableCls = 'flex w-full flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index, 8) * 0.04 }}
     >
-      {vid ? (
-        <button
-          type="button"
-          onClick={() => onOpen(item)}
-          aria-label={`Watch ${item.listing.title}`}
-          className={cn(cls, 'hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg,none)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:translate-y-0')}
-        >
-          {body}
-        </button>
-      ) : (
-        <div className={cls}>{body}</div>
-      )}
+      <div className={cn(cls, vid && 'hover:-translate-y-1 hover:border-border hover:shadow-[var(--dash-shadow-lg,none)] motion-reduce:hover:translate-y-0')}>
+        {vid ? (
+          <button type="button" onClick={() => onOpen(item)} aria-label={`Watch ${item.listing.title}`} className={clickableCls}>
+            {body}
+          </button>
+        ) : (
+          <div className={clickableCls}>{body}</div>
+        )}
+        {checkout && (
+          <div className="flex items-center gap-2 border-t border-border/40 px-4 py-3">
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="You can download your video anytime."
+                onClick={() => capture('dash2_video_download', { listing_id: item.listing.id })}
+                className="inline-flex items-center gap-1.5 text-[13px] font-extrabold text-primary hover:underline"
+              >
+                <Download className="h-3.5 w-3.5" /> Download video
+              </a>
+            ) : (
+              <span
+                title="You can download your video anytime."
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"
+              >
+                <Clock className="h-3.5 w-3.5" /> Video coming soon
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -100,6 +133,7 @@ function PlayerBody({ item, onError }: { item: EventItem; onError: (code: number
 export default function PastEvents() {
   const phone = useIsPhone();
   const [data, setData] = useState<EventsResponse | null>(null);
+  const [checkouts, setCheckouts] = useState<SaathumCheckoutSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<EventItem | null>(null);
@@ -115,6 +149,10 @@ export default function PastEvents() {
     } finally {
       setLoading(false);
     }
+    // Independent of the dashboard's own events call: my-checkouts may 404/fail until
+    // A1 deploys, and fetchMyCheckoutsSafe() already swallows that to [] — the page
+    // above must render exactly as it does today either way.
+    setCheckouts(await fetchMyCheckoutsSafe());
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -157,7 +195,15 @@ export default function PastEvents() {
   return (
     <div className="font-dashbody">
       <div className="grid gap-5 min-[480px]:grid-cols-2 lg:grid-cols-3">
-        {items.map((i, idx) => <VideoCard key={i.order_id ?? `${i.listing.id}-${idx}`} item={i} index={idx} onOpen={openItem} />)}
+        {items.map((i, idx) => (
+          <VideoCard
+            key={i.order_id ?? `${i.listing.id}-${idx}`}
+            item={i}
+            index={idx}
+            onOpen={openItem}
+            checkout={findCheckout(checkouts, i.listing.id)}
+          />
+        ))}
       </div>
 
       {phone ? (
