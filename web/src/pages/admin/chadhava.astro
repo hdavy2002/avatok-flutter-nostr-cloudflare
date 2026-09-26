@@ -1,0 +1,11 @@
+---
+// [SAATHUM-CHADHAVA 2026-09-26] The chadhava product catalogue every event offers
+// at checkout — add/edit/delete, image, title, description, price.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Chadhava from '../../islands/admin2/Chadhava.tsx';
+---
+
+<Admin2 title="Chadhava" active="chadhava" subtitle="The offerings devotees can add at checkout, on every event.">
+  <Chadhava client:load />
+</Admin2>

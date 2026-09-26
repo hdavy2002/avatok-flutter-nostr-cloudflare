@@ -59,7 +59,11 @@ export interface EventDetail extends EventRow {
   location: string | null;
   intention: string | null;
   prasad_courier: boolean;
-  replay: boolean;
+  // [SAATHUM-CHADHAVA 2026-09-26]
+  video_download: boolean;
+  visibility: 'public' | 'private';
+  prasad_price_rupees: number;
+  video_download_url: string | null;
   guide_slug: string | null;
   seo: { title: string; description: string; title_source: 'auto' | 'admin'; description_source: 'auto' | 'admin' } | null;
   ad_hook: string | null;

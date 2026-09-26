@@ -127,18 +127,44 @@ describe("normalizeEventInput", () => {
   });
   it("routes the Book-now card fields and SEO overrides", () => {
     const { patch, errors } = normalizeEventInput(
-      { location: " Haridwar ", intention: "luck", prasad_courier: false, replay: true, guide_slug: "ganapati-havan", seo_title: "", seo_description: "Mine" },
+      { location: " Haridwar ", intention: "luck", prasad_courier: false, video_download: true, guide_slug: "ganapati-havan", seo_title: "", seo_description: "Mine" },
       { partial: true, now: NOW },
     );
     expect(errors).toEqual([]);
     const s = splitPatch(patch);
     expect(s.edit).toEqual({ location: "Haridwar" });
-    expect(s.attrs).toEqual({ intention: "luck", prasad_courier: false, replay: true, guide_slug: "ganapati-havan" });
+    expect(s.attrs).toEqual({ intention: "luck", prasad_courier: false, video_download: true, guide_slug: "ganapati-havan" });
     expect(s.seo).toEqual({ title: null, description: "Mine" });
   });
   it("rejects an unknown intention and a non-boolean toggle", () => {
-    const { errors } = normalizeEventInput({ intention: "revenge", replay: "yes" }, { partial: true, now: NOW });
-    expect(errors.map((e) => e.field).sort()).toEqual(["intention", "replay"]);
+    const { errors } = normalizeEventInput({ intention: "revenge", video_download: "yes" }, { partial: true, now: NOW });
+    expect(errors.map((e) => e.field).sort()).toEqual(["intention", "video_download"]);
+  });
+
+  // [SAATHUM-CHADHAVA 2026-09-26]
+  it("accepts visibility, prasad price and the video download link", () => {
+    const { patch, errors } = normalizeEventInput(
+      { visibility: "private", prasad_price_rupees: 149, video_download_url: "https://example.com/video.mp4" },
+      { partial: true, now: NOW },
+    );
+    expect(errors).toEqual([]);
+    expect(patch.visibility).toBe("private");
+    expect(patch.prasad_price_rupees).toBe(149);
+    expect(patch.video_download_url).toBe("https://example.com/video.mp4");
+    const s = splitPatch(patch);
+    expect(s.attrs).toEqual({ visibility: "private", prasad_price_rupees: 149, video_download_url: "https://example.com/video.mp4" });
+  });
+  it("clears prasad price and the video link with empty values", () => {
+    const { patch, errors } = normalizeEventInput({ prasad_price_rupees: "", video_download_url: "" }, { partial: true, now: NOW });
+    expect(errors).toEqual([]);
+    expect(patch).toEqual({ prasad_price_rupees: null, video_download_url: null });
+  });
+  it("rejects a bad visibility, an out-of-range prasad price and an insecure video link", () => {
+    const f = (b: Record<string, unknown>) => normalizeEventInput(b, { partial: true, now: NOW }).errors.map((e) => e.field);
+    expect(f({ visibility: "hidden" })).toEqual(["visibility"]);
+    expect(f({ prasad_price_rupees: 5001 })).toEqual(["prasad_price_rupees"]);
+    expect(f({ prasad_price_rupees: -1 })).toEqual(["prasad_price_rupees"]);
+    expect(f({ video_download_url: "http://insecure/video.mp4" })).toEqual(["video_download_url"]);
   });
 });
 

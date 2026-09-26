@@ -18,6 +18,7 @@ import { ADMIN2_EVENT_ROUTES } from "./admin2_events"; // [ADMIN2-EVENTS]
 import { ADMIN2_PEOPLE_ROUTES } from "./admin2_people"; // [ADMIN2-PEOPLE] agent C
 import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
 import { adminAnalytics } from "./admin2_analytics"; // [ADMIN2-ANALYTICS] agent D
+import { ADMIN2_CHADHAVA_ROUTES } from "./saathum_chadhava"; // [SAATHUM-CHADHAVA] agent A2
 
 const APP = "saathum";
 
@@ -227,6 +228,8 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   ...ADMIN2_PEOPLE_ROUTES,
   // --- users (agent E) ---
   ...ADMIN2_USER_ROUTES,
+  // --- chadhava (agent A2) ---
+  ...ADMIN2_CHADHAVA_ROUTES,
 ];
 
 /** Match a path against the table. Exported for tests. */

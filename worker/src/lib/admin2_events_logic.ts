@@ -135,10 +135,17 @@ export type EventPatch = {
   /** attrs.* — written by this lane (see splitPatch / ATTR_KEYS). */
   intention?: string | null;
   prasad_courier?: boolean;
-  replay?: boolean;
   guide_slug?: string | null;
   seo_title?: string | null;
   seo_description?: string | null;
+  // [SAATHUM-CHADHAVA 2026-09-26] On the booking card + past-event video download.
+  /** Replaces `replay`; on read, a row with no video_download yet falls back to attrs.replay. */
+  video_download?: boolean;
+  visibility?: "public" | "private" | null;
+  /** ₹ shown on the booking card and charged at checkout when prasad_courier is on. */
+  prasad_price_rupees?: number | null;
+  /** Pasted by the admin any time, including after the event ends. */
+  video_download_url?: string | null;
 };
 
 const has = (b: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(b, k);
@@ -249,11 +256,30 @@ export function normalizeEventInput(
     if (v && !INTENTIONS[v]) errors.push({ field: "intention", message: "Pick an intention from the list." });
     else patch.intention = v || null;
   }
-  for (const k of ["prasad_courier", "replay"] as const) {
+  for (const k of ["prasad_courier", "video_download"] as const) {
     if (has(body, k)) {
       if (typeof body[k] !== "boolean") errors.push({ field: k, message: "Choose yes or no." });
       else patch[k] = body[k] as boolean;
     }
+  }
+  // [SAATHUM-CHADHAVA 2026-09-26]
+  if (has(body, "visibility")) {
+    const v = str(body.visibility);
+    if (v !== "public" && v !== "private") errors.push({ field: "visibility", message: "Choose Public or Private." });
+    else patch.visibility = v;
+  }
+  if (has(body, "prasad_price_rupees")) {
+    if (body.prasad_price_rupees === null || body.prasad_price_rupees === "") patch.prasad_price_rupees = null;
+    else {
+      const pp = Number(body.prasad_price_rupees);
+      if (!Number.isInteger(pp) || pp < 0 || pp > 5000) errors.push({ field: "prasad_price_rupees", message: "Prasad shipping price must be a whole number between ₹0 and ₹5,000." });
+      else patch.prasad_price_rupees = pp;
+    }
+  }
+  if (has(body, "video_download_url")) {
+    if (body.video_download_url === null || body.video_download_url === "") patch.video_download_url = null;
+    else if (!isHttpsUrl(body.video_download_url)) errors.push({ field: "video_download_url", message: "The video download link must be a valid https link." });
+    else patch.video_download_url = String(body.video_download_url);
   }
   if (has(body, "guide_slug")) {
     const v = str(body.guide_slug);
@@ -284,8 +310,12 @@ export function normalizeEventInput(
 export const ADMIN_EDIT_KEYS = ["title", "blurb", "description", "category", "price", "starts_at", "duration_min", "capacity", "performed_by", "location"] as const;
 
 /** attrs keys this lane owns. `null` removes the key. */
-export const ATTR_KEYS = ["deity", "intention", "prasad_courier", "replay", "guide_slug"] as const;
-export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | null>>;
+export const ATTR_KEYS = [
+  "deity", "intention", "prasad_courier", "guide_slug",
+  // [SAATHUM-CHADHAVA 2026-09-26]
+  "video_download", "visibility", "prasad_price_rupees", "video_download_url",
+] as const;
+export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | number | null>>;
 export type SeoPatch = { title?: string | null; description?: string | null };
 
 /** Split a patch into the admin-edit fields and the media/attrs fields this lane writes itself. */

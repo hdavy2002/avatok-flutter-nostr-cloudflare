@@ -256,7 +256,11 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       location: row.location ?? null,
       intention: typeof attrs.intention === "string" ? attrs.intention : null,
       prasad_courier: typeof attrs.prasad_courier === "boolean" ? attrs.prasad_courier : true,
-      replay: typeof attrs.replay === "boolean" ? attrs.replay : true,
+      // [SAATHUM-CHADHAVA 2026-09-26] video_download replaces replay; fall back to the old key.
+      video_download: typeof attrs.video_download === "boolean" ? attrs.video_download : (typeof attrs.replay === "boolean" ? attrs.replay : true),
+      visibility: attrs.visibility === "private" ? "private" : "public",
+      prasad_price_rupees: Number.isInteger(attrs.prasad_price_rupees) ? attrs.prasad_price_rupees : 99,
+      video_download_url: typeof attrs.video_download_url === "string" && attrs.video_download_url ? attrs.video_download_url : null,
       guide_slug: typeof attrs.guide_slug === "string" ? attrs.guide_slug : null,
       seo: attrs.seo && typeof attrs.seo === "object" ? {
         title: String(attrs.seo.title ?? ""), description: String(attrs.seo.description ?? ""),
@@ -303,7 +307,12 @@ async function writeMediaAndAttrs(env: Env, adminUid: string, id: string, cover:
   const row = await loadRow(env, id);
   if (!row) return err(404, "not_found", "No such event.");
   if (row.status === "cancelled" || row.status === "completed") {
-    return err(409, "listing_closed", `A ${row.status} event cannot be edited.`);
+    // [SAATHUM-CHADHAVA 2026-09-26] The one exception: the admin can paste the video
+    // download link on a completed event (video_download_url), any time after it ends.
+    const otherKeys = attrKeys.filter((k) => k !== "video_download_url");
+    if (cover !== undefined || otherKeys.length) {
+      return err(409, "listing_closed", `A ${row.status} event cannot be edited.`);
+    }
   }
   const attrs = attrsOf(row.attrs);
   const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -327,6 +336,12 @@ async function writeMediaAndAttrs(env: Env, adminUid: string, id: string, cover:
     if (from === to) continue;
     changes[k] = { from, to };
     if (to === null || to === "") delete attrs[k]; else attrs[k] = to;
+  }
+  // [SAATHUM-CHADHAVA 2026-09-26] video_download replaces replay: once the admin has
+  // touched video_download this save, the stale replay key is retired.
+  if (attrKeys.includes("video_download") && attrs.replay !== undefined) {
+    changes.replay = { from: attrs.replay, to: null };
+    delete attrs.replay;
   }
   if (!Object.keys(changes).length) return null;
   const attrsStr = JSON.stringify(attrs);
@@ -419,6 +434,8 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
   const later: Record<string, unknown> = {};
   if (patch.capacity) later.capacity = patch.capacity;
   if (patch.location) later.location = patch.location;
+  // [SAATHUM-CHADHAVA 2026-09-26] Private events are locked to 1 seat, server-side.
+  if (patch.visibility === "private") later.capacity = 1;
   if (Object.keys(later).length) {
     const e = await runAdminEdit(req, env, id, later, exec);
     if (e) return e;
@@ -443,6 +460,13 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
     if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
   }
   const { edit, cover, attrs: attrPatch, seo } = splitPatch(patch as EventPatch);
+  // [SAATHUM-CHADHAVA 2026-09-26] Private events are locked to 1 seat, server-side.
+  if (attrPatch.visibility === "private") {
+    edit.capacity = 1;
+  } else if (attrPatch.visibility !== "public") {
+    const curAttrs = attrsOf(row.attrs);
+    if (curAttrs.visibility === "private" && "capacity" in edit && edit.capacity !== 1) edit.capacity = 1;
+  }
   const e1 = await runAdminEdit(req, env, id, edit, exec);
   if (e1) return e1;
   const e2 = await writeMediaAndAttrs(env, a.uid, id, cover, attrPatch);

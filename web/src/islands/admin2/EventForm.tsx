@@ -37,6 +37,7 @@ import { Calendar } from '../../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
+import { ToggleGroup, ToggleGroupItem } from '../../components/ui/toggle-group';
 import { articleBySlug, articleCover, articleGroups, fillFromArticle } from './articlePrefill';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -70,10 +71,14 @@ interface FormState {
   location: string;
   intention: string;
   prasad_courier: boolean;
-  replay: boolean;
   guide_slug: string;
   seo_title: string;
   seo_description: string;
+  // [SAATHUM-CHADHAVA 2026-09-26]
+  video_download: boolean;
+  visibility: 'public' | 'private';
+  prasad_price_rupees: string;
+  video_download_url: string;
 }
 
 /** Fallback intention list if the worker meta is older than this form. Mirrors ritualGuides ritualCategories. */
@@ -86,7 +91,8 @@ const INTENTIONS_FALLBACK = [
 const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
-  location: '', intention: '', prasad_courier: true, replay: true, guide_slug: '', seo_title: '', seo_description: '',
+  location: '', intention: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
+  video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '',
 };
 
 function fromDetail(d: EventDetailResponse): FormState {
@@ -108,8 +114,11 @@ function fromDetail(d: EventDetailResponse): FormState {
     location: e.location ?? '',
     intention: e.intention ?? '',
     prasad_courier: e.prasad_courier ?? true,
-    replay: e.replay ?? true,
     guide_slug: e.guide_slug ?? '',
+    video_download: e.video_download ?? true,
+    visibility: e.visibility === 'private' ? 'private' : 'public',
+    prasad_price_rupees: e.prasad_price_rupees != null ? String(e.prasad_price_rupees) : '99',
+    video_download_url: e.video_download_url ?? '',
     // Only an admin-typed value lives in the box; the automatic one is the placeholder.
     seo_title: e.seo?.title_source === 'admin' ? e.seo.title : '',
     seo_description: e.seo?.description_source === 'admin' ? e.seo.description : '',
@@ -135,10 +144,12 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   if (changed('capacity')) out.capacity = f.capacity === '' ? null : Number(f.capacity);
   if (changed('performed_by')) out.performed_by = f.performed_by;
   for (const k of ['location', 'intention', 'guide_slug', 'seo_title', 'seo_description'] as const) if (changed(k)) out[k] = f[k].trim();
-  for (const k of ['prasad_courier', 'replay'] as const) if (changed(k)) out[k] = f[k];
+  for (const k of ['prasad_courier', 'video_download', 'visibility'] as const) if (changed(k)) out[k] = f[k];
+  if (changed('prasad_price_rupees')) out.prasad_price_rupees = f.prasad_price_rupees === '' ? null : Number(f.prasad_price_rupees);
+  if (changed('video_download_url')) out.video_download_url = f.video_download_url.trim() || null;
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
-    for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description'] as const) if (!f[k]) delete out[k];
+    for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url'] as const) if (!f[k]) delete out[k];
     if (!f.start_date) { delete out.start_date; delete out.start_time; }
     if (f.capacity === '') delete out.capacity;
   }
@@ -149,10 +160,11 @@ const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   title: 'title', category: 'category', starts_at: 'start_date', duration_min: 'duration_min', price: 'price_rupees',
   performed_by: 'performed_by', description: 'description', blurb: 'blurb', cover_media: 'cover_url', cover_url: 'cover_url',
   capacity: 'capacity', location: 'location', intention: 'intention', guide_slug: 'guide_slug',
-  seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier', replay: 'replay',
+  seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier',
+  video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url',
 };
 
-type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster' | 'article';
+type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster' | 'article' | 'video_url';
 
 /* ── component ──────────────────────────────────────────────────────────── */
 
@@ -362,6 +374,20 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     } catch (e) { showError(e, action === 'generate' ? 'poster_generate' : 'poster_keep'); } finally { setBusy(null); }
   }
 
+  /** [SAATHUM-CHADHAVA 2026-09-26] The video download link is the one field a completed
+   * event can still take (writeMediaAndAttrs allows only this key once an event is
+   * closed) — its own save so it works even though the main Save bar is hidden then. */
+  async function onSaveVideoUrl() {
+    if (!id) return;
+    setBusy('video_url'); setBanner(null);
+    try {
+      const r = await adminApi<EventDetailResponse>(eventsPath(id), { method: 'PUT', body: { video_download_url: form.video_download_url.trim() || null } });
+      applyDetail(r, form.youtube_url);
+      toast.success('Saved');
+      capture('admin2_event_saved', { action: 'video_download_url', ok: true, listing_id: id });
+    } catch (e) { showError(e, 'video_download_url'); } finally { setBusy(null); }
+  }
+
   /** [SAATHUM-EVENT-FIELDS-1] Fill the form from a Puja & Havan Guide article. Undo restores the form. */
   async function onPickArticle(slug: string) {
     const a = articleBySlug(slug);
@@ -561,9 +587,30 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <ToggleRow id="ev-prasad" label="Prasad courier" hint="Prasad is couriered to the devotee" checked={form.prasad_courier}
                 disabled={disabled} onChange={(v) => set('prasad_courier', v)} />
-              <ToggleRow id="ev-replay" label="7-day replay" hint="Paid devotees can rewatch for 7 days" checked={form.replay}
-                disabled={disabled} onChange={(v) => set('replay', v)} />
+              <ToggleRow id="ev-video-download" label="Video download" hint="Paid devotees can download the video anytime" checked={form.video_download}
+                disabled={disabled} onChange={(v) => set('video_download', v)} />
             </div>
+            {form.prasad_courier && (
+              <Field label="Prasad shipping price (₹)" htmlFor="ev-prasad-price" error={errors.prasad_price_rupees} hint="Anywhere in India">
+                <div className="relative max-w-[10rem]">
+                  <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-prasad-price" type="number" inputMode="numeric" min={0} max={5000} step={1} className="pl-9"
+                    value={form.prasad_price_rupees} disabled={disabled} onChange={(e) => set('prasad_price_rupees', e.target.value)} placeholder="99" />
+                </div>
+              </Field>
+            )}
+            <Field label="Who can book" error={errors.visibility}>
+              <ToggleGroup type="single" variant="outline" value={form.visibility} disabled={disabled}
+                onValueChange={(v) => { if (v === 'public' || v === 'private') { set('visibility', v); if (v === 'private') set('capacity', '1'); } }}>
+                <ToggleGroupItem value="public" aria-label="Public">Public</ToggleGroupItem>
+                <ToggleGroupItem value="private" aria-label="Private">Private</ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-[12px] font-semibold text-muted-foreground">
+                {form.visibility === 'private'
+                  ? 'Private: a 1:1 session for one family (1 seat).'
+                  : 'Public: many devotees join together.'}
+              </p>
+            </Field>
             <p className="text-[12px] font-semibold text-muted-foreground">“Sankalp in your name” and “Live on YouTube” always show. Rating and “booked” fill in from real bookings.</p>
             <Field label="Read benefits links to">
               {articleBySlug(form.guide_slug) ? (
@@ -667,11 +714,11 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                     value={form.price_rupees} disabled={disabled} onChange={(e) => set('price_rupees', e.target.value)} placeholder="501" aria-invalid={!!errors.price_rupees} />
                 </div>
               </Field>
-              <Field label="Capacity" htmlFor="ev-cap" error={errors.capacity} hint="Optional. Empty = no limit.">
+              <Field label="Capacity" htmlFor="ev-cap" error={errors.capacity} hint={form.visibility === 'private' ? 'Private events are locked to 1 seat.' : 'Optional. Empty = no limit.'}>
                 <div className="relative">
                   <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input id="ev-cap" ref={(el) => { refs.current.capacity = el; }} type="number" inputMode="numeric" min={1} step={1} className="pl-9"
-                    value={form.capacity} disabled={disabled} onChange={(e) => set('capacity', e.target.value)} placeholder="No limit" />
+                    value={form.capacity} disabled={disabled || form.visibility === 'private'} onChange={(e) => set('capacity', e.target.value)} placeholder="No limit" />
                 </div>
               </Field>
             </div>
@@ -687,6 +734,21 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                 <img src={youtubeThumb(ytId)} alt="Video thumbnail" className="aspect-video w-40 rounded-md border border-border/70 object-cover" />
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-accent"><MonitorPlay className="h-4 w-4" /> Linked · id {ytId}</span>
               </div>
+            )}
+          </Section>
+
+          {/* [SAATHUM-CHADHAVA 2026-09-26] Stays editable on a completed event — the admin
+              pastes this after the havan, once the recording is ready. */}
+          <Section title="Video download link" subtitle="Paste after the event — devotees see a Download button in Past events.">
+            <Field label="Download link" htmlFor="ev-video-url" error={errors.video_download_url}>
+              <Input id="ev-video-url" ref={(el) => { refs.current.video_download_url = el; }} inputMode="url" value={form.video_download_url}
+                disabled={busy !== null} onChange={(e) => set('video_download_url', e.target.value)} placeholder="https://…" aria-invalid={!!errors.video_download_url} />
+            </Field>
+            {isClosed && (
+              <Button type="button" variant="outline" className="self-start" disabled={busy !== null || form.video_download_url === (base?.video_download_url ?? '')}
+                onClick={() => void onSaveVideoUrl()}>
+                {busy === 'video_url' ? <Loader2 className="animate-spin" /> : <Save />} Save link
+              </Button>
             )}
           </Section>
 
