@@ -1,5 +1,5 @@
 ---
-export const prerender = true;
+export const prerender = false;
 
 import Base from '../layouts/Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
@@ -12,6 +12,13 @@ import { creatorIdeas } from '../lib/creatorIdeas';
 import { publicImage } from '../lib/config';
 import '../styles/saathum-folk.css';
 import '../styles/organisers-folk.css';
+
+// [SAATHUM-ENTITY-1 2026-09-26] Page removed by owner — archived, NOT deleted. Cloudflare serves a
+// prerendered file before _redirects, so the page itself answers with a 301 home (same pattern as
+// dmca.astro, child-safety.astro, etc.).
+// To restore: set REMOVED = false (and put prerender back to true).
+const REMOVED = true;
+if (REMOVED) return Astro.redirect('/', 301);
 
 // Preserve the existing share image; the page uses saved folk artwork.
 const HERO_ART = '/assets/saathum/hawan.png';
