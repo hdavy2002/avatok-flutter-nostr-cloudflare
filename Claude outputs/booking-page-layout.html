@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booking Page Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5e6c8; --bg2:#eed7ad; --card:#fffdf8; --ink:#5a1f14; --sub:#6b4a2b; --teal:#173f3f; --body:#3c4a4c;
+  --red:#b3261e; --red2:#d7261e; --gold:#F6B93B; --green:#1e8a4c; --line:#e3cfa9; --chip:#f3e7d2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(160deg,#f8ead0,#eed7ad);color:var(--ink);font-family:Nunito,sans-serif}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.12;background-image:radial-gradient(circle,#a5602a 1.2px,transparent 1.6px);background-size:22px 22px}
+.wrap{position:relative;max-width:1280px;margin:auto;padding:28px 16px 80px}
+.note{background:#fff3c4;border:1px dashed #c9a13a;border-radius:12px;padding:10px 14px;font:700 13.5px/1.45 Nunito;color:#5a3d12;margin-bottom:22px}
+.note b{color:var(--ink)}
+.label{display:inline-block;margin:44px 0 14px;padding:5px 12px;border-radius:999px;background:var(--teal);color:#fff;font:900 12px Nunito;letter-spacing:.1em;text-transform:uppercase}
+.crumb{font:700 13px Nunito;color:var(--sub);margin-bottom:14px}
+.crumb a{color:var(--sub)}
+
+/* ── Hero ── */
+.hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:28px;align-items:start}
+.art{position:relative;border:8px solid #fff;border-radius:22px;overflow:hidden;background:#3a2418;box-shadow:0 22px 44px #5a2c0f47,0 4px 10px #5a2c0f2e;aspect-ratio:16/11}
+.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.art::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0000004d 0%,transparent 26%,transparent 50%,#140a06f0 100%)}
+.top{position:absolute;z-index:2;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font:900 12.5px Nunito;letter-spacing:.08em;text-transform:uppercase}
+.pill--live{background:var(--red2);color:#fff}.pill--live i{width:8px;height:8px;border-radius:50%;background:#fff}
+.pill--soft{background:#fffaf0eb;color:#5a2d12}
+.pill--pub{background:#1f4d4a;color:#fff}
+.when{position:absolute;z-index:2;left:18px;right:18px;bottom:16px;color:#fff}
+.when .d{font:800 16px Nunito;text-shadow:0 1px 3px #000a}
+.cdl{display:block;margin-top:8px;font:800 12px Nunito;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+.cd{display:flex;gap:6px;margin-top:4px}
+.cd span{min-width:54px;text-align:center;padding:5px 6px;border-radius:10px;background:#fffaf01f;border:1px solid #fffaf040;backdrop-filter:blur(4px)}
+.cd b{display:block;font:900 26px/1.1 Nunito}.cd small{font:700 11px Nunito;opacity:.85}
+.cd span:last-child b{color:#ff7a95}
+.thumbs{display:flex;gap:10px;margin-top:12px}
+.thumbs div{width:84px;aspect-ratio:4/3;border-radius:10px;border:3px solid #fff;background:#d9bf93 center/cover;box-shadow:0 4px 10px #5a2c0f33}
+
+/* Panel */
+.panel{position:sticky;top:18px;background:var(--card);border:6px solid #fff;border-radius:20px;padding:20px;box-shadow:0 18px 36px #5a2c0f40}
+.panel h1{margin:0;font:600 30px/1.15 Comfortaa;color:var(--teal)}
+.deity{margin-top:6px;font:800 13px Nunito;color:#7a4a1e}
+.meta{margin:12px 0;font:800 14.5px/1.5 Nunito;color:var(--body)}
+.blips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.blip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:var(--chip);color:#2c3b3d;font:700 13px Nunito}
+.blip--star{background:#fff1c9}.blip--bk{background:#e2efe3;color:#1d5a3a}
+.feats{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:12px;border:1px dashed #d8c3a0;border-radius:14px;background:#fff}
+.feat{position:relative;display:flex;align-items:center;gap:7px;font:700 13.5px/1.25 Nunito;color:#2c3b3d}
+.tick{display:grid;place-items:center;flex:none;width:19px;height:19px;border-radius:50%;background:var(--green);color:#fff;font:900 11px Nunito}
+.info{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#e8dcc5;color:#6b4a2b;font:900 11px Nunito;cursor:help}
+.tip{position:absolute;left:0;bottom:calc(100% + 8px);width:230px;padding:9px 11px;border-radius:10px;background:var(--teal);color:#fff;font:700 12.5px/1.4 Nunito;box-shadow:0 8px 20px #0004;opacity:0;pointer-events:none;transition:.15s;z-index:5}
+.tip::after{content:"";position:absolute;left:16px;top:100%;border:6px solid transparent;border-top-color:var(--teal)}
+.feat:hover .tip,.feat:focus-within .tip{opacity:1}
+.feat.show .tip{opacity:1}
+.price{display:flex;align-items:flex-end;justify-content:space-between;margin:16px 0 12px}
+.price small{display:block;font:800 11px Nunito;letter-spacing:.1em;text-transform:uppercase;color:var(--sub)}
+.price b{font:900 34px/1 Nunito;color:var(--red)}
+.price em{font:700 13px Nunito;font-style:normal;color:var(--sub)}
+.icons{display:flex;gap:8px}
+.ib{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:18px}
+.ib--bell{background:#f3e7d2}.ib--wa{background:#25d366;color:#fff}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:14px;border:0;font:900 17px Nunito;cursor:pointer}
+.btn--book{background:var(--red);color:#fff;box-shadow:0 4px 0 #7d1a14}
+.btn--ghost{background:#fff;color:var(--teal);border:2px solid var(--teal);margin-top:10px}
+.fine{margin-top:10px;text-align:center;font:700 12.5px Nunito;color:var(--sub)}
+.trust{display:flex;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.trust div{flex:1;text-align:center;font:800 11.5px/1.3 Nunito;color:var(--sub)}
+.trust span{display:block;font-size:20px}
+
+/* sticker placeholders */
+.stk{display:grid;place-items:center;text-align:center;border:3px dashed #c9a13a;border-radius:50%;background:#fff8e6;color:#8a5a1a;font:800 10.5px/1.25 Nunito;padding:8px}
+.stk code{display:block;font:700 9.5px/1.2 ui-monospace,monospace;color:#5a3d12;word-break:break-all}
+
+/* ── Below-the-fold ── */
+.grid2{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:28px;margin-top:30px}
+.sec{background:var(--card);border:6px solid #fff;border-radius:20px;padding:22px;box-shadow:0 10px 26px #5a2c0f26;margin-bottom:22px;position:relative}
+.sec h2{margin:0 0 10px;font:600 24px/1.2 Comfortaa;color:var(--teal)}
+.sec p{margin:0 0 10px;font:500 15.5px/1.6 Nunito;color:var(--body)}
+.sec .kick{font:900 12px Nunito;letter-spacing:.1em;text-transform:uppercase;color:#c9481f;margin-bottom:6px}
+.sec .corner{position:absolute;right:-18px;top:-26px;width:110px;height:110px}
+.ben{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
+.ben div{padding:14px;border-radius:14px;background:#fbf3e3;border:1px solid var(--line);font:800 14px/1.35 Nunito;color:#2c3b3d}
+.ben div span{display:block;font-size:22px;margin-bottom:6px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.step{text-align:center;padding:10px}
+.step .stk{width:120px;height:120px;margin:0 auto 10px}
+.step b{display:block;font:600 17px Comfortaa;color:var(--teal)}
+.step p{font-size:14px;margin-top:4px}
+.chad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.chad div{border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.chad .im{aspect-ratio:4/3;background:#f1e2c4;display:grid;place-items:center;font-size:40px}
+.chad b{display:block;padding:8px 10px 0;font:800 14px Nunito;color:var(--teal)}
+.chad small{display:block;padding:0 10px 10px;font:700 13px Nunito;color:var(--red)}
+.side .sec h2{font-size:20px}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font:700 14px Nunito;color:var(--body)}
+.faq details{border-bottom:1px dashed var(--line);padding:10px 0}
+.faq summary{cursor:pointer;font:800 15px Nunito;color:var(--teal)}
+.faq p{margin:8px 0 0;font-size:14.5px}
+
+/* ── Checkout frames ── */
+.frames{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.frame{background:var(--card);border:6px solid #fff;border-radius:22px;padding:18px;box-shadow:0 14px 30px #5a2c0f33}
+.frame h3{margin:0 0 4px;font:600 20px Comfortaa;color:var(--teal)}
+.frame .kick{font:900 11px Nunito;letter-spacing:.1em;text-transform:uppercase;color:#c9481f}
+.dots{display:flex;gap:4px;margin:8px 0 14px}
+.dots i{flex:1;height:5px;border-radius:9px;background:#eadbc0}.dots i.on{background:var(--gold)}
+.fld{margin-bottom:10px}
+.fld label{display:flex;justify-content:space-between;font:800 13px Nunito;color:#2c3b3d;margin-bottom:4px}
+.fld label em{font-style:normal;font-weight:700;color:var(--sub);font-size:12px}
+.in{width:100%;padding:11px 12px;border:1.5px solid #d6b98a;border-radius:10px;background:#fff;font:600 14.5px Nunito;color:#8a7a66}
+.hint{margin:6px 0 10px;padding:10px 12px;border-radius:10px;background:#e2efe3;color:#1d5a3a;font:700 12.5px/1.4 Nunito}
+.hint--gold{background:#fff3c4;color:#5a3d12}
+.sm-btn{display:block;width:100%;padding:12px;border-radius:12px;border:0;background:var(--gold);color:#3a2206;font:900 15px Nunito;box-shadow:0 3px 0 #b8801c;margin-top:6px}
+.item{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:8px}
+.item .im{width:52px;height:52px;border-radius:10px;background:#f1e2c4;display:grid;place-items:center;font-size:24px;flex:none}
+.item b{display:block;font:800 13.5px Nunito;color:var(--teal)}
+.item small{font:700 12px Nunito;color:var(--sub)}
+.qty{margin-left:auto;display:flex;align-items:center;gap:6px;font:900 14px Nunito}
+.qty span{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#f3e7d2}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chips span{padding:7px 12px;border-radius:999px;border:1.5px solid #d6b98a;background:#fff;font:800 13px Nunito}
+.chips span.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.tog{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:12px;background:#fbf3e3;border:1px solid var(--line);margin-bottom:8px;font:800 13.5px Nunito;color:#2c3b3d}
+.sw{width:44px;height:26px;border-radius:99px;background:var(--teal);position:relative}.sw::after{content:"";position:absolute;right:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+.sum .row{font-size:13.5px}.sum .tot{border:0;font:900 17px Nunito;color:var(--ink);padding-top:10px}
+.qr{width:170px;height:170px;margin:10px auto;border:8px solid #fff;border-radius:14px;box-shadow:0 6px 16px #0002;background:
+ conic-gradient(#222 0 25%,#fff 0 50%,#222 0 75%,#fff 0) 0 0/22px 22px}
+.apps{display:flex;justify-content:center;gap:8px;margin-bottom:10px}
+.apps span{padding:6px 10px;border-radius:9px;background:#f3e7d2;font:800 12px Nunito}
+.utr{display:flex;gap:4px;justify-content:center;margin:8px 0}
+.utr span{width:20px;height:30px;border-bottom:2px solid #b89868;font:900 16px Nunito;text-align:center;color:var(--teal)}
+.done{text-align:center}
+.done .stk{width:120px;height:120px;margin:0 auto 10px}
+.done .big{font:600 22px Comfortaa;color:var(--teal)}
+.dl{display:flex;gap:8px;margin-top:10px}
+.dl span{flex:1;padding:11px;border-radius:12px;text-align:center;font:900 13.5px Nunito;background:#fff;border:2px solid var(--teal);color:var(--teal)}
+.dl span:first-child{background:var(--teal);color:#fff}
+
+@media (max-width:900px){
+  .hero,.grid2{grid-template-columns:1fr}
+  .panel{position:static}
+  .frames{grid-template-columns:1fr}
+  .ben,.steps,.chad{grid-template-columns:1fr 1fr}
+  .sec .corner{display:none}
+}
+@media (max-width:520px){
+  .ben,.steps,.chad{grid-template-columns:1fr}
+  .cd span{min-width:46px}.cd b{font-size:22px}
+  .panel h1{font-size:25px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="note"><b>Mockup only.</b> Colours, fonts and card style are the same as the homepage "Book now" cards. The dashed circles are where the new stickers go — each shows the file name it expects. Hover (or tap) the <b>ⓘ</b> next to "Video download" and "Public" to see the tooltips.</div>
+
+<span class="label">1 · The event page (/book/…)</span>
+<div class="crumb"><a href="#">Home</a> › <a href="#">Our Pujas</a> › Havans › Dakshinamurthy (Medha) Havan</div>
+
+<div class="hero">
+  <div>
+    <div class="art">
+      <img src="https://saathum.com/assets/saathum-rituals/dakshinamurthy-havan.png" alt="">
+      <div class="top">
+        <span style="display:flex;gap:8px"><span class="pill pill--live"><i></i>Live</span><span class="pill pill--pub">👥 Public</span></span>
+        <span class="pill pill--soft">Education</span>
+      </div>
+      <div class="when">
+        <div class="d">📅 Wed, 30 Sept · 6:00 am IST · 1 hr</div>
+        <span class="cdl">Havan starts in</span>
+        <div class="cd"><span><b>03</b><small>Day</small></span><span><b>14</b><small>Hrs</small></span><span><b>52</b><small>Min</small></span><span><b>07</b><small>Sec</small></span></div>
+      </div>
+    </div>
+    <div class="thumbs"><div style="background-image:url(https://saathum.com/assets/saathum-rituals/dakshinamurthy-havan.png)"></div><div></div><div></div></div>
+  </div>
+
+  <aside class="panel">
+    <h1>Dakshinamurthy (Medha) Havan</h1>
+    <div class="deity">Lord Shiva as the first teacher</div>
+    <div class="meta">Wed, 30 Sept · 6:00 am IST · 1 hr<br><span style="font-weight:700;color:var(--sub);font-size:13px">Your time: Wed, 30 Sept, 6:00 am</span></div>
+    <div class="blips">
+      <span class="blip">📍 Haridwar</span>
+      <span class="blip blip--star">⭐ 4.9/5 · <u>128 reviews</u></span>
+      <span class="blip blip--bk">👥 1,240 booked</span>
+    </div>
+    <div class="feats">
+      <div class="feat"><span class="tick">✓</span>Prasad courier</div>
+      <div class="feat"><span class="tick">✓</span>Sankalp in your name</div>
+      <div class="feat show" tabindex="0"><span class="tick">✓</span>Video download <span class="info">i</span>
+        <span class="tip">You can download your video anytime from My events.</span></div>
+      <div class="feat"><span class="tick">✓</span>Live on YouTube</div>
+      <div class="feat" tabindex="0"><span class="tick">✓</span>Public <span class="info">i</span>
+        <span class="tip">Public: many devotees join the same havan together. Private: a 1:1 session just for your family.</span></div>
+    </div>
+    <div class="price">
+      <div><small>Starting from</small><b>₹111</b> <em>per family</em></div>
+      <div class="icons"><span class="ib ib--bell">🔔</span><span class="ib ib--wa">✆</span></div>
+    </div>
+    <button class="btn btn--book">Book with my sankalp →</button>
+    <button class="btn btn--ghost">Read benefits</button>
+    <div class="fine">Performed by temple priests · Free cancellation 24 hrs before</div>
+    <div class="trust">
+      <div><span>🔒</span>UPI payment</div>
+      <div><span>📦</span>Prasad ships same day</div>
+      <div><span>🧾</span>PDF receipt</div>
+    </div>
+  </aside>
+</div>
+
+<div class="grid2">
+  <div>
+    <div class="sec">
+      <div class="stk corner"><div>sticker<code>havan-kund.png</code></div></div>
+      <div class="kick">About this havan</div>
+      <h2>Sit at the feet of Shiva, the first teacher</h2>
+      <p>Dakshinamurthy is Lord Shiva as the supreme teacher. He is prayed to for deep understanding — the kind of knowing that goes beyond memorising.</p>
+      <p>Tradition tells of four great sages who came to the young Shiva seated under a banyan tree, seeking the highest truth. He taught them in complete silence, and in that silence all their doubts dissolved…</p>
+      <a href="#" style="font:800 14px Nunito;color:var(--red)">Read the full story →</a>
+    </div>
+
+    <div class="sec">
+      <div class="kick">What devotees traditionally seek</div>
+      <h2>Benefits</h2>
+      <div class="ben">
+        <div><span>📖</span>Focus and memory for studies</div>
+        <div><span>🪔</span>Clarity before exams and interviews</div>
+        <div><span>🙏</span>A teacher's blessing on new learning</div>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:var(--sub)">Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+    </div>
+
+    <div class="sec">
+      <div class="kick">How it works</div>
+      <h2>From your home, in three steps</h2>
+      <div class="steps">
+        <div class="step"><div class="stk"><div>sticker<code>sankalp-thali.png</code></div></div><b>1. Book with your sankalp</b><p>Your name, gotra and wish are read out by the priest.</p></div>
+        <div class="step"><div class="stk"><div>sticker<code>whatsapp-diya.png</code></div></div><b>2. Get the live link</b><p>On WhatsApp and email, 30 minutes before the havan starts.</p></div>
+        <div class="step"><div class="stk"><div>sticker<code>prasad-box.png</code></div></div><b>3. Watch, then receive prasad</b><p>Download the video anytime. Prasad ships the same day.</p></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="kick">Offer chadhava</div>
+      <h2>Offerings made on your behalf</h2>
+      <div class="chad">
+        <div><div class="im">🌼</div><b>Marigold garland</b><small>₹51</small></div>
+        <div><div class="im">🪵</div><b>Havan wood & samagri</b><small>₹101</small></div>
+        <div><div class="im">🕯️</div><b>Dhoop & ghee diya</b><small>₹31</small></div>
+      </div>
+      <p style="margin-top:10px;font-size:13.5px">You choose these at checkout. The priest offers them in the havan in your name.</p>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="sec">
+      <div class="stk corner" style="width:96px;height:96px"><div>sticker<code>prasad-box.png</code></div></div>
+      <h2>Prasad at your door</h2>
+      <div class="row"><span>Courier anywhere in India</span><b>₹99</b></div>
+      <div class="row" style="border:0"><span>Ships the same day as the havan. You can change your address any time before it starts.</span></div>
+    </div>
+    <div class="sec">
+      <h2>Performed by</h2>
+      <p><b>Temple priests, Haridwar</b><br>Years of experience in Vedic rituals. Your booking supports priests and their families.</p>
+    </div>
+    <div class="sec faq">
+      <h2>Questions</h2>
+      <details open><summary>How do I join?</summary><p>We send the live link on WhatsApp and email 30 minutes before the start.</p></details>
+      <details><summary>What if I miss it?</summary><p>Download the video anytime from My events.</p></details>
+      <details><summary>Can I cancel?</summary><p>Full refund if you cancel at least 24 hours before the start.</p></details>
+    </div>
+  </div>
+</div>
+
+<span class="label">2 · Checkout — one screen per step</span>
+<div class="frames">
+
+  <div class="frame">
+    <div class="kick">Step 1 of 5 · You</div><h3>Create your account</h3>
+    <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    <div class="fld"><label>Email</label><div class="in">you@example.com</div></div>
+    <div class="fld"><label>Password</label><div class="in">••••••••</div></div>
+    <div class="fld"><label>WhatsApp number <em>We send an OTP</em></label><div class="in">+91 98xxx xxxxx</div></div>
+    <div class="hint">📲 We'll send the <b>live video link on WhatsApp 30 minutes before</b> the havan starts. An email with the link comes too.</div>
+    <div class="sm-btn">Verify WhatsApp →</div>
+    <p style="font:700 12.5px Nunito;color:var(--sub);text-align:center;margin:10px 0 0">Already have an account? <u>Sign in</u></p>
+  </div>
+
+  <div class="frame">
+    <div class="kick">Step 2 of 5 · Sankalp</div><h3>Your sankalp</h3>
+    <div class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="fld"><label>Your name</label><div class="in">Ramesh Sharma</div></div>
+    <div class="fld"><label>Gotra <em>Optional</em></label><div class="in">e.g. Kashyap</div></div>
+    <div class="fld"><label>Family names <em>Optional</em></label><div class="in">Sunita, Aarav, Diya</div></div>
+    <div class="fld"><label>Your wish <em>Optional</em></label><div class="in">For my son's board exams</div></div>
+    <div class="hint hint--gold">We save your gotra and family names to your profile, so next time it's filled in.</div>
+    <div class="sm-btn">Continue →</div>
+  </div>
+
+  <div class="frame">
+    <div class="kick">Step 3 of 5 · Offerings</div><h3>Chadhava & donation</h3>
+    <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+    <div class="item"><div class="im">🌼</div><div><b>Marigold garland</b><small>₹51</small></div><div class="qty"><span>−</span>1<span>+</span></div></div>
+    <div class="item"><div class="im">🪵</div><div><b>Havan wood & samagri</b><small>₹101</small></div><div class="qty"><span>−</span>0<span>+</span></div></div>
+    <div class="fld" style="margin-top:10px"><label>Dakshina for the priest <em>Optional</em></label></div>
+    <div class="chips"><span>₹21</span><span class="on">₹51</span><span>₹101</span><span>₹251</span><span>Other</span></div>
+    <div class="tog">📦 Prasad courier · ₹99 <span class="sw"></span></div>
+    <div class="fld"><label>Shipping address <em>Saved to your profile</em></label><div class="in">House, street, city, PIN</div></div>
+    <div class="hint hint--gold">Prasad ships the <b>same day</b> as the havan. You can change this address any time before it starts.</div>
+  </div>
+
+  <div class="frame">
+    <div class="kick">Step 4 of 5 · Review</div><h3>Your total</h3>
+    <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+    <div class="sum">
+      <div class="row"><span>Havan ticket</span><b>₹111</b></div>
+      <div class="row"><span>Marigold garland × 1</span><b>₹51</b></div>
+      <div class="row"><span>Dakshina for the priest</span><b>₹51</b></div>
+      <div class="row"><span>Prasad courier (India)</span><b>₹99</b></div>
+      <div class="row"><span>Subtotal</span><b>₹312</b></div>
+      <div class="row"><span>GST 18% <span class="info" title="Only once a GSTIN exists — see open questions">?</span></span><b>₹56.16</b></div>
+      <div class="row tot"><span>Total</span><span>₹368.16</span></div>
+    </div>
+    <div class="sm-btn">Pay by UPI →</div>
+  </div>
+
+  <div class="frame">
+    <div class="kick">Step 5 of 5 · Pay</div><h3>Scan & pay ₹368.16</h3>
+    <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+    <div class="qr"></div>
+    <div class="apps"><span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span></div>
+    <div class="fld"><label>12-digit UPI transaction number (UTR)</label></div>
+    <div class="utr"><span>4</span><span>1</span><span>2</span><span>9</span><span>8</span><span>7</span><span>3</span><span>0</span><span>5</span><span>6</span><span></span><span></span></div>
+    <div class="hint hint--gold">Find it in your UPI app under the payment's details. We check it with our bank.</div>
+    <div class="sm-btn">Verify payment →</div>
+  </div>
+
+  <div class="frame done">
+    <div class="kick">Booked</div>
+    <div class="stk"><div>sticker<code>booking-blessed.png</code></div></div>
+    <div class="big">Your sankalp is booked 🙏</div>
+    <p style="font:700 14px/1.5 Nunito;color:var(--body)">Dakshinamurthy Havan · Wed 30 Sept, 6:00 am IST<br>Booking confirmation and receipt sent to your email.</p>
+    <div class="dl"><span>⬇ Download receipt (PDF)</span><span>My events</span></div>
+    <div class="hint" style="margin-top:12px">Live link arrives on WhatsApp 30 min before. Prasad ships the same day.</div>
+  </div>
+
+</div>
+</div>
+<script>
+document.querySelectorAll('.feat[tabindex]').forEach(f=>f.addEventListener('click',()=>f.classList.toggle('show')));
+</script>
+</body>
+</html>

@@ -74,8 +74,12 @@
 .bn-blip--star { background: #fff1c9; }
 .bn-blip--booked { background: #e2efe3; color: #1d5a3a; }
 .bn-feats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px 12px; border: 1px dashed #d8c3a0; border-radius: 12px; background: #fff; }
-.bn-feat { display: flex; align-items: center; gap: 6px; font: 700 12.5px/1.25 Nunito, sans-serif; color: #2c3b3d; }
+.bn-feat { position: relative; display: flex; align-items: center; gap: 6px; font: 700 12.5px/1.25 Nunito, sans-serif; color: #2c3b3d; }
 .bn-feat--off { color: #8a8378; }
+.bn-info { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #e8dcc5; color: #6b4a2b; font: 900 10px Nunito, sans-serif; border: 0; padding: 0; cursor: help; flex: none; }
+.bn-tip { position: absolute; left: 0; bottom: calc(100% + 8px); width: 210px; padding: 8px 10px; border-radius: 10px; background: #173f3f; color: #fff; font: 700 12px/1.4 Nunito, sans-serif; box-shadow: 0 8px 20px #0004; opacity: 0; pointer-events: none; transition: .15s; z-index: 5; }
+.bn-tip::after { content: ""; position: absolute; left: 12px; top: 100%; border: 6px solid transparent; border-top-color: #173f3f; }
+.bn-feat:hover .bn-tip, .bn-feat:focus-within .bn-tip, .bn-feat--show .bn-tip { opacity: 1; }
 .bn-yes, .bn-no { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; color: #fff; }
 .bn-yes { background: #1e8a4c; } .bn-no { background: #b9b0a3; }
 .bn-yes svg, .bn-no svg { width: 11px; height: 11px; }

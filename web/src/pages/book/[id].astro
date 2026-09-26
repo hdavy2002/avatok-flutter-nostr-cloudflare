@@ -1,8 +1,14 @@
 ---
-// Checkout shell. SSR-loads the listing so the page shows WHAT is being booked
-// instantly (and rides the edge cache), then hydrates the BookingFlow island
-// (client:load — checkout is interactive immediately). Browsing the listing is
-// free; the email gate fires inside BookingFlow at the identify step, not here.
+// Public booking entry point.
+//
+// [SAATHUM-EVENT-PAGE 2026-09-26] For a `live_event` listing this now renders
+// the full marketing/event page from the owner-approved mockup (EventPage.astro)
+// — SSR, edge-cached, link-preview friendly — with "Book with my sankalp"
+// linking to the checkout flow at /book/<id>/checkout (built separately,
+// [SAATHUM-CHECKOUT-UI]). Every OTHER kind keeps today's behaviour exactly:
+// this same shell SSR-loading the listing, then hydrating the BookingFlow
+// island inline (pick → identify → pay → confirm) — untouched, so consult/
+// agent/free-entry checkout never regresses.
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
@@ -10,8 +16,11 @@ import { Avatar, Pill } from '../../components';
 import { cfImage } from '../../lib/config';
 import { getListing, ApiError } from '../../lib/apiClient';
 import { durationLabel, languageLabel } from '../../lib/card';
+import { listingContent } from '../../lib/seo/sources';
+import { listingOg } from '../../lib/og';
 import type { CoverMedia, Listing } from '../../lib/types';
 import BookingFlow from '../../islands/checkout/BookingFlow.tsx';
+import EventPage from '../../components/eventpage/EventPage.astro';
 
 const { id } = Astro.params;
 
@@ -31,6 +40,13 @@ if (notFound || !listing) {
 // The checkout shell itself is public/cacheable; the island handles auth.
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 
+const isLiveEvent = (listing.kind ?? '') === 'live_event';
+
+// ── Event page SEO (only computed/used when isLiveEvent) ───────────────────
+const og = isLiveEvent ? listingOg(listing) : null;
+const eventContent = isLiveEvent ? listingContent(listing, og?.image ? { url: og.image, alt: listing.title } : undefined) : null;
+
+// ── Everything below is the UNCHANGED non-event checkout shell ─────────────
 const kind = (listing.kind ?? 'content') as string;
 const isFreeEntry = Boolean(listing.free_entry);
 const verb =
@@ -44,7 +60,6 @@ const verb =
 // The Workers/V8 ICU build prints 'GMT+5:30' for Asia/Kolkata instead of
 // 'IST'; map the common Indian/desi-diaspora zones to the names people use.
 const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
-function tzAbbr(raw: string, timeZone: string): string { return TZ_ABBR[timeZone] ?? raw; }
 
 function firstCoverUrl(media: CoverMedia[] | null | undefined): string | null {
   for (const m of media ?? []) {
@@ -75,7 +90,7 @@ function toMs(t?: number | null): number | null { if (t == null) return null; re
 function tzAbbr(ms: number, timeZone: string): string {
   try {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date(ms));
-    return tzAbbr(parts.find((p) => p.type === 'timeZoneName')?.value ?? '', timeZone);
+    return TZ_ABBR[timeZone] ?? (parts.find((p) => p.type === 'timeZoneName')?.value ?? '');
   } catch { return ''; }
 }
 function formatListingTime(ms: number, timeZone: string): string {
@@ -97,103 +112,109 @@ const langTag = languageLabel(listing.spoken_lang ?? null);
 const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing.creator.handle}` : null);
 ---
 
-<Base headerAuth="static" title={`${verb} · ${listing.title} · saathum.com`} description={`Book ${listing.title} — performed in your name and gotra, watched live, on saathum.com.`} navStatic={true}>
-  <main class="mx-auto max-w-5xl px-4 py-8">
-    <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
-      <!-- What you're booking (server-rendered, instant) -->
-      <aside class="md:sticky md:top-20 self-start">
-        <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
-          <div class="relative aspect-[4/5] w-full">
-            {coverUrl ? (
-              <img
-                src={cfImage(coverUrl, { width: 680, fit: 'cover' })}
-                alt={listing.title}
-                class="h-full w-full object-cover"
-                onerror="this.onerror=null;this.closest('.relative').classList.add('bk-poster-fallback');this.remove();"
-              />
-            ) : (
-              <div class="bk-poster-fallback flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[15px] tracking-[0.08em] font-bold">
-                {kindLabel}
+{isLiveEvent ? (
+  <Base content={eventContent ?? undefined}>
+    <EventPage listing={listing} />
+  </Base>
+) : (
+  <Base headerAuth="static" title={`${verb} · ${listing.title} · saathum.com`} description={`Book ${listing.title} — performed in your name and gotra, watched live, on saathum.com.`} navStatic={true}>
+    <main class="mx-auto max-w-5xl px-4 py-8">
+      <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
+        <!-- What you're booking (server-rendered, instant) -->
+        <aside class="md:sticky md:top-20 self-start">
+          <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
+            <div class="relative aspect-[4/5] w-full">
+              {coverUrl ? (
+                <img
+                  src={cfImage(coverUrl, { width: 680, fit: 'cover' })}
+                  alt={listing.title}
+                  class="h-full w-full object-cover"
+                  onerror="this.onerror=null;this.closest('.relative').classList.add('bk-poster-fallback');this.remove();"
+                />
+              ) : (
+                <div class="bk-poster-fallback flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[15px] tracking-[0.08em] font-bold">
+                  {kindLabel}
+                </div>
+              )}
+              {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-2">
+            <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{kindLabel}</span>
+            <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
+            {listing.creator && (
+              <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
+                <Avatar src={listing.creator.avatar} name={hostName ?? 'Saa Thum'} size={40} />
+                <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saa Thum'}</span>
+              </a>
+            )}
+            {(startsAtLabel || durationTag || langTag) && (
+              <div class="flex flex-wrap items-center gap-2 border-t-zine border-inkMute pt-2">
+                {startsAtLabel && (
+                  <span class="font-mono font-bold text-[13px] text-inkSoft" data-listing-time data-ms={startMs} data-tz={tz}>
+                    {startsAtLabel}
+                  </span>
+                )}
+                {durationTag && <Pill kind="plain">{durationTag}</Pill>}
+                {langTag && <Pill kind="plain">{langTag}</Pill>}
               </div>
             )}
-            {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
           </div>
-        </div>
-        <div class="mt-4 flex flex-col gap-2">
-          <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{kindLabel}</span>
-          <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
-          {listing.creator && (
-            <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saa Thum'} size={40} />
-              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saa Thum'}</span>
-            </a>
-          )}
-          {(startsAtLabel || durationTag || langTag) && (
-            <div class="flex flex-wrap items-center gap-2 border-t-zine border-inkMute pt-2">
-              {startsAtLabel && (
-                <span class="font-mono font-bold text-[13px] text-inkSoft" data-listing-time data-ms={startMs} data-tz={tz}>
-                  {startsAtLabel}
-                </span>
-              )}
-              {durationTag && <Pill kind="plain">{durationTag}</Pill>}
-              {langTag && <Pill kind="plain">{langTag}</Pill>}
-            </div>
-          )}
-        </div>
-      </aside>
+        </aside>
 
-      <!-- The interactive checkout (pick → identify → pay → confirm) -->
-      <section>
-        <header class="mb-5">
-          <span data-i18n="web-book.99e71f48c48f121b" class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Checkout</span>
-          <h2 class="mt-1 font-display font-semibold text-[28px] leading-tight text-ink">{verb}</h2>
-          <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            No app to learn — just your email for the confirmation.
-          </p>
-          <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
-          </p>
-        </header>
-        <BookingFlow client:load listing={listing} />
-      </section>
-    </div>
-  </main>
-</Base>
+        <!-- The interactive checkout (pick → identify → pay → confirm) -->
+        <section>
+          <header class="mb-5">
+            <span data-i18n="web-book.99e71f48c48f121b" class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Checkout</span>
+            <h2 class="mt-1 font-display font-semibold text-[28px] leading-tight text-ink">{verb}</h2>
+            <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
+              No app to learn — just your email for the confirmation.
+            </p>
+            <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
+              Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
+            </p>
+          </header>
+          <BookingFlow client:load listing={listing} />
+        </section>
+      </div>
+    </main>
 
-<style>
-  /* [WEB-CHECKOUT-BUG-3] Striped placeholder for a missing/broken cover image —
-     matches the bazaar cream-card border-ink look instead of a bare empty box. */
-  .bk-poster-fallback {
-    background-image: repeating-linear-gradient(
-      45deg,
-      rgba(22, 22, 20, 0.06) 0 10px,
-      rgba(22, 22, 20, 0.12) 10px 20px
-    );
-  }
-</style>
+    <style>
+      /* [WEB-CHECKOUT-BUG-3] Striped placeholder for a missing/broken cover image —
+         matches the bazaar cream-card border-ink look instead of a bare empty box. */
+      .bk-poster-fallback {
+        background-image: repeating-linear-gradient(
+          45deg,
+          rgba(22, 22, 20, 0.06) 0 10px,
+          rgba(22, 22, 20, 0.12) 10px 20px
+        );
+      }
+    </style>
 
-<script>
-  // [LIST-DETAIL-BUG-1] Same host-time enhancer as the listing details page —
-  // never replace the host time, only append "(your time: …)" when the
-  // viewer's own zone differs from the listing's.
-  (function enhanceListingTimesForViewer() {
-    let viewerTz = 'Asia/Kolkata';
-    try { viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || viewerTz; } catch {}
-    document.querySelectorAll('[data-listing-time]:not([data-viewer-enhanced])').forEach((el) => {
-      el.setAttribute('data-viewer-enhanced', '1');
-      const ms = Number(el.getAttribute('data-ms'));
-      const listingTz = el.getAttribute('data-tz');
-      if (!Number.isFinite(ms) || !listingTz || listingTz === viewerTz) return;
-      try {
-        const viewerStr = new Intl.DateTimeFormat('en-IN', {
-          timeZone: viewerTz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
-        }).format(new Date(ms));
-        const note = document.createElement('span');
-        note.style.opacity = '0.7';
-        note.style.marginLeft = '0.4em';
-        note.textContent = `(your time: ${viewerStr})`;
-        el.appendChild(note);
-      } catch { /* leave the host time as-is */ }
-    });
-  })();
-</script>
+    <script>
+      // [LIST-DETAIL-BUG-1] Same host-time enhancer as the listing details page —
+      // never replace the host time, only append "(your time: …)" when the
+      // viewer's own zone differs from the listing's.
+      (function enhanceListingTimesForViewer() {
+        let viewerTz = 'Asia/Kolkata';
+        try { viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || viewerTz; } catch {}
+        document.querySelectorAll('[data-listing-time]:not([data-viewer-enhanced])').forEach((el) => {
+          el.setAttribute('data-viewer-enhanced', '1');
+          const ms = Number(el.getAttribute('data-ms'));
+          const listingTz = el.getAttribute('data-tz');
+          if (!Number.isFinite(ms) || !listingTz || listingTz === viewerTz) return;
+          try {
+            const viewerStr = new Intl.DateTimeFormat('en-IN', {
+              timeZone: viewerTz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+            }).format(new Date(ms));
+            const note = document.createElement('span');
+            note.style.opacity = '0.7';
+            note.style.marginLeft = '0.4em';
+            note.textContent = `(your time: ${viewerStr})`;
+            el.appendChild(note);
+          } catch { /* leave the host time as-is */ }
+        });
+      })();
+    </script>
+  </Base>
+)}

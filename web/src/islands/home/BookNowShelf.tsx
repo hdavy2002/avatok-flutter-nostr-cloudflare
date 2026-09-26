@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Card } from '../../lib/types';
 import { getExplore } from '../../lib/apiClient';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
-import { listingPath, payAndJoinPath } from '../../lib/urls';
+import { payAndJoinPath } from '../../lib/urls';
 import { capture, captureException } from '../../lib/analytics';
 import { publicImage } from '../../lib/config';
 import './BookNowShelf.css';
@@ -50,7 +50,10 @@ interface Item {
   booked: number;
   price: number | null;
   prasad: boolean;
-  replay: boolean;
+  /** [SAATHUM-CHECKOUT §Owner decisions 1] renamed from "7-day replay". */
+  videoDownload: boolean;
+  /** [SAATHUM-CHECKOUT §Owner decisions 2] 'public' (default) or 'private' (1:1). */
+  visibility: 'public' | 'private';
   href: string;
   bookHref: string;
   benefitsHref: string;
@@ -98,7 +101,11 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
   const guide = (linkedSlug && guides.find((g) => g.href.replace(/\/$/, '').endsWith('/' + linkedSlug))) || guideFor(c.title, guides);
   const oneOnOne = String(card.kind ?? '') === 'consult';
   const attrs = (card.attrs ?? null) as Record<string, unknown> | null;
-  const href = listingPath({ id: c.id, handle: c.creator?.handle ?? null, slug: card.slug ?? null });
+  // [SAATHUM-EVENT-PAGE 2026-09-26] The card's art/title now open the new
+  // /book/<id> event page (not the old /l/<id> listing detail) — that page is
+  // the marketing surface now. "Book now" goes one step further, to checkout.
+  const href = payAndJoinPath(c.id);
+  const bookHref = href + '/checkout';
   return {
     id: c.id,
     title: c.title,
@@ -118,9 +125,12 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     price: c.price,
     // Saa Thum couriers prasad (incl. international) by default; a listing can opt out via attrs.
     prasad: attrBool(attrs, ['prasad_courier', 'prasad_delivery', 'prasad'], true),
-    replay: !oneOnOne && attrBool(attrs, ['replay', 'replay_available'], true),
+    // [SAATHUM-CHECKOUT §Data] video_download replaces replay; either legacy
+    // attrs key still wins over the true default when set.
+    videoDownload: !oneOnOne && attrBool(attrs, ['video_download', 'replay', 'replay_available'], true),
+    visibility: attrs?.visibility === 'private' ? 'private' : 'public',
     href,
-    bookHref: payAndJoinPath(c.id),
+    bookHref,
     benefitsHref: guide?.href ?? href + '#about',
   };
 }
@@ -140,7 +150,7 @@ function sampleItems(samples: GuideLink[], now: number): Item[] {
       blurb: 'Sample card — shown only with ?booknow=preview so the design can be reviewed before real listings exist.',
       image: publicImage(g.image, { width: 900, fit: 'scale-down' }), mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
       location: p.city, category: null, ratingAvg: p.r, ratingCount: p.rc, booked: p.booked, price: p.price,
-      prasad: p.prasad, replay: p.mode === 'live', href: g.href, bookHref: '/marketplace', benefitsHref: g.href,
+      prasad: p.prasad, videoDownload: p.mode === 'live', visibility: 'public', href: g.href, bookHref: '/marketplace', benefitsHref: g.href,
     };
   });
 }
@@ -178,11 +188,24 @@ function waHref(it: Item, origin: string): string {
 const Tick = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>;
 const Cross = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>;
 
-function Feat({ on, label }: { on: boolean; label: string }) {
+function Feat({ on, label, tip, tipId, onOpen }: { on: boolean; label: string; tip?: string; tipId?: string; onOpen?: () => void }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className={'bn-feat' + (on ? '' : ' bn-feat--off')}>
+    <div className={'bn-feat' + (on ? '' : ' bn-feat--off') + (open ? ' bn-feat--show' : '')} tabIndex={tip ? 0 : undefined}>
       <span className={on ? 'bn-yes' : 'bn-no'}>{on ? <Tick /> : <Cross />}</span>
       <span>{label}<span className="bn-sr">{on ? ': yes' : ': no'}</span></span>
+      {tip && (
+        <>
+          <button
+            type="button"
+            className="bn-info"
+            aria-describedby={tipId}
+            aria-label={`More info: ${label}`}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => { if (!v) onOpen?.(); return !v; }); }}
+          >i</button>
+          <span className="bn-tip" role="tooltip" id={tipId}>{tip}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -209,9 +232,11 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
       <a className="bn-art" href={it.href} tabIndex={-1} aria-hidden="true" onClick={() => track('art')}>
         {it.image ? <img src={it.image} alt="" loading="lazy" decoding="async" /> : <span className="bn-art-empty" />}
         <span className="bn-top">
-          {it.mode === 'live'
-            ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Live now' : 'Live'}</span>
-            : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
+          {it.visibility === 'private'
+            ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
+            : it.mode === 'live'
+              ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Live now' : 'Live'}</span>
+              : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
           {it.category && <span className="bn-pill bn-pill--soft">{it.category}</span>}
         </span>
         <span className="bn-when">
@@ -240,8 +265,25 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
         <div className="bn-feats">
           <Feat on={it.prasad} label="Prasad courier" />
           <Feat on label="Sankalp in your name" />
-          {it.mode === 'live' ? <Feat on={it.replay} label="7-day replay" /> : <Feat on label="Private 1:1 call" />}
+          {it.mode === 'live' ? (
+            <Feat
+              on={it.videoDownload}
+              label="Video download"
+              tip="You can download your video anytime."
+              tipId={`bn-tip-video-${it.id}`}
+              onOpen={() => track('tooltip')}
+            />
+          ) : (
+            <Feat on label="Private 1:1 call" />
+          )}
           <Feat on label={it.mode === 'live' ? 'Live stream' : 'Video with priest'} />
+          <Feat
+            on
+            label={it.visibility === 'private' ? 'Private' : 'Public'}
+            tip="Public: many devotees join the same havan together. Private: a 1:1 session just for your family."
+            tipId={`bn-tip-visibility-${it.id}`}
+            onOpen={() => track('tooltip')}
+          />
         </div>
         <div className="bn-price-row">
           {it.price != null
