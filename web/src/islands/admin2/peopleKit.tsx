@@ -201,12 +201,12 @@ export function phoneText(c: Pick<Customer, 'phone_masked' | 'phone_hash_only'>)
   return c.phone_hash_only ? 'Phone on file (not readable)' : null;
 }
 
-/** Name → customer page, then email and masked phone. */
+/** Name → the user's panel on /admin/users, then email and masked phone. */
 export function CustomerCell({ c, compact }: { c: Customer; compact?: boolean }) {
   const phone = phoneText(c);
   return (
     <div className="min-w-0">
-      <a href={`/admin/customers/${encodeURIComponent(c.uid)}`} className="font-extrabold text-foreground underline-offset-2 hover:text-accent hover:underline">
+      <a href={`/admin/users?user=${encodeURIComponent(c.uid)}`} className="font-extrabold text-foreground underline-offset-2 hover:text-accent hover:underline">
         {c.name ?? 'No name'}
       </a>
       {c.email && <div className={cn('truncate text-[12.5px] font-semibold text-muted-foreground', compact && 'text-[12px]')} title={c.email}>{c.email}</div>}

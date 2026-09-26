@@ -15,7 +15,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'bookings', label: 'Bookings', short: 'Bookings', href: '/admin/bookings', icon: Ticket },
   { key: 'payments', label: 'Payments', short: 'Payments', href: '/admin/payments', icon: IndianRupee },
   { key: 'refunds', label: 'Refunds', short: 'Refunds', href: '/admin/refunds', icon: Undo2 },
-  { key: 'customers', label: 'Customers', short: 'Customers', href: '/admin/customers', icon: Users },
+  { key: 'customers', label: 'Users', short: 'Users', href: '/admin/users', icon: Users }, // [ADMIN2-USERS] key stays 'customers'
   { key: 'prices', label: 'Prices', short: 'Prices', href: '/admin/prices', icon: Tags },
 ];
 

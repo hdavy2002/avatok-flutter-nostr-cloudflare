@@ -16,6 +16,7 @@ import { notStuckLiveSql } from "../lib/listing_schedule";
 import { SMOKE_LISTING_ID, startsMsSql, coverImageUrl } from "../lib/me_dashboard_data";
 import { ADMIN2_EVENT_ROUTES } from "./admin2_events"; // [ADMIN2-EVENTS]
 import { ADMIN2_PEOPLE_ROUTES } from "./admin2_people"; // [ADMIN2-PEOPLE] agent C
+import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
 
 const APP = "saathum";
 
@@ -222,6 +223,8 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   ...ADMIN2_EVENT_ROUTES,
   // --- bookings/payments/customers (agent C) ---
   ...ADMIN2_PEOPLE_ROUTES,
+  // --- users (agent E) ---
+  ...ADMIN2_USER_ROUTES,
 ];
 
 /** Match a path against the table. Exported for tests. */

@@ -7206,5 +7206,30 @@
       }
     ],
     "_verified_at": "web/src/pages/admin/refunds.astro active='refunds' and web/src/pages/admin/prices.astro active='prices' in layouts/Admin2.astro"
+  },
+  "ADMIN2-USERS": {
+    "description": "[ADMIN2-USERS] Admin 2 Users (menu item Customers renamed Users, route /admin/users; /admin/customers and /admin/customers/<uid> 301 to /admin/users and /admin/users?user=<uid>). Worker routes/admin2_users.ts (one spread line in routes/admin2.ts): GET /api/admin/v2/users?q&filter=verified,not_verified,blocked,active,has_spent&sort=joined|spent|name&joined_from&joined_to&cursor&format=csv (every users row + Clerk batch lookup for email/last active/avatar; spend = paid lines GST included, net of refunds, in paise; bookings = live-event seats held; status from account_status), GET /api/admin/v2/users/:uid (customer detail + account + money), POST .../:uid/block {reason?} (account_status perm_banned -> authz.ts requireUser refuses every authed request; admin2_user_blocks row; Clerk ban for uid + clerk_uid_alias ids), POST .../:uid/unblock, POST .../:uid/signout-all (revokes every active Clerk session; there are NO passwords), DELETE .../:uid {confirm: email|uid} (reuses routes/admin_delete_user.ts adminDeleteUser cascade). Refuses block/sign-out/delete for yourself and any ADMIN_UIDS account. Every action writes admin_audit (DB_WALLET, action user_block|user_unblock|user_signout_all|user_delete) and emits admin2_user_action {action, ok}. Migration worker/migrations/2026-09-26-admin2-user-blocks.sql (CREATE-only, DB_META; the list/detail/block work before it is applied, the block row is best-effort). Web islands/admin2/Users.tsx: list with avatar, name, email, masked phone + Verified badge, joined, last active, bookings, spent, status; filters, sort, Load more, CSV; row click opens an animated panel directly below the row (one at a time, ?user=) with profile, money, upcoming/past bookings, recent payments and Block / Reset login (sign out all devices) / Delete (type the email to confirm). Admin-only, not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "in": [
+          "customers"
+        ],
+        "min_events": 1,
+        "note": "An admin opened /admin/users (the nav key stays 'customers', so the layout emits screen=customers)."
+      },
+      {
+        "event": "admin2_user_action",
+        "property": "action",
+        "exists": true,
+        "min_events": 1,
+        "note": "Worker event after an account action: action = block | unblock | signout_all | delete, ok = true/false (false also for refused protected accounts and a mistyped delete confirmation)."
+      }
+    ],
+    "_verified_at": "worker/src/routes/admin2_users.ts tel() -> track(env, adminUid, 'admin2_user_action', 'saathum', {action, ok, target_uid}); web/src/pages/admin/users/index.astro active='customers' in layouts/Admin2.astro; worker/test/admin2_users.test.ts"
   }
 }

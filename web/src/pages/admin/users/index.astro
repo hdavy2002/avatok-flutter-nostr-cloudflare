@@ -1,0 +1,11 @@
+---
+// [ADMIN2-USERS 2026-09-26] Every account: search, filters, CSV, and a panel under each row
+// (profile, money, bookings, payments, Block / Reset login / Delete). ?user=<uid> opens one.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import Users from '../../../islands/admin2/Users.tsx';
+---
+
+<Admin2 title="Users" active="customers" subtitle="Everyone with a Saa Thum account: what they booked, what they spent, and account actions.">
+  <Users client:load />
+</Admin2>

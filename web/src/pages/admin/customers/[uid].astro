@@ -1,13 +1,6 @@
 ---
-// [ADMIN2-PEOPLE 2026-09-26] One customer: profile, bookings, payments, refunds (tabs).
+// [ADMIN2-USERS 2026-09-26] Customers became Users: /admin/customers/<uid> opens that user's panel.
 export const prerender = false;
-import Admin2 from '../../../layouts/Admin2.astro';
-import CustomerDetail from '../../../islands/admin2/CustomerDetail.tsx';
-
 const uid = String(Astro.params.uid ?? '').slice(0, 200);
-if (!uid) return Astro.redirect('/admin/customers', 302);
+return Astro.redirect(uid ? `/admin/users?user=${encodeURIComponent(uid)}` : '/admin/users', 301);
 ---
-
-<Admin2 title="Customer" heading="Customer" active="customers">
-  <CustomerDetail client:load uid={uid} />
-</Admin2>
