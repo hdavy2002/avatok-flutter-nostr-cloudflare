@@ -1,12 +1,7 @@
 ---
-// REMOVED [DASH2-ARCHIVE-1 2026-09-25] v1 page archived at src/pages/archive/dashboard-v1/listings/publish.astro.
-// dashboard2Enabled ON  -> redirect to the nearest Dashboard 2 screen.
-// dashboard2Enabled OFF -> render the archived v1 page exactly as before.
-// 302 (not 301) while the flag decides: a cached 301 would outlive a flag flip.
+// /dashboard/listings/publish — old v1 dashboard URL. [ADMIN2-DELETE 2026-09-26] The v1 dashboard is
+// deleted (git history keeps it) and /dashboard always renders Dashboard 2, so this
+// page only redirects to the nearest Dashboard 2 screen (/dashboard).
 export const prerender = false;
-import { isDashboard2Enabled } from '../../../lib/serverFlags';
-import V1 from '../../archive/dashboard-v1/listings/publish.astro';
-if (await isDashboard2Enabled(Astro)) return Astro.redirect(`/dashboard${Astro.url.search}`, 302);
-Astro.response.headers.set('Cache-Control', 'private, no-store');
+return Astro.redirect(`/dashboard${Astro.url.search}`, 301);
 ---
-<V1 />

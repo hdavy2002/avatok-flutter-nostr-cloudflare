@@ -1,23 +1,13 @@
 ---
 // /dashboard — [DASH2-FOUNDATION 2026-09-25] "Book events", the Dashboard 2 home.
-// dashboard2Enabled ON (or the ?dash2=1 preview cookie) -> Dashboard 2.
-// OFF -> the archived v1 overview, exactly as before
-// (REMOVED [DASH2-ARCHIVE-1 2026-09-25]: v1 lives at archive/dashboard-v1/index.astro).
+// [ADMIN2-DELETE 2026-09-26] Always Dashboard 2: the v1 fallback, the dashboard2Enabled
+// read and the ?dash2 preview cookie are removed (the v1 dashboard is deleted; git keeps it).
 export const prerender = false;
 
 import Dashboard2 from '../layouts/Dashboard2.astro';
 import BookEvents from '../islands/dashboard2/BookEvents.tsx';
-import V1Overview from './archive/dashboard-v1/index.astro';
-import { isDashboard2Enabled } from '../lib/serverFlags';
-
-const dash2 = await isDashboard2Enabled(Astro);
-Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
-{dash2 ? (
-  <Dashboard2 title="Book events" active="book" subtitle="Choose a puja or havan and book it in your name and gotra.">
-    <BookEvents client:load />
-  </Dashboard2>
-) : (
-  <V1Overview />
-)}
+<Dashboard2 title="Book events" active="book" subtitle="Choose a puja or havan and book it in your name and gotra.">
+  <BookEvents client:load />
+</Dashboard2>
