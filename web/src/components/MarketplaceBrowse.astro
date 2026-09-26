@@ -5,7 +5,7 @@
 // the authed shell (so cards and category tiles link to /dashboard/l/<id> etc).
 //
 // [MARKET-BAZAAR-1 2026-08-31, owner decision] The shell is the bazaar comp
-// (design/marketplace/Saathum Marketplace.dc.html): terracotta hero, truck-art
+// (design/marketplace/Saa Thum Marketplace.dc.html): terracotta hero, truck-art
 // category tiles, section rules. What it is NOT is the comp's DATA. The comp
 // hardcodes eight cards per section with invented counts, ratings and
 // followings, all linking to one demo listing — that is what [DEMO-MARKET-1]
@@ -50,7 +50,7 @@ const mpBase = `${hrefBase}/marketplace`;
 //
 // [SAATHUM-WEB-UI 2026-09-20] PUBLIC_GROUP_ORDER, not GROUP_ORDER — only two
 // tiles render. `find_your_people` has zero visible sub-categories under
-// Saathum's devotional scope (SPEC.md), so a tile for it would be a dead end
+// Saa Thum's devotional scope (SPEC.md), so a tile for it would be a dead end
 // every time someone taps it. See marketGroups.ts.
 const visibleTiles = PUBLIC_GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 const RITUAL_TILES = [
@@ -199,7 +199,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
           <span class="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-blueInk">{ritualTiles ? 'Our promise' : 'For creators'}</span>
           <h3 class="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">{ritualTiles ? 'Only joy, only blessings' : 'Sell from your dashboard'}</h3>
-          <p class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">{ritualTiles ? 'Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.' : 'Create listings, bookings and AI agents on the web. Going live and sessions happen in the app.'}</p>
+          <p class="font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">{ritualTiles ? 'Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.' : 'Create listings, bookings and AI agents on the web. Going live and sessions happen in the app.'}</p>
           <div class="pt-1"><a href={ritualTiles ? '/refunds' : '/sign-up'} class={ctaBlue}>{ritualTiles ? 'Refund policy' : 'Become a creator'}</a></div>
         </div>
       </div>

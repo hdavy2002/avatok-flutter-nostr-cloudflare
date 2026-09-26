@@ -2,9 +2,9 @@ import { createElement as h } from 'react';
 import type { OgRecord } from './types';
 
 const labels: Record<OgRecord['kind'], string> = {
-  home: 'SACRED RITUALS, SHARED LIVE', page: 'SAATHUM', collection: 'EXPLORE SAATHUM',
+  home: 'SACRED RITUALS, SHARED LIVE', page: 'SAA THUM', collection: 'EXPLORE SAA THUM',
   article: 'RITUAL STORIES & GUIDES', help: 'HERE TO HELP', listing: 'LIVE RITUALS',
-  creator: 'MEET THE ORGANISER', agent: 'EXPLORE SAATHUM',
+  creator: 'MEET THE ORGANISER', agent: 'EXPLORE SAA THUM',
 };
 
 /** Titles are text nodes, never HTML. Hard limits keep pathological records inside the card. */
@@ -30,7 +30,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
     padding: 40, border: '12px solid #b94427',
   } },
     h('div', { style: { display: 'flex', flexDirection: 'column', width: 600, paddingRight: 34 } },
-      h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, 'Saathum'),
+      h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, 'Saa Thum'),
       h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginTop: 12 } }, 'JOIN LIVE, FROM ANYWHERE'),
       h('div', { style: { display: 'flex', flex: 1, alignItems: 'center' } },
         h('div', { style: { display: 'flex', fontSize: size, lineHeight: 1.2, color: '#304d35', maxHeight: 300, overflow: 'hidden' } }, hook),
@@ -59,7 +59,7 @@ export function ogTemplate(record: OgRecord, artwork: string) {
     padding: 44, border: '12px solid #b94427',
   } },
     h('div', { style: { display: 'flex', flexDirection: 'column', width: 620, paddingRight: 36 } },
-      h('div', { style: { display: 'flex', fontSize: 46, color: '#ab3421', marginBottom: 26 } }, 'Saathum'),
+      h('div', { style: { display: 'flex', fontSize: 46, color: '#ab3421', marginBottom: 26 } }, 'Saa Thum'),
       h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginBottom: 22 } }, labels[record.kind]),
       h('div', { style: { display: 'flex', fontSize: title.length > 74 ? 40 : 49, lineHeight: 1.18, letterSpacing: -1, overflow: 'hidden', maxHeight: 245 } }, title),
       description ? h('div', { style: { display: 'flex', fontSize: 21, lineHeight: 1.4, marginTop: 20, maxHeight: 92, overflow: 'hidden', color: '#5a614d' } }, description) : null,

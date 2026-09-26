@@ -26,7 +26,7 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, /<title[^>]*>Join Live Havans &amp; Pujas Online \| Saathum/, 'Puja service page title');
+assert.match(html, /<title[^>]*>Join Live Havans &amp; Pujas Online \| Saa Thum/, 'Puja service page title');
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Sab ki aahuti, sab ka ashirwad\./, 'Brief H1');
@@ -96,9 +96,9 @@ for (const href of ['/grievance','/about','/careers','/marketplace-terms','/cons
   assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
-assert.match(visibleText, /Saathum performs pujas and havans for you\./, 'Service role is explained');
+assert.match(visibleText, /Saa Thum performs pujas and havans for you\./, 'Service role is explained');
 assert.match(visibleText, /You book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
-assert.match(visibleText, /Saathum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
+assert.match(visibleText, /Saa Thum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
 
 // [SAATHUM-GUIDE-1 2026-09-25] Owner replaced the sample listing cards with eight
 // havan KNOWLEDGE cards that open the Puja & Havan Guide — no prices, no fake slots.
@@ -139,7 +139,7 @@ assert.doesNotMatch(html, /\bcalculator-illustrated\b/, 'Earnings calculator rem
 assert.doesNotMatch(html, /<input\b[^>]*type="range"/, 'No calculator controls on the homepage (contracts.md §6)');
 assert.doesNotMatch(html, /id="ideas-catalogue"|id="how-avatok-works"|id="addon-ideas"|id="addon-calculator"|id="consultations"/, 'Retired creator anchors removed (contracts.md §5)');
 assert.doesNotMatch(html, /avatok-creator-constellation/, 'Retired creator hero art removed (A4.1, D10)');
-assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Language picker hidden on Saathum (D9)');
+assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Language picker hidden on Saa Thum (D9)');
 assert.doesNotMatch(bodyHtml.replace(/<footer\b[\s\S]*?<\/footer>/i, ''), /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in homepage content (D2, AC-17)');
 
 for (const key of ['web-landing.0528be3d426aff53', 'web-landing.92f4118799fbcf80', 'web-landing.d0082f5d7ac7dd8b', 'web-landing.721cb60fc48386d6', 'web-landing.c54a63bb77c61e9d', 'web-landing.b9d43bd06fbe8631']) {
@@ -307,7 +307,7 @@ for (const href of ritualLinks) {
 console.log('Puja & Havan Guide checks passed: 55 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Join Live Havans &#38; Pujas Online | Saathum', 'A4 og:title (WEB-SEO-AUTO-1)');
+assert.equal(meta(html, 'og:title'), 'Join Live Havans &#38; Pujas Online | Saa Thum', 'A4 og:title (WEB-SEO-AUTO-1)');
 assert.equal(meta(html, 'og:description'), 'Join live havans for health, prosperity, peace and new beginnings. Our priests perform your sankalp. Watch live, replay for 7 days and receive prasad at home.', 'A4 og:description (WEB-SEO-AUTO-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));

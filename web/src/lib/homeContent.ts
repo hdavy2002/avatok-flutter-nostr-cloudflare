@@ -12,12 +12,12 @@ export const HOME_SEO: PublicContent = {
   kind: 'home',
   key: 'home',
   canonicalPath: '/',
-  title: 'Join Live Havans & Pujas Online | Saathum',
+  title: 'Join Live Havans & Pujas Online | Saa Thum',
   summary: 'Join live havans for health, prosperity, peace and new beginnings. Our priests perform your sankalp. Watch live, replay for 7 days and receive prasad at home.',
   visibility: 'public',
   image: {
     url: '/assets/saathum-grand/hero.png',
-    alt: 'Saathum live havans and pujas, watched online with prasad delivered at home.',
+    alt: 'Saa Thum live havans and pujas, watched online with prasad delivered at home.',
     revision: 'saathum-home-v1',
   },
 };

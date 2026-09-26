@@ -185,7 +185,7 @@ export async function resolveOgRecord(kind: string, key: string): Promise<OgReso
       if (!ritual) return { status: 'not-found' };
       return publicContentRecord({
         kind: 'article', key: ritual.slug, canonicalPath: ritual.href,
-        title: `${ritual.title} — Meaning, Story, Benefits & How to Join Live · Saathum`,
+        title: `${ritual.title} — Meaning, Story, Benefits & How to Join Live · Saa Thum`,
         summary: `${ritual.description} Why it is offered to ${ritual.deity}, the story behind it, who it is for, and how to join live from anywhere.`,
         visibility: 'public', publishedAt: '2026-09-25', modifiedAt: '2026-09-25',
         image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },

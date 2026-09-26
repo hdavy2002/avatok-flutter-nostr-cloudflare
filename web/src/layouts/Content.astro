@@ -19,9 +19,9 @@ export interface Props {
   image?: string;
   /**
    * Override the `<title>` / og:title. Defaults to `title`; Base.astro appends
-   * " · Saathum" to any title that does not already name the brand ([WEB-SEO-2]),
-   * which is why this layout no longer adds the suffix itself — "About Saathum"
-   * used to ship as "About Saathum · Saathum".
+   * " · Saa Thum" to any title that does not already name the brand ([WEB-SEO-2]),
+   * which is why this layout no longer adds the suffix itself — "About Saa Thum"
+   * used to ship as "About Saa Thum · Saa Thum".
    */
   ogTitle?: string;
   /**
@@ -78,7 +78,7 @@ const content: PublicContent = {
   summary: description ?? lead,
   visibility: 'public',
   modifiedAt: updated ? new Date(updated).toISOString() : undefined,
-  image: image ? { url: image, alt: `${title} — Saathum` } : undefined,
+  image: image ? { url: image, alt: `${title} — Saa Thum` } : undefined,
 };
 ---
 
@@ -101,7 +101,7 @@ const content: PublicContent = {
     <SiteHeader />
 
     <main class={`content ${width === 'wide' ? 'is-wide' : ''} ${sticker ? 'has-sticker' : ''}`}>
-      <span class="vertical-issue">Saathum · PUJAS &amp; HAVANS · 2026</span>
+      <span class="vertical-issue">Saa Thum · PUJAS &amp; HAVANS · 2026</span>
       {sticker && (
         <img
           class="content-sticker"
@@ -142,7 +142,7 @@ const content: PublicContent = {
 
 <style is:global>
   .editorial-page {
-    /* [WEB-THEME-1 2026-08-26] Remapped onto the Saathum design tokens. These 23
+    /* [WEB-THEME-1 2026-08-26] Remapped onto the Saa Thum design tokens. These 23
        content + legal pages carry their OWN palette rather than the --zine-*
        set, so the site-wide token swap missed them entirely and they were still
        rendering the old white/purple editorial look. Polarity preserved: light

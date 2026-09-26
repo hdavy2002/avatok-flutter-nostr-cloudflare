@@ -27,7 +27,7 @@ assert.match(html, /<title[^>]*>Become a spiritual event organiser \| Saa Thum/,
 assert.match(html, /Bring your local spiritual community to the world\./, 'A5 hero H1');
 assert.match(html, /Partner with a guru, priest, temple or yoga teacher\. Arrange a live experience, share the booking link and help people take part from home\./, 'A5 hero support line');
 assert.match(html, /You bring the organisation\. Your spiritual host brings the experience\./, 'A5 no-immediate-income line');
-assert.equal(meta(html, 'og:title'), 'Become a spiritual event organiser | Saa Thum · Saathum', 'A5 og:title');
+assert.equal(meta(html, 'og:title'), 'Become a spiritual event organiser | Saa Thum', 'A5 og:title');
 assert.match(html, /Start organising/, 'A5 primary CTA label');
 
 // contracts.md §5 — organiser section ids.
@@ -52,7 +52,7 @@ assert.doesNotMatch(html, /withdraw(?:al)?s? (?:are|is) available|instant(?:ly)?
 assert.doesNotMatch(html, /\bevery phone\b[\s\S]{0,60}\b2K\b|\b2K\b[\s\S]{0,60}\bevery phone\b/i, 'No universal-2K broadcast claim (O9, AC-11)');
 
 // AC-16 — the canonical fee sentence, verbatim (contracts.md §4).
-assert.match(html, /(?:Saa Thum|Saathum) adds a time fee of ₹50 per participant for every 30 minutes booked \(₹100 per hour\) and keeps 20% of your price\. The 20% does not change with event length\./, 'AC-16 canonical fee sentence, verbatim');
+assert.match(html, /Saa Thum adds a time fee of ₹50 per participant for every 30 minutes booked \(₹100 per hour\) and keeps 20% of your price\. The 20% does not change with event length\./, 'AC-16 canonical fee sentence, verbatim');
 
 // A6.2/A6.3 — the planner's default scenario (A=₹400, N=50, H=1h) reaches
 // the built page. This is a smoke check that the numbers shipped, not a

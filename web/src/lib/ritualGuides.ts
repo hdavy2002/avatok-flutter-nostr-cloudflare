@@ -1,5 +1,5 @@
 // [SAATHUM-GUIDE-1 2026-09-25] The Puja & Havan Guide — editorial knowledge
-// articles, one per ritual Saathum performs. Source: owner's "Havan & Puja
+// articles, one per ritual Saa Thum performs. Source: owner's "Havan & Puja
 // Catalogue" (30 havans + 25 pujas). This is EDITORIAL content, not bookable
 // inventory — prices, dates and seats live in the marketplace ("Our Pujas").
 //

@@ -10,13 +10,13 @@ export const GET: APIRoute = () => {
     `- [${ritual.title}](${SITE}${ritual.href}): ${ritual.description}`,
   ).join('\n');
 
-  const body = `# Saathum
+  const body = `# Saa Thum
 
-> Saathum performs pujas and havans in a devotee's name and gotra. Rituals are performed by Saathum priests at a real altar, can be watched live, include a seven-day replay, and may include prasad delivery as described on the booking page.
+> Saa Thum performs pujas and havans in a devotee's name and gotra. Rituals are performed by Saa Thum priests at a real altar, can be watched live, include a seven-day replay, and may include prasad delivery as described on the booking page.
 
 ## Main public resources
-- [Home](${SITE}/): What Saathum offers and how live participation works.
-- [Puja & Havan Guide](${SITE}/rituals): Explanatory guides to the rituals Saathum offers.
+- [Home](${SITE}/): What Saa Thum offers and how live participation works.
+- [Puja & Havan Guide](${SITE}/rituals): Explanatory guides to the rituals Saa Thum offers.
 - [Complete ritual index](${SITE}/llms-rituals.txt): Canonical titles, summaries and URLs generated from the public ritual catalogue.
 - [Marketplace](${SITE}/marketplace): Currently public and bookable rituals.
 - [How it works](${SITE}/how-it-works): Booking, sankalp, live viewing, replay and prasad.
@@ -30,7 +30,7 @@ export const GET: APIRoute = () => {
 ${featured}
 
 ## Editorial and safety notes
-Ritual pages describe benefits traditionally sought by devotees. Saathum does not guarantee spiritual, financial, health or other outcomes. Public facts should be taken from the canonical page and its visible text. Public article text is available in server-rendered HTML without signing in or running JavaScript.
+Ritual pages describe benefits traditionally sought by devotees. Saa Thum does not guarantee spiritual, financial, health or other outcomes. Public facts should be taken from the canonical page and its visible text. Public article text is available in server-rendered HTML without signing in or running JavaScript.
 
 Language: English (India). Sitemap: ${SITE}/sitemap.xml. Authenticated dashboards, checkout, payment, viewing sessions and administration are not public discovery content.
 `;

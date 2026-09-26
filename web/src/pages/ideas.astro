@@ -13,7 +13,7 @@ import TruckBorder from '../components/TruckBorder.astro';
 import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';
 import '../styles/creator-ideas.css';
 const travelArt = creatorIdeas.find(idea => idea.id === 'idea-8')!;
-const pageTitle = '115 Creator & Work-from-Home Ideas · Saathum';
+const pageTitle = '115 Creator & Work-from-Home Ideas · Saa Thum';
 const pageDescription = 'Explore 115 creator ideas: live streaming, 1:1 sessions, group classes and daily-life vlogs, with practical guides and phone-first tips.';
 const kitchenArt = creatorIdeas.find(idea => idea.id === 'idea-19')!;
 const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':'https://saathum.com/ideas/#collection', url:'https://saathum.com/ideas/', name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:'https://saathum.com'+kitchenArt.image, isPartOf:{'@id':'https://saathum.com/#website'}, mainEntity:{'@type':'ItemList', numberOfItems:creatorIdeas.length, itemListElement:creatorIdeas.map((idea,index)=>({'@type':'ListItem',position:index+1,url:'https://saathum.com'+idea.href,name:idea.title}))} };

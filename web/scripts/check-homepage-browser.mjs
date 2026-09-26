@@ -1,4 +1,4 @@
-// Browser checks for the grand Saathum homepage. Run only from the web build workflow.
+// Browser checks for the grand Saa Thum homepage. Run only from the web build workflow.
 import { chromium } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';

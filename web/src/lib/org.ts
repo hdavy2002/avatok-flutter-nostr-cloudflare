@@ -9,7 +9,7 @@
 // comment above Base.astro's `orgLd` ([WEB-SEO-1]/[WEB-SEO-2]) — read it
 // before changing a value, not just the field's name.
 //
-// The legal entity behind the brand is Saathum, a
+// The legal entity behind the brand is Saa Thum, a
 // domestic Delaware corporation. The public registered-agent address is used
 // below because it is the address returned by Delaware's entity search.
 //
@@ -88,7 +88,7 @@ export interface OrgConstants {
 }
 
 export const ORG: OrgConstants = {
-  name: 'Saathum',
+  name: 'Saa Thum',
   alternateNames: ['Saathum.com'],
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
@@ -100,7 +100,7 @@ export const ORG: OrgConstants = {
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   description:
-    'Saathum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door.',
+    'Saa Thum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door.',
   slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',
@@ -118,7 +118,7 @@ export const ORG: OrgConstants = {
     postalCode: '19713',
   },
   parent: {
-    name: 'Saathum',
+    name: 'Saa Thum',
     region: 'Delaware',
     country: 'US',
   },
@@ -130,11 +130,11 @@ export const ORG: OrgConstants = {
   },
   sameAs: {
     // [SAATHUM-BRAND-1 2026-09-20] These four profiles (youtube/@avatok,
-    // linkedin/company/avatok, the Saathum Wikidata item) were the Saathum
+    // linkedin/company/avatok, the Saa Thum Wikidata item) were the Saa Thum
     // brand's real, resolving accounts — `sameAs` must only list profiles
     // that resolve TODAY (see the file header), and none of them are
-    // Saathum's. Nulled rather than repointed at a guessed Saathum handle;
-    // set each once a real Saathum profile exists. avatok.ai keeps its own
+    // Saa Thum's. Nulled rather than repointed at a guessed Saa Thum handle;
+    // set each once a real Saa Thum profile exists. avatok.ai keeps its own
     // accounts as the frozen snapshot's brand facts (lane 06).
     youtube: null,
     linkedin: null,
@@ -164,7 +164,7 @@ export interface PageLdInput {
 
 /**
  * Builds the site-wide Organization/WebSite/WebPage JSON-LD graph from ORG.
- * Answer engines read this to decide what Saathum *is*; keep it consistent
+ * Answer engines read this to decide what Saa Thum *is*; keep it consistent
  * with the visible copy on /about. This is the same graph shape Base.astro
  * used to build inline ([WEB-SEO-1]/[WEB-SEO-2]) — same @ids, same nodes —
  * just sourced from ORG so one field edit here reaches every page.
@@ -202,7 +202,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     description: ORG.description,
     // [SAATHUM-BRAND-1 2026-09-20] [WEB-SEO-6]'s original disambiguation
     // ("avatok" collided with avatok.tech and an avatar-video app) no longer
-    // applies under the Saathum name — no known collision exists, so this is
+    // applies under the Saa Thum name — no known collision exists, so this is
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:

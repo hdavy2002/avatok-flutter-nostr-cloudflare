@@ -14,7 +14,7 @@ assert.match(resting, /transform:\s*none\s*;/);
 assert.match(resting, /filter:\s*none\s*;/);
 assert.doesNotMatch(read('src/lib/railwayHome.ts'), /classList\.add\('is-shown'\)/);
 // [SHV2-S10] Was a hardcoded check for the retired creator hero filename
-// (avatok-creator-constellation.png) — the Saathum attendee homepage (Specs/
+// (avatok-creator-constellation.png) — the Saa Thum attendee homepage (Specs/
 // saathum-spec-v2-and-agent-plan.md A4.1, D10) reuses existing approved art
 // via the public-image pipeline instead, and no filename is fixed by the
 // contract. Keep the underlying intent — homepage imagery goes through
