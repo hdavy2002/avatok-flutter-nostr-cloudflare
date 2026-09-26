@@ -168,6 +168,16 @@ describe("normalizeEventInput", () => {
   });
 });
 
+describe("booked boost", () => {
+  it("accepts a whole number, clears on empty/0/null, rejects junk", () => {
+    expect(normalizeEventInput({ booked_boost: 1200 }, { partial: true, now: NOW }).patch.booked_boost).toBe(1200);
+    for (const v of ["", 0, null]) expect(normalizeEventInput({ booked_boost: v }, { partial: true, now: NOW }).patch.booked_boost).toBeNull();
+    expect(normalizeEventInput({ booked_boost: -5 }, { partial: true, now: NOW }).errors[0].field).toBe("booked_boost");
+    expect(normalizeEventInput({ booked_boost: 1.5 }, { partial: true, now: NOW }).errors[0].field).toBe("booked_boost");
+    expect(splitPatch(normalizeEventInput({ booked_boost: 50 }, { partial: true, now: NOW }).patch).attrs).toEqual({ booked_boost: 50 });
+  });
+});
+
 describe("auto SEO", () => {
   const row = { title: "Ganapati Havan", location: "Haridwar", price: 111, blurb: "The classic first havan before any new venture." };
   it("writes a short title and a description carrying place and real price", () => {

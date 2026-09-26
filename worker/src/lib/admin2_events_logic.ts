@@ -144,6 +144,8 @@ export type EventPatch = {
   visibility?: "public" | "private" | null;
   /** ₹ shown on the booking card and charged at checkout when prasad_courier is on. */
   prasad_price_rupees?: number | null;
+  /** [SAATHUM-BOOKED-BOOST 2026-09-26] Owner's ad number ADDED to the real bookings count on the public card/page. null = real count only. */
+  booked_boost?: number | null;
   /** Pasted by the admin any time, including after the event ends. */
   video_download_url?: string | null;
 };
@@ -268,6 +270,14 @@ export function normalizeEventInput(
     if (v !== "public" && v !== "private") errors.push({ field: "visibility", message: "Choose Public or Private." });
     else patch.visibility = v;
   }
+  if (has(body, "booked_boost")) {
+    if (body.booked_boost === null || body.booked_boost === "" || body.booked_boost === 0) patch.booked_boost = null;
+    else {
+      const bb = Number(body.booked_boost);
+      if (!Number.isInteger(bb) || bb < 0 || bb > 1_000_000) errors.push({ field: "booked_boost", message: "Extra booked count must be a whole number between 0 and 10,00,000." });
+      else patch.booked_boost = bb;
+    }
+  }
   if (has(body, "prasad_price_rupees")) {
     if (body.prasad_price_rupees === null || body.prasad_price_rupees === "") patch.prasad_price_rupees = null;
     else {
@@ -314,6 +324,8 @@ export const ATTR_KEYS = [
   "deity", "intention", "prasad_courier", "guide_slug",
   // [SAATHUM-CHADHAVA 2026-09-26]
   "video_download", "visibility", "prasad_price_rupees", "video_download_url",
+  // [SAATHUM-BOOKED-BOOST 2026-09-26]
+  "booked_boost",
 ] as const;
 export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | number | null>>;
 export type SeoPatch = { title?: string | null; description?: string | null };

@@ -109,7 +109,9 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
 const location = listing.location ?? null;
 const ratingAvg = (listing.rating_count ?? 0) > 0 ? listing.rating_avg ?? null : null;
 const ratingCount = listing.rating_count ?? 0;
-const booked = listing.joined_count ?? 0;
+// [SAATHUM-BOOKED-BOOST] real bookings + the owner's optional ad number (attrs.booked_boost).
+const bookedBoost = Number.isInteger(attrs.booked_boost) && Number(attrs.booked_boost) > 0 ? Number(attrs.booked_boost) : 0;
+const booked = (listing.joined_count ?? 0) + bookedBoost;
 const price = listing.effective_price ?? listing.price ?? null;
 
 const origin = Astro.url.origin;
@@ -138,10 +140,10 @@ const ticks: { key: string; label: string; on: boolean; tip?: string }[] = [
   { key: 'prasad', label: 'Prasad courier', on: prasadCourier },
   { key: 'sankalp', label: 'Sankalp in your name', on: true },
   { key: 'video', label: 'Video download', on: videoDownload, tip: 'You can download your video anytime.' },
-  { key: 'youtube', label: 'Live on YouTube', on: true },
+  { key: 'stream', label: 'Live streaming', on: true },
   {
     key: 'visibility',
-    label: isPrivate ? 'Private' : 'Public',
+    label: isPrivate ? 'Private event' : 'Public event',
     on: true,
     tip: 'Public: many devotees join the same havan together. Private: a 1:1 session just for your family.',
   },

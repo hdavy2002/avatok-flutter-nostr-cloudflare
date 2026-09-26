@@ -78,6 +78,7 @@ interface FormState {
   video_download: boolean;
   visibility: 'public' | 'private';
   prasad_price_rupees: string;
+  booked_boost: string;
   video_download_url: string;
 }
 
@@ -92,7 +93,7 @@ const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
   location: '', intention: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
-  video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '',
+  video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
 };
 
 function fromDetail(d: EventDetailResponse): FormState {
@@ -118,6 +119,7 @@ function fromDetail(d: EventDetailResponse): FormState {
     video_download: e.video_download ?? true,
     visibility: e.visibility === 'private' ? 'private' : 'public',
     prasad_price_rupees: e.prasad_price_rupees != null ? String(e.prasad_price_rupees) : '99',
+    booked_boost: e.booked_boost ? String(e.booked_boost) : '',
     video_download_url: e.video_download_url ?? '',
     // Only an admin-typed value lives in the box; the automatic one is the placeholder.
     seo_title: e.seo?.title_source === 'admin' ? e.seo.title : '',
@@ -147,6 +149,7 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   for (const k of ['prasad_courier', 'video_download', 'visibility'] as const) if (changed(k)) out[k] = f[k];
   if (changed('prasad_price_rupees')) out.prasad_price_rupees = f.prasad_price_rupees === '' ? null : Number(f.prasad_price_rupees);
   if (changed('video_download_url')) out.video_download_url = f.video_download_url.trim() || null;
+  if (changed('booked_boost')) out.booked_boost = f.booked_boost.trim() === '' ? null : Number(f.booked_boost);
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
     for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url'] as const) if (!f[k]) delete out[k];
@@ -161,7 +164,7 @@ const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   performed_by: 'performed_by', description: 'description', blurb: 'blurb', cover_media: 'cover_url', cover_url: 'cover_url',
   capacity: 'capacity', location: 'location', intention: 'intention', guide_slug: 'guide_slug',
   seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier',
-  video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url',
+  video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url', booked_boost: 'booked_boost',
 };
 
 type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster' | 'article' | 'video_url';
@@ -590,6 +593,20 @@ export default function EventForm({ eventId }: { eventId?: string }) {
               <ToggleRow id="ev-video-download" label="Video download" hint="Paid devotees can download the video anytime" checked={form.video_download}
                 disabled={disabled} onChange={(v) => set('video_download', v)} />
             </div>
+            {/* [SAATHUM-BOOKED-BOOST 2026-09-26] Owner decision: an ad number added to the real bookings. */}
+            <Field label="Extra “booked” count" htmlFor="ev-boost" error={errors.booked_boost}
+              hint={`Added to real bookings${ev ? ` (${ev.seats_booked} real)` : ''}. Leave empty to show only real bookings.`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative max-w-[12rem]">
+                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-boost" type="number" inputMode="numeric" min={0} max={1000000} step={1} className="pl-9"
+                    value={form.booked_boost} disabled={disabled} onChange={(e) => set('booked_boost', e.target.value)} placeholder="e.g. 1200" />
+                </div>
+                <span className="text-[13px] font-semibold text-muted-foreground">
+                  Card shows: {((ev?.seats_booked ?? 0) + (Number(form.booked_boost) || 0)).toLocaleString('en-IN')} booked
+                </span>
+              </div>
+            </Field>
             {form.prasad_courier && (
               <Field label="Prasad shipping price (₹)" htmlFor="ev-prasad-price" error={errors.prasad_price_rupees} hint="Anywhere in India">
                 <div className="relative max-w-[10rem]">

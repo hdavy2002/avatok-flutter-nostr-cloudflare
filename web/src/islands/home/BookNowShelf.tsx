@@ -7,6 +7,7 @@
 //    NOTHING (not an empty state) — owner rule: "if no havan is listed then
 //    nothing shows in this section".
 //  - Never invent numbers. Rating shows only when rating_count > 0; "booked"
+//    = real bookings + attrs.booked_boost (the owner's own ad number, set in admin);
 //    only when joined_count > 0. Prices come from the listing (admin-edited),
 //    always phrased "Starting from ₹X" because checkout adds options.
 //  - `?booknow=preview` renders four SAMPLE cards so the owner can see the
@@ -121,7 +122,8 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     category: (typeof attrs?.intention === 'string' && INTENTION_LABELS[attrs.intention as string]) || (c.categoryLabel ?? null),
     ratingAvg: c.ratingCount > 0 ? c.ratingAvg : null,
     ratingCount: c.ratingCount,
-    booked: c.joinedCount,
+    // [SAATHUM-BOOKED-BOOST] real bookings + the owner's optional ad number (attrs.booked_boost).
+    booked: c.joinedCount + (Number.isInteger(attrs?.booked_boost) && Number(attrs?.booked_boost) > 0 ? Number(attrs?.booked_boost) : 0),
     price: c.price,
     // Saa Thum couriers prasad (incl. international) by default; a listing can opt out via attrs.
     prasad: attrBool(attrs, ['prasad_courier', 'prasad_delivery', 'prasad'], true),
@@ -276,10 +278,10 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
           ) : (
             <Feat on label="Private 1:1 call" />
           )}
-          <Feat on label={it.mode === 'live' ? 'Live stream' : 'Video with priest'} />
+          <Feat on label={it.mode === 'live' ? 'Live streaming' : 'Video with priest'} />
           <Feat
             on
-            label={it.visibility === 'private' ? 'Private' : 'Public'}
+            label={it.visibility === 'private' ? 'Private event' : 'Public event'}
             tip="Public: many devotees join the same havan together. Private: a 1:1 session just for your family."
             tipId={`bn-tip-visibility-${it.id}`}
             onOpen={() => track('tooltip')}

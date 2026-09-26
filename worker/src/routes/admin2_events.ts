@@ -260,6 +260,7 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       video_download: typeof attrs.video_download === "boolean" ? attrs.video_download : (typeof attrs.replay === "boolean" ? attrs.replay : true),
       visibility: attrs.visibility === "private" ? "private" : "public",
       prasad_price_rupees: Number.isInteger(attrs.prasad_price_rupees) ? attrs.prasad_price_rupees : 99,
+      booked_boost: Number.isInteger(attrs.booked_boost) && attrs.booked_boost > 0 ? attrs.booked_boost : null,
       video_download_url: typeof attrs.video_download_url === "string" && attrs.video_download_url ? attrs.video_download_url : null,
       guide_slug: typeof attrs.guide_slug === "string" ? attrs.guide_slug : null,
       seo: attrs.seo && typeof attrs.seo === "object" ? {

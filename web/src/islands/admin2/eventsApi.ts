@@ -63,6 +63,7 @@ export interface EventDetail extends EventRow {
   video_download: boolean;
   visibility: 'public' | 'private';
   prasad_price_rupees: number;
+  booked_boost: number | null;
   video_download_url: string | null;
   guide_slug: string | null;
   seo: { title: string; description: string; title_source: 'auto' | 'admin'; description_source: 'auto' | 'admin' } | null;

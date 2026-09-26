@@ -7368,5 +7368,21 @@
       }
     ],
     "_verified_at": "web/src/islands/dashboard2/PastEvents.tsx; web/src/islands/dashboard2/MyEvents.tsx"
+  },
+  "SAATHUM-BOOKED-BOOST": {
+    "description": "[SAATHUM-BOOKED-BOOST] Admin event form 'Extra booked count' (attrs.booked_boost, editable on published events) added to the real bookings count on the homepage card and event page; empty = real count only. Card/page copy: 'Live streaming' (no YouTube name), 'Public event' / 'Private event'.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_event_saved",
+        "property": "fields",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin saved an event including booked_boost."
+      }
+    ],
+    "_verified_at": "worker/src/lib/admin2_events_logic.ts normalizeEventInput booked_boost; web/src/components/eventpage/EventPage.astro; worker/test/admin2_events.test.ts"
   }
 }
