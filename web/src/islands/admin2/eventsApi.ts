@@ -55,6 +55,15 @@ export interface EventDetail extends EventRow {
   blurb: string | null;
   description: string | null;
   performed_by: string | null;
+  // [SAATHUM-EVENT-FIELDS-1] Book now card fields, SEO and the share line.
+  location: string | null;
+  intention: string | null;
+  prasad_courier: boolean;
+  replay: boolean;
+  guide_slug: string | null;
+  seo: { title: string; description: string; title_source: 'auto' | 'admin'; description_source: 'auto' | 'admin' } | null;
+  ad_hook: string | null;
+  slug: string | null;
   start_ist: { date: string; time: string } | null;
   price_rupees: number;
   manual_cover_url: string | null;
@@ -78,7 +87,8 @@ export interface EventsMeta {
   min_price_rupees: number;
   duration: { min: number; max: number };
   deity_suggestions: string[];
-  limits: { titleMax: number; blurbMax: number; descriptionMax: number; deityMax: number; performedByMax: number; capacityMax: number };
+  intentions?: { id: string; label: string }[];
+  limits: { titleMax: number; blurbMax: number; descriptionMax: number; deityMax: number; performedByMax: number; capacityMax: number; locationMax?: number; seoTitleMax?: number; seoDescriptionMax?: number };
 }
 
 export const eventsPath = (id?: string, action?: string) =>

@@ -56,6 +56,9 @@ export const LIMITS = {
   blurbMax: 120, // routes/listings.ts listingContentFieldsError
   descriptionMax: 6000,
   deityMax: 60,
+  locationMax: 60,
+  seoTitleMax: 70,
+  seoDescriptionMax: 170,
   performedByMax: 80, // routes/listings.ts listingContentFieldsError
   durationMin: 5, durationMax: 480, // lib/listing_blockers.ts duration_required
   priceMax: 1_000_000,
@@ -69,6 +72,15 @@ export const DEITY_SUGGESTIONS = [
   "Ganesha", "Shiva", "Vishnu", "Lakshmi", "Durga", "Hanuman", "Krishna", "Rama", "Saraswati",
   "Kali", "Navagraha", "Shani", "Surya", "Kuber", "Sai Baba", "Satyanarayan",
 ] as const;
+
+/**
+ * [SAATHUM-EVENT-FIELDS-1] The intention pill on the Book now card ("GOOD LUCK", "WEALTH").
+ * Keys mirror web/src/lib/ritualGuides.ts ritualCategories — keep the two in step.
+ */
+export const INTENTIONS: Record<string, string> = {
+  education: "Education", luck: "Good luck", wealth: "Wealth", career: "Career", health: "Health",
+  family: "Family", peace: "Peace", life: "Life events", festival: "Festivals",
+};
 
 const IST_OFFSET_MS = 330 * 60_000;
 
@@ -118,6 +130,15 @@ export type EventPatch = {
   capacity?: number | null;
   cover_url?: string | null;
   performed_by?: string | null;
+  // [SAATHUM-EVENT-FIELDS-1 2026-09-26] What the Book now card shows that the form never asked.
+  location?: string | null;
+  /** attrs.* — written by this lane (see splitPatch / ATTR_KEYS). */
+  intention?: string | null;
+  prasad_courier?: boolean;
+  replay?: boolean;
+  guide_slug?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
 };
 
 const has = (b: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(b, k);
@@ -218,6 +239,38 @@ export function normalizeEventInput(
     }
   }
 
+  if (has(body, "location")) {
+    const v = str(body.location).replace(/\s+/g, " ");
+    if (v.length > LIMITS.locationMax) errors.push({ field: "location", message: `Keep the location under ${LIMITS.locationMax} characters.` });
+    else patch.location = v || null;
+  }
+  if (has(body, "intention")) {
+    const v = str(body.intention);
+    if (v && !INTENTIONS[v]) errors.push({ field: "intention", message: "Pick an intention from the list." });
+    else patch.intention = v || null;
+  }
+  for (const k of ["prasad_courier", "replay"] as const) {
+    if (has(body, k)) {
+      if (typeof body[k] !== "boolean") errors.push({ field: k, message: "Choose yes or no." });
+      else patch[k] = body[k] as boolean;
+    }
+  }
+  if (has(body, "guide_slug")) {
+    const v = str(body.guide_slug);
+    if (v && !/^[a-z0-9-]{2,80}$/.test(v)) errors.push({ field: "guide_slug", message: "That article link is not valid." });
+    else patch.guide_slug = v || null;
+  }
+  if (has(body, "seo_title")) {
+    const v = str(body.seo_title).replace(/\s+/g, " ");
+    if (v.length > LIMITS.seoTitleMax) errors.push({ field: "seo_title", message: `Keep the Google title under ${LIMITS.seoTitleMax} characters.` });
+    else patch.seo_title = v || null;
+  }
+  if (has(body, "seo_description")) {
+    const v = str(body.seo_description).replace(/\s+/g, " ");
+    if (v.length > LIMITS.seoDescriptionMax) errors.push({ field: "seo_description", message: `Keep the Google description under ${LIMITS.seoDescriptionMax} characters.` });
+    else patch.seo_description = v || null;
+  }
+
   if (has(body, "cover_url")) {
     if (body.cover_url === null || body.cover_url === "") patch.cover_url = null;
     else if (!isHttpsUrl(body.cover_url)) errors.push({ field: "cover_url", message: "The cover image must be an uploaded https image." });
@@ -228,13 +281,96 @@ export function normalizeEventInput(
 }
 
 /** Fields adminEditListing (PUT /api/admin/listings/:id) owns. */
-export const ADMIN_EDIT_KEYS = ["title", "blurb", "description", "category", "price", "starts_at", "duration_min", "capacity", "performed_by"] as const;
+export const ADMIN_EDIT_KEYS = ["title", "blurb", "description", "category", "price", "starts_at", "duration_min", "capacity", "performed_by", "location"] as const;
+
+/** attrs keys this lane owns. `null` removes the key. */
+export const ATTR_KEYS = ["deity", "intention", "prasad_courier", "replay", "guide_slug"] as const;
+export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | null>>;
+export type SeoPatch = { title?: string | null; description?: string | null };
 
 /** Split a patch into the admin-edit fields and the media/attrs fields this lane writes itself. */
-export function splitPatch(p: EventPatch): { edit: Record<string, unknown>; cover: string | null | undefined; deity: string | null | undefined } {
+export function splitPatch(p: EventPatch): { edit: Record<string, unknown>; cover: string | null | undefined; attrs: AttrPatch; seo: SeoPatch | undefined } {
   const edit: Record<string, unknown> = {};
   for (const k of ADMIN_EDIT_KEYS) if (k in p) edit[k] = (p as Record<string, unknown>)[k];
-  return { edit, cover: p.cover_url, deity: p.deity };
+  const attrs: AttrPatch = {};
+  for (const k of ATTR_KEYS) if (k in p) attrs[k] = (p as Record<string, unknown>)[k] as string | boolean | null;
+  let seo: SeoPatch | undefined;
+  if ("seo_title" in p || "seo_description" in p) {
+    seo = {};
+    if ("seo_title" in p) seo.title = p.seo_title ?? null;
+    if ("seo_description" in p) seo.description = p.seo_description ?? null;
+  }
+  return { edit, cover: p.cover_url, attrs, seo };
+}
+
+// ---------------------------------------------------------------------------
+// [SAATHUM-EVENT-FIELDS-1 2026-09-26] Auto SEO (owner: "auto create SEO info when a
+// listing is created"). Deterministic, from the listing's own fields — never invents
+// a claim, a date or a price the row does not carry. Stored as attrs.seo:
+//   { title, description, title_source, description_source: 'auto'|'admin', at }
+// An admin-typed value is kept until the admin clears it; 'auto' parts are rewritten
+// on every save so they always match the current title/price/place.
+// ---------------------------------------------------------------------------
+
+const BRAND = "Saa Thum";
+
+function cut(s: string, max: number): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const c = t.slice(0, max - 1).replace(/[\s,;:.\-–—]+\S*$/, "");
+  return (c || t.slice(0, max - 1)) + "…";
+}
+
+function firstSentence(s: string): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  const m = /^(.{20,}?[.!?])(\s|$)/.exec(t);
+  return m ? m[1] : t;
+}
+
+export function autoSeoTitle(row: { title?: unknown; location?: unknown }): string {
+  const title = String(row.title ?? "").replace(/\s+/g, " ").trim() || "Live havan";
+  const place = String(row.location ?? "").trim();
+  const candidates = [
+    `${title} Online${place ? ` from ${place}` : ""} – Book Live | ${BRAND}`,
+    `${title} Online – Book Live | ${BRAND}`,
+    `${title} Online | ${BRAND}`,
+  ];
+  return candidates.find((c) => c.length <= 60) ?? cut(`${title} | ${BRAND}`, 60);
+}
+
+export function autoSeoDescription(row: {
+  title?: unknown; blurb?: unknown; description?: unknown; price?: unknown; location?: unknown; deity?: unknown;
+}): string {
+  const title = String(row.title ?? "").trim();
+  const lead = String(row.blurb ?? "").trim() || firstSentence(String(row.description ?? ""));
+  const place = String(row.location ?? "").trim();
+  const price = Number(row.price);
+  const tail = [
+    `Join live${place ? ` from ${place}` : ""}, sankalp in your name`,
+    Number.isInteger(price) && price > 0 ? `starting from ₹${price.toLocaleString("en-IN")}.` : "from anywhere.",
+  ].join(", ");
+  const base = lead || `${title} performed live by temple priests.`;
+  const full = `${base.replace(/[.\s]+$/, "")}. ${tail}`;
+  if (full.length <= 158) return full;
+  // Keep the booking facts; trim the lead.
+  const room = 158 - tail.length - 2;
+  return room > 40 ? `${cut(base, room).replace(/[.…]+$/, "")}… ${tail}` : cut(full, 158);
+}
+
+export type StoredSeo = { title: string; description: string; title_source: "auto" | "admin"; description_source: "auto" | "admin"; at: number };
+
+/** The next attrs.seo for a row, keeping admin-typed parts unless `patch` clears or replaces them. */
+export function nextSeo(row: Record<string, unknown>, current: Partial<StoredSeo> | null | undefined, patch: SeoPatch | undefined, now = Date.now()): StoredSeo {
+  const cur = current ?? {};
+  let title: string; let ts: "auto" | "admin";
+  if (patch && "title" in patch) { if (patch.title) { title = patch.title; ts = "admin"; } else { title = autoSeoTitle(row); ts = "auto"; } }
+  else if (cur.title_source === "admin" && cur.title) { title = cur.title; ts = "admin"; }
+  else { title = autoSeoTitle(row); ts = "auto"; }
+  let description: string; let ds: "auto" | "admin";
+  if (patch && "description" in patch) { if (patch.description) { description = patch.description; ds = "admin"; } else { description = autoSeoDescription(row); ds = "auto"; } }
+  else if (cur.description_source === "admin" && cur.description) { description = cur.description; ds = "admin"; }
+  else { description = autoSeoDescription(row); ds = "auto"; }
+  return { title, description, title_source: ts, description_source: ds, at: now };
 }
 
 // ---------------------------------------------------------------------------

@@ -7246,5 +7246,33 @@
       }
     ],
     "_verified_at": "worker/src/routes/admin2_users.ts tel() -> track(env, adminUid, 'admin2_user_action', 'saathum', {action, ok, target_uid}); web/src/pages/admin/users/index.astro active='customers' in layouts/Admin2.astro; worker/test/admin2_users.test.ts"
+  },
+  "SAATHUM-EVENT-FIELDS-1": {
+    "description": "[SAATHUM-EVENT-FIELDS-1] Admin New event form: 'Start from an article' dropdown (all Puja & Havan Guide articles) pre-fills title, deity, intention, blurb, long description, duration, price (from /api/pricing) and uploads the article photo as cover; new Book-now card fields (intention pill, location, prasad courier, 7-day replay, linked article); auto SEO title/description written to attrs.seo on every admin save (admin override kept, clear = auto) and used by listingContent(); WhatsApp share button in the form. Admin-only, not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_event_article_prefill",
+        "property": "ok",
+        "in": [
+          true
+        ],
+        "min_events": 1,
+        "note": "Owner picked an article and the form filled (cover=true when the photo copied)."
+      },
+      {
+        "event": "admin2_event_seo_written",
+        "property": "title_source",
+        "in": [
+          "auto",
+          "admin"
+        ],
+        "min_events": 1,
+        "note": "Worker wrote attrs.seo after an admin save."
+      }
+    ],
+    "_verified_at": "web/src/islands/admin2/EventForm.tsx onPickArticle capture(); worker/src/routes/admin2_events.ts refreshSeo safeTrack(); worker/test/admin2_events.test.ts"
   }
 }

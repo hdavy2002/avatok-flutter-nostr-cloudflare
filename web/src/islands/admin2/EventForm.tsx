@@ -9,11 +9,23 @@
  *  - Cancel refunds every open booking first (server rule); the dialog says so.
  *  - The YouTube link uses the existing admin route (PUT /api/admin/listings/:id/youtube).
  *  - Telemetry: admin2_event_saved {action}; failures -> captureException.
+ *
+ *  [SAATHUM-EVENT-FIELDS-1 2026-09-26] OWNER DECISIONS:
+ *  - "Start from an article" (top of the form): pick any Puja & Havan Guide article
+ *    and the form fills title, deity, intention, descriptions, duration, price and the
+ *    article photo as cover. Fields the article does not know stay as they are.
+ *    Logic: ./articlePrefill.ts. Telemetry: admin2_event_article_prefill.
+ *  - "On the booking card": intention pill, temple location, prasad courier and
+ *    7-day replay — the Book now card (islands/home/BookNowShelf.tsx) reads them.
+ *  - "Google & WhatsApp": SEO title/description are written automatically by the
+ *    worker on every save (attrs.seo, admin2_events.ts refreshSeo). Typing here
+ *    overrides; clearing goes back to automatic. The WhatsApp share line
+ *    (attrs.ad_hook) is AI-written on publish by lib/listing_ad_hook.ts.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, Ban, CalendarDays, CircleAlert, CircleCheck, Clock, Copy, ExternalLink, ImagePlus, IndianRupee,
-  Loader2, MonitorPlay, Save, Send, Sparkles, Ticket, Trash2, Undo2, Upload, Users,
+  ArrowLeft, Ban, BookOpen, CalendarDays, CircleAlert, CircleCheck, Clock, Copy, ExternalLink, ImagePlus, IndianRupee,
+  Loader2, MapPin, MessageCircle, MonitorPlay, Save, Search, Send, Sparkles, Ticket, Trash2, Undo2, Upload, Users,
 } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
@@ -23,7 +35,9 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Calendar } from '../../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Switch } from '../../components/ui/switch';
+import { articleBySlug, articleCover, articleGroups, fillFromArticle } from './articlePrefill';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -52,11 +66,27 @@ interface FormState {
   capacity: string;
   performed_by: string;
   youtube_url: string;
+  // [SAATHUM-EVENT-FIELDS-1]
+  location: string;
+  intention: string;
+  prasad_courier: boolean;
+  replay: boolean;
+  guide_slug: string;
+  seo_title: string;
+  seo_description: string;
 }
+
+/** Fallback intention list if the worker meta is older than this form. Mirrors ritualGuides ritualCategories. */
+const INTENTIONS_FALLBACK = [
+  { id: 'luck', label: 'Good luck' }, { id: 'wealth', label: 'Wealth' }, { id: 'health', label: 'Health' },
+  { id: 'education', label: 'Education' }, { id: 'career', label: 'Career' }, { id: 'family', label: 'Family' },
+  { id: 'peace', label: 'Peace' }, { id: 'life', label: 'Life events' }, { id: 'festival', label: 'Festivals' },
+];
 
 const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
+  location: '', intention: '', prasad_courier: true, replay: true, guide_slug: '', seo_title: '', seo_description: '',
 };
 
 function fromDetail(d: EventDetailResponse): FormState {
@@ -75,6 +105,14 @@ function fromDetail(d: EventDetailResponse): FormState {
     capacity: e.capacity ? String(e.capacity) : '',
     performed_by: e.performed_by ?? '',
     youtube_url: d.youtube?.url ?? '',
+    location: e.location ?? '',
+    intention: e.intention ?? '',
+    prasad_courier: e.prasad_courier ?? true,
+    replay: e.replay ?? true,
+    guide_slug: e.guide_slug ?? '',
+    // Only an admin-typed value lives in the box; the automatic one is the placeholder.
+    seo_title: e.seo?.title_source === 'admin' ? e.seo.title : '',
+    seo_description: e.seo?.description_source === 'admin' ? e.seo.description : '',
   };
 }
 
@@ -96,9 +134,11 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   if (changed('price_rupees') && f.price_rupees !== '') out.price_rupees = Number(f.price_rupees);
   if (changed('capacity')) out.capacity = f.capacity === '' ? null : Number(f.capacity);
   if (changed('performed_by')) out.performed_by = f.performed_by;
+  for (const k of ['location', 'intention', 'guide_slug', 'seo_title', 'seo_description'] as const) if (changed(k)) out[k] = f[k].trim();
+  for (const k of ['prasad_courier', 'replay'] as const) if (changed(k)) out[k] = f[k];
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
-    for (const k of ['deity', 'blurb', 'description', 'performed_by'] as const) if (!f[k]) delete out[k];
+    for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description'] as const) if (!f[k]) delete out[k];
     if (!f.start_date) { delete out.start_date; delete out.start_time; }
     if (f.capacity === '') delete out.capacity;
   }
@@ -108,10 +148,11 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
 const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   title: 'title', category: 'category', starts_at: 'start_date', duration_min: 'duration_min', price: 'price_rupees',
   performed_by: 'performed_by', description: 'description', blurb: 'blurb', cover_media: 'cover_url', cover_url: 'cover_url',
-  capacity: 'capacity',
+  capacity: 'capacity', location: 'location', intention: 'intention', guide_slug: 'guide_slug',
+  seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier', replay: 'replay',
 };
 
-type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster';
+type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster' | 'article';
 
 /* ── component ──────────────────────────────────────────────────────────── */
 
@@ -130,6 +171,8 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const [dateOpen, setDateOpen] = useState(false);
   const refs = useRef<Partial<Record<keyof FormState, HTMLElement | null>>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [articleSlug, setArticleSlug] = useState('');
+  const groups = useMemo(() => articleGroups(), []);
 
   const status = detail?.event.status ?? 'draft';
   const isPublic = status === 'published' || status === 'live';
@@ -319,6 +362,55 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     } catch (e) { showError(e, action === 'generate' ? 'poster_generate' : 'poster_keep'); } finally { setBusy(null); }
   }
 
+  /** [SAATHUM-EVENT-FIELDS-1] Fill the form from a Puja & Havan Guide article. Undo restores the form. */
+  async function onPickArticle(slug: string) {
+    const a = articleBySlug(slug);
+    if (!a) return;
+    setArticleSlug(slug);
+    const before = form;
+    setBusy('article'); setBanner(null);
+    const t0 = performance.now();
+    try {
+      const fill = await fillFromArticle(a, { categories: meta?.categories ?? [], minPrice: meta?.min_price_rupees ?? 49 });
+      setForm((s) => ({ ...s, ...fill }));
+      setErrors({});
+      let coverOk = false;
+      try {
+        const url = await articleCover(a);
+        setForm((s) => ({ ...s, cover_url: url }));
+        coverOk = true;
+      } catch (e) {
+        captureException(e, { where: 'admin2_event_article_cover', slug });
+        toast.error('Could not copy the article photo', { description: 'Upload an image yourself.' });
+      }
+      toast.success(`Filled from “${a.title}”`, {
+        description: 'Check the text, then add the location, date, time and YouTube link.',
+        action: { label: 'Undo', onClick: () => { setForm(before); setArticleSlug(''); } },
+      });
+      capture('admin2_event_article_prefill', {
+        ok: true, slug, listing_id: id ?? null, cover: coverOk, price: !!fill.price_rupees, category: !!fill.category,
+        ms: Math.round(performance.now() - t0),
+      });
+    } catch (e) {
+      captureException(e, { where: 'admin2_event_article_prefill', slug });
+      capture('admin2_event_article_prefill', { ok: false, slug, listing_id: id ?? null });
+      toast.error('Could not read that article.');
+    } finally { setBusy(null); }
+  }
+
+  function shareUrl(): string {
+    return `${window.location.origin}/book/${encodeURIComponent(id ?? '')}`;
+  }
+
+  function onWhatsApp() {
+    if (!id) return;
+    const price = form.price_rupees ? ` Starting from ₹${Number(form.price_rupees).toLocaleString('en-IN')}.` : '';
+    const lead = detail?.event.ad_hook || form.title;
+    const text = `🙏 ${lead} — ${form.title} on Saa Thum.${price} ${shareUrl()}`;
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    capture('admin2_event_share', { channel: 'whatsapp', listing_id: id });
+  }
+
   async function copyLink() {
     if (!id) return;
     const url = `${window.location.origin}/book/${encodeURIComponent(id)}`;
@@ -359,6 +451,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant={st.variant}>{st.label}</Badge>
             <Button variant="ghost" size="sm" onClick={() => void copyLink()}><Copy /> Copy link</Button>
+            <Button variant="ghost" size="sm" onClick={onWhatsApp}><MessageCircle /> WhatsApp</Button>
             <Button asChild variant="ghost" size="sm"><a href={`/book/${encodeURIComponent(id)}`} target="_blank" rel="noopener"><ExternalLink /> View on site</a></Button>
             <Button asChild variant="ghost" size="sm"><a href={`/admin/bookings?event=${encodeURIComponent(id)}`}><Ticket /> Bookings{ev ? ` (${ev.seats_booked})` : ''}</a></Button>
           </div>
@@ -385,6 +478,27 @@ export default function EventForm({ eventId }: { eventId?: string }) {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── Main column ── */}
         <div className="flex flex-col gap-5">
+          {!isClosed && (
+            <Section title="Start from an article" subtitle="Pick a Puja & Havan Guide article to fill the form. You add the location, date, time and YouTube link.">
+              <Field label="Article" hint={`${groups[0].items.length + groups[1].items.length} articles`}>
+                <Select value={articleSlug || undefined} onValueChange={(v) => void onPickArticle(v)} disabled={disabled}>
+                  <SelectTrigger aria-label="Start from an article">
+                    {busy === 'article' ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 text-muted-foreground" />}
+                    <SelectValue placeholder="Choose an article…" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    {groups.map((g) => (
+                      <SelectGroup key={g.label}>
+                        <SelectLabel>{g.label}</SelectLabel>
+                        {g.items.map((a) => <SelectItem key={a.slug} value={a.slug}>{a.title} · {a.deity}</SelectItem>)}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </Section>
+          )}
+
           <Section title="The event" subtitle="What customers see on the booking page.">
             <Field label="Title" htmlFor="ev-title" error={errors.title} hint={`${form.title.length}/${meta?.limits.titleMax ?? 120}`}>
               <Input id="ev-title" ref={(el) => { refs.current.title = el; }} value={form.title} maxLength={meta?.limits.titleMax ?? 120}
@@ -422,6 +536,45 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             <Field label="Performed by" htmlFor="ev-perf" error={errors.performed_by} hint="Required before publishing — the priest or team customers are booking.">
               <Input id="ev-perf" ref={(el) => { refs.current.performed_by = el; }} value={form.performed_by} maxLength={meta?.limits.performedByMax ?? 80}
                 disabled={disabled} onChange={(e) => set('performed_by', e.target.value)} placeholder="Pandit Ramesh Sharma, Haridwar" />
+            </Field>
+          </Section>
+
+          <Section title="On the booking card" subtitle="The badges and ticks customers see on the Book now card.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Intention" error={errors.intention} hint="The badge on the photo">
+                <Select value={form.intention || undefined} onValueChange={(v) => set('intention', v === '__none' ? '' : v)} disabled={disabled}>
+                  <SelectTrigger ref={(el) => { refs.current.intention = el; }} aria-label="Intention"><SelectValue placeholder="Good luck, Wealth, Health…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">None</SelectItem>
+                    {(meta?.intentions ?? INTENTIONS_FALLBACK).map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Location" htmlFor="ev-loc" error={errors.location} hint="Temple city, e.g. Haridwar">
+                <div className="relative">
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-loc" ref={(el) => { refs.current.location = el; }} className="pl-9" value={form.location} maxLength={meta?.limits.locationMax ?? 60}
+                    disabled={disabled} onChange={(e) => set('location', e.target.value)} placeholder="Haridwar" />
+                </div>
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ToggleRow id="ev-prasad" label="Prasad courier" hint="Prasad is couriered to the devotee" checked={form.prasad_courier}
+                disabled={disabled} onChange={(v) => set('prasad_courier', v)} />
+              <ToggleRow id="ev-replay" label="7-day replay" hint="Paid devotees can rewatch for 7 days" checked={form.replay}
+                disabled={disabled} onChange={(v) => set('replay', v)} />
+            </div>
+            <p className="text-[12px] font-semibold text-muted-foreground">“Sankalp in your name” and “Live on YouTube” always show. Rating and “booked” fill in from real bookings.</p>
+            <Field label="Read benefits links to">
+              {articleBySlug(form.guide_slug) ? (
+                <div className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
+                  <BookOpen className="h-4 w-4 text-accent" />
+                  <a href={articleBySlug(form.guide_slug)!.href} target="_blank" rel="noopener" className="text-foreground underline-offset-2 hover:underline">{articleBySlug(form.guide_slug)!.title}</a>
+                  <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => set('guide_slug', '')}>Remove</Button>
+                </div>
+              ) : (
+                <p className="text-[13px] font-semibold text-muted-foreground">No article linked — the site matches one by title. Pick an article above to link it.</p>
+              )}
             </Field>
           </Section>
 
@@ -535,6 +688,34 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-accent"><MonitorPlay className="h-4 w-4" /> Linked · id {ytId}</span>
               </div>
             )}
+          </Section>
+
+          <Section title="Google & WhatsApp" subtitle="Written for you automatically every time you save. Type to override; clear a box to go back to automatic.">
+            <Field label="Google title" htmlFor="ev-seo-t" error={errors.seo_title}
+              hint={form.seo_title ? `${form.seo_title.length}/${meta?.limits.seoTitleMax ?? 70} · yours` : 'Automatic'}>
+              <Input id="ev-seo-t" ref={(el) => { refs.current.seo_title = el; }} value={form.seo_title} maxLength={meta?.limits.seoTitleMax ?? 70} disabled={disabled}
+                onChange={(e) => set('seo_title', e.target.value)} placeholder={detail?.event.seo?.title || 'Written automatically when you save'} />
+            </Field>
+            <Field label="Google description" htmlFor="ev-seo-d" error={errors.seo_description}
+              hint={form.seo_description ? `${form.seo_description.length}/${meta?.limits.seoDescriptionMax ?? 170} · yours` : 'Automatic'}>
+              <textarea id="ev-seo-d" ref={(el) => { refs.current.seo_description = el; }} rows={3} value={form.seo_description}
+                maxLength={meta?.limits.seoDescriptionMax ?? 170} disabled={disabled} onChange={(e) => set('seo_description', e.target.value)}
+                placeholder={detail?.event.seo?.description || 'Written automatically when you save'}
+                className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm" />
+            </Field>
+            {(form.seo_title || detail?.event.seo?.title) && (
+              <div className="rounded-lg border border-border/70 bg-background p-3" aria-label="Google preview">
+                <p className="text-[12px] font-semibold text-muted-foreground">saathum.com › book</p>
+                <p className="text-[17px] font-semibold leading-snug text-grand-teal">{form.seo_title || detail?.event.seo?.title}</p>
+                <p className="text-[13px] leading-snug text-muted-foreground">{form.seo_description || detail?.event.seo?.description}</p>
+              </div>
+            )}
+            <Field label="WhatsApp share line" hint="Printed on the share image">
+              <p className="text-[14px] font-semibold text-foreground">
+                {detail?.event.ad_hook ?? <span className="text-muted-foreground">AI writes this when you publish, with the real price beside it.</span>}
+              </p>
+            </Field>
+            {id && <Button type="button" variant="outline" className="self-start" onClick={onWhatsApp}><MessageCircle /> Share on WhatsApp</Button>}
           </Section>
         </div>
 
@@ -651,6 +832,18 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
       </header>
       {children}
     </section>
+  );
+}
+
+function ToggleRow({ id, label, hint, checked, disabled, onChange }: { id: string; label: string; hint: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5">
+      <div>
+        <Label htmlFor={id} className="font-bold">{label}</Label>
+        <p className="text-[12px] font-semibold text-muted-foreground">{hint}</p>
+      </div>
+      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label={label} />
+    </div>
   );
 }
 

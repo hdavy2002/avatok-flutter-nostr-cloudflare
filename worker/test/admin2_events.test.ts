@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import {
-  tabOf, tabSql, parseTab, istToMs, msToIst, normalizeEventInput, splitPatch, nextCoverMedia,
+  tabOf, tabSql, parseTab, istToMs, msToIst, normalizeEventInput, splitPatch, nextCoverMedia, autoSeoTitle, autoSeoDescription, nextSeo,
   manualCoverUrl, coverUrlOf, posterPlan, likeContains, MIN_PRICE_RUPEES, EVENT_TABS,
 } from "../src/lib/admin2_events_logic";
 import { matchAdmin2 } from "../src/routes/admin2";
@@ -122,7 +122,50 @@ describe("normalizeEventInput", () => {
     const s = splitPatch(patch);
     expect(Object.keys(s.edit).sort()).toEqual(["blurb", "capacity", "category", "description", "duration_min", "performed_by", "price", "starts_at", "title"]);
     expect(s.cover).toBe(good.cover_url);
-    expect(s.deity).toBe("Ganesha");
+    expect(s.attrs.deity).toBe("Ganesha");
+    expect(s.seo).toBeUndefined();
+  });
+  it("routes the Book-now card fields and SEO overrides", () => {
+    const { patch, errors } = normalizeEventInput(
+      { location: " Haridwar ", intention: "luck", prasad_courier: false, replay: true, guide_slug: "ganapati-havan", seo_title: "", seo_description: "Mine" },
+      { partial: true, now: NOW },
+    );
+    expect(errors).toEqual([]);
+    const s = splitPatch(patch);
+    expect(s.edit).toEqual({ location: "Haridwar" });
+    expect(s.attrs).toEqual({ intention: "luck", prasad_courier: false, replay: true, guide_slug: "ganapati-havan" });
+    expect(s.seo).toEqual({ title: null, description: "Mine" });
+  });
+  it("rejects an unknown intention and a non-boolean toggle", () => {
+    const { errors } = normalizeEventInput({ intention: "revenge", replay: "yes" }, { partial: true, now: NOW });
+    expect(errors.map((e) => e.field).sort()).toEqual(["intention", "replay"]);
+  });
+});
+
+describe("auto SEO", () => {
+  const row = { title: "Ganapati Havan", location: "Haridwar", price: 111, blurb: "The classic first havan before any new venture." };
+  it("writes a short title and a description carrying place and real price", () => {
+    const t = autoSeoTitle(row);
+    expect(t.length).toBeLessThanOrEqual(60);
+    expect(t).toContain("Ganapati Havan");
+    const d = autoSeoDescription(row);
+    expect(d.length).toBeLessThanOrEqual(158);
+    expect(d).toContain("₹111");
+    expect(d).toContain("Haridwar");
+  });
+  it("keeps admin-typed parts and refreshes auto parts", () => {
+    const first = nextSeo(row, null, { title: "My title" }, 1);
+    expect(first.title_source).toBe("admin");
+    expect(first.description_source).toBe("auto");
+    const again = nextSeo({ ...row, price: 151 }, first, undefined, 2);
+    expect(again.title).toBe("My title");
+    expect(again.description).toContain("₹151");
+    const cleared = nextSeo(row, again, { title: null }, 3);
+    expect(cleared.title_source).toBe("auto");
+  });
+  it("never goes over length with a very long lead", () => {
+    const d = autoSeoDescription({ ...row, blurb: "x ".repeat(200) });
+    expect(d.length).toBeLessThanOrEqual(158);
   });
 });
 

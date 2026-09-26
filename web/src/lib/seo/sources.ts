@@ -9,6 +9,12 @@ function timestampIso(value: unknown): string | undefined {
   return new Date(number < 1e12 ? number * 1000 : number).toISOString();
 }
 
+function seoText(v: unknown, max: number): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.replace(/\s+/g, ' ').trim();
+  return t ? t.slice(0, max) : undefined;
+}
+
 export function listingContent(listing: Listing, image?: { url: string; alt: string }): PublicContent {
   const rawState = scheduleStateOf(listing);
   const state: ContentState = ['ended', 'cancelled', 'expired'].includes(rawState)
@@ -28,8 +34,10 @@ export function listingContent(listing: Listing, image?: { url: string; alt: str
     kind: 'listing',
     key: listing.id,
     canonicalPath: listingPath({ id: listing.id, handle: listing.creator?.handle, slug: (listing as any).slug }),
-    title: creatorName ? `${listing.title} · ${creatorName}` : listing.title,
-    summary: listing.description ?? `${listing.title}${creatorName ? ` by ${creatorName}` : ''}, available on Saa Thum.`,
+    // [SAATHUM-EVENT-FIELDS-1] attrs.seo is written by the worker on every admin save
+    // (auto from the listing's own fields, or the admin's override). Older rows fall back.
+    title: seoText(attrs.seo?.title, 70) ?? (creatorName ? `${listing.title} · ${creatorName}` : listing.title),
+    summary: seoText(attrs.seo?.description, 200) ?? listing.description ?? `${listing.title}${creatorName ? ` by ${creatorName}` : ''}, available on Saa Thum.`,
     visibility: hidden ? 'unlisted' : 'public',
     state,
     modifiedAt: timestampIso(discovery?.updated_at ?? (listing as any).updated_at),

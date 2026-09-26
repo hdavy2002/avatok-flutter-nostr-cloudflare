@@ -57,6 +57,11 @@ interface Item {
 }
 
 const MAX = 4;
+/** Mirrors ritualGuides ritualCategoryShort and the worker's INTENTIONS (admin2_events_logic.ts). */
+const INTENTION_LABELS: Record<string, string> = {
+  education: 'Education', luck: 'Good luck', wealth: 'Wealth', career: 'Career', health: 'Health',
+  family: 'Family', peace: 'Peace', life: 'Life events', festival: 'Festivals',
+};
 const IST = 'Asia/Kolkata';
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -87,7 +92,10 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
   if (state === 'ended' || state === 'cancelled' || state === 'expired' || state === 'unpublished') return null;
   const liveNow = state === 'live' || c.live;
   if (!liveNow && (c.startsAt == null || c.startsAt <= now)) return null;
-  const guide = guideFor(c.title, guides);
+  const attrsEarly = (card.attrs ?? null) as Record<string, unknown> | null;
+  // [SAATHUM-EVENT-FIELDS-1] The admin links the article explicitly; title matching is the fallback.
+  const linkedSlug = typeof attrsEarly?.guide_slug === 'string' ? (attrsEarly.guide_slug as string) : '';
+  const guide = (linkedSlug && guides.find((g) => g.href.replace(/\/$/, '').endsWith('/' + linkedSlug))) || guideFor(c.title, guides);
   const oneOnOne = String(card.kind ?? '') === 'consult';
   const attrs = (card.attrs ?? null) as Record<string, unknown> | null;
   const href = listingPath({ id: c.id, handle: c.creator?.handle ?? null, slug: card.slug ?? null });
@@ -102,7 +110,8 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     startsAt: c.startsAt,
     durationMin: c.durationMin,
     location: c.location,
-    category: c.categoryLabel ?? null,
+    // [SAATHUM-EVENT-FIELDS-1] The intention pill ("Good luck", "Wealth") set in admin wins over the listing category.
+    category: (typeof attrs?.intention === 'string' && INTENTION_LABELS[attrs.intention as string]) || (c.categoryLabel ?? null),
     ratingAvg: c.ratingCount > 0 ? c.ratingAvg : null,
     ratingCount: c.ratingCount,
     booked: c.joinedCount,

@@ -50,7 +50,7 @@ import { releaseBlocks } from "../cal/engine";
 import { releaseListingReservations } from "../cal/listing_reservations";
 import { startsMsSql, SMOKE_LISTING_ID } from "../lib/me_dashboard_data";
 import {
-  DEITY_SUGGESTIONS, EVENT_TABS, LIMITS, MIN_PRICE_RUPEES, coverUrlOf, likeContains, msToIst,
+  DEITY_SUGGESTIONS, EVENT_TABS, INTENTIONS, nextSeo, type AttrPatch, type SeoPatch, LIMITS, MIN_PRICE_RUPEES, coverUrlOf, likeContains, msToIst,
   nextCoverMedia, normalizeEventInput, parseTab, posterPlan, splitPatch, tabOf, tabSql,
   type EventPatch, type EventTab,
 } from "../lib/admin2_events_logic";
@@ -219,6 +219,7 @@ export async function adminEventsMeta(req: Request, env: Env): Promise<Response>
     min_price_rupees: MIN_PRICE_RUPEES,
     duration: { min: LIMITS.durationMin, max: LIMITS.durationMax },
     deity_suggestions: DEITY_SUGGESTIONS,
+    intentions: Object.entries(INTENTIONS).map(([id, label]) => ({ id, label })),
     limits: LIMITS,
   });
 }
@@ -251,6 +252,19 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       blurb: row.blurb ?? null,
       description: row.description ?? null,
       performed_by: row.performed_by ?? null,
+      // [SAATHUM-EVENT-FIELDS-1] Book now card fields + SEO + share line.
+      location: row.location ?? null,
+      intention: typeof attrs.intention === "string" ? attrs.intention : null,
+      prasad_courier: typeof attrs.prasad_courier === "boolean" ? attrs.prasad_courier : true,
+      replay: typeof attrs.replay === "boolean" ? attrs.replay : true,
+      guide_slug: typeof attrs.guide_slug === "string" ? attrs.guide_slug : null,
+      seo: attrs.seo && typeof attrs.seo === "object" ? {
+        title: String(attrs.seo.title ?? ""), description: String(attrs.seo.description ?? ""),
+        title_source: attrs.seo.title_source === "admin" ? "admin" : "auto",
+        description_source: attrs.seo.description_source === "admin" ? "admin" : "auto",
+      } : null,
+      ad_hook: typeof attrs.ad_hook?.text === "string" ? attrs.ad_hook.text : null,
+      slug: row.slug ?? null,
       start_ist: startsMs ? msToIst(startsMs) : null,
       price_rupees: Number(row.price ?? 0),
       manual_cover_url: covers.find((c: any) => c && c.source !== "ai_poster")?.url ?? null,
@@ -278,9 +292,14 @@ export async function adminEventDetail(req: Request, env: Env, id: string): Prom
 // Writes
 // ---------------------------------------------------------------------------
 
-/** Cover + deity: the two fields adminEditListing does not own. Same guards it uses. */
-async function writeMediaAndDeity(env: Env, adminUid: string, id: string, cover: string | null | undefined, deity: string | null | undefined): Promise<Response | null> {
-  if (cover === undefined && deity === undefined) return null;
+/**
+ * Cover + the attrs keys this lane owns (deity, intention, prasad_courier, replay,
+ * guide_slug — [SAATHUM-EVENT-FIELDS-1]): the fields adminEditListing does not own.
+ * Same guards it uses. Returns an error Response, or null when written / nothing to do.
+ */
+async function writeMediaAndAttrs(env: Env, adminUid: string, id: string, cover: string | null | undefined, attrPatch: AttrPatch): Promise<Response | null> {
+  const attrKeys = Object.keys(attrPatch) as (keyof AttrPatch)[];
+  if (cover === undefined && !attrKeys.length) return null;
   const row = await loadRow(env, id);
   if (!row) return err(404, "not_found", "No such event.");
   if (row.status === "cancelled" || row.status === "completed") {
@@ -302,12 +321,12 @@ async function writeMediaAndDeity(env: Env, adminUid: string, id: string, cover:
       }
     }
   }
-  if (deity !== undefined) {
-    const before = typeof attrs.deity === "string" ? attrs.deity : null;
-    if ((before ?? null) !== (deity ?? null)) {
-      changes.deity = { from: before, to: deity };
-      if (deity) attrs.deity = deity; else delete attrs.deity;
-    }
+  for (const k of attrKeys) {
+    const to = attrPatch[k] ?? null;
+    const from = attrs[k] ?? null;
+    if (from === to) continue;
+    changes[k] = { from, to };
+    if (to === null || to === "") delete attrs[k]; else attrs[k] = to;
   }
   if (!Object.keys(changes).length) return null;
   const attrsStr = JSON.stringify(attrs);
@@ -326,6 +345,30 @@ async function writeMediaAndDeity(env: Env, adminUid: string, id: string, cover:
   await audit(env, adminUid, "listing_admin_edit", id, { status: row.status, changes, via: "admin2" });
   if (row.status === "published" || row.status === "live") await ftsSync(env, id).catch(() => undefined);
   return null;
+}
+
+/**
+ * [SAATHUM-EVENT-FIELDS-1] Refresh attrs.seo from the saved row (auto parts always
+ * follow the current title/blurb/price/place; admin-typed parts are kept). `seo` is
+ * a RESERVED attrs key (routes/listings.ts), so it is outside reviewedContentHash and
+ * writing it never makes an approval stale. json_set on the stored row, like
+ * attrs.ad_hook, so it never clobbers a concurrent write to other attrs keys.
+ * Best-effort: a failure here is logged, never fails the save.
+ */
+async function refreshSeo(env: Env, adminUid: string, id: string, patch: SeoPatch | undefined): Promise<void> {
+  try {
+    const row = await loadRow(env, id);
+    if (!row) return;
+    const attrs = attrsOf(row.attrs);
+    const next = nextSeo({ ...row, deity: attrs.deity }, attrs.seo ?? null, patch);
+    const cur = attrs.seo ?? {};
+    if (cur.title === next.title && cur.description === next.description && cur.title_source === next.title_source && cur.description_source === next.description_source) return;
+    await env.DB_META.prepare("UPDATE listings SET attrs=json_set(COALESCE(NULLIF(attrs,''),'{}'),'$.seo',json(?2)) WHERE id=?1")
+      .bind(id, JSON.stringify(next)).run();
+    safeTrack(env, adminUid, "admin2_event_seo_written", { listing_id: id, title_source: next.title_source, description_source: next.description_source });
+  } catch (e) {
+    await trackException(env, e, { uid: adminUid, route: "admin2_events.refreshSeo", handled: true, app_name: APP });
+  }
 }
 
 /** adminEditListing for the ADMIN_EDITABLE fields. Returns an error Response or null. */
@@ -367,13 +410,20 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
     return json({ ...cb, error: cb.error ?? "create_failed", message: cb.message ?? cb.error ?? "The event could not be created." }, created.ok ? 500 : created.status);
   }
   const id = String(cb.listing_id);
-  // Cover source tag + deity (createListing strips cover `source`), then capacity via the admin editor.
-  const media = await writeMediaAndDeity(env, a.uid, id, patch.cover_url ?? undefined, patch.deity ?? undefined);
+  // Cover source tag + attrs (createListing strips cover `source`), then capacity/location via the admin editor.
+  const split = splitPatch(patch as EventPatch);
+  const createAttrs: AttrPatch = {};
+  for (const [k, v] of Object.entries(split.attrs)) if (v !== null && v !== undefined && v !== "") (createAttrs as any)[k] = v;
+  const media = await writeMediaAndAttrs(env, a.uid, id, patch.cover_url ?? undefined, createAttrs);
   if (media) return media;
-  if (patch.capacity) {
-    const e = await runAdminEdit(req, env, id, { capacity: patch.capacity }, exec);
+  const later: Record<string, unknown> = {};
+  if (patch.capacity) later.capacity = patch.capacity;
+  if (patch.location) later.location = patch.location;
+  if (Object.keys(later).length) {
+    const e = await runAdminEdit(req, env, id, later, exec);
     if (e) return e;
   }
+  await refreshSeo(env, a.uid, id, split.seo);
   await history(env, { listingId: id, actorId: a.uid, action: "admin2_create", prev: null, next: "draft" });
   safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category });
   const out = await detailPayload(env, id, a.uid);
@@ -392,11 +442,12 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
     const cat = await env.DB_META.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(patch.category).first();
     if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
   }
-  const { edit, cover, deity } = splitPatch(patch as EventPatch);
+  const { edit, cover, attrs: attrPatch, seo } = splitPatch(patch as EventPatch);
   const e1 = await runAdminEdit(req, env, id, edit, exec);
   if (e1) return e1;
-  const e2 = await writeMediaAndDeity(env, a.uid, id, cover, deity);
+  const e2 = await writeMediaAndAttrs(env, a.uid, id, cover, attrPatch);
   if (e2) return e2;
+  await refreshSeo(env, a.uid, id, seo);
   safeTrack(env, a.uid, "admin2_event_updated", { listing_id: id, fields: Object.keys(patch).join(",") });
   const out = await detailPayload(env, id, a.uid);
   return json({ ok: true, id, ...(out ?? {}) });

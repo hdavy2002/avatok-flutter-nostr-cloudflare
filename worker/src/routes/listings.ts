@@ -294,7 +294,9 @@ function encodeAttrs(v: unknown): { json: string | null; error?: string } {
 // If another key is ever found to need the same protection, add it here — do not
 // assume `poster` is the only one.
 // [OG-AD-HOOK-1] `ad_hook` is server-written (lib/listing_ad_hook.ts) — the share-card ad line.
-const RESERVED_ATTRS_KEYS = ["poster", "ad_hook"] as const;
+// [SAATHUM-EVENT-FIELDS-1 2026-09-26] `seo` is server-written (routes/admin2_events.ts
+// refreshSeo) — the Google title/description; outside the review hash like ad_hook.
+const RESERVED_ATTRS_KEYS = ["poster", "ad_hook", "seo"] as const;
 
 /** Strip server-owned keys from creator-supplied `attrs` and splice the server's
  *  own current value back in, so a creator can neither forge nor erase them.
