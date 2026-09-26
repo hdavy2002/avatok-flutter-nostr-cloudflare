@@ -1,17 +1,49 @@
 /* [SAATHUM-CHECKOUT-UI 2026-09-26] Step 6 — Done. Receipt download fetches
  * the PDF with the bearer token and saves it via a blob URL (the token can
- * never sit in a plain href), then revokes the object URL once used. */
+ * never sit in a plain href), then revokes the object URL once used.
+ *
+ * [SAATHUM-EVENT-TYPES 2026-09-27] Title comes from copy.doneTitle so a
+ * satsang/sermon/meditation booking doesn't say "sankalp". The round sticker
+ * (booking-blessed.png, per the approved mockup) hides itself on a 404 —
+ * the owner hasn't generated every sticker yet.
+ */
 import { useEffect, useState } from 'react';
 import { fetchReceiptBlob } from './api';
 import { capture, captureException } from '../../lib/analytics';
 import type { Checkout } from './types';
+import type { EventType, EventTypeCopy } from '../../lib/eventTypes';
 
-export function DoneStep({ checkout, auth, listingId }: { checkout: Checkout; auth: string; listingId: string }) {
+function DoneSticker() {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return (
+    <img
+      className="sthc-done-sticker"
+      src="/assets/saathum-booking-stickers/booking-blessed.png"
+      alt=""
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
+export function DoneStep({
+  checkout,
+  auth,
+  listingId,
+  copy,
+  eventType,
+}: {
+  checkout: Checkout;
+  auth: string;
+  listingId: string;
+  copy: EventTypeCopy;
+  eventType: EventType;
+}) {
   const [downloading, setDownloading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: 'done', listing_id: listingId });
+    capture('saathum_checkout_step', { step: 'done', listing_id: listingId, event_type: eventType });
     capture('saathum_checkout_done');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -41,8 +73,8 @@ export function DoneStep({ checkout, auth, listingId }: { checkout: Checkout; au
   return (
     <div className="sthc-card sthc-done">
       <div className="sthc-kick">Booked</div>
-      <div className="sthc-done-icon">🙏</div>
-      <div className="sthc-big">Your sankalp is booked 🙏</div>
+      <DoneSticker />
+      <div className="sthc-big">{copy.doneTitle}</div>
       <p>
         {checkout.listing.title}
         <br />
@@ -56,7 +88,7 @@ export function DoneStep({ checkout, auth, listingId }: { checkout: Checkout; au
         <a href="/dashboard">My events</a>
       </div>
       <div className="sthc-hint" style={{ marginTop: 12 }}>
-        Live link arrives by email 30 min before. Prasad ships the same day.
+        Live link arrives by email 30 min before. {copy.ritual ? 'Prasad ships the same day.' : ''}
       </div>
     </div>
   );

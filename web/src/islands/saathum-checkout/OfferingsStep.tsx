@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { capture } from '../../lib/analytics';
 import type { Address, ChadhavaItem, ChadhavaSelection, OfferingsState, Quote } from './types';
+import type { EventType } from '../../lib/eventTypes';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh',
@@ -39,6 +40,9 @@ export function OfferingsStep({
   onBack,
   onContinue,
   listingId,
+  eventType,
+  stepIndex,
+  totalSteps,
 }: {
   chadhavaCatalog: ChadhavaItem[];
   dakshinaPresets: number[];
@@ -53,13 +57,16 @@ export function OfferingsStep({
   onBack: () => void;
   onContinue: () => void;
   listingId: string;
+  eventType: EventType;
+  stepIndex: number;
+  totalSteps: number;
 }) {
   const [dakshinaOther, setDakshinaOther] = useState('');
   const [addrErr, setAddrErr] = useState<Record<string, string>>({});
   const a: Address = address ?? { name: '', phone: '', line1: '', line2: '', city: '', state: '', pincode: '' };
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: 'offerings', listing_id: listingId });
+    capture('saathum_checkout_step', { step: 'offerings', listing_id: listingId, event_type: eventType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -99,9 +106,11 @@ export function OfferingsStep({
   return (
     <div className="sthc-card">
       <button className="sthc-back" onClick={onBack} type="button">&larr; Back</button>
-      <div className="sthc-kick">Step 3 of 5 · Offerings</div>
+      <div className="sthc-kick">Step {stepIndex} of {totalSteps} · Offerings</div>
       <h3 className="sthc-h3">Chadhava &amp; donation</h3>
-      <div className="sthc-dots"><i className="on" /><i className="on" /><i className="on" /><i /><i /></div>
+      <div className="sthc-dots">
+        {Array.from({ length: totalSteps }, (_, i) => <i key={i} className={i < stepIndex ? 'on' : ''} />)}
+      </div>
 
       {chadhavaCatalog.map((item) => (
         <div className="sthc-item" key={item.id}>

@@ -3,6 +3,7 @@
 // Money on the wire is integer paise (price_paise) except the form's price_rupees.
 import { API_BASE } from '../../lib/config';
 import { fileNameHeader } from '../../lib/uploadHeaders';
+import type { EventType } from '../../lib/eventTypes';
 import { ApiError, adminApi, adminToken } from './adminApi';
 
 export type EventTab = 'upcoming' | 'live' | 'past' | 'drafts' | 'cancelled';
@@ -66,6 +67,11 @@ export interface EventDetail extends EventRow {
   booked_boost: number | null;
   video_download_url: string | null;
   guide_slug: string | null;
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Kind of event + performer photo + social-proof overrides.
+  event_type: EventType;
+  performer_photo_url: string | null;
+  rating_display: number | null;
+  review_count_boost: number | null;
   seo: { title: string; description: string; title_source: 'auto' | 'admin'; description_source: 'auto' | 'admin' } | null;
   ad_hook: string | null;
   slug: string | null;

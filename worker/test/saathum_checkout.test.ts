@@ -9,6 +9,7 @@ import {
 const listing: ListingSnapshot = {
   id: "l1", title: "Ganesh Havan", price_rupees: 501, visibility: "public",
   prasad_available: true, prasad_price_rupees: 99, starts_at: 2_000_000_000_000, duration_min: 60,
+  event_type: "havan", performer_name: "Pandit Sharma", performer_photo_url: null,
 };
 const catalog: ChadhavaCatalogItem[] = [
   { id: "chadhava-marigold-garland", title: "Marigold garland", description: null, price_rupees: 51, image_url: null },
@@ -108,6 +109,67 @@ describe("computeQuote", () => {
     });
     expect(q.ok).toBe(false);
     if (!q.ok) expect(q.error).toBe("prasad_unavailable");
+  });
+});
+
+// [SAATHUM-EVENT-TYPES 2026-09-27]
+describe("computeQuote — event_type rules", () => {
+  const nonRitual: ListingSnapshot = { ...listing, event_type: "satsang", prasad_available: false };
+  const base = { chadhavaCatalog: catalog, gstEnabled: true, gstRatePct: 18 };
+
+  it("labels the ticket line by type", () => {
+    const havan = computeQuote({ ...base, listing, chadhava: [], dakshinaRupees: 0, prasad: false });
+    if (havan.ok) expect(havan.value.lines[0].label).toBe("Havan ticket");
+    const satsang = computeQuote({ ...base, listing: nonRitual, chadhava: [], dakshinaRupees: 0, prasad: false });
+    if (satsang.ok) expect(satsang.value.lines[0].label).toBe("Satsang ticket");
+  });
+
+  it("rejects a non-ritual quote with a chadhava qty > 0", () => {
+    const q = computeQuote({ ...base, listing: nonRitual, chadhava: [{ id: "chadhava-marigold-garland", qty: 1 }], dakshinaRupees: 0, prasad: false });
+    expect(q.ok).toBe(false);
+    if (!q.ok) { expect(q.error).toBe("not_offered_for_event_type"); expect(q.field).toBe("chadhava"); }
+  });
+
+  it("ignores a zero-qty chadhava line even for a non-ritual type", () => {
+    const q = computeQuote({ ...base, listing: nonRitual, chadhava: [{ id: "chadhava-marigold-garland", qty: 0 }], dakshinaRupees: 0, prasad: false });
+    expect(q.ok).toBe(true);
+    if (q.ok) expect(q.value.lines).toHaveLength(1);
+  });
+
+  it("rejects a non-ritual quote with prasad:true", () => {
+    const q = computeQuote({ ...base, listing: nonRitual, chadhava: [], dakshinaRupees: 0, prasad: true });
+    expect(q.ok).toBe(false);
+    if (!q.ok) { expect(q.error).toBe("not_offered_for_event_type"); expect(q.field).toBe("prasad"); }
+  });
+
+  it("labels the offering line 'Offering' for non-ritual, 'Dakshina for the priest' for ritual", () => {
+    const r = computeQuote({ ...base, listing, chadhava: [], dakshinaRupees: 51, prasad: false });
+    if (r.ok) expect(r.value.lines.find((l) => l.kind === "dakshina")?.label).toBe("Dakshina for the priest");
+    const nr = computeQuote({ ...base, listing: nonRitual, chadhava: [], dakshinaRupees: 51, prasad: false });
+    if (nr.ok) expect(nr.value.lines.find((l) => l.kind === "dakshina")?.label).toBe("Offering");
+  });
+
+  it("a plain non-ritual booking (no offering) is just a ticket line", () => {
+    const q = computeQuote({ ...base, listing: nonRitual, chadhava: [], dakshinaRupees: 0, prasad: false });
+    expect(q.ok).toBe(true);
+    if (q.ok) { expect(q.value.lines.map((l) => l.kind)).toEqual(["ticket"]); expect(q.value.subtotal_rupees).toBe(501); }
+  });
+});
+
+describe("validateSankalp — ritual vs non-ritual", () => {
+  it("ritual (default) keeps requiring/reading gotra, family, wish", () => {
+    const r = validateSankalp({ name: "Ramesh", gotra: "Kashyap", family: ["Sita"], wish: "health" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual({ name: "Ramesh", gotra: "Kashyap", family: ["Sita"], wish: "health" });
+  });
+  it("non-ritual only reads and returns the name, even if gotra/family/wish were sent", () => {
+    const r = validateSankalp({ name: "Ramesh", gotra: "Kashyap", family: ["Sita"], wish: "health" }, false);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual({ name: "Ramesh" });
+  });
+  it("non-ritual still requires a name", () => {
+    expect(validateSankalp({}, false).ok).toBe(false);
+    expect(validateSankalp({ name: "  " }, false).ok).toBe(false);
   });
 });
 

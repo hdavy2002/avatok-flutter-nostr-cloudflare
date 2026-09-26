@@ -11,10 +11,23 @@
   --card: #fffdf8;
   color: var(--ink);
   font-family: Nunito, sans-serif;
-  max-width: 480px;
+  max-width: 760px;
   margin: 0 auto;
 }
 .sthc * { box-sizing: border-box; }
+
+/* [SAATHUM-EVENT-TYPES 2026-09-27] Owner feedback: one wide, centred step
+ * card — the event summary is a slim strip ABOVE it (small round thumb +
+ * title + date + back link), never a side column. checkout.astro renders
+ * the strip; these rules style it. */
+.sthc-strip { display: flex; align-items: center; gap: 12px; max-width: 760px; margin: 0 auto 16px; }
+.sthc-strip-thumb { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none; background: #3a2418; border: 2px solid #fff; box-shadow: 0 2px 6px #5a2c0f33; }
+.sthc-strip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sthc-strip-info { flex: 1; min-width: 0; }
+.sthc-strip-info h4 { margin: 0; font: 600 15px Comfortaa, sans-serif; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sthc-strip-info p { margin: 2px 0 0; font: 700 12px Nunito, sans-serif; color: var(--sub); }
+.sthc-strip-back { flex: none; font: 800 12.5px Nunito, sans-serif; color: var(--red); text-decoration: none; white-space: nowrap; }
+.sthc-strip-back:hover { text-decoration: underline; }
 
 .sthc-card {
   background: var(--card);
@@ -57,14 +70,6 @@ select.sthc-in { appearance: auto; }
 
 .sthc-back { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; margin-bottom: 10px; color: var(--sub); font: 800 12.5px Nunito, sans-serif; cursor: pointer; }
 
-/* summary column */
-.sthc-summary { background: var(--card); border: 6px solid #fff; border-radius: 18px; padding: 14px; margin-bottom: 18px; box-shadow: 0 10px 22px #5a2c0f26; }
-.sthc-summary-art { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 16/10; background: #3a2418; margin-bottom: 10px; }
-.sthc-summary-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.sthc-summary h4 { margin: 0; font: 600 18px Comfortaa, sans-serif; color: var(--teal); }
-.sthc-summary p { margin: 4px 0 0; font: 700 13px Nunito, sans-serif; color: var(--sub); }
-.sthc-summary a { display: inline-block; margin-top: 8px; font: 800 12.5px Nunito, sans-serif; color: var(--red); text-decoration: none; }
-
 /* items */
 .sthc-item { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 8px; }
 .sthc-item .sthc-im { width: 52px; height: 52px; border-radius: 10px; background: #f1e2c4; display: grid; place-items: center; font-size: 22px; flex: none; overflow: hidden; }
@@ -103,7 +108,7 @@ select.sthc-in { appearance: auto; }
 .sthc-utr-in { width: 100%; padding: 12px; border: 1.5px solid #d6b98a; border-radius: 10px; background: #fff; font: 900 18px Nunito, sans-serif; letter-spacing: .18em; text-align: center; color: var(--teal); }
 
 .sthc-done { text-align: center; }
-.sthc-done-icon { font-size: 46px; margin-bottom: 8px; }
+.sthc-done-sticker { width: 120px; height: 120px; object-fit: contain; margin: 0 auto 8px; display: block; }
 .sthc-done .sthc-big { font: 600 22px Comfortaa, sans-serif; color: var(--teal); }
 .sthc-done p { font: 700 14px/1.5 Nunito, sans-serif; color: var(--body); }
 .sthc-dl { display: flex; gap: 8px; margin-top: 12px; }
@@ -118,12 +123,7 @@ select.sthc-in { appearance: auto; }
 
 .sthc-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-@media (min-width: 900px) {
-  .sthc-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 28px; align-items: start; }
-  .sthc-summary { position: sticky; top: 18px; }
-  .sthc { max-width: none; margin: 0; }
-  .sthc-step-col { max-width: 480px; margin: 0 auto; }
-}
 @media (max-width: 520px) {
   .sthc-card { padding: 16px; border-width: 4px; }
+  .sthc-strip { padding: 0 2px; }
 }

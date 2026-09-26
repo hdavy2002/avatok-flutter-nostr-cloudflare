@@ -25,6 +25,7 @@ import {
   externalStatus, CHECKOUT_EXPIRY_MS, DAKSHINA_PRESETS, dueForReminder,
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
+import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -46,24 +47,32 @@ type ListingRow = {
   id: string; creator_id: string; kind: string; title: string; status: string;
   price: number; starts_at: number | null; duration_min: number | null;
   capacity: number | null; attrs: string | null; cover_media: string | null; location: string | null;
+  performed_by: string | null;
 };
 
 async function loadListingRow(env: Env, listingId: string): Promise<ListingRow | null> {
   return metaDb(env).prepare(
-    `SELECT id, creator_id, kind, title, status, price, starts_at, duration_min, capacity, attrs, cover_media, location
+    `SELECT id, creator_id, kind, title, status, price, starts_at, duration_min, capacity, attrs, cover_media, location, performed_by
        FROM listings WHERE id=?1`,
   ).bind(listingId).first<ListingRow>();
 }
 
 function toSnapshot(row: ListingRow, attrs: Record<string, unknown>): ListingSnapshot {
+  const event_type = eventTypeOf(attrs);
+  const ritual = isRitual(event_type);
   const prasadPriceRaw = Number(attrs.prasad_price_rupees);
   const prasad_price_rupees = Number.isSafeInteger(prasadPriceRaw) && prasadPriceRaw >= 0 && prasadPriceRaw <= 5000 ? prasadPriceRaw : 99;
   return {
     id: row.id, title: row.title, price_rupees: Number(row.price) || 0,
     visibility: attrs.visibility === "private" ? "private" : "public",
-    prasad_available: attrs.prasad_courier !== false, // default true per spec table
+    // [SAATHUM-EVENT-TYPES 2026-09-27] Satsang/sermon/meditation never offer prasad,
+    // whatever attrs.prasad_courier says (also enforced server-side on the admin save).
+    prasad_available: ritual && attrs.prasad_courier !== false, // default true per spec table
     prasad_price_rupees,
     starts_at: row.starts_at ?? null, duration_min: row.duration_min ?? null,
+    event_type,
+    performer_name: row.performed_by ?? null,
+    performer_photo_url: typeof attrs.performer_photo_url === "string" && attrs.performer_photo_url ? attrs.performer_photo_url : null,
   };
 }
 
@@ -107,17 +116,22 @@ export async function saathumCheckoutConfig(req: Request, env: Env): Promise<Res
   if (!row) return failure("not_found", 404);
   const attrs = parseJsonSafe<Record<string, unknown>>(row.attrs, {});
   const snapshot = toSnapshot(row, attrs);
-  const [chadhava, config, bookableCheck] = await Promise.all([
+  const ritual = isRitual(snapshot.event_type);
+  const [chadhavaAll, config, bookableCheck] = await Promise.all([
     loadChadhavaCatalog(env), readConfig(env), computeBookable(env, row, snapshot),
   ]);
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Non-ritual events never offer chadhava/prasad.
+  const chadhava = ritual ? chadhavaAll : [];
   const cover = parseJsonSafe<unknown[]>(row.cover_media, []);
   return json({
     listing: {
       id: row.id, title: row.title, starts_at: row.starts_at, duration_min: row.duration_min,
-      price_rupees: snapshot.price_rupees, prasad_available: snapshot.prasad_available,
+      price_rupees: snapshot.price_rupees, prasad_available: ritual ? snapshot.prasad_available : false,
       prasad_price_rupees: snapshot.prasad_price_rupees, visibility: snapshot.visibility,
       cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null),
       deity: typeof attrs.deity === "string" ? attrs.deity : null, location: row.location ?? null,
+      event_type: snapshot.event_type, ritual,
+      performer: { name: snapshot.performer_name, photo_url: snapshot.performer_photo_url },
     },
     chadhava,
     dakshina_presets: DAKSHINA_PRESETS,
@@ -215,18 +229,6 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   try { b = await req.json(); } catch { return failure("invalid_request"); }
   if (typeof b.listing_id !== "string" || typeof b.request_key !== "string" || !UUID.test(b.request_key)) return failure("invalid_request");
   if (b.accept_terms !== true || b.accept_refund !== true) return failure("terms_required", 400, { message: "You must accept the terms and refund policy." });
-  const sankalp = validateSankalp(b.sankalp);
-  if (!sankalp.ok) return failure(sankalp.error, 400, { message: sankalp.message, field: sankalp.field });
-  const prasad = b.prasad === true;
-  let address: Address | null = null;
-  if (prasad) {
-    const a = validateAddress(b.address);
-    if (!a.ok) return failure(a.error, 400, { message: a.message, field: a.field });
-    address = a.value;
-  } else if (b.address !== undefined && b.address !== null) {
-    const a = validateAddress(b.address);
-    if (a.ok) address = a.value; // optional even without prasad; ignore a malformed optional address
-  }
 
   const throttle = await limited(env, `create:${uid}`, 10); if (throttle) return throttle;
   const db = metaDb(env);
@@ -244,11 +246,28 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   if (!row) return failure("not_found", 404);
   const attrs = parseJsonSafe<Record<string, unknown>>(row.attrs, {});
   const snapshot = toSnapshot(row, attrs);
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Needed before sankalp validation: non-ritual
+  // types (satsang, sermon, meditation) take only the attendee's name.
+  const ritual = isRitual(snapshot.event_type);
+
+  const sankalp = validateSankalp(b.sankalp, ritual);
+  if (!sankalp.ok) return failure(sankalp.error, 400, { message: sankalp.message, field: sankalp.field });
+  const prasad = b.prasad === true;
+  let address: Address | null = null;
+  if (prasad) {
+    const a = validateAddress(b.address);
+    if (!a.ok) return failure(a.error, 400, { message: a.message, field: a.field });
+    address = a.value;
+  } else if (b.address !== undefined && b.address !== null) {
+    const a = validateAddress(b.address);
+    if (a.ok) address = a.value; // optional even without prasad; ignore a malformed optional address
+  }
+
   const bookableCheck = await computeBookable(env, row, snapshot);
   if (!bookableCheck.ok) return failure(bookableCheck.reason, 409);
 
   const [chadhavaCatalog, config, p] = await Promise.all([loadChadhavaCatalog(env), readConfig(env), hdfcPolicy(env)]);
-  const chadhava = Array.isArray(b.chadhava) ? (b.chadhava as { id: string; qty: number }[]) : [];
+  const chadhava = ritual && Array.isArray(b.chadhava) ? (b.chadhava as { id: string; qty: number }[]) : [];
   const dakshinaRupees = Math.trunc(Number(b.dakshina_rupees ?? 0));
   const quote = computeQuote({
     listing: snapshot, chadhavaCatalog, chadhava, dakshinaRupees, prasad,
@@ -281,6 +300,7 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
 
   await track(env, uid, "saathum_checkout_created", APP, {
     listing_id: row.id, total_rupees: quote.value.total_rupees, prasad, chadhava_count: chadhava.filter((c) => c.qty > 0).length,
+    event_type: snapshot.event_type,
   });
   const created = await loadOwnCheckout(env, uid, checkoutId);
   if (!created) return failure("checkout_unavailable", 503);
@@ -492,6 +512,7 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
       `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry FROM listings WHERE id=?1`,
     ).bind(row.listing_id).first<any>();
     if (!listingRow) throw new Error("saathum listing missing at finalize");
+    const listingAttrsForEvent = parseJsonSafe<Record<string, unknown>>(listingRow.attrs, {});
     const purchaseQuote = quoteCommercialPurchase({
       buyerId: row.uid, kind: "live_event", listing: listingRow, bookingId: null, rail: "hdfc_sms", config,
       sourcePrice: row.ticket_rupees, slotStart: null, slotEnd: null,
@@ -528,7 +549,7 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
        ON CONFLICT(intent_id) DO UPDATE SET status='confirmed', bank_reference=excluded.bank_reference, commercial_order_id=excluded.commercial_order_id, updated_at=excluded.updated_at`,
     ).bind(checkoutId, row.uid, row.listing_id, row.amount_paise, row.payer_reference, orderId, row.expires_at, row.created_at, Date.now()).run().catch(() => {});
 
-    await track(env, row.uid, "saathum_checkout_confirmed", APP, { listing_id: row.listing_id, total_rupees: row.total_rupees, via: "customer" });
+    await track(env, row.uid, "saathum_checkout_confirmed", APP, { listing_id: row.listing_id, total_rupees: row.total_rupees, via: "customer", event_type: eventTypeOf(listingAttrsForEvent) });
     await sendSaathumConfirmationEmail(env, checkoutId).catch((err) => trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent:email", handled: true, app_name: APP }));
   } catch (err) {
     await db.prepare(`UPDATE saathum_checkouts SET status='review_pending', reason_code='finalize_error', updated_at=?2 WHERE checkout_id=?1`).bind(checkoutId, Date.now()).run().catch(() => {});
@@ -541,13 +562,16 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
   const row = await db.prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
   if (!row || row.status !== "confirmed" || row.email_sent_at) return;
   const [listing, to] = await Promise.all([
-    db.prepare(`SELECT title,starts_at,duration_min FROM listings WHERE id=?1`).bind(row.listing_id).first<{ title: string; starts_at: number | null; duration_min: number | null }>(),
+    db.prepare(`SELECT title,starts_at,duration_min,attrs FROM listings WHERE id=?1`).bind(row.listing_id).first<{ title: string; starts_at: number | null; duration_min: number | null; attrs: string | null }>(),
     emailFor(env, row.uid).catch(() => null),
   ]);
   if (!to) { await track(env, row.uid, "saathum_checkout_email", APP, { ok: false, reason: "no_email" }); return; }
   const quote = JSON.parse(row.quote_json) as Quote;
   const sankalp = JSON.parse(row.sankalp_json) as Sankalp;
   const address = row.address_json ? (JSON.parse(row.address_json) as Address) : null;
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Copy follows the listing's own type -- never
+  // hard-coded "havan" (and never the word "YouTube").
+  const emailCopy = eventTypeCopy(eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {})));
   const pdf = await renderSaathumReceiptPdf({
     receiptNo: row.receipt_no ?? checkoutId, issuedAt: row.confirmed_at ?? Date.now(),
     billedTo: { name: sankalp.name || null, email: to, address: address ? [address.line1, address.line2, `${address.city}, ${address.state} ${address.pincode}`].filter(Boolean) as string[] : [] },
@@ -558,13 +582,13 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
   let bin = ""; for (const byte of pdf) bin += String.fromCharCode(byte);
   const pdfBase64 = btoa(bin);
   const whenIst = listing?.starts_at ? new Date(listing.starts_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : null;
-  const prasadNote = row.prasad ? "<p style=\"margin:0 0 8px\">Your prasad ships the same day as the havan.</p>" : "";
+  const prasadNote = row.prasad ? `<p style="margin:0 0 8px">Your prasad ships the same day as the ${escapeHtml(emailCopy.noun)}.</p>` : "";
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
     <h2 style="margin:0 0 12px">Booking confirmed</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(listing?.title ?? "Saa Thum booking")}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
-    <p style="margin:0 0 8px">We'll send the live link by email 30 minutes before the havan starts.</p>
+    <p style="margin:0 0 8px">We'll send the live link by email 30 minutes before the ${escapeHtml(emailCopy.noun)} starts.</p>
     ${prasadNote}
     <p style="margin:20px 0 0;color:#999;font-size:12px">Your payment receipt is attached. Receipt no. ${escapeHtml(row.receipt_no ?? "")}</p>
     <p style="color:#999;font-size:12px;margin-top:20px">Saathum</p>
@@ -596,24 +620,33 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
   const row = await db.prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
   if (!row) return false;
   const [listing, to] = await Promise.all([
-    db.prepare(`SELECT title,starts_at,duration_min FROM listings WHERE id=?1`).bind(row.listing_id).first<{ title: string; starts_at: number | null; duration_min: number | null }>(),
+    db.prepare(`SELECT title,starts_at,duration_min,attrs FROM listings WHERE id=?1`).bind(row.listing_id).first<{ title: string; starts_at: number | null; duration_min: number | null; attrs: string | null }>(),
     emailFor(env, row.uid).catch(() => null),
   ]);
   if (!to) return false;
   const sankalp = JSON.parse(row.sankalp_json) as Sankalp;
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Copy follows the listing's own type -- never
+  // hard-coded "havan"/"priest"/"sankalp" for a non-ritual event.
+  const listingAttrsForCopy = parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {});
+  const reminderType = eventTypeOf(listingAttrsForCopy);
+  const reminderCopy = eventTypeCopy(reminderType);
+  const ritual = isRitual(reminderType);
   const whenIst = listing?.starts_at
     ? new Date(listing.starts_at < 100_000_000_000 ? listing.starts_at * 1000 : listing.starts_at)
       .toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })
     : null;
   const title = listing?.title ?? "Saa Thum booking";
+  const readyLine = ritual
+    ? `${escapeHtml(sankalp.name || "Your")} sankalp is ready — the priest will begin shortly.`
+    : `Your seat is ready — the ${escapeHtml(reminderCopy.noun)} will begin shortly.`;
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
     <h2 style="margin:0 0 12px">Starting in 30 minutes</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
-    <p style="margin:0 0 8px">${escapeHtml(sankalp.name || "Your")} sankalp is ready — the priest will begin shortly.</p>
-    <p style="margin:0 0 8px">Watch the live havan from your Saathum dashboard. Keep this email handy.</p>
-    <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Join the live havan</a></p>
+    <p style="margin:0 0 8px">${readyLine}</p>
+    <p style="margin:0 0 8px">Watch the live ${escapeHtml(reminderCopy.noun)} from your Saathum dashboard. Keep this email handy.</p>
+    <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Join the live ${escapeHtml(reminderCopy.noun)}</a></p>
     <p style="color:#999;font-size:12px;margin-top:20px">Saathum</p>
   </div>`;
   const result = await enqueueEmail(env, {

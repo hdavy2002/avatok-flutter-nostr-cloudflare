@@ -26,6 +26,12 @@ export interface CheckoutConfigListing {
   cover_url: string | null;
   deity?: string | null;
   location?: string | null;
+  /** [SAATHUM-EVENT-TYPES 2026-09-27] Added by agent W; absent on an older
+   * worker deploy or an event made before this shipped. Fall back to
+   * eventTypeOf(listing.attrs) / the type's own `ritual` default — see
+   * lib/eventTypes.ts — never assume these are present. */
+  event_type?: string;
+  ritual?: boolean;
 }
 
 export interface CheckoutConfig {

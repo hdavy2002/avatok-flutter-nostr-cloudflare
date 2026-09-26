@@ -25,10 +25,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft, Ban, BookOpen, CalendarDays, CircleAlert, CircleCheck, Clock, Copy, ExternalLink, ImagePlus, IndianRupee,
-  Loader2, MapPin, MessageCircle, MonitorPlay, Save, Search, Send, Sparkles, Ticket, Trash2, Undo2, Upload, Users,
+  Loader2, MapPin, MessageCircle, MonitorPlay, Save, Search, Send, Sparkles, Star, Ticket, Trash2, Undo2, Upload, User, Users,
 } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
+import { EVENT_TYPES, EVENT_TYPE_COPY, type EventType } from '../../lib/eventTypes';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
@@ -80,7 +81,22 @@ interface FormState {
   prasad_price_rupees: string;
   booked_boost: string;
   video_download_url: string;
+  // [SAATHUM-EVENT-TYPES 2026-09-27]
+  event_type: EventType;
+  performer_photo_url: string;
+  rating_display: string;
+  review_count_boost: string;
 }
+
+/** Admin-form-only placeholder examples for the performer name box — not in eventTypes.ts
+ *  because that file's copy is customer-facing; this is a hint for the owner while typing. */
+const PERFORMER_PLACEHOLDER: Record<EventType, string> = {
+  havan: 'Pandit Ramesh Sharma, Haridwar',
+  puja: 'Pandit Ramesh Sharma, Haridwar',
+  satsang: 'Swami Ramananda',
+  sermon: 'Swami Ramananda',
+  meditation: 'Dr. Meera Iyer',
+};
 
 /** Fallback intention list if the worker meta is older than this form. Mirrors ritualGuides ritualCategories. */
 const INTENTIONS_FALLBACK = [
@@ -94,6 +110,7 @@ const EMPTY: FormState = {
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
   location: '', intention: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
   video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
+  event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '',
 };
 
 function fromDetail(d: EventDetailResponse): FormState {
@@ -124,6 +141,10 @@ function fromDetail(d: EventDetailResponse): FormState {
     // Only an admin-typed value lives in the box; the automatic one is the placeholder.
     seo_title: e.seo?.title_source === 'admin' ? e.seo.title : '',
     seo_description: e.seo?.description_source === 'admin' ? e.seo.description : '',
+    event_type: e.event_type ?? 'havan',
+    performer_photo_url: e.performer_photo_url ?? '',
+    rating_display: e.rating_display != null ? String(e.rating_display) : '',
+    review_count_boost: e.review_count_boost != null ? String(e.review_count_boost) : '',
   };
 }
 
@@ -150,11 +171,17 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   if (changed('prasad_price_rupees')) out.prasad_price_rupees = f.prasad_price_rupees === '' ? null : Number(f.prasad_price_rupees);
   if (changed('video_download_url')) out.video_download_url = f.video_download_url.trim() || null;
   if (changed('booked_boost')) out.booked_boost = f.booked_boost.trim() === '' ? null : Number(f.booked_boost);
+  if (changed('event_type')) out.event_type = f.event_type;
+  if (changed('performer_photo_url')) out.performer_photo_url = f.performer_photo_url.trim() || null;
+  if (changed('rating_display')) out.rating_display = f.rating_display.trim() === '' ? null : Number(f.rating_display);
+  if (changed('review_count_boost')) out.review_count_boost = f.review_count_boost.trim() === '' ? null : Number(f.review_count_boost);
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
-    for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url'] as const) if (!f[k]) delete out[k];
+    for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url', 'performer_photo_url'] as const) if (!f[k]) delete out[k];
     if (!f.start_date) { delete out.start_date; delete out.start_time; }
     if (f.capacity === '') delete out.capacity;
+    if (f.rating_display.trim() === '') delete out.rating_display;
+    if (f.review_count_boost.trim() === '') delete out.review_count_boost;
   }
   return out;
 }
@@ -165,9 +192,10 @@ const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   capacity: 'capacity', location: 'location', intention: 'intention', guide_slug: 'guide_slug',
   seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier',
   video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url', booked_boost: 'booked_boost',
+  event_type: 'event_type', performer_photo_url: 'performer_photo_url', rating_display: 'rating_display', review_count_boost: 'review_count_boost',
 };
 
-type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'poster' | 'article' | 'video_url';
+type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'perf_photo' | 'poster' | 'article' | 'video_url';
 
 /* ── component ──────────────────────────────────────────────────────────── */
 
@@ -187,7 +215,9 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const refs = useRef<Partial<Record<keyof FormState, HTMLElement | null>>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [articleSlug, setArticleSlug] = useState('');
-  const groups = useMemo(() => articleGroups(), []);
+  const performerFileRef = useRef<HTMLInputElement | null>(null);
+  const groups = useMemo(() => articleGroups(form.event_type), [form.event_type]);
+  const typeCopy = EVENT_TYPE_COPY[form.event_type];
 
   const status = detail?.event.status ?? 'draft';
   const isPublic = status === 'published' || status === 'live';
@@ -365,6 +395,27 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     }
   }
 
+  /** [SAATHUM-EVENT-TYPES 2026-09-27] Optional round photo next to the performer's name. */
+  async function onUploadPerformerPhoto(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy('perf_photo');
+    try {
+      const url = await uploadCover(file);
+      set('performer_photo_url', url);
+      toast.success('Photo uploaded', { description: 'Save to keep it.' });
+      capture('admin2_event_performer_photo_upload', { ok: true });
+    } catch (e) {
+      const msg = e instanceof Error && !(e instanceof ApiError) ? e.message : errMessage(e);
+      setErrors((x) => ({ ...x, performer_photo_url: msg }));
+      captureException(e, { where: 'admin2_event_performer_photo_upload' });
+      capture('admin2_event_performer_photo_upload', { ok: false });
+    } finally {
+      setBusy(null);
+      if (performerFileRef.current) performerFileRef.current.value = '';
+    }
+  }
+
   async function onPoster(action: 'generate' | 'keep') {
     let target = id;
     if (!target || dirty) { target = (await save('update')) ?? undefined; if (!target) return; }
@@ -469,6 +520,19 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const disabled = isClosed || busy !== null;
   const ytId = detail?.youtube?.video_id;
 
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Live preview for the "Social proof" section. The admin
+  // API doesn't expose a real rating/review count yet, so this previews the admin-set numbers
+  // only — the public site's own render (lib/eventTypes.ts socialProof()) adds the real ones.
+  const previewRating = Number(form.rating_display);
+  const hasPreviewRating = form.rating_display.trim() !== '' && previewRating >= 1 && previewRating <= 5;
+  const previewReviews = Number(form.review_count_boost) || 0;
+  const previewBooked = (ev?.seats_booked ?? 0) + (Number(form.booked_boost) || 0);
+  const socialProofPreview = [
+    hasPreviewRating ? `⭐ ${previewRating.toFixed(1)}/5` : null,
+    previewReviews > 0 ? `${previewReviews.toLocaleString('en-IN')} reviews` : null,
+    `${previewBooked.toLocaleString('en-IN')} booked`,
+  ].filter(Boolean).join(' · ');
+
   return (
     <div className="flex flex-col gap-5 pb-28 lg:pb-0">
       {/* Header strip */}
@@ -507,24 +571,56 @@ export default function EventForm({ eventId }: { eventId?: string }) {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── Main column ── */}
         <div className="flex flex-col gap-5">
-          {!isClosed && (
-            <Section title="Start from an article" subtitle="Pick a Puja & Havan Guide article to fill the form. You add the location, date, time and YouTube link.">
-              <Field label="Article" hint={`${groups[0].items.length + groups[1].items.length} articles`}>
-                <Select value={articleSlug || undefined} onValueChange={(v) => void onPickArticle(v)} disabled={disabled}>
-                  <SelectTrigger aria-label="Start from an article">
-                    {busy === 'article' ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 text-muted-foreground" />}
-                    <SelectValue placeholder="Choose an article…" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    {groups.map((g) => (
-                      <SelectGroup key={g.label}>
-                        <SelectLabel>{g.label}</SelectLabel>
-                        {g.items.map((a) => <SelectItem key={a.slug} value={a.slug}>{a.title} · {a.deity}</SelectItem>)}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+          {/* [SAATHUM-EVENT-TYPES 2026-09-27] First thing in the form — everything below adapts to it. */}
+          <Section title="What kind of event?" subtitle="Everything below — labels, checkout, the booking card — adapts to this.">
+            <ToggleGroup type="single" variant="outline" value={form.event_type} disabled={disabled}
+              className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+              onValueChange={(v) => {
+                if (!v || v === form.event_type) return;
+                const t = v as EventType;
+                set('event_type', t);
+                setArticleSlug('');
+                capture('admin2_event_type_selected', { event_type: t });
+              }}>
+              {EVENT_TYPES.map((t) => (
+                <ToggleGroupItem key={t} value={t} aria-label={EVENT_TYPE_COPY[t].label} className="h-auto flex-col gap-1 py-3">
+                  <span className="text-[14px] font-bold">{EVENT_TYPE_COPY[t].label}</span>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <p className="text-[12px] font-semibold text-muted-foreground">
+              {typeCopy.ritual
+                ? 'Ritual event — sankalp, chadhava and prasad courier are offered.'
+                : 'Not a ritual — no sankalp, chadhava or prasad; customers just book a seat.'}
+            </p>
+          </Section>
+
+          {(!isClosed && (typeCopy.ritual || articleBySlug(form.guide_slug))) && (
+            <Section title="Start from an article"
+              subtitle={typeCopy.ritual
+                ? 'Pick a Puja & Havan Guide article to fill the form. You add the location, date, time and YouTube link.'
+                : `No ${typeCopy.noun} articles yet — this only applies to havans and pujas.`}>
+              {typeCopy.ritual ? (
+                <Field label="Article" hint={`${groups[0].items.length + groups[1].items.length} articles`}>
+                  <Select value={articleSlug || undefined} onValueChange={(v) => void onPickArticle(v)} disabled={disabled}>
+                    <SelectTrigger aria-label="Start from an article">
+                      {busy === 'article' ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 text-muted-foreground" />}
+                      <SelectValue placeholder="Choose an article…" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {groups.map((g) => (
+                        <SelectGroup key={g.label}>
+                          <SelectLabel>{g.label}</SelectLabel>
+                          {g.items.map((a) => <SelectItem key={a.slug} value={a.slug}>{a.title} · {a.deity}</SelectItem>)}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : (
+                // Article was linked before switching to a non-ritual type; show it collapsed (read-only) rather than hide the link entirely.
+                <p className="text-[13px] font-semibold text-muted-foreground">Linked article: {articleBySlug(form.guide_slug)?.title}</p>
+              )}
             </Section>
           )}
 
@@ -562,9 +658,32 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                 maxLength={meta?.limits.descriptionMax ?? 6000} disabled={disabled} onChange={(e) => set('description', e.target.value)}
                 className="flex min-h-[140px] w-full rounded-md border border-input bg-card px-3 py-2 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm" />
             </Field>
-            <Field label="Performed by" htmlFor="ev-perf" error={errors.performed_by} hint="Required before publishing — the priest or team customers are booking.">
-              <Input id="ev-perf" ref={(el) => { refs.current.performed_by = el; }} value={form.performed_by} maxLength={meta?.limits.performedByMax ?? 80}
-                disabled={disabled} onChange={(e) => set('performed_by', e.target.value)} placeholder="Pandit Ramesh Sharma, Haridwar" />
+            <Field label={typeCopy.performerField} htmlFor="ev-perf" error={errors.performed_by} hint="Required before publishing — who customers are booking.">
+              <div className="flex items-start gap-3">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-border/70 bg-muted">
+                  {form.performer_photo_url ? (
+                    <img src={listingImage(form.performer_photo_url, 128) ?? form.performer_photo_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-muted-foreground"><User className="h-6 w-6" /></span>
+                  )}
+                  {busy === 'perf_photo' && <span className="absolute inset-0 flex items-center justify-center bg-card/70"><Loader2 className="h-4 w-4 animate-spin text-primary" /></span>}
+                </div>
+                <div className="flex flex-1 flex-col gap-2">
+                  <Input id="ev-perf" ref={(el) => { refs.current.performed_by = el; }} value={form.performed_by} maxLength={meta?.limits.performedByMax ?? 80}
+                    disabled={disabled} onChange={(e) => set('performed_by', e.target.value)} placeholder={PERFORMER_PLACEHOLDER[form.event_type]} />
+                  <div className="flex items-center gap-2">
+                    <input ref={performerFileRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" id="ev-perf-photo-file"
+                      onChange={(e) => void onUploadPerformerPhoto(e.target.files)} disabled={disabled} />
+                    <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => performerFileRef.current?.click()}>
+                      <Upload className="h-3.5 w-3.5" /> {form.performer_photo_url ? 'Replace photo' : 'Add photo'}
+                    </Button>
+                    {form.performer_photo_url && (
+                      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => set('performer_photo_url', '')}><Trash2 className="h-3.5 w-3.5" /> Remove</Button>
+                    )}
+                  </div>
+                  {errors.performer_photo_url && <p className="text-[13px] font-semibold text-destructive">{errors.performer_photo_url}</p>}
+                </div>
+              </div>
             </Field>
           </Section>
 
@@ -588,26 +707,14 @@ export default function EventForm({ eventId }: { eventId?: string }) {
               </Field>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <ToggleRow id="ev-prasad" label="Prasad courier" hint="Prasad is couriered to the devotee" checked={form.prasad_courier}
-                disabled={disabled} onChange={(v) => set('prasad_courier', v)} />
+              {typeCopy.ritual && (
+                <ToggleRow id="ev-prasad" label="Prasad courier" hint="Prasad is couriered to the devotee" checked={form.prasad_courier}
+                  disabled={disabled} onChange={(v) => set('prasad_courier', v)} />
+              )}
               <ToggleRow id="ev-video-download" label="Video download" hint="Paid devotees can download the video anytime" checked={form.video_download}
                 disabled={disabled} onChange={(v) => set('video_download', v)} />
             </div>
-            {/* [SAATHUM-BOOKED-BOOST 2026-09-26] Owner decision: an ad number added to the real bookings. */}
-            <Field label="Extra “booked” count" htmlFor="ev-boost" error={errors.booked_boost}
-              hint={`Added to real bookings${ev ? ` (${ev.seats_booked} real)` : ''}. Leave empty to show only real bookings.`}>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative max-w-[12rem]">
-                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input id="ev-boost" type="number" inputMode="numeric" min={0} max={1000000} step={1} className="pl-9"
-                    value={form.booked_boost} disabled={disabled} onChange={(e) => set('booked_boost', e.target.value)} placeholder="e.g. 1200" />
-                </div>
-                <span className="text-[13px] font-semibold text-muted-foreground">
-                  Card shows: {((ev?.seats_booked ?? 0) + (Number(form.booked_boost) || 0)).toLocaleString('en-IN')} booked
-                </span>
-              </div>
-            </Field>
-            {form.prasad_courier && (
+            {typeCopy.ritual && form.prasad_courier && (
               <Field label="Prasad shipping price (₹)" htmlFor="ev-prasad-price" error={errors.prasad_price_rupees} hint="Anywhere in India">
                 <div className="relative max-w-[10rem]">
                   <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -628,7 +735,9 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                   : 'Public: many devotees join together.'}
               </p>
             </Field>
-            <p className="text-[12px] font-semibold text-muted-foreground">“Sankalp in your name” and “Live on YouTube” always show. Rating and “booked” fill in from real bookings.</p>
+            <p className="text-[12px] font-semibold text-muted-foreground">
+              {typeCopy.ritual ? '“Sankalp in your name” and “Live on YouTube” always show.' : '“Live on YouTube” always shows.'} Rating and “booked” fill in from real bookings.
+            </p>
             <Field label="Read benefits links to">
               {articleBySlug(form.guide_slug) ? (
                 <div className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
@@ -640,6 +749,36 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                 <p className="text-[13px] font-semibold text-muted-foreground">No article linked — the site matches one by title. Pick an article above to link it.</p>
               )}
             </Field>
+          </Section>
+
+          {/* [SAATHUM-EVENT-TYPES 2026-09-27] Owner decision: admin-set social-proof numbers,
+              editable even on a published event; each is added on top of the real count. */}
+          <Section title="Social proof (shown to customers)" subtitle="Optional. Each number is added on top of the real count — leave empty to show only what's real.">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Star rating" htmlFor="ev-rating" error={errors.rating_display} hint="1.0–5.0. Empty = real rating only.">
+                <div className="relative">
+                  <Star className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-rating" type="number" inputMode="decimal" min={1} max={5} step={0.1} className="pl-9"
+                    value={form.rating_display} disabled={disabled} onChange={(e) => set('rating_display', e.target.value)} placeholder="4.9" />
+                </div>
+              </Field>
+              <Field label="Review count" htmlFor="ev-review-count" error={errors.review_count_boost} hint="Added to real reviews.">
+                <div className="relative">
+                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-review-count" type="number" inputMode="numeric" min={0} max={1000000} step={1} className="pl-9"
+                    value={form.review_count_boost} disabled={disabled} onChange={(e) => set('review_count_boost', e.target.value)} placeholder="e.g. 128" />
+                </div>
+              </Field>
+              <Field label="Extra “booked” count" htmlFor="ev-boost" error={errors.booked_boost}
+                hint={`Added to real bookings${ev ? ` (${ev.seats_booked} real)` : ''}.`}>
+                <div className="relative">
+                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="ev-boost" type="number" inputMode="numeric" min={0} max={1000000} step={1} className="pl-9"
+                    value={form.booked_boost} disabled={disabled} onChange={(e) => set('booked_boost', e.target.value)} placeholder="e.g. 1200" />
+                </div>
+              </Field>
+            </div>
+            <p className="text-[13px] font-semibold text-muted-foreground">Card shows: {socialProofPreview}</p>
           </Section>
 
           <Section title="Cover image" subtitle="Upload a photo, or generate the AI poster and keep it.">

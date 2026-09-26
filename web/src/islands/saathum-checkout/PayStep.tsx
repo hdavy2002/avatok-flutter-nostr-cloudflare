@@ -11,6 +11,7 @@ import { getCheckout, submitUtr } from './api';
 import { ApiError } from '../../lib/apiClient';
 import { capture, captureException } from '../../lib/analytics';
 import type { Checkout } from './types';
+import type { EventType } from '../../lib/eventTypes';
 
 const POLL_MS = 4000;
 
@@ -21,6 +22,9 @@ export function PayStep({
   onDone,
   onStartAgain,
   listingId,
+  eventType,
+  stepIndex,
+  totalSteps,
 }: {
   checkout: Checkout;
   auth: string;
@@ -28,6 +32,9 @@ export function PayStep({
   onDone: () => void;
   onStartAgain: () => void;
   listingId: string;
+  eventType: EventType;
+  stepIndex: number;
+  totalSteps: number;
 }) {
   const [qr, setQr] = useState<string | null>(null);
   const [qrError, setQrError] = useState('');
@@ -39,7 +46,7 @@ export function PayStep({
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: 'pay', listing_id: listingId });
+    capture('saathum_checkout_step', { step: 'pay', listing_id: listingId, event_type: eventType });
     capture('saathum_checkout_pay_started');
     setPlatform(upiPlatform(navigator.userAgent, navigator.maxTouchPoints));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,9 +115,9 @@ export function PayStep({
   if (reviewPending) {
     return (
       <div className="sthc-card">
-        <div className="sthc-kick">Step 5 of 5 · Pay</div>
+        <div className="sthc-kick">Step {stepIndex} of {totalSteps} · Pay</div>
         <h3 className="sthc-h3">Checking your payment</h3>
-        <div className="sthc-dots"><i className="on" /><i className="on" /><i className="on" /><i className="on" /><i className="on" /></div>
+        <div className="sthc-dots">{Array.from({ length: totalSteps }, (_, i) => <i key={i} className="on" />)}</div>
         <div className="sthc-hint sthc-hint--gold">
           We&rsquo;re checking your payment with the bank &mdash; we&rsquo;ll email you.
         </div>
@@ -121,9 +128,9 @@ export function PayStep({
   if (expired) {
     return (
       <div className="sthc-card">
-        <div className="sthc-kick">Step 5 of 5 · Pay</div>
+        <div className="sthc-kick">Step {stepIndex} of {totalSteps} · Pay</div>
         <h3 className="sthc-h3">This payment expired</h3>
-        <div className="sthc-dots"><i className="on" /><i className="on" /><i className="on" /><i className="on" /><i className="on" /></div>
+        <div className="sthc-dots">{Array.from({ length: totalSteps }, (_, i) => <i key={i} className="on" />)}</div>
         <p style={{ font: '700 14px/1.5 Nunito, sans-serif', color: 'var(--body)' }}>
           If you already paid, keep your receipt and contact us with your UTR. Otherwise, start again to get a fresh QR.
         </p>
@@ -134,9 +141,9 @@ export function PayStep({
 
   return (
     <div className="sthc-card sthc-qr-wrap">
-      <div className="sthc-kick" style={{ textAlign: 'left' }}>Step 5 of 5 · Pay</div>
+      <div className="sthc-kick" style={{ textAlign: 'left' }}>Step {stepIndex} of {totalSteps} · Pay</div>
       <h3 className="sthc-h3" style={{ textAlign: 'left' }}>Scan &amp; pay ₹{checkout.payment.amount_rupees.toLocaleString('en-IN')}</h3>
-      <div className="sthc-dots"><i className="on" /><i className="on" /><i className="on" /><i className="on" /><i className="on" /></div>
+      <div className="sthc-dots">{Array.from({ length: totalSteps }, (_, i) => <i key={i} className="on" />)}</div>
 
       {qr && <img src={qr} alt="UPI payment QR code" />}
       {!qr && !qrError && <p role="status">Loading QR…</p>}

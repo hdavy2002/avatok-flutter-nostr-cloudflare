@@ -7384,5 +7384,44 @@
       }
     ],
     "_verified_at": "worker/src/lib/admin2_events_logic.ts normalizeEventInput booked_boost; web/src/components/eventpage/EventPage.astro; worker/test/admin2_events.test.ts"
+  },
+  "SAATHUM-EVENT-TYPES": {
+    "description": "[SAATHUM-EVENT-TYPES] One event form for havan/puja/satsang/sermon/meditation (attrs.event_type) driving all customer wording, badges, ticks and the checkout pipeline (non-ritual types: no sankalp/chadhava/prasad, server-enforced); priest/leader name + round photo; admin social proof (rating_display, review_count_boost, booked_boost); event page redesign (big centred photo, wide panel, full-width sections); card type badge; checkout restyled to the approved mockup; listing images via Cloudflare image transformations; no 'YouTube' on customer surfaces.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_event_type_selected",
+        "property": "event_type",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin picked an event type in the form."
+      },
+      {
+        "event": "event_page_view",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Event page opened on the new layout."
+      }
+    ],
+    "_verified_at": "web/src/lib/eventTypes.ts; worker/src/lib/event_types.ts; worker/test/admin2_events.test.ts; worker/test/saathum_checkout.test.ts"
+  },
+  "SAATHUM-ASSETS": {
+    "description": "[SAATHUM-ASSETS] Booking-page stickers (havan-kund, sankalp-thali, whatsapp-diya, prasad-box, booking-blessed) and the two seeded chadhava photos.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "event_page_view",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Pages carrying the stickers are viewed."
+      }
+    ],
+    "_verified_at": "web/public/assets/saathum-booking-stickers; web/public/assets/saathum-chadhava"
   }
 }

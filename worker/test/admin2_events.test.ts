@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import {
   tabOf, tabSql, parseTab, istToMs, msToIst, normalizeEventInput, splitPatch, nextCoverMedia, autoSeoTitle, autoSeoDescription, nextSeo,
-  manualCoverUrl, coverUrlOf, posterPlan, likeContains, MIN_PRICE_RUPEES, EVENT_TABS,
+  manualCoverUrl, coverUrlOf, posterPlan, likeContains, MIN_PRICE_RUPEES, EVENT_TABS, enforceEventTypeRules,
 } from "../src/lib/admin2_events_logic";
 import { matchAdmin2 } from "../src/routes/admin2";
 import { ADMIN2_EVENT_ROUTES } from "../src/routes/admin2_events";
@@ -175,6 +175,69 @@ describe("booked boost", () => {
     expect(normalizeEventInput({ booked_boost: -5 }, { partial: true, now: NOW }).errors[0].field).toBe("booked_boost");
     expect(normalizeEventInput({ booked_boost: 1.5 }, { partial: true, now: NOW }).errors[0].field).toBe("booked_boost");
     expect(splitPatch(normalizeEventInput({ booked_boost: 50 }, { partial: true, now: NOW }).patch).attrs).toEqual({ booked_boost: 50 });
+  });
+});
+
+// [SAATHUM-EVENT-TYPES 2026-09-27]
+describe("event_type", () => {
+  it("defaults to havan on create, is required-but-defaulted (never an error)", () => {
+    const { patch, errors } = normalizeEventInput({}, { partial: false, now: NOW });
+    expect(errors.map((e) => e.field)).toEqual(["title", "category"]); // event_type never among them
+    expect(patch.event_type).toBe("havan");
+  });
+  it("is left unset on a partial edit that doesn't touch it", () => {
+    expect(normalizeEventInput({ price_rupees: 600 }, { partial: true, now: NOW }).patch.event_type).toBeUndefined();
+  });
+  it("accepts every listed type and rejects an unknown one", () => {
+    for (const t of ["havan", "puja", "satsang", "sermon", "meditation"]) {
+      expect(normalizeEventInput({ event_type: t }, { partial: true, now: NOW })).toEqual({ patch: { event_type: t }, errors: [] });
+    }
+    expect(normalizeEventInput({ event_type: "wedding" }, { partial: true, now: NOW }).errors[0].field).toBe("event_type");
+  });
+  it("routes event_type into attrs via splitPatch", () => {
+    const { patch } = normalizeEventInput({ event_type: "satsang" }, { partial: true, now: NOW });
+    expect(splitPatch(patch).attrs).toEqual({ event_type: "satsang" });
+  });
+});
+
+describe("performer_photo_url, rating_display, review_count_boost", () => {
+  it("performer_photo_url: accepts https, clears empty, rejects insecure", () => {
+    const f = (b: Record<string, unknown>) => normalizeEventInput(b, { partial: true, now: NOW });
+    expect(f({ performer_photo_url: "https://example.com/p.jpg" }).patch.performer_photo_url).toBe("https://example.com/p.jpg");
+    expect(f({ performer_photo_url: "" }).patch.performer_photo_url).toBeNull();
+    expect(f({ performer_photo_url: "http://insecure/p.jpg" }).errors[0].field).toBe("performer_photo_url");
+  });
+  it("rating_display: rounds to one decimal, clears on 0/empty/null, bounds 1..5", () => {
+    const f = (b: Record<string, unknown>) => normalizeEventInput(b, { partial: true, now: NOW });
+    expect(f({ rating_display: 4.36 }).patch.rating_display).toBe(4.4);
+    for (const v of ["", 0, null]) expect(f({ rating_display: v }).patch.rating_display).toBeNull();
+    expect(f({ rating_display: 0.9 }).errors[0].field).toBe("rating_display");
+    expect(f({ rating_display: 5.1 }).errors[0].field).toBe("rating_display");
+    expect(f({ rating_display: 1 }).patch.rating_display).toBe(1);
+    expect(f({ rating_display: 5 }).patch.rating_display).toBe(5);
+  });
+  it("review_count_boost: whole number 0..1,000,000, clears on empty/0/null, rejects junk", () => {
+    const f = (b: Record<string, unknown>) => normalizeEventInput(b, { partial: true, now: NOW });
+    expect(f({ review_count_boost: 500 }).patch.review_count_boost).toBe(500);
+    for (const v of ["", 0, null]) expect(f({ review_count_boost: v }).patch.review_count_boost).toBeNull();
+    expect(f({ review_count_boost: -1 }).errors[0].field).toBe("review_count_boost");
+    expect(f({ review_count_boost: 1.5 }).errors[0].field).toBe("review_count_boost");
+    expect(f({ review_count_boost: 1_000_001 }).errors[0].field).toBe("review_count_boost");
+  });
+});
+
+describe("enforceEventTypeRules", () => {
+  it("leaves ritual types (havan, puja) alone", () => {
+    expect(enforceEventTypeRules("havan", { prasad_courier: true, prasad_price_rupees: 149 }))
+      .toEqual({ prasad_courier: true, prasad_price_rupees: 149 });
+    expect(enforceEventTypeRules("puja", { deity: "Shiva" })).toEqual({ deity: "Shiva" });
+  });
+  it("forces prasad_courier=false and drops prasad_price_rupees for non-ritual types", () => {
+    for (const t of ["satsang", "sermon", "meditation"] as const) {
+      expect(enforceEventTypeRules(t, { prasad_courier: true, prasad_price_rupees: 149, deity: "x" }))
+        .toEqual({ deity: "x", prasad_courier: false });
+      expect(enforceEventTypeRules(t, {})).toEqual({ prasad_courier: false });
+    }
   });
 });
 

@@ -9,6 +9,7 @@
 import { endMsSql, eventWindow, scheduleState } from "./listing_schedule";
 import { startsMsSql } from "./me_dashboard_data";
 import { MIN_PRICE_TOKENS_PER_HOUR } from "./session_pricing";
+import { EVENT_TYPES, type EventType, isRitual } from "./event_types";
 
 export type EventTab = "upcoming" | "live" | "past" | "drafts" | "cancelled";
 export const EVENT_TABS: readonly EventTab[] = ["upcoming", "live", "past", "drafts", "cancelled"];
@@ -148,6 +149,15 @@ export type EventPatch = {
   booked_boost?: number | null;
   /** Pasted by the admin any time, including after the event ends. */
   video_download_url?: string | null;
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Drives checkout/copy -- see lib/event_types.ts.
+  /** Required on create (defaults to 'havan' when absent); editable any time short of cancelled/completed. */
+  event_type?: EventType;
+  /** The priest/leader's photo. The name itself stays in the existing `performed_by` column. */
+  performer_photo_url?: string | null;
+  /** Admin-set display rating, one decimal, 1.0..5.0. null clears (falls back to the real average). */
+  rating_display?: number | null;
+  /** Extra review count ADDED to the real count, like booked_boost. null = real count only. */
+  review_count_boost?: number | null;
 };
 
 const has = (b: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(b, k);
@@ -291,6 +301,36 @@ export function normalizeEventInput(
     else if (!isHttpsUrl(body.video_download_url)) errors.push({ field: "video_download_url", message: "The video download link must be a valid https link." });
     else patch.video_download_url = String(body.video_download_url);
   }
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Required on create (default 'havan' when absent); editable any time.
+  if (has(body, "event_type")) {
+    const v = str(body.event_type);
+    if (!(EVENT_TYPES as readonly string[]).includes(v)) errors.push({ field: "event_type", message: "Pick a valid event type." });
+    else patch.event_type = v as EventType;
+  } else if (!opts.partial) {
+    patch.event_type = "havan";
+  }
+  if (has(body, "performer_photo_url")) {
+    if (body.performer_photo_url === null || body.performer_photo_url === "") patch.performer_photo_url = null;
+    else if (!isHttpsUrl(body.performer_photo_url)) errors.push({ field: "performer_photo_url", message: "The performer photo must be an uploaded https image." });
+    else patch.performer_photo_url = String(body.performer_photo_url);
+  }
+  if (has(body, "rating_display")) {
+    if (body.rating_display === null || body.rating_display === "" || body.rating_display === 0) patch.rating_display = null;
+    else {
+      const r = Number(body.rating_display);
+      const rounded = Math.round(r * 10) / 10;
+      if (!Number.isFinite(r) || rounded < 1 || rounded > 5) errors.push({ field: "rating_display", message: "Rating must be between 1.0 and 5.0." });
+      else patch.rating_display = rounded;
+    }
+  }
+  if (has(body, "review_count_boost")) {
+    if (body.review_count_boost === null || body.review_count_boost === "" || body.review_count_boost === 0) patch.review_count_boost = null;
+    else {
+      const rc = Number(body.review_count_boost);
+      if (!Number.isInteger(rc) || rc < 0 || rc > 1_000_000) errors.push({ field: "review_count_boost", message: "Extra review count must be a whole number between 0 and 10,00,000." });
+      else patch.review_count_boost = rc;
+    }
+  }
   if (has(body, "guide_slug")) {
     const v = str(body.guide_slug);
     if (v && !/^[a-z0-9-]{2,80}$/.test(v)) errors.push({ field: "guide_slug", message: "That article link is not valid." });
@@ -326,6 +366,8 @@ export const ATTR_KEYS = [
   "video_download", "visibility", "prasad_price_rupees", "video_download_url",
   // [SAATHUM-BOOKED-BOOST 2026-09-26]
   "booked_boost",
+  // [SAATHUM-EVENT-TYPES 2026-09-27]
+  "event_type", "performer_photo_url", "rating_display", "review_count_boost",
 ] as const;
 export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | number | null>>;
 export type SeoPatch = { title?: string | null; description?: string | null };
@@ -343,6 +385,19 @@ export function splitPatch(p: EventPatch): { edit: Record<string, unknown>; cove
     if ("seo_description" in p) seo.description = p.seo_description ?? null;
   }
   return { edit, cover: p.cover_url, attrs, seo };
+}
+
+/**
+ * [SAATHUM-EVENT-TYPES 2026-09-27] Owner decision: satsang/sermon/meditation never take
+ * prasad courier. Applied server-side, after normalizeEventInput, once the caller knows
+ * the EFFECTIVE type (the patch's own event_type, or -- on edit, when it's not part of
+ * this save -- the row's current one). Non-ritual: force prasad_courier=false and drop
+ * any attempted prasad_price_rupees change (that field has no meaning for these types).
+ */
+export function enforceEventTypeRules(effectiveType: EventType, attrs: AttrPatch): AttrPatch {
+  if (isRitual(effectiveType)) return attrs;
+  const { prasad_price_rupees, ...rest } = attrs;
+  return { ...rest, prasad_courier: false };
 }
 
 // ---------------------------------------------------------------------------

@@ -37,10 +37,14 @@
 @media (prefers-reduced-motion: reduce) { .bn-card, .bn-card:hover { transition: none; transform: none; } }
 
 .bn-art { position: relative; display: block; aspect-ratio: 4 / 3; color: #fff; text-decoration: none; background: #3a2418; }
-.bn-art img, .bn-art-empty { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.bn-art img, .bn-art-empty { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; aspect-ratio: 4 / 3; }
 .bn-art-empty { background: linear-gradient(135deg, #a54c2e, #5a1f14); }
 .bn-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #0000004d 0%, transparent 28%, transparent 42%, #140a06eb 100%); }
-.bn-top { position: absolute; z-index: 2; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 8px; }
+.bn-top { position: absolute; z-index: 2; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.bn-top-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* [SAATHUM-EVENT-TYPES §1] The event-type badge — bigger and bolder than the
+   pills beside it; background/colour come from eventTypes.ts per type. */
+.bn-type-badge { font: 900 15px/1 Nunito, sans-serif; text-transform: uppercase; letter-spacing: .04em; padding: 7px 12px; border-radius: 10px; box-shadow: 0 2px 8px #0006; white-space: nowrap; }
 .bn-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font: 900 12px Nunito, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 .bn-pill--live { background: #d7261e; color: #fff; box-shadow: 0 2px 8px #0006; }
 .bn-pill--live i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: bn-pulse 1.4s infinite; }
@@ -96,7 +100,10 @@
 .bn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 8px; border-radius: 12px; font: 900 14px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; }
 .bn-btn--book { background: var(--bn-red); color: #fff; box-shadow: 0 3px 0 #7a150f; }
 .bn-btn--ben { border: 2px solid #173f3f; color: #173f3f; }
-.bn-foot { margin-top: -2px; text-align: center; font: 600 11.5px/1.35 Nunito, sans-serif; color: #7a6a55; }
+.bn-foot { margin-top: -2px; display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; font: 600 11.5px/1.35 Nunito, sans-serif; color: #7a6a55; }
+/* [SAATHUM-EVENT-TYPES §5] Small round performer photo (or initials) beside the footer line. */
+.bn-performer-photo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid #fff; box-shadow: 0 1px 4px #0003; }
+.bn-performer-initials { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8dcc5; color: #5a2d12; font: 900 11px Nunito, sans-serif; }
 
 .bn-more { display: flex; justify-content: center; margin-top: 30px; }
 .bn-more-btn { padding: 14px 28px; border-radius: 999px; background: #F6B93B; color: #3a1d0e; font: 900 16px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; box-shadow: 0 4px 0 #a8741a, 0 10px 22px #7a4a1a40; }

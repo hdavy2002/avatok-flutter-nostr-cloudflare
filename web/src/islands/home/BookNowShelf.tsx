@@ -14,13 +14,17 @@
 //    design while prod has no listings. Samples are labelled and noindex'd by
 //    virtue of needing the query param; never render them by default.
 //  - Remind me = an "Add to Google Calendar" link (works signed-out).
+//  - [SAATHUM-EVENT-TYPES 2026-09-27] All type-dependent wording (badge, colour,
+//    countdown label, buttons, feature ticks, footer line) comes from
+//    ../../lib/eventTypes.ts — never hardcode "havan"/"puja" text here.
 import { useEffect, useMemo, useState } from 'react';
 import type { Card } from '../../lib/types';
 import { getExplore } from '../../lib/apiClient';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
 import { payAndJoinPath } from '../../lib/urls';
 import { capture, captureException } from '../../lib/analytics';
-import { publicImage } from '../../lib/config';
+import { cfImage, publicImage } from '../../lib/config';
+import { copyFor, eventTypeOf, socialProof, type EventType, type EventTypeCopy } from '../../lib/eventTypes';
 import './BookNowShelf.css';
 
 export interface GuideLink { title: string; href: string; image: string }
@@ -40,6 +44,7 @@ interface Item {
   deity: string | null;
   blurb: string | null;
   image: string | null;
+  imageSrcSet: string | null;
   mode: 'live' | 'one_on_one';
   liveNow: boolean;
   startsAt: number | null;
@@ -55,6 +60,12 @@ interface Item {
   videoDownload: boolean;
   /** [SAATHUM-CHECKOUT §Owner decisions 2] 'public' (default) or 'private' (1:1). */
   visibility: 'public' | 'private';
+  /** [SAATHUM-EVENT-TYPES] Drives badge, colour, wording and feature ticks. */
+  eventType: EventType;
+  /** listings.performed_by, when the admin filled it in. */
+  performedBy: string | null;
+  /** attrs.performer_photo_url — a future field; absent listings fall back to initials. */
+  performerPhotoUrl: string | null;
   href: string;
   bookHref: string;
   benefitsHref: string;
@@ -67,6 +78,8 @@ const INTENTION_LABELS: Record<string, string> = {
   family: 'Family', peace: 'Peace', life: 'Life events', festival: 'Festivals',
 };
 const IST = 'Asia/Kolkata';
+/** Retina-friendly srcset widths for the listing photo (owner rule: images must cache). */
+const IMG_WIDTHS = [480, 720, 960] as const;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -90,6 +103,15 @@ function attrBool(attrs: Record<string, unknown> | null | undefined, keys: strin
   return fallback;
 }
 
+/** [SAATHUM-IMG-CACHE-1] Routes a listing photo (poster/AI poster) through the
+ *  Cloudflare image transform so it caches instead of reloading on every visit. */
+function listingImage(raw: string | null): { image: string | null; srcSet: string | null } {
+  if (!raw) return { image: null, srcSet: null };
+  const image = cfImage(raw, { width: 900, quality: 70 });
+  const srcSet = IMG_WIDTHS.map((w) => `${cfImage(raw, { width: w, quality: 70 })} ${w}w`).join(', ');
+  return { image, srcSet };
+}
+
 function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
   const c = toCardView(card);
   const state = scheduleStateOf(card, now);
@@ -107,12 +129,27 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
   // the marketing surface now. "Book now" goes one step further, to checkout.
   const href = payAndJoinPath(c.id);
   const bookHref = href + '/checkout';
+  const rawPoster = c.poster ?? c.aiPoster?.url ?? null;
+  const { image, srcSet } = rawPoster
+    ? listingImage(rawPoster)
+    : { image: guide ? publicImage(guide.image, { width: 900, fit: 'scale-down' }) : null, srcSet: null };
+  // [SAATHUM-SOCIAL-PROOF-1] Real numbers + the owner's admin-set boosts, via the
+  // shared eventTypes helper — never hand-rolled here.
+  const sp = socialProof(attrs, { booked: c.joinedCount, ratingAvg: c.ratingAvg, ratingCount: c.ratingCount });
+  // listings.performed_by is a top-level card field (worker shapeCard); may be absent
+  // on an older client/worker pairing, so read it defensively.
+  const performedByRaw = (card as Card & { performed_by?: string | null }).performed_by;
+  const performedBy = typeof performedByRaw === 'string' && performedByRaw.trim() ? performedByRaw.trim() : null;
+  const performerPhotoUrl = typeof attrs?.performer_photo_url === 'string' && attrs.performer_photo_url
+    ? cfImage(attrs.performer_photo_url as string, { width: 56, quality: 70 })
+    : null;
   return {
     id: c.id,
     title: c.title,
     deity: typeof attrs?.deity === 'string' ? (attrs.deity as string) : null,
     blurb: card.blurb ?? c.oneLiner,
-    image: c.poster ?? c.aiPoster?.url ?? (guide ? publicImage(guide.image, { width: 900, fit: 'scale-down' }) : null),
+    image,
+    imageSrcSet: srcSet,
     mode: oneOnOne ? 'one_on_one' : 'live',
     liveNow,
     startsAt: c.startsAt,
@@ -120,10 +157,9 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     location: c.location,
     // [SAATHUM-EVENT-FIELDS-1] The intention pill ("Good luck", "Wealth") set in admin wins over the listing category.
     category: (typeof attrs?.intention === 'string' && INTENTION_LABELS[attrs.intention as string]) || (c.categoryLabel ?? null),
-    ratingAvg: c.ratingCount > 0 ? c.ratingAvg : null,
-    ratingCount: c.ratingCount,
-    // [SAATHUM-BOOKED-BOOST] real bookings + the owner's optional ad number (attrs.booked_boost).
-    booked: c.joinedCount + (Number.isInteger(attrs?.booked_boost) && Number(attrs?.booked_boost) > 0 ? Number(attrs?.booked_boost) : 0),
+    ratingAvg: sp.rating,
+    ratingCount: sp.reviews,
+    booked: sp.booked,
     price: c.price,
     // Saa Thum couriers prasad (incl. international) by default; a listing can opt out via attrs.
     prasad: attrBool(attrs, ['prasad_courier', 'prasad_delivery', 'prasad'], true),
@@ -131,10 +167,20 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     // attrs key still wins over the true default when set.
     videoDownload: !oneOnOne && attrBool(attrs, ['video_download', 'replay', 'replay_available'], true),
     visibility: attrs?.visibility === 'private' ? 'private' : 'public',
+    eventType: eventTypeOf(attrs),
+    performedBy,
+    performerPhotoUrl,
     href,
     bookHref,
     benefitsHref: guide?.href ?? href + '#about',
   };
+}
+
+/** Owner-picked event types for the four preview articles (2026-09-27). */
+function eventTypeForSample(title: string): EventType {
+  const t = norm(title);
+  if (t.includes('navagraha')) return 'puja';
+  return 'havan'; // ganapati, lakshmi, mahamrityunjaya (and any other sample) → havan
 }
 
 function sampleItems(samples: GuideLink[], now: number): Item[] {
@@ -150,9 +196,12 @@ function sampleItems(samples: GuideLink[], now: number): Item[] {
     return {
       id: 'sample-' + i, title: g.title, deity: null,
       blurb: 'Sample card — shown only with ?booknow=preview so the design can be reviewed before real listings exist.',
-      image: publicImage(g.image, { width: 900, fit: 'scale-down' }), mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
+      image: publicImage(g.image, { width: 900, fit: 'scale-down' }), imageSrcSet: null,
+      mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
       location: p.city, category: null, ratingAvg: p.r, ratingCount: p.rc, booked: p.booked, price: p.price,
-      prasad: p.prasad, videoDownload: p.mode === 'live', visibility: 'public', href: g.href, bookHref: '/marketplace', benefitsHref: g.href,
+      prasad: p.prasad, videoDownload: p.mode === 'live', visibility: 'public',
+      eventType: eventTypeForSample(g.title), performedBy: null, performerPhotoUrl: null,
+      href: g.href, bookHref: '/marketplace', benefitsHref: g.href,
     };
   });
 }
@@ -187,6 +236,13 @@ function waHref(it: Item, origin: string): string {
   return 'https://wa.me/?text=' + encodeURIComponent(`🙏 ${it.title} on Saa Thum.${when}${price} ${origin}${it.href}`);
 }
 
+/** Two-letter initials for the performer-photo fallback, e.g. "Pandit Ramesh" → "PR". */
+function initials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
+  const s = parts.map((w) => w[0]?.toUpperCase() ?? '').join('');
+  return s || '🙏';
+}
+
 const Tick = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>;
 const Cross = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>;
 
@@ -212,6 +268,39 @@ function Feat({ on, label, tip, tipId, onOpen }: { on: boolean; label: string; t
   );
 }
 
+const VIDEO_TIP = 'You can download your video anytime.';
+const VISIBILITY_TIP = 'Public: many devotees join the same event together. Private: a 1:1 session just for your family.';
+
+/** [SAATHUM-EVENT-TYPES §Ticks] Ritual types (havan/puja) show sankalp + prasad;
+ *  satsang/sermon/meditation never do (owner was explicit). A one-on-one
+ *  consult swaps the "Video download" slot for "Private 1:1 call" either way. */
+function ticksFor(it: Item, copy: EventTypeCopy): { on: boolean; label: string; tip?: string; kind?: 'video' | 'visibility' }[] {
+  const videoTick = it.mode === 'live'
+    ? { on: it.videoDownload, label: 'Video download', tip: VIDEO_TIP, kind: 'video' as const }
+    : { on: true, label: 'Private 1:1 call' };
+  const visibilityTick = {
+    on: true,
+    label: it.visibility === 'private' ? 'Private event' : 'Public event',
+    tip: VISIBILITY_TIP,
+    kind: 'visibility' as const,
+  };
+  if (copy.ritual) {
+    return [
+      { on: it.prasad, label: 'Prasad courier' },
+      { on: true, label: 'Sankalp in your name' },
+      videoTick,
+      { on: true, label: 'Live streaming event' },
+      visibilityTick,
+    ];
+  }
+  return [
+    { on: true, label: 'Live streaming event' },
+    videoTick,
+    { on: true, label: 'Join from anywhere' },
+    visibilityTick,
+  ];
+}
+
 function Countdown({ startsAt, now }: { startsAt: number; now: number }) {
   const s = Math.max(0, Math.floor((startsAt - now) / 1000));
   const parts: [string, number][] = [['Day', Math.floor(s / 86400)], ['Hrs', Math.floor((s % 86400) / 3600)], ['Min', Math.floor((s % 3600) / 60)], ['Sec', s % 60]];
@@ -229,16 +318,23 @@ function Countdown({ startsAt, now }: { startsAt: number; now: number }) {
 
 function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; origin: string; index: number; sample: boolean }) {
   const track = (action: string) => capture('home_booknow_click', { action, listing_id: it.id, position: index, sample });
+  const copy = copyFor({ event_type: it.eventType });
+  const ticks = ticksFor(it, copy);
   return (
     <article className="bn-card" data-listing-id={it.id}>
       <a className="bn-art" href={it.href} tabIndex={-1} aria-hidden="true" onClick={() => track('art')}>
-        {it.image ? <img src={it.image} alt="" loading="lazy" decoding="async" /> : <span className="bn-art-empty" />}
+        {it.image
+          ? <img src={it.image} srcSet={it.imageSrcSet ?? undefined} sizes="(min-width: 1400px) 25vw, (min-width: 641px) 46vw, 92vw" alt="" loading="lazy" decoding="async" />
+          : <span className="bn-art-empty" />}
         <span className="bn-top">
-          {it.visibility === 'private'
-            ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
-            : it.mode === 'live'
-              ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Live now' : 'Live'}</span>
-              : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
+          <span className="bn-top-left">
+            <span className="bn-type-badge" style={{ background: copy.color.bg, color: copy.color.fg }}>{copy.badge}</span>
+            {it.visibility === 'private'
+              ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
+              : it.mode === 'live'
+                ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Live now' : 'Live'}</span>
+                : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
+          </span>
           {it.category && <span className="bn-pill bn-pill--soft">{it.category}</span>}
         </span>
         <span className="bn-when">
@@ -249,7 +345,7 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
             </span>
           )}
           {!it.liveNow && it.startsAt != null && <>
-            <span className="bn-cd-label">{it.mode === 'live' ? 'Havan starts in' : 'Puja starts in'}</span>
+            <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
           </>}
           {it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now — join live</span>}
@@ -265,27 +361,16 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
           {it.booked > 0 && <span className="bn-blip bn-blip--booked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2" /></svg>{it.booked.toLocaleString('en-IN')} booked</span>}
         </div>
         <div className="bn-feats">
-          <Feat on={it.prasad} label="Prasad courier" />
-          <Feat on label="Sankalp in your name" />
-          {it.mode === 'live' ? (
+          {ticks.map((t, i) => (
             <Feat
-              on={it.videoDownload}
-              label="Video download"
-              tip="You can download your video anytime."
-              tipId={`bn-tip-video-${it.id}`}
-              onOpen={() => track('tooltip')}
+              key={i}
+              on={t.on}
+              label={t.label}
+              tip={t.tip}
+              tipId={t.tip ? `bn-tip-${t.kind}-${it.id}` : undefined}
+              onOpen={t.tip ? () => track('tooltip') : undefined}
             />
-          ) : (
-            <Feat on label="Private 1:1 call" />
-          )}
-          <Feat on label={it.mode === 'live' ? 'Live streaming' : 'Video with priest'} />
-          <Feat
-            on
-            label={it.visibility === 'private' ? 'Private event' : 'Public event'}
-            tip="Public: many devotees join the same havan together. Private: a 1:1 session just for your family."
-            tipId={`bn-tip-visibility-${it.id}`}
-            onOpen={() => track('tooltip')}
-          />
+          ))}
         </div>
         <div className="bn-price-row">
           {it.price != null
@@ -303,10 +388,15 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track('book')}>Book now <span aria-hidden="true">→</span></a>
-          <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>Read benefits</a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track('book')}>{copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
-        <div className="bn-foot">Performed by temple priests · Free cancellation 24 hrs before</div>
+        <div className="bn-foot">
+          {it.performerPhotoUrl
+            ? <img className="bn-performer-photo" src={it.performerPhotoUrl} alt="" width={28} height={28} loading="lazy" decoding="async" />
+            : <span className="bn-performer-initials" aria-hidden="true">{initials(it.performedBy || copy.performerFallback)}</span>}
+          <span>{copy.footer(it.performedBy)}</span>
+        </div>
       </div>
     </article>
   );

@@ -7,22 +7,35 @@
  *     inline phone gate calls (/api/account/phone/{send,verify,status}).
  * A signed-in account whose phone is already verified skips this step
  * entirely (SaathumCheckout decides that before rendering it).
+ *
+ * [SAATHUM-EVENT-TYPES 2026-09-27] Copy says "email" for the live link only
+ * (no WhatsApp/SMS promise) and names the event by its noun (havan, satsang,
+ * meditation session, …) — owner rule.
  */
 import { useEffect, useRef, useState } from 'react';
 import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
 import { sendPhoneCode, verifyPhoneCode, apiMessage, apiCode } from '../auth/passwordless';
 import { capture, captureException } from '../../lib/analytics';
+import type { EventType, EventTypeCopy } from '../../lib/eventTypes';
 
 export function YouStep({
   signedIn,
   onSignedIn,
   onVerified,
   listingId,
+  eventType,
+  copy,
+  stepIndex,
+  totalSteps,
 }: {
   signedIn: boolean;
   onSignedIn: () => void;
   onVerified: () => void;
   listingId: string;
+  eventType: EventType;
+  copy: EventTypeCopy;
+  stepIndex: number;
+  totalSteps: number;
 }) {
   const [phase, setPhase] = useState<'idle' | 'sending' | 'code' | 'verifying'>('idle');
   const [phone, setPhone] = useState('');
@@ -32,7 +45,7 @@ export function YouStep({
   const codeRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: 'you', listing_id: listingId });
+    capture('saathum_checkout_step', { step: 'you', listing_id: listingId, event_type: eventType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,12 +81,16 @@ export function YouStep({
     }
   }
 
+  const dots = Array.from({ length: totalSteps }, (_, i) => (
+    <i key={i} className={i < stepIndex ? 'on' : ''} />
+  ));
+
   if (!signedIn) {
     return (
       <div className="sthc-card">
-        <div className="sthc-kick">Step 1 of 5 · You</div>
+        <div className="sthc-kick">Step {stepIndex} of {totalSteps} · You</div>
         <h3 className="sthc-h3">Sign in to book</h3>
-        <div className="sthc-dots"><i className="on" /><i /><i /><i /><i /></div>
+        <div className="sthc-dots">{dots}</div>
         <EmailCodeSignIn reason="so we can send your booking" onAuthed={onSignedIn} />
       </div>
     );
@@ -83,9 +100,9 @@ export function YouStep({
 
   return (
     <div className="sthc-card">
-      <div className="sthc-kick">Step 1 of 5 · You</div>
+      <div className="sthc-kick">Step {stepIndex} of {totalSteps} · You</div>
       <h3 className="sthc-h3">Verify your mobile</h3>
-      <div className="sthc-dots"><i className="on" /><i /><i /><i /><i /></div>
+      <div className="sthc-dots">{dots}</div>
       <div className="sthc-fld">
         <label htmlFor="sthc-phone">Mobile number</label>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -104,7 +121,7 @@ export function YouStep({
       </div>
       {err && <p className="sthc-err" role="alert">{err}</p>}
       <div className="sthc-hint">
-        We&rsquo;ll send the live video link by email 30 minutes before the havan starts.
+        We&rsquo;ll send the live link by email 30 minutes before the {copy.noun} starts.
       </div>
       {phase !== 'code' && phase !== 'verifying' && (
         <button className="sthc-btn" disabled={phase === 'sending' || phone.length !== 10} onClick={() => void sendCode()}>

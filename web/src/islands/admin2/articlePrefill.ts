@@ -16,6 +16,7 @@ import { rituals, ritualCategories, type Ritual } from '../../lib/ritualGuides';
 import { storyFor } from '../../lib/ritualStories';
 import { fetchPricing, ritualPrice } from '../../lib/pricing';
 import { publicImage } from '../../lib/config';
+import type { EventType } from '../../lib/eventTypes';
 import { uploadCover } from './eventsApi';
 
 export { rituals as articles };
@@ -24,10 +25,14 @@ export type Article = Ritual;
 export const articleBySlug = (slug: string | null | undefined): Article | null =>
   (slug ? rituals.find((r) => r.slug === slug) : null) ?? null;
 
-/** Havans first, then pujas, each A–Z — the order of the dropdown. */
-export function articleGroups(): { label: string; items: Article[] }[] {
+/** Havans first, then pujas, each A–Z — the order of the dropdown.
+ *  [SAATHUM-EVENT-TYPES 2026-09-27] When the form's event type is a ritual one, the
+ *  matching group (Havans for 'havan', Pujas for 'puja') is moved to the front — the
+ *  owner still sees every article, just with the relevant kind first. */
+export function articleGroups(forType?: EventType): { label: string; items: Article[] }[] {
   const by = (t: Article['type']) => rituals.filter((r) => r.type === t).sort((a, b) => a.title.localeCompare(b.title));
-  return [{ label: 'Havans', items: by('havan') }, { label: 'Pujas', items: by('puja') }];
+  const groups = [{ label: 'Havans', items: by('havan') }, { label: 'Pujas', items: by('puja') }];
+  return forType === 'puja' ? [groups[1], groups[0]] : groups;
 }
 
 function cut(s: string, max: number): string {
@@ -81,6 +86,7 @@ export interface ArticleFill {
   description: string;
   intention: string;
   guide_slug: string;
+  event_type: EventType;
   duration_min?: string;
   category?: string;
   price_rupees?: string;
@@ -95,6 +101,8 @@ export async function fillFromArticle(a: Article, opts: { categories: { id: stri
     description: descriptionFromArticle(a),
     intention: a.category in ritualCategories ? a.category : '',
     guide_slug: a.slug,
+    // [SAATHUM-EVENT-TYPES 2026-09-27] An article is always a havan or a puja.
+    event_type: a.type,
   };
   const d = durationFromArticle(a.duration);
   if (d) out.duration_min = String(d);

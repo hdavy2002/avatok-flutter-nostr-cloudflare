@@ -3,6 +3,12 @@
 // bounds), and status mapping. NO I/O -- every dependency (listing snapshot,
 // chadhava catalogue, config) is passed in. Kept pure so it is unit-testable
 // without D1/env (see test/saathum_checkout.test.ts).
+//
+// [SAATHUM-EVENT-TYPES 2026-09-27] Non-ritual listings (satsang, sermon, meditation --
+// see lib/event_types.ts) never take chadhava or prasad, and their sankalp is just a
+// name. computeQuote()/validateSankalp() below enforce that server-side; nothing here
+// trusts the client to have hidden the ritual-only fields on its own.
+import { eventTypeCopy, isRitual, type EventType } from "./event_types";
 
 export type ChadhavaCatalogItem = {
   id: string;
@@ -38,6 +44,10 @@ export type ListingSnapshot = {
   prasad_price_rupees: number;
   starts_at: number | null;
   duration_min: number | null;
+  /** [SAATHUM-EVENT-TYPES 2026-09-27] Drives what a checkout may contain. */
+  event_type: EventType;
+  performer_name: string | null;
+  performer_photo_url: string | null;
 };
 
 export type ChadhavaSelection = { id: string; qty: number };
@@ -107,13 +117,20 @@ export function validateAddress(raw: unknown): Ok<Address> | FieldError {
 
 export type Sankalp = { name: string; gotra?: string; family?: string[]; wish?: string };
 
-export function validateSankalp(raw: unknown): Ok<Sankalp> | FieldError {
+/**
+ * [SAATHUM-EVENT-TYPES 2026-09-27] `ritual` defaults to true so every existing caller
+ * (and every existing test) keeps its current behaviour unless it opts in to the
+ * non-ritual rule: for satsang/sermon/meditation only the attendee's `name` is read --
+ * gotra/family/wish are ignored (never validated, never returned, never saved).
+ */
+export function validateSankalp(raw: unknown, ritual = true): Ok<Sankalp> | FieldError {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { ok: false, error: "invalid_sankalp", message: "Sankalp name is required.", field: "sankalp" };
+    return { ok: false, error: "invalid_sankalp", message: "Enter the attendee's name.", field: "sankalp" };
   }
   const s = raw as Record<string, unknown>;
   const name = typeof s.name === "string" ? s.name.trim() : "";
   if (!name || name.length > 120) return { ok: false, error: "invalid_sankalp_name", message: "Enter the name for the sankalp.", field: "name" };
+  if (!ritual) return { ok: true, value: { name } };
   const gotra = typeof s.gotra === "string" ? s.gotra.trim().slice(0, 120) : undefined;
   const wish = typeof s.wish === "string" ? s.wish.trim().slice(0, 500) : undefined;
   let family: string[] | undefined;
@@ -142,31 +159,45 @@ export type QuoteInput = {
  * route can turn it into a 400 with a field name. */
 export function computeQuote(input: QuoteInput): Ok<Quote> | FieldError {
   const { listing, chadhavaCatalog, dakshinaRupees: dakshina, prasad } = input;
+  const ritual = isRitual(listing.event_type);
+  const copy = eventTypeCopy(listing.event_type);
   if (!Number.isSafeInteger(dakshina) || dakshina < 0 || dakshina > MAX_DAKSHINA_RUPEES) {
     return { ok: false, error: "invalid_dakshina", message: `Dakshina must be between 0 and ${MAX_DAKSHINA_RUPEES}.`, field: "dakshina_rupees" };
+  }
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Owner decision: satsang/sermon/meditation never
+  // take chadhava or prasad. Checked before anything else so the client gets one clear
+  // reason even if it (wrongly) sent both.
+  const wantsChadhava = (input.chadhava ?? []).some((sel) => sel && Number(sel.qty) > 0);
+  if (!ritual && wantsChadhava) {
+    return { ok: false, error: "not_offered_for_event_type", message: `Chadhava is not offered for a ${copy.noun}.`, field: "chadhava" };
+  }
+  if (!ritual && prasad) {
+    return { ok: false, error: "not_offered_for_event_type", message: `Prasad courier is not offered for a ${copy.noun}.`, field: "prasad" };
   }
   if (prasad && !listing.prasad_available) {
     return { ok: false, error: "prasad_unavailable", message: "This event does not offer prasad courier.", field: "prasad" };
   }
   const seen = new Set<string>();
   const lines: QuoteLine[] = [
-    { kind: "ticket", label: listing.title, qty: 1, unit_rupees: listing.price_rupees, amount_rupees: listing.price_rupees },
+    { kind: "ticket", label: `${copy.label} ticket`, qty: 1, unit_rupees: listing.price_rupees, amount_rupees: listing.price_rupees },
   ];
-  for (const sel of input.chadhava ?? []) {
-    if (!sel || typeof sel.id !== "string" || seen.has(sel.id)) {
-      return { ok: false, error: "invalid_chadhava", message: "Invalid chadhava selection.", field: "chadhava" };
+  if (ritual) {
+    for (const sel of input.chadhava ?? []) {
+      if (!sel || typeof sel.id !== "string" || seen.has(sel.id)) {
+        return { ok: false, error: "invalid_chadhava", message: "Invalid chadhava selection.", field: "chadhava" };
+      }
+      if (!Number.isSafeInteger(sel.qty) || sel.qty < 0 || sel.qty > MAX_CHADHAVA_QTY) {
+        return { ok: false, error: "invalid_chadhava_qty", message: `Quantity must be between 0 and ${MAX_CHADHAVA_QTY}.`, field: "chadhava" };
+      }
+      if (sel.qty === 0) continue;
+      seen.add(sel.id);
+      const item = chadhavaCatalog.find((c) => c.id === sel.id);
+      if (!item) return { ok: false, error: "chadhava_not_found", message: "One of the offerings is no longer available.", field: "chadhava" };
+      lines.push({ kind: "chadhava", id: item.id, label: item.title, qty: sel.qty, unit_rupees: item.price_rupees, amount_rupees: item.price_rupees * sel.qty });
     }
-    if (!Number.isSafeInteger(sel.qty) || sel.qty < 0 || sel.qty > MAX_CHADHAVA_QTY) {
-      return { ok: false, error: "invalid_chadhava_qty", message: `Quantity must be between 0 and ${MAX_CHADHAVA_QTY}.`, field: "chadhava" };
-    }
-    if (sel.qty === 0) continue;
-    seen.add(sel.id);
-    const item = chadhavaCatalog.find((c) => c.id === sel.id);
-    if (!item) return { ok: false, error: "chadhava_not_found", message: "One of the offerings is no longer available.", field: "chadhava" };
-    lines.push({ kind: "chadhava", id: item.id, label: item.title, qty: sel.qty, unit_rupees: item.price_rupees, amount_rupees: item.price_rupees * sel.qty });
   }
-  if (dakshina > 0) lines.push({ kind: "dakshina", label: "Dakshina for the priest", qty: 1, unit_rupees: dakshina, amount_rupees: dakshina });
-  if (prasad) lines.push({ kind: "prasad", label: "Prasad courier", qty: 1, unit_rupees: listing.prasad_price_rupees, amount_rupees: listing.prasad_price_rupees });
+  if (dakshina > 0) lines.push({ kind: "dakshina", label: ritual ? "Dakshina for the priest" : "Offering", qty: 1, unit_rupees: dakshina, amount_rupees: dakshina });
+  if (ritual && prasad) lines.push({ kind: "prasad", label: "Prasad courier", qty: 1, unit_rupees: listing.prasad_price_rupees, amount_rupees: listing.prasad_price_rupees });
 
   const subtotal_rupees = lines.reduce((sum, l) => sum + l.amount_rupees, 0);
   const gst_rate_pct = input.gstEnabled ? input.gstRatePct : 0;

@@ -1,17 +1,22 @@
 ---
-// [SAATHUM-EVENT-PAGE 2026-09-26] The public event page for a `live_event`
-// listing — matches the owner-approved mockup `Claude outputs/booking-page-
-// layout.html` §1 ("The event page"). Rendered by pages/book/[id].astro,
-// which keeps the old BookingFlow checkout shell for every other kind.
+// [SAATHUM-EVENT-TYPES 2026-09-27] The public event page for a `live_event`
+// listing — redesigned per owner feedback on the SAATHUM-EVENT-PAGE build:
+// one big centred photo (badge + countdown overlaid), a wide horizontal
+// booking panel below it, then full-width content sections — and every word
+// on the page now comes from lib/eventTypes.ts's copyFor(attrs), so a
+// satsang/sermon/meditation listing never shows sankalp/chadhava/prasad copy.
+// Matches the owner-approved mockup `Claude outputs/booking-page-layout.html`
+// §1 for colours/fonts/card language; the layout itself is the new one.
 //
 // Everything here is SSR except: the live countdown, the tooltip toggles, and
 // the "Offer chadhava" fetch (ChadhavaOffer.tsx, a small client island) — see
 // the inline <script> at the bottom for the first two.
-import { cfImage } from '../../lib/config';
+import { cfImage, publicImage } from '../../lib/config';
 import { scheduleStateOf, durationLabel } from '../../lib/card';
 import { ritualBySlug } from '../../lib/ritualGuides';
 import { ritualStories } from '../../lib/ritualStories';
 import { listingPath } from '../../lib/urls';
+import { copyFor, socialProof } from '../../lib/eventTypes';
 import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
 import type { CoverMedia, Listing } from '../../lib/types';
 import './eventpage.css';
@@ -21,6 +26,7 @@ const { listing } = Astro.props;
 
 const attrs = (listing.attrs ?? {}) as Record<string, unknown>;
 const now = Date.now();
+const copy = copyFor(attrs);
 
 function attrBool(keys: string[], fallback: boolean): boolean {
   for (const k of keys) {
@@ -38,7 +44,7 @@ function attrNum(key: string, fallback: number): number {
 }
 
 // [SAATHUM-CHECKOUT §Data] listings.attrs defaults per the owner's spec.
-const prasadCourier = attrBool(['prasad_courier'], true);
+const prasadCourier = copy.ritual && attrBool(['prasad_courier'], true);
 const prasadPriceRupees = attrNum('prasad_price_rupees', 99);
 const videoDownload = attrBool(['video_download', 'replay'], true);
 const visibility = attrs.visibility === 'private' ? 'private' : 'public';
@@ -52,12 +58,15 @@ const INTENTION_LABELS: Record<string, string> = {
 };
 const intentionLabel = (typeof attrs.intention === 'string' && INTENTION_LABELS[attrs.intention]) || listing.category_label || listing.category || null;
 
+// The named ritual content guide (story/benefits article), separate from
+// copy.ritual (the boolean "does this event type have sankalp/chadhava/prasad
+// at all"). Only havan/puja listings carry a guide_slug.
 const guideSlug = typeof attrs.guide_slug === 'string' ? attrs.guide_slug : '';
-const ritual = guideSlug ? ritualBySlug(guideSlug) : undefined;
+const guide = guideSlug ? ritualBySlug(guideSlug) : undefined;
 // storyFor() throws on a missing slug; read the map directly so a stale/typo'd
 // guide_slug degrades to "no story" instead of a 500 on a public page.
-const story = ritual ? ritualStories[ritual.slug] : undefined;
-const ritualNoun = ritual?.type === 'puja' ? 'puja' : 'havan';
+const story = guide ? ritualStories[guide.slug] : undefined;
+const hasBenefits = copy.ritual && Boolean(guide) && (guide?.benefits.length ?? 0) > 0;
 
 function firstCoverUrl(media: CoverMedia[] | null | undefined): string | null {
   for (const m of media ?? []) {
@@ -75,6 +84,13 @@ const rawImages = (listing.cover_media ?? [])
 const heroImage = listing.poster || rawImages[0] || firstCoverUrl(listing.cover_media);
 const galleryImages = [...new Set([heroImage, ...rawImages].filter((u): u is string => Boolean(u)))];
 const showThumbs = galleryImages.length >= 2;
+// [SAATHUM-EVENT-TYPES] Every listing photo goes through Cloudflare image
+// transformations (cache-friendly, responsive) — see lib/config.ts cfImage().
+const HERO_WIDTHS = [640, 960, 1400] as const;
+const heroSrcSet = heroImage
+  ? HERO_WIDTHS.map((w) => `${cfImage(heroImage, { width: w, fit: 'cover' })} ${w}w`).join(', ')
+  : null;
+const heroSrc = heroImage ? cfImage(heroImage, { width: 1400, fit: 'cover' }) : null;
 
 const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
 function toMs(t?: number | null): number | null { if (t == null) return null; return t < 1e12 ? t * 1000 : t; }
@@ -105,18 +121,31 @@ const liveNow = scheduleState === 'live' || scheduleState === 'starting' || Bool
 const showCountdown = !liveNow && startMs != null && startMs > now;
 const bookable = listing.booking_open !== false && scheduleState !== 'ended' && scheduleState !== 'cancelled' && scheduleState !== 'expired';
 
-const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing.creator.handle}` : null);
+// [SAATHUM-EVENT-TYPES] The priest/speaker/guide who is running the event —
+// NEVER the creator account (owner rule: the account owner's name must never
+// show here). `performed_by` is a plain listing column the worker already
+// sends (worker/src/routes/listings.ts); it predates the shared Listing TS
+// type, hence the narrow local cast instead of widening that shared type.
+const performedByRaw = (listing as unknown as { performed_by?: string | null }).performed_by || null;
+const performerName = performedByRaw || copy.performerFallback;
+const performerPhotoUrl = typeof attrs.performer_photo_url === 'string' && attrs.performer_photo_url ? attrs.performer_photo_url : null;
+const performerInitials = performerName
+  .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '🙏';
+
 const location = listing.location ?? null;
-const ratingAvg = (listing.rating_count ?? 0) > 0 ? listing.rating_avg ?? null : null;
-const ratingCount = listing.rating_count ?? 0;
-// [SAATHUM-BOOKED-BOOST] real bookings + the owner's optional ad number (attrs.booked_boost).
-const bookedBoost = Number.isInteger(attrs.booked_boost) && Number(attrs.booked_boost) > 0 ? Number(attrs.booked_boost) : 0;
-const booked = (listing.joined_count ?? 0) + bookedBoost;
+// [SAATHUM-EVENT-TYPES] Real numbers + the admin's optional boost, resolved by
+// the shared socialProof() so this page and any future surface agree.
+const social = socialProof(attrs, {
+  booked: listing.joined_count ?? 0,
+  ratingAvg: listing.rating_avg ?? null,
+  ratingCount: listing.rating_count ?? 0,
+});
 const price = listing.effective_price ?? listing.price ?? null;
 
 const origin = Astro.url.origin;
 const canonicalHref = listingPath({ id: listing.id, handle: listing.creator?.handle ?? null, slug: listing.slug ?? null });
 const checkoutHref = `/book/${encodeURIComponent(listing.id)}/checkout`;
+const readMoreHref = hasBenefits ? '#benefits' : '#about';
 
 function gcalHref(): string {
   const start = startMs ?? now;
@@ -136,20 +165,20 @@ function waHref(): string {
   return 'https://wa.me/?text=' + encodeURIComponent(`🙏 ${listing.title} on Saa Thum.${whenText}${priceText} ${origin}${canonicalHref}`);
 }
 
-const ticks: { key: string; label: string; on: boolean; tip?: string }[] = [
-  { key: 'prasad', label: 'Prasad courier', on: prasadCourier },
-  { key: 'sankalp', label: 'Sankalp in your name', on: true },
-  { key: 'video', label: 'Video download', on: videoDownload, tip: 'You can download your video anytime.' },
-  { key: 'stream', label: 'Live streaming', on: true },
-  {
-    key: 'visibility',
-    label: isPrivate ? 'Private event' : 'Public event',
-    on: true,
-    tip: 'Public: many devotees join the same havan together. Private: a 1:1 session just for your family.',
-  },
-];
+// [SAATHUM-EVENT-TYPES] Sankalp, chadhava and prasad only ever appear for
+// ritual types (havan, puja) — satsang/sermon/meditation never offer them.
+const ticks: { key: string; label: string; tip?: string }[] = [];
+if (prasadCourier) ticks.push({ key: 'prasad', label: 'Prasad courier' });
+if (copy.ritual) ticks.push({ key: 'sankalp', label: 'Sankalp in your name' });
+if (videoDownload) ticks.push({ key: 'video', label: 'Video download', tip: 'You can download your video anytime.' });
+ticks.push({ key: 'stream', label: 'Live streaming event' });
+ticks.push({
+  key: 'visibility',
+  label: isPrivate ? 'Private event' : 'Public event',
+  tip: `Public: many devotees join the same ${copy.noun} together. Private: a 1:1 session just for your family.`,
+});
 
-const sticker = (name: string) => `/assets/saathum-booking-stickers/${name}.png`;
+const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/${name}.png`, { width: 220 });
 ---
 
 <div class="ep-page" data-ep-listing-id={listing.id} data-ep-tz={tz}>
@@ -160,191 +189,212 @@ const sticker = (name: string) => `/assets/saathum-booking-stickers/${name}.png`
       › {listing.title}
     </div>
 
-    <div class="ep-hero">
-      <div>
-        <div class="ep-art">
-          {heroImage ? (
-            <img
-              src={cfImage(heroImage, { width: 1200, fit: 'cover' })}
-              alt={listing.title}
-              onerror="this.onerror=null;this.closest('.ep-art').classList.add('ep-art-fallback');this.remove();"
-            />
-          ) : (
-            <div class="ep-art-empty">{ritualNoun === 'puja' ? 'Puja' : 'Havan'}</div>
-          )}
-          <div class="ep-top">
-            <span style="display:flex;gap:8px;flex-wrap:wrap">
-              {liveNow && !isPrivate && <span class="ep-pill ep-pill--live"><i></i>Live</span>}
-              {isPrivate ? (
-                <span class="ep-pill ep-pill--priv">🔒 Private · 1:1</span>
-              ) : (
-                <span class="ep-pill ep-pill--pub">👥 Public</span>
-              )}
-            </span>
-            {intentionLabel && <span class="ep-pill ep-pill--soft">{intentionLabel}</span>}
-          </div>
-          <div class="ep-when">
-            {startsAtLabel && <div class="ep-d">📅 {startsAtLabel}{durationTag ? ` · ${durationTag}` : ''}</div>}
-            {showCountdown && (
-              <>
-                <span class="ep-cdl">{ritualNoun === 'puja' ? 'Puja starts in' : 'Havan starts in'}</span>
-                <div class="ep-cd" data-ep-countdown data-starts-at={startMs}>
-                  <span><b data-u="d">00</b><small>Day</small></span>
-                  <span><b data-u="h">00</b><small>Hrs</small></span>
-                  <span><b data-u="m">00</b><small>Min</small></span>
-                  <span><b data-u="s">00</b><small>Sec</small></span>
-                </div>
-              </>
+    <div class="ep-photowrap">
+      <div class="ep-art">
+        {heroSrc ? (
+          <img
+            src={heroSrc}
+            srcset={heroSrcSet ?? undefined}
+            sizes="(max-width: 1100px) 100vw, 1100px"
+            width="1400"
+            height="788"
+            fetchpriority="high"
+            alt={listing.title}
+            onerror="this.onerror=null;this.closest('.ep-art').classList.add('ep-art-fallback');this.remove();"
+          />
+        ) : (
+          <div class="ep-art-empty">{copy.label}</div>
+        )}
+        <div class="ep-top">
+          <span class="ep-top-left">
+            <span class="ep-badge" style={`background:${copy.color.bg};color:${copy.color.fg}`}>{copy.badge}</span>
+            {liveNow && !isPrivate && <span class="ep-pill ep-pill--live"><i></i>Live</span>}
+          </span>
+          <span class="ep-top-right">
+            {isPrivate ? (
+              <span class="ep-pill ep-pill--priv">🔒 Private · 1:1</span>
+            ) : (
+              <span class="ep-pill ep-pill--pub">👥 Public</span>
             )}
-            {liveNow && <span class="ep-cdl">Happening now</span>}
+            {intentionLabel && <span class="ep-pill ep-pill--soft">{intentionLabel}</span>}
+          </span>
+        </div>
+        <div class="ep-when">
+          {startsAtLabel && <div class="ep-d">📅 {startsAtLabel}{durationTag ? ` · ${durationTag}` : ''}</div>}
+          {showCountdown && (
+            <>
+              <span class="ep-cdl">{copy.startsIn}</span>
+              <div class="ep-cd" data-ep-countdown data-starts-at={startMs}>
+                <span><b data-u="d">00</b><small>Day</small></span>
+                <span><b data-u="h">00</b><small>Hrs</small></span>
+                <span><b data-u="m">00</b><small>Min</small></span>
+                <span><b data-u="s">00</b><small>Sec</small></span>
+              </div>
+            </>
+          )}
+          {liveNow && <span class="ep-cdl">Happening now</span>}
+        </div>
+      </div>
+      {showThumbs && (
+        <div class="ep-thumbs">
+          {galleryImages.slice(0, 4).map((url) => (
+            <img src={cfImage(url, { width: 200, fit: 'cover' })} alt="" loading="lazy" />
+          ))}
+        </div>
+      )}
+    </div>
+
+    <aside class="ep-panel">
+      <div class="ep-panel-grid">
+        <div class="ep-col-title">
+          <h1>{listing.title}</h1>
+          {deity && <div class="ep-deity">{deity}</div>}
+          <div class="ep-meta">
+            {startsAtLabel}{durationTag ? ` · ${durationTag}` : ''}
+            {startsAtLabel && <br />}
+            <span class="ep-viewer-time" data-ep-viewer-time data-ms={startMs} data-tz={tz}></span>
+          </div>
+          <div class="ep-performer-row">
+            {performerPhotoUrl ? (
+              <img class="ep-performer-avatar-sm" src={cfImage(performerPhotoUrl, { width: 80, fit: 'cover' })} alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ep-performer-initials-sm',textContent:this.dataset.initials}));" data-initials={performerInitials} />
+            ) : (
+              <span class="ep-performer-initials-sm">{performerInitials}</span>
+            )}
+            <span class="ep-performer-text"><b>{copy.performerLabel}</b>{performerName}</span>
           </div>
         </div>
-        {showThumbs && (
-          <div class="ep-thumbs">
-            {galleryImages.slice(0, 4).map((url) => (
-              <img src={cfImage(url, { width: 200, fit: 'cover' })} alt="" loading="lazy" />
+
+        <div class="ep-col-mid">
+          <div class="ep-blips">
+            {location && <span class="ep-blip">📍 {location}</span>}
+            {social.rating != null && social.reviews > 0 && (
+              <span class="ep-blip ep-blip--star">⭐ {social.rating.toFixed(1)}/5 · <a href="#reviews">{social.reviews} reviews</a></span>
+            )}
+            {social.booked > 0 && <span class="ep-blip ep-blip--bk">👥 {social.booked.toLocaleString('en-IN')} booked</span>}
+          </div>
+          <div class="ep-feats">
+            {ticks.map((t) => (
+              <div class="ep-feat" tabindex={t.tip ? 0 : undefined}>
+                <span class="ep-tick">✓</span>{t.label}
+                {t.tip && (
+                  <>
+                    <button type="button" class="ep-info" aria-describedby={`ep-tip-${t.key}`} aria-label={`More info: ${t.label}`}>i</button>
+                    <span class="ep-tip" role="tooltip" id={`ep-tip-${t.key}`}>{t.tip}</span>
+                  </>
+                )}
+              </div>
             ))}
           </div>
+        </div>
+
+        <div class="ep-col-cta">
+          <div class="ep-price">
+            {price != null ? (
+              <div><small>Starting from</small><b>₹{price.toLocaleString('en-IN')}</b> <em>per family</em></div>
+            ) : <div />}
+            <div class="ep-icons">
+              {showCountdown && (
+                <a class="ep-ib ep-ib--bell" href={gcalHref()} target="_blank" rel="noopener" title="Remind me" aria-label="Remind me" data-ep-action="remind" data-ep-listing-id={listing.id}>🔔</a>
+              )}
+              <a class="ep-ib ep-ib--wa" href={waHref()} target="_blank" rel="noopener" title="Share" aria-label="Share on WhatsApp" data-ep-action="whatsapp" data-ep-listing-id={listing.id}>✆</a>
+            </div>
+          </div>
+          {bookable ? (
+            <a class="ep-btn ep-btn--book" href={checkoutHref} data-ep-action="book" data-ep-listing-id={listing.id}>{copy.cta} →</a>
+          ) : (
+            <span class="ep-btn ep-btn--book" aria-disabled="true">Booking closed</span>
+          )}
+          <a class="ep-btn ep-btn--ghost" href={readMoreHref} data-ep-action="benefits" data-ep-listing-id={listing.id}>{copy.readMore}</a>
+          <div class="ep-fine">{copy.footer(performedByRaw)}</div>
+          <div class="ep-trust">
+            <div><span>🔒</span>UPI payment</div>
+            {prasadCourier && <div><span>📦</span>Prasad ships same day</div>}
+            <div><span>🧾</span>PDF receipt</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="ep-sections">
+      <div class="ep-sec" id="about">
+        <div class="ep-stk ep-corner"><img src={sticker('havan-kund')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
+        <div class="ep-kick">{copy.aboutKicker}</div>
+        <h2>{guide?.title ?? listing.title}</h2>
+        {story ? (
+          <>
+            <p>{story.why}</p>
+            <p>{story.story}</p>
+            {guide && <a href={guide.href} style="font:800 14px Nunito, sans-serif;color:var(--ep-red)">Read the full story →</a>}
+          </>
+        ) : (
+          <p>{listing.description || `${listing.title}, performed by verified priests and watched live on Saa Thum.`}</p>
         )}
       </div>
 
-      <aside class="ep-panel">
-        <h1>{listing.title}</h1>
-        {deity && <div class="ep-deity">{deity}</div>}
-        <div class="ep-meta">
-          {startsAtLabel}{durationTag ? ` · ${durationTag}` : ''}
-          {startsAtLabel && <br />}
-          <span class="ep-viewer-time" data-ep-viewer-time data-ms={startMs} data-tz={tz}></span>
+      {hasBenefits && guide && (
+        <div class="ep-sec" id="benefits">
+          <div class="ep-kick">{copy.benefitsKicker}</div>
+          <h2>Benefits</h2>
+          <div class="ep-ben">
+            {guide.benefits.slice(0, 3).map((b) => (
+              <div><span>🙏</span>{b}</div>
+            ))}
+          </div>
+          <p style="margin-top:12px;font-size:13px;color:var(--ep-sub)">Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
         </div>
-        <div class="ep-blips">
-          {location && <span class="ep-blip">📍 {location}</span>}
-          {ratingAvg != null && (
-            <span class="ep-blip ep-blip--star">⭐ {ratingAvg.toFixed(1)}/5 · <a href="#reviews">{ratingCount} reviews</a></span>
-          )}
-          {booked > 0 && <span class="ep-blip ep-blip--bk">👥 {booked.toLocaleString('en-IN')} booked</span>}
-        </div>
-        <div class="ep-feats">
-          {ticks.map((t) => (
-            <div class="ep-feat" tabindex={t.tip ? 0 : undefined}>
-              <span class="ep-tick">✓</span>{t.label}
-              {t.tip && (
-                <>
-                  <button type="button" class="ep-info" aria-describedby={`ep-tip-${t.key}`} aria-label={`More info: ${t.label}`}>i</button>
-                  <span class="ep-tip" role="tooltip" id={`ep-tip-${t.key}`}>{t.tip}</span>
-                </>
-              )}
+      )}
+
+      <div class="ep-sec">
+        <div class="ep-kick">How it works</div>
+        <h2>From your home, in three steps</h2>
+        <div class="ep-steps">
+          {copy.steps.map((step, i) => (
+            <div class="ep-step">
+              <div class="ep-stk"><img src={sticker(step.sticker)} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
+              <b>{i + 1}. {step.title}</b>
+              <p>{step.body}</p>
             </div>
           ))}
         </div>
-        <div class="ep-price">
-          {price != null ? (
-            <div><small>Starting from</small><b>₹{price.toLocaleString('en-IN')}</b> <em>per family</em></div>
-          ) : <div />}
-          <div class="ep-icons">
-            {showCountdown && (
-              <a class="ep-ib ep-ib--bell" href={gcalHref()} target="_blank" rel="noopener" title="Remind me" aria-label="Remind me" data-ep-action="remind" data-ep-listing-id={listing.id}>🔔</a>
-            )}
-            <a class="ep-ib ep-ib--wa" href={waHref()} target="_blank" rel="noopener" title="Share" aria-label="Share on WhatsApp" data-ep-action="whatsapp" data-ep-listing-id={listing.id}>✆</a>
-          </div>
-        </div>
-        {bookable ? (
-          <a class="ep-btn ep-btn--book" href={checkoutHref} data-ep-action="book" data-ep-listing-id={listing.id}>Book with my sankalp →</a>
-        ) : (
-          <span class="ep-btn ep-btn--book" aria-disabled="true">Booking closed</span>
-        )}
-        <a class="ep-btn ep-btn--ghost" href="#benefits" data-ep-action="benefits" data-ep-listing-id={listing.id}>Read benefits</a>
-        <div class="ep-fine">Performed by {hostName ?? 'temple priests'} · Free cancellation 24 hrs before</div>
-        <div class="ep-trust">
-          <div><span>🔒</span>UPI payment</div>
-          {prasadCourier && <div><span>📦</span>Prasad ships same day</div>}
-          <div><span>🧾</span>PDF receipt</div>
-        </div>
-      </aside>
-    </div>
-
-    <div class="ep-grid2">
-      <div>
-        <div class="ep-sec" id="about">
-          <div class="ep-stk ep-corner"><img src={sticker('havan-kund')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-          <div class="ep-kick">About this {ritualNoun}</div>
-          <h2>{ritual?.title ?? listing.title}</h2>
-          {story ? (
-            <>
-              <p>{story.why}</p>
-              <p>{story.story}</p>
-              {ritual && <a href={ritual.href} style="font:800 14px Nunito, sans-serif;color:var(--ep-red)">Read the full story →</a>}
-            </>
-          ) : (
-            <p>{listing.description || `${listing.title}, performed by verified priests and watched live on Saa Thum.`}</p>
-          )}
-        </div>
-
-        {ritual && ritual.benefits.length > 0 && (
-          <div class="ep-sec" id="benefits">
-            <div class="ep-kick">What devotees traditionally seek</div>
-            <h2>Benefits</h2>
-            <div class="ep-ben">
-              {ritual.benefits.slice(0, 3).map((b) => (
-                <div><span>🙏</span>{b}</div>
-              ))}
-            </div>
-            <p style="margin-top:12px;font-size:13px;color:var(--ep-sub)">Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
-          </div>
-        )}
-
-        <div class="ep-sec">
-          <div class="ep-kick">How it works</div>
-          <h2>From your home, in three steps</h2>
-          <div class="ep-steps">
-            <div class="ep-step">
-              <div class="ep-stk"><img src={sticker('sankalp-thali')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-              <b>1. Book with your sankalp</b>
-              <p>Your name, gotra and wish are read out by the priest.</p>
-            </div>
-            <div class="ep-step">
-              <div class="ep-stk"><img src={sticker('whatsapp-diya')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-              <b>2. Get the live link</b>
-              <p>By email, 30 minutes before the {ritualNoun} starts.</p>
-            </div>
-            <div class="ep-step">
-              <div class="ep-stk"><img src={sticker('prasad-box')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-              <b>3. Watch, then receive prasad</b>
-              <p>Download the video anytime.{prasadCourier ? ' Prasad ships the same day.' : ''}</p>
-            </div>
-          </div>
-        </div>
-
-        <ChadhavaOffer client:visible listingId={listing.id} />
       </div>
 
-      <div class="ep-side">
-        {prasadCourier && (
-          <div class="ep-sec">
-            <div class="ep-stk ep-corner" style="width:64px;height:64px"><img src={sticker('prasad-box')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-            <h2>Prasad at your door</h2>
-            <div class="ep-row"><span>Courier anywhere in India</span><b>₹{prasadPriceRupees.toLocaleString('en-IN')}</b></div>
-            <div class="ep-row" style="border:0"><span>Ships the same day as the {ritualNoun}. You can change your address any time before it starts.</span></div>
-          </div>
-        )}
+      {copy.ritual && <ChadhavaOffer client:visible listingId={listing.id} />}
+
+      {prasadCourier && (
         <div class="ep-sec">
-          <h2>Performed by</h2>
-          <p><b>{hostName ?? 'Temple priests'}{location ? `, ${location}` : ''}</b><br />Years of experience in Vedic rituals. Your booking supports priests and their families.</p>
+          <div class="ep-stk ep-corner" style="width:64px;height:64px"><img src={sticker('prasad-box')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
+          <h2>Prasad at your door</h2>
+          <div class="ep-row"><span>Courier anywhere in India</span><b>₹{prasadPriceRupees.toLocaleString('en-IN')}</b></div>
+          <div class="ep-row" style="border:0"><span>Ships the same day as the {copy.noun}. You can change your address any time before it starts.</span></div>
         </div>
-        <div class="ep-sec ep-faq">
-          <h2>Questions</h2>
-          <details open>
-            <summary>How do I join?</summary>
-            <p>We send the live link by email 30 minutes before the start.</p>
-          </details>
-          <details>
-            <summary>What if I miss it?</summary>
-            <p>Download the video anytime from My events.</p>
-          </details>
-          <details>
-            <summary>Can I cancel?</summary>
-            <p>Full refund if you cancel at least 24 hours before the start.</p>
-          </details>
+      )}
+
+      <div class="ep-sec">
+        <h2>{copy.performerLabel}</h2>
+        <div class="ep-performer-wide">
+          {performerPhotoUrl ? (
+            <img class="ep-performer-circle" src={cfImage(performerPhotoUrl, { width: 200, fit: 'cover' })} alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ep-performer-initials',textContent:this.dataset.initials}));" data-initials={performerInitials} />
+          ) : (
+            <div class="ep-performer-initials">{performerInitials}</div>
+          )}
+          <p><b>{performerName}{location ? `, ${location}` : ''}</b><br />Years of experience serving devotees. Your booking supports {performerName === copy.performerFallback ? 'them' : 'their'} work.</p>
         </div>
+      </div>
+
+      <div class="ep-sec ep-faq">
+        <h2>Questions</h2>
+        <details open>
+          <summary>How do I join?</summary>
+          <p>We send the live link by email 30 minutes before the start.</p>
+        </details>
+        <details>
+          <summary>What if I miss it?</summary>
+          <p>Download the video anytime from My events.</p>
+        </details>
+        <details>
+          <summary>Can I cancel?</summary>
+          <p>Full refund if you cancel at least 24 hours before the start.</p>
+        </details>
       </div>
     </div>
   </div>

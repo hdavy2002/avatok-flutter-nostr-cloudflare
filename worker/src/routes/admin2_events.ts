@@ -51,9 +51,10 @@ import { releaseListingReservations } from "../cal/listing_reservations";
 import { startsMsSql, SMOKE_LISTING_ID } from "../lib/me_dashboard_data";
 import {
   DEITY_SUGGESTIONS, EVENT_TABS, INTENTIONS, nextSeo, type AttrPatch, type SeoPatch, LIMITS, MIN_PRICE_RUPEES, coverUrlOf, likeContains, msToIst,
-  nextCoverMedia, normalizeEventInput, parseTab, posterPlan, splitPatch, tabOf, tabSql,
+  nextCoverMedia, normalizeEventInput, parseTab, posterPlan, splitPatch, tabOf, tabSql, enforceEventTypeRules,
   type EventPatch, type EventTab,
 } from "../lib/admin2_events_logic";
+import { eventTypeOf } from "../lib/event_types";
 
 const APP = "saathum";
 /** The listing module's app tag — releaseBlocks() keys calendar blocks on it. */
@@ -262,6 +263,11 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       prasad_price_rupees: Number.isInteger(attrs.prasad_price_rupees) ? attrs.prasad_price_rupees : 99,
       booked_boost: Number.isInteger(attrs.booked_boost) && attrs.booked_boost > 0 ? attrs.booked_boost : null,
       video_download_url: typeof attrs.video_download_url === "string" && attrs.video_download_url ? attrs.video_download_url : null,
+      // [SAATHUM-EVENT-TYPES 2026-09-27]
+      event_type: eventTypeOf(attrs),
+      performer_photo_url: typeof attrs.performer_photo_url === "string" && attrs.performer_photo_url ? attrs.performer_photo_url : null,
+      rating_display: typeof attrs.rating_display === "number" && attrs.rating_display >= 1 && attrs.rating_display <= 5 ? attrs.rating_display : null,
+      review_count_boost: Number.isInteger(attrs.review_count_boost) && attrs.review_count_boost > 0 ? attrs.review_count_boost : null,
       guide_slug: typeof attrs.guide_slug === "string" ? attrs.guide_slug : null,
       seo: attrs.seo && typeof attrs.seo === "object" ? {
         title: String(attrs.seo.title ?? ""), description: String(attrs.seo.description ?? ""),
@@ -428,8 +434,10 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
   const id = String(cb.listing_id);
   // Cover source tag + attrs (createListing strips cover `source`), then capacity/location via the admin editor.
   const split = splitPatch(patch as EventPatch);
+  // [SAATHUM-EVENT-TYPES 2026-09-27] event_type always set on create (normalizeEventInput defaults it).
+  const createAttrsRaw = enforceEventTypeRules(patch.event_type!, split.attrs);
   const createAttrs: AttrPatch = {};
-  for (const [k, v] of Object.entries(split.attrs)) if (v !== null && v !== undefined && v !== "") (createAttrs as any)[k] = v;
+  for (const [k, v] of Object.entries(createAttrsRaw)) if (v !== null && v !== undefined && v !== "") (createAttrs as any)[k] = v;
   const media = await writeMediaAndAttrs(env, a.uid, id, patch.cover_url ?? undefined, createAttrs);
   if (media) return media;
   const later: Record<string, unknown> = {};
@@ -443,7 +451,7 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
   }
   await refreshSeo(env, a.uid, id, split.seo);
   await history(env, { listingId: id, actorId: a.uid, action: "admin2_create", prev: null, next: "draft" });
-  safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category });
+  safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category, event_type: patch.event_type ?? null });
   const out = await detailPayload(env, id, a.uid);
   return json({ ok: true, id, ...(out ?? {}) }, 201);
 }
@@ -460,20 +468,23 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
     const cat = await env.DB_META.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(patch.category).first();
     if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
   }
-  const { edit, cover, attrs: attrPatch, seo } = splitPatch(patch as EventPatch);
+  const { edit, cover, attrs: attrPatchRaw, seo } = splitPatch(patch as EventPatch);
   // [SAATHUM-CHADHAVA 2026-09-26] Private events are locked to 1 seat, server-side.
-  if (attrPatch.visibility === "private") {
+  if (attrPatchRaw.visibility === "private") {
     edit.capacity = 1;
-  } else if (attrPatch.visibility !== "public") {
+  } else if (attrPatchRaw.visibility !== "public") {
     const curAttrs = attrsOf(row.attrs);
     if (curAttrs.visibility === "private" && "capacity" in edit && edit.capacity !== 1) edit.capacity = 1;
   }
+  // [SAATHUM-EVENT-TYPES 2026-09-27] Effective type = this save's own, else the row's current one.
+  const effectiveEventType = patch.event_type ?? eventTypeOf(attrsOf(row.attrs));
+  const attrPatch = enforceEventTypeRules(effectiveEventType, attrPatchRaw);
   const e1 = await runAdminEdit(req, env, id, edit, exec);
   if (e1) return e1;
   const e2 = await writeMediaAndAttrs(env, a.uid, id, cover, attrPatch);
   if (e2) return e2;
   await refreshSeo(env, a.uid, id, seo);
-  safeTrack(env, a.uid, "admin2_event_updated", { listing_id: id, fields: Object.keys(patch).join(",") });
+  safeTrack(env, a.uid, "admin2_event_updated", { listing_id: id, fields: Object.keys(patch).join(","), event_type: effectiveEventType });
   const out = await detailPayload(env, id, a.uid);
   return json({ ok: true, id, ...(out ?? {}) });
 }

@@ -26,7 +26,20 @@ import { ReviewStep } from './ReviewStep';
 import { PayStep } from './PayStep';
 import { DoneStep } from './DoneStep';
 import type { Address, CheckoutConfig, CheckoutStep, Checkout, OfferingsState, Quote, Sankalp } from './types';
+import { copyFor } from '../../lib/eventTypes';
+import type { EventType } from '../../lib/eventTypes';
 import './checkout.css';
+
+/** [SAATHUM-EVENT-TYPES 2026-09-27] The step machine differs by event type
+ * (owner decision): a ritual (havan, puja) keeps the full You -> Sankalp ->
+ * Offerings -> Review -> Pay flow; a non-ritual (satsang, sermon, meditation)
+ * skips Sankalp's extra fields (rendered as a plain "Details" step, just the
+ * name) and Offerings entirely (Review gets an optional donation chips row
+ * instead). The 'sankalp' step id is reused as "Details" in the non-ritual
+ * flow rather than adding a new step id/component. */
+function stepsFor(ritual: boolean): CheckoutStep[] {
+  return ritual ? ['you', 'sankalp', 'offerings', 'review', 'pay'] : ['you', 'sankalp', 'review', 'pay'];
+}
 
 function requestKeyFor(listingId: string): string {
   const key = `sthc:request_key:${listingId}`;
@@ -170,19 +183,24 @@ function Inner({ listingId }: { listingId: string }) {
 
   async function onPay() {
     if (!token) { setStep('you'); return; }
+    if (!config) return;
     setPaying(true);
     setPayErr(null);
     const requestKey = requestKeyFor(listingId);
+    // Non-ritual events never offer chadhava or prasad — Review's optional
+    // offering chips write into offerings.dakshina_rupees instead of adding
+    // a second field.
+    const isRitual = typeof config.listing.ritual === 'boolean' ? config.listing.ritual : copyFor({ event_type: config.listing.event_type }).ritual;
     try {
       const c = await createCheckout(
         {
           listing_id: listingId,
           request_key: requestKey,
-          chadhava: offerings.chadhava,
+          chadhava: isRitual ? offerings.chadhava : [],
           dakshina_rupees: offerings.dakshina_rupees,
-          prasad: offerings.prasad,
+          prasad: isRitual ? offerings.prasad : false,
           sankalp,
-          address: offerings.prasad && address ? address : undefined,
+          address: isRitual && offerings.prasad && address ? address : undefined,
           accept_terms: true,
           accept_refund: true,
         },
@@ -225,6 +243,16 @@ function Inner({ listingId }: { listingId: string }) {
     return <div className="sthc"><div className="sthc-card"><p role="alert">{config.reason || 'This event can no longer be booked.'}</p></div></div>;
   }
 
+  // [SAATHUM-EVENT-TYPES 2026-09-27] copy/ritual come from the config
+  // endpoint's event_type + ritual when present; eventTypeOf's own fallback
+  // (unknown/missing -> 'havan') covers an older worker deploy.
+  const copy = copyFor({ event_type: config.listing.event_type });
+  const isRitual = typeof config.listing.ritual === 'boolean' ? config.listing.ritual : copy.ritual;
+  const evType = copy.type as EventType;
+  const steps = stepsFor(isRitual);
+  const stepIndex = Math.max(1, steps.indexOf(step) + 1);
+  const totalSteps = steps.length;
+
   return (
     <div className="sthc">
       <div className="sthc-step-col">
@@ -232,6 +260,10 @@ function Inner({ listingId }: { listingId: string }) {
           <YouStep
             signedIn={Boolean(user)}
             listingId={listingId}
+            eventType={evType}
+            copy={copy}
+            stepIndex={stepIndex}
+            totalSteps={totalSteps}
             onSignedIn={() => void checkGate()}
             onVerified={() => advancePastYou()}
           />
@@ -240,8 +272,12 @@ function Inner({ listingId }: { listingId: string }) {
           <SankalpStep
             value={sankalp}
             listingId={listingId}
+            ritual={isRitual}
+            eventType={evType}
+            stepIndex={stepIndex}
+            totalSteps={totalSteps}
             onBack={() => setStep('you')}
-            onContinue={(s) => { setSankalp(s); setStep('offerings'); }}
+            onContinue={(s) => { setSankalp(s); setStep(isRitual ? 'offerings' : 'review'); }}
           />
         )}
         {step === 'offerings' && (
@@ -257,6 +293,9 @@ function Inner({ listingId }: { listingId: string }) {
             quote={quote}
             quoteError={quoteErr}
             listingId={listingId}
+            eventType={evType}
+            stepIndex={stepIndex}
+            totalSteps={totalSteps}
             onBack={() => setStep('sankalp')}
             onContinue={() => setStep('review')}
           />
@@ -268,7 +307,15 @@ function Inner({ listingId }: { listingId: string }) {
               quoteError={quoteErr}
               gstEnabled={config.gst.enabled}
               listingId={listingId}
-              onBack={() => setStep('offerings')}
+              ritual={isRitual}
+              copy={copy}
+              eventType={evType}
+              stepIndex={stepIndex}
+              totalSteps={totalSteps}
+              offeringPresets={config.dakshina_presets}
+              offeringAmount={offerings.dakshina_rupees}
+              onOfferingChange={(v) => setOfferings((s) => ({ ...s, dakshina_rupees: v }))}
+              onBack={() => setStep(isRitual ? 'offerings' : 'sankalp')}
               onPay={() => void onPay()}
               paying={paying}
             />
@@ -280,13 +327,16 @@ function Inner({ listingId }: { listingId: string }) {
             checkout={checkout}
             auth={token}
             listingId={listingId}
+            eventType={evType}
+            stepIndex={stepIndex}
+            totalSteps={totalSteps}
             onUpdate={onCheckoutUpdate}
             onDone={() => setStep('done')}
             onStartAgain={onStartAgain}
           />
         )}
         {step === 'done' && checkout && token && (
-          <DoneStep checkout={checkout} auth={token} listingId={listingId} />
+          <DoneStep checkout={checkout} auth={token} listingId={listingId} copy={copy} eventType={evType} />
         )}
       </div>
     </div>
