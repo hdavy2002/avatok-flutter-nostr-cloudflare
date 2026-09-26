@@ -6982,5 +6982,20 @@
         "note": "Worker wrote an AI hook that passed the copy rules; 'rules' fallbacks carry other ai_status values."
       }
     ]
+  },
+  "PRICING-1": {
+    "description": "[PRICING-1] Starting-from prices set at /admin/pricing (PUT /api/admin/pricing, KV pricing:v1); ritual articles refresh [data-saathum-price] from GET /api/pricing and the OG card reads it per request.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin_pricing_updated",
+        "property": "havan_from",
+        "min_events": 1,
+        "note": "Owner saved prices from the admin screen; the worker emits this after the KV write.",
+        "gt": 0
+      }
+    ]
   }
 }

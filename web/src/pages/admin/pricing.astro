@@ -1,0 +1,16 @@
+---
+// [PRICING-1 2026-09-26] Where the owner sets Saathum's "starting from" prices.
+// Every ritual article and every share card (og:image) reads these live.
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import AdminPricing from '../../islands/admin/AdminPricing.tsx';
+---
+
+<Dashboard
+  title="Pricing · saathum.com"
+  heading="Pricing"
+  subtitle="Starting-from prices shown on every ritual article and share card. Checkout still adds prasad delivery, GST, donation and chadhava."
+  active="admin-pricing"
+>
+  <AdminPricing client:load />
+</Dashboard>

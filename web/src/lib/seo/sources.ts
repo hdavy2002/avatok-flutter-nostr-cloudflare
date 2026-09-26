@@ -64,7 +64,7 @@ function listingAd(listing: Listing, price: number | null | undefined): PublicCo
   const free = Boolean(listing.free_entry) || amount === 0;
   const label = free ? 'Free'
     : Number.isFinite(amount) && amount > 0
-      ? (['INR', 'TOKENS', 'TOKEN', 'COINS', 'COIN', 'AVACOIN'].includes(currency) ? `₹${amount.toLocaleString('en-IN')}` : `${currency} ${amount}`)
+      ? (['INR', 'TOKENS', 'TOKEN', 'COINS', 'COIN', 'AVACOIN'].includes(currency) ? `from ₹${amount.toLocaleString('en-IN')}` : `from ${currency} ${amount}`)
       : undefined;
   return label ? { hook, price: label } : { hook };
 }

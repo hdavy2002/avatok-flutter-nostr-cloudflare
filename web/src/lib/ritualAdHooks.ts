@@ -5,7 +5,7 @@
 // join. These are written per ritual (by AI, reviewed against the owner's copy
 // rules): warm, positive, name the deity and the blessing people traditionally
 // seek — NO guaranteed outcomes, NO fear selling, NO health cures, NO prices
-// (the price pill is printed separately from HAVAN_SHARE_PRICE below).
+// (the price pill comes from the pricing backend — lib/pricing.ts).
 //
 // Listings get the same treatment from the worker (lib/listing_ad_hook.ts writes
 // attrs.ad_hook with AI when a listing is submitted or approved).
@@ -13,8 +13,7 @@
 // Adding a ritual: add its line here. A ritual without a line still gets a card —
 // the template falls back to "Join the <title> live".
 
-/** Price printed on havan share cards. ₹111 — amounts ending in 1 are shagun. */
-export const HAVAN_SHARE_PRICE = 111;
+import { ritualPrice, rupees, type Pricing } from './pricing';
 
 export const ritualAdHooks: Record<string, string> = {
   // Havans
@@ -76,9 +75,10 @@ export const ritualAdHooks: Record<string, string> = {
   'karwa-chauth-puja': 'Pray for your husband’s long life this Karwa Chauth',
 };
 
-/** The share-card ad for a ritual article. Havans carry the shared-havan price;
- *  pujas are private and priced per family, so their card shows no price. */
-export function ritualAd(ritual: { slug: string; type: 'havan' | 'puja'; title: string }): { hook: string; price?: string } {
+/** The share-card ad for a ritual article. The price is the live "starting from"
+ *  floor from the pricing backend (lib/pricing.ts); null → the card just says "Join live". */
+export function ritualAd(ritual: { slug: string; type: 'havan' | 'puja'; title: string }, pricing: Pricing): { hook: string; price?: string } {
   const hook = ritualAdHooks[ritual.slug] ?? `Join the ${ritual.title.replace(/\s*\(.*\)\s*/, ' ').trim()} live`;
-  return ritual.type === 'havan' ? { hook, price: `₹${HAVAN_SHARE_PRICE}` } : { hook };
+  const price = ritualPrice(pricing, ritual);
+  return price ? { hook, price: `from ${rupees(price)}` } : { hook };
 }

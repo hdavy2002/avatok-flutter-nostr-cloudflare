@@ -3,6 +3,7 @@ import { ApiError, getCreator, getListing } from '../apiClient';
 import { creatorOg, listingOg } from '../og';
 import { ritualBySlug } from '../ritualGuides';
 import { ritualAd } from '../ritualAdHooks';
+import { fetchPricing } from '../pricing';
 import { getHelpEntries, helpUrl, SECTIONS, type HelpSectionId } from '../help';
 import { plainText, stableRevision, truncateAtWord } from './normalize';
 import { buildSeoGraph } from './schema';
@@ -42,7 +43,9 @@ function ogRecordFor(content: PublicContent, title?: string, description?: strin
     contentRevision: stableRevision([
       content.kind, key, resolvedTitle, resolvedDescription, content.modifiedAt,
       content.publishedAt, content.image?.revision, 'seo-og-v1',
-      content.ad?.hook, content.ad?.price,
+      // [PRICING-1] ad.price deliberately NOT in the revision: prices change in the
+      // backend without a rebuild, and the static page's og:image URL must still match.
+      content.ad?.hook,
     ]),
     art: content.image ? {
       url: content.image.url,
@@ -187,7 +190,7 @@ export async function resolveOgRecord(kind: string, key: string): Promise<OgReso
         visibility: 'public', publishedAt: '2026-09-25', modifiedAt: '2026-09-25',
         image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },
         article: { authorName: ORG.name, section: ritual.type === 'havan' ? 'Havans' : 'Pujas', keywords: ritual.tags },
-        ad: ritualAd(ritual),
+        ad: ritualAd(ritual, await fetchPricing()),
       });
     }
     if (kind === 'help') {

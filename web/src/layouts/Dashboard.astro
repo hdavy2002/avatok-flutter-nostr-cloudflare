@@ -88,6 +88,8 @@ if (Astro.url.pathname.startsWith('/admin')) {
       // [REVIEW-MOD-1 2026-09-06] Buyer reviews wait here for approval before
       // they appear on a listing page.
       { key: 'admin-reviews', label: 'Reviews', icon: I.star, href: '/admin/reviews', tone: 'bg-lime' },
+      // [PRICING-1] Starting-from prices for ritual articles and share cards.
+      { key: 'admin-pricing', label: 'Pricing', icon: I.wallet, href: '/admin/pricing', tone: 'bg-coral' },
     ],
   });
 }

@@ -283,8 +283,9 @@ for (const href of ritualLinks) {
  assert.match(article, /avh--sticky/, 'Shared article header: ' + href);
  assert.match(article, /class="bazaar-footer bazaar-footer--folk"/, 'Shared article footer: ' + href);
  assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
- // [SAATHUM-GUIDE-2] Havans are open shared events (power of many, from ₹99); pujas are private.
- if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from ₹99/, 'Havan price anchor: ' + href); }
+ // [SAATHUM-GUIDE-2] Havans are open shared events (power of many); pujas are private.
+  // [PRICING-1] The price is a live [data-saathum-price] span fed by /api/pricing — never a hardcoded figure.
+ if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from <span data-saathum-price="[a-z0-9-]+" data-saathum-type="havan">₹\d[\d,]*<\/span>/, 'Havan price anchor (live from /api/pricing, [PRICING-1]): ' + href); }
  assert.match(article, /The story behind it/, 'Deity story: ' + href);
  assert.match(article, /temple priests/, 'Temple priests explained: ' + href);
  assert.match(article, /href="\/refunds"/, 'Refund policy link: ' + href);

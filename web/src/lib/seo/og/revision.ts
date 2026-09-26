@@ -20,7 +20,9 @@ export function ogRevision(record: OgRecord): Promise<string> {
     TEMPLATE_REVISION, RENDERER_REVISION, fontRevision, assetRevision,
     record.kind, record.key, record.title, record.description ?? '', record.canonicalPath,
     record.contentRevision, record.art?.url ?? '', record.art?.revision ?? '',
-    record.ad?.hook ?? '', record.ad?.price ?? '',
+    // [PRICING-1] ad.price is live from the pricing backend and deliberately not
+    // hashed — see resolve.ts. The response ETag still changes with the bytes.
+    record.ad?.hook ?? '',
   ]));
 }
 

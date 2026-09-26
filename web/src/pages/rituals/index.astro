@@ -11,6 +11,10 @@ import TruckBorder from '../../components/TruckBorder.astro';
 import { rituals, ritualCategories, ritualTypes, ritualBySlug } from '../../lib/ritualGuides';
 import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
+import { fetchPricing, rupees } from '../../lib/pricing';
+// [PRICING-1] Build-time price; lib/pricingClient.ts refreshes it live.
+const pricingNow = await fetchPricing();
+const havanFrom = pricingNow.havan_from ? rupees(pricingNow.havan_from) : '';
 const havanArt = ritualBySlug('ganapati-havan')!;
 const gangaArt = ritualBySlug('ganga-puja')!;
 const havanCount = rituals.filter(r => r.type === 'havan').length;
@@ -48,7 +52,7 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
     <section class="idea-shell idea-intro" aria-label="About this guide"><div style="grid-column:1/-1"><h2>A havan for every hope</h2><p>For thousands of years, families have turned to havans and pujas to begin something new, to give thanks, to pray for someone they love, or simply to invite peace into the home. This guide explains each ritual Saathum performs — who the deity is and why, the story behind it, the blessings devotees traditionally seek, who it suits, and the most auspicious time. Every ritual is performed by experienced temple priests. Every ritual we perform is benefic and joyful. Blessings described are those sought in tradition; we never promise outcomes.</p></div></section>
     <TruckBorder kind="lotus" />
     <section class="idea-shell idea-intro" aria-label="Havan, puja and joining together">
-      <div><span class="idea-format live">Havan</span><p>A fire ritual, open to everyone. Offerings of ghee, grains and herbs go into one sacred fire with each mantra, while devotees join live from everywhere. Open havans start from ₹99.</p></div>
+      <div><span class="idea-format live">Havan</span><p>A fire ritual, open to everyone. Offerings of ghee, grains and herbs go into one sacred fire with each mantra, while devotees join live from everywhere. Open havans start from <span data-saathum-price="havan" data-saathum-type="havan">{havanFrom}</span>.</p></div>
       <div><span class="idea-format private">Puja</span><p>Worship with flowers, lamp, incense and food — a private ritual for one family, available in limited slots.</p></div>
       <div><span class="idea-format group">Together</span><p>Tradition holds prayer shared by many especially dear. Every devotee who joins adds their prayer to the same fire — and supports the temple priests who perform it.</p></div>
     </section>
@@ -80,9 +84,10 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
       <div class="idea-more-row"><button class="idea-button idea-more" type="button" hidden>Show more rituals</button></div>
       <noscript><p class="idea-result-count">All {rituals.length} rituals are shown. Browser JavaScript enables search and filters.</p></noscript>
     </section>
-    <section class="idea-shell idea-closing"><p class="idea-handwritten">Many hopes. One sacred fire.</p><h2>Found the one for you?</h2><p>Join an open havan from ₹99, or book a private puja for your family. Our temple priests take care of the rest.</p><div><a class="idea-button" href="/marketplace" data-ritual-cta="book">Join a havan</a><a class="idea-market-link" href="/how-it-works" data-ritual-cta="how-it-works">How it works ↗</a></div></section>
+    <section class="idea-shell idea-closing"><p class="idea-handwritten">Many hopes. One sacred fire.</p><h2>Found the one for you?</h2><p>Join an open havan starting from <span data-saathum-price="havan" data-saathum-type="havan">{havanFrom}</span>, or book a private puja for your family. Our temple priests take care of the rest.</p><div><a class="idea-button" href="/marketplace" data-ritual-cta="book">Join a havan</a><a class="idea-market-link" href="/how-it-works" data-ritual-cta="how-it-works">How it works ↗</a></div></section>
   </main>
   <script>
     import '../../lib/ritualGuidePage';
+    import '../../lib/pricingClient';
   </script>
 </Base>

@@ -132,6 +132,7 @@ import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getAvaVoiceStyle, putAvaVoiceStyle } from "./routes/ava_voice_style"; // [AVA-VOICE-STYLE-1] WS-14 — how Ava speaks
 import { getConfig, putConfig, readConfig } from "./routes/config";
+import { getPricing, putPricing } from "./routes/pricing";
 import { createConversation, listConversations, getParticipants } from "./routes/conversations2";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -544,6 +545,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
+    // [PRICING-1] "Starting from" prices for articles and share cards — public read, admin write.
+    if (p === "/api/pricing" && req.method === "GET") return await getPricing(env);
+    if (p === "/api/admin/pricing" && req.method === "PUT") return await putPricing(req, env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
 
     // Messenger Phase 1 billing authority. These endpoints are mounted for
