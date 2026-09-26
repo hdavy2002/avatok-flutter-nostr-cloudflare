@@ -7043,5 +7043,76 @@
         "note": "The push service accepted at least one reminder/refund push (201)."
       }
     ]
+  },
+  "ADMIN2-SHELL": {
+    "description": "[ADMIN2-SHELL] Admin 2 shell (web/src/layouts/Admin2.astro + islands/admin2/AdminNav.tsx): Dashboard 2 look with gold ribbon, sidebar/rail/phone tab bar + More sheet, ADMIN badge, View site + Logout; admin guard probes GET /api/admin/whoami (403 -> 'You don't have admin access' card); islands call the worker through islands/admin2/adminApi.ts. Admin-only (ADMIN_UIDS), not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "in": [
+          "overview",
+          "events",
+          "bookings",
+          "payments",
+          "refunds",
+          "customers",
+          "prices"
+        ],
+        "min_events": 1,
+        "note": "Emitted once per Admin 2 page load by the layout (before the guard answers, so a denied visit also counts)."
+      }
+    ],
+    "_verified_at": "web/src/layouts/Admin2.astro inline script: capture('admin2_view', {screen, load_ms}) from [data-admin2-screen]"
+  },
+  "ADMIN2-API": {
+    "description": "[ADMIN2-API] worker/src/routes/admin2.ts route table reached from index.ts for /api/admin/whoami and /api/admin/v2/*: GET /api/admin/whoami -> {admin:true, uid, email} (403 admin_only otherwise) and GET /api/admin/v2/overview (IST-day KPIs in paise from orders + commercial_policy_snapshots + hdfc_sms_payment_intents + listings + refunds, next events). Read-only; no migration.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "equals": "overview",
+        "min_events": 1,
+        "note": "The Overview page loads; its data comes from GET /api/admin/v2/overview. Server failures are tracked as exceptions with extra.area='admin2'."
+      }
+    ],
+    "_verified_at": "web/src/layouts/Admin2.astro inline script: capture('admin2_view', {screen, load_ms}) from [data-admin2-screen]; worker/src/routes/admin2.ts admin2Route catch -> trackException extra.area='admin2'"
+  },
+  "ADMIN2-OVERVIEW": {
+    "description": "[ADMIN2-OVERVIEW] /admin is the Admin 2 Overview island (islands/admin2/Overview.tsx): KPI tiles (events today/next 7 days, bookings today/7d, revenue today/7d/30d in rupees, open refund requests, pending payments), Next events with LIVE badge, quick actions (New event, Open refunds, Set prices). Replaces the old zine admin index.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "equals": "overview",
+        "min_events": 1
+      }
+    ],
+    "_verified_at": "web/src/layouts/Admin2.astro inline script: capture('admin2_view', {screen, load_ms}) from [data-admin2-screen]; web/src/pages/admin/index.astro active='overview'"
+  },
+  "ADMIN2-DELETE": {
+    "description": "[ADMIN2-DELETE] Owner decision: delete, not archive. Removed the v1 customer dashboard (pages/archive/dashboard-v1, v1-only islands/dashboard panels, DashSoon, commercialSessions, serverFlags) so /dashboard ALWAYS renders Dashboard 2 (dashboard2Enabled no longer read, ?dash2 preview cookie gone); old v1 URLs 301 to their Dashboard 2 screens. Removed the old admin (listings/reviews/agents pages, islands/admin-agents, old islands/admin, layouts/Dashboard.astro) with redirects /admin/listings->/admin/events, /admin/pricing->/admin/prices, /admin/reviews->/admin, /admin/agents/*->/admin. Worker routes untouched.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dash2_view",
+        "property": "screen",
+        "equals": "book",
+        "min_events": 1,
+        "note": "/dashboard renders Dashboard 2 for everyone now that the flag is not consulted."
+      }
+    ],
+    "_verified_at": "web/src/layouts/Dashboard2.astro inline script: capture('dash2_view', {screen, load_ms}); web/src/pages/dashboard.astro active='book'"
   }
 }
