@@ -32,8 +32,10 @@ const categories = [
 import { featuredHavans, ritualCategoryShort, rituals } from '../lib/ritualGuides';
 // [SAATHUM-BOOKNOW-1 2026-09-26] "Book now" shelf — real upcoming listings, hidden when there are none.
 import BookNowShelf from '../islands/home/BookNowShelf';
-const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: publicImage(r.image, { width: 900, fit: 'scale-down' }) }));
-const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'navagraha-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: publicImage(h.image, { width: 900, fit: 'scale-down' }) }));
+// Raw /assets paths on purpose: a /cdn-cgi/image URL inside serialized island props
+// (HTML-escaped JSON) trips the built-image-source deploy check. The island calls publicImage().
+const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
+const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'navagraha-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: h.image }));
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).

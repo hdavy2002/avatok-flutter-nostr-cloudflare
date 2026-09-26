@@ -19,12 +19,13 @@ import { getExplore } from '../../lib/apiClient';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
 import { listingPath, payAndJoinPath } from '../../lib/urls';
 import { capture, captureException } from '../../lib/analytics';
+import { publicImage } from '../../lib/config';
 import './BookNowShelf.css';
 
 export interface GuideLink { title: string; href: string; image: string }
 
 interface Props {
-  /** Every ritual article: used for "Read benefits" and as poster fallback. */
+  /** Every ritual article: used for "Read benefits" and as poster fallback. `image` is a raw /assets path. */
   guides: GuideLink[];
   /** Four featured havans, used ONLY for ?booknow=preview sample cards. */
   samples: GuideLink[];
@@ -95,7 +96,7 @@ function toItem(card: Card, guides: GuideLink[], now: number): Item | null {
     title: c.title,
     deity: typeof attrs?.deity === 'string' ? (attrs.deity as string) : null,
     blurb: card.blurb ?? c.oneLiner,
-    image: c.poster ?? c.aiPoster?.url ?? guide?.image ?? null,
+    image: c.poster ?? c.aiPoster?.url ?? (guide ? publicImage(guide.image, { width: 900, fit: 'scale-down' }) : null),
     mode: oneOnOne ? 'one_on_one' : 'live',
     liveNow,
     startsAt: c.startsAt,
@@ -128,7 +129,7 @@ function sampleItems(samples: GuideLink[], now: number): Item[] {
     return {
       id: 'sample-' + i, title: g.title, deity: null,
       blurb: 'Sample card — shown only with ?booknow=preview so the design can be reviewed before real listings exist.',
-      image: g.image, mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
+      image: publicImage(g.image, { width: 900, fit: 'scale-down' }), mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
       location: p.city, category: null, ratingAvg: p.r, ratingCount: p.rc, booked: p.booked, price: p.price,
       prasad: p.prasad, replay: p.mode === 'live', href: g.href, bookHref: '/marketplace', benefitsHref: g.href,
     };
