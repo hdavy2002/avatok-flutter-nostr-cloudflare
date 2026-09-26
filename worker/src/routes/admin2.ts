@@ -17,6 +17,7 @@ import { SMOKE_LISTING_ID, startsMsSql, coverImageUrl } from "../lib/me_dashboar
 import { ADMIN2_EVENT_ROUTES } from "./admin2_events"; // [ADMIN2-EVENTS]
 import { ADMIN2_PEOPLE_ROUTES } from "./admin2_people"; // [ADMIN2-PEOPLE] agent C
 import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
+import { adminAnalytics } from "./admin2_analytics"; // [ADMIN2-ANALYTICS] agent D
 
 const APP = "saathum";
 
@@ -219,6 +220,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   // --- shell + overview (agent A) ---
   { method: "GET", path: "/api/admin/whoami", handler: adminWhoami },
   { method: "GET", path: "/api/admin/v2/overview", handler: adminOverview },
+  { method: "GET", path: "/api/admin/v2/analytics", handler: adminAnalytics }, // [ADMIN2-ANALYTICS] agent D
   // --- events (agent B) ---
   ...ADMIN2_EVENT_ROUTES,
   // --- bookings/payments/customers (agent C) ---

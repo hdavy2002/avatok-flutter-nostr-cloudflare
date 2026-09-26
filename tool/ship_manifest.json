@@ -7099,6 +7099,21 @@
     ],
     "_verified_at": "web/src/layouts/Admin2.astro inline script: capture('admin2_view', {screen, load_ms}) from [data-admin2-screen]; web/src/pages/admin/index.astro active='overview'"
   },
+  "ADMIN2-ANALYTICS": {
+    "description": "[ADMIN2-ANALYTICS] /admin is now 'Analytics' (first menu item, key 'overview', default landing; islands/admin2/Analytics.tsx + charts.tsx replace Overview.tsx). Range selector Today/7d/30d/90d/custom (URL-synced) over GET /api/admin/v2/analytics?range|from&to&tz=Asia/Kolkata (worker/src/routes/admin2_analytics.ts, one line in routes/admin2.ts): KPI cards with delta vs previous period + sparkline (revenue paise GST incl. refunds out, paid bookings, unique customers, new sign-ups from users.created_at, avg order value, refunds sent count+paise and refund rate, pending payments, upcoming events, live now, open refund requests), revenue by day line with previous period dashed, bookings by day (paid/free stacked), sign-ups by day, revenue by category, top 10 events, UPI checkout funnel, Next events / Recent payments / Open refund requests; every card/bar/row links to the filtered admin page. Hand-rolled SVG, chart tokens --chart-1/--chart-2 in saathum-tokens.css. Admin-only, read-only, no migration, not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "equals": "overview",
+        "min_events": 1
+      }
+    ],
+    "_verified_at": "web/src/pages/admin/index.astro active='overview' mounts Analytics; Admin2.astro emits admin2_view {screen}; Analytics.tsx emits admin2_analytics_range {range} on a range change"
+  },
   "ADMIN2-DELETE": {
     "description": "[ADMIN2-DELETE] Owner decision: delete, not archive. Removed the v1 customer dashboard (pages/archive/dashboard-v1, v1-only islands/dashboard panels, DashSoon, commercialSessions, serverFlags) so /dashboard ALWAYS renders Dashboard 2 (dashboard2Enabled no longer read, ?dash2 preview cookie gone); old v1 URLs 301 to their Dashboard 2 screens. Removed the old admin (listings/reviews/agents pages, islands/admin-agents, old islands/admin, layouts/Dashboard.astro) with redirects /admin/listings->/admin/events, /admin/pricing->/admin/prices, /admin/reviews->/admin, /admin/agents/*->/admin. Worker routes untouched.",
     "two_sided": false,

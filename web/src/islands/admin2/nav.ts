@@ -2,7 +2,7 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  LayoutDashboard, CalendarDays, Ticket, IndianRupee, Undo2, Users, Tags, Globe, LogOut, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, Undo2, Users, Tags, Globe, LogOut, type LucideIcon,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices';
@@ -10,7 +10,7 @@ export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refund
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon }
 
 export const ADMIN_NAV: AdminNavItem[] = [
-  { key: 'overview', label: 'Overview', short: 'Overview', href: '/admin', icon: LayoutDashboard },
+  { key: 'overview', label: 'Analytics', short: 'Analytics', href: '/admin', icon: ChartColumn }, // [ADMIN2-ANALYTICS] key stays 'overview'
   { key: 'events', label: 'Events', short: 'Events', href: '/admin/events', icon: CalendarDays },
   { key: 'bookings', label: 'Bookings', short: 'Bookings', href: '/admin/bookings', icon: Ticket },
   { key: 'payments', label: 'Payments', short: 'Payments', href: '/admin/payments', icon: IndianRupee },

@@ -1,12 +1,15 @@
 ---
-// /admin — [ADMIN2-OVERVIEW 2026-09-26] Admin 2 home (Specs/SPEC-2026-09-26-ADMIN-2.md).
-// REMOVED [ADMIN2-OVERVIEW 2026-09-26]: the old zine-styled admin index (links to the
-// listings queue, reviews, pricing, refunds) — git history keeps it.
+// /admin — [ADMIN2-ANALYTICS 2026-09-26] Admin 2 landing page: Analytics (first menu item,
+// key 'overview'). Replaces [ADMIN2-OVERVIEW]'s Overview island — git history keeps it.
+// Specs/SPEC-2026-09-26-ADMIN-2.md.
 export const prerender = false;
 import Admin2 from '../../layouts/Admin2.astro';
-import Overview from '../../islands/admin2/Overview.tsx';
+import Analytics from '../../islands/admin2/Analytics.tsx';
 ---
 
-<Admin2 title="Overview" heading="Today at Saa Thum" active="overview" subtitle="Events, bookings and money at a glance. Times are IST.">
-  <Overview client:load />
+<Admin2 title="Analytics" heading="Analytics" active="overview" subtitle="Revenue, bookings and customers for any period, compared with the one before. Days are IST.">
+  <Fragment slot="actions">
+    <a href="/admin/events/new" class="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-4 text-[14px] font-bold text-primary-foreground no-underline shadow-[var(--dash-shadow,none)] hover:bg-primary/90">+ New event</a>
+  </Fragment>
+  <Analytics client:load />
 </Admin2>

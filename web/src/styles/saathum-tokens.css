@@ -68,6 +68,11 @@
   --space-12: 48px;
   --space-16: 64px;
 
+  /* [ADMIN2-ANALYTICS] chart marks (validated with the dataviz palette checker against
+     --card: band, chroma, CVD, >=3:1). 1 = teal series, 2 = gold second series. */
+  --chart-1: 190 100% 30%;
+  --chart-2: 40 71% 42%;
+
   /* `bg-card` is shared with the zine palette (see tailwind.config.ts):
      inside Dashboard 2 it means the shadcn card colour. */
   --zine-card: hsl(var(--card));
@@ -95,6 +100,8 @@
   --input: 38 40% 42%;
   --ring: 38 51% 63%;
   --scrim: 0 0% 0%;
+  --chart-1: 185 78% 38%;
+  --chart-2: 39 63% 44%;
   --dash-shadow: 0 1px 2px hsl(0 0% 0% / 0.3), 0 8px 24px -12px hsl(0 0% 0% / 0.5);
   --dash-shadow-lg: 0 2px 4px hsl(0 0% 0% / 0.3), 0 18px 40px -18px hsl(0 0% 0% / 0.6);
 }
