@@ -14,6 +14,7 @@ import { emailFor } from "../lib/identity";
 import { requireAdmin } from "./admin_money";
 import { notStuckLiveSql } from "../lib/listing_schedule";
 import { SMOKE_LISTING_ID, startsMsSql, coverImageUrl } from "../lib/me_dashboard_data";
+import { ADMIN2_EVENT_ROUTES } from "./admin2_events"; // [ADMIN2-EVENTS]
 
 const APP = "saathum";
 
@@ -217,6 +218,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: "/api/admin/whoami", handler: adminWhoami },
   { method: "GET", path: "/api/admin/v2/overview", handler: adminOverview },
   // --- events (agent B) ---
+  ...ADMIN2_EVENT_ROUTES,
   // --- bookings/payments/customers (agent C) ---
 ];
 
