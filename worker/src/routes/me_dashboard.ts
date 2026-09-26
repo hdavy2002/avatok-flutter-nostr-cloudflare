@@ -27,6 +27,10 @@ import {
   buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, type PaymentRow,
 } from "../lib/me_dashboard_data";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
+import {
+  buildAdminRefundsQuery, parseRefundStatus, decodeRefundCursor, encodeRefundCursor, customerName,
+  ADMIN_REFUND_COUNTS_SQL, ADMIN_REFUNDS_PAGE, type AdminRefundRow,
+} from "../lib/admin_refunds_data";
 
 const APP = "saathum";
 
@@ -625,7 +629,94 @@ export async function adminRecordRefund(req: Request, env: Env, paymentId: strin
     if (!ins.meta.changes) return err(409, "already_refunded", "That payment is already recorded as refunded.");
   }
   await tel(env, owner.uid, "dash2_refund_recorded", { payment_id: p.id, order_id: p.order_id, amount_paise: amount, admin_uid: admin.uid });
+  await import("../lib/web_push").then((w) => w.notifyRefundPush(env, owner.uid, p!.id, amount)).catch(() => undefined); // [DASH2-PUSH]
   return json({ ok: true });
+}
+
+// ---------------------------------------------------------------------------
+// [DASH2-ADMIN-REFUNDS 2026-09-26] GET /api/admin/refunds?status=requested|refunded|rejected|all&q&cursor
+// The admin refunds queue: requested first, oldest first. Read model:
+// lib/admin_refunds_data.ts. index.ts forwards only "/api/admin/refunds/…" here, so the
+// admin page calls "/api/admin/refunds/" (trailing slash); both spellings are served.
+// ---------------------------------------------------------------------------
+export async function adminListRefunds(req: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(req, env);
+  if (admin instanceof Response) return err(admin.status, admin.status === 403 ? "admin_only" : "unauthorized", "Admins only.");
+  const u = new URL(req.url).searchParams;
+  const status = parseRefundStatus(u.get("status"));
+  if (!status) return err(400, "invalid_status", "status must be requested, refunded, rejected or all.", { field: "status" });
+  const rawCursor = u.get("cursor");
+  const cursor = decodeRefundCursor(rawCursor);
+  if (rawCursor && !cursor) return err(400, "invalid_cursor", "That page link is no longer valid. Reload the list.");
+  const q = (u.get("q") ?? "").trim().slice(0, 80);
+  const emailHash = q.includes("@") && q.includes(".") ? await sha256Hex(q.toLowerCase()) : null;
+  const db = env.DB_META;
+  const { sql, binds } = buildAdminRefundsQuery({ status, q, emailHash, cursor, limit: ADMIN_REFUNDS_PAGE + 1 });
+  const [rs, cs] = await Promise.all([
+    db.prepare(sql).bind(...binds).all<AdminRefundRow>(),
+    db.prepare(ADMIN_REFUND_COUNTS_SQL).all<{ status: string; n: number }>(),
+  ]);
+  const rows = rs.results ?? [];
+  const page = rows.slice(0, ADMIN_REFUNDS_PAGE);
+  // Emails live in Clerk (users holds only email_hash); identity.ts caches each lookup in KV.
+  const uids = [...new Set(page.map((r) => r.uid))];
+  const emails = new Map(await Promise.all(uids.map(async (uid) => [uid, await emailFor(env, uid).catch(() => null)] as const)));
+  const counts: Record<string, number> = { requested: 0, refunded: 0, rejected: 0 };
+  for (const c of cs.results ?? []) counts[c.status] = Number(c.n);
+  const last = page[page.length - 1];
+  return json({
+    items: page.map((r) => ({
+      refund_id: r.refund_id, payment_id: r.payment_id, order_id: r.order_id,
+      customer: { uid: r.uid, email: emails.get(r.uid) ?? null, name: customerName(r) },
+      listing_id: r.listing_id, event_title: r.event_title, event_starts_at: r.event_starts_at != null ? Number(r.event_starts_at) : null,
+      amount_paise: Number(r.amount_paise), payer_utr: r.payer_utr,
+      requested_at: Number(r.requested_at), reason: r.reason, status: r.status,
+      refund_amount_paise: Number(r.refund_amount_paise), refund_utr: r.refund_utr, refund_vpa: r.refund_vpa,
+      refunded_at: r.refunded_at != null ? Number(r.refunded_at) : null,
+    })),
+    counts,
+    ...(rows.length > ADMIN_REFUNDS_PAGE && last
+      ? { next_cursor: encodeRefundCursor({ g: Number(last.grp) === 0 ? 0 : 1, t: Number(last.requested_at), id: last.refund_id }) } : {}),
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+// ---------------------------------------------------------------------------
+// [DASH2-ADMIN-REFUNDS] POST /api/admin/refunds/:refund_id/reject {note?}
+// Turns down an OPEN request. Moves no money. The refunds table has no note column,
+// so the note is kept in admin_audit (DB_WALLET) and in the telemetry event.
+// ---------------------------------------------------------------------------
+export async function adminRejectRefund(req: Request, env: Env, refundId: string): Promise<Response> {
+  const admin = await requireAdmin(req, env);
+  if (admin instanceof Response) return err(admin.status, admin.status === 403 ? "admin_only" : "unauthorized", "Admins only.");
+  const b = await body(req, 4096);
+  if (!b) return err(400, "invalid_request", "Send a JSON body.");
+  const note = b.note == null ? null : typeof b.note === "string" ? b.note.trim().slice(0, 500) || null : undefined;
+  if (note === undefined) return err(400, "invalid_note", "The note must be text.", { field: "note" });
+  if (!refundId || refundId.length > 200) return err(404, "not_found", "No such refund request.");
+  const db = env.DB_META;
+  const row = await db.prepare("SELECT id, payment_id, uid, status, amount_paise FROM refunds WHERE id=?1")
+    .bind(refundId).first<{ id: string; payment_id: string; uid: string; status: string; amount_paise: number }>();
+  if (!row) return err(404, "not_found", "No such refund request.");
+  if (row.status === "refunded") return err(409, "already_refunded", "This refund has already been recorded as sent. It can't be rejected.");
+  if (row.status === "rejected") return err(409, "already_rejected", "This request has already been rejected.");
+  const now = Date.now();
+  const upd = await db.prepare("UPDATE refunds SET status='rejected', admin_uid=?2 WHERE id=?1 AND status='requested'")
+    .bind(refundId, admin.uid).run();
+  if (!upd.meta.changes) return err(409, "refund_not_open", "This request changed while you were looking at it. Reload the list.");
+  try {
+    await env.DB_WALLET.prepare(
+      "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+    ).bind(crypto.randomUUID(), admin.uid, "refund_request_rejected", row.payment_id,
+      JSON.stringify({ refund_id: refundId, uid: row.uid, note }), now).run();
+  } catch (e) {
+    // The rejection stands; a missing audit row is reported, never swallowed.
+    await trackException(env, e, { route: "/api/admin/refunds/:id/reject", method: "POST", handled: true, app_name: APP, extra: { area: "dash2", step: "admin_audit" } });
+  }
+  await tel(env, row.uid, "admin_refund_rejected", {
+    refund_id: refundId, payment_id: row.payment_id, admin_uid: admin.uid,
+    amount_paise: Number(row.amount_paise), has_note: !!note, note_len: note?.length ?? 0,
+  });
+  return json({ ok: true, refund: { id: refundId, payment_id: row.payment_id, status: "rejected" } });
 }
 
 // ---------------------------------------------------------------------------
@@ -695,6 +786,14 @@ export async function meDashboardRoute(req: Request, env: Env, p: string): Promi
     if (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube") && (m === "GET" || m === "PUT")) {
       const id = p.slice("/api/admin/listings/".length, -"/youtube".length);
       if (id && !id.includes("/")) return await adminEventVideo(req, env, decodeURIComponent(id));
+      return null;
+    }
+    // [DASH2-ADMIN-REFUNDS] The queue and the reject action. Both come before the
+    // record-refund POST, whose prefix match would otherwise swallow ".../reject".
+    if ((p === "/api/admin/refunds" || p === "/api/admin/refunds/") && m === "GET") return await adminListRefunds(req, env);
+    if (p.startsWith("/api/admin/refunds/") && p.endsWith("/reject") && m === "POST") {
+      const id = p.slice("/api/admin/refunds/".length, -"/reject".length);
+      if (id && !id.includes("/")) return await adminRejectRefund(req, env, decodeURIComponent(id));
       return null;
     }
     if (p.startsWith("/api/admin/refunds/") && m === "POST") return await adminRecordRefund(req, env, seg("/api/admin/refunds/"));

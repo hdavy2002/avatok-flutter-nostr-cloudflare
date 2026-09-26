@@ -1,0 +1,16 @@
+---
+// [DASH2-ADMIN-REFUNDS 2026-09-26] Customer refund requests. Refunds are sent by
+// hand from the bank app; this is where the admin records the refund UTR.
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import AdminRefunds from '../../islands/admin/AdminRefunds.tsx';
+---
+
+<Dashboard
+  title="Refunds · saathum.com"
+  heading="Refunds"
+  subtitle="Customer refund requests. Send the refund from the bank app, then record its UTR here."
+  active="admin-refunds"
+>
+  <AdminRefunds client:load />
+</Dashboard>

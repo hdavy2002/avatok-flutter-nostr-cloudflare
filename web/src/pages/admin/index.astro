@@ -46,6 +46,21 @@ import Dashboard from '../../layouts/Dashboard.astro';
         </div>
         <a href="/admin/pricing" class="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink no-underline shadow-zine-xs">
           Set prices
+          </a>
+        </div>
+      </section>
+
+    {/* [DASH2-ADMIN-REFUNDS 2026-09-26] Refunds are sent by hand from the bank app. */}
+    <section class="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 class="font-display text-[24px] font-semibold text-ink">Refunds</h2>
+          <p class="mt-2 max-w-2xl font-body text-[15px] font-bold leading-relaxed text-inkSoft">
+            Customer refund requests. Send the refund from the bank app, then record its UTR here so the customer sees it in Billing.
+          </p>
+        </div>
+        <a href="/admin/refunds" class="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink no-underline shadow-zine-xs">
+          Open refunds
         </a>
       </div>
     </section>

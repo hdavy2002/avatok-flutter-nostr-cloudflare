@@ -6997,5 +6997,51 @@
         "gt": 0
       }
     ]
+  },
+  "DASH2-ADMIN-REFUNDS": {
+    "description": "[DASH2-ADMIN-REFUNDS] Admin refunds queue at /admin/refunds: GET /api/admin/refunds?status=requested|refunded|rejected|all&q&cursor (requested first, oldest first; customer, event, amount paid, payer UTR) and POST /api/admin/refunds/:refund_id/reject {note}, plus the Mark refunded form posting to the existing POST /api/admin/refunds/:payment_id. Refunds are sent by hand from the bank app; the admin records the refund UTR and the customer sees it in Billing. Admin-only (ADMIN_UIDS), not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dash2_refund_recorded",
+        "property": "payment_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin recorded a hand-sent bank refund (refund UTR) from the refunds screen."
+      },
+      {
+        "event": "admin_refund_rejected",
+        "property": "refund_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin rejected an open refund request; has_note says whether a note was kept in admin_audit."
+      }
+    ]
+  },
+  "DASH2-PUSH": {
+    "description": "[DASH2-PUSH] Web push for the Dashboard 2 PWA: VAPID/aes128gcm in pure WebCrypto (worker lib/web_push.ts), /api/me/push/{public-key,subscribe,unsubscribe}, T-15 + go-live reminders on the */5 cron (dedup table push_sent), refund-recorded push, sw.js push/notificationclick, Profile push switch and My events 'Get reminders' prompt. Needs secrets VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT and migration 2026-09-26-dash2-push-sent.sql.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "dashboard2Enabled"
+    ],
+    "success": [
+      {
+        "event": "dash2_push_subscribe",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "A real device subscribed and the worker stored it."
+      },
+      {
+        "event": "dash2_push_sent",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "The push service accepted at least one reminder/refund push (201)."
+      }
+    ]
   }
 }

@@ -80,6 +80,13 @@ POST /api/me/phone/confirm {code} -> {ok, phone:{e164_masked,verified:true}}
 PUT  /api/admin/listings/:id/youtube {url} (admin only; accepts watch?v=, youtu.be/, /live/, /embed/ URLs or a bare 11-char id; url:'' clears) -> {ok, youtube_video_id}
 GET  /api/admin/listings/:id/youtube -> {youtube_video_id?, url?}
 POST /api/admin/refunds/:payment_id {refund_utr, amount_paise, refund_vpa} (admin only) -> {ok}
+GET  /api/admin/refunds/?status=requested|refunded|rejected|all&q&cursor (admin only; [DASH2-ADMIN-REFUNDS]; also served
+        without the trailing slash once index.ts forwards the bare path) -> { items:[{refund_id,payment_id,order_id,
+        customer:{uid,email,name},listing_id,event_title,event_starts_at,amount_paise,payer_utr,requested_at,reason,status,
+        refund_amount_paise,refund_utr,refund_vpa,refunded_at}], counts:{requested,refunded,rejected}, next_cursor? }
+        Order: requested first, then oldest first. Admin screen: /admin/refunds.
+POST /api/admin/refunds/:refund_id/reject {note?} (admin only) -> {ok, refund:{id,payment_id,status:'rejected'}}
+        Note kept in admin_audit (DB_WALLET); refunds has no note column.
 Errors: { error:'<code>', message } with proper status; never a silent catch.
 
 ## Data (D1, each CREATE in its OWN migration file — d1_apply_alters.py skips CREATEs)
