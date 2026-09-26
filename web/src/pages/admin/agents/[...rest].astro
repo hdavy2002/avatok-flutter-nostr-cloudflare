@@ -1,0 +1,6 @@
+---
+// /admin/agents and /admin/agents/* — old AI voice-agent admin. [ADMIN2-DELETE 2026-09-26]
+// The agents admin is deleted (git history keeps it); every old URL lands on /admin.
+export const prerender = false;
+return Astro.redirect('/admin', 301);
+---

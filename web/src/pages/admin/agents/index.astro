@@ -1,9 +1,0 @@
----
-export const prerender = false;
-import Dashboard from '../../../layouts/Dashboard.astro';
-import AgentsList from '../../../islands/admin-agents/AgentsList.tsx';
----
-
-<Dashboard title="AI voice agents · saathum.com" heading="AI voice agents" subtitle="Create and manage GPT-Live-1 voice agents." active="admin-agents">
-  <AgentsList client:load />
-</Dashboard>
