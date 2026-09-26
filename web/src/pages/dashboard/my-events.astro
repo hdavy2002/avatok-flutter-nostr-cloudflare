@@ -4,7 +4,9 @@
 export const prerender = false;
 import Dashboard2 from '../../layouts/Dashboard2.astro';
 import MyEvents from '../../islands/dashboard2/MyEvents.tsx';
+import PushReminderPrompt from '../../islands/dashboard2/PushReminderPrompt.tsx'; // [DASH2-PUSH]
 ---
 <Dashboard2 title="My events" active="my-events" subtitle="Upcoming and live pujas you have booked.">
+  <PushReminderPrompt client:idle />
   <MyEvents client:load />
 </Dashboard2>

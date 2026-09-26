@@ -35,6 +35,7 @@ import { toast } from '../../components/ui/sonner';
 import { Shimmer } from './Shimmer';
 import { errBody, errCode, errMessage, meApi } from './accountApi';
 import { DASH_LOGOUT } from './nav';
+import { currentSubscription, disablePush, enablePush, IOS_INSTALL_HINT, pushSupport } from './webPush'; // [DASH2-PUSH]
 
 /* ── types ──────────────────────────────────────────────────────────────── */
 
@@ -704,12 +705,68 @@ function AddressCard({ profile, onSaved }: { profile: Profile; onSaved: (p: Prof
 
 /* ── 6. Notifications ───────────────────────────────────────────────────── */
 
+/** [DASH2-PUSH] The push row acts at once (permission prompt + device subscription),
+ *  so it is not part of the Save draft; email/WhatsApp still save with the button. */
+function PushRow({ profile, onSaved }: { profile: Profile; onSaved: (p: Profile) => void }) {
+  const [support] = useState(() => pushSupport());
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState('');
+  useEffect(() => {
+    let live = true;
+    void currentSubscription().then((s) => { if (live) setSubscribed(!!s); });
+    return () => { live = false; };
+  }, []);
+  const on = !!profile.notify?.push && !!subscribed;
+  const toggle = async (want: boolean) => {
+    setBusy(true);
+    setHint('');
+    try {
+      if (want) {
+        const r = await enablePush();
+        if (!r.ok) { setHint(r.message); return; }
+        setSubscribed(true);
+        onSaved({ ...profile, notify: { ...profile.notify, push: true } });
+        toast.success('Reminders are on for this device');
+      } else {
+        await disablePush();
+        setSubscribed(false);
+        onSaved(await putProfile({ notify: { push: false } }));
+        toast.success('Push notifications turned off');
+      }
+    } catch (e) {
+      captureException(e, { where: 'dash2_profile_push' });
+      toast.error(errMessage(e, 'We could not change that. Please try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <li className="py-3 first:pt-0">
+      <div className="flex items-center gap-3">
+        <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/80"><Bell className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <label htmlFor="nt-push" className="block cursor-pointer text-[14.5px] font-extrabold text-foreground">Push notifications</label>
+          <p className="text-[12.5px] font-semibold text-muted-foreground">Reminders on this device 15 minutes before your ritual and when it goes live.</p>
+        </div>
+        {busy ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Working" /> : null}
+        <Switch id="nt-push" checked={on} disabled={busy || subscribed === null || support === 'unsupported'}
+          onCheckedChange={(v) => void toggle(v)} />
+      </div>
+      {(support === 'ios_needs_install' || support === 'unsupported' || hint) && (
+        <p role="status" className="mt-2 rounded-lg bg-muted/60 px-3 py-2 text-[12.5px] font-semibold text-muted-foreground">
+          {hint || (support === 'ios_needs_install' ? IOS_INSTALL_HINT : 'This browser can’t show notifications.')}
+        </p>
+      )}
+    </li>
+  );
+}
+
 function NotifyCard({ profile, onSaved }: { profile: Profile; onSaved: (p: Profile) => void }) {
-  const base = useMemo(() => ({ push: !!profile.notify?.push, email: !!profile.notify?.email, whatsapp: !!profile.notify?.whatsapp }), [profile.notify]);
+  const base = useMemo(() => ({ email: !!profile.notify?.email, whatsapp: !!profile.notify?.whatsapp }), [profile.notify]);
   const [d, setD, dirty, reset] = useDraft(base);
   const { saving, save } = useSaver(onSaved, 'dash2_profile_notify');
-  const rows: { k: keyof Notify; icon: ReactNode; title: string; body: string }[] = [
-    { k: 'push', icon: <Bell className="h-4 w-4" />, title: 'Push notifications', body: 'Reminders on this device before your ritual goes live.' },
+  const rows: { k: 'email' | 'whatsapp'; icon: ReactNode; title: string; body: string }[] = [
     { k: 'email', icon: <Mail className="h-4 w-4" />, title: 'Email', body: 'Booking confirmations, receipts and refund updates.' },
     { k: 'whatsapp', icon: <MessageCircle className="h-4 w-4" />, title: 'WhatsApp', body: 'Join links and reminders on WhatsApp.' },
   ];
@@ -717,8 +774,9 @@ function NotifyCard({ profile, onSaved }: { profile: Profile; onSaved: (p: Profi
     <ProfileCard icon={<Bell className="h-5 w-5" />} title="Notifications" description="Choose how we reach you."
       dirty={dirty} saving={saving} onSave={() => void save({ notify: d }, 'Notification settings saved')} onReset={reset}>
       <ul className="divide-y divide-border/40">
+        <PushRow profile={profile} onSaved={onSaved} />
         {rows.map((r) => (
-          <li key={r.k} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+          <li key={r.k} className="flex items-center gap-3 py-3 last:pb-0">
             <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/80">{r.icon}</span>
             <div className="min-w-0 flex-1">
               <label htmlFor={`nt-${r.k}`} className="block cursor-pointer text-[14.5px] font-extrabold text-foreground">{r.title}</label>
