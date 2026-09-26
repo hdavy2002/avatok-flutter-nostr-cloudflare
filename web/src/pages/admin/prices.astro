@@ -1,0 +1,11 @@
+---
+// [ADMIN2-MOVE 2026-09-26] Saa Thum's "starting from" prices (PRICING-1), in the Admin 2 shell.
+// Every ritual article and every share card (og:image) reads these live.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Prices from '../../islands/admin2/Prices.tsx';
+---
+
+<Admin2 title="Prices" active="prices" subtitle="Starting-from prices shown on every ritual article and share card. Checkout still adds prasad delivery, GST, donation and chadhava.">
+  <Prices client:load />
+</Admin2>

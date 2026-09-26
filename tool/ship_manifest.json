@@ -7180,5 +7180,31 @@
       }
     ],
     "_verified_at": "web/src/islands/admin2/EventForm.tsx capture('admin2_event_saved', {action, ok}); worker/src/routes/admin2_events.ts safeTrack('admin2_event_published'|'admin2_event_publish_blocked'|'admin2_event_cancelled'...); failures -> trackException via routes/admin2.ts admin2Route (extra.area='admin2')"
+  },
+  "ADMIN2-MOVE": {
+    "description": "[ADMIN2-MOVE] Refunds and Prices moved into the Admin 2 shell: /admin/refunds now renders islands/admin2/Refunds.tsx and the new /admin/prices renders islands/admin2/Prices.tsx, ports of AdminRefunds (DASH2-ADMIN-REFUNDS) and AdminPricing (PRICING-1) restyled to the shadcn/Dashboard 2 design system with the same worker APIs (GET /api/admin/refunds/, POST /api/admin/refunds/:payment_id, POST /api/admin/refunds/:refund_id/reject, GET /api/pricing, PUT /api/admin/pricing). Admin-only (ADMIN_UIDS), not flag-gated, no worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "in": [
+          "refunds",
+          "prices"
+        ],
+        "min_events": 1,
+        "note": "An admin opened Refunds or Prices in the new shell."
+      },
+      {
+        "event": "admin_pricing_updated",
+        "property": "havan_from",
+        "min_events": 1,
+        "gt": 0,
+        "note": "Owner saved prices from /admin/prices; the worker emits this after the KV write (same event as PRICING-1)."
+      }
+    ],
+    "_verified_at": "web/src/pages/admin/refunds.astro active='refunds' and web/src/pages/admin/prices.astro active='prices' in layouts/Admin2.astro"
   }
 }

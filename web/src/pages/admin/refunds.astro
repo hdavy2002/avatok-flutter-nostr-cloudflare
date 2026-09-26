@@ -1,16 +1,12 @@
 ---
-// [DASH2-ADMIN-REFUNDS 2026-09-26] Customer refund requests. Refunds are sent by
-// hand from the bank app; this is where the admin records the refund UTR.
+// [ADMIN2-MOVE 2026-09-26] Customer refund requests, in the Admin 2 shell. Refunds are sent by
+// hand from the bank app; this is where the admin records the refund UTR. Same API as the old
+// DASH2-ADMIN-REFUNDS screen (islands/admin/AdminRefunds.tsx).
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import AdminRefunds from '../../islands/admin/AdminRefunds.tsx';
+import Admin2 from '../../layouts/Admin2.astro';
+import Refunds from '../../islands/admin2/Refunds.tsx';
 ---
 
-<Dashboard
-  title="Refunds · saathum.com"
-  heading="Refunds"
-  subtitle="Customer refund requests. Send the refund from the bank app, then record its UTR here."
-  active="admin-refunds"
->
-  <AdminRefunds client:load />
-</Dashboard>
+<Admin2 title="Refunds" active="refunds" subtitle="Customer refund requests. Send the refund from the bank app, then record its UTR here.">
+  <Refunds client:load />
+</Admin2>
