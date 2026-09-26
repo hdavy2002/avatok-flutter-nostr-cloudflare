@@ -1,6 +1,6 @@
 ---
 title: Going live and running a session
-description: How device checks, the waiting room and session start and end work for live shows and 1:1 sessions on Saathum.
+description: How device checks, the waiting room and session start and end work for live shows and 1:1 sessions on Saa Thum.
 section: creators
 order: 4
 updated: 2026-09-11
@@ -8,7 +8,7 @@ keywords: ["device check", "camera not working", "microphone test", "speaker tes
 audience: creator
 faq:
   - q: Why do I have to test my camera, mic and speaker before joining?
-    a: Saathum checks your camera preview, microphone level and speaker sound before you enter a session, so you find out about a device problem before your customer is waiting on you.
+    a: Saa Thum checks your camera preview, microphone level and speaker sound before you enter a session, so you find out about a device problem before your customer is waiting on you.
   - q: What happens if the other person doesn't join?
     a: If you connect and the buyer never shows up, the booking counts as delivered and you're paid your share. If the buyer connects and you don't, it's treated as a no-show on your side and the buyer is refunded in full.
   - q: When does my live show actually end?

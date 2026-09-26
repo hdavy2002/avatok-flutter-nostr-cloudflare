@@ -1,5 +1,5 @@
 ---
-title: "Verification & KYC on Saathum"
+title: "Verification & KYC on Saa Thum"
 description: "Who has to complete a face check to post publicly, what a full ID check unlocks, and how long biometric data is kept."
 section: account-and-safety
 order: 1
@@ -7,24 +7,24 @@ updated: 2026-09-11
 keywords: ["verification", "KYC", "liveness", "face check", "Didit", "biometric", "payout verification", "identity"]
 audience: both
 faq:
-  - q: "Do I need to verify to just watch or book on Saathum?"
+  - q: "Do I need to verify to just watch or book on Saa Thum?"
     a: "No — browsing, booking and watching never require a face check. Only your first public action does."
   - q: "How long is a face check valid for?"
     a: "Currently 90 days from when you passed — after that you'll be asked to redo it before your next public action."
-  - q: "How long does Saathum keep my face scan?"
+  - q: "How long does Saa Thum keep my face scan?"
     a: "For as long as your account is open, then it is destroyed on a fixed schedule after you delete your account — see the full retention schedule linked below."
 draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
-## Why Saathum asks you to verify
+## Why Saa Thum asks you to verify
 
-Saathum gates your **first public action**, not signup. You can create an account, browse the marketplace, watch, and book sessions without ever facing a camera. The moment you try to do something that puts you in front of other people you haven't spoken to before — posting, creating a listing, going live, commenting, messaging or calling a stranger, joining or posting in a group, forwarding, or uploading — Saathum asks for a quick **liveness check** first.
+Saa Thum gates your **first public action**, not signup. You can create an account, browse the marketplace, watch, and book sessions without ever facing a camera. The moment you try to do something that puts you in front of other people you haven't spoken to before — posting, creating a listing, going live, commenting, messaging or calling a stranger, joining or posting in a group, forwarding, or uploading — Saa Thum asks for a quick **liveness check** first.
 
 ## The two kinds of check
 
 **Liveness check (face scan).** A short camera capture that confirms a real, living person is behind the account. It's run through our verification partner, **Didit**, and is what unlocks the public actions above. It does not confirm who you are — only that you're a real person, once.
 
-**Full identity check (document + selfie).** A separate, stronger check — a government ID plus a matching selfie — used for creator and payout-related actions, where Saathum needs more than "a real person" and needs to confirm identity against a document. This is handled by our KYC provider and is distinct from the liveness check; passing one does not automatically pass the other.
+**Full identity check (document + selfie).** A separate, stronger check — a government ID plus a matching selfie — used for creator and payout-related actions, where Saa Thum needs more than "a real person" and needs to confirm identity against a document. This is handled by our KYC provider and is distinct from the liveness check; passing one does not automatically pass the other.
 
 ## What verification unlocks
 
@@ -34,13 +34,13 @@ Saathum gates your **first public action**, not signup. You can create an accoun
 
 ## How long a check stays valid
 
-A liveness pass is valid for **90 days**. After that window, Saathum will ask you to redo the check the next time you try a public action — your account and history aren't affected, you just face the camera again.
+A liveness pass is valid for **90 days**. After that window, Saa Thum will ask you to redo the check the next time you try a public action — your account and history aren't affected, you just face the camera again.
 
 ## What is collected, and how long it's kept
 
 Before the camera opens, you're asked for explicit consent — the checkbox is never pre-ticked, and if you decline, nothing is captured and you can keep browsing, reading and watching. What the check actually collects, why, who can see it, and exactly how long it's retained (including what changes once you delete your account) is set out in full in our [Biometric Data Retention & Destruction Schedule](/biometric-retention). That page is the authoritative source — this article only summarises it, so if the two ever seem to disagree, the retention schedule is correct.
 
-In short: Saathum does not sell, use for advertising, or run facial recognition against your face scan. It's used only to confirm a real person completed the check, and for safety and lawful-request response.
+In short: Saa Thum does not sell, use for advertising, or run facial recognition against your face scan. It's used only to confirm a real person completed the check, and for safety and lawful-request response.
 
 ## If verification fails or you're stuck
 

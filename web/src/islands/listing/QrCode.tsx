@@ -1,6 +1,6 @@
 import { UiText } from "../../lib/i18n/react";
 // [LIST-PAGE-2 gap 3] "SCAN TO OPEN THIS SHOW ON YOUR PHONE" — comp:
-// design/live-streaming/Saathum Listing Details.dc.html:170-172. The comp used a
+// design/live-streaming/Saa Thum Listing Details.dc.html:170-172. The comp used a
 // third-party image proxy (api.qrserver.com) to render the code, which is a
 // live external dependency this repo shouldn't hard-wire into a production
 // page (an outage there blanks the code, and it round-trips the listing URL to

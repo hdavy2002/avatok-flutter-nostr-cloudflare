@@ -121,7 +121,7 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
       });
       // A real Clerk session now exists, so getActiveToken() returns a JWT that
       // requireUser accepts — which is the entire point of this component. And
-      // for a new buyer the Saathum `users` row and Saathum number now exist too
+      // for a new buyer the Saa Thum `users` row and Saa Thum number now exist too
       // (verifyPasswordlessCode bootstraps), so the same person can sign in to
       // the app later and find their booking.
       capture('auth_signin_result', { method: 'email_code', surface: 'checkout', outcome: 'ok' });

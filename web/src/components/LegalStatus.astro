@@ -1,9 +1,9 @@
 ---
 /*
- * LegalStatus — the single source of truth for who operates Saathum.
+ * LegalStatus — the single source of truth for who operates Saa Thum.
  *
  * This component is the single source of truth for the companies behind
- * Saathum. Every legal page imports it so the disclosure stays consistent
+ * Saa Thum. Every legal page imports it so the disclosure stays consistent
  * across the site.
  *
  * `variant`:
@@ -28,23 +28,23 @@ const { variant = 'full', heading } = Astro.props;
 <div class="note" id={heading ? undefined : 'status'}>
   {variant === 'short' ? (
     <p>
-      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">Saathum is built and operated through</ui-copy>{' '}
+      <ui-copy style="display:inline" data-i18n="web-common.0f8ef52b8743d566">Saa Thum is built and operated through</ui-copy>{' '}
       <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.c8dc98e3e76b237a">. The service is
       being developed and expanded globally. Contact:</ui-copy>
-      <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
+      {ORG.email.replace('@', ' (@) ')}.
     </p>
   ) : (
     <Fragment>
       <p>
-        <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline">Saathum is the puja and havan service brand of</ui-copy>{' '}
+        <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong>{' '}<ui-copy style="display:inline">Saa Thum is the puja and havan service brand of</ui-copy>{' '}
         <strong>{ORG.legalName}</strong><ui-copy style="display:inline" data-i18n="web-common.92be743e72be1116">,
-        and the global headquarters of Saathum.</ui-copy>
+        and the global headquarters of Saa Thum.</ui-copy>
       </p>
       <p style="margin-top:12px">
         <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong>{' '}{ORG.legalName}{' '}<ui-copy style="display:inline" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.
         The public registered-agent address is</ui-copy>{' '}{ORG.address.street}, {ORG.address.locality},
         {ORG.address.region}{' '}{ORG.address.postalCode}<ui-copy style="display:inline" data-i18n="web-common.12a81824123d9b3a">. For general and investor enquiries,
-        write to</ui-copy>{' '}<a href="mailto:hello@saathum.com">hello@saathum.com</a>.
+        write to</ui-copy>{' '}hello (@) saathum.com.
       </p>
       <p style="margin-top:12px">
         <strong data-i18n="web-common.4a9f7bc8b5d34e21">India.</strong>{' '}{ORG.indianEntity.name}{' '}
@@ -62,10 +62,10 @@ const { variant = 'full', heading } = Astro.props;
       <p style="margin-top:12px">
         <strong data-i18n="web-common.fe2a3ce339afe0a0">Registered office.</strong>{' '}{ORG.address.street}, {ORG.address.locality},
         {ORG.address.region}{' '}{ORG.address.postalCode}<ui-copy style="display:inline" data-i18n="web-common.6ce614f2ee8cbd80">, United States.</ui-copy><br />
-        <strong data-i18n="web-common.b30d6d5e28d714c8">Contact.</strong>{' '}<a href={`mailto:${ORG.email}`}>{ORG.email}</a>{' '}
-        <ui-copy style="display:inline" data-i18n="web-common.1e2754fc6999db70">(support and billing) ·</ui-copy>{' '}<a href="mailto:hello@saathum.com">hello@saathum.com</a>{' '}
+        <strong data-i18n="web-common.b30d6d5e28d714c8">Contact.</strong>{' '}{ORG.email.replace('@', ' (@) ')}{' '}
+        <ui-copy style="display:inline" data-i18n="web-common.1e2754fc6999db70">(support and billing) ·</ui-copy>{' '}hello (@) saathum.com{' '}
         <ui-copy style="display:inline" data-i18n="web-common.e355f15f55aecab4">(general and investor enquiries) ·</ui-copy>{' '}
-        <a href="mailto:privacy@saathum.com">privacy@saathum.com</a>{' '}<ui-copy style="display:inline" data-i18n="web-common.a3496efa95e8fcbd">(privacy).</ui-copy>
+        privacy (@) saathum.com{' '}<ui-copy style="display:inline" data-i18n="web-common.a3496efa95e8fcbd">(privacy).</ui-copy>
       </p>
     </Fragment>
   )}

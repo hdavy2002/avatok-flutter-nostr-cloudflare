@@ -1,6 +1,6 @@
 ---
-title: "Report a problem on Saathum"
-description: "How to report a problem with a ritual, a booking or a payment on Saathum — what to include and who reads it."
+title: "Report a problem on Saa Thum"
+description: "How to report a problem with a ritual, a booking or a payment on Saa Thum — what to include and who reads it."
 section: account-and-safety
 order: 3
 updated: 2026-09-11
@@ -8,7 +8,7 @@ keywords: ["report", "block", "complaint", "grievance", "abuse", "contact suppor
 audience: both
 faq:
   - q: "Who do I email to report abuse or unsafe content?"
-    a: "support@saathum.com, or use the in-app report tool — for a formal complaint under Indian law, email grievance@saathum.com instead."
+    a: "support (@) saathum.com, or use the in-app report tool — for a formal complaint under Indian law, email grievance (@) saathum.com instead."
   - q: "How fast will a formal grievance be acknowledged?"
     a: "Within 24 hours, with a resolution within 15 days of receipt. Complaints about non-consensual intimate imagery are acted on within 24 hours."
 draft: false
@@ -22,21 +22,21 @@ Inside the app, reporting and blocking a user, listing or piece of content is bu
 
 ## Reporting a problem with a ritual
 
-Use the in-app report tool, or email **support@saathum.com**. Include as much as you can:
+Use the in-app report tool, or email **support (@) saathum.com**. Include as much as you can:
 
 - The ritual you're reporting, with a link if you have one.
 - What happened, and roughly when.
 - Screenshots or other evidence, if you have them.
 
-If you find AI-generated content objectionable, the same address — support@saathum.com — is where to flag it for review.
+If you find AI-generated content objectionable, the same address — support (@) saathum.com — is where to flag it for review.
 
 ## A payment problem
 
-For anything about a charge or a refund, email **support@saathum.com** with your account email, what you expected to happen, and what actually happened. See also [Refunds and cancellations](/help/billing/refunds).
+For anything about a charge or a refund, email **support (@) saathum.com** with your account email, what you expected to happen, and what actually happened. See also [Refunds and cancellations](/help/billing/refunds).
 
 ## Filing a formal complaint (Grievance Redressal)
 
-For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saathum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance@saathum.com** with the subject line *Grievance*. This reaches Saathum's Grievance Officer, **Depika Singh**, directly.
+For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saa Thum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance (@) saathum.com** with the subject line *Grievance*. This reaches Saa Thum's Grievance Officer, **Depika Singh**, directly.
 
 Include what you can: your full name and the email/phone linked to your account, a clear description of the harm, the exact location of the content (link, handle, group, approximate date/time), any evidence you have, and the outcome you're seeking. One complaint per issue keeps the record clear.
 
@@ -49,8 +49,8 @@ Include what you can: your full name and the email/phone linked to your account,
 
 ## Other ways to reach us
 
-- **General support and feedback** — support@saathum.com, or the [Contact us](/contact) form.
-- **Privacy and data requests** — privacy@saathum.com.
-- **Anything else** — hello@saathum.com.
+- **General support and feedback** — support (@) saathum.com, or the [Contact us](/contact) form.
+- **Privacy and data requests** — privacy (@) saathum.com.
+- **Anything else** — hello (@) saathum.com.
 
-If someone is in immediate danger, contact your local emergency services first — Saathum is not an emergency service.
+If someone is in immediate danger, contact your local emergency services first — Saa Thum is not an emergency service.

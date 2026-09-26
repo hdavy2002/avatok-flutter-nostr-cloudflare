@@ -10,7 +10,7 @@ faq:
   - q: "Can I get a refund if I cancel?"
     a: "Yes — cancel at least 24 hours before the scheduled start and you get a full refund. Cancellations less than 24 hours before are not refunded."
   - q: "Is the refund automatic?"
-    a: "No. Email support@saathum.com or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
+    a: "No. Email support (@) saathum.com or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
   - q: "Where do I find my UPI transaction number?"
     a: "Open the payment in your UPI app's transaction history (Google Pay, PhonePe, Paytm, BHIM or your bank's app), or check your bank's payment SMS. It's the 12-digit UTR / UPI reference number."
 draft: false
@@ -32,7 +32,7 @@ Cancel at least **24 hours before the scheduled start** and you get a **full ref
 
 ## Requesting a refund
 
-Refunds are not automatic. Email **support@saathum.com** or use the [contact form](/contact) with:
+Refunds are not automatic. Email **support (@) saathum.com** or use the [contact form](/contact) with:
 
 1. Your full name, and the email or phone number you booked with.
 2. The ritual and its scheduled date and time.
@@ -52,4 +52,4 @@ Your sankalp is still performed, so the booking isn't refunded. The replay is av
 
 ## Wrong or duplicate payments
 
-Email support@saathum.com with the UPI transaction number for each payment. Please contact us before raising a dispute with your bank — it's faster.
+Email support (@) saathum.com with the UPI transaction number for each payment. Please contact us before raising a dispute with your bank — it's faster.

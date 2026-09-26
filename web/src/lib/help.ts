@@ -30,7 +30,7 @@ export const SECTIONS: Record<
   'getting-started': {
     label: 'Getting started',
     order: 1,
-    blurb: 'What Saathum is, how to sign up, and choosing between a puja and a havan.',
+    blurb: 'What Saa Thum is, how to sign up, and choosing between a puja and a havan.',
     tone: 'cream',
   },
   'booking-and-paying': {

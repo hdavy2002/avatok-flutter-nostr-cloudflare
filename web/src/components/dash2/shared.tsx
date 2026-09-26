@@ -76,7 +76,7 @@ export function errorMessage(e: unknown): string {
     if (e.status >= 500) return 'Our server had a problem. Please try again.';
     return 'Something went wrong. Please try again.';
   }
-  return 'Could not reach Saathum. Check your connection and try again.';
+  return 'Could not reach Saa Thum. Check your connection and try again.';
 }
 
 // ─────────────────────────── formatting (IST) ───────────────────────────

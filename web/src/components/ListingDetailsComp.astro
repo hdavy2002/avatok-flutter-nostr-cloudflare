@@ -89,10 +89,10 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const slug = l.slug?.trim();
   const showPath = handle && slug ? `/${handle}/${slug}` : `/l/${l.id}`;
   const SHOW_URL = new URL(showPath, 'https://saathum.com').toString();
-  const hostName = (l.creator?.name || l.creator?.handle || 'Saathum').trim();
+  const hostName = (l.creator?.name || l.creator?.handle || 'Saa Thum').trim();
   // Possessive for section titles: "Sunny's house rules" / "Host's house rules" when nameless.
   const hostPoss = (l.creator?.name || l.creator?.handle) ? `${hostName.split(' ')[0]}'s` : 'Host\u2019s';
-  const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — Saathum" allow="autoplay" loading="lazy"></iframe>`;
+  const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — Saa Thum" allow="autoplay" loading="lazy"></iframe>`;
 
   const rules = (l.attrs?.content_house_rules ?? []).map((r, i) => ({ n: String(i + 1), head: r.heading, text: r.body }));
   const rulesIntro = l.attrs?.content_house_rules_intro ?? null;
@@ -321,7 +321,7 @@ const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').s
 const hostAvatar = listing.creator?.avatar_url ?? null;
 const hostHandle = listing.creator?.handle ?? null;
 const hostHref = hostHandle ? `/c/${encodeURIComponent(hostHandle)}` : null;
-// [WEB-MSG-HANDOFF-1] The creator's Saathum number — their public identity, and
+// [WEB-MSG-HANDOFF-1] The creator's Saa Thum number — their public identity, and
 // the whole point of the messaging handoff. Already on the wire since
 // [PIVOT-NUMBER-PRIVACY-1]; `shapeCard` emits it as `creator.avatok_number`.
 // Their REAL phone number is never here and never should be.
@@ -820,7 +820,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                   <p class="show-closed__title">{closedTitle}</p>
                   <p class="show-closed__line">{closedLine}</p>
                   {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
-                  <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on Saathum →</a>
+                  <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on Saa Thum →</a>
                 </div>
               )}
               <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
@@ -876,7 +876,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </div>
       </div>
       {masala && (
-        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Lose the seat, lose the scene.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— The Saathum promise</ui-copy></div>
+        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Lose the seat, lose the scene.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— The Saa Thum promise</ui-copy></div>
       )}
     </aside>
 
@@ -922,7 +922,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span class="chip">~{repliesIn} <ui-copy style="display:contents" data-i18n="web-common.62302617f488f75a">REPLY</ui-copy></span>
             </div>
             <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.1e1fc50ea76d2183">✉ Message</ui-copy> {hostName.split(' ')[0]}</button>
-            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE SAATHUM APP · NO PHONE NUMBERS SHARED</span>
+            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE SAA THUM APP · NO PHONE NUMBERS SHARED</span>
             <div id="ask-host-panel" style="display:none;">
               <MessageHostIsland client:visible listingId={listing.id} hostName={hostName} hostNumber={hostNumber} />
             </div>
@@ -937,13 +937,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {newHost ? (
               <div class="newhost-box">
                 <div class="newhost-box__head">
-                  <span class="newhost-box__tag">NEW ON SAATHUM</span>
+                  <span class="newhost-box__tag">NEW ON SAA THUM</span>
                   <span class="newhost-box__title">This ritual is new — you'd be among the first to book it.</span>
                 </div>
-                <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what Saathum has checked instead:</p>
+                <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what Saa Thum has checked instead:</p>
                 <div class="newhost-box__grid">
                   <div class="newhost-box__item"><span>{idVerified ? '✓' : '○'} <ui-copy style="display:contents" data-i18n="web-common.73db772917e59e19">ID VERIFIED</ui-copy></span><p data-i18n="web-common.c01b879972f0d561">Government ID matched to the payout account.</p></div>
-                  <div class="newhost-box__item"><span data-i18n="web-common.3bfd30fd24ad95fe">✓ INTRO CALL DONE</span><p data-i18n="web-common.2a68a53615bf6fc3">A live onboarding call with the Saathum team.</p></div>
+                  <div class="newhost-box__item"><span data-i18n="web-common.3bfd30fd24ad95fe">✓ INTRO CALL DONE</span><p data-i18n="web-common.2a68a53615bf6fc3">A live onboarding call with the Saa Thum team.</p></div>
                   <div class="newhost-box__item"><span data-i18n="web-common.90216d4770f413b9">✓ RULES TRAINING</span><p data-i18n="web-common.86a323d2974519af">Completed conduct and safety training.</p></div>
                 </div>
                 <div class="newhost-box__promise">
@@ -992,7 +992,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="section-head">
             <h2 class="section-title">{hostPoss} <ui-copy style="display:contents" data-i18n="web-common.d6e21286621a8586">house</ui-copy> <span data-i18n="web-common.fe4d7b920447bdc2" class="section-title__accent">rules.</span></h2>
             <img data-india-i18n-attr="alt:web-common.0bb1b667ae2b58b3" src={publicImage('/assets/jatt-sticker.png', { width: 900, fit: 'scale-down' })} alt="Caution: on board — proceed with respect" class="rules-sticker" />
-            <span class="section-head__note">SET BY SAATHUM · SHOWN BEFORE EVERY BOOKING</span>
+            <span class="section-head__note">SET BY SAA THUM · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="divider"><TruckBorder kind="eyes" /></div>
           <div class="rules-card">
@@ -1022,7 +1022,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               ))}
             </div>
             <div class="rules-card__footer">
-              <span data-i18n="web-common.8963edc36a16271e">SAATHUM BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
+              <span data-i18n="web-common.8963edc36a16271e">SAA THUM BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
               <a data-i18n="web-common.4160a94d053eff1a" href="/community-guidelines" class="rules-card__footer-link">READ PLATFORM RULES</a>
             </div>
           </div>
@@ -1085,7 +1085,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <div class="trust-item"><div>YOUR NAME IN THE SANKALP</div><p>Our priest speaks your name, gotra and wish at the altar, on camera.</p></div>
               <div class="trust-item"><div>WATCH LIVE OR REPLAY</div><p>Join live, or watch the replay for 7 days.</p></div>
               <div class="trust-item"><div>ONLY BENEFIC RITUALS</div><p>No fear and no fierce rituals. We never tell you something bad will happen if you don't book.</p></div>
-              <div class="trust-item"><div>NO GUARANTEED OUTCOMES</div><p>Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.</p></div>
+              <div class="trust-item"><div>NO GUARANTEED OUTCOMES</div><p>Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p></div>
             </div>
           </div>
         </div>
@@ -1405,7 +1405,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   };
   document.getElementById('share-wa').onclick = () => {
     document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'whatsapp' } }));
-    window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on Saathum — ' + CONFIG.showUrl), '_blank');
+    window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on Saa Thum — ' + CONFIG.showUrl), '_blank');
   };
   document.getElementById('share-fb').onclick = () => window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(CONFIG.showUrl), '_blank');
   document.getElementById('share-yt').onclick = () => window.open('https://www.youtube.com/@avatok', '_blank');
@@ -1481,7 +1481,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <p class="browse-card__blurb">${c.blurb}</p>
           <div class="browse-card__foot">
             <span class="browse-card__ini">${c.ini}</span>
-            <span class="browse-card__name">${c.name || 'Saathum'}${c.verified ? ' ✓' : ''}</span>
+            <span class="browse-card__name">${c.name || 'Saa Thum'}${c.verified ? ' ✓' : ''}</span>
             <span class="browse-card__dur">${c.dur}</span>
           </div>
         </div>

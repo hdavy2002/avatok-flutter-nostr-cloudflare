@@ -1,7 +1,7 @@
 /** Homepage-only navigation; shared/default chrome keeps its existing menus. */
-// [SAATHUM-ARCHIVE-1 2026-09-25] OWNER DECISION: Saathum is now a simple
+// [SAATHUM-ARCHIVE-1 2026-09-25] OWNER DECISION: Saa Thum is now a simple
 // Puja & Havan booking site. The marketplace stays (renamed, showing
-// Saathum's own internal listings — no outside creators). Creator/seller,
+// Saa Thum's own internal listings — no outside creators). Creator/seller,
 // consultation and UGC pages are ARCHIVED, not deleted: they are listed in
 // src/lib/archivedPages.ts, so restoring one is: remove it from
 // ARCHIVED_PAGES + re-add its link below.

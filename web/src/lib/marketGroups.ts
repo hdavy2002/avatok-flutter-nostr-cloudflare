@@ -74,7 +74,7 @@ export const GROUP_DISPLAY: Record<GroupId, GroupDisplay> = {
 export const GROUP_ORDER: GroupId[] = GROUPS.map((g) => g.id);
 
 /**
- * [SAATHUM-WEB-UI 2026-09-20] Groups Saathum actually shows as filters/tiles.
+ * [SAATHUM-WEB-UI 2026-09-20] Groups Saa Thum actually shows as filters/tiles.
  * `find_your_people` (companionship) has every one of its sub-categories
  * hidden per SPEC.md — it can never hold a published listing, so offering it
  * as a filter option or a marketplace/homepage tile is a dead end, not a

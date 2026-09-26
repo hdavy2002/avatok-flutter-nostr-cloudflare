@@ -12,7 +12,7 @@ const imageContent = content.replace(/<img\b[^>]*>/g, tag =>
   tag.replace(/\bsrc="([^"]+)"/, (_attribute, source: string) =>
     `src="${publicImage(source, { width: tag.includes('fetchpriority="high"') ? 1280 : 640, fit: 'scale-down' })}"`));
 ---
-<Base title="Your people. Your moment. Your income. · Saathum" description="A marketplace for creators and their biggest fans. Host paid live streams, book private 1:1 video meetups, and explore local payouts with Saathum." chrome={false} noindex={true} image="/assets/global-original/hero-source.png">
+<Base title="Your people. Your moment. Your income. · Saa Thum" description="A marketplace for creators and their biggest fans. Host paid live streams, book private 1:1 video meetups, and explore local payouts with Saa Thum." chrome={false} noindex={true} image="/assets/global-original/hero-source.png">
   <GlobalHeader design="disco" homePath="/global-next" />
   <Fragment set:html={imageContent} />
   <SiteFooter variant="global" />

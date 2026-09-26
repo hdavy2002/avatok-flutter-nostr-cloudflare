@@ -124,8 +124,8 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
           <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
           {listing.creator && (
             <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saathum'} size={40} />
-              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saathum'}</span>
+              <Avatar src={listing.creator.avatar} name={hostName ?? 'Saa Thum'} size={40} />
+              <span class="font-display font-semibold text-[16px] text-ink">{hostName ?? 'Saa Thum'}</span>
             </a>
           )}
           {(startsAtLabel || durationTag || langTag) && (
@@ -151,7 +151,7 @@ const hostName = listing.creator?.name || (listing.creator?.handle ? `@${listing
             No app to learn — just your email for the confirmation.
           </p>
           <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.
+            Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
           </p>
         </header>
         <BookingFlow client:load listing={listing} />

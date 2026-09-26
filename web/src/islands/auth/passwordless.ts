@@ -106,8 +106,8 @@ function isAlreadyExists(e: unknown): boolean {
  * Materialise the Saathum-side account.
  *
  * [WEB-PWLESS-1] Until now ONLY /sign-up did this, so an account created at
- * checkout existed to Clerk and was invisible to Saathum — no `users` row, no
- * Saathum number, nothing to attach a booking or a later app sign-in to. Every
+ * checkout existed to Clerk and was invisible to Saa Thum — no `users` row, no
+ * Saa Thum number, nothing to attach a booking or a later app sign-in to. Every
  * path that creates an account calls it now.
  *
  * Never throws: the Clerk session is already live by the time we get here, so a

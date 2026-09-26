@@ -1,7 +1,7 @@
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* Shared primitives for the Saathum auth surface (/sign-in, /sign-up).
+/* Shared primitives for the Saa Thum auth surface (/sign-in, /sign-up).
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Built from design/login/README.md. All styling
  * lives in src/styles/auth.css — these components only own structure, state and
@@ -88,7 +88,7 @@ export function Wordmark({ href = '/' }: { href?: string }) {
   const {t:uiT}=useUiTranslation("web-auth");
 
   return (
-    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","Saathum home")}>
+    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","Saa Thum home")}>
       <span className="wm-ava">ava</span>
       <span className="wm-tok">TOK</span>
     </a>

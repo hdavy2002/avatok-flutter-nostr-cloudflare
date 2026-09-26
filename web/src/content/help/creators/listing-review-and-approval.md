@@ -33,7 +33,7 @@ A reviewer sees your listing's content alongside every publish requirement it cu
 
 A reviewer can correct certain fields directly — things like the title, description, category, price, schedule, capacity, and similar content fields. They can't change who owns the listing, its structural type, or its cover-photo pipeline.
 
-If your listing was already approved, an edit like this doesn't send it back to the queue — it keeps its approval, on the reasoning that the reviewer who fixed it is also the one who'd have to re-approve it. Every field that changed is recorded as a before/after in the listing's history, and you can ask support@saathum.com what was changed.
+If your listing was already approved, an edit like this doesn't send it back to the queue — it keeps its approval, on the reasoning that the reviewer who fixed it is also the one who'd have to re-approve it. Every field that changed is recorded as a before/after in the listing's history, and you can ask support (@) saathum.com what was changed.
 
 Separately, if *you* edit certain material fields on a listing that's already been approved or published — its title, price, schedule, category, cover photos and similar — that edit can invalidate the existing review and send it back to pending review automatically, because what a reviewer signed off on is no longer what's live.
 

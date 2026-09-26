@@ -1,6 +1,6 @@
 ---
-title: "Delete your Saathum account"
-description: "What happens, step by step, when you delete your Saathum account — the 30-day grace period, what's erased, and what's kept."
+title: "Delete your Saa Thum account"
+description: "What happens, step by step, when you delete your Saa Thum account — the 30-day grace period, what's erased, and what's kept."
 section: account-and-safety
 order: 4
 updated: 2026-09-11
@@ -10,9 +10,9 @@ faq:
   - q: "Is my account deleted the moment I tap Delete?"
     a: "No — deletion is scheduled 30 days out. Your account and data stay untouched until the grace period ends, unless you cancel it first."
   - q: "How do I cancel a deletion I've already started?"
-    a: "Just sign back in before the 30 days are up — Saathum will show you the grace period is running and offer to reactivate your account."
+    a: "Just sign back in before the 30 days are up — Saa Thum will show you the grace period is running and offer to reactivate your account."
   - q: "Can I get things purged sooner, or check they were actually removed?"
-    a: "Email privacy@saathum.com with your account email and what you'd like checked or removed. For a formal complaint, use grievance@saathum.com."
+    a: "Email privacy (@) saathum.com with your account email and what you'd like checked or removed. For a formal complaint, use grievance (@) saathum.com."
 draft: false
 ---
 
@@ -20,19 +20,19 @@ draft: false
 
 ## It's a 30-day grace period, not instant deletion
 
-Tapping **Delete account** in Settings does not wipe your data right away. Saathum schedules the deletion for **30 days later** and marks your account as pending. Nothing about your profile, listings, bookings, or history is touched during those 30 days.
+Tapping **Delete account** in Settings does not wipe your data right away. Saa Thum schedules the deletion for **30 days later** and marks your account as pending. Nothing about your profile, listings, bookings, or history is touched during those 30 days.
 
 ## Step by step
 
-1. **You tap Delete account** and confirm in the dialog. The app calls Saathum's servers to schedule the deletion; if that call fails, you'll see an error and your account is **not** scheduled — nothing silently happens in the background.
+1. **You tap Delete account** and confirm in the dialog. The app calls Saa Thum's servers to schedule the deletion; if that call fails, you'll see an error and your account is **not** scheduled — nothing silently happens in the background.
 2. **You're signed out.** Your sign-in is *not* deleted at this point — it's kept intact on purpose, specifically so you can sign back in and reactivate during the grace window.
 3. **The 30-day clock runs.** Your account, content and history stay exactly as they were.
-4. **If you sign back in during those 30 days**, Saathum checks for a pending deletion on every login (Google or email code) and tells you the account is scheduled for deletion. You're offered the choice to reactivate — cancelling the deletion — or to stay signed out and let it proceed. If you sign back in during the grace period and aren't shown this choice, email support@saathum.com straight away so the deletion can be cancelled for you.
-5. **If the 30 days pass with no reactivation**, the deletion cascade runs and removes your data from Saathum's systems, as described below.
+4. **If you sign back in during those 30 days**, Saa Thum checks for a pending deletion on every login (Google or email code) and tells you the account is scheduled for deletion. You're offered the choice to reactivate — cancelling the deletion — or to stay signed out and let it proceed. If you sign back in during the grace period and aren't shown this choice, email support (@) saathum.com straight away so the deletion can be cancelled for you.
+5. **If the 30 days pass with no reactivation**, the deletion cascade runs and removes your data from Saa Thum's systems, as described below.
 
 ## What is removed after the 30 days
 
-Once the grace period elapses, Saathum deletes your profile, settings, uploaded media and files, message inbox, follows/blocks/mutes, push tokens, community memberships, verification status, calendar connections, marketplace listings and creator profile, your login account, and your analytics identity, among other stores tied to your account.
+Once the grace period elapses, Saa Thum deletes your profile, settings, uploaded media and files, message inbox, follows/blocks/mutes, push tokens, community memberships, verification status, calendar connections, marketplace listings and creator profile, your login account, and your analytics identity, among other stores tied to your account.
 
 ## What is kept on purpose — this is not a bug
 
@@ -51,16 +51,16 @@ Your liveness verification evidence is **not** wiped the instant you request del
 
 ## What might not be fully automatic yet
 
-Saathum's deletion process cascades across many separate systems, and a couple of things are worth knowing plainly rather than assuming:
+Saa Thum's deletion process cascades across many separate systems, and a couple of things are worth knowing plainly rather than assuming:
 
-- If you've used Saathum under more than one account identifier over time (for example after changing sign-in providers), data saved under an **older** identifier that the system no longer recognises as "you" may not be caught by the automatic cascade.
+- If you've used Saa Thum under more than one account identifier over time (for example after changing sign-in providers), data saved under an **older** identifier that the system no longer recognises as "you" may not be caught by the automatic cascade.
 - Some connected external services are cleaned up on a best-effort, retrying basis rather than instantly, so a brief lag before everything disappears everywhere is normal.
 
 If you want confirmation that your data was fully removed, or you believe something was left behind after your 30-day grace period ended, don't assume it will resolve itself — ask us directly.
 
 ## Ask for a manual check or purge
 
-Email **privacy@saathum.com** with your account email and what you'd like checked or removed. This is the right route for confirming a deletion actually completed, or flagging data you believe is still hanging around after your grace period ended. See [Report a problem](/help/account-and-safety/report-a-problem) for what to include and the timelines we work to.
+Email **privacy (@) saathum.com** with your account email and what you'd like checked or removed. This is the right route for confirming a deletion actually completed, or flagging data you believe is still hanging around after your grace period ended. See [Report a problem](/help/account-and-safety/report-a-problem) for what to include and the timelines we work to.
 
 ## Changed your mind before you even deleted?
 

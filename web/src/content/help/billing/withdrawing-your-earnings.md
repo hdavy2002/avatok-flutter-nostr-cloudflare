@@ -1,14 +1,14 @@
 ---
 title: "Withdrawing your earnings"
-description: "The current status of Saathum withdrawals and payout semantics."
+description: "The current status of Saa Thum withdrawals and payout semantics."
 section: billing
 order: 3
 updated: 2026-09-11
 keywords: ["payout", "withdraw", "UPI", "withdrawal", "paisa nikalna", "bank transfer", "VPA", "creator earnings", "minimum balance"]
 audience: creator
 faq:
-  - q: "How do I get my Saathum earnings into my bank account?"
-    a: "Withdrawal semantics are not yet available, so Saathum does not currently promise UPI, bank transfer, or another payout method."
+  - q: "How do I get my Saa Thum earnings into my bank account?"
+    a: "Withdrawal semantics are not yet available, so Saa Thum does not currently promise UPI, bank transfer, or another payout method."
   - q: "Why can't I withdraw right away?"
     a: "No withdrawal workflow is currently available. Future availability and verification requirements will be published here first."
   - q: "What happens if my payout fails?"
@@ -56,4 +56,4 @@ There is no payout workflow to fail or return at present. Any future implementat
 
 ## Holds and declines
 
-A payout can be delayed, held, reduced, or declined where Saathum reasonably suspects fraud, money laundering, sanctions exposure, or a breach of the [Terms of Service](/terms) — or where law or a payment partner requires it. Amounts you owe, such as a reversed transaction, can also be set off against a pending payout. See Payouts & Withdrawals §11.
+A payout can be delayed, held, reduced, or declined where Saa Thum reasonably suspects fraud, money laundering, sanctions exposure, or a breach of the [Terms of Service](/terms) — or where law or a payment partner requires it. Amounts you owe, such as a reversed transaction, can also be set off against a pending payout. See Payouts & Withdrawals §11.

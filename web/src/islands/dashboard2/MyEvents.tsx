@@ -48,14 +48,14 @@ function downloadIcs(item: EventItem) {
   const end = item.ends_at ?? start + (item.listing.duration_min ?? 60) * 60_000;
   const url = item.join_url ? new URL(item.join_url, location.origin).toString() : `${location.origin}/dashboard/my-events`;
   const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Saathum//My events//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Saa Thum//My events//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
     `UID:${item.order_id ?? item.listing.id}@saathum.com`,
     `DTSTAMP:${icsDate(Date.now())}`,
     `DTSTART:${icsDate(start)}`,
     `DTEND:${icsDate(end)}`,
     `SUMMARY:${icsEscape(item.listing.title)}`,
-    `DESCRIPTION:${icsEscape(`Join your Saathum puja: ${url}`)}`,
+    `DESCRIPTION:${icsEscape(`Join your Saa Thum puja: ${url}`)}`,
     `URL:${url}`,
     'BEGIN:VALARM', 'TRIGGER:-PT10M', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(item.listing.title)}`, 'END:VALARM',
     'END:VEVENT', 'END:VCALENDAR',

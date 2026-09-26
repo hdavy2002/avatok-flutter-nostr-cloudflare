@@ -1,13 +1,13 @@
 ---
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
 /**
- * [SAATHUM-BRAND-1 2026-09-20] "What is Saathum?" — entity definition block.
+ * [SAATHUM-BRAND-1 2026-09-20] "What is Saa Thum?" — entity definition block.
  *
- * Was [WEB-SEO-6]'s name-disambiguation block for "Saathum": a Google AI
- * Overview conflated the Saathum brand with an unrelated industrial-conductor
+ * Was [WEB-SEO-6]'s name-disambiguation block for "Saa Thum": a Google AI
+ * Overview conflated the Saa Thum brand with an unrelated industrial-conductor
  * company (avatok.tech) and an old avatar-video app that shared the name, so
  * this component existed to tell the Knowledge Graph which entity saathum.com
- * meant. Saathum has no known name collision, so the disambiguation angle
+ * meant. Saa Thum has no known name collision, so the disambiguation angle
  * ("not to be confused with...") is gone; this now just defines the brand in
  * plain crawlable prose, as both visible HTML and FAQPage JSON-LD.
  *
@@ -21,11 +21,11 @@ import { ORG } from '../lib/org';
 
 const faqs: Array<{ q: string; a: string }> = [
   {
-    q: 'What is Saathum?',
-    a: `Saathum (saathum.com) performs pujas and havans for you. You choose a ritual — for studies, a fresh start, prosperity, health, family, peace or a festival — share your name, gotra and wish, and our priests perform it at a real altar while you watch live. Prasad is sent to your door.`,
+    q: 'What is Saa Thum?',
+    a: `Saa Thum (saathum.com) performs pujas and havans for you. You choose a ritual — for studies, a fresh start, prosperity, health, family, peace or a festival — share your name, gotra and wish, and our priests perform it at a real altar while you watch live. Prasad is sent to your door.`,
   },
   {
-    q: 'What can I book on Saathum?',
+    q: 'What can I book on Saa Thum?',
     a: `Pujas and havans only — positive, benefic rituals performed in your name and gotra, streamed live, with a 7-day replay and optional prasad delivery. We do not offer astrology, private sessions or fierce rituals.`,
   },
   {
@@ -48,9 +48,9 @@ const faqLd = {
 ---
 
 <section class="entity-faq" id="what-is-saathum" aria-labelledby="entity-faq-title">
-  <h2 data-i18n="web-common.0ff34d5107c1600d" id="entity-faq-title">What is Saathum?</h2>
+  <h2 data-i18n="web-common.0ff34d5107c1600d" id="entity-faq-title">What is Saa Thum?</h2>
   <p>
-    <strong>Saathum</strong> <ui-copy style="display:contents">is the name of this puja and havan service, at</ui-copy> <a data-i18n="web-common.4d319a0fb45f536c" href="https://saathum.com/">saathum.com</a><ui-copy style="display:contents" data-i18n="web-common.cdb4ee2aea69cc6a">.</ui-copy>
+    <strong>Saa Thum</strong> <ui-copy style="display:contents">is the name of this puja and havan service, at</ui-copy> <a data-i18n="web-common.4d319a0fb45f536c" href="https://saathum.com/">saathum.com</a><ui-copy style="display:contents" data-i18n="web-common.cdb4ee2aea69cc6a">.</ui-copy>
   </p>
   <dl>
     {faqs.map((f) => (

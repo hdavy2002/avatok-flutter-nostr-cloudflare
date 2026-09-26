@@ -18,7 +18,7 @@ const roles = [
     team: 'Apps',
     type: 'Full-time · Remote',
     summary:
-      'Build the Saathum mobile experience in Flutter — the marketplace, live streaming, paid 1:1 video sessions and the wallet — with a local-first, offline-aware architecture across iOS and Android.',
+      'Build the Saa Thum mobile experience in Flutter — the marketplace, live streaming, paid 1:1 video sessions and the wallet — with a local-first, offline-aware architecture across iOS and Android.',
     skills: ['Flutter / Dart', 'iOS & Android', 'Realtime / WebRTC', 'State management', 'Native channels'],
   },
   {
@@ -52,14 +52,14 @@ const roles = [
 
 const applyHref = (title: string) =>
   `mailto:support@saathum.com?subject=${encodeURIComponent('Application: ' + title)}&body=${encodeURIComponent(
-    'Hi Saathum team,\n\nI’d like to apply for the ' + title + ' role.\n\n- Name:\n- Location / timezone:\n- LinkedIn / portfolio / GitHub:\n- Link to CV/resume:\n- A note on why you’re a great fit:\n\nThanks!',
+    'Hi Saa Thum team,\n\nI’d like to apply for the ' + title + ' role.\n\n- Name:\n- Location / timezone:\n- LinkedIn / portfolio / GitHub:\n- Link to CV/resume:\n- A note on why you’re a great fit:\n\nThanks!',
   )}`;
 ---
 
 <Content
   kicker="Company"
-  title="Careers at Saathum"
-  description="Build the human side of AI at Saathum. Open roles across engineering, design and operations."
+  title="Careers at Saa Thum"
+  description="Build the human side of AI at Saa Thum. Open roles across engineering, design and operations."
   image="/og/careers.png"
   lead="Help us build a global creator platform for paid live streaming and 1:1 video sessions. We're a team that ships fast and cares deeply about users and craft."
   width="wide"
@@ -69,7 +69,7 @@ const applyHref = (title: string) =>
     heading, and we are honest with every candidate about the stage we are at. We hire builders who
     take ownership, communicate clearly, and want their work in the hands of real users. Don't see a
     perfect match? Email us anyway at</ui-copy>
-    <a href="mailto:support@saathum.com">support@saathum.com</a>.
+    support (@) saathum.com.
   </p>
 
   <div class="jobs">
@@ -89,16 +89,16 @@ const applyHref = (title: string) =>
   </div>
 
   <p class="hiring-note">
-    <ui-copy style="display:contents" data-i18n="web-careers.0ecc3a8b3259bdde">Saathum is an equal-opportunity employer. We welcome applicants of
+    <ui-copy style="display:contents" data-i18n="web-careers.0ecc3a8b3259bdde">Saa Thum is an equal-opportunity employer. We welcome applicants of
     every background and are committed to a fair, inclusive hiring process. To apply, hit any</ui-copy>
-    <strong data-i18n="web-careers.31e392d1c0378bec">Apply</strong> <ui-copy style="display:contents" data-i18n="web-careers.022dfe4802af7cba">button or email</ui-copy> <a href="mailto:support@saathum.com">support@saathum.com</a>.
+    <strong data-i18n="web-careers.31e392d1c0378bec">Apply</strong> <ui-copy style="display:contents" data-i18n="web-careers.022dfe4802af7cba">button or email</ui-copy> support (@) saathum.com.
   </p>
 
   <dialog class="apply-dialog" id="apply-dialog" aria-labelledby="apply-title">
     <form class="apply-form" id="apply-form" method="dialog">
       <button data-india-i18n-attr="aria-label:web-careers.1b000f429ca7e46a" class="dialog-close" type="button" data-close-apply aria-label="Close application form">×</button>
       <p data-i18n="web-careers.2baecd0a34da677a" class="form-kicker">Join the team</p>
-      <h2 data-i18n="web-careers.446fcdd03c6e7fd9" id="apply-title">Apply to Saathum</h2>
+      <h2 data-i18n="web-careers.446fcdd03c6e7fd9" id="apply-title">Apply to Saa Thum</h2>
       <p data-i18n="web-careers.c6493011a91fe38e" class="form-intro">Send us your resume and a few details. We’ll get back to you if your experience is a match.</p>
       <input type="hidden" name="role" id="apply-role" />
       <label><ui-copy style="display:contents" data-i18n="web-careers.14736a2eb9f4159f">Role</ui-copy><input type="text" id="apply-role-label" readonly /></label>
@@ -127,7 +127,7 @@ const applyHref = (title: string) =>
   };
   document.querySelectorAll<HTMLButtonElement>('[data-apply-role]').forEach((button) => {
     button.addEventListener('click', () => {
-      const role = button.dataset.applyRole || 'Saathum role';
+      const role = button.dataset.applyRole || 'Saa Thum role';
       form?.reset();
       if (roleInput) roleInput.value = role;
       if (roleLabel) roleLabel.value = role;

@@ -176,7 +176,7 @@ export function listingJsonLd(listing: Listing, canonicalUrl: string): Record<st
  *  shape from a page it landed on directly. */
 export function listingBreadcrumbLd(listing: Listing, canonicalUrl: string): Record<string, unknown> {
   const items: Array<{ name: string; item: string }> = [
-    { name: 'Saathum', item: 'https://saathum.com/' },
+    { name: 'Saa Thum', item: 'https://saathum.com/' },
     { name: 'Marketplace', item: 'https://saathum.com/marketplace' },
   ];
   if (listing.creator?.handle) {

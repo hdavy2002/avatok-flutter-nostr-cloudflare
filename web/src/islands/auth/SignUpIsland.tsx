@@ -1,7 +1,7 @@
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* /sign-up — Saathum create account.
+/* /sign-up — Saa Thum create account.
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow via `useSignUp()`.
  *
@@ -612,7 +612,7 @@ function Inner() {
         hint={
           <p className="auth-hint">
             {phoneUnlocked
-              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your Saathum number is what other people see, so your real number stays private.")
+              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your Saa Thum number is what other people see, so your real number stays private.")
               : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll text a code to your phone.")}
           </p>
         }

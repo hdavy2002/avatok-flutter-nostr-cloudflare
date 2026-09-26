@@ -102,7 +102,7 @@ import { ORG } from '../lib/org';
   <h2>9. Reporting a listing</h2>
   <p>
     Anyone can report a listing that appears to break these rules from inside the app, or by
-    emailing <a href={`mailto:${ORG.email}`}>{ORG.email}</a>. Include a link to the listing, or
+    emailing {ORG.email.replace('@', ' (@) ')}. Include a link to the listing, or
     the creator's handle, and what you saw. We review reports and act where a violation is
     confirmed.
   </p>

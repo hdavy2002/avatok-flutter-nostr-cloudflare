@@ -342,7 +342,7 @@ function PaymentDrawer({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
         <Section icon={<Sparkles className="h-4 w-4" />} title="What it was for">
-          <Field label="Ritual">{d.event_title ?? 'Saathum booking'}</Field>
+          <Field label="Ritual">{d.event_title ?? 'Saa Thum booking'}</Field>
           {d.listing_id && <Field label="Event ID"><CopyValue value={d.listing_id} label="event ID" /></Field>}
           {(d.category_label || d.category) && <Field label="Category">{d.category_label ?? d.category}</Field>}
           <Field label="Event date">{d.event_starts_at ? istDay(d.event_starts_at) : 'To be scheduled'}</Field>
@@ -437,7 +437,7 @@ function PaymentRow({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate font-dash text-[15px] font-bold leading-snug text-foreground sm:text-[16px]">
-                {line.event_title ?? 'Saathum booking'}
+                {line.event_title ?? 'Saa Thum booking'}
               </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-semibold text-muted-foreground">
                 <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{line.event_starts_at ? istDate(line.event_starts_at) : 'Date to be set'}</span>

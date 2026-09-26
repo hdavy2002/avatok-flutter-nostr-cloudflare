@@ -4,8 +4,8 @@ import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
 const steps = [
   ['stepOne', 'stepOneBody', 'create', 'A creator setting up their creator page.'],
   ['stepTwo', 'stepTwoBody', 'price', 'A creator choosing a ticket or call price.'],
-  ['stepThree', 'stepThreeBody', 'share', 'Sharing a Saathum link with an audience.'],
-  ['stepFour', 'stepFourBody', 'host', 'A creator going live from the Saathum app.'],
+  ['stepThree', 'stepThreeBody', 'share', 'Sharing a Saa Thum link with an audience.'],
+  ['stepFour', 'stepFourBody', 'host', 'A creator going live from the Saa Thum app.'],
 ] as const;
 ---
 <section class="booking-express booking-illustrated rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
@@ -32,7 +32,7 @@ const steps = [
         <div class="express-step-art"><img src={publicImage(`/assets/landing-steps-preview/${image}.png`, { width: 1280, fit: 'scale-down' })} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
         <div class="express-step-copy">
         <h4 data-india-i18n={title}>{copy[title]}</h4>
-        <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Go live from the Saathum app." : copy[body]}</p>
+        <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Go live from the Saa Thum app." : copy[body]}</p>
         </div>
       </li>)}
     </ol>

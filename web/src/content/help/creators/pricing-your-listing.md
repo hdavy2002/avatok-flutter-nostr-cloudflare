@@ -8,7 +8,7 @@ keywords: ["price", "tokens", "minimum price", "per hour pricing", "free listing
 audience: creator
 faq:
   - q: What currency do I set my price in?
-    a: You set it in whole tokens. Saathum uses 100 Tokens = $1 as an internal anchor; buyer checkout may show a server-owned local-currency quote.
+    a: You set it in whole tokens. Saa Thum uses 100 Tokens = $1 as an internal anchor; buyer checkout may show a server-owned local-currency quote.
   - q: What's the lowest price I can set?
     a: For live shows and 1:1 sessions, the minimum is 49 tokens per hour.
   - q: Can I list something for free?
@@ -16,13 +16,13 @@ faq:
 draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
-Every live show and 1:1 session on Saathum is priced **per hour, per person**, in whole tokens. Saathum uses 100 Tokens = $1 as an internal accounting anchor. Buyers see a server-owned local-currency quote at checkout, with the quote and payment snapshot recorded immutably.
+Every live show and 1:1 session on Saa Thum is priced **per hour, per person**, in whole tokens. Saa Thum uses 100 Tokens = $1 as an internal accounting anchor. Buyers see a server-owned local-currency quote at checkout, with the quote and payment snapshot recorded immutably.
 
 ## Setting your price
 
 When you create or edit a listing, you enter a whole-number token price for one hour with one participant. The buyer pays that listing price for each booking or ticket, plus GST, at checkout.
 
-There's a floor: Saathum won't accept a price below **49 tokens per hour** for a paid live show or 1:1 session. The wizard and the server both refuse anything lower.
+There's a floor: Saa Thum won't accept a price below **49 tokens per hour** for a paid live show or 1:1 session. The wizard and the server both refuse anything lower.
 
 Marketplace listings (buy, sell, social items) don't carry this per-hour structure or floor — you set a plain price for the item or offer.
 
@@ -36,7 +36,7 @@ Your listing price is shown in tokens. At checkout, the server supplies the loca
 
 ## The fee
 
-Saathum keeps a fee out of what a buyer pays; you don't see it as a separate deduction when setting your price, but it does affect what you actually receive. See [How the platform fee works](/help/billing/platform-fee) for the details.
+Saa Thum keeps a fee out of what a buyer pays; you don't see it as a separate deduction when setting your price, but it does affect what you actually receive. See [How the platform fee works](/help/billing/platform-fee) for the details.
 
 ## Changing your price later
 

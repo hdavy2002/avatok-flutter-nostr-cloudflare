@@ -1,6 +1,6 @@
 ---
 title: "Choosing and booking a ritual"
-description: "How to find the right puja or havan on Saathum, what a ritual page tells you, and how booking with your sankalp works."
+description: "How to find the right puja or havan on Saa Thum, what a ritual page tells you, and how booking with your sankalp works."
 section: booking-and-paying
 order: 1
 updated: 2026-09-25

@@ -7,7 +7,7 @@ import '../styles/folk-chrome.css';
 import '../styles/saathum-folk.css';
 import { publicImage } from '../lib/config';
 /*
- * SiteHeader — the standard Saathum header, site-wide.
+ * SiteHeader — the standard Saa Thum header, site-wide.
  *
  * [WEB-HEADER-1 2026-08-26] Replaces two things at once:
  *   1. The nav that was PAINTED INTO the home page poster. Those words were
@@ -40,7 +40,7 @@ import GlobalHeader from './GlobalHeader.astro';
 // it can be re-mounted here in one line if the payment-gateway review wants it
 // back. The same disclosure still lives on /terms#status.
 // [SHV2-S8 2026-09-21] IndiaLanguageSelector import removed: D9 hides the
-// language picker on the India/Saathum shell (English only, no new translation
+// language picker on the India/Saa Thum shell (English only, no new translation
 // catalogues). The component file itself is untouched — only unmounted here.
 
 export interface HeaderLink { href: string; label: string }
@@ -81,7 +81,7 @@ interface Props {
   authMobileOnly?: boolean;
 }
 
-// [SHV2-S8 2026-09-21] Saathum attendee/organiser nav (Spec Part A3). Every
+// [SHV2-S8 2026-09-21] Saa Thum attendee/organiser nav (Spec Part A3). Every
 // entry points at something that exists — checked. Replaces the earlier
 // Marketplace/Wiki/Pricing/Ideas set: "Live now" is deliberately not a nav
 // item (A3 — with little or no inventory it would permanently lead nowhere).
@@ -107,7 +107,7 @@ const globalLinks: HeaderLink[] = [
 ];
 const headerLinks = variant === 'global' ? globalLinks : links;
 // [SHV2-S8] Only the 'global' variant's nav is still localised — D9 takes the
-// India/Saathum shell English-only, so the new default links never carry a
+// India/Saa Thum shell English-only, so the new default links never carry a
 // data-india-i18n key (AC-18: no old key may be reused with new wording under
 // it, since dom.ts would replay a stale translation over the new copy).
 const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators': 'chrome.forCreators', 'How it works': 'chrome.howItWorks', Payouts: 'chrome.payouts' } as Record<string, string>)[label];
@@ -159,14 +159,14 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 <header class:list={['avh', folk && 'avh--folk', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   {!folk && <TruckBorder kind="jhalar" count={60} class="avh-band" />}
   <div class="avh-bar">
-  {/* [SHV2-S8 2026-09-21] D8/A2: diya mark + "Saathum" set in the existing
-      heading face, replacing the Saathum wordmark PNG (the header previously
-      already said alt="Saathum" while the artwork itself still read "Saathum"
+  {/* [SHV2-S8 2026-09-21] D8/A2: diya mark + "Saa Thum" set in the existing
+      heading face, replacing the Saa Thum wordmark PNG (the header previously
+      already said alt="Saa Thum" while the artwork itself still read "Saa Thum"
       — a mismatch this fixes). Icon is decorative (alt=""); the anchor's own
       aria-label carries the accessible name. */}
-  <a class="avh-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
+  <a class="avh-logo" href="/" aria-label="Saa Thum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
     {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 160, fit: 'scale-down' })} alt="" width="64" height="64" /> : <img src={publicImage('/diya-logo.png', { width: 160, fit: 'scale-down' })} alt="" width="54" height="54" />}
-    <span class="avh-logo-text">Saathum</span>
+    <span class="avh-logo-text">Saa Thum</span>
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -175,7 +175,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 
   <div class="avh-right">
     {/* [SHV2-S8 2026-09-21] IndiaLanguageSelector unmounted here — D9 hides
-        the language picker on the India/Saathum shell (English only). */}
+        the language picker on the India/Saa Thum shell (English only). */}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
@@ -211,11 +211,11 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
 <dialog data-india-i18n-attr="aria-label:web-common.3f9abc8733ba366a" class:list={['avh-drawer', folk && 'avh-drawer--folk', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    {/* [SHV2-S8 2026-09-21] Same diya + "Saathum" lockup as the desktop bar,
+    {/* [SHV2-S8 2026-09-21] Same diya + "Saa Thum" lockup as the desktop bar,
         scaled for the drawer's narrower heading row. */}
     <div class="avh-drawer-brand">
       {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 128, fit: 'scale-down' })} alt="" width="48" height="48" /> : <img src={publicImage('/diya-logo.png', { width: 128, fit: 'scale-down' })} alt="" width="44" height="44" />}
-      <span class="avh-drawer-brand-text">Saathum</span>
+      <span class="avh-drawer-brand-text">Saa Thum</span>
     </div>
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
@@ -370,7 +370,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 
   .avh-logo { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
   .avh-logo img { display: block; height: 54px; width: auto; }
-  /* [SHV2-S8 2026-09-21] "Saathum" set in the same face as the footer's own
+  /* [SHV2-S8 2026-09-21] "Saa Thum" set in the same face as the footer's own
      text lockup (.bf-logo) — Comfortaa/Baloo 2 are already loaded above and
      var(--avh-ink) is the header's existing ink token, so nothing new here. */
   .avh-logo-text {

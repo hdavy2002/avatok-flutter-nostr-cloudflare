@@ -1,4 +1,4 @@
-// [WEB-STATION-2, SHV2-S10] Saathum attendee homepage (and, if imported,
+// [WEB-STATION-2, SHV2-S10] Saa Thum attendee homepage (and, if imported,
 // /organisers): interaction telemetry only, never controls rendering.
 //
 // Route-aware rather than hardcoded to "homepage" — contracts.md §6 mounts

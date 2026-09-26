@@ -77,7 +77,7 @@ export function activeFilterCount(value: RailState): number {
 
 /**
  * The bazaar FILTERS rail — the comp's left sidebar
- * (design/marketplace/Saathum Marketplace.dc.html).
+ * (design/marketplace/Saa Thum Marketplace.dc.html).
  *
  * [MARKET-BAZAAR-2 2026-08-31, owner decision] This REPLACES the three rows of
  * Type / Category / Sort chips. The page was saying the same thing twice: 25
@@ -198,7 +198,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                 not here, so there is no "Soon" row any more.
                 [SAATHUM-WEB-UI 2026-09-20] PUBLIC_GROUP_ORDER, not the raw
                 GROUP_ORDER: `find_your_people` has zero visible sub-categories
-                under Saathum's devotional scope, so it would sit here as a
+                under Saa Thum's devotional scope, so it would sit here as a
                 filter that always returns nothing. See marketGroups.ts. */}
             {PUBLIC_GROUP_ORDER.map((id) => (
               <RailRadio

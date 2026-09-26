@@ -28,4 +28,4 @@ Offerings into a sacred fire, with Vedic mantras. A havan usually takes **60–1
 
 You don't need to know the right ritual in advance. On the [home page](/#experiences) you can browse by intention — success in studies, a fresh start, prosperity, health and peace, love and family, or festival pujas — and each ritual page explains what families traditionally perform it for, who it's for and the best time to book.
 
-Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; Saathum makes no claims of guaranteed outcomes.
+Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.

@@ -28,7 +28,7 @@ const { creator, creatorSlug, avatarUrl, city, bio, chips, isAgent = false, host
 // `creator.name`/`creator.handle` used to slip past this fallback and leave `name`
 // blank, which fed a blank string into <Avatar> (rendering its own bare "?"
 // fallback instead of initials). `||` treats "" the same as absent.
-const name = creator.name || (creator.handle ? `@${creator.handle}` : 'Saathum creator');
+const name = creator.name || (creator.handle ? `@${creator.handle}` : 'Saa Thum creator');
 const verified = !isAgent && Boolean(creator.kyc_verified);
 const profileHref = creatorSlug ? creatorPath(creatorSlug) : null;
 const initials = hostInitials || name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'AC';
@@ -67,7 +67,7 @@ const initials = hostInitials || name.split(/\s+/).map((w) => w[0]).filter(Boole
       {profileHref && !isAgent && (
         <a href={profileHref} class="ld-msg-btn" data-cta="message_host"><ui-copy style="display:contents" data-i18n="web-common.b194d92018d60742">MESSAGE</ui-copy> {name.split(' ')[0].toUpperCase()}</a>
       )}
-      <span data-i18n="web-common.1e547fbf5c3a3102" class="ld-msg-note">MESSAGES STAY ON SAATHUM · NO PHONE NUMBERS SHARED</span>
+      <span data-i18n="web-common.1e547fbf5c3a3102" class="ld-msg-note">MESSAGES STAY ON SAA THUM · NO PHONE NUMBERS SHARED</span>
     </div>
 
     <div class="ld-host-bio-col">

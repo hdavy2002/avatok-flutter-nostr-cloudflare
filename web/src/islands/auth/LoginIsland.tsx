@@ -1,7 +1,7 @@
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* /sign-in — Saathum log in. Email, a 6-digit code, done. Or Google.
+/* /sign-in — Saa Thum log in. Email, a 6-digit code, done. Or Google.
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow, NOT the prebuilt <SignIn/>
  * component: the design is a bespoke form (truck-art palette, solid ink shadows)

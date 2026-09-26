@@ -1,30 +1,30 @@
 ---
-title: "Recording & consent on Saathum"
-description: "Which sessions on Saathum get recorded, who can see a recording, and what it takes to consent to one."
+title: "Recording & consent on Saa Thum"
+description: "Which sessions on Saa Thum get recorded, who can see a recording, and what it takes to consent to one."
 section: account-and-safety
 order: 2
 updated: 2026-09-11
 keywords: ["recording", "consent", "calls", "live session", "AI receptionist", "privacy", "block"]
 audience: both
 faq:
-  - q: "Does Saathum record my calls automatically?"
-    a: "No — a call isn't recorded just because it happens on Saathum. It's only recorded if a participant turns on a recording feature, or if your AI receptionist answers on your behalf."
+  - q: "Does Saa Thum record my calls automatically?"
+    a: "No — a call isn't recorded just because it happens on Saa Thum. It's only recorded if a participant turns on a recording feature, or if your AI receptionist answers on your behalf."
   - q: "Who is responsible for getting consent to record?"
-    a: "You are. If you record a call, you must ask everyone on it first and stop if anyone objects — Saathum cannot tell you which country's consent laws apply."
+    a: "You are. If you record a call, you must ask everyone on it first and stop if anyone objects — Saa Thum cannot tell you which country's consent laws apply."
 draft: true # [SAATHUM-ARCHIVE-1 2026-09-25] archived, not deleted — creator/marketplace topic. Set false to restore.
 ---
 
 ## Are your calls recorded by default?
 
-No. A one-to-one call, group call, or live session on Saathum is **not** recorded automatically just because it runs on the platform. A recording only exists in two situations: someone on the call turns on an in-app recording feature (where it's available for that call type), or your **AI receptionist** answers a call on your behalf while you're unavailable.
+No. A one-to-one call, group call, or live session on Saa Thum is **not** recorded automatically just because it runs on the platform. A recording only exists in two situations: someone on the call turns on an in-app recording feature (where it's available for that call type), or your **AI receptionist** answers a call on your behalf while you're unavailable.
 
-Recording features aren't available on every call type, device or region, and end-to-end encrypted features can't be recorded by Saathum at all. Keep in mind anyone can also record a call using tools outside Saathum entirely — a screen recorder or second phone — which no platform can prevent.
+Recording features aren't available on every call type, device or region, and end-to-end encrypted features can't be recorded by Saa Thum at all. Keep in mind anyone can also record a call using tools outside Saa Thum entirely — a screen recorder or second phone — which no platform can prevent.
 
 ## Getting (and giving) consent
 
-If **you** start a recording, you're responsible for it: ask everyone on the call first, say what you're recording and why, and stop if anyone objects. Recording laws differ by country and some places require every participant's consent — Saathum can't tell you which rules apply to your call, so when in doubt, ask.
+If **you** start a recording, you're responsible for it: ask everyone on the call first, say what you're recording and why, and stop if anyone objects. Recording laws differ by country and some places require every participant's consent — Saa Thum can't tell you which rules apply to your call, so when in doubt, ask.
 
-When Saathum's own in-app recording feature is running, participants see a visible indicator while it's on. That indicator is a courtesy, not a substitute for the consent the law may require from you.
+When Saa Thum's own in-app recording feature is running, participants see a visible indicator while it's on. That indicator is a courtesy, not a substitute for the consent the law may require from you.
 
 Never record covertly, keep recording after someone withdraws consent, or record intimate content without consent — these are serious breaches of our [Acceptable Use Policy](/acceptable-use), and anything involving a minor is covered separately by our [Child Safety Standards](/child-safety).
 
@@ -34,7 +34,7 @@ If you turn on the AI receptionist to answer calls when you're away, the exchang
 
 ## Who can see a recording, and for how long
 
-A recording, transcript or summary made through Saathum is stored against the account that created it. The account holder — and anyone they share it with — can see it; Saathum's own staff don't routinely listen to recordings, and only access one for support you've asked for, an abuse investigation, or where required by law. Recordings are kept for as long as you keep them, or as long as needed to provide the feature, meet a legal obligation, or resolve a dispute; deleted items can persist briefly in backups before being overwritten. Full detail lives in the [Recording & Consent](/recording) policy and our [Privacy Policy](/privacy).
+A recording, transcript or summary made through Saa Thum is stored against the account that created it. The account holder — and anyone they share it with — can see it; Saa Thum's own staff don't routinely listen to recordings, and only access one for support you've asked for, an abuse investigation, or where required by law. Recordings are kept for as long as you keep them, or as long as needed to provide the feature, meet a legal obligation, or resolve a dispute; deleted items can persist briefly in backups before being overwritten. Full detail lives in the [Recording & Consent](/recording) policy and our [Privacy Policy](/privacy).
 
 Never share, publish or forward a recording of someone else without their consent — even if the recording itself was lawfully made.
 

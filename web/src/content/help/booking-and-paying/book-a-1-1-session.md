@@ -1,6 +1,6 @@
 ---
 title: "Booking a 1:1 session"
-description: "How to pick a slot, what happens after you pay, and where a paid one-on-one session actually runs on Saathum."
+description: "How to pick a slot, what happens after you pay, and where a paid one-on-one session actually runs on Saa Thum."
 section: booking-and-paying
 order: 2
 updated: 2026-09-11
@@ -26,11 +26,11 @@ Right after payment you land on a confirmation screen with a link straight into 
 
 ## Where the session runs
 
-A booked 1:1 session runs in your browser at its own web address (no app required to attend). Before you're let into the call, Saathum runs a quick preflight check of your camera, microphone and speaker so a broken device doesn't surprise you mid-session. Once that passes, you're placed in the session and see a waiting screen until the creator joins too — you are never billed extra for the time spent waiting.
+A booked 1:1 session runs in your browser at its own web address (no app required to attend). Before you're let into the call, Saa Thum runs a quick preflight check of your camera, microphone and speaker so a broken device doesn't surprise you mid-session. Once that passes, you're placed in the session and see a waiting screen until the creator joins too — you are never billed extra for the time spent waiting.
 
 ## What decides whether the creator gets paid
 
-Saathum does not charge by the minute. Once the session's time window has passed, the system looks at whether both of you were actually present together for a meaningful stretch of the call:
+Saa Thum does not charge by the minute. Once the session's time window has passed, the system looks at whether both of you were actually present together for a meaningful stretch of the call:
 
 - If you and the creator were both present, the creator is paid and the tokens leave escrow.
 - If the creator never showed up in any meaningful way, you are refunded in full.
@@ -40,4 +40,4 @@ There is currently no partial/pro-rata charge for a session that ran short — i
 
 ## A note on where we are today
 
-Saathum's payments are still in a testing phase with a small number of invited users (see [Refunds & Cancellations](/refunds)) — if anything is charged in error, support will refund it in full.
+Saa Thum's payments are still in a testing phase with a small number of invited users (see [Refunds & Cancellations](/refunds)) — if anything is charged in error, support will refund it in full.

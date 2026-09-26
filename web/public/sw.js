@@ -1,4 +1,4 @@
-/* Saathum service worker — [DASH2-PWA 2026-09-25]
+/* Saa Thum service worker — [DASH2-PWA 2026-09-25]
  *
  * Registered ONLY from Dashboard 2 pages (islands/dashboard2/InstallPrompt.tsx),
  * scope "/". Deliberately small and conservative:
@@ -13,8 +13,12 @@
  *    Those requests are not intercepted at all (the browser handles them).
  *
  * Bump VERSION to drop every old cache on the next activate.
+ *
+ * [DASH2-PUSH 2026-09-26] Web push: the worker (lib/web_push.ts) sends an encrypted
+ * JSON {title, body, url, tag}; `push` shows it, `notificationclick` focuses an open
+ * dashboard tab (navigating it to the url) or opens a new one.
  */
-const VERSION = 'saathum-sw-v1';
+const VERSION = 'saathum-sw-v2'; // v2: [DASH2-PUSH] push + notificationclick
 const STATIC_CACHE = `${VERSION}-static`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const OFFLINE_URL = '/offline.html';
@@ -115,4 +119,41 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (isStaticAsset(url)) event.respondWith(staleWhileRevalidate(event, req));
+});
+
+// ── [DASH2-PUSH] Web push ────────────────────────────────────────────────
+const PUSH_ICON = '/icons/icon-192.png';
+const PUSH_BADGE = '/icons/icon-192.png';
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch {
+    try { data = { body: event.data ? event.data.text() : '' }; } catch { data = {}; }
+  }
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Saa Thum';
+  const url = typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/dashboard/my-events';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: typeof data.body === 'string' ? data.body : '',
+    icon: PUSH_ICON,
+    badge: PUSH_BADGE,
+    tag: typeof data.tag === 'string' && data.tag ? data.tag : undefined,
+    renotify: !!data.tag,
+    data: { url },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const path = (event.notification.data && event.notification.data.url) || '/dashboard/my-events';
+  const target = new URL(path, self.location.origin).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const dash = wins.find((c) => { try { return new URL(c.url).pathname.startsWith('/dashboard'); } catch { return false; } });
+    if (dash) {
+      await dash.focus();
+      if (dash.url !== target && 'navigate' in dash) { try { await dash.navigate(target); } catch { /* cross-scope */ } }
+      return;
+    }
+    await self.clients.openWindow(target);
+  })());
 });

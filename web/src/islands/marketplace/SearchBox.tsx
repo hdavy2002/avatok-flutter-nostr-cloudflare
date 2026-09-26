@@ -14,7 +14,7 @@ export interface SearchBoxProps {
  * shadow, and a coral KHOJO button.
  *
  * [MARKET-BAZAAR-1 2026-08-31] Restyled from the plain zine <Field> to the
- * comp's search strip (design/marketplace/Saathum Marketplace.dc.html). The
+ * comp's search strip (design/marketplace/Saa Thum Marketplace.dc.html). The
  * BEHAVIOUR is unchanged and deliberately so: typing still debounces up to
  * ExploreGrid, which calls /api/explore/search. The comp's button is wired to
  * `noop` — here it submits, so the field works for someone who types and hits

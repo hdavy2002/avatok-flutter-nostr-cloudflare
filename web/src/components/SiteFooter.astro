@@ -11,7 +11,7 @@ import { publicImage } from '../lib/config';
 // blue "chai" truck-art strip on top, dark panel with three columns — the Horn
 // OK Please art, the legal bar, then the green "auto" + "tassels" strips
 // below. [SHV2-S8 2026-09-21] The three columns were BAZAAR / CREATORS /
-// COMPANY; they are now Explore / For organisers / Trust for the Saathum
+// COMPANY; they are now Explore / For organisers / Trust for the Saa Thum
 // attendee+organiser pivot (Spec A3) — same three-column skeleton, new
 // content, per the style-fidelity rule (B2 §11).
 //
@@ -67,7 +67,7 @@ const legalLinks = [
 // [SAATHUM-ARCHIVE-1 2026-09-25] Archived pages stay live but leave the menus.
 const visibleLegalLinks = legalLinks.filter((l) => !isArchivedPath(l.href));
 
-// [SHV2-S8 2026-09-21] Saathum attendee/organiser/trust footer (Spec A3).
+// [SHV2-S8 2026-09-21] Saa Thum attendee/organiser/trust footer (Spec A3).
 // Replaces Bazaar/Creators/Company: "Live streaming" (/#live-streaming) and
 // "1:1 consultations" (/#live-friends) were both dead anchors after the
 // redesign (D2 also drops 1:1 entirely) and are retargeted here to working
@@ -120,7 +120,7 @@ const footerColumns = (variant === 'global' ? globalColumns : columns).map((col)
 // marketplace entries removed — dead since `columns` no longer carries those
 // labels (see above). Everything else here is still used by `globalColumns`
 // and/or `legalLinks`, both untouched by this change. The new `columns`
-// labels above deliberately carry NO key here: D9 takes the India/Saathum
+// labels above deliberately carry NO key here: D9 takes the India/Saa Thum
 // shell English-only, and AC-18 forbids replaying an old key's stored
 // translation over new wording (dom.ts would do exactly that on a locale
 // switch) — see the gating on `variant === 'global'` below.
@@ -138,13 +138,13 @@ const chromeKey = (value: string) => ({
 
   <div class="bf-main">
     <div class="bf-brand">
-      {/* [SHV2-S8 2026-09-21] Diya + "Saathum" replacing the "ava"/"TOK"
+      {/* [SHV2-S8 2026-09-21] Diya + "Saa Thum" replacing the "ava"/"TOK"
           two-span wordmark (AC-03: consistent branding in header, drawer AND
           footer). Reuses this file's own Comfortaa heading face and the
           existing #fdf1d3 ink already used one line below. */}
-      <a class="bf-logo" href="/" aria-label="Saathum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
+      <a class="bf-logo" href="/" aria-label="Saa Thum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
         {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 100, fit: 'scale-down' })} alt="" width="44" height="44" /> : <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />}
-        <span class="bf-logo-text">Saathum</span>
+        <span class="bf-logo-text">Saa Thum</span>
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched
@@ -205,7 +205,7 @@ const chromeKey = (value: string) => ({
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{folk ? 'Made in India with Love ❤️ and cutting chai.' : variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
-      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n={folk ? undefined : "web-common.15da1f1c2e9b5f56"}>SAATHUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Performed with devotion in India.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n={folk ? undefined : "web-common.15da1f1c2e9b5f56"}>SAA THUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Performed with devotion in India.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 
@@ -276,7 +276,7 @@ const chromeKey = (value: string) => ({
     text-decoration: none;
   }
   .bf-logo img { display: block; width: 34px; height: 34px; }
-  /* [SHV2-S8 2026-09-21] Diya + "Saathum" replacing the "ava"/"TOK" two-span
+  /* [SHV2-S8 2026-09-21] Diya + "Saa Thum" replacing the "ava"/"TOK" two-span
      wordmark. Same Comfortaa face and #fdf1d3 ink the old first span used. */
   .bf-logo-text {
     font-family: 'Comfortaa', 'Baloo 2', sans-serif;

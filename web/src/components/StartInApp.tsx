@@ -92,7 +92,7 @@ export function StartInApp({
       <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
         <span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-blueInk"><UiText id="web-common.233b7eb3199b3599" source="Creators go live in the app" />{" "}</span>
         <h1 className="font-display text-[27px] font-semibold leading-[1.06] text-ink">
-          {isLive ? uiT("web-common.e6cbfea339405108","Start this event from the Saathum app") : uiT("web-common.796fdd6e2a7dc8e6","Start this session from the Saathum app")}
+          {isLive ? uiT("web-common.e6cbfea339405108","Start this event from the Saa Thum app") : uiT("web-common.796fdd6e2a7dc8e6","Start this session from the Saa Thum app")}
         </h1>
 
         {(title || when) && (
@@ -106,18 +106,18 @@ export function StartInApp({
 
         <p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">
           {isLive
-            ? uiT("web-common.4fa937cf1ebcbc55","Your camera and microphone only broadcast from the Saathum app. Open the app to go live - your ticket holders are watching on this page.")
-            : uiT("web-common.8892fe266b5b059e","Your camera and microphone only transmit from the Saathum app. Open the app to take this appointment - your customer is waiting in his browser.")}
+            ? uiT("web-common.4fa937cf1ebcbc55","Your camera and microphone only broadcast from the Saa Thum app. Open the app to go live - your ticket holders are watching on this page.")
+            : uiT("web-common.8892fe266b5b059e","Your camera and microphone only transmit from the Saa Thum app. Open the app to take this appointment - your customer is waiting in his browser.")}
         </p>
 
         <div className="flex w-full flex-col gap-3">
           {deep && (
             <a href={deep} className="no-underline">
-              <Button variant="lime" fullWidth label={uiT("web-common.7d564e381147c87a","Open in the Saathum app")} />
+              <Button variant="lime" fullWidth label={uiT("web-common.7d564e381147c87a","Open in the Saa Thum app")} />
             </a>
           )}
           <a href={PLAY_STORE} rel="noopener" className="no-underline">
-            <Button variant="ghost" fullWidth label={uiT("web-common.d8ecdcd34e2692bd","Get the Saathum app")} />
+            <Button variant="ghost" fullWidth label={uiT("web-common.d8ecdcd34e2692bd","Get the Saa Thum app")} />
           </a>
           <a href={backHref} className="font-body text-[13px] font-bold text-inkSoft underline">
             {backLabel}

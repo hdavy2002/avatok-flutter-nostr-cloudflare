@@ -1,5 +1,5 @@
 /**
- * [SAATHUM-ARCHIVE-1 2026-09-25] OWNER DECISION: Saathum is now a simple site
+ * [SAATHUM-ARCHIVE-1 2026-09-25] OWNER DECISION: Saa Thum is now a simple site
  * selling Puja & Havan booking. The pages below served the old creator
  * marketplace (sellers, consultations, UGC, wallet). They are ARCHIVED, NOT
  * DELETED — the owner plans to bring them back later.

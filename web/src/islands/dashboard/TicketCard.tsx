@@ -95,7 +95,7 @@ export function TicketCard({ booking, session: supplied, past, onResend }: Ticke
         <div className="flex min-w-0 items-start gap-3">
           {session.counterparty_avatar_url && <img src={cfImage(session.counterparty_avatar_url, { width: 72 })} alt="" className="mt-0.5 h-10 w-10 shrink-0 rounded-full border-zine border-ink object-cover" loading="lazy" />}
           <div className="flex min-w-0 flex-col gap-1">
-          <span className="truncate font-display font-semibold text-[17px] text-ink">{session.title ?? (session.kind === 'live_event' ? uiT("web-dashboard.544b6ea60b3ba62e","Live event") : uiT("web-dashboard.41eefe0f657bb0e9","Saathum appointment"))}</span>
+          <span className="truncate font-display font-semibold text-[17px] text-ink">{session.title ?? (session.kind === 'live_event' ? uiT("web-dashboard.544b6ea60b3ba62e","Live event") : uiT("web-dashboard.41eefe0f657bb0e9","Saa Thum appointment"))}</span>
           {session.starts_at && <span className="font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-inkSoft">{fmtWhen(session.starts_at)}</span>}
           {session.counterparty_name && <span className="font-body text-[13px] font-bold text-inkSoft">{session.role === 'host' || session.role === 'creator' ? uiT("web-dashboard.59a2da3f3b594fd0","Customer: ") : uiT("web-dashboard.3e574560745318c4","Creator: ")}{session.counterparty_name}</span>}
           <div className="mt-1 flex flex-wrap items-center gap-2">

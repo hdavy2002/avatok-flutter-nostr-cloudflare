@@ -1,4 +1,4 @@
-/* InstallPrompt — [DASH2-PWA 2026-09-25] "Add Saathum to your home screen".
+/* InstallPrompt — [DASH2-PWA 2026-09-25] "Add Saa Thum to your home screen".
  *
  * Mounted ONLY from layouts/Dashboard2.astro, so it is also the tiny island that
  * registers the service worker (public/sw.js, scope "/") — dashboard pages only.
@@ -115,7 +115,7 @@ export default function InstallPrompt() {
       {mode !== 'none' && (
         <motion.aside
           role="dialog"
-          aria-label="Add Saathum to your home screen"
+          aria-label="Add Saa Thum to your home screen"
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
@@ -135,7 +135,7 @@ export default function InstallPrompt() {
             <div className="flex items-start gap-3 pr-8">
               <img src="/icons/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl shadow-[var(--dash-shadow,none)]" />
               <div className="min-w-0">
-                <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Add Saathum to your home screen</h2>
+                <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Add Saa Thum to your home screen</h2>
                 <p className="mt-1 text-[13px] font-semibold text-muted-foreground">Open your pujas in one tap, full screen, like an app.</p>
               </div>
             </div>
