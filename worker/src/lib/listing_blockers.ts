@@ -44,6 +44,7 @@ import { gcalAvailabilityReady } from "../cal/gcal_availability";
 import type { Env } from "../types";
 import { publishBlockedReason, sectionFor } from "./listing_section";
 import { readConfig } from "../routes/config";
+import { adminCalendarExempt } from "./admin_calendar_exempt";
 
 const MARKET_KINDS = new Set(["sell", "buy", "social"]);
 
@@ -323,6 +324,12 @@ export async function listingBlockers(
     }
   } catch { /* a config read failure must not invent a blocker */ }
 
+  // [ADMIN2-EVENTS 2026-09-26] Saa Thum's own (admin-created) listings skip the
+  // creator Google Calendar checks — calendar_not_ready and calendar_conflict — behind
+  // adminListingsSkipCalendar. Every other rule in this file still applies to them.
+  // See lib/admin_calendar_exempt.ts.
+  const calendarExempt = await adminCalendarExempt(env, String(l?.creator_id ?? ""));
+
   if (kind === "live_event") {
     const start = Number(l?.starts_at), dur = Number(l?.duration_min);
     // Deliberately checked on KIND, not on schedule_mode. Branching on
@@ -347,7 +354,7 @@ export async function listingBlockers(
       });
     }
     const creatorUid = String(l?.creator_id ?? "");
-    if (creatorUid && start > Date.now() && dur >= 5 && dur <= 480) {
+    if (creatorUid && !calendarExempt && start > Date.now() && dur >= 5 && dur <= 480) {
       const cal = await gcalAvailabilityReady(env, creatorUid, undefined, true);
       if (!cal.ready) {
         const message = cal.reason === "disconnected" ? "Connect Google Calendar before submitting this event." : cal.reason === "no_selected_calendars" ? "Select at least one Google Calendar before submitting this event." : "Refresh Google Calendar before submitting this event so conflicts can be checked.";
@@ -373,7 +380,7 @@ export async function listingBlockers(
     }
     // Availability belongs to the CREATOR, not to whoever is publishing.
     const creatorUid = String(l?.creator_id ?? "");
-    if (creatorUid && !(await gcalAvailabilityReady(env, creatorUid, undefined, true)).ready) out.push({ code: "calendar_not_ready", field: null, message: "Connect and refresh Google Calendar before submitting this consultation.", legacy: { status: 409, body: { error: "calendar_unavailable", detail: "Connect and refresh Google Calendar before submitting this consultation." } } });
+    if (creatorUid && !calendarExempt && !(await gcalAvailabilityReady(env, creatorUid, undefined, true)).ready) out.push({ code: "calendar_not_ready", field: null, message: "Connect and refresh Google Calendar before submitting this consultation.", legacy: { status: 409, body: { error: "calendar_unavailable", detail: "Connect and refresh Google Calendar before submitting this consultation." } } });
     let hasRules = false;
     try {
       const schedule=await loadUnifiedSchedule(env,creatorUid,String(l?.id??''));

@@ -19,6 +19,7 @@ import { adminHook, ensureListingAdHook } from "../lib/listing_ad_hook";
 // with no source-status guard at all.
 import { checkTransition } from "../lib/listing_transitions";
 import { refundOpenOrdersForListing } from "./commercial_lifecycle";
+import { isAdminUid } from "../lib/admin_calendar_exempt";
 
 // Admin-only moderation queue. Poster metadata is kept in listings.attrs so this
 // remains compatible with the existing schema and does not alter creator data.
@@ -706,8 +707,15 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
     if (!result.ok) return json(result.body, result.status);
     const start = Number(row.starts_at || 0);
     const end = start + Math.max(5, Number(row.duration_min || 60)) * 60000;
-    const emailStatus = await emailListingPublished(env, { listingId: id, creatorId: String(row.creator_id || ""), title: String(row.title || "Your listing"), start, end });
-    safeTrack(env, a.uid, "listing_published_email_queued", { listing_id: id, creator_id: row.creator_id ?? null, status: emailStatus });
+    // [ADMIN2-EVENTS 2026-09-26] No "your listing is live" email for Saa Thum's own
+    // (admin-owned) listings — the admin just pressed Publish and would only be
+    // mailing themselves.
+    if (isAdminUid(env, String(row.creator_id || ""))) {
+      safeTrack(env, a.uid, "listing_published_email_skipped", { listing_id: id, creator_id: row.creator_id ?? null, reason: "admin_owned" });
+    } else {
+      const emailStatus = await emailListingPublished(env, { listingId: id, creatorId: String(row.creator_id || ""), title: String(row.title || "Your listing"), start, end });
+      safeTrack(env, a.uid, "listing_published_email_queued", { listing_id: id, creator_id: row.creator_id ?? null, status: emailStatus });
+    }
     return json({ ok: true, id, status: nextStatus, poster: attrs.poster || null, admin_id: a.uid, reason: null, ...result.body });
   }
 

@@ -1103,6 +1103,13 @@ export interface PlatformConfig {
   // sells tickets — acceptable only while billingEnabled/walletRealMoney/commercial* are
   // all false. Restore to true before real money-in.
   listingPublishKycRequired: boolean;
+  // [ADMIN2-EVENTS 2026-09-26] Owner decision: listings whose creator_id is in
+  // env.ADMIN_UIDS (Saa Thum's own pujas/havans, created from /admin/events) skip the
+  // creator Google Calendar gates — calendar_not_ready, calendar_conflict and the
+  // exclusive calendar hold at publish. Every other publish rule still applies.
+  // DEFAULT true. Set false to put admin listings back under the calendar rules.
+  // See lib/admin_calendar_exempt.ts.
+  adminListingsSkipCalendar: boolean;
   // Liveness validity window in days (owner decision: 90). Widening this is the
   // no-code contingency if Didit's per-call price above the 500/mo free cap bites
   // (spec §9) — it divides check volume directly.
@@ -2356,6 +2363,9 @@ const DEFAULTS: PlatformConfig = {
   // prod KV alongside identityGateContentActionsEnabled, and RESTORE BOTH before
   // real money-in.
   listingPublishKycRequired: true,
+  // [ADMIN2-EVENTS] See the interface comment. TRUE = admin-owned listings publish
+  // without the Google Calendar gates.
+  adminListingsSkipCalendar: true,
   livenessValidityDays: 90,           // owner decision 2026-07-10
   // [AVA-IDGATE-1] BUMPED v1→v2 when retention changed 584d → 256d. The version is
   // stored per-user, and hasCurrentConsent() only accepts the CURRENT one — so a

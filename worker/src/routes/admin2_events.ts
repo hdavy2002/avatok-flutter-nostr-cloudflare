@@ -26,8 +26,10 @@
 //                  with the same history row and the same hash re-bind.
 //   3. publish  -> adminListingAction('approve_listing') then adminListingAction('publish'),
 //                  i.e. publishListingAuthoritative() with actor 'admin': listing_blockers,
-//                  KYC flag, identity gate, calendar reservation, FTS, fanout. Nothing is
-//                  re-implemented; a blocker there is shown to the admin verbatim.
+//                  KYC flag, identity gate, FTS, fanout. Nothing is re-implemented; a
+//                  blocker there is shown to the admin verbatim. Admin-owned listings skip
+//                  the creator Google Calendar gates and the calendar hold
+//                  (adminListingsSkipCalendar — lib/admin_calendar_exempt.ts).
 //      The poster gate (attrs.poster.status must be 'approved') is met by the admin's own
 //      decision: an uploaded cover is recorded as the approved poster (provider
 //      'admin_cover'), or a generated AI poster is approved with approve_poster.

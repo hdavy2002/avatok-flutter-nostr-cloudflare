@@ -48,6 +48,7 @@ import {
 } from "../lib/listing_poster";
 import { resolveCreatorSubject } from "../lib/poster_subject";
 import { listingBlockers, blockerResponse, type ListingBlocker } from "../lib/listing_blockers";
+import { adminCalendarExempt } from "../lib/admin_calendar_exempt";
 import { reviewListingCopy } from "./listing_copy_review";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
@@ -2787,7 +2788,24 @@ export async function publishListingAuthoritative(
     // Title, category, cover, category validity, section gate, price, schedule
     // and capacity all moved to lib/listing_blockers.ts and ran above — see the
     // note there. What is left here is the one step with a SIDE EFFECT.
-    if (l.kind === "live_event") {
+    // [ADMIN2-EVENTS 2026-09-26] Saa Thum's own (admin-created) listings are not held
+    // on the admin's calendar: no exclusive reservation, no Google Calendar readiness
+    // check (publishFixedListing runs both). Behind adminListingsSkipCalendar — see
+    // lib/admin_calendar_exempt.ts. The status write keeps the same guards
+    // (approved + authority_version + reviewed_content_hash) publishFixedListing uses.
+    const calendarExempt = await adminCalendarExempt(env, creatorUid);
+    if (l.kind === "live_event" && calendarExempt) {
+      const flipped = await db.prepare(
+        `UPDATE listings SET status='published', publication_version=publication_version+1, updated_at=?2
+          WHERE id=?1 AND creator_id=?3 AND status='approved' AND authority_version=?4 AND reviewed_content_hash=?5`,
+      ).bind(id, Date.now(), creatorUid, Number(l.authority_version ?? 0), String(l.reviewed_content_hash ?? "")).run();
+      if (!(flipped.meta?.changes ?? 0)) {
+        return { ok: false, status: 409, body: {
+          error: "publish_conflict", message: "The listing changed during publication. Reload and try again.",
+        } };
+      }
+      track(env, creatorUid, "listing_publish_calendar_exempt", APP, { listing_id: id, listing_kind: l.kind, ...actorProps });
+    } else if (l.kind === "live_event") {
       // The fixed event window is a durable exclusive reservation. It is
       // admitted together with the publication status write below, so a race
       // cannot publish an event without reserving its creator time (or reserve
@@ -2926,7 +2944,7 @@ export async function publishListingAuthoritative(
     // An exclusive fixed consult is a creator commitment at publication time,
     // even when it has no named listing_slots. Run the same guarded batch after
     // the entitlement gate so the status and reservation cannot diverge.
-    if (l.kind === "consult" && l.schedule_mode === "fixed_date") {
+    if (l.kind === "consult" && l.schedule_mode === "fixed_date" && !(await adminCalendarExempt(env, creatorUid))) {
       let exclusive = false;
       try {
         const schedule = await db.prepare(
