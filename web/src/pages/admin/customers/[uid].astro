@@ -1,0 +1,13 @@
+---
+// [ADMIN2-PEOPLE 2026-09-26] One customer: profile, bookings, payments, refunds (tabs).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import CustomerDetail from '../../../islands/admin2/CustomerDetail.tsx';
+
+const uid = String(Astro.params.uid ?? '').slice(0, 200);
+if (!uid) return Astro.redirect('/admin/customers', 302);
+---
+
+<Admin2 title="Customer" heading="Customer" active="customers">
+  <CustomerDetail client:load uid={uid} />
+</Admin2>

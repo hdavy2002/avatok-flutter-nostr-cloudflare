@@ -1,0 +1,10 @@
+---
+// [ADMIN2-PEOPLE 2026-09-26] Customer search: name, full email, phone last 4 or full number.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import Customers from '../../../islands/admin2/Customers.tsx';
+---
+
+<Admin2 title="Customers" active="customers" subtitle="Find a customer and see their bookings, payments and refunds.">
+  <Customers client:load />
+</Admin2>

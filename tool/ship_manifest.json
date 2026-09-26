@@ -7114,5 +7114,32 @@
       }
     ],
     "_verified_at": "web/src/layouts/Dashboard2.astro inline script: capture('dash2_view', {screen, load_ms}); web/src/pages/dashboard.astro active='book'"
+  },
+  "ADMIN2-PEOPLE": {
+    "description": "[ADMIN2-PEOPLE] Admin 2 Bookings, Payments and Customers. Worker routes/admin2_people.ts (registered in routes/admin2.ts ADMIN2_ROUTES; read models lib/admin2_people_data.ts): GET /api/admin/v2/bookings?event&status&q&from&to&uid&cursor&format=csv (every live-event seat: paid/free/pending UPI intent/refund requested/refunded; customer name, Clerk email, masked phone, amount, UTR; ?event adds the event header + seats/revenue totals), GET /api/admin/v2/payments?q&status&cat&paid_from&paid_to&min&max&event&uid&cursor&format=csv (orders + commercial_policy_snapshots + hdfc_sms_payment_intents + refunds admin-wide, totals strip), GET /api/admin/v2/customers?q&cursor (name, exact email via email_hash, phone last 4 on readable numbers, full mobile via phone_hash) and GET /api/admin/v2/customers/:uid (profile, UPI ids, address, gotra + bookings, payments, refunds). CSV is RFC 4180 with UTF-8 BOM, plain rupees, IST times, formula-safe cells. Web: /admin/bookings, /admin/payments, /admin/customers, /admin/customers/[uid] (islands/admin2/{Bookings,Payments,Customers,CustomerDetail,peopleKit}.tsx). Admin-only (ADMIN_UIDS), read-only, not flag-gated, no migration.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "in": [
+          "bookings",
+          "payments",
+          "customers"
+        ],
+        "min_events": 1,
+        "note": "An admin opened Bookings, Payments or Customers (emitted by the Admin2 layout)."
+      },
+      {
+        "event": "admin2_export",
+        "property": "kind",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin downloaded a CSV (kind = bookings | bookings_event | payments | customer_bookings | customer_payments; ok=true on success)."
+      }
+    ],
+    "_verified_at": "web/src/islands/admin2/peopleKit.tsx ExportButton: capture('admin2_export', {kind, ok, bytes, filtered, ms}); web/src/layouts/Admin2.astro capture('admin2_view', {screen})"
   }
 }

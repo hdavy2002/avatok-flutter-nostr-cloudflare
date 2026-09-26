@@ -1,0 +1,10 @@
+---
+// [ADMIN2-PEOPLE 2026-09-26] Every payment line across customers, with totals and CSV export.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Payments from '../../islands/admin2/Payments.tsx';
+---
+
+<Admin2 title="Payments" active="payments" subtitle="All UPI payments, what is still pending, and what was refunded.">
+  <Payments client:load />
+</Admin2>

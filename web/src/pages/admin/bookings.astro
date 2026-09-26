@@ -1,0 +1,11 @@
+---
+// [ADMIN2-PEOPLE 2026-09-26] Every seat — paid, free, pending, refunded. ?event=<id> narrows
+// to one event and shows its seats and revenue. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Bookings from '../../islands/admin2/Bookings.tsx';
+---
+
+<Admin2 title="Bookings" active="bookings" subtitle="Every seat across Saa Thum's events: paid, free and waiting for the bank.">
+  <Bookings client:load />
+</Admin2>
