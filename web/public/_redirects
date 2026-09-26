@@ -49,3 +49,8 @@
 /child-safety/ / 301
 /community-guidelines / 301
 /community-guidelines/ / 301
+
+# [SAATHUM-ENTITY-1 2026-09-26] Owner removed this page; file kept (archived,
+# already excluded from nav/footer/sitemap via archivedPages.ts).
+/organisers / 301
+/organisers/ / 301

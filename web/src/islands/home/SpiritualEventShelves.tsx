@@ -234,8 +234,7 @@ export function SpiritualEventShelves({ controller: injected }: SpiritualEventSh
     liveContent = (
       <p className="shv2-none-strip">
         New experiences are added as organisers publish them.{' '}
-        <a href="/marketplace">Explore marketplace</a> ·{' '}
-        <a href="/organisers">Become an organiser</a>
+        <a href="/marketplace">Explore marketplace</a>
       </p>
     );
   } else if (state.status === 'upcoming_only') {
