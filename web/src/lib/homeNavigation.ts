@@ -30,7 +30,9 @@ export const HOME_HEADER_LINKS = [
   { href: '/how-it-works', label: 'How it works' },
   // [WEB-HIW-2 2026-09-27] OWNER DECISION: Help centre is a header menu item, after How it works.
   { href: '/help', label: 'Help centre' },
-  // [SAATHUM-ARCHIVE-2 2026-09-25] About removed from menus by owner (page archived).
+  // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: "About us" is back in the header
+  // (the 2026-09-25 archive of /about is reversed — see lib/archivedPages.ts).
+  { href: '/about', label: 'About us' },
 ];
 export const HOME_FOOTER_COLUMNS = [
   { title: 'Rituals', links: [
@@ -42,6 +44,8 @@ export const HOME_FOOTER_COLUMNS = [
   { title: 'Company', links: [
     { href: '/how-it-works', label: 'How it works' },
     { href: '/help', label: 'Help centre' },
+    // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: About us in the footer too.
+    { href: '/about', label: 'About us' },
     { href: '/contact', label: 'Contact' },
   ] },
   { title: 'Trust', links: [

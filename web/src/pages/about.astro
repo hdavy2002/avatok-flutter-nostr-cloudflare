@@ -1,77 +1,152 @@
 ---
-// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] text-only; same Content layout and elements.
-import { publicImage } from '../lib/config';
+// [WEB-ABOUT-FOLK-1 2026-09-27] /about rebuilt to the owner-approved mockup
+// design/about-page/saathum-about-mock.src.html (built by
+// design/about-page/build-about-mock.py). OWNER: "exact replica of what you
+// have shown me, not an inspired version." Replaces the archived
+// layouts/Content.astro version and returns /about to the menus
+// (lib/homeNavigation.ts) and out of lib/archivedPages.ts.
+//
+// NOTE FOR AI:
+//  - Shell: the same folk shell as layouts/LegalFolk.astro — Base
+//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
+//    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer
+//    are NOT copied — the live components are the header and footer.
+//  - Page CSS: styles/about-folk.css (scoped under `.ab`). Every rule there
+//    is the mockup's rule, `ab-` prefixed. The gold ribbon is the live
+//    `.grand-divider`. There is no hero band on this page: the layout is the
+//    die-cut sticker (design/desi-art/saathum.png, served from
+//    /assets/saathum-about/about-sticker.png) pinned on the LEFT and the
+//    story card on the RIGHT; on <=1100px the sticker stacks on top.
+//  - SEO/OG: this page builds its own PublicContent (kind 'page') the same
+//    way LegalFolk does, and its `image` is the sticker path itself, which
+//    is what the /og/page/about.png renderer paints (resolve.ts reads the
+//    `saathum:og-art` meta; prepare-og-art.mjs pre-renders any
+//    /assets/saathum*/ artwork). So the social card = title + sticker.
+//  - Exactly one <h1>. Emails stay plain text "support (@) saathum.com",
+//    never mailto. Brand text is "Saa Thum". Address is West Andheri,
+//    Mumbai (owner, 2026-09-27) — no entity name on the page.
+//  - The story is the owner's About copy (girmitiya diaspora, 1834–1917);
+//    keep the history factual and keep the "no fear, no guaranteed
+//    outcomes" promise intact when editing.
 export const prerender = true;
-import Content from '../layouts/Content.astro';
-import EntityFaq from '../components/EntityFaq.astro';
+import type { PublicContent } from '../lib/seo/types';
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { publicImage, publicImageSrcSet } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import '../styles/saathum-folk.css';
+import '../styles/about-folk.css';
+
+const title = 'About us — our story began on a ship, a long time ago';
+const description = 'Saa Thum was started to bring India closer to the girmitiya diaspora — families in Suriname, Guyana, Trinidad, Fiji, Mauritius and beyond — with live pujas and havans performed by temple priests, sankalp in your name, and prasad sent to your door.';
+const updated = '2026-09-27';
+const STICKER = '/assets/saathum-about/about-sticker.png';
+
+const content: PublicContent = {
+  kind: 'page',
+  key: '/about',
+  canonicalPath: '/about',
+  title,
+  summary: description,
+  visibility: 'public',
+  modifiedAt: new Date(updated).toISOString(),
+  image: { url: STICKER, alt: 'A smiling woman in a red silk saree greeting you with joined hands, the words सा थम, and a lit brass diya on a pink lotus — Saa Thum', revision: 'about-sticker-1' },
+};
+
+const stickerSrc = publicImage(STICKER, { width: 920, fit: 'scale-down' });
+const stickerSrcSet = publicImageSrcSet(STICKER, [340, 460, 920], { fit: 'scale-down' });
+const emblemSrc = publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 200, fit: 'scale-down' });
+const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
 ---
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="ab">
+      <section class="ab-about ab-wrap" aria-labelledby="page-title">
+        <div class="ab-about-inner">
+          <figure class="ab-art">
+            <img src={stickerSrc} srcset={stickerSrcSet} sizes="(max-width: 1100px) min(340px, 100vw), 460px" alt="A smiling woman in a red silk saree greeting you with joined hands, the words सा थम, and a lit brass diya resting on a pink lotus." width="1000" height="2020" decoding="async" fetchpriority="high" />
+            <figcaption>सा थम · Saa Thum · “with you”</figcaption>
+          </figure>
 
-<Content
-  kicker="Company"
-  title="About Saa Thum"
-  description="Saa Thum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door."
-  image="/og/about.png"
-  lead="Little rituals, big joy."
-  updated="2026-09-25"
->
+          <article class="ab-story">
+            <p class="ab-eyebrow">About Saa Thum</p>
+            <h1 id="page-title">Our story began on a ship, <em>a long time ago.</em></h1>
+            <p class="ab-lead">Saa Thum was started to bring India closer to the families the world forgot were Indian.</p>
+            <div class="ab-story-meta"><span class="ab-pill"><span class="ab-dot"></span>West Andheri, Mumbai</span></div>
 
+            <div class="ab-prose">
+              <h2>Their great-grandparents crossed the kala pani</h2>
+              <p class="ab-drop">Between 1834 and 1917, more than a million Indians boarded ships at Calcutta and Madras with a thumbprint on a contract they could not read. The British called it indenture. The people called themselves <strong>girmitiyas</strong>, after the “agreement” that took them away. They were sent to cut sugarcane on islands most of them had never heard of: Mauritius, Guyana, Trinidad, Suriname, Jamaica, Fiji, St Lucia, St Kitts, Grenada, St Vincent, Belize, Natal, Réunion, the Seychelles.</p>
+              <p>Most never came back. They were promised a return passage after five years; the ship rarely came. So they stayed, and they built a small India from whatever had fit in a cloth bundle: a Ramcharitmanas wrapped in a saree, a handful of tulsi seeds, the tune of a bhajan, and the name of a village nobody ever wrote down.</p>
+              <ul class="ab-places" aria-label="Where the Indian diaspora of the indenture era lives today">
+                <li>Suriname</li><li>Guyana</li><li>Trinidad &amp; Tobago</li><li>Fiji</li><li>Mauritius</li><li>Jamaica</li><li>St Lucia</li><li>St Kitts &amp; Nevis</li><li>Grenada</li><li>St Vincent</li><li>Belize</li><li>South Africa</li><li>Réunion</li><li>Seychelles</li><li>Kenya &amp; East Africa</li><li>Malaysia</li>
+              </ul>
 
-  <figure class="editorial-photo">
-    <img data-india-i18n-attr="alt:web-about.c1dc3d3115a3996c" src={publicImage('/genz-friends.jpg', { width: 900, fit: 'scale-down' })} alt="Four people laughing together over a phone" />
-    <figcaption>A blessing, shared with the people you love.</figcaption>
-  </figure>
+              <h2>What stayed, and what slipped away</h2>
+              <p>Five generations later, so much of it is still there. Diwali lights up Paramaribo and Port of Spain. The Ramayan is read aloud in Sarnami, in Fiji Hindi, in a Bhojpuri that India itself has half forgotten. Grandmothers still tie the mauli, still keep the fast, still say <strong>“Ram Ram”</strong> at the door.</p>
+              <p>But some things could not survive the crossing. There was no Ganga to bring water from. There was often no priest on the plantation, so the eldest man learned the mantras as best he could and passed them down by memory, a little thinner each time. Today a family in Nickerie or Lautoka can drive for hours and not find a mandir. When a mother falls ill and a daughter wants a sankalp made in her name, when a son buys his first home and wants a havan before the first night, when a grandfather passes and the family wants his shraddh done properly, they often cannot. Not because the faith is gone. Because the hands that knew how are gone.</p>
+              <p>We heard the same sentence again and again: <strong>“My grandfather knew exactly what to do. He never got the chance to teach us.”</strong></p>
 
-  <h2>Why we began</h2>
-  <p>
-    Saa Thum began with a simple wish: that any family, anywhere, could have a puja done properly —
-    without travel, without hunting for a priest, and without anyone frightening them into it. We
-    perform pujas and havans that celebrate life: exams passed, homes blessed, health restored,
-    families united, festivals kept.
-  </p>
+              <h2>India, a stranger with a familiar face</h2>
+              <p>The obvious answer is “go to India”. It is not so simple. A trip for a family of four can cost a year of savings. The village written on a great-grandfather's emigration pass may have changed its name, its district, or simply vanished into a city. There is no cousin waiting at the airport. The country that lives in their bedtime stories, that they have prayed towards their whole lives, does not recognise them when they arrive, and they arrive speaking a Hindi that makes shopkeepers smile.</p>
+              <p>India feels like a strange land, even to people whose whole life has been an act of remembering it. That is the heartbreak Saa Thum was built for.</p>
 
-  <h2>How it works</h2>
-  <ol>
-    <li><strong>Choose your ritual.</strong> Pick a puja or a havan — by what you're hoping for, by deity, or by festival.</li>
-    <li><strong>Tell us your sankalp.</strong> Your name, gotra and wish. Our priest speaks them at the altar.</li>
-    <li><strong>Watch it live.</strong> Light a lamp at home, join the aarti at the close, and watch the replay for 7 days.</li>
-    <li><strong>Receive prasad.</strong> If you'd like, we post prasad to your door after the ritual.</li>
-  </ol>
+              <div class="ab-quote">
+                <p>You should not need a passport, a year's savings and a guide <span>to come home for a puja.</span></p>
+                <img src={emblemSrc} alt="" aria-hidden="true" width="2048" height="2048" loading="lazy" decoding="async" />
+              </div>
 
-  <h2>Pujas and havans, nothing else</h2>
-  <p>
-    That's all we do, and we do it well. Our priests are ours; the experience is ours; the
-    responsibility is ours. See every ritual on <a href="/marketplace">Our Pujas</a>, or read
-    <a href="/how-it-works">how it works</a>.
-  </p>
-  <p>
-    Every ritual we perform is benefic — for learning, prosperity, health, love, peace and
-    celebration. We don't do fear, we don't do fierce rituals, and we never tell you something bad
-    will happen if you don't book.
-  </p>
-  <div class="note">
-    Rituals are performed with devotion by verified priests. Benefits described are those
-    traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
+              <h2>So we lit a diya in Andheri</h2>
+              <p>Saa Thum is a small team in <strong>West Andheri, Mumbai</strong>. We work with temple priests who have spent their lives performing pujas and havans, and we stream those rituals live so that a family anywhere in the world can sit in front of the fire from their own living room.</p>
+              <p>When you book a puja, the priest takes your <strong>sankalp in your name and your gotra</strong>, with your wish and the names of your family, exactly as he would if you were sitting beside him. When you join a havan, you join it with hundreds, sometimes thousands of other families, and every aahuti offered together makes it stronger. Afterwards the <strong>prasad is couriered to your door</strong>, whether that door is in Chaguanas, Nadi or Durban, and the video is yours to keep, so a grandmother who could not stay awake for the live stream can watch it with her chai in the morning.</p>
+              <p>The rituals are performed by people who know them by heart. Every booking supports those priests and their families, so they can keep doing this work full time. And every booking is a small repair in a thread that was pulled thin a hundred and fifty years ago.</p>
+
+              <h2>What we promise</h2>
+              <ul class="ab-promise">
+                <li>We only perform positive, benefic rituals. No fear, no curses, no “do this or something bad will happen”.</li>
+                <li>We never promise outcomes. A havan is an offering and a prayer, not a guarantee, and we will not lie to you about that.</li>
+                <li>What you see is what you pay. No tokens, no wallets, no surprises at checkout.</li>
+                <li>Real priests, real fire, real prasad. If we cannot perform your ritual, we tell you and refund you.</li>
+                <li>We explain every puja and havan in plain English: the deity, the story behind it, and what it means to take part from far away.</li>
+              </ul>
+
+              <p>Saa Thum means “with you”. That is the whole idea. Wherever the ships took your family, we would like to be the ones who bring the diya back.</p>
+
+              <div class="ab-where">
+                <div>
+                  <span class="ab-tag">Where we are</span>
+                  <p><strong>Saa Thum, West Andheri, Mumbai, India</strong>Write to us at support (@) saathum.com. We reply to every family.</p>
+                </div>
+                <a class="ab-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
+
+      <section class="ab-ask" aria-labelledby="ask-title">
+        <div class="ab-wrap ab-ask-inner">
+          <img src={namasteSrc} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
+          <div>
+            <h2 id="ask-title">Want to talk to us? <span>We are a namaste away.</span></h2>
+            <p>Write to support (@) saathum.com, tell us your family's story, or ask us how a puja or havan works from where you live.</p>
+          </div>
+          <div class="ab-ask-actions">
+            <a class="ab-btn ab-btn--paper" href="/contact">Contact us</a>
+            <a class="ab-btn ab-btn--paper" href="/marketplace">Join a havan</a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
   </div>
-
-  <h2>What we value</h2>
-  <ul>
-    <li><strong>Your name, spoken properly.</strong> The sankalp carries your name, gotra and wish, and you hear it at the altar.</li>
-    <li><strong>The full price, upfront.</strong> What you see before you book is what you pay. Refunds follow our <a href="/refunds">refund policy</a>.</li>
-    <li><strong>Only joy.</strong> No fear-based selling, no guarantees, no scary predictions.</li>
-    <li><strong>Say what is true.</strong> We are early, and we say so clearly rather than burying it.</li>
-  </ul>
-
-  {/* [WEB-SEO-6] Entity definition + FAQPage — see the component header. */}
-  <EntityFaq />
-
-  <h2 id="press">Press & media</h2>
-  <p>
-    For press, partnership, or media inquiries, reach us at
-    support (@) saathum.com and we'll get back to you.
-  </p>
-
-  <h2>Get in touch</h2>
-  <p>
-    Questions about a ritual? Visit our <a href="/contact">contact page</a> or email support (@) saathum.com.
-  </p>
-</Content>
+</Base>

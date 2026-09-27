@@ -30,7 +30,8 @@ export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason
   { path: '/payouts', label: 'Payouts', reason: 'seller payouts' },
   { path: '/organisers', label: 'For organisers / Guides', reason: 'seller onboarding' },
   { path: '/careers', label: 'Careers', reason: 'owner removed 2026-09-25' },
-  { path: '/about', label: 'About', reason: 'owner removed from all menus 2026-09-25' },
+  // [WEB-ABOUT-FOLK-1 2026-09-27] /about UN-archived by owner — rebuilt on the folk
+  // shell and back in the header + footer menus (lib/homeNavigation.ts).
   { path: '/grievance', label: 'Grievance Redressal', reason: 'owner removed 2026-09-25' },
   // [SAATHUM-REBRAND-1 2026-09-25] Creator-earning content, off-brand for a puja service.
   { path: '/ideas', label: 'Creator ideas', reason: 'creator earning ideas' },
