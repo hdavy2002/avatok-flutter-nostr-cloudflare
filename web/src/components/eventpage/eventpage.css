@@ -120,7 +120,10 @@
 .ep-ben div span { display: block; font-size: 22px; margin-bottom: 6px; }
 .ep-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .ep-step { text-align: center; padding: 10px; }
-.ep-step .ep-stk { width: 96px; height: 96px; margin: 0 auto 10px; }
+.ep-step .ep-stk { width: 160px; height: 160px; margin: 0 auto 12px; }
+.ep-prasad { display: flex; align-items: center; gap: 24px; }
+.ep-prasad-body { flex: 1; min-width: 0; }
+.ep-prasad-art { flex: none; width: 150px; height: 150px; }
 .ep-step b { display: block; font: 600 17px Comfortaa, sans-serif; color: var(--ep-teal); }
 .ep-step p { font-size: 14px; margin-top: 4px; }
 .ep-chad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -142,6 +145,9 @@
   .ep-panel-grid { grid-template-columns: 1fr; grid-template-areas: "title" "mid" "cta"; gap: 18px; }
   .ep-ben, .ep-steps, .ep-chad { grid-template-columns: 1fr 1fr; }
   .ep-sec .ep-corner { display: none; }
+  .ep-step .ep-stk { width: 130px; height: 130px; }
+  .ep-prasad { gap: 12px; }
+  .ep-prasad-art { width: 96px; height: 96px; }
 }
 @media (max-width: 600px) {
   .ep-page { padding: 0 0 44px; }

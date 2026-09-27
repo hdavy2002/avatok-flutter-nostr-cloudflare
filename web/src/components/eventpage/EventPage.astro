@@ -360,11 +360,13 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
       {copy.ritual && <ChadhavaOffer client:visible listingId={listing.id} />}
 
       {prasadCourier && (
-        <div class="ep-sec">
-          <div class="ep-stk ep-corner" style="width:64px;height:64px"><img src={sticker('prasad-box')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
-          <h2>Prasad at your door</h2>
-          <div class="ep-row"><span>Courier anywhere in India</span><b>₹{prasadPriceRupees.toLocaleString('en-IN')}</b></div>
-          <div class="ep-row" style="border:0"><span>Ships the same day as the {copy.noun}. You can change your address any time before it starts.</span></div>
+        <div class="ep-sec ep-prasad">
+          <div class="ep-prasad-body">
+            <h2>Prasad at your door</h2>
+            <div class="ep-row"><span>Courier anywhere in India</span><b>₹{prasadPriceRupees.toLocaleString('en-IN')}</b></div>
+            <div class="ep-row" style="border:0"><span>Ships the same day as the {copy.noun}. You can change your address any time before it starts.</span></div>
+          </div>
+          <div class="ep-stk ep-prasad-art"><img src={sticker('prasad-box')} alt="" loading="lazy" onerror="this.parentElement.style.display='none'" /></div>
         </div>
       )}
 

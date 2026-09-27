@@ -157,7 +157,7 @@ export function PayStep({
         <nav className="sthc-apps" aria-label="Payment apps">
           {UPI_APPS.map((app) => (
             <a key={app.id} href={upiAppHref(app, upi, platform, typeof window !== 'undefined' ? window.location.href : undefined)} aria-label={`Pay with ${app.name}`}>
-              <img src={app.icon} alt="" /> {app.name}
+              <span className="sthc-app-ic"><img src={app.icon} alt="" /></span>{app.name}
             </a>
           ))}
         </nav>
