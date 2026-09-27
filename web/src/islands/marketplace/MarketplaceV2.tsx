@@ -236,14 +236,8 @@ const CHIPS: { key: '' | TypeKey; label: string; color?: string }[] = [
   ...(['havan', 'puja', 'satsang', 'sermon', 'meditation'] as EventType[]).map((t) => ({ key: t, label: EVENT_TYPE_COPY[t].label, color: EVENT_TYPE_COPY[t].color.bg })),
   { key: 'festival', label: 'Festival', color: '#a8741a' },
 ];
-const RAILS: { id: string; title: string; sub: string; type: TypeKey; pick: (it: Item) => boolean }[] = [
-  { id: 'havans', title: 'Havans this week', sub: 'Shared fire rituals — join with thousands, sankalp in your name.', type: 'havan', pick: (it) => it.eventType === 'havan' },
-  { id: 'pujas', title: 'Pujas for your family', sub: 'Personal pujas and 1:1 sessions — life events, festivals, gratitude.', type: 'puja', pick: (it) => it.eventType === 'puja' },
-  { id: 'gatherings', title: 'Satsang, sermons & meditation', sub: 'Open gatherings — join from anywhere.', type: 'gathering', pick: (it) => it.eventType === 'satsang' || it.eventType === 'sermon' || it.eventType === 'meditation' },
-];
 const WHEN_LABELS: [string, string][] = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'Weekend'], ['month', 'This month']];
 const PAGE = 12;
-const RAIL_MAX = 4;
 
 const PinIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>;
 
@@ -574,94 +568,10 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
         </section>
       )}
 
-      {/* ④ CATEGORY RAILS — hidden while a search/filter is active */}
-      {ready && !searching && RAILS.map((rail) => {
-        const all = items.filter(rail.pick).sort(soonest);
-        // "Havans this week" must be true: prefer the next 7 days, else say "Upcoming".
-        const thisWeek = rail.id === 'havans' ? all.filter((i) => i.liveNow || (i.startsAt != null && i.startsAt < now + 7 * DAY_MS)) : all;
-        const railItems = (thisWeek.length > 0 ? thisWeek : all).slice(0, RAIL_MAX);
-        const title = rail.id === 'havans' && thisWeek.length === 0 ? 'Upcoming havans' : rail.title;
-        if (railItems.length === 0) return null;
-        return (
-          <section key={rail.id} className="bn-section mk-rail" id={rail.id} aria-labelledby={rail.id + '-title'}>
-            <div className="bn-inner">
-              <div className="bn-head mk-rail-head">
-                <div><h2 id={rail.id + '-title'}><span aria-hidden="true">✽</span> {title}</h2><p>{rail.sub}</p></div>
-                <a className="mk-seeall" {...filterLink({ type: rail.type }, () => capture('marketplace_tab', { type: rail.type, source: 'rail_see_all' }))}>See all <span aria-hidden="true">→</span></a>
-              </div>
-              <div className={'bn-grid bn-grid--' + railItems.length}>
-                {railItems.map((it, i) => <BookCard key={it.id} it={it} now={now} origin={origin} onAction={cardAction(it, i, rail.id)} />)}
-              </div>
-            </div>
-          </section>
-        );
-      })}
-
-      {/* ⑤ BROWSE BY DEITY */}
-      {deities.length > 0 && (
-        <section className="mk-deities" aria-labelledby="mk-deity-title">
-          <div className="mk-wrap">
-            <div className="grand-section-heading"><h2 id="mk-deity-title"><span aria-hidden="true">✽</span> Browse by deity</h2><a className="mk-seeall mk-seeall--teal" href="/rituals">All deities →</a></div>
-            <div className="mk-deity-row">
-              {deities.map((d, i) => (
-                <a key={d.name} className="mk-deity" {...filterLink({ q: d.name }, () => capture('marketplace_search', { q: d.name, source: 'deity' }))}>
-                  <span className="mk-deity-ring"><img src={publicImage(d.image, { width: 300, fit: 'scale-down' })} alt="" loading="lazy" decoding="async" /></span>
-                  <b>{d.name}</b>
-                  {ready && deityCounts[i] > 0 && <small>{plural(deityCounts[i], 'event')}</small>}
-                </a>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ⑥ BY INTENTION — static, rendered by Astro */}
-      {intentions}
-
-      {/* ⑦ FESTIVAL CALENDAR + TEMPLES */}
-      <section className="mk-two" aria-label="Festivals and temples">
-        <div className={'mk-wrap mk-two-inner' + (festivals.length === 0 ? ' mk-two-inner--one' : '')}>
-          {festivals.length > 0 && (
-            <div className="mk-panel">
-              <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> Festival calendar</h2><a className="mk-seeall mk-seeall--teal" {...filterLink({ type: 'festival' }, () => capture('marketplace_tab', { type: 'festival', source: 'festival_panel' }))}>All festivals →</a></div>
-              <ol className="mk-fest">
-                {festivals.map((f, i) => {
-                  const d = new Date(festivalStartMs(f) + IST_OFFSET);
-                  const n = festivalCounts[i];
-                  return (
-                    <li key={f.start + f.keyword}>
-                      <a {...filterLink({ q: f.keyword }, () => capture('marketplace_search', { q: f.keyword, source: 'festival' }))}>
-                        <span className="mk-fest-date"><b>{String(d.getUTCDate()).padStart(2, '0')}</b><small>{d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}</small></span>
-                        <span className="mk-fest-copy"><b>{f.name}</b><span>{f.note}</span></span>
-                        <span className="mk-fest-count">{ready && n > 0 ? <>{plural(n, 'event')} →</> : <span aria-label={'Find ' + f.keyword + ' events'}>→</span>}</span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          )}
-          <div className="mk-panel">
-            <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> {temples.length > 0 ? 'Live from these temples' : 'Performed live at the altar'}</h2></div>
-            {temples.length > 0 && (
-              <div className="mk-temples">
-                {temples.map((t) => (
-                  <a key={t.city} {...filterLink({ q: t.city }, () => capture('marketplace_search', { q: t.city, source: 'temple' }))}>
-                    <PinIcon />{t.city}<small aria-label={plural(t.n, 'event')}>{t.n}</small>
-                  </a>
-                ))}
-              </div>
-            )}
-            <p className="mk-panel-note">Every event names its temple and priest. Wherever you are, the sankalp is spoken at that altar.</p>
-            <a className="grand-button mk-panel-btn" href="/how-it-works">How a live havan works <span aria-hidden="true">→</span></a>
-          </div>
-        </div>
-      </section>
-
-      {/* ⑧ ALL EVENTS (+ ⑨ empty state) */}
+      {/* ④ UPCOMING EVENTS (+ empty state) — replaced the category rails, owner 2026-09-27 */}
       <section className="bn-section mk-all" id="all-events" ref={allRef} aria-labelledby="mk-all-title">
         <div className="bn-inner">
-          <div className="bn-head"><h2 id="mk-all-title"><span aria-hidden="true">✽</span> {searching ? 'Your results' : 'All upcoming events'}</h2><p>Soonest first. Use the filters to narrow it down.</p></div>
+          <div className="bn-head"><h2 id="mk-all-title"><span aria-hidden="true">✽</span> {searching ? 'Your results' : 'Upcoming events'}</h2><p>Soonest first. Use the filters to narrow it down.</p></div>
 
           {status === 'loading' && <p className="mk-loading" role="status">Loading events…</p>}
 
@@ -730,6 +640,68 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
           {(status === 'error' || (ready && results.length === 0)) && emptyState}
         </div>
       </section>
+
+      {/* ⑤ BROWSE BY DEITY */}
+      {deities.length > 0 && (
+        <section className="mk-deities" aria-labelledby="mk-deity-title">
+          <div className="mk-wrap">
+            <div className="grand-section-heading"><h2 id="mk-deity-title"><span aria-hidden="true">✽</span> Browse by deity</h2><a className="mk-seeall mk-seeall--teal" href="/rituals">All deities →</a></div>
+            <div className="mk-deity-row">
+              {deities.map((d, i) => (
+                <a key={d.name} className="mk-deity" {...filterLink({ q: d.name }, () => capture('marketplace_search', { q: d.name, source: 'deity' }))}>
+                  <span className="mk-deity-ring"><img src={publicImage(d.image, { width: 300, fit: 'scale-down' })} alt="" loading="lazy" decoding="async" /></span>
+                  <b>{d.name}</b>
+                  {ready && deityCounts[i] > 0 && <small>{plural(deityCounts[i], 'event')}</small>}
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ⑥ BY INTENTION — static, rendered by Astro */}
+      {intentions}
+
+      {/* ⑦ FESTIVAL CALENDAR + TEMPLES */}
+      <section className="mk-two" aria-label="Festivals and temples">
+        <div className={'mk-wrap mk-two-inner' + (festivals.length === 0 ? ' mk-two-inner--one' : '')}>
+          {festivals.length > 0 && (
+            <div className="mk-panel">
+              <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> Festival calendar</h2><a className="mk-seeall mk-seeall--teal" {...filterLink({ type: 'festival' }, () => capture('marketplace_tab', { type: 'festival', source: 'festival_panel' }))}>All festivals →</a></div>
+              <ol className="mk-fest">
+                {festivals.map((f, i) => {
+                  const d = new Date(festivalStartMs(f) + IST_OFFSET);
+                  const n = festivalCounts[i];
+                  return (
+                    <li key={f.start + f.keyword}>
+                      <a {...filterLink({ q: f.keyword }, () => capture('marketplace_search', { q: f.keyword, source: 'festival' }))}>
+                        <span className="mk-fest-date"><b>{String(d.getUTCDate()).padStart(2, '0')}</b><small>{d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}</small></span>
+                        <span className="mk-fest-copy"><b>{f.name}</b><span>{f.note}</span></span>
+                        <span className="mk-fest-count">{ready && n > 0 ? <>{plural(n, 'event')} →</> : <span aria-label={'Find ' + f.keyword + ' events'}>→</span>}</span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
+          <div className="mk-panel">
+            <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> {temples.length > 0 ? 'Live from these temples' : 'Performed live at the altar'}</h2></div>
+            {temples.length > 0 && (
+              <div className="mk-temples">
+                {temples.map((t) => (
+                  <a key={t.city} {...filterLink({ q: t.city }, () => capture('marketplace_search', { q: t.city, source: 'temple' }))}>
+                    <PinIcon />{t.city}<small aria-label={plural(t.n, 'event')}>{t.n}</small>
+                  </a>
+                ))}
+              </div>
+            )}
+            <p className="mk-panel-note">Every event names its temple and priest. Wherever you are, the sankalp is spoken at that altar.</p>
+            <a className="grand-button mk-panel-btn" href="/how-it-works">How a live havan works <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </section>
+
     </>
   );
 }
