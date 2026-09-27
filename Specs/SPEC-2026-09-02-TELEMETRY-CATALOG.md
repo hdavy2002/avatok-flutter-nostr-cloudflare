@@ -93,8 +93,10 @@ upload bug) · `auth_guest_token_issued`.
 **`[MKT-V2-1 2026-09-27]` The new `/marketplace`** (`islands/marketplace/MarketplaceV2.tsx`)
 replaced the bazaar grid (`ExploreGrid`/`FilterRail`/`LiveNowRail` — deleted), so the
 `market_*` events above are no longer emitted by `/marketplace`. It emits:
-`marketplace_loaded` {count, live_count, ms, q, type} — once per page load, after
-`/api/explore` (≤3×30) + `/api/explore/live-now` · `marketplace_search` {q, source:
+`marketplace_loaded` {count, live_count, ms, from_snapshot, q, type} — once per page load, after
+`/api/explore` (≤3×30) + `/api/explore/live-now` (`from_snapshot` = the grid was already painted
+from the localStorage snapshot, [MKT-SPEED-1]) · `cache_event` {store: marketplace_cards,
+result: hit|stale|miss, count?, render_ms?} — once per load, before the fetch · `marketplace_search` {q, source:
 url|hero|deity|festival|temple, type?, when?} · `marketplace_filter` {key: q|intention|when|
 price|sort|prasad|priv|clear|show_more, value} · `marketplace_tab` {type: all|havan|puja|
 satsang|sermon|meditation|festival|gathering, source?: toolbar|rail_see_all|festival_panel} ·

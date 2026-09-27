@@ -7502,5 +7502,40 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Link/URL change only — no new event or response code. Verify directly: GET https://saathum.com/l/<id> and /<handle>/<slug> answer 301 to /book/<id>; /book/<id>/checkout renders SaathumCheckout; /api/me/dashboard items carry no join_url; a new booking confirmation email's button opens https://saathum.com/dashboard/my-events."
+  },
+  "MKT-SPEED-1": {
+    "description": "[MKT-SPEED-1] Speed up the /marketplace listings section. Worker: /api/explore and /api/explore/live-now run their independent D1 reads in parallel (was 6+ sequential round trips), and signed-out requests share a 30 s edge cache (x-saathum-cache: hit|miss; impressions still tracked on hits). Web: MarketplaceV2 paints the last successful load from a localStorage snapshot (stale-while-revalidate) and preconnects to the API host.",
+    "shipped": "2026-09-27",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "marketplace_loaded",
+        "property": "from_snapshot",
+        "exists": true,
+        "min_events": 1,
+        "note": "Proves the new island build is live (the property is new in MKT-SPEED-1)."
+      },
+      {
+        "event": "marketplace_loaded",
+        "property": "ms",
+        "lt": 1000,
+        "min_pass_rate": 0.5,
+        "note": "Median load must beat the pre-change p50 of 1237 ms; slow mobile networks legitimately miss, so this is a p50 check, not every load."
+      },
+      {
+        "event": "cache_event",
+        "property": "result",
+        "in": [
+          "hit",
+          "stale",
+          "miss"
+        ],
+        "where": {
+          "store": "marketplace_cards"
+        }
+      }
+    ]
   }
 }

@@ -241,7 +241,7 @@ import { adminReviews, adminReviewAction } from "./routes/admin_reviews";
 import { askQuestion, answerQuestion, listMyQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
   createListing, updateListing, publishListing, submitListingForApproval, listingBlockersRoute, setListingStatus, duplicateListing, repeatListing, cancelListing,
-  myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
+  myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch, exploreAnonCached,
   exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
   listingFeeQuote, reconcileListingLifecycleProjections, reconcileListingPublicationEffects, expireEndedEventListings,
@@ -1928,8 +1928,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
       // --- Phase 6: listings pipeline + AvaExplore + creator channels ---
       // Marketplace reads are PUBLIC (A3 guest browsing — no auth required).
-      if (p === "/api/explore" && req.method === "GET") return await exploreBrowse(req, env);
-      if (p === "/api/explore/live-now" && req.method === "GET") return await exploreLiveNow(req, env);
+      // [MKT-SPEED-1] Signed-out reads share a 30 s edge cache (see exploreAnonCached).
+      if (p === "/api/explore" && req.method === "GET") return await exploreAnonCached(req, env, ctx, "explore", () => exploreBrowse(req, env));
+      if (p === "/api/explore/live-now" && req.method === "GET") return await exploreAnonCached(req, env, ctx, "live_now", () => exploreLiveNow(req, env));
       if (p === "/api/explore/search" && req.method === "GET") return await exploreSearch(req, env);
       if (p === "/api/explore/categories" && req.method === "GET") return await cached(req, ctx, () => exploreCategories(env), 300);
       // [WEB-SEO-3] Dynamic sitemap feeds — public, 1h edge cache.

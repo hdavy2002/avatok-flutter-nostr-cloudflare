@@ -255,6 +255,43 @@ function prefersReducedMotion(): boolean {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
+// ---------------------------------------------------------------- snapshot cache
+// [MKT-SPEED-1 2026-09-27] The listing fetch took ~1.2 s median (p90 ~2 s) and the
+// grid sat on "Loading events…" for all of it, on EVERY visit. The raw cards from
+// the last successful load are now kept in localStorage, so a returning visitor
+// sees the grid immediately while a fresh fetch replaces it in the background
+// (stale-while-revalidate). These are PUBLIC listings — same bytes every guest
+// gets — so there is nothing per-account to scope. Everything is re-derived
+// through toItem() against the current clock, so an event that has ended since
+// the snapshot is dropped exactly as a fresh fetch would drop it.
+const SNAP_KEY = 'saathum_mkt_cards_v1';
+const SNAP_MAX_AGE_MS = 30 * 60_000;
+function readSnapshot(): Card[] | null {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw) as { at?: number; cards?: Card[] };
+    if (!snap || !Array.isArray(snap.cards) || typeof snap.at !== 'number') return null;
+    if (Date.now() - snap.at > SNAP_MAX_AGE_MS) return null;
+    return snap.cards;
+  } catch { return null; }
+}
+function writeSnapshot(cards: Card[]): void {
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), cards })); } catch { /* storage full or blocked */ }
+}
+function itemsFrom(cards: Card[], guides: GuideLink[]): Item[] {
+  const out: Item[] = [];
+  const seen = new Set<string>();
+  const t = Date.now();
+  for (const card of cards) {
+    const it = toItem(card, guides, t);
+    if (!it || seen.has(it.id)) continue;
+    seen.add(it.id);
+    out.push(it);
+  }
+  return out.sort(soonest);
+}
+
 // ---------------------------------------------------------------- component
 type Status = 'loading' | 'ready' | 'error';
 
@@ -279,44 +316,46 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
   const festivals = useMemo(() => upcomingFestivals(now), [Math.floor(now / 3_600_000)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load listings: /api/explore (≤ 3 × 30) + /api/explore/live-now.
+  // [MKT-SPEED-1] Paint the last snapshot first (if any), then revalidate.
   useEffect(() => {
     const ctrl = new AbortController();
     const t0 = performance.now();
-    setStatus('loading');
+    const snap = readSnapshot();
+    const fromSnap = snap ? itemsFrom(snap, guides) : null;
+    if (fromSnap && fromSnap.length) {
+      setItems(fromSnap);
+      setStatus('ready');
+      capture('cache_event', { store: 'marketplace_cards', result: 'hit', count: fromSnap.length, render_ms: Math.round(performance.now() - t0) });
+    } else {
+      setStatus('loading');
+      capture('cache_event', { store: 'marketplace_cards', result: snap ? 'stale' : 'miss' });
+    }
     (async () => {
       const liveP = getLiveNow(ctrl.signal).catch((err) => {
         if (!ctrl.signal.aborted) captureException(err, { surface: 'marketplace', endpoint: '/api/explore/live-now' });
         return { listings: [] as Card[] };
       });
       try {
-        const collected: Item[] = [];
-        const seen = new Set<string>();
-        const add = (cards: Card[] | undefined) => {
-          const t = Date.now();
-          for (const card of cards ?? []) {
-            const it = toItem(card, guides, t);
-            if (!it || seen.has(it.id)) continue;
-            seen.add(it.id);
-            collected.push(it);
-          }
-        };
+        const cards: Card[] = [];
         let cursor: string | undefined;
         for (let page = 0; page < 3; page++) {
           const res = await getExplore({ limit: 30, cursor }, ctrl.signal);
-          add(res.listings);
+          cards.push(...(res.listings ?? []));
           cursor = (res as { cursor?: string | null }).cursor ?? undefined;
           if (!cursor) break;
         }
         const live = await liveP;
-        add(live.listings);
-        collected.sort(soonest);
+        cards.push(...(live.listings ?? []));
+        const collected = itemsFrom(cards, guides);
         setItems(collected);
         setStatus('ready');
+        writeSnapshot(cards);
         const f = readFilters(window.location.search);
         capture('marketplace_loaded', {
           count: collected.length,
           live_count: collected.filter((i) => i.liveNow).length,
           ms: Math.round(performance.now() - t0),
+          from_snapshot: !!(fromSnap && fromSnap.length),
           q: f.q || null,
           type: f.type || null,
         });
@@ -324,7 +363,8 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
       } catch (err) {
         if (ctrl.signal.aborted) return;
         captureException(err, { surface: 'marketplace', endpoint: '/api/explore' });
-        setStatus('error');
+        // A snapshot already on screen stays there — better than an error over real cards.
+        if (!(fromSnap && fromSnap.length)) setStatus('error');
       }
     })();
     return () => ctrl.abort();

@@ -938,51 +938,49 @@ async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seat
   const map = new Map<string, { seats_taken: number; watching: number; favorites: number }>();
   if (!ids.length) return map;
   const placeholders = ids.map((_, i) => `?${i + 1}`).join(",");
-  try {
-    const seats = await metaSession(env).prepare(
+  const db = metaSession(env);
+  // [MKT-SPEED-1 2026-09-27] The three reads below are independent, so they run in
+  // PARALLEL — one D1 round trip instead of three in a row. Each still fails soft on
+  // its own (allSettled): a missing commercial migration drops that one stat, never
+  // the card.
+  //
+  //  * seats_taken — real tickets (commercial_entitlements).
+  //  * watching    — open participant intervals right now.
+  //  * favorites   — [FAVOURITES-COUNT-1 2026-09-05] how many people hearted this
+  //    listing. The favourite already existed and already wrote a row — it was the
+  //    count that had no reader, so the page filled that slot with the CREATOR's
+  //    follower_count under the label "REGULARS", a different number about a
+  //    different thing.
+  const [seats, live, favs] = await Promise.allSettled([
+    db.prepare(
       `SELECT listing_id, COUNT(*) n FROM commercial_entitlements
         WHERE listing_id IN (${placeholders})
           AND role IN ('viewer','buyer')
           AND state IN ('reserved','held','active','consumed')
         GROUP BY listing_id`,
-    ).bind(...ids).all();
-    for (const r of (seats.results ?? []) as any[]) {
-      map.set(String(r.listing_id), { seats_taken: Number(r.n ?? 0), watching: 0, favorites: 0 });
-    }
-  } catch { /* migration not applied — no seat counts, not an error */ }
-  try {
-    const live = await metaSession(env).prepare(
+    ).bind(...ids).all(),
+    db.prepare(
       `SELECT s.listing_id listing_id, COUNT(*) n
          FROM commercial_participant_intervals i
          JOIN commercial_sessions s ON s.commercial_session_id = i.commercial_session_id
         WHERE s.listing_id IN (${placeholders})
           AND i.reconciliation_state = 'open'
         GROUP BY s.listing_id`,
-    ).bind(...ids).all();
-    for (const r of (live.results ?? []) as any[]) {
-      const key = String(r.listing_id);
-      const prev = map.get(key) ?? { seats_taken: 0, watching: 0, favorites: 0 };
-      map.set(key, { ...prev, watching: Number(r.n ?? 0) });
-    }
-  } catch { /* same */ }
-  // [FAVOURITES-COUNT-1 2026-09-05] How many people hearted this listing.
-  //
-  // The favourite already existed and already wrote a row — it was the count
-  // that had no reader, so the page filled that slot with the CREATOR's
-  // follower_count under the label "REGULARS", which is a different number
-  // about a different thing. Same shape as the two queries above: one IN query,
-  // fails soft, no N+1.
-  try {
-    const favs = await metaSession(env).prepare(
+    ).bind(...ids).all(),
+    db.prepare(
       `SELECT listing_id, COUNT(*) n FROM listing_favorites
         WHERE listing_id IN (${placeholders}) GROUP BY listing_id`,
-    ).bind(...ids).all();
-    for (const r of (favs.results ?? []) as any[]) {
-      const key = String(r.listing_id);
-      const prev = map.get(key) ?? { seats_taken: 0, watching: 0, favorites: 0 };
-      map.set(key, { ...prev, favorites: Number(r.n ?? 0) });
-    }
-  } catch { /* table may not be migrated — no count, not an error */ }
+    ).bind(...ids).all(),
+  ]);
+  const rowsOf = (r: PromiseSettledResult<{ results?: unknown[] }>): any[] =>
+    r.status === "fulfilled" ? ((r.value.results ?? []) as any[]) : [];
+  const bump = (key: string, patch: Partial<{ seats_taken: number; watching: number; favorites: number }>) => {
+    const prev = map.get(key) ?? { seats_taken: 0, watching: 0, favorites: 0 };
+    map.set(key, { ...prev, ...patch });
+  };
+  for (const r of rowsOf(seats)) bump(String(r.listing_id), { seats_taken: Number(r.n ?? 0) });
+  for (const r of rowsOf(live)) bump(String(r.listing_id), { watching: Number(r.n ?? 0) });
+  for (const r of rowsOf(favs)) bump(String(r.listing_id), { favorites: Number(r.n ?? 0) });
   return map;
 }
 
@@ -3790,17 +3788,29 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
     : "(l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC";
   const limit = Math.min(50, Math.max(1, Number(u.get("limit") || 20)));
   const offset = Math.max(0, Number(u.get("cursor") || 0));
-  const rs = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE ${where.join(" AND ")}
-      ORDER BY ${order}, l.created_at DESC
-      LIMIT ${limit + 1} OFFSET ${offset}`,
-  ).bind(...binds).all();
+  // [MKT-SPEED-1 2026-09-27] Everything below used to run strictly one after the
+  // other — six-plus D1 round trips per page, ~1.2 s median on the marketplace. The
+  // page query, the section counts and the flag read do not depend on each other,
+  // and the three per-card lookups depend only on the page's ids, so each group
+  // runs in parallel. Same queries, same results; two round trips of wall time.
+  const [rs, sectionCounts, mpbOn] = await Promise.all([
+    metaSession(env).prepare(
+      `${CARD_SELECT} WHERE ${where.join(" AND ")}
+        ORDER BY ${order}, l.created_at DESC
+        LIMIT ${limit + 1} OFFSET ${offset}`,
+    ).bind(...binds).all(),
+    sectionCountsFor(env, req, uid),
+    maxPerBookingEnabled(env), // [MAXBOOK-DARK-1]
+  ]);
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
-  const promos = await promosForCards(env, page.map((r) => r.id));
-  const cardStats = await cardStatsFor(env, page.map((r) => r.id));
-  const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
-  trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
+  const pageIds = page.map((r) => String(r.id));
+  const [promos, cardStats, favs] = await Promise.all([
+    promosForCards(env, pageIds),
+    cardStatsFor(env, pageIds),
+    favoritesFor(env, uid, pageIds), // [UI-MKT-3] hydrate heart state per fetch
+  ]);
+  trackImpressions(env, req, uid, APP, "explore", pageIds);
 
   // [MARKET-SECTION-1] Per-section totals for the marketplace sidebar.
   //
@@ -3814,9 +3824,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // out every other row the moment you pick one row is a dead end with no way
   // back. `sectionCounts` is omitted entirely if the query fails (e.g. before
   // the migration lands) so the client falls back rather than showing zeroes.
-  const sectionCounts = await sectionCountsFor(env, req, uid);
-
-  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
+  // (sectionCounts and mpbOn are fetched in parallel with the page query, above.)
   return json({
     vertical,
     section: isSection(section) ? section : null,
@@ -3864,6 +3872,51 @@ async function sectionCountsFor(env: Env, req: Request, uid: string | null): Pro
   }
 }
 
+/**
+ * [MKT-SPEED-1 2026-09-27] Shared 30-second edge cache for SIGNED-OUT marketplace
+ * reads (/api/explore and /api/explore/live-now).
+ *
+ * Why it is safe to share: with no Authorization header and no ?token= the
+ * response depends ONLY on the URL (every filter — kind, section, sort, cursor,
+ * vertical, examples — is a query param) plus the clock. There is no uid, so no
+ * block list and no favourite hearts. A signed-in caller skips the cache entirely.
+ *
+ * What 30 s costs: a newly published listing or a new booking count can take up
+ * to 30 s to show to guests. Nothing money-bearing reads this — checkout re-reads
+ * the listing itself.
+ *
+ * Impressions still count on a cache hit: the ids are read back out of the cached
+ * body and trackImpressions fires exactly as the handler would have.
+ */
+export async function exploreAnonCached(
+  req: Request, env: Env, ctx: ExecutionContext,
+  surface: "explore" | "live_now",
+  build: () => Promise<Response>,
+  ttlSeconds = 30,
+): Promise<Response> {
+  const signedIn = !!req.headers.get("authorization") || !!new URL(req.url).searchParams.get("token");
+  if (signedIn || req.method !== "GET") return build();
+  const cache = caches.default;
+  const key = new Request(req.url, { method: "GET" });
+  const hit = await cache.match(key);
+  if (hit) {
+    try {
+      const body = await hit.clone().json() as { listings?: { id?: unknown }[] };
+      trackImpressions(env, req, null, APP, surface, (body.listings ?? []).map((c) => String(c.id)));
+    } catch { /* telemetry is best-effort */ }
+    const out = new Response(hit.body, hit);
+    out.headers.set("x-saathum-cache", "hit");
+    return out;
+  }
+  const res = await build();
+  if (res.status !== 200) return res;
+  const out = new Response(res.body, res);
+  out.headers.set("cache-control", `public, max-age=${ttlSeconds}`);
+  ctx.waitUntil(cache.put(key, out.clone()));
+  out.headers.set("x-saathum-cache", "miss");
+  return out;
+}
+
 // GET /api/explore/live-now — the red-dot rail.
 export async function exploreLiveNow(req: Request, env: Env): Promise<Response> {
   const uid = await maybeUid(req, env);
@@ -3887,11 +3940,15 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
     `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${await popularityOrder(env)} LIMIT 25`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
-  const promos = await promosForCards(env, rows.map((r) => r.id));
-  const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
-  const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
-  trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
-  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
+  const rowIds = rows.map((r) => String(r.id));
+  // [MKT-SPEED-1] Independent per-card lookups run in parallel (was four in a row).
+  const [promos, cardStats, favs, mpbOn] = await Promise.all([
+    promosForCards(env, rowIds),
+    cardStatsFor(env, rowIds),
+    favoritesFor(env, uid, rowIds), // [UI-MKT-3]
+    maxPerBookingEnabled(env), // [MAXBOOK-DARK-1]
+  ]);
+  trackImpressions(env, req, uid, APP, "live_now", rowIds);
   return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats, mpbOn), joinable: true })) });
 }
 

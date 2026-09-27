@@ -27,7 +27,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import MarketplaceV2 from '../islands/marketplace/MarketplaceV2';
-import { publicImage } from '../lib/config';
+import { API_BASE, publicImage } from '../lib/config';
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import { rituals, ritualBySlug } from '../lib/ritualGuides';
 import { MARKETPLACE_SEO } from '../lib/seo/catalog';
@@ -66,6 +66,9 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
 <Base content={MARKETPLACE_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
+    <!-- [MKT-SPEED-1] Open the API connection while the island JS downloads, so the
+         listings fetch skips DNS + TLS setup. -->
+    <link rel="preconnect" href={API_BASE} crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
   <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
