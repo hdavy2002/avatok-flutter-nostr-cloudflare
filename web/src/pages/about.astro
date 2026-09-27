@@ -43,6 +43,7 @@ const title = 'About us — our story began on a ship, a long time ago';
 const description = 'Saa Thum was started to bring India closer to the girmitiya diaspora — families in Suriname, Guyana, Trinidad, Fiji, Mauritius and beyond — with live pujas and havans performed by temple priests, sankalp in your name, and prasad sent to your door.';
 const updated = '2026-09-27';
 const STICKER = '/assets/saathum-about/about-sticker.png';
+const OG_ART = '/assets/saathum-about/about-og-woman.jpg';
 
 const content: PublicContent = {
   kind: 'page',
@@ -52,7 +53,10 @@ const content: PublicContent = {
   summary: description,
   visibility: 'public',
   modifiedAt: new Date(updated).toISOString(),
-  image: { url: STICKER, alt: 'A smiling woman in a red silk saree greeting you with joined hands, the words सा थम, and a lit brass diya on a pink lotus — Saa Thum', revision: 'about-sticker-1' },
+  // [ABOUT-OG-CROP-1 2026-09-27] Share card uses a woman-only crop of the
+  // sticker (no सा थम lettering, no diya). The full 1000x2020 sticker was
+  // centre-cropped by the card's arch and cut her head off on WhatsApp.
+  image: { url: OG_ART, alt: 'A smiling woman in a red silk saree greeting you with joined hands — Saa Thum', revision: 'about-og-woman-1' },
 };
 
 const stickerSrc = publicImage(STICKER, { width: 920, fit: 'scale-down' });
