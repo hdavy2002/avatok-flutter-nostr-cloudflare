@@ -28,6 +28,9 @@
 }
 @media (min-width: 1800px) { .folk-site[data-design="saathum-reference-v5"] .hs { --hs-box: 1480px; } }
 .folk-site[data-design="saathum-reference-v5"] .hs p { margin: 0; }
+/* [WEB-HELP-NOTE-CENTER 2026-09-27] `.hs p { margin: 0 }` beat the shared
+   .grand-booking-note `margin: auto`, pinning the note to the left edge. */
+.folk-site[data-design="saathum-reference-v5"] .hs p.grand-booking-note { margin-inline: auto; }
 .folk-site[data-design="saathum-reference-v5"] .hs img { max-width: 100%; }
 .folk-site[data-design="saathum-reference-v5"] .hs a:focus-visible, .folk-site[data-design="saathum-reference-v5"] .hs button:focus-visible, .folk-site[data-design="saathum-reference-v5"] .hs input:focus-visible, .folk-site[data-design="saathum-reference-v5"] .hs summary:focus-visible { outline: 3px solid var(--grand-red); outline-offset: 4px; }
 .folk-site[data-design="saathum-reference-v5"] .hs .hs-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
