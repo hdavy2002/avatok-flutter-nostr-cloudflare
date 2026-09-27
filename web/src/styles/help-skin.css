@@ -77,7 +77,14 @@
 .folk-site[data-design="saathum-reference-v5"] .hs .hs-hero-stats span { font: 800 11px 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #6b4a2b; }
 
 /* ---------- topic tiles ---------- */
-.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics { padding-block: 34px 44px; }
+/* Owner feedback 2026-09-27 (spec .topics): white tile borders vanished on cream,
+   so the topic section sits on the landing's terracotta band — same full-bleed
+   ::before as .grand-experiences in saathum-folk.css. */
+.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics { padding-block: 30px 44px; position: relative; z-index: 0; }
+.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%); background: var(--terra); z-index: -1; }
+.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics h2 { color: var(--paper); }
+.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics .grand-section-heading h2 span { color: var(--marigold); }
+.folk-site[data-design="saathum-reference-v5"] .hs .hs-topics .hs-link { color: var(--paper); }
 .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile-grid { display: grid; grid-template-columns: repeat(var(--hs-tiles, 6), minmax(0, 1fr)); gap: 12px; }
 .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 4px solid var(--paper); border-radius: 11px; background: #f7e8cc; text-decoration: none; box-shadow: 0 5px 14px #17343c1c; transition: transform .18s ease, box-shadow .18s ease; }
 .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile:hover { transform: translateY(-3px) rotate(-.35deg); box-shadow: 0 9px 18px #17343c2b; }
