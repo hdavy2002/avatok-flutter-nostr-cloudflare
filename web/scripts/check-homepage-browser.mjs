@@ -174,8 +174,9 @@ try {
       await page.locator('#avh-drawer').waitFor({ state: 'hidden' });
       assert(await page.getByRole('button', { name: 'Open menu', exact: true }).evaluate(el => el === document.activeElement), name + ': Escape restores focus');
       await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-      await page.locator('#avh-drawer').getByRole('link', { name: 'By intention', exact: true }).click();
-      assert(!(await page.locator('#avh-drawer').evaluate(dialog => dialog.open)), name + ': anchor selection closes menu');
+      // [MKT-V2-4] The menu no longer has an in-page anchor (By intention); a menu link must still close it.
+      await page.locator('#avh-drawer').getByRole('link', { name: 'How it works', exact: true }).click();
+      assert(!(await page.locator('#avh-drawer').evaluate(dialog => dialog.open)), name + ': menu link selection closes menu');
     }
     await page.context().addCookies([{ name: '__client_uat', value: '1', url: 'http://127.0.0.1:4179' }]);
     await page.reload({ waitUntil: 'networkidle' });

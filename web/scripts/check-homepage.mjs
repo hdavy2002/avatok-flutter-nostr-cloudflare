@@ -81,8 +81,8 @@ assert.match(html, /class="grand-elephant/, 'Organiser section renders elephant 
 assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image pipeline');
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
-// [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label renamed.
-for (const [label, href] of [['Pujas','/marketplace?q=Puja'],['Havans','/marketplace?q=Havan'],['By intention','/#experiences'],['How it works','/how-it-works']]) {
+// [MKT-V2-4 2026-09-27] Header menu is Explore (/marketplace) + How it works.
+for (const [label, href] of [['Explore','/marketplace'],['How it works','/how-it-works']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }

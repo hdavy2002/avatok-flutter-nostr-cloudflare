@@ -22,10 +22,9 @@ export const BOOK_CTA = { href: '/marketplace', label: 'Book a puja' };
 // brief §5.1: Pujas · Havans · By intention · How it works · About. Footer keeps
 // Cookies and Grievance Redressal (IT Rules 2021) beyond the brief's Trust list;
 // "Our priests" and "Follow us" wait until a priests page and social accounts exist.
+// [MKT-V2-4 2026-09-27] OWNER DECISION: one "Explore" link to /marketplace replaces Pujas · Havans · By intention (not the word "Marketplace").
 export const HOME_HEADER_LINKS = [
-  { href: '/marketplace?q=Puja', label: 'Pujas' },
-  { href: '/marketplace?q=Havan', label: 'Havans' },
-  { href: '/#experiences', label: 'By intention' },
+  { href: '/marketplace', label: 'Explore' },
   { href: '/how-it-works', label: 'How it works' },
   // [SAATHUM-ARCHIVE-2 2026-09-25] About removed from menus by owner (page archived).
 ];
