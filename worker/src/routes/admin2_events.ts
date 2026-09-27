@@ -55,6 +55,7 @@ import {
   type EventPatch, type EventTab,
 } from "../lib/admin2_events_logic";
 import { eventTypeOf } from "../lib/event_types";
+import { sendSaathumVideoReadyEmails } from "./saathum_checkout";
 
 const APP = "saathum";
 /** The listing module's app tag — releaseBlocks() keys calendar blocks on it. */
@@ -366,6 +367,11 @@ async function writeMediaAndAttrs(env: Env, adminUid: string, id: string, cover:
   await history(env, { listingId: id, actorId: adminUid, action: "admin_edit", prev: row.status, next: row.status, reason: JSON.stringify(changes).slice(0, 2000) });
   await audit(env, adminUid, "listing_admin_edit", id, { status: row.status, changes, via: "admin2" });
   if (row.status === "published" || row.status === "live") await ftsSync(env, id).catch(() => undefined);
+  // [SAATHUM-VIDEO-ONLY 2026-09-27] New/changed video link → email every confirmed buyer.
+  const newVideo = changes.video_download_url?.to;
+  if (typeof newVideo === "string" && newVideo) {
+    await sendSaathumVideoReadyEmails(env, id, newVideo).catch((e) => trackException(env, e, { uid: adminUid, route: "admin2_events:video_ready", handled: true, app_name: "saathum" }));
+  }
   return null;
 }
 

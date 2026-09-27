@@ -7537,5 +7537,21 @@
         }
       }
     ]
+  },
+  "SAATHUM-VIDEO-ONLY-1": {
+    "description": "[SAATHUM-VIDEO-ONLY-1] Site promises the video after the event instead of a live link: confirmation/reminder emails reworded, and a 'Your video is ready' email to every confirmed buyer when the admin saves the event's video download link.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_ready_emails",
+        "property": "sent",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin saved a video link on an event with confirmed buyers; sent > 0."
+      }
+    ],
+    "_verified_at": "worker/src/routes/saathum_checkout.ts sendSaathumVideoReadyEmails; worker/src/routes/admin2_events.ts writeMediaAndAttrs"
   }
 }

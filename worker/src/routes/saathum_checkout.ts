@@ -15,6 +15,7 @@ import { emailFor } from "../lib/identity";
 import { escapeHtml } from "../cal/emails";
 import { enqueueEmail } from "../lib/email_outbox";
 import { policy as hdfcPolicy, UUID } from "../lib/hdfc_sms_smoke";
+import { sha256Hex } from "../lib/payments/types";
 import { bookability } from "../lib/listing_schedule";
 import {
   quoteCommercialPurchase, freezeCommercialPurchaseQuote, provisionFromGatewayPurchase,
@@ -588,7 +589,7 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
     <h2 style="margin:0 0 12px">Booking confirmed</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(listing?.title ?? "Saa Thum booking")}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
-    <p style="margin:0 0 8px">We'll send the live link by email 30 minutes before the ${escapeHtml(emailCopy.noun)} starts.</p>
+    <p style="margin:0 0 8px">When the ${escapeHtml(emailCopy.noun)} finishes, we'll email you the video to download.</p>
     ${prasadNote}
     <p style="margin:20px 0 0;color:#999;font-size:12px">Your payment receipt is attached. Receipt no. ${escapeHtml(row.receipt_no ?? "")}</p>
     <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
@@ -645,8 +646,8 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
     <p style="margin:0 0 8px">${readyLine}</p>
-    <p style="margin:0 0 8px">Watch the live ${escapeHtml(reminderCopy.noun)} from your Saa Thum dashboard. Keep this email handy.</p>
-    <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Join the live ${escapeHtml(reminderCopy.noun)}</a></p>
+    <p style="margin:0 0 8px">If you like, light a lamp at home at the same time and pray with your family. We'll email you the video when the ${escapeHtml(reminderCopy.noun)} finishes.</p>
+    <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">View my booking</a></p>
     <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
   </div>`;
   const result = await enqueueEmail(env, {
@@ -655,6 +656,48 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
     messageVersion: "saathum-checkout-reminder.v1",
   });
   return result.status !== "unavailable" && result.status !== "failed";
+}
+
+// [SAATHUM-VIDEO-ONLY 2026-09-27, owner decision] The site no longer promises a live
+// link; it promises "we email you the video when it finishes". This sends that email
+// to every confirmed buyer the moment the admin saves the video download link on the
+// event (routes/admin2_events.ts writeMediaAndAttrs). The outbox key includes the
+// link, so a re-save of the same link never re-sends, and a corrected link does.
+export async function sendSaathumVideoReadyEmails(env: Env, listingId: string, url: string): Promise<{ sent: number }> {
+  const db = metaDb(env);
+  const listing = await db.prepare(`SELECT title,attrs FROM listings WHERE id=?1`).bind(listingId).first<{ title: string; attrs: string | null }>();
+  const noun = eventTypeCopy(eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}))).noun;
+  const title = listing?.title ?? "Saa Thum booking";
+  const rows = await db.prepare(
+    `SELECT checkout_id, uid, commercial_order_id FROM saathum_checkouts WHERE listing_id=?1 AND status='confirmed' LIMIT 2000`,
+  ).bind(listingId).all<{ checkout_id: string; uid: string; commercial_order_id: string | null }>();
+  const urlHash = (await sha256Hex(url)).slice(0, 16);
+  let sent = 0;
+  for (const row of rows.results ?? []) {
+    try {
+      const to = await emailFor(env, row.uid).catch(() => null);
+      if (!to) continue;
+      const html = `
+  <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+    <h2 style="margin:0 0 12px">Your video is ready 🙏</h2>
+    <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
+    <p style="margin:0 0 8px">The ${escapeHtml(noun)} is complete. Download the video to keep, and share it with your family.</p>
+    <p style="margin:20px 0"><a href="${escapeHtml(url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Download the video</a></p>
+    <p style="margin:0 0 8px">It also stays under <a href="${DASHBOARD_MY_EVENTS_URL}">My events</a>.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+  </div>`;
+      const r = await enqueueEmail(env, {
+        to, subject: `Your video is ready: ${title}`, html,
+        kind: "saathum_video_ready", orderId: row.commercial_order_id, recipientId: row.uid,
+        messageVersion: "saathum-video-ready.v1", outboxKey: `saathum-video-ready:${row.checkout_id}:${urlHash}`,
+      });
+      if (r.status !== "unavailable" && r.status !== "failed") sent++;
+    } catch (err) {
+      await trackException(env, err, { uid: row.uid, route: "sendSaathumVideoReadyEmails", handled: true, app_name: APP });
+    }
+  }
+  await track(env, "system", "saathum_video_ready_emails", APP, { listing_id: listingId, recipients: rows.results?.length ?? 0, sent });
+  return { sent };
 }
 
 export async function runSaathumReminders(env: Env): Promise<{ scanned: number; sent: number }> {
