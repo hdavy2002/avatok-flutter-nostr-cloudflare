@@ -1,7 +1,7 @@
 /* [MKT-V2-1 2026-09-27] /marketplace page styles (moved out of the approved
    mockup pages/marketplace-v2-preview.astro). The listing card itself is
    islands/home/BookNowShelf.css; everything else is saathum-folk.css.
-   Type rule (CLAUDE.md): never negative letter-spacing on bold/display. */
+   Headings inherit the landing page's own heading rule from saathum-folk.css. */
 .folk-site[data-design="saathum-reference-v5"] .mk-wrap { max-width: 1840px; margin: auto; padding-inline: var(--grand-gutter); }
 
 /* ① hero */
@@ -9,7 +9,7 @@
 .folk-site[data-design="saathum-reference-v5"] .mk-hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .12; background-image: radial-gradient(circle, #fff 1.2px, transparent 1.6px); background-size: 22px 22px; }
 .folk-site[data-design="saathum-reference-v5"] .mk-hero-inner { position: relative; max-width: 1840px; margin: auto; padding: 34px var(--grand-gutter) 30px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .9fr); gap: 36px; align-items: center; }
 .folk-site[data-design="saathum-reference-v5"] .mk-eyebrow { font: 900 clamp(11px, .9vw, 14px)/1.4 Nunito, sans-serif; letter-spacing: .16em; color: #F6B93B; }
-.folk-site[data-design="saathum-reference-v5"] .mk-hero h1 { font-size: clamp(32px, 3.1vw, 56px); margin-top: 10px; color: #fffaf0; letter-spacing: .02em; word-spacing: .12em; line-height: 1.12; }
+.folk-site[data-design="saathum-reference-v5"] .mk-hero h1 { font-size: clamp(32px, 3.1vw, 56px); margin-top: 10px; color: #fffaf0; }
 .folk-site[data-design="saathum-reference-v5"] .mk-hero h1 em { color: #F6B93B; }
 .folk-site[data-design="saathum-reference-v5"] .mk-lead { max-width: 620px; margin-top: 12px; font-size: clamp(16px, 1.25vw, 20px); line-height: 1.4; color: #fff1dc; }
 .folk-site[data-design="saathum-reference-v5"] .mk-search { margin-top: 22px; display: grid; grid-template-columns: minmax(0, 2fr) minmax(150px, .8fr) minmax(130px, .7fr) auto; gap: 8px; padding: 8px; background: #fff; border: 5px solid #fff; border-radius: 18px; box-shadow: 0 14px 34px #3a140a55; color: var(--grand-ink); }
@@ -175,7 +175,6 @@
 
 /* [MKT-V2-1] Additions for the live page (not in the mockup). */
 .folk-site[data-design="saathum-reference-v5"] main.mk { overflow-x: clip; }
-.folk-site[data-design="saathum-reference-v5"] .mk h2, .folk-site[data-design="saathum-reference-v5"] .mk h3 { letter-spacing: .01em; }
 .folk-site[data-design="saathum-reference-v5"] .mk-deity small { font: 800 12px Nunito, sans-serif; color: #937751; }
 .folk-site[data-design="saathum-reference-v5"] .mk-type { cursor: pointer; }
 .folk-site[data-design="saathum-reference-v5"] .mk-when button { border-top: 0; border-bottom: 0; border-left: 0; background: transparent; font: inherit; cursor: pointer; }

@@ -472,10 +472,11 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
     capture('marketplace_card_click', { action, listing_id: it.id, position, rail });
 
   // ------------------------------------------------------------ hero portals
+  // Stats card only with ≥3 upcoming events; temple towns only with ≥2 cities (thin numbers look fake).
   const heroStats = mounted && ready && typeof document !== 'undefined' ? document.getElementById('mk-hero-stats') : null;
   const heroCount = mounted && ready && typeof document !== 'undefined' ? document.getElementById('mk-hero-count') : null;
   const statCells = [
-    stats.towns > 0 && <div key="t"><b>{stats.towns.toLocaleString('en-IN')}</b><span>{stats.towns === 1 ? 'temple town' : 'temple towns'}</span></div>,
+    stats.towns >= 2 && <div key="t"><b>{stats.towns.toLocaleString('en-IN')}</b><span>{stats.towns === 1 ? 'temple town' : 'temple towns'}</span></div>,
     stats.devotees > 0 && <div key="d"><b>{stats.devotees.toLocaleString('en-IN')}</b><span>devotees joined</span></div>,
     stats.rating != null && <div key="r"><b>{stats.rating.toFixed(1)}★</b><span>average rating</span></div>,
   ].filter(Boolean);
@@ -514,7 +515,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
   // ------------------------------------------------------------ render
   return (
     <>
-      {heroStats && statCells.length > 0 && createPortal(<div className="mk-hero-stats">{statCells}</div>, heroStats)}
+      {heroStats && stats.upcoming >= 3 && statCells.length > 0 && createPortal(<div className="mk-hero-stats">{statCells}</div>, heroStats)}
       {heroCount && stats.upcoming > 0 && createPortal(<> · {plural(stats.upcoming, 'upcoming event')}</>, heroCount)}
 
       {/* ② CATEGORY TABS */}
