@@ -9,14 +9,13 @@
   },
   "scripts": {
     "export-tokens": "node scripts/export-zine-tokens.mjs",
-    "predev": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs",
+    "predev": "node scripts/export-zine-tokens.mjs",
     "dev": "astro dev",
-    "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs && node scripts/prepare-global-art.mjs && node scripts/prepare-seo-assets.mjs && node scripts/prepare-public-images.mjs && node scripts/prepare-og-art.mjs && node scripts/check-image-urls.mjs",
+    "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/prepare-global-art.mjs && node scripts/prepare-seo-assets.mjs && node scripts/prepare-public-images.mjs && node scripts/prepare-og-art.mjs && node scripts/check-image-urls.mjs",
     "build": "astro build",
     "postbuild": "node scripts/dedupe-routes-json.mjs",
     "preview": "astro preview",
-    "astro": "astro",
-    "copy-demo": "node scripts/copy-design-demo.mjs"
+    "astro": "astro"
   },
   "dependencies": {
     "@astrojs/cloudflare": "12.6.13",
