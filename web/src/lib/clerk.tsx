@@ -55,8 +55,8 @@ import { Field } from '../components/Field';
 import { Button } from '../components/Button';
 import { installEmbedBridge } from './embed';
 
-const GUEST_JWT_KEY = 'avatok_guest_jwt';
-const DEVICE_ID_KEY = 'avatok_device_id';
+const GUEST_JWT_KEY = 'saathum_guest_jwt';
+const DEVICE_ID_KEY = 'saathum_device_id';
 
 // ── module-level bridges so non-React callers (requireGuestAuth) can read a
 // live Clerk session and open the gate modal mounted by <ClerkIsland>. ──────
@@ -268,11 +268,11 @@ function ClerkBridge() {
     // a function, never the token itself, so nothing is left sitting on
     // `window` for a script on the page to read, and every call goes through
     // the same waited/cached path every island uses.
-    (window as any).__avatokToken = () => getActiveTokenWaited(5000);
+    (window as any).__saathumToken = () => getActiveTokenWaited(5000);
     return () => {
       _clerkGetToken = null;
       _clerkSignedIn = false;
-      try { delete (window as any).__avatokToken; } catch { /* ignore */ }
+      try { delete (window as any).__saathumToken; } catch { /* ignore */ }
     };
   }, [isSignedIn, getToken]);
 

@@ -74,7 +74,7 @@ jobs:
         # this too or web sign-in silently stops being accepted by the API.
         env:
           PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuc2FhdGh1bS5jb20k
-          PUBLIC_API_BASE: https://api.avatok.ai
+          PUBLIC_API_BASE: https://api.saathum.com   # [SAATHUM-DEBRAND-1] same Worker, Saa Thum hostname
           # [WEB-POSTHOG-1] `release` super property on every web event, so an
           # issue/error can be filtered by exactly which deploy produced it —
           # same idea as the app's git-SHA `release` prop (analytics.dart).

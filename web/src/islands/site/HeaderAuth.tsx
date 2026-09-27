@@ -34,7 +34,7 @@ function Inner() {
 
   useEffect(() => {
     try {
-      setHasGuest(!!localStorage.getItem('avatok_guest_jwt'));
+      setHasGuest(!!localStorage.getItem('saathum_guest_jwt'));
     } catch {
       /* private mode — treat as anonymous */
     }

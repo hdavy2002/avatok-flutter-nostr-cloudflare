@@ -7486,5 +7486,13 @@
       }
     ],
     "_verified_at": "worker/src/routes/upi_settings.ts; worker/src/lib/upi_settings.ts; web/src/islands/admin2/UpiSettings.tsx"
+  },
+  "SAATHUM-DEBRAND-1": {
+    "description": "[SAATHUM-DEBRAND-1] Remove avatok branding from saathum.com: api.saathum.com + media.saathum.com hostnames (same Worker/bucket), saathum.com join/payment-return links, renamed browser storage keys and app bridge names, i18n catalogs no longer bundled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Hostname/identifier rename with no new user flow; verified by curl against the live site and scripts/check-brand-leaks.mjs in the web deploy.",
+    "success": []
   }
 }

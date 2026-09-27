@@ -488,7 +488,7 @@ export function ListingTile({
               width: 6, height: 6, borderRadius: '50%', flex: 'none',
               background: c.live ? '#ffd0c4' : '#b9bcf0',
               // [LIST-TRUST-1 §2.3] "ALWAYS ON" gets a pulsing dot, never a time.
-              animation: lane === 'agent' ? 'avatok-pill-pulse 1.6s ease-in-out infinite' : undefined,
+              animation: lane === 'agent' ? 'saathum-pill-pulse 1.6s ease-in-out infinite' : undefined,
             }} />
             {pill}
           </span>

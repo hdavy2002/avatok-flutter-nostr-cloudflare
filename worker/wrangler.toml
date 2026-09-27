@@ -29,6 +29,12 @@ crons = ["*/5 * * * *"]
 pattern = "api.avatok.ai"
 custom_domain = true
 
+# [SAATHUM-DEBRAND-1 2026-09-27] Same Worker, Saa Thum hostname. The website calls
+# this one; shipped apps keep api.avatok.ai. Both stay attached.
+[[routes]]
+pattern = "api.saathum.com"
+custom_domain = true
+
 [vars]
 # Cloudflare AI Gateway (2026-06-18) — routes ALL AI (Workers-AI binding + Gemini
 # image) through the 'avatok-ai' gateway for per-user metering, caching, and a
@@ -69,7 +75,9 @@ DIDIT_WORKFLOW_ID = "21da9f1d-4fec-4639-a010-cb7299fe6528"
 # is a SECRET (`wrangler secret put UPSTASH_REDIS_REST_TOKEN`), never in this file.
 # If unset, the GenUI template cache simply no-ops (composes each time).
 UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"
-BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
+# [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com is a second custom domain on the
+# same avatok-blobs bucket; blossom.avatok.ai stays attached so old URLs keep working.
+BLOSSOM_BASE_URL = "https://media.saathum.com"   # public R2 read host (no Worker in path)
 # [AVA-MEDIA-AUTHZ-1] Bucket name for SigV4 presigned reads of the private DIGITAL
 # bucket (routes/media.ts). MUST match [[r2_buckets]] binding="DIGITAL" bucket_name
 # above (PRODUCTION). Do not copy this value into [env.staging.vars] — staging has
@@ -99,7 +107,10 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
 VERTEX_PROJECT = "avatok-avaglobal"
 VERTEX_LOCATION = "global"
 WALLET_TOPUP_ENABLED = "0"   # Money-in providers retired; kept for old clients/config shape.
-WALLET_RETURN_URL = "https://avatok.ai/wallet"
+WALLET_RETURN_URL = "https://saathum.com/wallet"
+# [SAATHUM-DEBRAND-1 2026-09-27] Customer-facing web origin (payment return pages,
+# emails). Unset, several routes fell back to avatok.ai, now a frozen placeholder.
+WEB_BASE_URL = "https://saathum.com"
 # Public Stripe publishable key (NOT a secret) — returned to the app for the in-app
 # PaymentSheet. MUST match the STRIPE_SECRET_KEY mode (pk_test ↔ sk_test). REPLACE.
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"

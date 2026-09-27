@@ -9,7 +9,7 @@
   (function () {
     try {
       var authed = false;
-      try { if (localStorage.getItem('avatok_guest_jwt')) authed = true; } catch (e) {}
+      try { if (localStorage.getItem('saathum_guest_jwt')) authed = true; } catch (e) {}
       if (!authed) {
         var m = document.cookie.match(/(?:^|;\s*)__client_uat=([^;]*)/);
         if (m && Number(m[1]) > 0) authed = true;

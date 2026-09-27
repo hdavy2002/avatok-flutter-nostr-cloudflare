@@ -368,7 +368,7 @@ export async function payWebhook(req: Request, env: Env, gatewayId: string): Pro
     // pointing the buyer at their bookings list.
   }
 
-  const webBase = String(env.WEB_BASE_URL ?? "https://avatok.ai").replace(/\/+$/, "");
+  const webBase = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
   const target = new URL(`${webBase}/pay/return`);
   target.searchParams.set("gateway", gatewayId);
   if (orderId) target.searchParams.set("order_id", orderId);

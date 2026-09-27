@@ -16,7 +16,7 @@ import TruckBorder from './TruckBorder.astro';
 // [WEB-MSG-HANDOFF-1 2026-09-05] The ask-the-host FORM is gone — the web does
 // not send messages. See MessageHost for why, and for where a buyer goes instead.
 // [WEB-OLD-PAGES-GONE-1] MessageHost no longer mounted (see host card).
-// [FAV-WIRE-1] Installs window.__avatokToken so the inline script below can
+// [FAV-WIRE-1] Installs window.__saathumToken so the inline script below can
 // authenticate the heart. Renders nothing — see the island's own header.
 import AuthBridgeIsland from '../islands/auth/AuthBridge';
 // [REVIEW-MOD-1 2026-09-06] The "leave a review" flow — button, form and every
@@ -720,7 +720,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             <div class="share-card__buttons">
               <button type="button" id="share-wa" class="chip-btn chip-btn--wa"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.77877a6e15b4b85d">WHATSAPP</ui-copy></button>
               <button type="button" id="share-fb" class="chip-btn chip-btn--fb"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.5777d2c733695fdd">FACEBOOK</ui-copy></button>
-              <button type="button" id="share-yt" class="chip-btn chip-btn--yt"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.422d1cffc3b2e5bd">YOUTUBE</ui-copy></button>
+              {/* [SAATHUM-DEBRAND-1] YouTube share chip removed: it opened the retired @avatok channel, and YouTube is never named on the site. */}
               <button data-i18n="web-common.f87ea7543bd807dd" type="button" id="embed-toggle-btn" class="chip-btn chip-btn--embed">&lt;/&gt; EMBED ▼</button>
             </div>
           </div>
@@ -1343,7 +1343,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   // counter: one source of truth, and it is not the browser.
   async function syncFavFromServer() {
     try {
-      const token = window.__avatokToken ? await window.__avatokToken() : null;
+      const token = window.__saathumToken ? await window.__saathumToken() : null;
       const res = await fetch(
         CONFIG.apiBase + '/api/marketplace/favorites/state?listing_id=' + encodeURIComponent(CONFIG.listingId),
         { headers: token ? { authorization: 'Bearer ' + token } : {} },
@@ -1370,7 +1370,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     favCount = Math.max(0, favCount + (state.fav ? 1 : -1));
     paintFav();
     try {
-      const token = window.__avatokToken ? await window.__avatokToken() : null;
+      const token = window.__saathumToken ? await window.__saathumToken() : null;
       if (!token) throw new Error('signed_out');
       const url = CONFIG.apiBase + '/api/marketplace/favorites'
         + (state.fav ? '' : '?listing_id=' + encodeURIComponent(CONFIG.listingId));
@@ -1409,7 +1409,6 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on Saa Thum — ' + CONFIG.showUrl), '_blank');
   };
   document.getElementById('share-fb').onclick = () => window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(CONFIG.showUrl), '_blank');
-  document.getElementById('share-yt').onclick = () => window.open('https://www.youtube.com/@avatok', '_blank');
 
   const embedPanel = document.getElementById('embed-panel');
   const embedToggleBtn = document.getElementById('embed-toggle-btn');

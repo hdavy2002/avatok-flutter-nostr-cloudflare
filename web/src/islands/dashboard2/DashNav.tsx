@@ -29,8 +29,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Skeleton } from '../../components/ui/skeleton';
 import { DASH_NAV, DASH_LOGOUT, type DashKey } from './nav';
 
-const GUEST_JWT_KEY = 'avatok_guest_jwt';
-const GUEST_HANDLE_KEY = 'avatok_guest_handle';
+const GUEST_JWT_KEY = 'saathum_guest_jwt';
+const GUEST_HANDLE_KEY = 'saathum_guest_handle';
 const LANDED_KEY = 'dash2_landed_sid';
 
 interface Who { name: string; email: string | null; photo: string | null }

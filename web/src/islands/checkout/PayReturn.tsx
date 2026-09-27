@@ -73,7 +73,7 @@ interface StashedReturn {
   returnPath?: string;
 }
 
-const STASH_KEY = 'avatok_pay_return';
+const STASH_KEY = 'saathum_pay_return';
 
 function readStash(): StashedReturn {
   try {

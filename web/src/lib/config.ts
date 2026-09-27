@@ -4,7 +4,7 @@ import publicImageManifest from './publicImageManifest.json';
 // (MASTER-PROMPT §3/§4) — never a new backend.
 
 /** Base URL for every API call. Defaults to prod; override via PUBLIC_API_BASE. */
-export const API_BASE: string = import.meta.env.PUBLIC_API_BASE ?? 'https://api.avatok.ai';
+export const API_BASE: string = import.meta.env.PUBLIC_API_BASE ?? 'https://api.saathum.com';
 
 /** Clerk publishable key for web auth/session. May be undefined until set in env. */
 export const CLERK_PUBLISHABLE_KEY: string | undefined = import.meta.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -52,8 +52,9 @@ export function clerkFapiHost(): string | undefined {
 export const IMAGE_WIDTHS = [48, 96, 160, 256, 420, 640, 900, 1280, 1600, 2048] as const;
 export interface ImageOptions { width?: number; quality?: number; fit?: string; format?: string }
 const imageHost = (host: string) =>
-  host === 'saathum.com' || host.endsWith('.saathum.com') ||
-  host === 'avatok.ai' || host.endsWith('.avatok.ai');
+  // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com replaced blossom.avatok.ai
+  // (stored URLs migrated). A leftover old-host URL is simply served untransformed.
+  host === 'saathum.com' || host.endsWith('.saathum.com');
 const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
 const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
 function imageParams(opts: ImageOptions): string {

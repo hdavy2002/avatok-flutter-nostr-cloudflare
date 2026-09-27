@@ -160,7 +160,7 @@ function AgentCallInner({ agentId, seed }: Props) {
       if (!sid || !jwt) return;
       try {
         const blob = new Blob([JSON.stringify({ session_id: sid, reason: 'unload' })], { type: 'application/json' });
-        navigator.sendBeacon?.(`${import.meta.env.PUBLIC_API_BASE ?? 'https://api.avatok.ai'}/api/avavoice/sessions/stop`, blob);
+        navigator.sendBeacon?.(`${import.meta.env.PUBLIC_API_BASE ?? 'https://api.saathum.com'}/api/avavoice/sessions/stop`, blob);
       } catch {
         /* best effort */
       }

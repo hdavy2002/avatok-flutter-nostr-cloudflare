@@ -2,7 +2,7 @@ import { API_BASE } from '../config';
 export type Catalog = { schemaVersion: 1; release: string; locale: string; namespace: string; messages: Record<string,string>; sourceHash: string };
 export type Manifest = {schemaVersion:1; release:string; locales:Record<string,{namespaces:string[];status:string}>; namespaces:string[];sourceHashes:Record<string,string>};
 const origin = API_BASE.replace(/\/$/, '');
-const cacheName = 'avatok-public-ui-v1';
+const cacheName = 'saathum-public-ui-v1';
 let lastManifest:Manifest|undefined;
 let manifestPromise: Promise<Manifest> | undefined, manifestAt=0;
 const catalogs=new Map<string,Promise<Catalog>>();
@@ -19,14 +19,14 @@ function validManifest(value:unknown):value is Manifest {
   return v.schemaVersion===1 && hash(v.release) && Array.isArray(v.namespaces) && v.namespaces.every(segment) && !!v.sourceHashes && typeof v.sourceHashes==='object' && !Array.isArray(v.sourceHashes) && v.namespaces.every(ns=>hash(v.sourceHashes[ns])) && !!v.locales && typeof v.locales==='object' && !Array.isArray(v.locales) && Object.entries(v.locales).every(([code,item])=>segment(code)&&item&&Array.isArray(item.namespaces)&&item.namespaces.every(ns=>v.namespaces.includes(ns))&&['source','reviewed','machine'].includes(item.status));
 }
 export function manifest(): Promise<Manifest> {
-  if(!lastManifest)try {const raw=localStorage.getItem('avatok.ui.manifest.'+origin)||'null';if(raw.length<=2*1024*1024){const saved:unknown=JSON.parse(raw);if(validManifest(saved))lastManifest=saved;}}catch {}
+  if(!lastManifest)try {const raw=localStorage.getItem('saathum.ui.manifest.'+origin)||'null';if(raw.length<=2*1024*1024){const saved:unknown=JSON.parse(raw);if(validManifest(saved))lastManifest=saved;}}catch {}
   const cached=lastManifest;
   if(!manifestPromise||Date.now()-manifestAt>=60000){
     manifestAt=Date.now();
     manifestPromise=fetch(origin+'/i18n/v1/manifest.json',{credentials:'omit',cache:'no-cache',signal:AbortSignal.timeout(5000)})
       .then(async response=>{if(!response.ok)throw Error('Catalog manifest unavailable');const value=await boundedJson(response);if(!validManifest(value))throw Error('Invalid catalog manifest');
-        const previous=lastManifest;lastManifest=value;try {localStorage.setItem('avatok.ui.manifest.'+origin,JSON.stringify(value));}catch {}
-        if(previous&&previous.release!==value.release)window.dispatchEvent(new CustomEvent('avatok:catalog-release'));
+        const previous=lastManifest;lastManifest=value;try {localStorage.setItem('saathum.ui.manifest.'+origin,JSON.stringify(value));}catch {}
+        if(previous&&previous.release!==value.release)window.dispatchEvent(new CustomEvent('saathum:catalog-release'));
         return value;
       }).catch(error=>{if(lastManifest)return lastManifest;throw error;});
     // Cached copy is returned immediately; revalidation failure stays in the background.

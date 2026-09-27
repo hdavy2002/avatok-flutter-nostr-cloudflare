@@ -98,7 +98,9 @@ const String kAppOnboardedUrl = 'https://$kSignalingHost/api/account/app-onboard
 /// Signaling host (no scheme). Baked at compile time; the staging APK flavor
 /// (--dart-define=AVATOK_ENV=staging, Phase 1 A1) talks to the staging worker.
 const String kSignalingHost =
-    kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : 'api.avatok.ai';
+    // [SAATHUM-DEBRAND-1 2026-09-27] prod: api.saathum.com = the same Worker as
+    // api.avatok.ai (both custom domains stay attached; older builds keep working).
+    kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : 'api.saathum.com';
 
 /// Calls-worker host. [ENV-ISOLATION-1] These four URLs used to hardcode the PROD
 /// worker, so a staging APK minted RealtimeKit tokens against production and wrote
@@ -145,7 +147,7 @@ const String kInviteBase = 'https://avatok.ai/i/';
 /// shown inside the app's in-app WebView (features/marketplace/listing_web_form.dart).
 ///
 /// `?embed=1` is half of what tells the page it is embedded — the other half is
-/// the `AvatokHost` JavaScript channel the WebView registers. Both are required
+/// the `SaathumHost` JavaScript channel the WebView registers. Both are required
 /// (web/src/lib/embed.ts:isEmbedded), so this URL opened in a browser is simply
 /// the ordinary form without the dashboard rail.
 ///
@@ -186,9 +188,9 @@ String listingWebDetailUrl(String listingId) =>
 /// [LIST-DETAIL-EMBED-1] Appended to the WebView's user agent, and the ONLY
 /// signal that survives a 301 to the canonical listing URL. Base.astro switches
 /// site chrome off when it sees this, and lib/embed.ts treats it as the embed
-/// flag alongside the `AvatokHost` channel. Changing this string is a protocol
+/// flag alongside the `SaathumHost` channel. Changing this string is a protocol
 /// change: the web half must change in the same commit.
-const String kEmbedUserAgentMarker = 'AvatokApp/1';
+const String kEmbedUserAgentMarker = 'SaathumApp/1';
 
 /// Public download / join page shared in invite messages.
 const String kDownloadUrl = 'https://avatok.ai/download';
@@ -241,7 +243,7 @@ const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    
 /// (worker/wrangler.toml [env.staging.vars]); this makes the client match.
 const String kBlossomBaseUrl = kAvatokEnv == 'staging'
     ? 'https://blossom-staging.avatok.ai'
-    : 'https://blossom.avatok.ai';
+    : 'https://media.saathum.com'; // [SAATHUM-DEBRAND-1] same avatok-blobs bucket as blossom.avatok.ai
 
 /// DEPRECATED (Nostr removed). Kept as a harmless constant so legacy screens that
 /// still construct a NostrClient(kNostrRelayUrl) compile; the client is now a

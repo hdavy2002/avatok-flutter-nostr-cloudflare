@@ -236,7 +236,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     }
     if (!fromClerk()) {
       try {
-        const handle = localStorage.getItem('avatok_guest_handle');
+        const handle = localStorage.getItem('saathum_guest_handle');
         if (handle) setCreatorInfo({ name: null, handle, avatar: null });
       } catch { /* ignore */ }
     }
@@ -778,7 +778,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         try {
           const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'avatok' },
+            headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'saathum' },
             body: file,
           }));
           if (!res.ok) { failures.push(`Couldn't upload ${file.name} (${res.status}).`); continue; }

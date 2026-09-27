@@ -90,8 +90,8 @@ function kindNoun(kind: string | null | undefined): string {
 function listingUrl(o: OrderRow): string | null {
   if (!o.listing_id) return null;
   return o.creator_handle && o.listing_slug
-    ? `https://avatok.ai/${encodeURIComponent(o.creator_handle)}/${encodeURIComponent(o.listing_slug)}`
-    : `https://avatok.ai/l/${encodeURIComponent(o.listing_id)}`;
+    ? `https://saathum.com/${encodeURIComponent(o.creator_handle)}/${encodeURIComponent(o.listing_slug)}`
+    : `https://saathum.com/l/${encodeURIComponent(o.listing_id)}`;
 }
 
 export type ActivityDetail = {
@@ -160,7 +160,7 @@ export async function activityDetailFor(
     timezone: order.listing_timezone ?? "Asia/Kolkata",
   } : null;
   detail.counterparty = iAmBuyer
-    ? { role: "creator", name: order.creator_name, handle: order.creator_handle, url: order.creator_handle ? `https://avatok.ai/c/${encodeURIComponent(order.creator_handle)}` : null }
+    ? { role: "creator", name: order.creator_name, handle: order.creator_handle, url: order.creator_handle ? `https://saathum.com/c/${encodeURIComponent(order.creator_handle)}` : null }
     : { role: "buyer", name: order.buyer_name, handle: order.buyer_handle, url: null };
 
   if (type === "refund") {

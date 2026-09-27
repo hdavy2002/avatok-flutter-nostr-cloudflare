@@ -58,7 +58,7 @@ function FlowInner({ listing }: { listing: Listing }) {
   // stay isolated under a single temporary namespace and are never mixed with
   // another signed-in account.
   const scope = user?.id || 'anonymous';
-  const draftKey = `avatok:checkout-draft:${scope}:${listing.id}`;
+  const draftKey = `saathum:checkout-draft:${scope}:${listing.id}`;
   type Draft = { step: Step; selection: BookSelection | null; savedAt: number };
   const [draft] = useState<Draft | null>(() => {
     if (typeof window === 'undefined') return null;

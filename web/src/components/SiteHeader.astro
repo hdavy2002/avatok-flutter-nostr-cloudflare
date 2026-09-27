@@ -29,7 +29,7 @@ import { publicImage } from '../lib/config';
  */
 // [WEB-AUTH-STATE-1 2026-08-28] HeaderAuth is no longer imported: the header's
 // auth CTAs are plain links toggled by CSS from the cookie-derived
-// html[data-avatok-auth] attribute. The island (and its <ClerkProvider>) was the
+// html[data-saathum-auth] attribute. The island (and its <ClerkProvider>) was the
 // reason the `static` and `in` modes had to exist at all. The file is kept for
 // now rather than deleted, in case another surface still wants a React-side
 // signal, but nothing renders it.
@@ -139,11 +139,11 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
       var m = c.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
       var signedIn = !!(m && m[1] && m[1] !== '0');
       if (!signedIn) {
-        try { signedIn = !!localStorage.getItem('avatok_guest_jwt'); } catch (e) {}
+        try { signedIn = !!localStorage.getItem('saathum_guest_jwt'); } catch (e) {}
       }
-      document.documentElement.setAttribute('data-avatok-auth', signedIn ? 'in' : 'out');
+      document.documentElement.setAttribute('data-saathum-auth', signedIn ? 'in' : 'out');
     } catch (e) {
-      document.documentElement.setAttribute('data-avatok-auth', 'out');
+      document.documentElement.setAttribute('data-saathum-auth', 'out');
     }
   })();
 </script>
@@ -328,8 +328,8 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
      offering "Dashboard / Sign out" to an anonymous visitor is a broken page.
      `display: none !important` because .avh-cta sets its own display. */
   .avh-auth-in { display: none !important; }
-  html[data-avatok-auth='in'] .avh-auth-in { display: inline-flex !important; }
-  html[data-avatok-auth='in'] .avh-auth-out { display: none !important; }
+  html[data-saathum-auth='in'] .avh-auth-in { display: inline-flex !important; }
+  html[data-saathum-auth='in'] .avh-auth-out { display: none !important; }
 
   /* Published header height. The dashboard pins its sidebar and its own toolbar
      to the viewport, so it needs to offset both by exactly this much or they

@@ -40,7 +40,7 @@
 /** Clerk's signed-in hint cookie. "0" = signed out, timestamp = signed in. */
 const UAT_COOKIE = '__client_uat';
 /** Device-level guest session, outside Clerk. Also counts as signed in. */
-const GUEST_JWT_KEY = 'avatok_guest_jwt';
+const GUEST_JWT_KEY = 'saathum_guest_jwt';
 
 export type AuthState = 'in' | 'out';
 
@@ -80,7 +80,7 @@ export function isSignedInSync(): boolean {
 }
 
 /** The attribute the header's CSS keys off. */
-export const AUTH_ATTR = 'data-avatok-auth';
+export const AUTH_ATTR = 'data-saathum-auth';
 
 /**
  * Stamp the current state onto <html> so CSS can show the right buttons.

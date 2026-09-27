@@ -3,8 +3,16 @@ import registry from '../../../../shared/i18n/locales.json';
 export const locales = registry;
 export type UiLocale = typeof locales[number];
 type Seed={reviewed:boolean;messages:Record<string,{source:string;text:string}>};
-const sourceImports=import.meta.glob<{default:Record<string,string>}>('../../../../shared/i18n/source/*.json');
-const seedImports=import.meta.glob<{default:Seed}>('../../../../shared/i18n/reviewed/*/*.json');
+// [SAATHUM-DEBRAND-1 2026-09-27] OWNER DECISION: the site is English-only (language
+// picker hidden), so the shared UI catalogs are NOT bundled any more. The old
+// import.meta.glob emitted every shared/i18n/source + reviewed catalog (~220 files,
+// including the retired app's whole string table) as public /_astro chunks, which
+// exposed the pre-rebrand product text to anyone reading the bundles. English text
+// comes from the live markup (t() prefers its fallback), so nothing visible changes.
+// To bring translations back, restore the two globs (see git history) and re-check
+// the bundles with scripts/check-brand-leaks.mjs.
+const sourceImports:Record<string,()=>Promise<{default:Record<string,string>}>>={};
+const seedImports:Record<string,()=>Promise<{default:Seed}>>={};
 let pendingLocale:string|null=null,restored=false;
 let revision=0,locale='en',account:string|null=null,epoch=0,status='source';
 let messages:Record<string,string>={},sources:Record<string,string>={};
@@ -18,7 +26,7 @@ export const getRevision=()=>revision;
 export const getLocale=()=>locale;
 export const getLocaleStatus=()=>status;
 export const serverLocale=()=> 'en';
-const key=()=> 'avatok.ui.locale.'+(account?'account.'+encodeURIComponent(account):'guest');
+const key=()=> 'saathum.ui.locale.'+(account?'account.'+encodeURIComponent(account):'guest');
 export function registerNamespace(namespace:string) {islandNamespaces.set(namespace,(islandNamespaces.get(namespace)||0)+1);return ()=>{const n=(islandNamespaces.get(namespace)||1)-1;if(n)islandNamespaces.set(namespace,n);else islandNamespaces.delete(namespace);};}
 export function setDomNamespaces(values:string[]) {domNamespaces.clear();domNamespaces.add('common');values.forEach(ns=>domNamespaces.add(ns));}
 // The caller's `fallback` is the live markup (the `source` prop baked into the current build);
@@ -73,6 +81,6 @@ export async function setUiLocale(requested:string,persist=true) {
 export function restoreLocale() {let saved='en';try {saved=localStorage.getItem(key())||'en';}catch {}return setUiLocale(saved,false);}
 let refreshQueued=false;
 export function refreshLocale(){if(refreshQueued)return;refreshQueued=true;queueMicrotask(()=>{refreshQueued=false;if(!restored&&!pendingLocale)void restoreLocale();else void setUiLocale(pendingLocale||locale,false);});}
-export function setLocaleAccount(id:string|null) {if(id===account)return;const wasGuest=account===null;account=id;if(wasGuest&&id)try{if(localStorage.getItem(key())===null){const guest=localStorage.getItem('avatok.ui.locale.guest');if(guest&&locales.some(item=>item.code===guest))localStorage.setItem(key(),guest);}}catch {}epoch++;pendingLocale=null;restored=false;messages={};sources={};locale='en';status='source';notify();void restoreLocale();}
+export function setLocaleAccount(id:string|null) {if(id===account)return;const wasGuest=account===null;account=id;if(wasGuest&&id)try{if(localStorage.getItem(key())===null){const guest=localStorage.getItem('saathum.ui.locale.guest');if(guest&&locales.some(item=>item.code===guest))localStorage.setItem(key(),guest);}}catch {}epoch++;pendingLocale=null;restored=false;messages={};sources={};locale='en';status='source';notify();void restoreLocale();}
 
 export function translateKnownSource(value:string) {const key=Object.keys(sources).find(key=>sources[key]===value&&key in messages);return key?t(key,value):value;}

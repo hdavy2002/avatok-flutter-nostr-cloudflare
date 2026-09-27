@@ -646,7 +646,7 @@ export async function shareCardPut(req: Request, env: Env): Promise<Response> {
     plan: card.plan, has_email: !!card.email, has_number: !!card.number,
     has_name: !!(card.firstName || card.lastName),
   }, req);
-  return json({ ok: true, token: t, link: `https://avatok.ai/add?t=${t}` });
+  return json({ ok: true, token: t, link: `https://saathum.com/add?t=${t}` });
 }
 
 // GET /api/add?t=<token> — PUBLIC. Resolves a QR share token to the sharer's

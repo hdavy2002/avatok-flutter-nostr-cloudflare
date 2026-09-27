@@ -25,7 +25,7 @@ function context(): Record<string, unknown> {
 export function markReady(name: string, props: Record<string, unknown> = {}, startedAt = 0): void {
   if (typeof window === 'undefined') return;
   const ms = Math.max(0, performance.now() - startedAt);
-  performance.mark('avatok:' + name);
+  performance.mark('saathum:' + name);
   uiInteraction(name, ms, { ...context(), ...props, readiness: true });
 }
 

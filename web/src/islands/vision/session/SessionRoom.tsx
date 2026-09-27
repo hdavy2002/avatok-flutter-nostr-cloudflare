@@ -192,7 +192,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
       try {
         const blob = new Blob([JSON.stringify({ session_id: sid, reason: 'unload' })], { type: 'application/json' });
         navigator.sendBeacon?.(
-          `${import.meta.env.PUBLIC_API_BASE ?? 'https://api.avatok.ai'}/api/avavision/sessions/stop`,
+          `${import.meta.env.PUBLIC_API_BASE ?? 'https://api.saathum.com'}/api/avavision/sessions/stop`,
           blob,
         );
       } catch {

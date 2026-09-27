@@ -7,7 +7,7 @@
 // from lib/clerk.
 //
 // Mounting this island `client:load` puts a ClerkProvider on the page, whose
-// ClerkBridge installs `window.__avatokToken()`. Without it the getter is never
+// ClerkBridge installs `window.__saathumToken()`. Without it the getter is never
 // defined on a public listing page — the only other Clerk island there is
 // MessageHost, which sits inside a `display:none` panel, so its `client:visible`
 // would never fire and the heart would treat every visitor as signed out.

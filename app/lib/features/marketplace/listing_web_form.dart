@@ -17,11 +17,11 @@ import '../../core/localization/ui_webview_bridge.dart';
 // One form, two shells.
 //
 // THE PROTOCOL. The page half is web/src/lib/embed.ts; these two files are one
-// protocol and change together. Over the `AvatokHost` channel the page sends:
+// protocol and change together. Over the `SaathumHost` channel the page sends:
 //
 //   {type:'ready'}                  — the bridge is installed
 //   {type:'token', id}              — needs a bearer; we answer by calling
-//                                     window.__avatokEmbedToken(id, token)
+//                                     window.__saathumEmbedToken(id, token)
 //   {type:'dirty', value}           — would closing now lose typed work?
 //   {type:'submitted', id}          — the listing went into the review queue
 //   {type:'log', level, message}    — surfaced as telemetry, never as UI
@@ -106,7 +106,7 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AD.bg)
-      ..addJavaScriptChannel('AvatokHost', onMessageReceived: _onHostMessage)
+      ..addJavaScriptChannel('SaathumHost', onMessageReceived: _onHostMessage)
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (url) {
           unawaited(applyUiLocaleToWebView(_controller, url));
@@ -253,7 +253,7 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
     // jsonEncode both arguments: a null token must reach the page as JS `null`
     // (which it handles — it stops and shows a sign-in error) rather than as the
     // bare word null or, worse, an unquoted string that breaks the eval.
-    final js = 'window.__avatokEmbedToken && window.__avatokEmbedToken(${jsonEncode(id)}, ${jsonEncode(token)});';
+    final js = 'window.__saathumEmbedToken && window.__saathumEmbedToken(${jsonEncode(id)}, ${jsonEncode(token)});';
     try {
       await _controller.runJavaScript(js);
     } catch (_) {

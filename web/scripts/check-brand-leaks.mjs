@@ -3,7 +3,7 @@
 // (robots "index"), the sitemap or llms.txt shows one of the banned words in its
 // VISIBLE text or its SEO metadata (title, description, JSON-LD).
 //
-// Code identifiers such as data-avatok-auth or window.AvatokHost live in scripts
+// Code identifiers such as data-saathum-auth or window.SaathumHost live in scripts
 // and attributes and are deliberately NOT scanned here — renaming those needs an
 // app build (see the SEO rebrand plan, phase 5).
 //
@@ -12,7 +12,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 
 const root = resolve('dist');
-const BANNED = /\b(avatok|ava\s*tok|ava\s*global|avaglobal|ave\s*maria|delaware|newark)\b/i;
+const BANNED = /(avatok|\bava\s+tok\b|ava\s*global|avaglobal|ave\s*maria|\bdelaware\b|\bnewark\b)/i;
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -49,6 +49,17 @@ for (const file of walk(root)) {
     .replace(/<[^>]+>/g, ' ');
   scan(rel + ' (metadata)', meta);
   scan(rel + ' (visible text)', visible);
+}
+// [SAATHUM-DEBRAND-1 2026-09-27] Browser bundles too: every /_astro/*.js file is
+// public. The one tolerated hit is the admin page's download link for the SMS
+// companion APK, whose file name on its GitHub release cannot be renamed.
+const astroDir = join(root, '_astro');
+if (existsSync(astroDir)) {
+  for (const name of readdirSync(astroDir)) {
+    if (!name.endsWith('.js')) continue;
+    const text = readFileSync(join(astroDir, name), 'utf8').replace(/https:\/\/github\.com\/hdavy2002\/upeo-sms-gateway\/releases\/[^'"`\s]+/g, '');
+    scan('/_astro/' + name, text);
+  }
 }
 for (const f of ['llms.txt', 'llms-rituals.txt', 'sitemap-pages.xml', 'robots.txt']) {
   const p = join(root, f);

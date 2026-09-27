@@ -14,7 +14,7 @@ import { UiText } from "../../lib/i18n/react";
  *      which re-keys the reserved handle onto the Clerk uid.
  *
  * The guest_token lives in localStorage under the shared key written by
- * lib/clerk.tsx (`avatok_guest_jwt`). We read it directly here; Phase Z may
+ * lib/clerk.tsx (`saathum_guest_jwt`). We read it directly here; Phase Z may
  * promote a small accessor onto lib/clerk.tsx (noted in the Graphiti episode).
  */
 import { useState } from 'react';
@@ -24,7 +24,7 @@ import { request, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 
-const GUEST_JWT_KEY = 'avatok_guest_jwt'; // mirrors lib/clerk.tsx
+const GUEST_JWT_KEY = 'saathum_guest_jwt'; // mirrors lib/clerk.tsx
 
 export interface UpgradePromptProps {
   /** Short reason shown to the user (e.g. "This room needs a verified account"). */

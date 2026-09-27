@@ -44,7 +44,7 @@ const MAX_BODY = 2000;
  *  eligibility route answers `signed_out` for a guest. */
 async function token(): Promise<string | null> {
   try {
-    const fn = (window as any).__avatokToken as undefined | (() => Promise<string | null>);
+    const fn = (window as any).__saathumToken as undefined | (() => Promise<string | null>);
     return fn ? await fn() : null;
   } catch {
     return null;

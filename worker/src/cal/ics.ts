@@ -36,7 +36,8 @@ export async function verifyJoinToken(env: Env, token: string): Promise<string |
   } catch { return null; }
 }
 
-export function joinUrlFor(token: string): string { return `https://avatok.ai/j/${token}`; }
+// [SAATHUM-DEBRAND-1 2026-09-27] avatok.ai is a frozen placeholder; join links must open saathum.com.
+export function joinUrlFor(token: string): string { return `https://saathum.com/j/${token}`; }
 
 // ---------------------------------------------------------------------------
 // [JOIN-LINK-1] v2 join tokens — the emailed link carries the customer's identity

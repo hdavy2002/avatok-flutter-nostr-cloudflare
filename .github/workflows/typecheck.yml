@@ -141,7 +141,7 @@ jobs:
         working-directory: web
         env:
           PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuc2FhdGh1bS5jb20k
-          PUBLIC_API_BASE: https://api.avatok.ai
+          PUBLIC_API_BASE: https://api.saathum.com
           PUBLIC_RELEASE_SHA: ${{ github.sha }}
         run: npm run build
       - name: Check public homepage and help before deployment

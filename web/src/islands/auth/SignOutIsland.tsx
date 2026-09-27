@@ -45,8 +45,8 @@ import { useAuth, useClerk } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { capture, reset } from '../../lib/analytics';
 
-const GUEST_JWT_KEY = 'avatok_guest_jwt';
-const GUEST_HANDLE_KEY = 'avatok_guest_handle';
+const GUEST_JWT_KEY = 'saathum_guest_jwt';
+const GUEST_HANDLE_KEY = 'saathum_guest_handle';
 
 /** Leave the page. `replace` so Back does not return to the sign-out route. */
 function goHome() {

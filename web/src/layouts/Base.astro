@@ -180,19 +180,19 @@ const {
     <script is:inline define:vars={{ marker: EMBED_UA_MARKER }}>
       try {
         if (navigator.userAgent.indexOf(marker) !== -1) {
-          document.documentElement.setAttribute('data-avatok-embed', '');
-          if (window.AvatokHost && window.AvatokHost.postMessage) {
-            window.AvatokHost.postMessage(JSON.stringify({ type: 'ready' }));
+          document.documentElement.setAttribute('data-saathum-embed', '');
+          if (window.SaathumHost && window.SaathumHost.postMessage) {
+            window.SaathumHost.postMessage(JSON.stringify({ type: 'ready' }));
           }
         }
       } catch (e) { /* no navigator, or the host is gone — the page still renders */ }
     </script>
     <style is:global>
-      html[data-avatok-embed] header.avh,
-      html[data-avatok-embed] footer.bazaar-footer { display: none !important; }
+      html[data-saathum-embed] header.avh,
+      html[data-saathum-embed] footer.bazaar-footer { display: none !important; }
       /* The app's WebView is a phone screen with no browser chrome to absorb an
          overscroll, and a horizontal one there reads as a broken page. */
-      html[data-avatok-embed], html[data-avatok-embed] body { overscroll-behavior-x: none; }
+      html[data-saathum-embed], html[data-saathum-embed] body { overscroll-behavior-x: none; }
     </style>
     <slot name="head" />
   </head>

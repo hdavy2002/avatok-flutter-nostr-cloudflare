@@ -44,7 +44,7 @@ const MAX_LEN = 20;
 // obvious brand/infra words. A human who picks one of these via the guest
 // ladder is that flow's problem; this list only guards generation.
 const RESERVED = new Set([
-  'about','acceptable_use','add','admin','agent','api','app','archive','ava','avatok',
+  'about','acceptable_use','add','admin','agent','api','app','archive','ava','avatok','saathum','saa_thum',
   'biometric_retention','blog','book','c','careers','child_safety','community_guidelines',
   'consult','consultation_terms','contact','cookies','creator','creators','dashboard','dmca',
   'e','embed','explore','forgot_password','grievance','help','ideas','index','j','l','live','login','marketplace',

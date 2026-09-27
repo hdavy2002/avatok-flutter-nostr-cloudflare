@@ -62,7 +62,7 @@ const AUTH_SCRIPT = `<script>
     try {
       var m = document.cookie.match(/(?:^|;\\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
       if (m && m[1] && m[1] !== '0') return true;
-      return !!localStorage.getItem('avatok_guest_jwt');
+      return !!localStorage.getItem('saathum_guest_jwt');
     } catch (e) { return false; }
   }
 
@@ -78,7 +78,7 @@ const AUTH_SCRIPT = `<script>
     return true;
   }
 
-  document.documentElement.setAttribute('data-avatok-auth', signedIn() ? 'in' : 'out');
+  document.documentElement.setAttribute('data-saathum-auth', signedIn() ? 'in' : 'out');
   if (!signedIn()) return;
 
   // The header is <dc-import>ed asynchronously, so the anchors may not exist

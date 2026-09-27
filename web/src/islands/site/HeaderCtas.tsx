@@ -85,7 +85,7 @@ function Inner() {
 
   useEffect(() => {
     try {
-      setHasGuest(!!localStorage.getItem('avatok_guest_jwt'));
+      setHasGuest(!!localStorage.getItem('saathum_guest_jwt'));
     } catch {
       /* ignore */
     }
@@ -101,7 +101,7 @@ function Inner() {
     <Authed
       onSignOut={async () => {
         try {
-          localStorage.removeItem('avatok_guest_jwt');
+          localStorage.removeItem('saathum_guest_jwt');
         } catch {
           /* ignore */
         }

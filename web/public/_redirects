@@ -53,3 +53,7 @@
 # marketplace-era word "creator". Same article, so a 301 is correct here.
 /help/booking-and-paying/find-a-creator-or-show  /help/booking-and-paying/how-to-book  301
 /help/booking-and-paying/find-a-creator-or-show/ /help/booking-and-paying/how-to-book  301
+
+# [SAATHUM-DEBRAND-1 2026-09-27] The admin account's handle changed to "saathum";
+# listing URLs moved from /<old-handle>/<slug> to /saathum/<slug>.
+/humphrey/*   /saathum/:splat   301

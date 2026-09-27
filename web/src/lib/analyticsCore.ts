@@ -201,7 +201,7 @@ export function initAnalytics(): void {
 
   posthog.register({
     platform: 'web',
-    service_name: 'avatok-web',
+    service_name: 'saathum-web',
     release,
   });
   registerResponsiveSuperProps();

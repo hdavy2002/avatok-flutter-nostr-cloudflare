@@ -8,7 +8,7 @@ import { ApiError, request, type RequestOptions } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { API_BASE } from '../../lib/config';
 
-const GUEST_JWT_KEY = 'avatok_guest_jwt';
+const GUEST_JWT_KEY = 'saathum_guest_jwt';
 
 /** Clerk token, or the stored guest token (same rule as DashNav's guard). */
 export async function authToken(): Promise<string | null> {

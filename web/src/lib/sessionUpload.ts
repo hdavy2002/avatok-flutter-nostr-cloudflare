@@ -102,7 +102,7 @@ export async function uploadChatAttachment(file: File, jwt: string): Promise<Cha
         Authorization: `Bearer ${jwt}`,
         'x-content-type': mime,
         'x-file-name': fileNameHeader(file.name),
-        'x-app': 'avatok',
+        'x-app': 'saathum',
       },
       body: file,
     }));

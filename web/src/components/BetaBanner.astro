@@ -80,7 +80,7 @@
   // Per-session dismissal only. A fresh visit shows the notice again on purpose.
   const strip = document.getElementById('beta-strip');
   try {
-    if (sessionStorage.getItem('avatok_beta_notice') === 'hidden' && strip) {
+    if (sessionStorage.getItem('saathum_beta_notice') === 'hidden' && strip) {
       strip.hidden = true;
       strip.style.display = 'none';
     }
@@ -88,6 +88,6 @@
 
   strip?.querySelector('.beta-strip__x')?.addEventListener('click', () => {
     strip.style.display = 'none';
-    try { sessionStorage.setItem('avatok_beta_notice', 'hidden'); } catch { /* ignore */ }
+    try { sessionStorage.setItem('saathum_beta_notice', 'hidden'); } catch { /* ignore */ }
   });
 </script>

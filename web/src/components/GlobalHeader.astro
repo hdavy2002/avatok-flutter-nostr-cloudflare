@@ -18,9 +18,9 @@ const links = [
   try {
     var match = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
     var signedIn = !!(match && match[1] && match[1] !== '0');
-    try { signedIn = signedIn || !!localStorage.getItem('avatok_guest_jwt'); } catch (_) {}
-    document.documentElement.setAttribute('data-avatok-auth', signedIn ? 'in' : 'out');
-  } catch (_) { document.documentElement.setAttribute('data-avatok-auth', 'out'); }
+    try { signedIn = signedIn || !!localStorage.getItem('saathum_guest_jwt'); } catch (_) {}
+    document.documentElement.setAttribute('data-saathum-auth', signedIn ? 'in' : 'out');
+  } catch (_) { document.documentElement.setAttribute('data-saathum-auth', 'out'); }
 </script>
 <header class:list={['avh', 'global-header', design === 'disco' && 'disco-header', sticky && 'global-header--sticky']}>
   {design === 'original' && <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>}

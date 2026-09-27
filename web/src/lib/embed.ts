@@ -38,9 +38,9 @@ type OutMsg =
 interface HostChannel { postMessage(payload: string): void }
 
 interface EmbedWindow extends Window {
-  AvatokHost?: HostChannel;
+  SaathumHost?: HostChannel;
   /** Host → page token delivery. Installed by `installEmbedBridge`. */
-  __avatokEmbedToken?: (id: number, token: string | null) => void;
+  __saathumEmbedToken?: (id: number, token: string | null) => void;
 }
 
 function w(): EmbedWindow | null {
@@ -52,12 +52,12 @@ function w(): EmbedWindow | null {
  * app (`kEmbedUserAgentMarker` in app/lib/core/config.dart). Changing this
  * string is a protocol change — both halves move in the same commit.
  */
-export const EMBED_UA_MARKER = 'AvatokApp/1';
+export const EMBED_UA_MARKER = 'SaathumApp/1';
 
 /**
  * True when this page is running inside the app's WebView.
  *
- * The `AvatokHost` channel is the load-bearing half and is checked first: only
+ * The `SaathumHost` channel is the load-bearing half and is checked first: only
  * the Dart side can register it, so its presence cannot be faked by typing a
  * URL. The second half is a marker the page can also see — `?embed=1` (the app
  * puts it on the URL it opens) OR our UA marker.
@@ -76,7 +76,7 @@ export const EMBED_UA_MARKER = 'AvatokApp/1';
  */
 export function isEmbedded(): boolean {
   const win = w();
-  if (!win || typeof win.AvatokHost?.postMessage !== 'function') return false;
+  if (!win || typeof win.SaathumHost?.postMessage !== 'function') return false;
   try {
     if (win.navigator?.userAgent?.includes(EMBED_UA_MARKER)) return true;
   } catch {
@@ -92,7 +92,7 @@ export function isEmbedded(): boolean {
 function send(msg: OutMsg): void {
   const win = w();
   try {
-    win?.AvatokHost?.postMessage(JSON.stringify(msg));
+    win?.SaathumHost?.postMessage(JSON.stringify(msg));
   } catch {
     /* the host is gone (webview being torn down) — nothing useful to do */
   }
@@ -138,7 +138,7 @@ export function installEmbedBridge(): (() => Promise<string | null>) | null {
   // the host's `bridge_ms` stays the time to FIRST paintable page.
   if (_provider) return _provider;
 
-  win.__avatokEmbedToken = (id: number, token: string | null) => {
+  win.__saathumEmbedToken = (id: number, token: string | null) => {
     const entry = pending.get(id);
     if (!entry) return; // already timed out — a late answer is not an error
     pending.delete(id);

@@ -1,7 +1,7 @@
 import manifest from '../../publicImageManifest.json';
 
 const ORIGIN = 'https://saathum.com';
-const BLOSSOM_ORIGIN = 'https://blossom.avatok.ai';
+const BLOSSOM_ORIGIN = 'https://media.saathum.com';
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 2500;
 const MAX_REDIRECTS = 2;

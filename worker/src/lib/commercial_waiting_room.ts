@@ -36,7 +36,7 @@ export interface WaitingRoomGrant {
 
 /** Same env-driven host selection as `routes/media.ts` (privateMediaReadUrl). */
 function apiHost(env: Env): string {
-  return env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : "api.avatok.ai";
+  return env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : "api.saathum.com"; // [SAATHUM-DEBRAND-1 2026-09-27]
 }
 
 /**

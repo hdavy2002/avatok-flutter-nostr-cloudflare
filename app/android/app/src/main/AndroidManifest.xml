@@ -203,6 +203,9 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- [SAATHUM-DEBRAND-1 2026-09-27] Every avatok.ai App Link below also accepts
+                 saathum.com (the server now mints saathum.com join links; saathum.com
+                 serves the same /.well-known/assetlinks.json). -->
             <!-- Phase 5 (A1): Android App Links — https://avatok.ai/j/<token>
                  opens the app directly (verified via /.well-known/assetlinks.json). -->
             <intent-filter android:autoVerify="true">
@@ -210,6 +213,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/j/"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/j/"/>
             </intent-filter>
             <!-- [APP-JOIN-ROUTE-1] App Link — https://avatok.ai/session?listing_id=
                  &booking_id= is the stable customer session link handled at
@@ -223,6 +227,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/session"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/session"/>
             </intent-filter>
             <!-- [CREATOR-SESSION-JOURNEY-1] Canonical paid live event links.
                  DeepLinks resolves /live/:listingId and asks the server whether
@@ -233,6 +238,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/live/"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/live/"/>
             </intent-filter>
             <!-- App Link — https://avatok.ai/add?t=<token> opens the app to the
                  "add contact" card (AvaTOK Number QR share). Same host as /j/, so
@@ -242,6 +248,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/add"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/add"/>
             </intent-filter>
             <!-- [MKT7] App Link — https://avatok.ai/l/<id> opens a marketplace
                  listing (QR on the listing detail page). Same host as /j/ and /add,
@@ -252,18 +259,21 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/l/"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/l/"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/a/"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/a/"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/i/"/>
+                <data android:scheme="https" android:host="saathum.com" android:pathPrefix="/i/"/>
             </intent-filter>
             <!-- Custom-scheme deeplink fallback (avatok://booking/<id>, avatok://add?t=). -->
             <intent-filter>
