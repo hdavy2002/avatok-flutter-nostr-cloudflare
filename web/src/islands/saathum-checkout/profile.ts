@@ -37,7 +37,9 @@ export function addressFromProfile(p: CheckoutProfile | null): Address | null {
   if (!a || !a.line1) return null;
   return {
     name: a.name ?? p?.name ?? '',
-    phone: p?.phone?.e164_masked ?? '',
+    // [SAATHUM-PHONE-OPTIONAL 2026-09-27] Never prefill the MASKED number ("+91 98•••••123")
+    // -- it is not a real number and the server rejected it at Pay. Phone is optional.
+    phone: '',
     line1: a.line1 ?? '',
     line2: a.line2 ?? '',
     city: a.city ?? '',

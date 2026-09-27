@@ -113,7 +113,9 @@ export function OfferingsStep({
   function validateAddress(): boolean {
     const errs: Record<string, string> = {};
     if (!a.name.trim()) errs.name = 'Enter a name for delivery.';
-    if (!a.phone.trim()) errs.phone = 'Enter a phone number.';
+    // [SAATHUM-PHONE-OPTIONAL 2026-09-27] Phone is optional; if typed, it must be a real mobile.
+    const ph = a.phone.replace(/[\s-]/g, '').replace(/^(\+91|0)/, '');
+    if (ph && !/^[6-9]\d{9}$/.test(ph)) errs.phone = 'Enter a 10-digit mobile number, or leave it blank.';
     if (!a.line1.trim()) errs.line1 = 'Enter the address.';
     if (!a.city.trim()) errs.city = 'Enter the city.';
     if (!a.state.trim()) errs.state = 'Choose a state.';
@@ -208,7 +210,7 @@ export function OfferingsStep({
                 {addrErr.name && <p className="sthc-err">{addrErr.name}</p>}
               </div>
               <div className="sthc-fld">
-                <input className="sthc-in" placeholder="Phone" inputMode="tel" aria-invalid={!!addrErr.phone} value={a.phone} onChange={(e) => onAddressChange({ ...a, phone: e.target.value })} />
+                <input className="sthc-in" placeholder="Phone (optional)" inputMode="tel" aria-invalid={!!addrErr.phone} value={a.phone} onChange={(e) => onAddressChange({ ...a, phone: e.target.value })} />
                 {addrErr.phone && <p className="sthc-err">{addrErr.phone}</p>}
               </div>
               <div className="sthc-fld">

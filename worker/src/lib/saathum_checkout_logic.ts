@@ -82,6 +82,8 @@ export function validPincode(value: unknown): value is string {
 
 export type Address = {
   name: string;
+  /** [SAATHUM-PHONE-OPTIONAL 2026-09-27] Optional until phone collection is back on
+   * (owner decision: skip phone for now). Empty string when not given. */
   phone: string;
   line1: string;
   line2?: string;
@@ -101,8 +103,12 @@ export function validateAddress(raw: unknown): Ok<Address> | FieldError {
   const name = str("name"), phone = str("phone"), line1 = str("line1"), line2 = str("line2");
   const city = str("city"), state = str("state"), pincode = str("pincode");
   if (!name || name.length > 120) return { ok: false, error: "invalid_name", message: "Enter the recipient's name.", field: "name" };
-  if (!PHONE_RE.test(phone.replace(/^\+91/, ""))) {
-    return { ok: false, error: "invalid_phone", message: "Enter a valid 10-digit Indian mobile number.", field: "phone" };
+  // [SAATHUM-PHONE-OPTIONAL 2026-09-27] Owner decision: do not require a phone at
+  // checkout for now. A blank phone passes; a non-blank one must still be a real
+  // 10-digit Indian mobile (spaces/dashes and a +91 / 0 prefix are tolerated).
+  const phoneDigits = phone.replace(/[\s-]/g, "").replace(/^(\+91|0)/, "");
+  if (phone && !PHONE_RE.test(phoneDigits)) {
+    return { ok: false, error: "invalid_phone", message: "Enter a valid 10-digit Indian mobile number, or leave the phone blank.", field: "phone" };
   }
   if (!line1 || line1.length > 200) return { ok: false, error: "invalid_line1", message: "Enter the address line.", field: "line1" };
   if (line2.length > 200) return { ok: false, error: "invalid_line2", message: "That address line is too long.", field: "line2" };
@@ -111,7 +117,7 @@ export function validateAddress(raw: unknown): Ok<Address> | FieldError {
   if (!PINCODE_RE.test(pincode)) return { ok: false, error: "invalid_pincode", message: "Enter a valid 6-digit PIN code.", field: "pincode" };
   return {
     ok: true,
-    value: { name, phone: phone.replace(/^\+91/, ""), line1, ...(line2 ? { line2 } : {}), city, state, pincode },
+    value: { name, phone: phone ? phoneDigits : "", line1, ...(line2 ? { line2 } : {}), city, state, pincode },
   };
 }
 

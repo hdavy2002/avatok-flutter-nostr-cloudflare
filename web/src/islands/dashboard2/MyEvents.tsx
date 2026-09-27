@@ -62,7 +62,7 @@ function AddressDialog({
     const t = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.trim()])) as AddressDraft;
     const errs: Record<string, string> = {};
     if (!t.name) errs.name = 'Enter the name for delivery.';
-    if (!PHONE_RE.test(t.phone)) errs.phone = 'Enter a 10-digit mobile number.';
+    if (t.phone.trim() && !PHONE_RE.test(t.phone.trim())) errs.phone = 'Enter a 10-digit mobile number, or leave it blank.'; // [SAATHUM-PHONE-OPTIONAL]
     if (!t.line1) errs.line1 = 'Enter the first address line.';
     if (!t.city) errs.city = 'Enter the city.';
     if (!t.state) errs.state = 'Enter the state.';

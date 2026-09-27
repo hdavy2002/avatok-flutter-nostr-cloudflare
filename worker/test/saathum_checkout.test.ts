@@ -194,6 +194,15 @@ describe("validateAddress", () => {
     const r = validateAddress({ ...good, pincode: "012345" });
     expect(r.ok).toBe(false);
   });
+  it("accepts a blank phone (phone optional for now)", () => {
+    const r = validateAddress({ ...good, phone: "" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.phone).toBe("");
+  });
+  it("rejects a masked phone from the profile", () => {
+    const r = validateAddress({ ...good, phone: "+91 98•••••210" });
+    expect(r.ok).toBe(false);
+  });
   it("rejects a bad phone number", () => {
     const r = validateAddress({ ...good, phone: "12345" });
     expect(r.ok).toBe(false);
