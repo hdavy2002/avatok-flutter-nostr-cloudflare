@@ -24,6 +24,8 @@ export const BOOK_CTA = { href: '/marketplace', label: 'Book a puja' };
 // "Our priests" and "Follow us" wait until a priests page and social accounts exist.
 // [MKT-V2-4 2026-09-27] OWNER DECISION: one "Explore" link to /marketplace replaces Pujas · Havans · By intention (not the word "Marketplace").
 export const HOME_HEADER_LINKS = [
+  // [WEB-NAV-HOME-1 2026-09-27] OWNER DECISION: Home is the first menu item.
+  { href: '/', label: 'Home' },
   { href: '/marketplace', label: 'Explore' },
   { href: '/how-it-works', label: 'How it works' },
   // [SAATHUM-ARCHIVE-2 2026-09-25] About removed from menus by owner (page archived).
