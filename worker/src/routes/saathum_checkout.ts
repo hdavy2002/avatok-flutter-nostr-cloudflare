@@ -193,7 +193,7 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
   const canPay = p.enabled && status === "awaiting_payment";
   const upiUrl = canPay
     ? `upi://pay?${new URLSearchParams({
-      pa: env.HDFC_UPI_VPA!, pn: env.HDFC_UPI_PAYEE_NAME ?? "Saathum",
+      pa: p.vpa, pn: p.payee_name, // [SAATHUM-UPI-SETTINGS] admin-set VPA
       am: (row.amount_paise / 100).toFixed(2), cu: "INR",
       tr: `ST${row.checkout_id.replace(/-/g, "")}`, tn: "Saa Thum booking",
     })}`
@@ -208,7 +208,7 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
     address: row.address_json ? (JSON.parse(row.address_json) as Address) : null,
     can_edit_address: !addressLocked(listing?.starts_at ?? null, now),
     payment: {
-      upi_url: upiUrl, vpa: env.HDFC_UPI_VPA ?? null, payee_name: env.HDFC_UPI_PAYEE_NAME ?? "Saathum",
+      upi_url: upiUrl, vpa: p.vpa || null, payee_name: p.payee_name,
       amount_rupees: row.total_rupees, expires_at: row.expires_at, utr: row.utr,
       reference_revision: row.reference_revision, reason_code: status === "awaiting_payment" ? row.reason_code : null,
     },

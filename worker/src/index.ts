@@ -142,6 +142,7 @@ import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; //
 import { getAvaVoiceStyle, putAvaVoiceStyle } from "./routes/ava_voice_style"; // [AVA-VOICE-STYLE-1] WS-14 — how Ava speaks
 import { getConfig, putConfig, readConfig } from "./routes/config";
 import { getPricing, putPricing } from "./routes/pricing";
+import { getUpiSettings, putUpiSettings } from "./routes/upi_settings";
 import { createConversation, listConversations, getParticipants } from "./routes/conversations2";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -566,6 +567,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // [PRICING-1] "Starting from" prices for articles and share cards — public read, admin write.
     if (p === "/api/pricing" && req.method === "GET") return await getPricing(env);
     if (p === "/api/admin/pricing" && req.method === "PUT") return await putPricing(req, env);
+    // [SAATHUM-UPI-SETTINGS] admin-set UPI ID used by the checkout QR.
+    if (p === "/api/admin/upi-settings" && req.method === "GET") return await getUpiSettings(req, env);
+    if (p === "/api/admin/upi-settings" && req.method === "PUT") return await putUpiSettings(req, env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
 
     // Messenger Phase 1 billing authority. These endpoints are mounted for

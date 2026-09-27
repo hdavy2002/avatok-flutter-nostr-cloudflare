@@ -1,0 +1,11 @@
+---
+// [SAATHUM-UPI-SETTINGS 2026-09-27] The UPI ID customers pay to at checkout,
+// its QR, and whether the bank-SMS confirmation rail is healthy.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import UpiSettings from '../../islands/admin2/UpiSettings.tsx';
+---
+
+<Admin2 title="UPI settings" active="upi" subtitle="The UPI ID every checkout QR pays to. Payments are confirmed by the HDFC credit SMS plus the customer's 12-digit UPI reference.">
+  <UpiSettings client:load />
+</Admin2>

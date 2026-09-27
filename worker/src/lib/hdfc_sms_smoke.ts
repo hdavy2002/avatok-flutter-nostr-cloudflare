@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { metaDb } from '../db/shard';
 import { readConfig } from '../routes/config';
 import { sha256Hex } from './payments/types';
+import { effectiveUpi } from './upi_settings';
 export const SMOKE_LISTING = 'avatok-upi-smoke-2026';
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export interface Intent {
@@ -14,7 +15,7 @@ export interface Intent {
  disposition:string|null; evidence_reason:string|null; relevant_count:number;
  unsupported_count:number; conflict_count:number;
 }
-export interface Policy { enabled:boolean; configured:boolean; ready:boolean; account:string; cutover:number; reason:string|null }
+export interface Policy { enabled:boolean; configured:boolean; ready:boolean; account:string; cutover:number; reason:string|null; vpa:string; payee_name:string; vpa_source:'admin'|'env'|'none' }
 export function normalizeReference(value:unknown):string|null {
  return typeof value==='string' && /^\d{12}$/.test(value.trim()) ? value.trim() : null;
 }
@@ -78,7 +79,8 @@ export async function boundedBody(req:Request,max=8192):Promise<Record<string,un
 }
 export async function policy(env:Env):Promise<Policy> {
  const config=await readConfig(env);
- const configured=/^[A-Za-z0-9._-]{2,200}@[A-Za-z0-9.-]{2,80}$/.test(env.HDFC_UPI_VPA??'')&&/^\d{4,6}$/.test(env.HDFC_SMS_ACCOUNT_SUFFIX??'')&&Boolean(env.HDFC_SMS_DEVICE_ID&&env.HDFC_SMS_DEVICE_SECRET);
+ const upi=await effectiveUpi(env); // [SAATHUM-UPI-SETTINGS] admin-set VPA, env fallback
+ const configured=upi.source!=='none'&&/^\d{4,6}$/.test(env.HDFC_SMS_ACCOUNT_SUFFIX??'')&&Boolean(env.HDFC_SMS_DEVICE_ID&&env.HDFC_SMS_DEVICE_SECRET);
  const account=await sha256Hex(`HDFC|${env.HDFC_SMS_ACCOUNT_SUFFIX??''}|INR`);
  let ready=false,cutover=0;
  try {
@@ -90,7 +92,7 @@ export async function policy(env:Env):Promise<Policy> {
   cutover=marker?.cutover_ms??0;
  }catch{ /* Missing/partial seed is deliberately retryable, never fallback to v1. */ }
  const reason=!ready?'schema_not_ready':!configured?'configuration_incomplete':config.hdfcSmsEnabled!==true?'rail_paused':null;
- return {enabled:ready&&configured&&config.hdfcSmsEnabled===true,configured,ready,account,cutover,reason};
+ return {enabled:ready&&configured&&config.hdfcSmsEnabled===true,configured,ready,account,cutover,reason,vpa:upi.vpa,payee_name:upi.payee_name,vpa_source:upi.source};
 }
 const INTENT_SELECT=`SELECT i.*,r.claimed_at,r.disposition,r.reason_code AS evidence_reason,
  (SELECT count(*) FROM hdfc_sms_smoke_receipts e WHERE e.receiving_account_key=i.receiving_account_key AND e.amount_paise=i.amount_paise AND e.disposition='accepted' AND (i.payer_vpa IS NULL OR e.payer_vpa=i.payer_vpa) AND e.claimed_intent_id IS NULL AND ((i.payer_vpa IS NULL AND e.received_at_end_ms>=i.created_at) OR (i.payer_vpa IS NOT NULL AND e.received_at_ms>=i.created_at)) AND e.received_at_ms<=i.expires_at) AS relevant_count,
@@ -110,7 +112,7 @@ export function publicIntent(i:Intent,env:Env,p:Policy,now=Date.now()) {
  const reason=i.superseded_by?'superseded':conflict?'evidence_conflict':confirmed?null:i.payer_vpa?'awaiting_sms':i.relevant_count?(i.payer_reference?'no_match':'reference_required'):i.unsupported_count?'unsupported_reference':'awaiting_sms';
  const canPay=p.enabled&&status==='pending';
  return {protocol_version:2,intent_id:i.intent_id,status,reason_code:reason,amount_paise:100,created_at:i.created_at,expires_at:i.expires_at,recover_until:i.recover_until,updated_at:Math.max(i.updated_at,i.claimed_at??0),claim_submitted:Boolean(i.payer_reference),reference_revision:i.reference_revision,smoke_test:true,order_id:null,
- ...(canPay?{upi_url:`upi://pay?${new URLSearchParams({pa:env.HDFC_UPI_VPA!,pn:env.HDFC_UPI_PAYEE_NAME??'AvaTOK',am:'1.00',cu:'INR',tr:`AV${i.intent_id.replace(/-/g,'')}`,tn:'AvaTOK internal smoke test'})}`}:{})};
+ ...(canPay?{upi_url:`upi://pay?${new URLSearchParams({pa:p.vpa,pn:p.payee_name,am:'1.00',cu:'INR',tr:`AV${i.intent_id.replace(/-/g,'')}`,tn:'AvaTOK internal smoke test'})}`}:{})};
 }
 export async function legacyIntent(db:D1Database,id:string,uid:string) {
  const i=await db.prepare('SELECT intent_id,status,amount_paise,expires_at,updated_at,commercial_order_id,listing_id FROM hdfc_sms_payment_intents WHERE intent_id=? AND uid=?').bind(id,uid).first<{intent_id:string;status:string;amount_paise:number;expires_at:number;updated_at:number;commercial_order_id:string|null;listing_id:string}>();

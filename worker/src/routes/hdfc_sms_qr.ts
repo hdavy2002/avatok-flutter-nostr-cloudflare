@@ -1,6 +1,7 @@
 import type { Env } from '../types';
 import { json } from '../util';
 import { readConfig } from './config';
+import { effectiveUpi } from '../lib/upi_settings';
 
 /** Public payment address only: no intent, booking, receipt or confirmation. */
 export async function hdfcSmsQr(_req: Request, env: Env): Promise<Response> {
@@ -8,8 +9,9 @@ export async function hdfcSmsQr(_req: Request, env: Env): Promise<Response> {
   try {
     const config = await readConfig(env);
     if (config.hdfcSmsEnabled !== true) return json({error: 'rail_paused'}, 503, headers);
-    const vpa = env.HDFC_UPI_VPA?.trim() ?? '';
-    const payee = env.HDFC_UPI_PAYEE_NAME?.trim() ?? '';
+    const upi = await effectiveUpi(env); // [SAATHUM-UPI-SETTINGS]
+    const vpa = upi.vpa;
+    const payee = upi.payee_name;
     if (!/^[A-Za-z0-9._-]{2,200}@[A-Za-z0-9.-]{2,80}$/.test(vpa) || !payee || payee.length > 100 || /[\u0000-\u001f\u007f]/.test(payee)) {
       return json({error: 'configuration_incomplete'}, 503, headers);
     }

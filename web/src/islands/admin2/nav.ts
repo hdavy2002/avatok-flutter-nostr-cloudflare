@@ -2,10 +2,10 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, Undo2, Users, Tags, Gift, Globe, LogOut, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, type LucideIcon,
 } from 'lucide-react';
 
-export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices' | 'chadhava';
+export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices' | 'chadhava' | 'upi';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon }
 
@@ -18,6 +18,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'customers', label: 'Users', short: 'Users', href: '/admin/users', icon: Users }, // [ADMIN2-USERS] key stays 'customers'
   { key: 'prices', label: 'Prices', short: 'Prices', href: '/admin/prices', icon: Tags },
   { key: 'chadhava', label: 'Chadhava', short: 'Chadhava', href: '/admin/chadhava', icon: Gift }, // [SAATHUM-CHADHAVA]
+  { key: 'upi', label: 'UPI settings', short: 'UPI', href: '/admin/upi', icon: QrCode }, // [SAATHUM-UPI-SETTINGS]
 ];
 
 /** Phone tab bar: these five, then "More" (the rest + View site + Logout). */
