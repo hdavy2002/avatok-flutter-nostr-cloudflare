@@ -94,13 +94,16 @@ type ContentPolicyRule = {
   patterns: RegExp[];
 };
 
+// [POLICY-SEO-FP-1 2026-09-27] "…" counts as a sentence break in every window
+// below, the same as . ! ? — a trimmed lead ending in "…" is not one sentence
+// with whatever follows it.
 const CONTENT_POLICY_RULES: ContentPolicyRule[] = [
   {
     code: "guaranteed_outcome",
     message: "Remove promises of a guaranteed outcome (marriage, wealth, children, exam results, visas). Describe the service, not a promised result.",
     patterns: [
-      /\bguarantee(d|s)?\b[^.!?\n]{0,40}\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b/i,
-      /\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b[^.!?\n]{0,40}\bguarantee(d|s)?\b/i,
+      /\bguarantee(d|s)?\b[^.!?…\n]{0,40}\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b/i,
+      /\b(marry|marriage|married|wedding|rich|wealth|money|child|children|conceive|pregnan\w*|exam|pass|visa|job)\b[^.!?…\n]{0,40}\bguarantee(d|s)?\b/i,
       /\b100\s*%\s*(guarantee(d)?|result|success|sure)\b/i,
       /\bsure[- ]shot\b/i,
       /\bno[- ]fail\b/i,
@@ -111,8 +114,8 @@ const CONTENT_POLICY_RULES: ContentPolicyRule[] = [
     code: "medical_claim",
     message: "Remove medical claims. This service cannot promise to cure, treat or heal an illness or medical condition.",
     patterns: [
-      /\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b[^.!?\n]{0,40}\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b/i,
-      /\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b[^.!?\n]{0,40}\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b/i,
+      /\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b[^.!?…\n]{0,40}\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b/i,
+      /\b(cancer|disease|illness|infertility|diabetes|covid|tumou?r|disorder|medical condition)\b[^.!?…\n]{0,40}\b(cure|cures|cured|heal|heals|healing|treat|treats|treatment)\b/i,
     ],
   },
   {
@@ -140,14 +143,14 @@ const CONTENT_POLICY_RULES: ContentPolicyRule[] = [
     message: "Remove anything describing animal sacrifice, dangerous fire or chemicals, or a minor participating in the ritual — these cannot be offered here.",
     patterns: [
       /\banimal sacrifice\b/i,
-      /\bsacrific(e|ing)\b[^.!?\n]{0,20}\b(goat|chicken|animal|hen)\b/i,
+      /\bsacrific(e|ing)\b[^.!?…\n]{0,20}\b(goat|chicken|animal|hen)\b/i,
       /\bbali\s*pratha\b/i,
       /\bopen flame ritual\b/i,
       /\bfire walking\b/i,
       /\bhandle (burning|hot) (coals|iron)\b/i,
       /\bhazardous chemical\b/i,
       /\btoxic chemical\b/i,
-      /\b(child|children|kid|kids|minor|minors)\b[^.!?\n]{0,30}\b(will |can |may )?(participate|perform|assist|join)\b/i,
+      /\b(child|children|kid|kids|minor|minors)\b[^.!?…\n]{0,30}\b(will |can |may )?(participate|perform|assist|join)\b/i,
     ],
   },
   {
@@ -170,7 +173,22 @@ const CONTENT_POLICY_RULES: ContentPolicyRule[] = [
  *  this list does not need to track every attrs key by name. */
 function policyScanSources(l: Record<string, any>): Array<{ field: string; text: string }> {
   const attrsText = (() => {
-    try { return JSON.stringify(parse<Record<string, unknown>>(l?.attrs, {})); } catch { return ""; }
+    try {
+      const attrs = { ...parse<Record<string, unknown>>(l?.attrs, {}) };
+      // [POLICY-SEO-FP-1 2026-09-27] An AUTO-written attrs.seo is derived from the
+      // title/blurb/description already scanned above, and its "… Join live" tail
+      // glued onto a trimmed lead made "a child's first birthday… Join live" read as
+      // a minor participating (Ayush Havan, Brihaspati Havan). Scan only SEO text an
+      // admin typed; the auto text can say nothing the other fields did not.
+      const seo = attrs.seo as Record<string, unknown> | undefined;
+      if (seo && typeof seo === "object") {
+        const kept: Record<string, unknown> = {};
+        if (seo.title_source === "admin") kept.title = seo.title;
+        if (seo.description_source === "admin") kept.description = seo.description;
+        attrs.seo = kept;
+      }
+      return JSON.stringify(attrs);
+    } catch { return ""; }
   })();
   return [
     { field: "title", text: String(l?.title ?? "") },
