@@ -299,6 +299,10 @@ export interface Env {
   TWOFACTOR_API_KEY?: string;
   // Optional DLT-approved OTP template name on the 2Factor account. Unset => 2Factor's default.
   TWOFACTOR_OTP_TEMPLATE?: string;
+  // [WA-OTP-1 2026-09-27] WasenderAPI session API key (WhatsApp OTP, lib/otp_sender.ts).
+  // Secret — `scripts/cf.sh worker secret put WASENDER_API_KEY`. SET => every phone code
+  // goes on WhatsApp. UNSET => break-glass fallback to 2Factor SMS above.
+  WASENDER_API_KEY?: string;
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
   // [AGENT-LIVE-1] OpenAI API key for the gpt-live-1 realtime WebSocket relay,
   // the gpt-6-astra backend/vision calls and the RAG Files/Vector Store APIs.

@@ -455,7 +455,7 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
           <AnimatePresence mode="wait" initial={false}>
             {step === 'number' && (
               <motion.form key="number" {...slide} transition={{ duration: 0.18 }} onSubmit={(e) => { e.preventDefault(); void start(); }} className="space-y-3">
-                <Label htmlFor="ph-new" className="text-[13px] font-bold">New mobile number</Label>
+                <Label htmlFor="ph-new" className="text-[13px] font-bold">New WhatsApp number</Label>
                 <div className="flex">
                   <span className="flex h-11 items-center rounded-l-md border border-r-0 border-input bg-muted px-3 text-[15px] font-extrabold text-muted-foreground">+91</span>
                   <Input id="ph-new" inputMode="numeric" autoComplete="tel-national" autoFocus placeholder="98765 43210"
@@ -473,7 +473,7 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
             {step === 'code' && (
               <motion.div key="code" {...slide} transition={{ duration: 0.18 }} className="space-y-3">
                 <p className="text-[14px] font-semibold text-foreground">
-                  Enter the code sent to <strong className="font-extrabold tracking-[0.04em]">+91 {digits.slice(0, 5)} {digits.slice(5)}</strong>
+                  Enter the code sent on WhatsApp to <strong className="font-extrabold tracking-[0.04em]">+91 {digits.slice(0, 5)} {digits.slice(5)}</strong>
                   <button type="button" className="ml-2 text-[13px] font-bold text-accent underline underline-offset-2" onClick={() => { setStep('number'); setErr(''); }}>Change</button>
                 </p>
                 <div className="flex justify-center py-1">

@@ -2,7 +2,9 @@
 //
 // OWNER DECISION 2026-09-10: every new web account verifies an Indian mobile
 // number by OTP, on the same screen as the email code, before the account is
-// opened. Provider is 2Factor.in (https://2factor.in/api-docs). +91 only.
+// opened. +91 only.
+// [WA-OTP-1 2026-09-27] Codes now go on WhatsApp (WasenderAPI) — see lib/otp_sender.ts.
+// Provider was 2Factor.in SMS until then; that path is a break-glass fallback only.
 //
 // This REINTRODUCES phone OTP, which was removed app-wide on 2026-07-10 (the old
 // Twilio path in routes/id.ts). That removal still stands for the app; this is a
@@ -32,9 +34,9 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
+import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender";
 
 const APP = "avatok";
-const TF_BASE = "https://2factor.in/API/V1";
 
 export const OTP_TTL_MS = 10 * 60_000;
 export const RESEND_GAP_MS = 30_000;
@@ -64,19 +66,6 @@ function mask(e164: string): string {
   return e164.slice(0, 3) + "•••••" + e164.slice(-3);
 }
 
-type TfResponse = { Status?: string; Details?: string };
-
-export async function twoFactor(env: Env, path: string): Promise<TfResponse | null> {
-  try {
-    const r = await fetch(`${TF_BASE}/${encodeURIComponent(env.TWOFACTOR_API_KEY ?? "")}/${path}`, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    return (await r.json().catch(() => null)) as TfResponse | null;
-  } catch {
-    return null;
-  }
-}
-
 /** Is this number verified on a different, live account? (Also used by [DASH2-API] phone change.) */
 export async function phoneTakenByOther(env: Env, hash: string, uid: string): Promise<boolean> {
   const row = await env.DB_META.prepare(
@@ -93,7 +82,7 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
-  if (!env.TWOFACTOR_API_KEY) {
+  if (!otpProvider(env)) {
     return json({ error: "otp_unavailable", message: "Phone verification isn’t available right now. Please try again shortly." }, 503);
   }
 
@@ -117,7 +106,7 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
     void track(env, ctx.uid, "phone_otp_send", APP, { outcome: "phone_taken", phone_masked: mask(e164) });
     return json({
       error: "phone_taken",
-      message: "This number is already linked to another avaTOK account. Log in to that account, or use a different number.",
+      message: "This number is already linked to another Saa Thum account. Log in to that account, or use a different number.",
       field: "phone",
     }, 409);
   }
@@ -144,39 +133,42 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
     return json({ error: "busy", message: "We’re getting a lot of sign-ups right now. Please try again in a few minutes.", field: "phone" }, 429);
   }
 
-  const tpl = (env.TWOFACTOR_OTP_TEMPLATE ?? "").trim();
-  const res = await twoFactor(env, `SMS/${e164.slice(1)}/AUTOGEN${tpl ? "/" + encodeURIComponent(tpl) : ""}`);
-  const ok = res?.Status === "Success" && !!res.Details;
+  const sent = await sendOtp(env, e164, OTP_TTL_MS / 60_000);
 
   // Failed sends are recorded too, so they count against the limits.
   await db.prepare(
     "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,?5,0,?6)",
-  ).bind(ctx.uid, hash, e164, ok ? res!.Details! : null, ok ? "sent" : "failed", now).run();
+  ).bind(ctx.uid, hash, e164, sent.ok ? sent.sessionId : null, sent.ok ? "sent" : "failed", now).run();
 
   void track(env, ctx.uid, "phone_otp_send", APP, {
-    outcome: ok ? "sent" : "provider_error",
-    provider: "2factor",
-    provider_detail: ok ? undefined : String(res?.Details ?? "no_response").slice(0, 120),
+    outcome: sent.ok ? "sent" : sent.reason,
+    provider: sent.provider,
+    channel: sent.provider === "wasender" ? "whatsapp" : "sms",
+    provider_detail: sent.ok ? undefined : sent.detail,
     phone_masked: mask(e164),
   });
 
-  if (!ok) {
-    return json({ error: "send_failed", message: "We couldn’t send the SMS. Check the number and try again.", field: "phone" }, 502);
+  if (!sent.ok) {
+    const status = sent.reason === "not_on_whatsapp" ? 400 : sent.reason === "rate_limited" ? 429 : 502;
+    return json({ error: sent.reason === "provider_error" ? "send_failed" : sent.reason, message: sendFailMessage(env, sent.reason), field: "phone" }, status);
   }
-  return json({ ok: true, phone: e164, expires_in_s: OTP_TTL_MS / 1000, resend_after_s: RESEND_GAP_MS / 1000 });
+  return json({
+    ok: true, phone: e164, channel: sent.provider === "wasender" ? "whatsapp" : "sms",
+    expires_in_s: OTP_TTL_MS / 1000, resend_after_s: RESEND_GAP_MS / 1000,
+  });
 }
 
 export async function phoneOtpVerify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!env.TWOFACTOR_API_KEY) {
+  if (!otpProvider(env)) {
     return json({ error: "otp_unavailable", message: "Phone verification isn’t available right now. Please try again shortly." }, 503);
   }
 
   const b = (await req.json().catch(() => ({}))) as { code?: unknown };
   const code = String(b?.code ?? "").replace(/\D/g, "");
   if (!/^\d{4,6}$/.test(code)) {
-    return json({ error: "invalid_code", message: "Enter the code from the SMS.", field: "phoneCode" }, 400);
+    return json({ error: "invalid_code", message: "Enter the 6-digit code we sent you.", field: "phoneCode" }, 400);
   }
 
   const db = env.DB_META;
@@ -198,18 +190,16 @@ export async function phoneOtpVerify(req: Request, env: Env): Promise<Response> 
 
   await db.prepare("UPDATE phone_otp SET attempts=attempts+1 WHERE id=?1").bind(row.id).run();
 
-  const res = await twoFactor(env, `SMS/VERIFY/${encodeURIComponent(row.session_id)}/${code}`);
-  if (!res) {
+  const res = await checkOtp(env, row.session_id, row.e164, code);
+  if (res === "unreachable") {
     void track(env, ctx.uid, "phone_otp_verify", APP, { outcome: "provider_unreachable", phone_masked: mask(row.e164) });
     return json({ error: "verify_failed", message: "We couldn’t check the code just now. Please try again.", field: "phoneCode" }, 502);
   }
-  const matched = res.Status === "Success" && /match/i.test(String(res.Details ?? ""));
-  if (!matched) {
-    const expired = /expire/i.test(String(res.Details ?? ""));
+  if (res !== "match") {
+    const expired = res === "expired";
     const left = Math.max(0, MAX_VERIFY_ATTEMPTS - (row.attempts + 1));
     void track(env, ctx.uid, "phone_otp_verify", APP, {
-      outcome: expired ? "expired" : "mismatch", attempts_left: left,
-      provider_detail: String(res.Details ?? "").slice(0, 120), phone_masked: mask(row.e164),
+      outcome: expired ? "expired" : "mismatch", attempts_left: left, phone_masked: mask(row.e164),
     });
     if (expired) {
       await db.prepare("UPDATE phone_otp SET status='expired' WHERE id=?1").bind(row.id).run();
@@ -224,7 +214,7 @@ export async function phoneOtpVerify(req: Request, env: Env): Promise<Response> 
 
   // A race: someone else verified the same number between send and verify.
   if (await phoneTakenByOther(env, row.phone_hash, ctx.uid)) {
-    return json({ error: "phone_taken", message: "This number is already linked to another avaTOK account.", field: "phone" }, 409);
+    return json({ error: "phone_taken", message: "This number is already linked to another Saa Thum account.", field: "phone" }, 409);
   }
 
   await db.batch([
@@ -238,7 +228,7 @@ export async function phoneOtpVerify(req: Request, env: Env): Promise<Response> 
   ]);
 
   void track(env, ctx.uid, "phone_otp_verify", APP, {
-    outcome: "verified", provider: "2factor", attempts: row.attempts + 1,
+    outcome: "verified", provider: row.session_id.startsWith("wa:") ? "wasender" : "2factor", attempts: row.attempts + 1,
     ms_since_send: now - row.created_at, phone: row.e164,
   });
   return json({ ok: true, verified: true, phone: row.e164 });

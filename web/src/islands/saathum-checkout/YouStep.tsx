@@ -62,7 +62,7 @@ export function YouStep({
       setTimeout(() => codeRef.current?.focus(), 200);
     } catch (e) {
       setPhase(apiCode(e) === 'too_soon' ? 'code' : 'idle');
-      setErr(apiMessage(e, 'We couldn’t send the SMS. Please try again.'));
+      setErr(apiMessage(e, 'We couldn’t send the code on WhatsApp. Please try again.'));
       captureException(e, { where: 'saathum_checkout_phone_send' });
     }
   }
@@ -104,7 +104,7 @@ export function YouStep({
       <h3 className="sthc-h3">Verify your mobile</h3>
       <div className="sthc-dots">{dots}</div>
       <div className="sthc-fld">
-        <label htmlFor="sthc-phone">Mobile number</label>
+        <label htmlFor="sthc-phone">WhatsApp number</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <span className="sthc-in" style={{ width: 64, textAlign: 'center', flex: 'none' }}>+91</span>
           <input

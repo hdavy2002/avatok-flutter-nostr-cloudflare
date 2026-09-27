@@ -427,12 +427,12 @@ function Inner() {
       setPhoneCode('');
       setPhoneStep('code');
       setPhoneResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
-      capture('auth_code_sent', { surface: 'sign_up', channel: 'sms' });
+      capture('auth_code_sent', { surface: 'sign_up', channel: 'whatsapp' });
     } catch (err) {
       // A resend that fails keeps the open code box; a first send that fails closes it.
       // too_soon means a code already went out moments ago, so show the box for it.
       setPhoneStep(prevStep === 'code' || apiCode(err) === 'too_soon' ? 'code' : 'idle');
-      setErrors((e) => ({ ...e, phone: apiMessage(err, 'We couldn’t send the SMS. Please try again.') }));
+      setErrors((e) => ({ ...e, phone: apiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.') }));
       capture('auth_signup_result', { outcome: 'error', stage: 'phone_send', reason: apiCode(err) || 'unknown' });
     }
   }
@@ -599,7 +599,7 @@ function Inner() {
 
       {/* ── Phone + slide-out code ── */}
       <VerifyField
-        id="su-phone" label={uiT("web-auth.815abc2ef7daf8ed","Mobile number · India")} verified={phoneStep === 'verified'} error={errors.phone}
+        id="su-phone" label={uiT("web-auth.815abc2ef7daf8ed","WhatsApp number · India")} verified={phoneStep === 'verified'} error={errors.phone}
         action={
           <button
             type="button" className="auth-inline-btn"
@@ -612,8 +612,8 @@ function Inner() {
         hint={
           <p className="auth-hint">
             {phoneUnlocked
-              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your Saa Thum number is what other people see, so your real number stays private.")
-              : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll text a code to your phone.")}
+              ? uiT("web-auth.f2ffacf43c1c9d32","We send a code on WhatsApp to confirm it. Your Saa Thum number is what other people see, so your real number stays private.")
+              : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll send a code to your WhatsApp.")}
           </p>
         }
       >
@@ -639,7 +639,7 @@ function Inner() {
       </VerifyField>
       <CodeReveal
         open={phoneStep === 'code' || phoneStep === 'verifying'}
-        label={uiT("web-auth.086206876a33de3f","SMS code")}
+        label={uiT("web-auth.086206876a33de3f","WhatsApp code")}
         sentTo={`+91 ${phone.slice(0, 5)} ${phone.slice(5)}`}
         value={phoneCode}
         onChange={(v) => { setPhoneCode(v); clearErr('phoneCode'); }}

@@ -15,9 +15,10 @@ import { requireAdmin } from "./admin_money";
 import { HIDDEN_LISTING_SQL } from "./listings";
 import { notStuckLiveSql } from "../lib/listing_schedule";
 import {
-  indianMobileE164, twoFactor, phoneTakenByOther, OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS,
+  indianMobileE164, phoneTakenByOther, OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS,
   MAX_SENDS_PER_UID_HOUR, MAX_SENDS_PER_PHONE_HOUR, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
+import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender"; // [WA-OTP-1]
 import {
   eventState, isUpcomingScope, refundEligibility, normalizeVpa, encodeCursor, decodeCursor,
   maskE164, rupeesParamToPaise, msParam, istTimeOfDay, istYear, PAGE_SIZE,
@@ -486,11 +487,12 @@ export async function meVpaDefault(req: Request, env: Env, id: string): Promise<
 
 // ---------------------------------------------------------------------------
 // Phone change — OTP to the NEW number, then ONE-transaction swap.
-// Reuses routes/phone_otp.ts (2Factor, the phone_otp ledger, contact_verification).
+// Reuses routes/phone_otp.ts (the phone_otp ledger, contact_verification) and
+// lib/otp_sender.ts (WhatsApp via WasenderAPI since [WA-OTP-1 2026-09-27]).
 // ---------------------------------------------------------------------------
 export async function mePhoneStart(req: Request, env: Env): Promise<Response> {
   const a = await authed(req, env); if (a instanceof Response) return a;
-  if (!env.TWOFACTOR_API_KEY) return err(503, "otp_unavailable", "Phone verification isn't available right now. Please try again shortly.");
+  if (!otpProvider(env)) return err(503, "otp_unavailable", "Phone verification isn't available right now. Please try again shortly.");
   const b = await body(req, 2048);
   if (!b) return err(400, "invalid_request", "Send a JSON body.");
   const e164 = indianMobileE164(b.phone);
@@ -528,24 +530,25 @@ export async function mePhoneStart(req: Request, env: Env): Promise<Response> {
     await step(false, "global_breaker");
     return err(429, "busy", "We're busy right now. Please try again in a few minutes.", { field: "phone" });
   }
-  const tpl = (env.TWOFACTOR_OTP_TEMPLATE ?? "").trim();
-  const res = await twoFactor(env, `SMS/${e164.slice(1)}/AUTOGEN${tpl ? "/" + encodeURIComponent(tpl) : ""}`);
-  const ok = res?.Status === "Success" && !!res.Details;
+  const sent = await sendOtp(env, e164, OTP_TTL_MS / 60_000);
   await db.prepare(
     "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,?5,0,?6)",
-  ).bind(a.uid, hash, e164, ok ? res!.Details! : null, ok ? "sent" : "failed", now).run();
-  await step(ok, ok ? "sent" : "provider_error", ok ? {} : { provider_detail: String(res?.Details ?? "no_response").slice(0, 120) });
-  if (!ok) return err(502, "send_failed", "We couldn't send the SMS. Check the number and try again.", { field: "phone" });
-  return json({ ok: true, expires_in_s: OTP_TTL_MS / 1000 });
+  ).bind(a.uid, hash, e164, sent.ok ? sent.sessionId : null, sent.ok ? "sent" : "failed", now).run();
+  await step(sent.ok, sent.ok ? "sent" : sent.reason, { provider: sent.provider, ...(sent.ok ? {} : { provider_detail: sent.detail }) });
+  if (!sent.ok) {
+    const status = sent.reason === "not_on_whatsapp" ? 400 : sent.reason === "rate_limited" ? 429 : 502;
+    return err(status, sent.reason === "provider_error" ? "send_failed" : sent.reason, sendFailMessage(env, sent.reason), { field: "phone" });
+  }
+  return json({ ok: true, channel: sent.provider === "wasender" ? "whatsapp" : "sms", expires_in_s: OTP_TTL_MS / 1000 });
 }
 
 export async function mePhoneConfirm(req: Request, env: Env): Promise<Response> {
   const a = await authed(req, env); if (a instanceof Response) return a;
-  if (!env.TWOFACTOR_API_KEY) return err(503, "otp_unavailable", "Phone verification isn't available right now. Please try again shortly.");
+  if (!otpProvider(env)) return err(503, "otp_unavailable", "Phone verification isn't available right now. Please try again shortly.");
   const b = await body(req, 2048);
   if (!b) return err(400, "invalid_request", "Send a JSON body.");
   const code = String(b.code ?? "").replace(/\D/g, "");
-  if (!/^\d{4,6}$/.test(code)) return err(400, "invalid_code", "Enter the code from the SMS.", { field: "code" });
+  if (!/^\d{4,6}$/.test(code)) return err(400, "invalid_code", "Enter the 6-digit code we sent you.", { field: "code" });
   const db = env.DB_META, now = Date.now();
   const row = await db.prepare(
     "SELECT id, e164, phone_hash, session_id, attempts, created_at FROM phone_otp WHERE uid=?1 AND status='sent' ORDER BY created_at DESC LIMIT 1",
@@ -560,12 +563,12 @@ export async function mePhoneConfirm(req: Request, env: Env): Promise<Response> 
   }
   if (row.attempts >= MAX_VERIFY_ATTEMPTS) return err(429, "too_many_attempts", "Too many wrong tries. Ask for a new code.", { field: "code" });
   await db.prepare("UPDATE phone_otp SET attempts=attempts+1 WHERE id=?1").bind(row.id).run();
-  const res = await twoFactor(env, `SMS/VERIFY/${encodeURIComponent(row.session_id)}/${code}`);
-  if (!res) {
+  const res = await checkOtp(env, row.session_id, row.e164, code);
+  if (res === "unreachable") {
     await step(false, "provider_unreachable");
     return err(502, "verify_failed", "We couldn't check the code just now. Please try again.", { field: "code" });
   }
-  if (!(res.Status === "Success" && /match/i.test(String(res.Details ?? "")))) {
+  if (res !== "match") {
     const left = Math.max(0, MAX_VERIFY_ATTEMPTS - (row.attempts + 1));
     await step(false, "mismatch", { attempts_left: left });
     return err(400, "wrong_code", left > 0 ? `That code isn't right. ${left} ${left === 1 ? "try" : "tries"} left.` : "That code isn't right. Ask for a new one.", { attempts_left: left, field: "code" });

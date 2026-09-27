@@ -25,8 +25,8 @@ To [create an account](/sign-up) on saathum.com you need three things: your firs
 ## How it works, step by step
 
 1. **Enter your name and email**, then tap Verify. A 6-digit code lands in your inbox, and a box slides open on the same screen to enter it — there's no separate "check your email" page.
-2. **Once your email is verified**, the mobile number field unlocks. Enter your 10-digit number — the country code is fixed to **+91**, since SMS verification on the web is for Indian numbers only.
-3. **Tap Send OTP.** A 6-digit SMS code arrives, and you enter it in the same inline box. Both your email and phone show a green "Verified" tick once confirmed.
+2. **Once your email is verified**, the mobile number field unlocks. Enter your 10-digit number — the country code is fixed to **+91**, since phone verification on the web is for Indian numbers only.
+3. **Tap Send OTP.** A 6-digit code arrives on WhatsApp (the number must have WhatsApp), and you enter it in the same inline box. Both your email and phone show a green "Verified" tick once confirmed.
 4. **Accept the terms** (you'll need to be 18 or over) and tap **Create my account**. Your account is created only after both checks pass — an account can't be opened without verifying both.
 
 You can also start with **Google** — it fills in your name and email, and you still verify a phone number afterwards.

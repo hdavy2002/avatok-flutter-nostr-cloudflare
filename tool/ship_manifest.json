@@ -7553,5 +7553,28 @@
       }
     ],
     "_verified_at": "worker/src/routes/saathum_checkout.ts sendSaathumVideoReadyEmails; worker/src/routes/admin2_events.ts writeMediaAndAttrs"
+  },
+  "WA-OTP-1": {
+    "description": "[WA-OTP-1] Phone verification codes (web sign-up, checkout, Dashboard 2 phone change) are sent on WhatsApp via WasenderAPI (lib/otp_sender.ts) instead of 2Factor SMS. Code generated in-worker, only a salted hash stored in phone_otp.session_id ('wa:' prefix). Switch = WASENDER_API_KEY secret; unset falls back to 2Factor SMS.",
+    "shipped": "2026-09-27",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "phone_otp_send",
+        "property": "provider",
+        "equals": "wasender",
+        "min_events": 1,
+        "note": "Sends are going through WhatsApp, not 2Factor."
+      },
+      {
+        "event": "phone_otp_verify",
+        "property": "outcome",
+        "equals": "verified",
+        "min_events": 1,
+        "note": "A WhatsApp code was received and accepted end to end."
+      }
+    ]
   }
 }
