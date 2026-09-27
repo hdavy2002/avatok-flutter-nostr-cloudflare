@@ -59,6 +59,8 @@ function inviteHtml(inviterName: string, link: string): string {
   </div>`;
 }
 
+const INVITE_EMAIL_OFF: boolean = true; // [EMAIL-INVITE-OFF-1]
+
 // POST /api/invite/email  { to_email, to_name?, from_name? }
 // Auth required. Sends ONE invite email to an arbitrary external address on the
 // authenticated user's behalf. Best-effort delivery via Q_EMAIL → Cloudflare
@@ -66,6 +68,10 @@ function inviteHtml(inviterName: string, link: string): string {
 export async function inviteEmail(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [EMAIL-INVITE-OFF-1] Owner decision 2026-09-27: the friend-invite email (old
+  // "AI-powered messenger" pitch) is switched off on Saa Thum. Nothing is sent.
+  // Delete this line to revive it.
+  if (INVITE_EMAIL_OFF) return json({ ok: false, reason: "invite_email_disabled" });
 
   const b = (await req.json().catch(() => ({}))) as { to_email?: string; to_name?: string; from_name?: string };
   const toEmail = String(b.to_email || "").trim().toLowerCase();
