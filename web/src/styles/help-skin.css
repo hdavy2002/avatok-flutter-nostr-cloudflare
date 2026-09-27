@@ -264,6 +264,12 @@
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile-copy { padding: 8px 8px 12px; }
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile-copy h3 { font-size: 15px; }
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-arrow { flex-basis: 24px; height: 24px; }
+  /* Review fix 2026-09-27: with an even number of live sections the contact tile
+     would sit alone on the last row of the 2-column grid — it spans the row and
+     reads as a banner instead (only when it is an odd child, i.e. alone). */
+  .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile--contact:nth-child(odd) { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px; }
+  .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile--contact:nth-child(odd) img.hs-diya { width: 72px; flex: 0 0 72px; margin: 0; }
+  .folk-site[data-design="saathum-reference-v5"] .hs .hs-tile--contact:nth-child(odd) .hs-tile-copy { flex: 1; margin-top: 0; padding: 0; }
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-faq-grid { grid-template-columns: 1fr; gap: 16px; }
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-panel-grid { grid-template-columns: 1fr; }
   .folk-site[data-design="saathum-reference-v5"] .hs .hs-stuck-inner { grid-template-columns: 1fr; gap: 0; text-align: center; }
