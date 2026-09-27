@@ -21,8 +21,8 @@ const PRIVATE_EXACT = new Set([
 ]);
 
 const PUBLIC_EXACT = new Set([
-  '/', '/marketplace', '/help', '/how-it-works', '/prohibited-services', '/privacy',
-  '/terms', '/cookies', '/refunds', '/contact', '/rituals', '/india',
+  '/', '/marketplace', '/help', '/how-it-works', '/privacy',
+  '/terms', '/cookies', '/refunds', '/contact', '/rituals',
 ]);
 
 function normalizePath(pathname: string): string {

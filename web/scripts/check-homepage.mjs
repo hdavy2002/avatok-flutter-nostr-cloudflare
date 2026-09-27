@@ -171,55 +171,13 @@ assert(!existsSync(resolve(root, 'india/index.html')), 'Retired India URL has no
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m, 'India URL permanently redirects home');
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL permanently redirects home');
-const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
-assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
-assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
 console.log('Homepage checks passed: grand hero, open sections, havan guide cards, anchors and India redirects.');
 
-const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
-for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
- assert(existsSync(resolve(root, 'assets/global', name + '.png')), 'Missing global artwork: ' + name);
-}
-for (const image of globalIdeas.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\"]+)"/g)) {
- assert(existsSync(resolve(root, image[1].slice(1))), 'Visible global artwork resolves: ' + image[1]);
- for (const width of [480, 960]) {
-  const variant = image[1].replace(/\.png$/, '-' + width + '.webp');
-  assert(existsSync(resolve(root, variant.slice(1))), 'Responsive artwork exists: ' + variant);
- }
-}
-assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
-assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
-// [WEB-BLOG-RITUALS-1 2026-09-27] The eight /blog/global-creator-ideas/* articles were
-// DELETED by owner decision (every old /blog URL now answers 410 Gone), so the
-// per-guide page and crop checks that stood here were removed. The archived
-// /global-ideas catalog checks above and the crop-manifest checks below remain.
-for (const page of [globalIdeas]) {
- for (const image of page.matchAll(/<img\b[^>]*src="(\/assets\/global-original\/[^\"]+)"/g)) {
-  assert(existsSync(resolve(root, image[1].slice(1))), 'Original image resolves: ' + image[1]);
- }
- assert.doesNotMatch(page, /class="global-idea__copy"|class="global-format__copy"/, 'No duplicate text layered over printed artwork');
-}
-const originalManifest = JSON.parse(readFileSync(resolve('scripts/global-original-crops.json'), 'utf8'));
-assert(originalManifest.protectedRegions?.length >= 3, 'Protect complete labels and paper edges, not just crop pixel identity');
-for (const region of originalManifest.protectedRegions) {
- const [left, top, right, bottom] = region.box;
- for (const name of region.crops) {
-  const crop = originalManifest.crops[name];
-  assert.equal(crop.source, region.source, 'Protected region uses the correct original');
-  const [cropLeft, cropTop, cropRight, cropBottom] = crop.box;
-  assert(cropLeft <= left && cropTop <= top && cropRight >= right && cropBottom >= bottom, name + ' must retain ' + region.description);
- }
-}
-for (const [name, crop] of Object.entries(originalManifest.crops)) {
- const [left, top, right, bottom] = crop.box;
- const source = resolve(root, 'assets/global-original', originalManifest.sources[crop.source]);
- const expected = await sharp(source).extract({ left, top, width: right - left, height: bottom - top }).removeAlpha().raw().toBuffer();
- for (const extension of ['png', 'webp']) {
-  const actual = await sharp(resolve(root, 'assets/global-original', name + '.' + extension)).removeAlpha().raw().toBuffer();
-  assert(expected.equals(actual), 'Original source pixels preserved in ' + name + '.' + extension);
- }
-}
-console.log('Exact original artwork checks passed: hero, middle sections and all eight idea cards.');
+// [WEB-OLD-PAGES-GONE-1 2026-09-27] /archive/home-2026-09-09 and /global-ideas were DELETED
+// by owner decision (they now answer 410 via src/middleware.ts), so their archive and
+// global-artwork crop checks were removed. They are in git history if ever needed.
+assert(!existsSync(resolve(root, 'archive/home-2026-09-09/index.html')), 'Deleted archive page is not rebuilt');
+assert(!existsSync(resolve(root, 'global-ideas/index.html')), 'Deleted /global-ideas page is not rebuilt');
 
 // [SAATHUM-GUIDE-1 2026-09-25] The creator /ideas page (and its /blog/creator-ideas
 // articles) was replaced by the Puja & Havan Guide at /rituals. /ideas is now an
@@ -308,7 +266,7 @@ console.log('Homepage title, description, canonical and share image passed.');
 // "Check public homepage and help before deployment") instead of adding a
 // new workflow step or trigger — B2 rule 8, S10 brief phase 1. Same pattern
 // check-performance.mjs already uses to fan out to its sub-checks.
-execFileSync(process.execPath, ['scripts/check-organisers.mjs'], { stdio: 'inherit' });
+// [WEB-OLD-PAGES-GONE-1 2026-09-27] /organisers was DELETED (410), so check-organisers.mjs no longer runs.
 
 // [WEB-SEO-REBRAND-1 2026-09-27] Brand-leak guard rides this same CI step.
 execFileSync(process.execPath, ['scripts/check-brand-leaks.mjs'], { stdio: 'inherit' });

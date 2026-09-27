@@ -15,7 +15,7 @@
 import TruckBorder from './TruckBorder.astro';
 // [WEB-MSG-HANDOFF-1 2026-09-05] The ask-the-host FORM is gone — the web does
 // not send messages. See MessageHost for why, and for where a buyer goes instead.
-import MessageHostIsland from '../islands/listing/MessageHost';
+// [WEB-OLD-PAGES-GONE-1] MessageHost no longer mounted (see host card).
 // [FAV-WIRE-1] Installs window.__avatokToken so the inline script below can
 // authenticate the heart. Renders nothing — see the island's own header.
 import AuthBridgeIsland from '../islands/auth/AuthBridge';
@@ -320,7 +320,10 @@ const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').s
 // "HOST PHOTO".
 const hostAvatar = listing.creator?.avatar_url ?? null;
 const hostHandle = listing.creator?.handle ?? null;
-const hostHref = hostHandle ? `/c/${encodeURIComponent(hostHandle)}` : null;
+// [WEB-OLD-PAGES-GONE-1 2026-09-27] /c/<handle> creator profiles were deleted (410), so the
+// host name is plain text and the closed-show "More from" button no longer renders.
+const hostHref: string | null = null;
+void hostHandle;
 // [WEB-MSG-HANDOFF-1] The creator's Saa Thum number — their public identity, and
 // the whole point of the messaging handoff. Already on the wire since
 // [PIVOT-NUMBER-PRIVACY-1]; `shapeCard` emits it as `creator.avatok_number`.
@@ -921,11 +924,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span class="chip">{hostChip2}</span>
               <span class="chip">~{repliesIn} <ui-copy style="display:contents" data-i18n="web-common.62302617f488f75a">REPLY</ui-copy></span>
             </div>
-            <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.1e1fc50ea76d2183">✉ Message</ui-copy> {hostName.split(' ')[0]}</button>
-            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE SAA THUM APP · NO PHONE NUMBERS SHARED</span>
-            <div id="ask-host-panel" style="display:none;">
-              <MessageHostIsland client:visible listingId={listing.id} hostName={hostName} hostNumber={hostNumber} />
-            </div>
+            {/* [WEB-OLD-PAGES-GONE-1 2026-09-27] "Message <host>" removed: it handed off to /add
+                (open the avaTOK app to message a number), which was deleted. Saa Thum has no
+                buyer↔host messaging. MessageHost island kept on disk, no longer mounted. */}
           </div>
           <div class="host-card__details">
             {aboutBio && (
@@ -1430,7 +1431,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
   const msgBtn = document.getElementById('msg-host-btn');
   const askPanel = document.getElementById('ask-host-panel');
-  msgBtn.onclick = () => {
+  // [WEB-OLD-PAGES-GONE-1] the Message button is gone — guard so the reviews code below still runs.
+  if (msgBtn) msgBtn.onclick = () => {
     if (askPanel) askPanel.style.display = askPanel.style.display === 'none' ? '' : 'none';
   };
 

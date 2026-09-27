@@ -16,33 +16,11 @@
  * homeNavigation.ts (HOME_FOOTER_COLUMNS). That is the whole undo.
  * Do NOT delete any of these page files.
  */
-export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason: string; prefix?: boolean }> = [
-  { path: '/marketplace-terms', label: 'Marketplace Terms', reason: 'marketplace-only terms' },
-  { path: '/consultation-terms', label: 'Consultation Terms', reason: '1:1 consultations dropped' },
-  { path: '/acceptable-use', label: 'Acceptable Use', reason: 'rules for user-posted content' },
-  { path: '/community-guidelines', label: 'Community Guidelines / Safety', reason: 'UGC rules' },
-  { path: '/dmca', label: 'DMCA', reason: 'no user uploads' },
-  { path: '/biometric-retention', label: 'Biometric Data', reason: 'creator face checks' },
-  { path: '/child-safety', label: 'Child Safety', reason: 'UGC/live-stream obligation' },
-  { path: '/recording', label: 'Recording & Consent', reason: 'creator live/1:1 recording' },
-  { path: '/pricing-fees', label: 'Pricing & Fees', reason: 'platform fees charged to sellers' },
-  { path: '/tokens', label: 'Tokens & Wallet', reason: 'wallet not used for bookings' },
-  { path: '/payouts', label: 'Payouts', reason: 'seller payouts' },
-  { path: '/organisers', label: 'For organisers / Guides', reason: 'seller onboarding' },
-  // [WEB-CAREERS-GONE-1 2026-09-27] /careers DELETED (410), no longer archived — see pages/careers.astro.
-  // [WEB-ABOUT-FOLK-1 2026-09-27] /about UN-archived by owner — rebuilt on the folk
-  // shell and back in the header + footer menus (lib/homeNavigation.ts).
-  { path: '/grievance', label: 'Grievance Redressal', reason: 'owner removed 2026-09-25' },
-  // [SAATHUM-REBRAND-1 2026-09-25] Creator-earning content, off-brand for a puja service.
-  { path: '/ideas', label: 'Creator ideas', reason: 'creator earning ideas' },
-  { path: '/global-ideas', label: 'Global creator ideas', reason: 'creator earning ideas' },
-  { path: '/pricing', label: 'Creator pricing', reason: 'creator plans' },
-  // [WEB-SEO-REBRAND-1 2026-09-27] Seller/listing rules page from the marketplace era.
-  { path: '/prohibited-services', label: 'Prohibited Services', reason: 'rules for outside sellers' },
-  // [WEB-BLOG-RITUALS-1 2026-09-27] /blog removed from the archive: the old posts were
-  // DELETED by owner decision; /blog now 301s to /rituals and old posts answer 410
-  // (src/pages/blog/[...slug].astro).
-];
+// [WEB-OLD-PAGES-GONE-1 2026-09-27] OWNER DECISION: every page that used to be listed
+// here was DELETED (not archived) — the files are gone and the URLs answer 410 Gone
+// via src/middleware.ts (GONE_EXACT / GONE_PREFIXES). The list is empty on purpose;
+// the machinery stays so a future page can be archived again in one line.
+export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason: string; prefix?: boolean }> = [];
 
 export const ARCHIVED_PATHS: ReadonlySet<string> = new Set(ARCHIVED_PAGES.map((p) => p.path));
 

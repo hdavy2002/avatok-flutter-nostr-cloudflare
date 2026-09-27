@@ -100,7 +100,6 @@ void DEFAULT_LINKS;
 const { folk = true, referenceHome = folk, links = folk ? LANDING_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = folk, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
 const folkBorder = `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`;
 const globalLinks: HeaderLink[] = [
-  { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
   { href: '#how-it-works', label: 'How it works' },
   { href: '#payouts', label: 'Payouts' },

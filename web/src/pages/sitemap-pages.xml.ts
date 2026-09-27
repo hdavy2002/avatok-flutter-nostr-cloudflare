@@ -3,7 +3,7 @@
 // This file's content and behaviour are UNCHANGED — only the URL moved, from
 // /sitemap.xml to /sitemap-pages.xml. /sitemap.xml is now a sitemapindex (see
 // the new sitemap.xml.ts) that references this file plus the two new dynamic
-// feeds, sitemap-listings.xml.ts and sitemap-creators.xml.ts, which cover the
+// feeds, sitemap-listings.xml.ts and sitemap-directory.xml.ts, which cover the
 // per-listing and per-creator routes this file explicitly cannot enumerate
 // (see below).
 //

@@ -3,7 +3,7 @@
 // Replaces the old single-file sitemap.xml.ts (now sitemap-pages.xml.ts — the
 // static marketing routes) with a <sitemapindex> that references it plus the
 // two dynamic feeds this issue adds: sitemap-listings.xml.ts (per-listing
-// /<handle>/<slug> or /l/<id> pages) and sitemap-creators.xml.ts (per-creator
+// /<handle>/<slug> or /l/<id> pages) and (formerly) sitemap-creators.xml.ts (per-creator
 // /c/<handle> pages). Those two cannot be enumerated at build time — they are
 // generated at request time from live D1 rows — so they are separate
 // prerender=false routes that fetch the Worker's /api/sitemap/* endpoints.
@@ -40,8 +40,8 @@ export const GET: APIRoute = async () => {
     '/sitemap-directory.xml',
     ...Array.from({ length: manifest.listings.pages }, (_, index) => `/sitemap-listings.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
     // [WEB-SEO-REBRAND-1 2026-09-27] Creator profiles are no longer listed: Saa Thum has
-    // no outside creators, and /c/* is noindex (lib/seo/policy.ts). The feed still
-    // answers at /sitemap-creators.xml but nothing points search engines at it.
+    // no outside creators, and /c/* is noindex (lib/seo/policy.ts). The feed itself was
+    // DELETED 2026-09-27 ([WEB-OLD-PAGES-GONE-1]) and now answers 410.
   ];
   const entries = sitemaps.map(
     (path) =>

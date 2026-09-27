@@ -314,7 +314,9 @@ export function ListingTile({
   // /c/<handle> route the listing page's host card links to, so there is one
   // answer to "where does a creator's name go".
   const creatorName = c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'Saa Thum');
-  const creatorHref = c.creator?.handle ? `/c/${encodeURIComponent(c.creator.handle)}` : null;
+  // [WEB-OLD-PAGES-GONE-1 2026-09-27] /c/<handle> creator profiles were deleted (410): the
+  // creator name renders as plain text (the existing no-link branch below).
+  const creatorHref: string | null = null;
   const creatorAvatarNode = (
     <span aria-hidden="true" style={{
       width: 26, height: 26, flex: 'none', borderRadius: '50%', border: `1.5px solid ${chipCol}`,
