@@ -15,6 +15,13 @@ const dedupe = (rules) => {
   const covered = (rule) => splats.some(prefix => rule !== prefix + '*' && (rule.startsWith(prefix) || rule + '/' === prefix));
   return [...new Set(rules)].filter(rule => !covered(rule));
 };
+// [WEB-SEO-REBRAND-1 2026-09-27] Help-centre PAGES must be served by the worker,
+// not as static assets: Cloudflare Pages answers a static /help/x with a 308 to
+// /help/x/, while every canonical, sitemap entry and link says /help/x. Until
+// 2026-09-27 the 100-rule budget happened to push these excludes out; when the
+// /blog/creator-ideas/* splat was removed they came back and every help URL
+// started redirecting. Drop them explicitly (help ART files stay excluded).
+routes.exclude = routes.exclude.filter(rule => !/^\/help(\/[a-z0-9-]+\/[a-z0-9-]+)?$/.test(rule));
 const before = routes.include.length + routes.exclude.length;
 routes.include = dedupe(routes.include);
 routes.exclude = dedupe(routes.exclude);
