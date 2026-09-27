@@ -265,3 +265,8 @@ tools/**/*.mp3
 web/public/_images/
 web/public/_og-art/
 web/image-delivery-report.json
+
+# Local-only working files, never uploaded (owner decision 2026-09-27)
+Claude outputs/
+reports/EMAIL-REBRAND-REPORT-2026-09-27.md
+web/homepage-review/
