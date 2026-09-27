@@ -112,7 +112,7 @@
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk, .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-bar { color: var(--grand-ink); background: var(--grand-cream); }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-bar { max-width: 1840px; padding: 12px var(--grand-gutter); margin: auto; gap: 20px; }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo-text { font-family: 'Comfortaa', sans-serif; font-size: 32px; font-weight: 700; color: var(--grand-teal); }
-.folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo img { width: 46px; height: 46px; }
+.folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo img { width: auto; height: 64px; }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-nav { flex: 1; justify-content: center; gap: 20px; }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-nav a, .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-cta { font-size: 16px; color: var(--grand-ink); }
 .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-cta--solid { background: var(--grand-red); color: #fff; border: 0; border-radius: 4px; box-shadow: none; padding: 12px 16px; }
@@ -125,7 +125,7 @@
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-main { display: block; max-width: 1840px; margin: auto; padding: 34px var(--grand-gutter) 18px; text-align: center; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-brand { padding: 0; align-self: start; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo { justify-content: center; margin: 0 0 14px; }
-.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: 64px; height: 64px; }
+.folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: auto; height: 72px; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { color: var(--grand-teal); font: 700 42px/1.2 'Comfortaa', sans-serif; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-tag { color: var(--grand-ink); font-size: 15px; line-height: 1.5; max-width: 30ch; margin: auto; }
 .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { display: flex; justify-content: center; flex-wrap: wrap; gap: 28px 44px; max-width: 1320px; margin: 30px auto 8px; text-align: center; }
@@ -188,9 +188,9 @@
   .folk-site[data-design="saathum-reference-v5"] .grand-organise-copy .grand-button { font-size: 14px; padding: 12px; gap: 6px; }
   .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-bar { padding: 10px 16px; gap: 12px; }
   .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo-text { font-size: 28px; }
-  .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo img { width: 40px; height: 40px; }
+  .folk-site[data-design="saathum-reference-v5"] .avh.avh--folk .avh-logo img { width: auto; height: 48px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-main { padding-block: 28px 14px; }
-  .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: 52px; height: 52px; }
+  .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo img { width: auto; height: 60px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-logo-text { font-size: 34px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-folk-columns { gap: 26px; margin-top: 24px; }
   .folk-site[data-design="saathum-reference-v5"] .bazaar-footer.bazaar-footer--folk .bf-col-title { font-size: 16px; }

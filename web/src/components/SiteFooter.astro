@@ -143,8 +143,9 @@ const chromeKey = (value: string) => ({
           footer). Reuses this file's own Comfortaa heading face and the
           existing #fdf1d3 ink already used one line below. */}
       <a class="bf-logo" href="/" aria-label="Saa Thum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-        {folk ? <img class="folk-lotus-mark" data-folk-artwork="lotus" src={publicImage('/assets/saathum-bright/lotus.png', { width: 100, fit: 'scale-down' })} alt="" width="44" height="44" /> : <img src={publicImage('/diya-logo.png', { width: 100, fit: 'scale-down' })} alt="" width="34" height="34" />}
-        <span class="bf-logo-text">Saa Thum</span>
+        {/* [BRAND-LOGO-1 2026-09-27] Horizontal Saa Thum logo replaces the
+            diya + text lockup, matching the header. */}
+        <img class="bf-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 560, fit: 'scale-down' })} alt="Saa Thum" width="212" height="72" />
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched
@@ -275,7 +276,7 @@ const chromeKey = (value: string) => ({
     margin-bottom: 14px;
     text-decoration: none;
   }
-  .bf-logo img { display: block; width: 34px; height: 34px; }
+  .bf-logo img { display: block; height: 56px; width: auto; }
   /* [SHV2-S8 2026-09-21] Diya + "Saa Thum" replacing the "ava"/"TOK" two-span
      wordmark. Same Comfortaa face and #fdf1d3 ink the old first span used. */
   .bf-logo-text {
