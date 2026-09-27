@@ -27,51 +27,8 @@ let calledAfterAbort = false;
 await assert.rejects(withDeadline(async () => { calledAfterAbort = true; }, 1000, cancelled.signal), { name: 'AbortError' });
 assert.equal(calledAfterAbort, false);
 
-const adapterURL = moduleURL(`export const request = (...args) => globalThis.__performanceRequest(...args);`);
-const { getMarketplaceSeed } = await import(await load('lib/marketplaceSeed.ts', { './apiClient': adapterURL }));
-let calls = [];
-globalThis.__performanceRequest = async (...args) => { calls.push(args); return { listings: [], cursor: null }; };
-assert.deepEqual(await getMarketplaceSeed('  '), { page: { listings: [], cursor: null } });
-assert.equal(calls[0][0], '/api/explore');
-assert.deepEqual(calls[0][1].query, { limit: 24 });
-assert.equal(calls[0][1].auth, undefined);
-assert.ok(calls[0][1].timeoutMs > 0);
-await getMarketplaceSeed('  singing lessons  ');
-assert.equal(calls[1][0], '/api/explore/search');
-assert.deepEqual(calls[1][1].query, { limit: 24, q: 'singing lessons' });
-const cards = [{ id: 'listing', title: 'A real result' }];
-globalThis.__performanceRequest = async () => ({ listings: cards, cursor: 'page-2', section_counts: { live_streams: 1 } });
-assert.equal((await getMarketplaceSeed()).page.cursor, 'page-2');
-assert.deepEqual((await getMarketplaceSeed()).page.listings, cards);
-globalThis.__performanceRequest = async () => { throw new Error('network'); };
-const failure = await getMarketplaceSeed();
-assert.ok(failure.error);
-assert.equal(failure.page, undefined, 'failed SSR must not claim a genuine empty catalogue');
-
-const companionURL = moduleURL(`
-export const getListingReviews = (...args) => globalThis.__companion('reviews', ...args);
-export const getListingSlots = (...args) => globalThis.__companion('slots', ...args);
-export const getExplore = (...args) => globalThis.__companion('explore', ...args);
-export const getCreator = (...args) => globalThis.__companion('creator', ...args);
-`);
-const { getListingCompanions } = await import(await load('lib/listingCompanions.ts', { './apiClient': companionURL, './requestDeadline': deadlineURL }));
-let started = [];
-let stalledSignal;
-globalThis.__companion = (name, ...args) => {
-  started.push(name);
-  if (name === 'reviews') { stalledSignal = args.at(-1); return new Promise(() => {}); }
-  if (name === 'slots') return Promise.reject(new Error('disabled'));
-  if (name === 'explore') return Promise.resolve({ listings: cards });
-  return Promise.resolve({ listings: cards, id: 'creator' });
-};
-const companions = getListingCompanions({ id: 'listing', creator: { uid: 'creator' } });
-assert.deepEqual(started, ['reviews', 'slots', 'explore', 'creator'], 'all companions must begin before any resolves');
-const partial = await companions;
-assert.equal(stalledSignal.aborted, true);
-assert.equal(partial.reviewList, null);
-assert.equal(partial.slots, null);
-assert.deepEqual(partial.browseMore, cards);
-assert.deepEqual(partial.creatorListings, cards);
+// [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] lib/marketplaceSeed.ts and lib/listingCompanions.ts were
+// deleted with the old marketplace + listing detail page, so their checks were removed.
 
 // Real request wrapper: timeout covers response body, auth is no-store, no global
 // deadline is imposed on a payment/mutation merely because reads are bounded.

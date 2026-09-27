@@ -1,57 +1,25 @@
 ---
-// [LIST-PAGE-2] Public listing details at the pretty URL: /<username>/<slug>.
-//
-// Owner decision 2026-08-26 said this route would serve the bazaar mockup
-// "for now" (look-and-feel only, hardcoded mock data). That "for now" is over:
-// SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §G retires the mock and wires
-// this route to real data through the SAME `ListingDetailView` component /l/<id>
-// renders — one component, three URLs (this one, /l/<id>, /e/<id>).
+// [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] OWNER DECISION: the old listing detail page
+// (ListingDetailsComp — "Meet the host", "How the show works", truck borders) is
+// retired. /<handle>/<slug> now looks the listing up and 301s to the new event
+// page /book/<id>, so every shared or indexed link keeps working.
 export const prerender = false;
 
-import Base from '../../layouts/Base.astro';
-import { getListingCompanions } from '../../lib/listingCompanions';
-import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
-import { getListingBySlug, ApiError } from '../../lib/apiClient';
-import { listingOg } from '../../lib/og';
-import { listingContent } from '../../lib/seo/sources';
-import type { Listing } from '../../lib/types';
+import { ApiError, getListingBySlug } from '../../lib/apiClient';
+import { listingPath } from '../../lib/urls';
 
 const { username, slug } = Astro.params;
-
-// Astro matches static routes before dynamic ones, so /about, /blog, /sign-in
-// and friends still win over this catch-all. This guard is for the rest: a bare
-// handle must not swallow asset-ish or malformed paths and answer 200.
 const looksLikeHandle = /^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '');
 const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
 if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
 
-let listing: Listing | null = null;
-let notFound = false;
+let id: string | null = null;
 try {
-  listing = await getListingBySlug(username!, slug!);
+  const listing = await getListingBySlug(username!, slug!);
+  id = listing?.id ?? null;
 } catch (e) {
-  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
-  else throw e;
+  if (!(e instanceof ApiError && (e.status === 404 || e.status === 410))) throw e;
 }
-if (notFound || !listing) return new Response('Listing not found', { status: 404 });
-
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-const og = listingOg(listing);
-const content = listingContent(listing, og.image ? { url: og.image, alt: listing.title } : undefined);
-if (Astro.url.pathname !== content.canonicalPath) return Astro.redirect(content.canonicalPath, 301);
-
-const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
-const isOwner = Boolean(listing.viewer?.is_owner);
+if (!id) return new Response('Listing not found', { status: 404 });
+return Astro.redirect(listingPath({ id }), 301);
 ---
-
-<Base content={content}>
-
-  {isOwner && (
-    <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
-      <span data-i18n="web--username-.cf3f39ccb027e0bc">YOU OWN THIS LISTING</span>
-      <a data-i18n="web--username-.25ea91162e54d14e" href={`/dashboard/listings/new?id=${encodeURIComponent(listing.id)}`} style="text-decoration:underline;">EDIT LISTING →</a>
-    </div>
-  )}
-
-  <ListingDetailsComp listing={listing} reviews={reviewList} slots={slots} browse={browseMore} creatorListings={creatorListings} creatorProfile={creatorProfile} />
-</Base>

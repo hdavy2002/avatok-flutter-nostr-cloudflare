@@ -3,16 +3,18 @@
 // Keep the route rules in one place so browser links, redirects and canonical
 // tags stay aligned across the public site.
 
-/** Canonical public listing URL. Falls back to /l/<id> when no slugged URL exists. */
+/**
+ * Canonical public listing URL: the event page /book/<id>.
+ * [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] The old listing detail pages (/<handle>/<slug>, /l/<id>) were retired —
+ * they now 301 here. handle/slug are accepted and ignored so every caller (cards,
+ * sitemap, SEO canonical, redirects) moves in one place.
+ */
 export function listingPath(opts: {
   id: string;
   handle?: string | null;
   slug?: string | null;
 }): string {
-  const handle = opts.handle?.trim();
-  const slug = opts.slug?.trim();
-  if (handle && slug) return `/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`;
-  return `/l/${encodeURIComponent(opts.id)}`;
+  return `/book/${encodeURIComponent(opts.id)}`;
 }
 
 /** Canonical creator profile URL. */

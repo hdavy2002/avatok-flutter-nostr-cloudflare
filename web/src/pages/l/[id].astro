@@ -1,79 +1,11 @@
 ---
-// Public listing detail — SSR, edge-cached, link-preview friendly.
-// [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] Every listing details
-// page is public and chrome-free for everyone, logged in or not — this page
-// used to bounce a signed-in visitor to /dashboard/l/<id> via <AuthRedirect/>;
-// that redirect is REMOVED. An unregistered buyer signs in inline (email +
-// code) in the booking box and never leaves this page. /dashboard/l/<id>
-// itself now just 301s here.
+// [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] OWNER DECISION: the old listing detail page is retired.
+// /l/<id> 301s to the new event page /book/<id>. No lookup needed — the id is the id.
 export const prerender = false;
 
-import Base from '../../layouts/Base.astro';
-import { getListingCompanions } from '../../lib/listingCompanions';
-import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
-import { getListing, ApiError } from '../../lib/apiClient';
-import { listingOg } from '../../lib/og';
-import { listingContent } from '../../lib/seo/sources';
 import { listingPath } from '../../lib/urls';
-import type { Listing } from '../../lib/types';
 
 const { id } = Astro.params;
-
-let listing: Listing | null = null;
-let notFound = false;
-try {
-  // [LIST-DETAIL-2] getListing() now unwraps the worker's envelope itself (see
-  // apiClient.ts), so this is already a flat Listing — listingOg() below reads
-  // real title/description/poster/price values.
-  listing = await getListing(id!);
-} catch (e) {
-  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
-  else throw e;
-}
-if (notFound || !listing) return new Response('Listing not found', { status: 404 });
-
-// [LIST-PAGE-2] SPEC-2026-09-01 §G — /l/<id> 301s to the pretty /<handle>/<slug>
-// URL once both exist, so every already-shared /l/<id> link keeps working
-// forever while new shares/crawls converge on the canonical pretty URL.
-const canonicalPath = listingPath({
-  id: listing.id,
-  handle: listing.creator?.handle ?? null,
-  slug: listing.slug ?? null,
-});
-if (canonicalPath !== `/l/${encodeURIComponent(listing.id)}`) {
-  return Astro.redirect(canonicalPath, 301);
-}
-
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-const og = listingOg(listing);
-const content = listingContent(listing, og.image ? { url: og.image, alt: listing.title } : undefined);
-
-// [LISTING-DETAILS-COMP-1] Same fail-soft companion fetches ListingDetailView
-// already used — a 404/503/network error on any of these hides its section
-// rather than breaking a public page for a real listing.
-const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
-const isOwner = Boolean(listing.viewer?.is_owner);
+if (!id) return new Response('Listing not found', { status: 404 });
+return Astro.redirect(listingPath({ id }), 301);
 ---
-
-<Base content={content}>
-
-  {/* [BETA-TESTMODE-1 2026-09-14] Beta status on the listing itself, so a buyer knows
-      before he reaches checkout. Deliberately makes NO claim about test mode: this page
-      is public and cannot verify which credentials the gateway rail is on
-      (GET /api/pay/methods is authenticated). The "no real money will be charged"
-      sentence lives in BetaTestNotice at checkout, where the server has told us the
-      selected rail is on test keys. Do not "improve" this by asserting test mode here. */}
-  <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase;">
-    <span data-i18n="web-l.0281a87d5d3b34cf" style="display:inline-block; padding:4px 10px; border:2px solid #0e1116; border-radius:999px; background:#f7d046;">Beta demonstration</span>
-    <span data-i18n="web-l.949692660e3047cf" style="text-transform:none; letter-spacing:0; font-size:13px; font-weight:700;">A demo listing published for Saa Thum&rsquo;s beta soft launch. Payment details for the beta are shown at checkout.</span>
-  </div>
-
-  {isOwner && (
-    <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
-      <span data-i18n="web-l.cf3f39ccb027e0bc">YOU OWN THIS LISTING</span>
-      <a data-i18n="web-l.25ea91162e54d14e" href={`/dashboard/listings/new?id=${encodeURIComponent(listing.id)}`} style="text-decoration:underline;">EDIT LISTING →</a>
-    </div>
-  )}
-
-  <ListingDetailsComp listing={listing} reviews={reviewList} slots={slots} browse={browseMore} creatorListings={creatorListings} creatorProfile={creatorProfile} />
-</Base>

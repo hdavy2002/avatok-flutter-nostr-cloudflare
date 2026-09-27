@@ -5,17 +5,15 @@
 // cache header) so the summary column is instant; the interactive step
 // machine lives in islands/saathum-checkout/SaathumCheckout.tsx.
 //
-// Any listing that ISN'T a live event keeps the existing checkout: this page
-// mounts the untouched BookingFlow island for it rather than a Saa Thum step
-// machine it doesn't have data for. B2/A1 own listing.kind values elsewhere;
-// this file only branches on it.
+// [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] OWNER DECISION: this is the ONLY checkout. The old
+// BookingFlow island (and islands/checkout's gateway/pay/confirm steps) was
+// deleted; a listing that isn't a live event now 404s here.
 export const prerender = false;
 
 import Base from '../../../layouts/Base.astro';
 import { cfImage } from '../../../lib/config';
 import { getListing, ApiError } from '../../../lib/apiClient';
 import type { CoverMedia, Listing } from '../../../lib/types';
-import BookingFlow from '../../../islands/checkout/BookingFlow.tsx';
 import { SaathumCheckout } from '../../../islands/saathum-checkout/SaathumCheckout.tsx';
 
 const { id } = Astro.params;
@@ -39,6 +37,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
 
 const kind = (listing.kind ?? 'content') as string;
 const isLiveEvent = kind === 'live_event';
+if (!isLiveEvent) return new Response('Listing not found', { status: 404 });
 
 function firstCoverUrl(media: CoverMedia[] | null | undefined): string | null {
   for (const m of media ?? []) {
@@ -84,7 +83,6 @@ const backHref = `/book/${encodeURIComponent(listing.id)}`;
   noindex={true}
 >
   <main class="mx-auto max-w-5xl px-4 py-8">
-    {isLiveEvent ? (
       <div class="sthc-wrap">
         {/* [SAATHUM-CHECKOUT-POLISH 2026-09-27] Owner: a broad event image with the details overlaid, sign-in below. */}
         <div class="sthc-hero">
@@ -109,21 +107,6 @@ const backHref = `/book/${encodeURIComponent(listing.id)}`;
         </div>
         <SaathumCheckout client:load listingId={listing.id} />
       </div>
-    ) : (
-      <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
-        <aside class="md:sticky md:top-20 self-start">
-          <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
-            <div class="relative aspect-[4/5] w-full">
-              {coverUrl && <img src={cfImage(coverUrl, { width: 680, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />}
-            </div>
-          </div>
-          <h1 class="mt-4 font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
-        </aside>
-        <section>
-          <BookingFlow client:load listing={listing} />
-        </section>
-      </div>
-    )}
   </main>
 </Base>
 
