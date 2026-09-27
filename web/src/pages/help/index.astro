@@ -81,7 +81,7 @@ for (let round = 0; faqCards.length < 6 && bySection.some((l) => l.length > roun
 const QUICK: { id: string; label: string }[] = [
   { id: 'booking-and-paying/sankalp-replay-and-prasad', label: 'What is a gotra?' },
   { id: 'billing/refunds', label: 'Refund by UPI' },
-  { id: 'booking-and-paying/join-a-live-show', label: 'Watching live' },
+  { id: 'booking-and-paying/join-a-live-show', label: 'Getting your video' },
   { id: 'getting-started/puja-or-havan', label: 'Puja or havan?' },
   { id: 'booking-and-paying/how-to-book', label: 'How to book' },
 ];
@@ -110,7 +110,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
           <div>
             <p class="hs-eyebrow">Saa Thum help centre</p>
             <h1 id="help-title">Namaste. What can we <em>clear up</em> for you?</h1>
-            <p class="hs-hero-lead">Sankalp, gotra, prasad, refunds, watching live. Short answers, in plain words, written by the team that performs your puja.</p>
+            <p class="hs-hero-lead">Sankalp, gotra, prasad, refunds, your video. Short answers, in plain words, written by the team that performs your puja.</p>
             <HelpSearch id="hero" />
             {quick.length > 0 && (
               <div class="hs-quick" aria-label="Popular questions">

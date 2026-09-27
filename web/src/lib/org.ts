@@ -104,7 +104,7 @@ export const ORG: OrgConstants = {
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.
   description:
-    'Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai. Temple priests perform havans, pujas, satsangs and meditations that families in India and around the world join live, with sankalp in your name and gotra, a video to download afterwards, and prasad sent by courier.',
+    'Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai. Temple priests perform havans, pujas, satsangs and meditations for families in India and around the world, with sankalp in your name and gotra, a video to download afterwards, and prasad sent by courier.',
   slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',
@@ -212,8 +212,8 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'An online havan and puja service at saathum.com, based in West Andheri, Mumbai — temple priests perform the rituals live for families in India and the diaspora.',
-    knowsAbout: ['puja', 'havan', 'sankalp', 'satsang', 'meditation', 'live puja', 'online havan', 'prasad delivery'],
+      'An online havan and puja service at saathum.com, based in West Andheri, Mumbai — temple priests perform the rituals for families in India and the diaspora, who receive the video afterwards.',
+    knowsAbout: ['puja', 'havan', 'sankalp', 'satsang', 'meditation', 'puja video', 'online havan', 'prasad delivery'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     areaServed: 'Worldwide',

@@ -46,9 +46,9 @@ Once we've confirmed the cancellation, we refund the full amount to the UPI acco
 
 If we cancel your ritual or can't perform it, you get a full refund — send us a request the same way, with your UPI transaction number.
 
-## If you miss the live stream
+## If you weren't free at the time
 
-Your sankalp is still performed, so the booking isn't refunded. The replay is available for 7 days.
+Your sankalp is still performed, so the booking isn't refunded. Your video is sent to you when the ritual finishes.
 
 ## Wrong or duplicate payments
 

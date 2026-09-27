@@ -10,7 +10,7 @@
 //   3. The OG card endpoint — reads the live price per request.
 //
 // Wording is always "starting from ₹X": checkout adds prasad delivery, GST,
-// donation, chadhava and other options, so this is a floor, not a total.
+// offerings, chadhava and other options, so this is a floor, not a total.
 import { API_BASE } from './config';
 
 export type Pricing = {

@@ -182,7 +182,7 @@ function gcalHref(it: Item, origin: string): string {
     action: 'TEMPLATE',
     text: `${it.title} — Saa Thum`,
     dates: `${f(start)}/${f(end)}`,
-    details: `Join live: ${origin}${it.href}`,
+    details: `Details: ${origin}${it.href}`,
   });
   return 'https://calendar.google.com/calendar/render?' + q.toString();
 }
@@ -246,12 +246,10 @@ function ticksFor(it: Item, copy: EventTypeCopy): { on: boolean; label: string; 
       { on: it.prasad, label: 'Prasad courier' },
       { on: true, label: 'Sankalp in your name' },
       videoTick,
-      { on: true, label: 'Live streaming event' },
       visibilityTick,
     ];
   }
   return [
-    { on: true, label: 'Live streaming event' },
     videoTick,
     { on: true, label: 'Join from anywhere' },
     visibilityTick,
@@ -291,7 +289,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
             {it.visibility === 'private'
               ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
               : it.mode === 'live'
-                ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Live now' : 'Live'}</span>
+                ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Happening now' : 'Open to all'}</span>
                 : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
           </span>
           {it.category && <span className="bn-pill bn-pill--soft">{it.category}</span>}
@@ -301,7 +299,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
             <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
           </>}
-          {it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now — join live</span>}
+          {it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now</span>}
         </span>
       </a>
       <div className="bn-body">

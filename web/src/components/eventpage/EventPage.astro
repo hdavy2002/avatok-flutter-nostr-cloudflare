@@ -155,7 +155,7 @@ function gcalHref(): string {
     action: 'TEMPLATE',
     text: `${listing.title} — Saa Thum`,
     dates: `${f(start)}/${f(end)}`,
-    details: `Join live: ${origin}${canonicalHref}`,
+    details: `Details: ${origin}${canonicalHref}`,
   });
   return 'https://calendar.google.com/calendar/render?' + q.toString();
 }
@@ -171,7 +171,6 @@ const ticks: { key: string; label: string; tip?: string }[] = [];
 if (prasadCourier) ticks.push({ key: 'prasad', label: 'Prasad courier' });
 if (copy.ritual) ticks.push({ key: 'sankalp', label: 'Sankalp in your name' });
 if (videoDownload) ticks.push({ key: 'video', label: 'Video download', tip: 'You can download your video anytime.' });
-ticks.push({ key: 'stream', label: 'Live streaming event' });
 ticks.push({
   key: 'visibility',
   label: isPrivate ? 'Private event' : 'Public event',
@@ -208,7 +207,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
         <div class="ep-top">
           <span class="ep-top-left">
             <span class="ep-badge" style={`background:${copy.color.bg};color:${copy.color.fg}`}>{copy.badge}</span>
-            {liveNow && !isPrivate && <span class="ep-pill ep-pill--live"><i></i>Live</span>}
+            {liveNow && !isPrivate && <span class="ep-pill ep-pill--live"><i></i>Happening now</span>}
           </span>
           <span class="ep-top-right">
             {isPrivate ? (
@@ -327,7 +326,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             {guide && <a href={guide.href} style="font:800 14px Nunito, sans-serif;color:var(--ep-red)">Read the full story →</a>}
           </>
         ) : (
-          <p>{listing.description || `${listing.title}, performed by verified priests and watched live on Saa Thum.`}</p>
+          <p>{listing.description || `${listing.title}, performed by verified priests, with the video sent to you by Saa Thum.`}</p>
         )}
       </div>
 
@@ -385,7 +384,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
         <h2>Questions</h2>
         <details open>
           <summary>How do I join?</summary>
-          <p>We send the live link by email 30 minutes before the start.</p>
+          <p>We email you the video to download when it finishes.</p>
         </details>
         <details>
           <summary>What if I miss it?</summary>

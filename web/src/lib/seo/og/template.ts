@@ -2,8 +2,8 @@ import { createElement as h } from 'react';
 import type { OgRecord } from './types';
 
 const labels: Record<OgRecord['kind'], string> = {
-  home: 'SACRED RITUALS, SHARED LIVE', page: 'SAA THUM', collection: 'EXPLORE SAA THUM',
-  article: 'RITUAL STORIES & GUIDES', help: 'HERE TO HELP', listing: 'LIVE RITUALS',
+  home: 'SACRED RITUALS, BROUGHT HOME', page: 'SAA THUM', collection: 'EXPLORE SAA THUM',
+  article: 'RITUAL STORIES & GUIDES', help: 'HERE TO HELP', listing: 'PUJAS & HAVANS',
   creator: 'MEET THE ORGANISER', agent: 'EXPLORE SAA THUM',
 };
 
@@ -31,7 +31,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
   } },
     h('div', { style: { display: 'flex', flexDirection: 'column', width: 600, paddingRight: 34 } },
       h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, 'Saa Thum'),
-      h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginTop: 12 } }, 'JOIN LIVE, FROM ANYWHERE'),
+      h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginTop: 12 } }, 'TAKE PART FROM ANYWHERE'),
       h('div', { style: { display: 'flex', flex: 1, alignItems: 'center' } },
         h('div', { style: { display: 'flex', fontSize: size, lineHeight: 1.2, color: '#304d35', maxHeight: 300, overflow: 'hidden' } }, hook),
       ),
@@ -39,7 +39,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
         h('div', { style: {
           display: 'flex', alignItems: 'center', backgroundColor: '#b94427', color: '#fff8e8',
           fontSize: 30, padding: '16px 30px', borderRadius: 999,
-        } }, price ? `Join live · ${price}` : 'Join live'),
+        } }, price ? `Book · ${price}` : 'Book now'),
         h('div', { style: { display: 'flex', marginLeft: 22, fontSize: 21, color: '#ab3421' } }, 'saathum.com'),
       ),
     ),
@@ -51,7 +51,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
 
 export function ogTemplate(record: OgRecord, artwork: string) {
   if (record.ad?.hook) return adTemplate(record, artwork, record.ad);
-  const title = copy(record.title, 105) || 'Sacred rituals, shared live';
+  const title = copy(record.title, 105) || 'Faith, brought home to you';
   const description = copy(record.description, 150);
   return h('div', { style: {
     width: 1200, height: 630, display: 'flex', position: 'relative', overflow: 'hidden',

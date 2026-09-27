@@ -78,7 +78,7 @@ export const ritualAdHooks: Record<string, string> = {
 /** The share-card ad for a ritual article. The price is the live "starting from"
  *  floor from the pricing backend (lib/pricing.ts); null → the card just says "Join live". */
 export function ritualAd(ritual: { slug: string; type: 'havan' | 'puja'; title: string }, pricing: Pricing): { hook: string; price?: string } {
-  const hook = ritualAdHooks[ritual.slug] ?? `Join the ${ritual.title.replace(/\s*\(.*\)\s*/, ' ').trim()} live`;
+  const hook = ritualAdHooks[ritual.slug] ?? `Join the ${ritual.title.replace(/\s*\(.*\)\s*/, ' ').trim()}`;
   const price = ritualPrice(pricing, ritual);
   return price ? { hook, price: `from ${rupees(price)}` } : { hook };
 }

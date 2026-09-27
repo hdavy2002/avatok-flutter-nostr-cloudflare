@@ -362,7 +362,7 @@ function LiveSpotlight({
             <Button size="lg" onClick={joinViaPlayer} className="w-full rounded-full sm:w-auto"><Play className="fill-current" /> Event is live — join now</Button>
           ) : item.join_url ? (
             <Button asChild size="lg" className="w-full rounded-full sm:w-auto">
-              <a href={item.join_url} onClick={() => trackJoin(item, now, 'link')}><Radio /> Event is live — join now <ArrowRight /></a>
+              <a href={item.join_url} onClick={() => trackJoin(item, now, 'link')}><Radio /> Happening now — open <ArrowRight /></a>
             </Button>
           ) : (
             <p className="inline-flex items-center gap-2 text-[14px] font-bold text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Your join link will appear here in a moment…</p>
@@ -552,7 +552,7 @@ export default function MyEvents() {
       <EmptyState
         icon={<Ticket className="h-6 w-6" />}
         title="No upcoming pujas yet"
-        body="When you book a puja or havan it appears here, with a countdown and a join button when it goes live."
+        body="When you book a puja or havan it appears here, with a countdown, and the video to download when it finishes."
         action={<Button asChild><a href="/dashboard">Book a puja <ArrowRight /></a></Button>}
       />
     );

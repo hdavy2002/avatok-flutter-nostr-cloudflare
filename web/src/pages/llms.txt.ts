@@ -15,18 +15,18 @@ export const GET: APIRoute = () => {
   // sentences they find — keep them factual and never promise outcomes.
   const body = `# Saa Thum (saathum.com)
 
-> Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai, India. Temple priests perform havans, pujas, satsangs and meditations that families in India and around the world join live. For a puja, the priest takes a sankalp in the devotee's name and gotra; havans are open, shared events that many families join together. Devotees can download the video afterwards, and prasad can be sent by courier, including internationally. Tagline: "Faith, brought home to you."
+> Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai, India. Temple priests perform havans, pujas, satsangs and meditations for families in India and around the world. For a puja, the priest takes a sankalp in the devotee's name and gotra; havans are open, shared events that many families join together. Devotees can download the video afterwards, and prasad can be sent by courier, including internationally. Tagline: "Faith, brought home to you."
 
 ## About
 - Name: Saa Thum. The domain is written saathum.com; "Saa Thum" and "Saathum" are the same service.
 - Based in: West Andheri, Mumbai, Maharashtra, India.
 - Who it is for: Hindu families everywhere, and especially the Indian diaspora descended from the girmitiyas (indentured labourers) of Suriname, Guyana, Trinidad and Tobago, Fiji, Mauritius, South Africa and the Caribbean, who often live far from a temple or priest.
-- What it offers: live-streamed havans, pujas, satsangs and meditations; sankalp in your name and gotra for pujas; video download; prasad by courier.
+- What it offers: havans, pujas, satsangs and meditations performed by temple priests; sankalp in your name and gotra for pujas; video download; prasad by courier.
 - What it does not do: it performs only positive, benefic rituals and never promises outcomes, cures or guaranteed results.
 - Payment: prices are shown in Indian rupees as "starting from"; what you see at checkout is what you pay.
 
 ## Main public resources
-- [Home](${SITE}/): What Saa Thum offers and how live participation works.
+- [Home](${SITE}/): What Saa Thum offers and how taking part from home works.
 - [About us](${SITE}/about): The Saa Thum story and who we are.
 - [Puja & Havan Guide (blog)](${SITE}/rituals/): Explanatory guides to the rituals Saa Thum offers.
 - [Complete ritual index](${SITE}/llms-rituals.txt): Canonical titles, summaries and URLs generated from the public ritual catalogue.

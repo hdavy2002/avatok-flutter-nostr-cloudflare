@@ -20,7 +20,7 @@ const gangaArt = ritualBySlug('ganga-puja')!;
 const havanCount = rituals.filter(r => r.type === 'havan').length;
 const pujaCount = rituals.filter(r => r.type === 'puja').length;
 const pageTitle = 'The Puja & Havan Guide — Meaning, Benefits & How to Take Part · Saa Thum';
-const pageDescription = `Explore ${havanCount} havans and ${pujaCount} pujas: the deity, the blessings devotees seek, who each ritual is for, the best time, and how to join live from anywhere with prasad sent to your door.`;
+const pageDescription = `Explore ${havanCount} havans and ${pujaCount} pujas: the deity, the blessings devotees seek, who each ritual is for, the best time, and how to take part from anywhere with prasad sent to your door.`;
 const content: PublicContent = {
   kind: 'page',
   key: 'rituals',
@@ -39,12 +39,12 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
       <div class="idea-hero-copy">
         <p class="idea-kicker">The Puja &amp; Havan Guide</p>
         <h1 id="idea-title"><span class="idea-title-line">Every ritual.</span><span class="idea-title-line idea-title-line--accent">Explained with love.</span></h1>
-        <p>What each havan and puja means, why it is offered to its deity, the story behind it,<br /> and how you can join it live — from anywhere in the world.</p>
+        <p>What each havan and puja means, why it is offered to its deity, the story behind it,<br /> and how you can take part — from anywhere in the world.</p>
         <a class="idea-button" href="#idea-catalogue">Find your ritual <span aria-hidden="true">↓</span></a>
         <p class="idea-handwritten">Sab ki aahuti,<br />sab ka ashirwad.</p>
       </div>
       <div class="idea-hero-art" aria-hidden="true">
-        <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(havanArt.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" fetchpriority="high" /></div><span>The sacred fire, live.</span></div>
+        <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(havanArt.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" fetchpriority="high" /></div><span>The sacred fire.</span></div>
         <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(gangaArt.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" /></div><span>Lamps on the Ganga, for you.</span></div>
         <div class="idea-stamp">Joy. Peace.<br />Prosperity.</div>
       </div>
@@ -52,13 +52,13 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
     <section class="idea-shell idea-intro" aria-label="About this guide"><div style="grid-column:1/-1"><h2>A havan for every hope</h2><p>For thousands of years, families have turned to havans and pujas to begin something new, to give thanks, to pray for someone they love, or simply to invite peace into the home. This guide explains each ritual Saa Thum performs — who the deity is and why, the story behind it, the blessings devotees traditionally seek, who it suits, and the most auspicious time. Every ritual is performed by experienced temple priests. Every ritual we perform is benefic and joyful. Blessings described are those sought in tradition; we never promise outcomes.</p></div></section>
     <TruckBorder kind="lotus" />
     <section class="idea-shell idea-intro" aria-label="Havan, puja and joining together">
-      <div><span class="idea-format live">Havan</span><p>A fire ritual, open to everyone. Offerings of ghee, grains and herbs go into one sacred fire with each mantra, while devotees join live from everywhere. Open havans start from <span data-saathum-price="havan" data-saathum-type="havan">{havanFrom}</span>.</p></div>
+      <div><span class="idea-format live">Havan</span><p>A fire ritual, open to everyone. Offerings of ghee, grains and herbs go into one sacred fire with each mantra, on behalf of devotees everywhere. Open havans start from <span data-saathum-price="havan" data-saathum-type="havan">{havanFrom}</span>.</p></div>
       <div><span class="idea-format private">Puja</span><p>Worship with flowers, lamp, incense and food — a private ritual for one family, available in limited slots.</p></div>
       <div><span class="idea-format group">Together</span><p>Tradition holds prayer shared by many especially dear. Every devotee who joins adds their prayer to the same fire — and supports the temple priests who perform it.</p></div>
     </section>
     <section class="idea-shell idea-daily" aria-labelledby="daily-title">
       <span class="idea-daily-label">From anywhere</span>
-      <div><h2 id="daily-title">Watch live. Chant along. Receive prasad.</h2><p>Join the stream from your living room in Delhi, Dubai or Dallas. Light a lamp, listen to the mantras and pray with us. Prasad and sacred items are couriered to your door — across India and internationally.</p></div>
+      <div><h2 id="daily-title">Pray along. Get the video. Receive prasad.</h2><p>Take part from your living room in Delhi, Dubai or Dallas. Light a lamp, pray with us, and watch the video we send you. Prasad and sacred items are couriered to your door — across India and internationally.</p></div>
       <a href="/how-it-works">How it works <span aria-hidden="true">↗</span></a>
     </section>
     <section class="idea-shell idea-catalogue" id="idea-catalogue" aria-labelledby="catalogue-title">

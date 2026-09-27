@@ -57,7 +57,7 @@ export default function PushReminderPrompt() {
     const r = await enablePush();
     setBusy(false);
     if (r.ok) {
-      toast.success('Reminders are on. We’ll ping you 15 minutes before and when it goes live.');
+      toast.success('Reminders are on. We’ll ping you 15 minutes before it starts.');
       setMode('none');
     } else setMsg(r.message);
   };
@@ -87,7 +87,7 @@ export default function PushReminderPrompt() {
             <div className="min-w-0 flex-1">
               <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Never miss the aarti</h2>
               <p className="mt-0.5 text-[13px] font-semibold text-muted-foreground">
-                {mode === 'ios' ? IOS_INSTALL_HINT : 'Get a reminder 15 minutes before your ritual and when it goes live.'}
+                {mode === 'ios' ? IOS_INSTALL_HINT : 'Get a reminder 15 minutes before your ritual.'}
               </p>
               {msg && <p role="status" className="mt-1 text-[12.5px] font-bold text-primary">{msg}</p>}
             </div>

@@ -24,10 +24,10 @@ Start on [Our Pujas](/marketplace), or browse by intention on the [home page](/#
 
 ## What a ritual page tells you
 
-Each ritual page shows the deity, the altar and city, the next live date and time (in IST, with your own local time alongside), the price, and what's included — by default:
+Each ritual page shows the deity, the altar and city, the next date and time (in IST, with your own local time alongside), the price, and what's included — by default:
 
 - Sankalp in your name and gotra
-- Live stream, plus a 7-day replay
+- A video of the ritual to download
 - Closing aarti and blessing
 - Prasad delivery (optional add-on)
 
@@ -43,10 +43,10 @@ Tap **Book with my sankalp**. You'll share:
 - **Family members** to include (optional)
 - **A prasad delivery address**, if you'd like prasad
 
-You see the full price before you pay. Once payment goes through, you get a confirmation email, and we remind you before the ritual goes live.
+You see the full price before you pay. Once payment goes through, you get a confirmation email, and we email you the video when the ritual finishes.
 
 ## Next
 
-- [Watching your ritual live](/help/booking-and-paying/join-a-live-show)
-- [Your sankalp, replay and prasad](/help/booking-and-paying/sankalp-replay-and-prasad)
+- [Getting your ritual video](/help/booking-and-paying/join-a-live-show)
+- [Your sankalp, video and prasad](/help/booking-and-paying/sankalp-replay-and-prasad)
 - [Refunds and cancellations](/help/billing/refunds)

@@ -59,14 +59,14 @@ export interface EventTypeCopy {
 
 const RITUAL_STEPS = (noun: string) => [
   { title: 'Book with your sankalp', body: 'Your name, gotra and wish are read out by the priest.', sticker: 'sankalp-thali' },
-  { title: 'Get the live link', body: `By email, 30 minutes before the ${noun} starts.`, sticker: 'whatsapp-diya' },
-  { title: 'Watch, then receive prasad', body: 'Download the video anytime. Prasad ships the same day.', sticker: 'prasad-box' },
+  { title: 'The priest performs it', body: `Your ${noun} is performed at the altar at the scheduled time.`, sticker: 'whatsapp-diya' },
+  { title: 'Get the video and prasad', body: 'We email you the video when it finishes. Prasad ships the same day.', sticker: 'prasad-box' },
 ];
 
 const TALK_STEPS = (noun: string) => [
   { title: 'Reserve your seat', body: `One booking per family — join the ${noun} from anywhere.`, sticker: 'sankalp-thali' },
-  { title: 'Get the live link', body: `By email, 30 minutes before the ${noun} starts.`, sticker: 'whatsapp-diya' },
-  { title: 'Watch live, keep the video', body: 'Download the video anytime from My events.', sticker: 'havan-kund' },
+  { title: 'It happens on schedule', body: `The ${noun} takes place at the scheduled time.`, sticker: 'whatsapp-diya' },
+  { title: 'Get the video', body: 'We email you the video when it finishes. Download it anytime from My events.', sticker: 'havan-kund' },
 ];
 
 export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {

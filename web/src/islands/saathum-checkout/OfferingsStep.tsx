@@ -135,7 +135,7 @@ export function OfferingsStep({
     <div className="sthc-card">
       <button className="sthc-back" onClick={onBack} type="button">&larr; Back</button>
       <div className="sthc-kick">Step {stepIndex} of {totalSteps} · Offerings</div>
-      <h3 className="sthc-h3">Chadhava &amp; donation</h3>
+      <h3 className="sthc-h3">Chadhava &amp; offerings</h3>
       <div className="sthc-dots">
         {Array.from({ length: totalSteps }, (_, i) => <i key={i} className={i < stepIndex ? 'on' : ''} />)}
       </div>

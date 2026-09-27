@@ -64,15 +64,15 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
           <div>
             <p class="hw-eyebrow">How it works</p>
             <h1 id="hiw-title">Faith, brought home to you. <em>Here is how.</em></h1>
-            <p class="hw-lead">You choose an event, we send you a live link, and you take part from wherever you are. This page explains what to expect, and how to sit for each kind of event so you get the most from it.</p>
+            <p class="hw-lead">You choose an event, our priests perform it at the altar, and we send you the video to keep. This page explains what to expect, and how to sit for each kind of event so you get the most from it.</p>
             <div class="hw-hero-actions">
               <a class="hw-btn" href="/marketplace">Explore events <span aria-hidden="true">→</span></a>
               <a class="hw-link" href="#kinds">See the four kinds <span aria-hidden="true">↓</span></a>
             </div>
-            <p class="hw-hero-quiet">Everything is live. Nothing is recorded in advance.</p>
+            <p class="hw-hero-quiet">Every event is performed on its date. Nothing is recorded in advance.</p>
           </div>
           <div class="hw-hero-art">
-            <img class="hw-painting" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home in the morning, watching a havan live on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
+            <img class="hw-painting" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home in the morning, watching a havan on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
             <img class="hw-stamp hw-stamp--a" src={IMG.puja} alt="" aria-hidden="true" width="640" height="505" decoding="async" />
             <img class="hw-stamp hw-stamp--b" src={IMG.link} alt="" aria-hidden="true" width="384" height="640" decoding="async" />
           </div>
@@ -135,18 +135,17 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
 
       <!-- ON THE DAY -->
       <section class="hw-day hw-wrap" aria-labelledby="day-title">
-        <div class="hw-sec-head"><div><h2 id="day-title"><span aria-hidden="true">✽</span>On the day of the event</h2><p>Here is exactly how you get connected. It is the same for every kind of event.</p></div></div>
+        <div class="hw-sec-head"><div><h2 id="day-title"><span aria-hidden="true">✽</span>On the day of the event</h2><p>Here is exactly what happens. It is the same for every kind of event.</p></div></div>
         <div class="hw-day-card">
           <ol class="hw-timeline">
-            <li><span class="hw-when">30 min before</span><span class="hw-dot" aria-hidden="true"></span><div><b>Your live link arrives by email</b><span>It also sits under My events. One link per booking; you can open it on any phone, tablet or computer.</span></div></li>
-            <li><span class="hw-when">10 min before</span><span class="hw-dot" aria-hidden="true"></span><div><b>Open the link and settle in</b><span>You will see a waiting screen with the start time. Use these minutes to find your quiet spot and check your sound.</span></div></li>
-            <li><span class="hw-when">At start</span><span class="hw-dot" aria-hidden="true"></span><div><b>The stream goes live on its own</b><span>Nothing to press. Your camera stays off and your microphone stays muted; only the priest, speaker or guide is heard.</span></div></li>
-            <li><span class="hw-when">During</span><span class="hw-dot" aria-hidden="true"></span><div><b>Take part from where you sit</b><span>Fold your hands at the aarti, sing along softly, or simply listen. If you drop off the internet, open the same link again and you are back.</span></div></li>
-            <li><span class="hw-when">After</span><span class="hw-dot" aria-hidden="true"></span><div><b>The video is yours to keep</b><span>Download it from My events whenever you like. If you chose prasad, it is packed the same day.</span></div></li>
+            <li><span class="hw-when">After booking</span><span class="hw-dot" aria-hidden="true"></span><div><b>Your confirmation arrives by email</b><span>It also sits under My events, with the date and time of your event.</span></div></li>
+            <li><span class="hw-when">At the time</span><span class="hw-dot" aria-hidden="true"></span><div><b>The priest performs it at the altar</b><span>For a havan or puja, your sankalp is taken in your name and gotra. Nothing for you to do or press.</span></div></li>
+            <li><span class="hw-when">From home</span><span class="hw-dot" aria-hidden="true"></span><div><b>Pray from where you sit</b><span>If you like, light a lamp at the same time, fold your hands and pray quietly with your family.</span></div></li>
+            <li><span class="hw-when">After</span><span class="hw-dot" aria-hidden="true"></span><div><b>We email you the video</b><span>Download it from the email or from My events whenever you like. If you chose prasad, it is packed the same day.</span></div></li>
           </ol>
           <div class="hw-day-art">
             <img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" />
-            <p class="hw-day-note">Can't find the email? Check your spam folder, or open My events and tap Join.</p>
+            <p class="hw-day-note">Can't find the email? Check your spam folder, or open My events.</p>
           </div>
         </div>
       </section>
@@ -232,11 +231,11 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
       <section class="hw-faq hw-wrap" aria-labelledby="faq-title">
         <div class="hw-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Common questions</h2></div>
         <div class="hw-faq-box">
-          <details open><summary>Do I need to be present for the whole havan or puja?</summary><p>No. The ritual is tied to you through the sankalp, so it is complete even if you step away. Watching live is your way of taking part, and the video is there afterwards.</p></details>
-          <details><summary>What if I miss the live stream?</summary><p>Your sankalp was still performed. Open My events and download the video whenever you like.</p></details>
+          <details open><summary>Do I need to be present for the whole havan or puja?</summary><p>No. The ritual is tied to you through the sankalp, so it is complete even if you are not watching. We email you the video afterwards to keep.</p></details>
+          <details><summary>How do I get the video?</summary><p>We email it to you when the event finishes. You can also download it from My events whenever you like.</p></details>
           <details><summary>What is a gotra, and what if I don't know mine?</summary><p>It is your family lineage. Ask an elder; if nobody knows, our priests use "Kashyap" by custom, exactly as a temple would. You can also leave it blank.</p></details>
-          <details><summary>Can my family join from another city?</summary><p>Yes. One booking gives you one live link, and anyone in your family can open it from wherever they are.</p></details>
-          <details><summary>Can I talk to the priest or speaker during the event?</summary><p>Microphones stay muted so the mantras and the talk are clear for everyone. For a havan or puja your sankalp is how you speak to the priest; for a satsang, questions can be sent in the side chat when the speaker opens it.</p></details>
+          <details><summary>Can my family watch from another city?</summary><p>Yes. Share the video with your family wherever they are.</p></details>
+          <details><summary>Can I talk to the priest or speaker during the event?</summary><p>Microphones stay muted so the mantras and the talk are clear for everyone. For a havan or puja your sankalp is how you speak to the priest; for a satsang, you can email us a question beforehand.</p></details>
           <details><summary>Is the price on the card the final price?</summary><p>Cards show "starting from". At checkout you choose the extras you want (prasad delivery, dakshina, chadhava) and see the final amount, including GST, before you pay.</p></details>
         </div>
       </section>

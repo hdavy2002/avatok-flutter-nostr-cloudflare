@@ -124,7 +124,7 @@ export default function BookNowShelf({ guides, samples, exploreHref = '/marketpl
       <div className="bn-inner">
         <div className="bn-head">
           <h2 id="bn-title"><span aria-hidden="true">✽</span> Book now</h2>
-          <p>Upcoming havans, performed live by temple priests. Join from anywhere.</p>
+          <p>Upcoming havans, performed by temple priests. Join from anywhere.</p>
           {sample && <p className="bn-sample-note">Preview with sample cards — real listings replace these automatically.</p>}
         </div>
         <div className={'bn-grid bn-grid--' + items.length}>

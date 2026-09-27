@@ -121,7 +121,7 @@ export function YouStep({
       </div>
       {err && <p className="sthc-err" role="alert">{err}</p>}
       <div className="sthc-hint">
-        We&rsquo;ll send the live link by email 30 minutes before the {copy.noun} starts.
+        We&rsquo;ll email you the video when the {copy.noun} finishes.
       </div>
       {phase !== 'code' && phase !== 'verifying' && (
         <button className="sthc-btn" disabled={phase === 'sending' || phone.length !== 10} onClick={() => void sendCode()}>

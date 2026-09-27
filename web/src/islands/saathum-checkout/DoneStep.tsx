@@ -88,7 +88,7 @@ export function DoneStep({
         <a href="/dashboard">My events</a>
       </div>
       <div className="sthc-hint" style={{ marginTop: 12 }}>
-        Live link arrives by email 30 min before. {copy.ritual ? 'Prasad ships the same day.' : ''}
+        We email you the video when it finishes. {copy.ritual ? 'Prasad ships the same day.' : ''}
       </div>
     </div>
   );

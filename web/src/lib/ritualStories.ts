@@ -24,7 +24,7 @@ export const ritualStories: Record<string, RitualStory> = {
     story: 'Tradition tells of four great sages who came to the young Shiva seated under a banyan tree, seeking the highest truth. He taught them in complete silence, and in that silence all their doubts dissolved. His raised hand, in chin-mudra, symbolises the union of the individual with the divine.',
   },
   'brihaspati-havan': {
-    why: 'Brihaspati is the guru of the devas and, in Vedic astrology, the planet Jupiter — the giver of wisdom, good counsel, children and fortune. Thursday (Guruvar) is named after him.',
+    why: 'Brihaspati is the guru of the devas, linked with the planet Jupiter — the giver of wisdom, good counsel, children and fortune. Thursday (Guruvar) is named after him.',
     story: 'In the Vedas, Brihaspati is the priest and teacher of the gods, the lord of sacred speech and prayer. As the planet Jupiter he is considered the most benevolent of all the planets, and a havan to him is a traditional way to invite his kindly influence.',
   },
   'ganapati-havan': {
@@ -36,7 +36,7 @@ export const ritualStories: Record<string, RitualStory> = {
     story: 'The Satyanarayan katha, traditionally linked to the Skanda Purana, tells of a poor Brahmin, a woodcutter, a merchant and a king whose lives changed after they worshipped Satyanarayana with faith — and of the troubles that came when they forgot their promise. Its lesson is simple: remember the divine in good times, not only in bad.',
   },
   'navagraha-havan': {
-    why: 'The Navagraha are the nine celestial influences of Vedic astrology: the Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu and Ketu. Honouring all nine together seeks balance across every area of life.',
+    why: 'The Navagraha are the nine celestial deities of Hindu tradition: the Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu and Ketu. Honouring all nine together seeks balance across every area of life.',
     story: 'Navagraha worship is an ancient part of Indian temple life — most great South Indian temples have a shrine where the nine planets stand facing different directions. A Navagraha havan offers each planet its own grain, colour and wood, a practice handed down through generations of priests.',
   },
   'vastu-shanti-havan': {
@@ -68,7 +68,7 @@ export const ritualStories: Record<string, RitualStory> = {
     story: 'Tradition credits Vishwakarma with building the golden city of Lanka, Krishna’s Dwarka, the palace of Indraprastha and the flying chariot Pushpaka. On Vishwakarma Puja, workshops and factories across India pause to bless their tools and machines.',
   },
   'surya-havan': {
-    why: 'Surya, the Sun, is the visible divine — the source of light, energy and life. In astrology he governs confidence, leadership and recognition.',
+    why: 'Surya, the Sun, is the visible divine — the source of light, energy and life. He is honoured for confidence, leadership and recognition.',
     story: 'In the Ramayana tradition, the sage Agastya taught Lord Rama the Aditya Hridayam, a hymn to the Sun, before his final battle, and Rama found fresh strength. Surya worship at sunrise is among the oldest continuous practices in India.',
   },
   'lakshmi-narayana-havan': {
@@ -193,7 +193,7 @@ export const ritualStories: Record<string, RitualStory> = {
     story: 'Sundarkand is the fifth chapter of Tulsidas’s Ramcharitmanas. It follows Hanuman’s leap across the ocean, his meeting with Sita in Lanka and the joyful news he brings back to Rama — a story of hope from beginning to end.',
   },
   'navagraha-puja': {
-    why: 'The nine planets of Vedic astrology are honoured together to bring balance to every part of life.',
+    why: 'The nine planetary deities are honoured together to bring balance to every part of life.',
     story: 'Navagraha shrines are found in temples across India, where devotees walk around the nine deities in prayer. This puja brings that same practice to the altar without the fire of a havan.',
   },
   'shani-shanti-puja': {

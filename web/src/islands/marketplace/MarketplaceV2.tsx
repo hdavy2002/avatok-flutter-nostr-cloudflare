@@ -596,14 +596,14 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
       {live.length > 0 && (
         <section className="mk-live" aria-label="Happening now">
           <div className="mk-live-inner">
-            <span className="bn-pill bn-pill--live"><i />Live now</span>
+            <span className="bn-pill bn-pill--live"><i />Happening now</span>
             <p>
               <b>{live[0].title}</b>{live[0].location ? <> from {live[0].location}</> : null}
               {live[0].booked > 0 && <> · {plural(live[0].booked, 'devotee')} joined</>}
-              {live.length > 1 && <> · {live.length - 1} more live</>}
+              {live.length > 1 && <> · {live.length - 1} more happening now</>}
               {nextUp && nextUp.startsAt != null && <> · <b>{nextUp.title}</b> starts in {relTime(nextUp.startsAt - now)}</>}
             </p>
-            <a className="mk-live-btn" href={live[0].href} onClick={() => capture('marketplace_card_click', { action: 'join_live', listing_id: live[0].id, position: 0, rail: 'live' })}>Join live <span aria-hidden="true">→</span></a>
+            <a className="mk-live-btn" href={live[0].href} onClick={() => capture('marketplace_card_click', { action: 'join_live', listing_id: live[0].id, position: 0, rail: 'live' })}>View <span aria-hidden="true">→</span></a>
           </div>
         </section>
       )}

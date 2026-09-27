@@ -34,7 +34,7 @@ import './checkout.css';
  * (owner decision): a ritual (havan, puja) keeps the full You -> Sankalp ->
  * Offerings -> Review -> Pay flow; a non-ritual (satsang, sermon, meditation)
  * skips Sankalp's extra fields (rendered as a plain "Details" step, just the
- * name) and Offerings entirely (Review gets an optional donation chips row
+ * name) and Offerings entirely (Review gets an optional offering chips row
  * instead). The 'sankalp' step id is reused as "Details" in the non-ritual
  * flow rather than adding a new step id/component. */
 function stepsFor(ritual: boolean): CheckoutStep[] {
