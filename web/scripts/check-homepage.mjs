@@ -81,8 +81,9 @@ assert.match(html, /class="grand-elephant/, 'Organiser section renders elephant 
 assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image pipeline');
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
-// [WEB-NAV-HOME-1 2026-09-27] Header menu is Home (/) + Explore (/marketplace) + How it works.
-for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works']]) {
+// [WEB-NAV-HOME-1 2026-09-27] Header menu is Home (/) + Explore (/marketplace) + How it works
+// + [WEB-HIW-2 2026-09-27] Help centre (/help).
+for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Help centre','/help']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }

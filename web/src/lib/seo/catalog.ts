@@ -10,6 +10,21 @@ export const MARKETPLACE_SEO: PublicContent = {
   image: { url: '/assets/saathum-grand/hero.png', alt: 'Pujas and havans performed live by Saa Thum priests.' },
 };
 
+// [WEB-HIW-2 2026-09-27] /how-it-works moved off layouts/Content.astro onto the
+// folk shell. These are the exact values Content.astro used to derive from the
+// page's props (title / description / updated / default og image), kept so the
+// page's title, canonical, summary and social card do not change.
+export const HOW_IT_WORKS_SEO: PublicContent = {
+  kind: 'page',
+  key: '/how-it-works',
+  canonicalPath: '/how-it-works',
+  title: 'Performed for you, in three simple steps',
+  summary: 'How Saa Thum performs a puja or havan in your name and gotra while you watch live — plus puja vs havan, and answers to common questions.',
+  visibility: 'public',
+  modifiedAt: new Date('2026-09-27').toISOString(),
+  image: { url: '/og-editorial.png', alt: 'Performed for you, in three simple steps — Saa Thum' },
+};
+
 export const HELP_SEO: PublicContent = {
   kind: 'collection',
   key: 'help',

@@ -28,6 +28,8 @@ export const HOME_HEADER_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/marketplace', label: 'Explore' },
   { href: '/how-it-works', label: 'How it works' },
+  // [WEB-HIW-2 2026-09-27] OWNER DECISION: Help centre is a header menu item, after How it works.
+  { href: '/help', label: 'Help centre' },
   // [SAATHUM-ARCHIVE-2 2026-09-25] About removed from menus by owner (page archived).
 ];
 export const HOME_FOOTER_COLUMNS = [

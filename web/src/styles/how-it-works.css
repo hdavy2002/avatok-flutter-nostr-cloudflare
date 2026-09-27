@@ -1,0 +1,177 @@
+/* [WEB-HIW-2 2026-09-27] /how-it-works — the owner-approved mockup
+   design/how-it-works/saathum-how-it-works-mock.src.html reproduced 1:1.
+   OWNER: "I want the exact design, not an inspired design."
+   Every rule below is the mockup's own rule, renamed with an `hw-` prefix and
+   scoped under `.folk-site[data-design="saathum-reference-v5"] .hw` (the same
+   scoping help-skin.css and MarketplaceV2.css use), so it can never leak into
+   another page. Shared chrome is NOT duplicated here: the gold ribbon is the
+   live `.grand-divider` (identical to the mockup's `.ribbon`, including the
+   <=600px 18px/60px size) and header/footer are SiteHeader/SiteFooter `folk`.
+   The mockup's `body`/`h1-h3` base rules apply to `.hw` (main) only, so the
+   live header and footer keep their own type.
+   Type floor (owner): nothing below 17px on desktop / 16px on phone, except
+   the mockup's own 15px eyebrow/tag/pill caps, kept exactly as approved.
+   Single brand theme: the cream world is deliberate and does not invert in
+   dark mode (same as the landing page, marketplace and help centre). */
+.folk-site[data-design="saathum-reference-v5"] .hw {
+  --cream: #fff8e8; --paper: #fffaf0; --teal: #07545b; --ink: #17343c; --red: #c82c25;
+  --sage: #dfe7d0; --gold: #d1ae70; --gold-hair: #d1ae7066; --terra: #A54C2E; --marigold: #F6B93B;
+  --quiet: #937751; --plum-a: #3d2138; --plum-b: #2b2344;
+  --t-havan: #d9531e; --t-puja: #b3261e; --t-satsang: #1f6f6a; --t-meditation: #6b4fa0;
+  --gutter: clamp(20px, 2.4vw, 44px); --box: 1280px;
+  display: block; background: var(--cream); color: var(--ink);
+  font: 19px/1.55 'Nunito', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+}
+@media (min-width: 1800px) { .folk-site[data-design="saathum-reference-v5"] .hw { --box: 1480px; } }
+.folk-site[data-design="saathum-reference-v5"] .hw a { color: inherit; text-underline-offset: 4px; }
+.folk-site[data-design="saathum-reference-v5"] .hw a:focus-visible, .folk-site[data-design="saathum-reference-v5"] .hw button:focus-visible, .folk-site[data-design="saathum-reference-v5"] .hw summary:focus-visible { outline: 3px solid var(--red); outline-offset: 4px; }
+.folk-site[data-design="saathum-reference-v5"] .hw h1, .folk-site[data-design="saathum-reference-v5"] .hw h2, .folk-site[data-design="saathum-reference-v5"] .hw h3 { font-family: 'Comfortaa', system-ui, sans-serif; font-weight: 700; letter-spacing: -.045em; line-height: 1.16; margin: 0; color: var(--teal); text-wrap: balance; }
+.folk-site[data-design="saathum-reference-v5"] .hw h1 { font-size: clamp(38px, 4vw, 66px); }
+.folk-site[data-design="saathum-reference-v5"] .hw h2 { font-size: clamp(28px, 2.4vw, 42px); }
+.folk-site[data-design="saathum-reference-v5"] .hw h3 { font-size: clamp(22px, 1.6vw, 28px); }
+.folk-site[data-design="saathum-reference-v5"] .hw p { margin: 0; }
+.folk-site[data-design="saathum-reference-v5"] .hw em { color: var(--red); font-style: normal; }
+.folk-site[data-design="saathum-reference-v5"] .hw img { max-width: 100%; height: auto; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-wrap { max-width: var(--box); margin: auto; padding-inline: var(--gutter); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-eyebrow { font-size: 15px; font-weight: 900; letter-spacing: .16em; line-height: 1.4; color: var(--teal); text-transform: uppercase; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-btn { display: inline-flex; align-items: center; justify-content: center; gap: 14px; background: var(--red); color: #fff; text-decoration: none; padding: 16px 26px; border: 1px solid #a9211a; border-radius: 10px; font-size: 20px; font-weight: 800; line-height: 1.25; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-btn:hover { background: #ac241e; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-link { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; font-size: 18px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sec-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 22px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sec-head h2 span { color: var(--red); font-size: .8em; margin-right: 10px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sec-head p { font-size: 19px; color: #405451; max-width: 52ch; margin-top: 8px; }
+
+/* hero — calm, cream, painting framed like the marketplace card */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero { padding-block: 26px 40px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-inner { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero h1 { margin-top: 12px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero .hw-lead { margin-top: 18px; font-size: clamp(20px, 1.5vw, 24px); line-height: 1.45; max-width: 30em; color: #2b4046; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-actions { display: flex; flex-wrap: wrap; gap: 16px 22px; align-items: center; margin-top: 28px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-quiet { color: var(--quiet); margin-top: 26px; font-size: 18px; font-style: italic; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art { position: relative; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art img.hw-painting { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border: 6px solid #fff; border-radius: 18px; box-shadow: 0 18px 40px #3a140a33; transform: rotate(-1.2deg); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp { position: absolute; width: 150px; height: auto; filter: drop-shadow(0 6px 8px #17343c33); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp--a { left: -34px; bottom: -22px; transform: rotate(-8deg); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp--b { right: -26px; top: -30px; width: 130px; transform: rotate(9deg); }
+
+/* four kinds — sticker cards, each with its own type colour */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kinds { position: relative; padding-block: 40px 52px; z-index: 0; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kinds::before { content: ""; position: absolute; inset: 0 50% 0; width: 100vw; transform: translateX(-50%); background: var(--terra); z-index: -1; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kinds h2, .folk-site[data-design="saathum-reference-v5"] .hw .hw-kinds .hw-sec-head p { color: var(--paper); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kinds .hw-sec-head h2 span { color: var(--marigold); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind { --tc: var(--teal); background: #fff; border: 5px solid #fff; border-radius: 16px; box-shadow: 0 8px 22px #3a140a33; padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 10px; border-bottom: 8px solid var(--tc); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind img { width: 62%; max-width: 190px; height: auto; align-self: center; filter: drop-shadow(0 5px 6px #17343c26); margin-block: 4px 6px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind .hw-tag { align-self: flex-start; font-size: 15px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #fff; background: var(--tc); padding: 6px 12px; border-radius: 999px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind h3 { color: var(--tc); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind p { font-size: 18px; line-height: 1.5; color: #35494c; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind .hw-meta { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--gold-hair); font-size: 16.5px; font-weight: 800; color: var(--teal); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind--havan { --tc: var(--t-havan); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind--puja { --tc: var(--t-puja); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind--satsang { --tc: var(--t-satsang); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-kind--meditation { --tc: var(--t-meditation); }
+
+/* booking steps — sage band */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-book { background: var(--sage); border-block: 1px solid #c9d2bd; padding-block: 44px 50px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; counter-reset: s; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps li { counter-increment: s; position: relative; background: var(--paper); border: 4px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c1a; padding: 22px 22px 24px; display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: start; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps li::before { content: counter(s, decimal-leading-zero); position: absolute; top: -16px; left: 18px; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--red); color: #fff; font: 900 17px 'Nunito', sans-serif; box-shadow: 0 3px 0 #7a150f; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps img { width: 96px; height: 96px; object-fit: contain; filter: drop-shadow(0 4px 5px #17343c26); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps h3 { font-size: clamp(20px, 1.5vw, 25px); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-steps p { margin-top: 8px; font-size: 18px; color: #35494c; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-book-note { margin-top: 22px; font-size: 18px; color: #35494c; text-align: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-book-note b { color: var(--teal); }
+
+/* on the day — timeline in a big white card */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-day { padding-block: 48px 40px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-day-card { background: #fff; border: 5px solid #fff; border-radius: 22px; box-shadow: 0 10px 26px #17343c1a; padding: clamp(20px, 3vw, 40px); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 32px; align-items: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline li { display: grid; grid-template-columns: 120px 28px 1fr; gap: 14px; align-items: start; padding-block: 16px; border-bottom: 1px solid var(--gold-hair); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline li:last-child { border-bottom: 0; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline .hw-when { font-size: 16px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); padding-top: 6px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline .hw-dot { width: 20px; height: 20px; margin-top: 8px; border-radius: 50%; background: var(--marigold); border: 4px solid #fff; box-shadow: 0 0 0 2px var(--gold); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline b { display: block; font-size: 21px; color: var(--teal); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline div > span { font-size: 18px; color: #35494c; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-day-art { display: grid; place-items: center; gap: 10px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-day-art img { width: min(100%, 230px); filter: drop-shadow(0 8px 10px #17343c2e); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-day-art .hw-day-note { font-size: 17px; color: var(--quiet); text-align: center; font-style: italic; }
+
+/* sit well — etiquette rows on plum */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit { padding-block: 44px 50px; border-top: 2px solid var(--gold-hair); background: linear-gradient(135deg, var(--plum-a) 0%, var(--plum-b) 100%); color: var(--paper); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit h2, .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit .hw-sec-head p { color: var(--paper); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit .hw-sec-head h2 span { color: var(--marigold); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card { --tc: var(--teal); background: #fff; color: var(--ink); border: 5px solid #fff; border-radius: 16px; box-shadow: 0 8px 22px #0006; padding: 20px 22px 22px; display: grid; grid-template-columns: 1fr 150px; gap: 18px; align-items: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card img { width: 150px; height: auto; filter: drop-shadow(0 5px 6px #17343c26); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card h3 { color: var(--tc); margin-top: 10px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card ul { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 18px; line-height: 1.45; color: #35494c; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card li::before { content: "✓"; font-weight: 900; color: var(--tc); font-size: 20px; line-height: 1.2; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card .hw-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card .hw-tags span { font-size: 15px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--tc); padding: 5px 11px; border-radius: 999px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--ritual { --tc: var(--t-havan); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--satsang { --tc: var(--t-satsang); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--meditation { --tc: var(--t-meditation); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--wide { grid-column: 1 / -1; grid-template-columns: 1fr 190px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--wide img { width: 190px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-foot { margin-top: 18px; text-align: center; font-size: 17px; color: #e8d9c2; }
+
+/* after */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after { padding-block: 48px 30px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-card { background: #fff; border: 4px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c14; padding: 22px; display: flex; flex-direction: column; gap: 8px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-card .hw-ico { width: 64px; height: 64px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-card h3 { font-size: clamp(20px, 1.5vw, 24px); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-card p { font-size: 18px; color: #35494c; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-after-card a { color: var(--teal); font-weight: 800; }
+
+/* promise + faq */
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-promise { display: grid; grid-template-columns: 180px 1fr 180px; gap: 22px; align-items: center; padding-block: 12px 10px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-promise img { width: 100%; max-width: 180px; filter: drop-shadow(0 5px 4px #17343c26); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-promise img.hw-flip { transform: scaleX(-1); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-promise-copy { text-align: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-promise-copy p { margin-top: 10px; font-size: 19px; max-width: 60ch; margin-inline: auto; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq { padding-block: 30px 50px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq-box { max-width: 900px; margin: auto; background: #fff; border: 5px solid #fff; border-radius: 18px; box-shadow: 0 8px 22px #17343c14; padding: 6px 26px; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq details { border-bottom: 1px solid var(--gold-hair); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq details:last-child { border-bottom: 0; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 14px; padding: 18px 2px; font-weight: 800; font-size: 20px; color: var(--ink); }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq summary::-webkit-details-marker { display: none; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq summary::after { content: "+"; color: var(--red); font-weight: 900; font-size: 26px; line-height: 1; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq details[open] summary::after { content: "–"; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq details p { margin: 0 0 18px; font-size: 18px; color: #35494c; max-width: 66ch; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-faq .hw-sec-head { justify-content: center; text-align: center; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-note { max-width: 1000px; margin: auto; padding: 10px var(--gutter) 24px; font-size: 16px; text-align: center; color: #405451; }
+.folk-site[data-design="saathum-reference-v5"] .hw .hw-note a { font-weight: 800; }
+
+@media (max-width: 1100px) {
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-inner { grid-template-columns: 1fr; gap: 30px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art { max-width: 640px; margin: 20px auto 0; width: 100%; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-kind-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-steps { grid-template-columns: 1fr; gap: 26px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-day-card { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-day-art { order: -1; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-grid { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--wide { grid-template-columns: 1fr 150px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-after-grid { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-promise { grid-template-columns: 120px 1fr 120px; }
+}
+@media (max-width: 600px) {
+  .folk-site[data-design="saathum-reference-v5"] .hw { --gutter: 16px; font-size: 18px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp { width: 110px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp--a { left: -8px; bottom: -14px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-hero-art .hw-stamp--b { right: -8px; top: -18px; width: 96px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-sec-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-kind-grid { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-steps li { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-steps img { width: 110px; height: 110px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline li { grid-template-columns: 22px 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline .hw-when { grid-column: 2; padding-top: 0; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-timeline .hw-dot { grid-row: 1 / 3; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card, .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card--wide { grid-template-columns: 1fr; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-sit-card img { width: 130px; justify-self: center; order: -1; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-promise { grid-template-columns: 70px 1fr 70px; gap: 8px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-faq-box { padding-inline: 16px; }
+  .folk-site[data-design="saathum-reference-v5"] .hw .hw-faq summary { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .folk-site[data-design="saathum-reference-v5"] .hw * { transition: none !important; } }

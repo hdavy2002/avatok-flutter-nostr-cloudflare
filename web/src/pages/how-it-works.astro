@@ -1,58 +1,248 @@
 ---
-// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Brief §5.12. Uses the existing
-// Content layout (same design as About / policy pages) — no new styles.
+// [WEB-HIW-2 2026-09-27] /how-it-works rebuilt to the owner-approved mockup
+// design/how-it-works/saathum-how-it-works-mock.src.html. OWNER: "I want this
+// exact replica on the main site … not an inspired design. Use the same
+// graphics as in the mock." Replaces the [SAATHUM-REBRAND-1] Content.astro
+// article (the old how-it-works-sticker-v2.png is no longer referenced).
+//
+// NOTE FOR AI:
+//  - Same shell as pages/marketplace.astro and pages/help/index.astro: Base
+//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
+//    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer are
+//    NOT copied — the live components are the header and footer.
+//  - Page CSS: styles/how-it-works.css (scoped under `.hw`). Every rule there
+//    is the mockup's rule, `hw-` prefixed. The gold ribbon is the live
+//    `.grand-divider` (1:1 the same rule as the mockup's `.ribbon`).
+//  - Graphics: public/assets/saathum-how-it-works/ (the mock's die-cut stickers
+//    and hero painting), plus the live elephant and diya art, all through
+//    publicImage() so the built-image-source deploy check can verify them.
+//  - "Don't box in": .hw-wrap is max 1280px (1480px >= 1800px) with the band
+//    backgrounds full width, exactly as the mockup.
+//  - Exactly one <h1>. FAQ is plain <details>; no FAQPage JSON-LD (the help
+//    centre landing owns the site's one FAQPage block).
+//  - Emails are plain text "name (@) saathum.com", never mailto. Brand: "Saa Thum".
 export const prerender = true;
-import Content from '../layouts/Content.astro';
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { publicImage, publicImageSrcSet } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import { HOW_IT_WORKS_SEO } from '../lib/seo/catalog';
+import '../styles/saathum-folk.css';
+import '../styles/how-it-works.css';
+
+const A = '/assets/saathum-how-it-works/';
+// Die-cut stickers: every one is shown at <= 230px, so a 640px variant covers 2x.
+const sticker = (name: string) => publicImage(`${A}${name}.webp`, { width: 640, fit: 'scale-down' });
+const IMG = {
+  havan: sticker('havan'),
+  puja: sticker('puja'),
+  satsang: sticker('satsang'),
+  meditation: sticker('meditation'),
+  link: sticker('link'),
+  namaste: sticker('namaste'),
+  ontime: sticker('ontime'),
+  elephant: publicImage('/assets/saathum-booking/elephant.png', { width: 420, fit: 'scale-down' }),
+};
+const heroSrc = publicImage(`${A}hero.png`, { width: 1280, fit: 'scale-down' });
+const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 'scale-down' });
 ---
+<Base content={HOW_IT_WORKS_SEO} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="hw">
+      <!-- HERO -->
+      <section class="hw-hero hw-wrap" aria-labelledby="hiw-title">
+        <div class="hw-hero-inner">
+          <div>
+            <p class="hw-eyebrow">How it works</p>
+            <h1 id="hiw-title">Faith, brought home to you. <em>Here is how.</em></h1>
+            <p class="hw-lead">You choose an event, we send you a live link, and you take part from wherever you are. This page explains what to expect, and how to sit for each kind of event so you get the most from it.</p>
+            <div class="hw-hero-actions">
+              <a class="hw-btn" href="/marketplace">Explore events <span aria-hidden="true">→</span></a>
+              <a class="hw-link" href="#kinds">See the four kinds <span aria-hidden="true">↓</span></a>
+            </div>
+            <p class="hw-hero-quiet">Everything is live. Nothing is recorded in advance.</p>
+          </div>
+          <div class="hw-hero-art">
+            <img class="hw-painting" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home in the morning, watching a havan live on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
+            <img class="hw-stamp hw-stamp--a" src={IMG.puja} alt="" aria-hidden="true" width="640" height="505" decoding="async" />
+            <img class="hw-stamp hw-stamp--b" src={IMG.link} alt="" aria-hidden="true" width="384" height="640" decoding="async" />
+          </div>
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
 
-<Content
-  kicker="How it works"
-  title="Performed for you, in three simple steps"
-  description="How Saa Thum performs a puja or havan in your name and gotra while you watch live — plus puja vs havan, and answers to common questions."
-  lead="Your name. Your wish. Our priests. Live."
-  updated="2026-09-25"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/how-it-works-sticker-v2.png', width: 1774, height: 887 }}
->
-  <ol>
-    <li><strong>Choose your ritual.</strong> Pick a puja or a havan — by what you're hoping for, by deity, or by festival.</li>
-    <li><strong>Tell us your sankalp.</strong> Your name, gotra and wish. Our priest speaks them at the altar.</li>
-    <li><strong>Watch it live.</strong> Light a lamp at home, join the aarti, and receive prasad if you'd like.</li>
-  </ol>
-  <p><a href="/marketplace">Choose a puja</a></p>
+      <!-- FOUR KINDS -->
+      <section class="hw-kinds" id="kinds" aria-labelledby="kinds-title">
+        <div class="hw-wrap">
+          <div class="hw-sec-head">
+            <div><h2 id="kinds-title"><span aria-hidden="true">✽</span>Four kinds of events. Each one is different.</h2>
+            <p>They look similar on a listing card, but you take part in each one differently. Here is what each means.</p></div>
+          </div>
+          <div class="hw-kind-grid">
+            <article class="hw-kind hw-kind--havan">
+              <span class="hw-tag">Havan</span>
+              <img src={IMG.havan} alt="" width="640" height="558" loading="lazy" decoding="async" />
+              <h3>A shared fire ritual</h3>
+              <p>Priests make offerings into a sacred fire with Vedic mantras. Many families join one havan together, and each family's sankalp is read before the fire is lit.</p>
+              <div class="hw-meta"><span>Open to everyone</span><span>60 to 120 min</span><span>Sankalp + prasad</span></div>
+            </article>
+            <article class="hw-kind hw-kind--puja">
+              <span class="hw-tag">Puja</span>
+              <img src={IMG.puja} alt="" width="640" height="505" loading="lazy" decoding="async" />
+              <h3>Worship performed for you</h3>
+              <p>Offerings of lamp, flowers and prayer, performed in your name and gotra by a priest at a real altar. Lighter than a havan and lovely for a festival or a special day.</p>
+              <div class="hw-meta"><span>In your name</span><span>20 to 60 min</span><span>Sankalp + prasad</span></div>
+            </article>
+            <article class="hw-kind hw-kind--satsang">
+              <span class="hw-tag">Satsang &amp; sermon</span>
+              <img src={IMG.satsang} alt="" width="640" height="531" loading="lazy" decoding="async" />
+              <h3>Sit and listen together</h3>
+              <p>A talk, a reading or devotional singing led by a speaker. There is no ritual and no sankalp; you reserve a seat, listen, and take away what speaks to you.</p>
+              <div class="hw-meta"><span>One seat per family</span><span>45 to 90 min</span><span>No prasad</span></div>
+            </article>
+            <article class="hw-kind hw-kind--meditation">
+              <span class="hw-tag">Meditation</span>
+              <img src={IMG.meditation} alt="" width="640" height="461" loading="lazy" decoding="async" />
+              <h3>A guided quiet hour</h3>
+              <p>A guide leads you through breathing and stillness. You only need a quiet corner and a pair of headphones. Nothing is performed on your behalf; you do the practice.</p>
+              <div class="hw-meta"><span>Anyone can join</span><span>20 to 45 min</span><span>No prasad</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
 
-  <h2>Done properly, even from far away</h2>
-  <p>
-    In our tradition, the sankalp is what ties a ritual to a person — and the yajman has never had
-    to stand at the altar. Temples have performed pujas for absent devotees for generations.
-    Watching live gives you what you'd have in person: hearing your name spoken, folding your hands
-    at the aarti, and receiving the blessing as it happens.
-  </p>
+      <!-- BOOKING -->
+      <section class="hw-book" aria-labelledby="book-title">
+        <div class="hw-wrap">
+          <div class="hw-sec-head"><div><h2 id="book-title"><span aria-hidden="true">✽</span>Booking takes a minute</h2><p>Three steps, all on your phone. No app needed.</p></div></div>
+          <ol class="hw-steps">
+            <li><img src={IMG.ontime} alt="" width="443" height="494" loading="lazy" decoding="async" /><div><h3>Pick an event and a date</h3><p>Browse by wish, deity or festival under Explore. Every card shows who leads it, when it starts, and a price that begins at the number shown.</p></div></li>
+            <li><img src={IMG.namaste} alt="" width="550" height="640" loading="lazy" decoding="async" /><div><h3>Add your details</h3><p>For a havan or puja, tell us your name, gotra, your wish and up to six family names; the priest reads them at the altar. For a satsang or meditation, just reserve your seat.</p></div></li>
+            <li><img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" /><div><h3>Pay by UPI</h3><p>What you see at checkout is what you pay. Prasad delivery, dakshina and chadhava are optional extras you choose yourself. Free cancellation up to 24 hours before the start.</p></div></li>
+          </ol>
+          <p class="hw-book-note">Your booking appears under <b>My events</b> the moment you pay, with a countdown to the start.</p>
+        </div>
+      </section>
 
-  <h2>Puja or havan?</h2>
-  <ul>
-    <li><strong>Puja</strong> — offerings of lamp, flowers and prayer. Usually 20–60 minutes; lighter, and lovely for daily or festival worship.</li>
-    <li><strong>Havan</strong> — offerings into a sacred fire with Vedic mantras. Usually 60–120 minutes or more; chosen for bigger intentions and life events.</li>
-  </ul>
+      <!-- ON THE DAY -->
+      <section class="hw-day hw-wrap" aria-labelledby="day-title">
+        <div class="hw-sec-head"><div><h2 id="day-title"><span aria-hidden="true">✽</span>On the day of the event</h2><p>Here is exactly how you get connected. It is the same for every kind of event.</p></div></div>
+        <div class="hw-day-card">
+          <ol class="hw-timeline">
+            <li><span class="hw-when">30 min before</span><span class="hw-dot" aria-hidden="true"></span><div><b>Your live link arrives by email</b><span>It also sits under My events. One link per booking; you can open it on any phone, tablet or computer.</span></div></li>
+            <li><span class="hw-when">10 min before</span><span class="hw-dot" aria-hidden="true"></span><div><b>Open the link and settle in</b><span>You will see a waiting screen with the start time. Use these minutes to find your quiet spot and check your sound.</span></div></li>
+            <li><span class="hw-when">At start</span><span class="hw-dot" aria-hidden="true"></span><div><b>The stream goes live on its own</b><span>Nothing to press. Your camera stays off and your microphone stays muted; only the priest, speaker or guide is heard.</span></div></li>
+            <li><span class="hw-when">During</span><span class="hw-dot" aria-hidden="true"></span><div><b>Take part from where you sit</b><span>Fold your hands at the aarti, sing along softly, or simply listen. If you drop off the internet, open the same link again and you are back.</span></div></li>
+            <li><span class="hw-when">After</span><span class="hw-dot" aria-hidden="true"></span><div><b>The video is yours to keep</b><span>Download it from My events whenever you like. If you chose prasad, it is packed the same day.</span></div></li>
+          </ol>
+          <div class="hw-day-art">
+            <img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" />
+            <p class="hw-day-note">Can't find the email? Check your spam folder, or open My events and tap Join.</p>
+          </div>
+        </div>
+      </section>
 
-  <h2>Only joy, only blessings</h2>
-  <p>
-    Every ritual we perform is benefic — for learning, prosperity, health, love, peace and
-    celebration. We don't do fear, we don't do fierce rituals, and we never tell you something bad
-    will happen if you don't book. A puja should leave you lighter, not worried.
-  </p>
+      <!-- SIT WELL -->
+      <section class="hw-sit" aria-labelledby="sit-title">
+        <div class="hw-wrap">
+          <div class="hw-sec-head"><div><h2 id="sit-title"><span aria-hidden="true">✽</span>How to sit for each kind of event</h2><p>A little preparation makes a big difference. These are gentle suggestions, not rules.</p></div></div>
+          <div class="hw-sit-grid">
+            <article class="hw-sit-card hw-sit-card--ritual hw-sit-card--wide">
+              <div>
+                <div class="hw-tags"><span>Havan</span><span>Puja</span></div>
+                <h3>Be respectful, and let the mantras be heard</h3>
+                <ul>
+                  <li>Choose a clean, calm place to sit. Many families sit in front of their home mandir; a quiet corner is just as good.</li>
+                  <li>Turn the volume up or connect a speaker, so the mantras are clear for everyone in the room.</li>
+                  <li>Light a small diya or incense if you can. When the aarti begins, stand or fold your hands as you would in a temple.</li>
+                  <li>Keep phones on silent and let the family sit together. Children are welcome; this is their tradition too.</li>
+                  <li>Listen for your name during the sankalp. It is read near the start, so join on time.</li>
+                </ul>
+              </div>
+              <img src={IMG.namaste} alt="" width="550" height="640" loading="lazy" decoding="async" />
+            </article>
+            <article class="hw-sit-card hw-sit-card--satsang">
+              <div>
+                <div class="hw-tags"><span>Satsang</span><span>Sermon</span></div>
+                <h3>Headphones on, mic off, mind open</h3>
+                <ul>
+                  <li>Put on headphones so you catch every word, and keep your microphone muted.</li>
+                  <li>Sit comfortably, upright if you can. A notebook nearby is handy for a line you want to remember.</li>
+                  <li>Sing along softly when there is kirtan. Nobody else can hear you, so sing freely.</li>
+                </ul>
+              </div>
+              <img src={IMG.satsang} alt="" width="640" height="531" loading="lazy" decoding="async" />
+            </article>
+            <article class="hw-sit-card hw-sit-card--meditation">
+              <div>
+                <div class="hw-tags"><span>Meditation</span></div>
+                <h3>A quiet room, headphones, no interruptions</h3>
+                <ul>
+                  <li>Pick a room where you won't be disturbed for the session. Dim the lights and close the door.</li>
+                  <li>Wear headphones and mute your microphone. Turn on Do Not Disturb on your phone.</li>
+                  <li>Sit on a cushion or chair with your back straight; try not to lie down, it is easy to drift off.</li>
+                </ul>
+              </div>
+              <img src={IMG.meditation} alt="" width="640" height="461" loading="lazy" decoding="async" />
+            </article>
+          </div>
+          <p class="hw-sit-foot">Whatever the event, join a few minutes early. Settling in is part of the practice.</p>
+        </div>
+      </section>
 
-  <h2>Questions</h2>
-  <p><strong>Do I need to be present?</strong><br />No. The ritual is done in your name through the sankalp; watching live is your participation.</p>
-  <p><strong>What if I miss the live stream?</strong><br />Your sankalp was still performed, and the replay is available for 7 days.</p>
-  <p><strong>What is a gotra, and what if I don't know mine?</strong><br />It's your family lineage. If unknown, priests use "Kashyap" by custom.</p>
-  <p><strong>Can I include my family?</strong><br />Yes — add their names when you book.</p>
-  <p><strong>Will I get prasad?</strong><br />Choose it at checkout and we'll post it after the ritual.</p>
-  <p><strong>Are the priests real?</strong><br />Yes — verified, and you'll see them live at the altar.</p>
-  <p><strong>Do you do any "dark" or fierce rituals?</strong><br />No. We perform only positive, benefic pujas and havans.</p>
-  <p><strong>Do you offer aarti, darshan, astrology or yoga?</strong><br />Not yet. Right now we perform pujas and havans only.</p>
+      <!-- AFTER -->
+      <section class="hw-after hw-wrap" aria-labelledby="after-title">
+        <div class="hw-sec-head"><div><h2 id="after-title"><span aria-hidden="true">✽</span>After the event</h2></div></div>
+        <div class="hw-after-grid">
+          <article class="hw-after-card">
+            <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><rect x="21" y="29" width="58" height="40" rx="6" fill="#fff6e6"/><path d="m44 39 17 10-17 10Z" fill="#ad3028"/><path d="M38 79h24m-12-9v9"/></g></svg>
+            <h3>Download the video</h3>
+            <p>Every event you attended stays under My events. Download the full video to your phone and watch it again, or share it with family who missed it.</p>
+          </article>
+          <article class="hw-after-card">
+            <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/></g></svg>
+            <h3>Prasad at your door</h3>
+            <p>If you chose prasad for a havan or puja, it is packed the same day and couriered anywhere in India, or abroad by international courier. Track it from My events.</p>
+          </article>
+          <article class="hw-after-card">
+            <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/></g></svg>
+            <h3>Need a hand?</h3>
+            <p>Our <a href="/help">help centre</a> answers the common questions, or write to us at <b>support (@) saathum.com</b>. A person replies within a day.</p>
+          </article>
+        </div>
+      </section>
 
-  <div class="note">
-    Rituals are performed with devotion by verified priests. Benefits described are those
-    traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
+      <!-- PROMISE -->
+      <section class="hw-promise hw-wrap" aria-labelledby="promise-title">
+        <img src={IMG.elephant} alt="" width="1536" height="1024" loading="lazy" decoding="async" />
+        <div class="hw-promise-copy"><h2 id="promise-title">Only joy, only blessings.</h2><p>Every event we host is benefic. We never tell you something bad will happen if you don't book, and we make no promises about outcomes. You should leave lighter, not worried.</p></div>
+        <img class="hw-flip" src={IMG.elephant} alt="" width="1536" height="1024" loading="lazy" decoding="async" />
+      </section>
+
+      <!-- FAQ -->
+      <section class="hw-faq hw-wrap" aria-labelledby="faq-title">
+        <div class="hw-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Common questions</h2></div>
+        <div class="hw-faq-box">
+          <details open><summary>Do I need to be present for the whole havan or puja?</summary><p>No. The ritual is tied to you through the sankalp, so it is complete even if you step away. Watching live is your way of taking part, and the video is there afterwards.</p></details>
+          <details><summary>What if I miss the live stream?</summary><p>Your sankalp was still performed. Open My events and download the video whenever you like.</p></details>
+          <details><summary>What is a gotra, and what if I don't know mine?</summary><p>It is your family lineage. Ask an elder; if nobody knows, our priests use "Kashyap" by custom, exactly as a temple would. You can also leave it blank.</p></details>
+          <details><summary>Can my family join from another city?</summary><p>Yes. One booking gives you one live link, and anyone in your family can open it from wherever they are.</p></details>
+          <details><summary>Can I talk to the priest or speaker during the event?</summary><p>Microphones stay muted so the mantras and the talk are clear for everyone. For a havan or puja your sankalp is how you speak to the priest; for a satsang, questions can be sent in the side chat when the speaker opens it.</p></details>
+          <details><summary>Is the price on the card the final price?</summary><p>Cards show "starting from". At checkout you choose the extras you want (prasad delivery, dakshina, chadhava) and see the final amount, including GST, before you pay.</p></details>
+        </div>
+      </section>
+
+      <p class="hw-note">Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
   </div>
-</Content>
+</Base>
