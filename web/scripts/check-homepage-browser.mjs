@@ -112,7 +112,7 @@ try {
     assert.equal(await page.locator('.grand-elephant').count(), 2, name + ': organiser has two elephant artworks');
     assert(await page.locator('[data-folk-artwork="satsang"]').isVisible(), name + ': guru art visible');
     assert.equal(await page.locator('.grand-culture, .grand-intro').count(), 0, name + ': compact approved section order');
-    assert(await page.locator('.grand-belonging #joining').isVisible(), name + ': joining steps share the sage band');
+    assert(await page.locator('.grand-belonging #joining').isVisible(), name + ': joining steps share the how-it-works band');
     assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
     const footer = page.locator('footer');
     // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan footer: Child Safety, Payouts, Careers archived.
@@ -155,7 +155,7 @@ try {
       assert.equal(new Set(rows.categories).size, 1, name + ': all six categories occupy one row');
       assert.equal(new Set(rows.listings).size, 2, name + ': eight havan cards occupy two rows of four'); // SAATHUM-GUIDE-1
     }
-    if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': sage community strip remains compact');
+    if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': how-it-works strip remains compact');
     if (width >= 1920) {
       const heroWidth = geometry.hero.width;
       assert(heroWidth > 600, name + ': wide hero artwork is generously sized');

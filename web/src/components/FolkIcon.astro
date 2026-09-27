@@ -1,5 +1,5 @@
 ---
-interface Props { kind: 'puja' | 'aarti' | 'bhajan' | 'satsang' | 'festival' | 'yoga' | 'search' | 'ticket' | 'live'; }
+interface Props { kind: 'puja' | 'aarti' | 'bhajan' | 'satsang' | 'festival' | 'yoga' | 'search' | 'ticket' | 'live' | 'prasad'; }
 const { kind } = Astro.props;
 ---
 <svg class="folk-icon" viewBox="0 0 100 100" fill="none" aria-hidden="true">
@@ -14,5 +14,6 @@ const { kind } = Astro.props;
     {kind === 'search' && <><circle cx="44" cy="44" r="19" fill="#fff6e6"/><path d="m59 59 18 18M34 40c2-6 5-8 11-8"/></>}
     {kind === 'ticket' && <><path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/></>}
     {kind === 'live' && <><rect x="21" y="29" width="58" height="40" rx="6" fill="#fff6e6"/><path d="m44 39 17 10-17 10Z" fill="#ad3028"/><path d="M38 79h24m-12-9v9"/></>}
+    {kind === 'prasad' && <><path d="M22 50h56c-2 15-13 24-28 24S24 65 22 50Z" fill="#d87332"/><path d="M18 50h64M40 74l-3 6h26l-3-6"/><circle cx="38" cy="43" r="6" fill="#ef9e25"/><circle cx="50" cy="40" r="7" fill="#fff6e6"/><circle cx="62" cy="43" r="6" fill="#ef9e25"/><path d="M50 22c-5 5-5 9 0 12 5-3 5-7 0-12Z" fill="#ef9e25"/></>}
   </g>
 </svg>

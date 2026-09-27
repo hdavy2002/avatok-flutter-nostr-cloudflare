@@ -31,7 +31,7 @@ assert.match(html, /<title[^>]*>Join Live Havans &amp; Pujas Online \| Saa Thum/
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Sab ki aahuti, sab ka ashirwad\./, 'Brief H1');
 assert.match(visibleText, /LIVE HAVANS\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*OPEN TO ALL/, 'Hero eyebrow');
-for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'Done properly, even from far away.', 'Only joy, only blessings.']) {
+for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'HOW DOES IT WORK?', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
 assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking design identity');

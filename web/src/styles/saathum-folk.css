@@ -81,13 +81,13 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-rating small { color: #68746e; font-size: 11px; font-weight: 700; }
 .folk-site[data-design="saathum-reference-v5"] .grand-booking-link { padding: 8px 12px; border-radius: 8px; background: var(--grand-red); color: #fff; font-size: 14px; font-weight: 900; text-decoration: none; }
 .folk-site[data-design="saathum-reference-v5"] .grand-editorial-note { font-size: 13px; text-align: center; margin-top: 12px; color: #fffaf0; }
-.folk-site[data-design="saathum-reference-v5"] .grand-belonging { background: var(--grand-sage); border-block: 1px solid #c9d2bd; }
-.folk-site[data-design="saathum-reference-v5"] .grand-belonging-inner { max-width: 1840px; margin: auto; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, .88fr); gap: 22px; align-items: center; padding: 0 var(--grand-gutter); }
+.folk-site[data-design="saathum-reference-v5"] .grand-belonging { background: #dfe2f3; border-block: 1px solid #b9bfe0; } /* [HOME-HOWITWORKS-1] soft neel (indigo) so the saffron/pink/green sticker pops */
+.folk-site[data-design="saathum-reference-v5"] .grand-belonging-inner { max-width: 1840px; margin: auto; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .75fr) minmax(0, 1.15fr); gap: 22px; align-items: center; padding: 0 var(--grand-gutter); }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-art { align-self: end; min-width: 0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-art .folk-artwork { filter: drop-shadow(0 7px 5px #17343c26); }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-art img { display: block; width: 100%; height: auto; max-height: 320px; object-fit: contain; object-position: center bottom; }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-copy { padding-block: 24px; }
-.folk-site[data-design="saathum-reference-v5"] .grand-belonging-copy h2 { font-size: clamp(24px, 2.1vw, 38px); }
+.folk-site[data-design="saathum-reference-v5"] .grand-belonging-copy h2 { font-size: clamp(24px, 2.1vw, 38px); letter-spacing: .06em; word-spacing: .2em; line-height: 1.15; }
 .folk-site[data-design="saathum-reference-v5"] .grand-belonging-copy p { margin-top: 13px; font-size: 17px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-joining { min-width: 0; padding-block: 24px; scroll-margin-top: 90px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-step-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
@@ -97,7 +97,18 @@
 .folk-site[data-design="saathum-reference-v5"] .grand-step-grid a:hover .grand-step-label { text-decoration: underline; }
 .folk-site[data-design="saathum-reference-v5"] .grand-step-grid svg { width: 62px; height: 62px; padding: 13px; border: 1px solid #bda66f; border-radius: 50%; color: var(--grand-teal); }
 .folk-site[data-design="saathum-reference-v5"] .grand-step-number { font-size: 14px; margin-top: 7px; line-height: 1.15; }
-.folk-site[data-design="saathum-reference-v5"] .grand-step-label { font-size: 17px; font-weight: 800; white-space: nowrap; }
+.folk-site[data-design="saathum-reference-v5"] .grand-step-label { font-size: 17px; font-weight: 800; line-height: 1.2; text-wrap: balance; }
+.folk-site[data-design="saathum-reference-v5"] .grand-step-tip { position: absolute; left: 50%; bottom: calc(100% + 10px); z-index: 5; width: max-content; max-width: 230px; padding: 10px 13px; border-radius: 10px; background: #17343c; color: #fffaf0; font-size: 14px; font-weight: 600; line-height: 1.4; text-align: center; box-shadow: 0 8px 18px #17343c40; opacity: 0; visibility: hidden; transform: translate(-50%, 4px); transition: opacity .15s, transform .15s, visibility .15s; pointer-events: none; }
+.folk-site[data-design="saathum-reference-v5"] .grand-step-tip::after { content: ''; position: absolute; top: 100%; left: 50%; margin-left: -7px; border: 7px solid transparent; border-top-color: #17343c; }
+.folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:hover .grand-step-tip, .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:focus-within .grand-step-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+@media (max-width: 700px) {
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:first-child .grand-step-tip { left: 0; transform: translate(0, 4px); }
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:first-child:is(:hover, :focus-within) .grand-step-tip { transform: translate(0, 0); }
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:first-child .grand-step-tip::after { left: 40px; }
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:last-child .grand-step-tip { left: auto; right: 0; transform: translate(0, 4px); }
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:last-child:is(:hover, :focus-within) .grand-step-tip { transform: translate(0, 0); }
+  .folk-site[data-design="saathum-reference-v5"] .grand-step-grid li:last-child .grand-step-tip::after { left: auto; right: 33px; }
+}
 .folk-site[data-design="saathum-reference-v5"] .grand-organise { max-width: 1840px; margin: auto; padding: 12px var(--grand-gutter); display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 2.1fr) minmax(0, .7fr); align-items: center; gap: 22px; }
 .folk-site[data-design="saathum-reference-v5"] .grand-elephant { min-width: 0; }
 .folk-site[data-design="saathum-reference-v5"] .grand-elephant img { display: block; width: 100%; max-width: 280px; height: auto; margin: auto; filter: drop-shadow(0 5px 4px #17343c26); }

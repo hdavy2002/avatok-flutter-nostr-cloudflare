@@ -81,6 +81,23 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
       </section>
       <div class="grand-divider grand-divider--after-experiences" aria-hidden="true"></div>
 
+      <!-- [HOME-HOWITWORKS-1 2026-09-27] "How does it work?" strip — sits above Book now,
+           framed by the gold ribbon on both sides. Tooltips are CSS-only (hover + keyboard focus). -->
+      <section class="grand-belonging" id="benefits" aria-labelledby="grand-benefits-title" data-home-section="benefits">
+        <div class="grand-belonging-inner">
+          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="A woman teacher seated with women in prayer, in colourful Indian folk art." /></div>
+          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">HOW DOES IT WORK?</h2></div>
+          <div class="grand-joining" id="joining" data-home-section="joining">
+            <ol class="grand-step-grid" aria-label="How it works, in three steps">
+              <li><a href="/marketplace" data-home-cta="steps-book" aria-describedby="step-tip-book"><FolkIcon kind="ticket" /><span class="grand-step-number">01</span><span class="grand-step-label">Book an event</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-book">Pay using Stripe for international and UPI for India.</span></li>
+              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch" aria-describedby="step-tip-watch"><FolkIcon kind="live" /><span class="grand-step-number">02</span><span class="grand-step-label">Watch it live</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-watch">Watch it live on our app, or sign in to view in your browser.</span></li>
+              <li><a href="/help/booking-and-paying/sankalp-replay-and-prasad" data-home-cta="steps-prasad" aria-describedby="step-tip-prasad"><FolkIcon kind="prasad" /><span class="grand-step-number">03</span><span class="grand-step-label">Get prasad delivered</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-prasad">Prasad is optional, for a havan or puja, and available pan-India for now.</span></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
+
       <!-- NOTE FOR AI: [SAATHUM-BOOKNOW-1] up to 4 real bookable listings (live/1:1) from /api/explore.
            Renders NOTHING when none are listed. Add ?booknow=preview to see sample cards. -->
       <BookNowShelf client:idle guides={bookNowGuides} samples={bookNowSamples} exploreHref="/marketplace" />
@@ -111,20 +128,6 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
         </div>
       </section>
 
-      <section class="grand-belonging" id="benefits" aria-labelledby="grand-benefits-title" data-home-section="benefits">
-        <div class="grand-belonging-inner">
-          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="A woman teacher seated with women in prayer, in colourful Indian folk art." /></div>
-          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">Done properly,<br />even from far away.</h2><p>Your name spoken at the altar, wherever you are.</p></div>
-          <div class="grand-joining" id="joining" data-home-section="joining">
-            <h2 class="grand-visually-hidden">Performed for you, in three simple steps.</h2>
-            <ol class="grand-step-grid" aria-label="Performed for you, in three simple steps">
-              <li><a href="/marketplace" data-home-cta="steps-choose"><FolkIcon kind="search" /><span class="grand-step-number">01</span><span class="grand-step-label">Choose</span></a></li>
-              <li><a href="/help/booking-and-paying/find-a-creator-or-show" data-home-cta="steps-sankalp"><FolkIcon kind="ticket" /><span class="grand-step-number">02</span><span class="grand-step-label">Sankalp</span></a></li>
-              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch"><FolkIcon kind="live" /><span class="grand-step-number">03</span><span class="grand-step-label">Watch live</span></a></li>
-            </ol>
-          </div>
-        </div>
-      </section>
 
       <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
         <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
