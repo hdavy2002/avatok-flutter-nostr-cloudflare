@@ -217,3 +217,62 @@
 @media (max-width: 600px) {
   .folk-site[data-design="saathum-reference-v5"] .grand-listing-grid--havans { grid-template-columns: 1fr; }
 }
+
+/* [SAATHUM-PATRIKA-BORDERS 2026-09-27] OWNER REQUEST: the shaadi-patrika border
+   strip (same art as .grand-divider) also frames the card-listing and article
+   sections, and the marketplace search hero gets breathing room before its
+   border so it does not look squeezed. Strips are ::after pseudo-elements so
+   sections that render nothing (empty Book now shelf, empty rails) leave no
+   orphan border. Homepage: strip at the BOTTOM of each section (the intention
+   band's divider already sits on top). Marketplace: strip at the TOP of each
+   section (the hero's divider sits above the tabs; the divider after All events
+   closes the run). */
+.folk-site[data-design="saathum-reference-v5"] { --patrika-h: 25px; }
+.folk-site[data-design="saathum-reference-v5"] #book-now.bn-section::after,
+.folk-site[data-design="saathum-reference-v5"] .grand-moments[data-home-section="havans"]::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-rail::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-deities::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-intent::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-two::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-all::after {
+  content: ""; position: absolute; left: 0; right: 0; z-index: 1; pointer-events: none;
+  height: var(--patrika-h); box-sizing: border-box;
+  background-color: var(--grand-gold); background-image: var(--folk-border-url, none); background-repeat: repeat-x; background-position: center; background-size: auto 76px;
+  border-block: 1px solid var(--grand-gold);
+}
+/* The intention band is width-capped; its strip bleeds full width like its ::before background. */
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-intent::after { left: 50%; right: auto; width: 100vw; transform: translateX(-50%); }
+/* Homepage — bottom strips */
+.folk-site[data-design="saathum-reference-v5"] #book-now.bn-section { border-bottom: 0; padding-bottom: calc(44px + var(--patrika-h)); }
+.folk-site[data-design="saathum-reference-v5"] #book-now.bn-section::after { bottom: 0; }
+.folk-site[data-design="saathum-reference-v5"] .grand-moments[data-home-section="havans"] { position: relative; padding-bottom: calc(36px + var(--patrika-h)); }
+.folk-site[data-design="saathum-reference-v5"] .grand-moments[data-home-section="havans"]::after { bottom: 0; }
+/* Marketplace — room under the search hero, then top strips */
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-hero-inner { padding-bottom: 60px; }
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-rail,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-deities,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-two,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-all { position: relative; padding-top: calc(34px + var(--patrika-h)); }
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-intent { padding-top: calc(32px + var(--patrika-h)); }
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-rail::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-deities::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-intent::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-two::after,
+.folk-site[data-design="saathum-reference-v5"] .mk .mk-all::after { top: 0; }
+@media (max-width: 600px) {
+  .folk-site[data-design="saathum-reference-v5"] { --patrika-h: 18px; }
+  .folk-site[data-design="saathum-reference-v5"] #book-now.bn-section::after,
+  .folk-site[data-design="saathum-reference-v5"] .grand-moments[data-home-section="havans"]::after,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-rail::after,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-deities::after,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-intent::after,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-two::after,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-all::after { background-size: auto 60px; }
+  .folk-site[data-design="saathum-reference-v5"] #book-now.bn-section { padding-bottom: calc(34px + var(--patrika-h)); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-hero-inner { padding-bottom: 44px; }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-rail,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-deities,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-two,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-all,
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-intent { padding-top: calc(26px + var(--patrika-h)); }
+}
