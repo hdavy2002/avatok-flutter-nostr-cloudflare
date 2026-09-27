@@ -33,4 +33,8 @@ interface Env {
   BREVO_LIST_ID?: string;
   /** "cloudflare_then_brevo" (default when CF_EMAIL_API_TOKEN is set) | "brevo" | "cloudflare". */
   EMAIL_PROVIDER?: string;
+  /** [WEB-CONTACT-GUARD-1] Pages secret. Cloudflare Turnstile secret for widget "saathum-contact". */
+  TURNSTILE_SECRET_KEY?: string;
+  /** [WEB-CONTACT-GUARD-1] Pages secret. HMAC key for the /api/contact maths question. */
+  CONTACT_CAPTCHA_SECRET?: string;
 }

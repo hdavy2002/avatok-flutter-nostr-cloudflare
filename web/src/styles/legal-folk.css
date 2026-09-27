@@ -121,6 +121,8 @@
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cform textarea { resize: vertical; }
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cform .lg-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cform .lg-btn { align-self: flex-start; }
+/* [WEB-CONTACT-GUARD-1] reserve Turnstile's height so the Send button doesn't jump when it renders */
+.folk-site[data-design="saathum-reference-v5"] .lg .lg-cform .cf-turnstile { min-height: 65px; }
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cstatus { font-weight: 800; margin: 0; min-height: 1.2em; }
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cstatus.ok { color: #176b43; }
 .folk-site[data-design="saathum-reference-v5"] .lg .lg-cstatus.err { color: #c82c25; }
