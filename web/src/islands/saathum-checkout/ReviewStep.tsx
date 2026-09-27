@@ -109,7 +109,7 @@ export function ReviewStep({
       )}
 
       {quoteError && <p className="sthc-err" role="alert">{quoteError}</p>}
-      {!quote && !quoteError && <p style={{ font: '700 14px Nunito, sans-serif', color: 'var(--sub)' }}>Calculating…</p>}
+      {!quote && !quoteError && <p style={{ font: '700 17px Nunito, sans-serif', color: 'var(--sub)' }}>Calculating…</p>}
       {quote && (
         <div style={{ marginBottom: 12 }}>
           {quote.lines.map((line, i) => (

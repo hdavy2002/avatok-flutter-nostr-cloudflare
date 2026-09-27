@@ -142,3 +142,81 @@ select.sthc-in { appearance: auto; }
   .sthc-hero { aspect-ratio: 4 / 3; border-radius: 18px; border-width: 4px; margin-bottom: 14px; }
   .sthc-hero-info { left: 14px; right: 14px; bottom: 12px; }
 }
+
+/* [SAATHUM-CHECKOUT-READABLE 2026-09-27] OWNER: "this full booking pipeline has
+ * super tiny fonts — increase them for all view sizes." Every text size in the
+ * pipeline (strip, banner, all five steps, lightbox) is raised here in one
+ * place, overriding the originals above; same fonts, weights and colours.
+ * Inputs stay ≥16px so iOS never zooms on focus. */
+.sthc-strip-info h4 { font-size: 18px; }
+.sthc-strip-info p { font-size: 14px; }
+.sthc-strip-back { font-size: 15px; }
+.sthc-hero-back { font-size: 15px; padding: 8px 14px; }
+.sthc-hero-kicker { font-size: 14px; }
+.sthc-hero-info p { font-size: 17px; }
+
+.sthc-card { padding: 26px; }
+.sthc-kick { font-size: 13px; }
+.sthc-h3 { font-size: 28px; }
+.sthc-dots i { height: 6px; }
+.sthc-fld { margin-bottom: 16px; }
+.sthc-fld label { font-size: 16px; margin-bottom: 6px; }
+.sthc-fld label em { font-size: 14px; }
+.sthc-in { font-size: 17px; padding: 13px 14px; }
+.sthc-hint { font-size: 15px; padding: 12px 14px; }
+.sthc-err { font-size: 15px; }
+.sthc-btn { font-size: 18px; padding: 16px; }
+.sthc-btn--link { font-size: 15px; }
+.sthc-back { font-size: 15px; margin-bottom: 12px; }
+
+.sthc-item { gap: 14px; padding: 10px; }
+.sthc-item .sthc-im { width: 84px; height: 84px; border-radius: 12px; font-size: 30px; }
+.sthc-item b { font-size: 17px; }
+.sthc-item small { font-size: 15px; }
+.sthc-qty { font-size: 18px; gap: 8px; }
+.sthc-qty button { width: 38px; height: 38px; font-size: 20px; border-radius: 10px; }
+.sthc-qty span { min-width: 22px; }
+
+.sthc-chips { gap: 8px; }
+.sthc-chips button { font-size: 16px; padding: 9px 16px; }
+.sthc-tog { font-size: 16px; padding: 12px 14px; }
+.sthc-row { font-size: 17px; padding: 10px 0; }
+.sthc-row.tot { font-size: 21px; }
+.sthc-check { font-size: 16px; }
+.sthc-check input { width: 20px; height: 20px; margin-top: 2px; }
+
+.sthc-apps a { font-size: 15px; padding: 10px 14px; }
+.sthc-apps img { width: 24px; height: 24px; }
+.sthc-countdown { font-size: 16px; }
+.sthc-utr-in { font-size: 22px; }
+.sthc-qr-wrap img { width: 240px; height: 240px; }
+
+.sthc-done .sthc-big { font-size: 28px; }
+.sthc-done p { font-size: 17px; }
+.sthc-dl span, .sthc-dl a { font-size: 16px; padding: 13px; }
+
+.sthc-family-chip { font-size: 16px; padding: 7px 12px; }
+.sthc-family-add button { font-size: 16px; padding: 0 18px; }
+
+/* Chadhava thumbnail = zoom button */
+.sthc-im--zoom { position: relative; padding: 0; border: 0; cursor: zoom-in; }
+.sthc-im--zoom:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+.sthc-im-zoom { position: absolute; right: 4px; bottom: 4px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #fffaf0e8; color: var(--ink); font: 900 14px/1 Nunito, sans-serif; box-shadow: 0 1px 4px #0003; }
+
+/* Chadhava lightbox */
+.sthc-lb { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: #1a0d07cc; }
+.sthc-lb-box { position: relative; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--card, #fffdf8); border: 6px solid #fff; border-radius: 20px; box-shadow: 0 24px 60px #0008; font-family: Nunito, sans-serif; }
+.sthc-lb-box img { display: block; width: 100%; max-height: 70vh; object-fit: contain; background: #f1e2c4; }
+.sthc-lb-x { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: #fff; color: #5a1f14; font: 900 28px/1 Nunito, sans-serif; cursor: pointer; box-shadow: 0 2px 8px #0004; z-index: 1; }
+.sthc-lb-cap { display: flex; justify-content: space-between; gap: 12px; padding: 14px 18px 4px; font-size: 19px; color: #173f3f; }
+.sthc-lb-cap span { color: #5a1f14; font-weight: 900; }
+.sthc-lb-box p { margin: 0; padding: 4px 18px 18px; font: 700 16px/1.5 Nunito, sans-serif; color: #3c4a4c; }
+
+@media (max-width: 520px) {
+  .sthc-card { padding: 18px; }
+  .sthc-h3 { font-size: 24px; }
+  .sthc-item .sthc-im { width: 72px; height: 72px; }
+  .sthc-item { flex-wrap: nowrap; }
+  .sthc-qty button { width: 36px; height: 36px; }
+  .sthc-two-col { grid-template-columns: 1fr; }
+}

@@ -16,12 +16,36 @@ const INDIAN_STATES = [
   'Ladakh', 'Lakshadweep', 'Puducherry',
 ];
 
-function ChadhavaImage({ item }: { item: ChadhavaItem }) {
+// [SAATHUM-CHECKOUT-READABLE 2026-09-27] Owner: "the pictures of the chadhava
+// are too tiny, I can hardly see what it is". Thumb is bigger by default and
+// is a button — tapping it opens a lightbox with the full image and an X.
+function ChadhavaImage({ item, onZoom }: { item: ChadhavaItem; onZoom: (item: ChadhavaItem) => void }) {
   const [broken, setBroken] = useState(false);
   if (!item.image_url || broken) return <div className="sthc-im">🪔</div>;
   return (
-    <div className="sthc-im">
+    <button type="button" className="sthc-im sthc-im--zoom" onClick={() => onZoom(item)} aria-label={`See a bigger picture of ${item.title}`}>
       <img src={item.image_url} alt="" onError={() => setBroken(true)} />
+      <span className="sthc-im-zoom" aria-hidden="true">⤢</span>
+    </button>
+  );
+}
+
+function ChadhavaLightbox({ item, onClose }: { item: ChadhavaItem; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+  return (
+    <div className="sthc-lb" role="dialog" aria-modal="true" aria-label={item.title} onClick={onClose}>
+      <div className="sthc-lb-box" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="sthc-lb-x" onClick={onClose} aria-label="Close" autoFocus>×</button>
+        <img src={item.image_url ?? ''} alt={item.title} />
+        <div className="sthc-lb-cap"><b>{item.title}</b><span>₹{item.price_rupees}</span></div>
+        {item.description && <p>{item.description}</p>}
+      </div>
     </div>
   );
 }
@@ -98,6 +122,8 @@ export function OfferingsStep({
     return Object.keys(errs).length === 0;
   }
 
+  const [zoom, setZoom] = useState<ChadhavaItem | null>(null);
+
   function submit() {
     if (state.prasad && !validateAddress()) return;
     onContinue();
@@ -114,7 +140,7 @@ export function OfferingsStep({
 
       {chadhavaCatalog.map((item) => (
         <div className="sthc-item" key={item.id}>
-          <ChadhavaImage item={item} />
+          <ChadhavaImage item={item} onZoom={(it) => { setZoom(it); capture('saathum_chadhava_zoom', { chadhava_id: it.id }); }} />
           <div>
             <b>{item.title}</b>
             <small>₹{item.price_rupees}</small>
@@ -126,6 +152,8 @@ export function OfferingsStep({
           </div>
         </div>
       ))}
+
+      {zoom && <ChadhavaLightbox item={zoom} onClose={() => setZoom(null)} />}
 
       <div className="sthc-fld" style={{ marginTop: 10 }}>
         <label>Dakshina for the priest <em>Optional</em></label>
