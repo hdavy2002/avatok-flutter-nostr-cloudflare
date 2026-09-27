@@ -49,16 +49,9 @@ const ROUTES: Array<[string, string, string, string?]> = [
   // [SHV2-S8 2026-09-21] AC-12: /organisers added (Spec A5/B4).
   ['/organisers', 'weekly', '0.8'],
   ['/about', 'monthly', '0.7'],
-  ['/blog', 'weekly', '0.7'],
   // [SAATHUM-GUIDE-1 2026-09-25] Puja & Havan Guide replaced /ideas (now a 301).
   ['/rituals', 'weekly', '0.9'],
   ...rituals.map(ritual => [ritual.href, 'monthly', '0.7'] as [string, string, string]),
-  ['/blog/earn-from-day-one', 'monthly', '0.7'],
-  ['/blog/real-people-safety', 'monthly', '0.6'],
-  ['/blog/ai-in-every-chat', 'monthly', '0.6'],
-  ['/blog/ai-voice-agents', 'monthly', '0.6'],
-  ['/blog/never-miss-a-call', 'monthly', '0.6'],
-  ['/blog/your-private-number', 'monthly', '0.6'],
   ['/tokens', 'monthly', '0.6'],
   ['/pricing-fees', 'monthly', '0.6'],
   ['/payouts', 'monthly', '0.6'],

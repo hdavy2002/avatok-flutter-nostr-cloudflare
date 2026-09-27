@@ -1,0 +1,46 @@
+---
+// [WEB-BLOG-RITUALS-1 2026-09-27] OWNER DECISION: the old blog is gone.
+//   /blog            -> 301 to /rituals (the Puja & Havan Guide is the new blog;
+//                       the header/footer "Blog" item links there — homeNavigation.ts)
+//   /blog/<anything> -> 410 Gone. Every old article (never-miss-a-call,
+//                       ai-in-every-chat, your-private-number, creator-ideas/*,
+//                       global-creator-ideas/*, …) was DELETED, not archived.
+// 410 (not 404, not a 301) is deliberate: it tells Google the page was removed
+// on purpose so it drops out of the index fastest, and it does NOT tell Google
+// the old posts and the new guides are the same content. Do not add redirects
+// for old /blog slugs in public/_redirects — that file wins over this route.
+export const prerender = false;
+
+const slug = Astro.params.slug ?? '';
+if (slug === '') {
+  return Astro.redirect('/rituals', 301);
+}
+
+const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Page removed · Saa Thum</title>
+<link rel="icon" href="/assets/saathum-logo/favicon-32.png" type="image/png" sizes="32x32">
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fdf1d3;color:#2b1a12;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
+  main{max-width:520px;text-align:center}
+  h1{font-size:28px;line-height:1.2;margin:0 0 12px}
+  p{font-size:18px;line-height:1.5;margin:0 0 24px}
+  a{display:inline-block;background:#ad3028;color:#fdf1d3;text-decoration:none;font-weight:800;font-size:18px;padding:14px 24px;border-radius:20px}
+</style></head>
+<body><main>
+<h1>This page has been removed</h1>
+<p>Read our Puja &amp; Havan Guide instead — the meaning, benefits and history of every ritual we perform.</p>
+<a href="/rituals">Go to the Blog</a>
+</main></body></html>`;
+
+return new Response(html, {
+  status: 410,
+  headers: {
+    'content-type': 'text/html; charset=utf-8',
+    'x-robots-tag': 'noindex',
+    'cache-control': 'public, max-age=3600',
+  },
+});
+---

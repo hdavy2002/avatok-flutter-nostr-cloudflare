@@ -22,14 +22,8 @@
 /india                        /              301
 /india/                       /              301
 
-# [WEB-GATEWAY-RESTORE-TEXT] Creator-idea guides unpublished as unsafe
-# (companionship/listening/loneliness sessions, or styling/draping sessions).
-/blog/creator-ideas/dil-ki-baat            /rituals   301
-/blog/creator-ideas/nri-homesick-adda      /rituals   301
-/blog/creator-ideas/saree-draping-help     /rituals   301
-/blog/creator-ideas/style-your-own-wardrobe /rituals  301
-/blog/creator-ideas/saree-draping-circle   /rituals   301
-/blog/creator-ideas/shaam-ka-adda          /rituals   301
+# [WEB-BLOG-RITUALS-1 2026-09-27] The /blog/creator-ideas/* redirects that sat here
+# were removed: every old /blog URL now answers 410 Gone from src/pages/blog/[...slug].astro.
 
 # [SAATHUM-ENTITY-1 2026-09-25] Owner removed these pages; files kept (archived).
 /tokens / 301

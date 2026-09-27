@@ -33,7 +33,7 @@ export default defineConfig({
     // prerendered /rituals/<slug> article went to the Function — which 404s.
     // One wildcard keeps all 55 guide articles on the static asset path.
     // Keep this; check-homepage.mjs asserts it.
-    routes: { extend: { exclude: [{ pattern: '/rituals/*' }, { pattern: '/blog/creator-ideas/*' }] } }, // /blog/creator-ideas/* is all prerendered (archived guides) — one wildcard frees ~85 rules
+    routes: { extend: { exclude: [{ pattern: '/rituals/*' }] } }, // [WEB-BLOG-RITUALS-1 2026-09-27] /blog/creator-ideas/* exclude removed: those guides were deleted and /blog/* is now an SSR 410 route, so it must reach the worker
   }),
   integrations: [
     react(),

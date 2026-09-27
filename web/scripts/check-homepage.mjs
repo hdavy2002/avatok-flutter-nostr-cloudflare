@@ -88,15 +88,15 @@ assert.match(html, /class="grand-hero-image/, 'Grand hero uses responsive image 
 assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'), 'Exact owner footer line');
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [WEB-NAV-HOME-1 2026-09-27] Header menu is Home (/) + Explore (/marketplace) + How it works
-// + [WEB-HIW-2 2026-09-27] Help centre (/help).
-for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Help centre','/help']]) {
+// + [WEB-HIW-2 2026-09-27] Help centre (/help) + [WEB-BLOG-RITUALS-1] Blog (/rituals).
+for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Blog','/rituals'],['Help centre','/help']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/help','/about','/contact','/terms','/privacy','/cookies','/refunds']) {
+for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/rituals','/help','/about','/contact','/terms','/privacy','/cookies','/refunds']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
 for (const href of ['/grievance','/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
@@ -189,35 +189,10 @@ for (const image of globalIdeas.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\
 }
 assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
 assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
-const globalLinks = [...globalIdeas.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
-assert.equal(new Set(globalLinks).size, 8, 'Eight distinct global guides');
-const globalImageHashes = new Set();
-for (const href of globalLinks) {
- const slug = href.split('/').filter(Boolean).at(-1);
- const page = normalizeBuiltImages(readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8'), { root });
- assert.equal((page.match(/<h1[ >]/g) || []).length, 1, 'One guide heading: ' + slug);
- assert.equal((page.match(/<header\b/g) || []).length, 1, 'One guide header: ' + slug);
- assert.equal((page.match(/<footer\b/g) || []).length, 1, 'One guide footer: ' + slug);
- assert(page.includes('data-global-guide="' + slug + '"'), 'Distinct global guide identity: ' + slug);
- assert.match(page, /BlogPosting/, 'Global guide structured data: ' + slug);
- const asset = '/assets/global-original/ideas-' + slug + '.png';
- assert(globalIdeas.includes(asset) && page.includes(asset), 'Guide artwork in catalog and article: ' + slug);
- const hash = createHash('sha256').update(readFileSync(resolve(root, asset.slice(1)))).digest('hex');
- assert(!globalImageHashes.has(hash), 'Each idea needs its own artwork: ' + slug);
- globalImageHashes.add(hash);
- assert.match(page, /href="\/global-ideas/, 'Guide links back to catalog');
-}
-
-// Owner-approved pixels must remain literal crops, not regenerated lookalikes.
-const originalIdeas = resolve(root, 'assets/global-original/ideas-source.png');
-const cropEdges = [0, 396, 772, 1140, 1536];
-for (const [index, href] of globalLinks.entries()) {
- const slug = href.split('/').filter(Boolean).at(-1);
- const column = index % 4;
- const expected = await sharp(originalIdeas).extract({left:cropEdges[column], top:index < 4 ? 228 : 536, width:cropEdges[column + 1] - cropEdges[column], height:index < 4 ? 308 : 320}).removeAlpha().raw().toBuffer();
- const actual = await sharp(resolve(root, 'assets/global-original/ideas-' + slug + '.png')).removeAlpha().raw().toBuffer();
- assert(expected.equals(actual), 'Idea preserves every original pixel: ' + slug);
-}
+// [WEB-BLOG-RITUALS-1 2026-09-27] The eight /blog/global-creator-ideas/* articles were
+// DELETED by owner decision (every old /blog URL now answers 410 Gone), so the
+// per-guide page and crop checks that stood here were removed. The archived
+// /global-ideas catalog checks above and the crop-manifest checks below remain.
 for (const page of [globalIdeas]) {
  for (const image of page.matchAll(/<img\b[^>]*src="(\/assets\/global-original\/[^\"]+)"/g)) {
   assert(existsSync(resolve(root, image[1].slice(1))), 'Original image resolves: ' + image[1]);

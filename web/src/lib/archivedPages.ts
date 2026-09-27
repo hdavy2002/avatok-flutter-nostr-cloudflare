@@ -37,7 +37,9 @@ export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason
   { path: '/ideas', label: 'Creator ideas', reason: 'creator earning ideas' },
   { path: '/global-ideas', label: 'Global creator ideas', reason: 'creator earning ideas' },
   { path: '/pricing', label: 'Creator pricing', reason: 'creator plans' },
-  { path: '/blog', label: 'Blog (all posts)', reason: 'creator/earning posts', prefix: true },
+  // [WEB-BLOG-RITUALS-1 2026-09-27] /blog removed from the archive: the old posts were
+  // DELETED by owner decision; /blog now 301s to /rituals and old posts answer 410
+  // (src/pages/blog/[...slug].astro).
 ];
 
 export const ARCHIVED_PATHS: ReadonlySet<string> = new Set(ARCHIVED_PAGES.map((p) => p.path));
