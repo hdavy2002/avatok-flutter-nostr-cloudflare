@@ -41,35 +41,24 @@ export const prerender = true;
 const SITE = 'https://saathum.com';
 
 /** [path, changefreq, priority] */
+// [WEB-SEO-REBRAND-1 2026-09-27] Rebuilt from a scan of every page on the live
+// site: ONLY the pages that answer 200 AND carry robots "index". Archived,
+// redirected, noindex and 410 pages are gone from this list (the old creator/
+// wallet/legal-for-sellers rows were removed rather than left to the archive
+// filter). Ritual guides use the trailing-slash URL — that is the one Cloudflare
+// Pages serves with 200 (see canonicalUrl in lib/seo/policy.ts).
 const ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
+  ['/rituals/', 'weekly', '0.9'],
+  ...rituals.map(ritual => [ritual.href, 'monthly', '0.8'] as [string, string, string]),
   ['/how-it-works', 'monthly', '0.8'],
-  ['/prohibited-services', 'yearly', '0.4'],
-  // [SHV2-S8 2026-09-21] AC-12: /organisers added (Spec A5/B4).
-  ['/organisers', 'weekly', '0.8'],
-  ['/about', 'monthly', '0.7'],
-  // [SAATHUM-GUIDE-1 2026-09-25] Puja & Havan Guide replaced /ideas (now a 301).
-  ['/rituals', 'weekly', '0.9'],
-  ...rituals.map(ritual => [ritual.href, 'monthly', '0.7'] as [string, string, string]),
-  ['/tokens', 'monthly', '0.6'],
-  ['/pricing-fees', 'monthly', '0.6'],
-  ['/payouts', 'monthly', '0.6'],
-  ['/refunds', 'monthly', '0.4'],
-  ['/community-guidelines', 'monthly', '0.5'],
-  ['/child-safety', 'monthly', '0.5'],
-  ['/recording', 'monthly', '0.4'],
-  ['/careers', 'monthly', '0.5'],
+  ['/about', 'monthly', '0.8'],
   ['/contact', 'monthly', '0.5'],
-  ['/grievance', 'yearly', '0.3'],
+  ['/refunds', 'monthly', '0.5'],
   ['/privacy', 'yearly', '0.3'],
   ['/terms', 'yearly', '0.3'],
-  ['/acceptable-use', 'yearly', '0.3'],
-  ['/marketplace-terms', 'yearly', '0.3'],
-  ['/consultation-terms', 'yearly', '0.3'],
   ['/cookies', 'yearly', '0.3'],
-  ['/dmca', 'yearly', '0.3'],
-  ['/biometric-retention', 'yearly', '0.3'],
 ];
 
 export const GET: APIRoute = async () => {

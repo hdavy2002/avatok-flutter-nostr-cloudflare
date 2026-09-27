@@ -9,9 +9,11 @@
 // comment above Base.astro's `orgLd` ([WEB-SEO-1]/[WEB-SEO-2]) — read it
 // before changing a value, not just the field's name.
 //
-// The legal entity behind the brand is Saa Thum, a
-// domestic Delaware corporation. The public registered-agent address is used
-// below because it is the address returned by Delaware's entity search.
+// [WEB-SEO-REBRAND-1 2026-09-27] OWNER DECISION: Saa Thum is "a small team in
+// West Andheri, Mumbai" (the wording on /about). No company name is published
+// and NO foreign entity or address may appear anywhere on saathum.com — the old
+// Delaware values that sat here were removed. When an Indian company is actually
+// registered, set legalName and the registered office here.
 //
 // `sameAs` must only list profiles that resolve today. The Play listing is
 // Closed Alpha and returns 404 to the public, so it is deliberately absent —
@@ -66,7 +68,7 @@ export interface OrgConstants {
   /** The brand name. This is the Organization's `name` — see NAMING RULE above. */
   name: string;
   alternateNames: string[];
-  /** Registered legal name returned by the Delaware entity search. */
+  /** Registered legal name — null until an Indian company is registered. */
   legalName: string | null;
   url: string;
   logo: OrgLogo;
@@ -89,7 +91,7 @@ export interface OrgConstants {
 
 export const ORG: OrgConstants = {
   name: 'Saa Thum',
-  alternateNames: ['Saathum.com'],
+  alternateNames: ['Saathum', 'saathum.com', 'सा थम'],
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
   url: 'https://saathum.com/',
@@ -100,8 +102,9 @@ export const ORG: OrgConstants = {
     height: 512,
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
+  // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.
   description:
-    'Saa Thum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, watched live, with prasad sent to your door.',
+    'Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai. Temple priests perform havans, pujas, satsangs and meditations that families in India and around the world join live, with sankalp in your name and gotra, a video to download afterwards, and prasad sent by courier.',
   slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',
@@ -112,16 +115,18 @@ export const ORG: OrgConstants = {
   // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md).
   email: 'support@saathum.com',
   address: {
-    locality: 'Newark',
-    region: 'Delaware',
-    country: 'US',
-    street: '131 Continental Drive, Suite 305',
-    postalCode: '19713',
+    locality: 'Mumbai',
+    region: 'Maharashtra',
+    country: 'IN',
+    // Publish only the neighbourhood the /about page names, not a street.
+    street: 'West Andheri',
+    postalCode: null,
   },
   parent: {
-    name: 'Saa Thum',
-    region: 'Delaware',
-    country: 'US',
+    // [WEB-SEO-REBRAND-1] No parent organisation. Kept only for the type.
+    name: '',
+    region: '',
+    country: '',
   },
   indianEntity: {
     name: '',
@@ -207,8 +212,8 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'An online puja and havan service at saathum.com — rituals performed in your name and gotra by our priests, watched live, with prasad delivered.',
-    knowsAbout: ['puja', 'havan', 'sankalp', 'live puja'],
+      'An online havan and puja service at saathum.com, based in West Andheri, Mumbai — temple priests perform the rituals live for families in India and the diaspora.',
+    knowsAbout: ['puja', 'havan', 'sankalp', 'satsang', 'meditation', 'live puja', 'online havan', 'prasad delivery'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     areaServed: 'Worldwide',
@@ -225,6 +230,15 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
       },
     ],
     sameAs: sameAsList(),
+    // [WEB-SEO-REBRAND-1 2026-09-27] Where Saa Thum is — the neighbourhood named on /about.
+    address: {
+      '@type': 'PostalAddress',
+      ...(ORG.address.street ? { streetAddress: ORG.address.street } : {}),
+      addressLocality: ORG.address.locality,
+      addressRegion: ORG.address.region,
+      addressCountry: ORG.address.country,
+      ...(ORG.address.postalCode ? { postalCode: ORG.address.postalCode } : {}),
+    },
   };
   if (ORG.legalName != null) {
     organization.legalName = ORG.legalName;

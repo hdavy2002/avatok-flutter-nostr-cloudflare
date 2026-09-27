@@ -514,7 +514,7 @@ const altFromPrompt = (prompt: string) => prompt.replace(/\.$/, '') + '.';
 
 export const rituals: Ritual[] = sources.map(source => ({
   ...source,
-  href: '/rituals/' + source.slug,
+  href: '/rituals/' + source.slug + '/', // [WEB-SEO-REBRAND-1] trailing slash = the URL Pages serves with 200
   image: `${RITUAL_IMAGE_DIR}/${source.slug}.png`,
   imageAlt: altFromPrompt(source.imagePrompt),
 }));

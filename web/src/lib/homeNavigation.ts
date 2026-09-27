@@ -30,7 +30,7 @@ export const HOME_HEADER_LINKS = [
   { href: '/how-it-works', label: 'How it works' },
   // [WEB-BLOG-RITUALS-1 2026-09-27] OWNER DECISION: "Blog" menu item = the Puja &
   // Havan Guide at /rituals (the new blog). The old /blog articles were removed.
-  { href: '/rituals', label: 'Blog' },
+  { href: '/rituals/', label: 'Blog' },
   // [WEB-HIW-2 2026-09-27] OWNER DECISION: Help centre is a header menu item, after How it works.
   { href: '/help', label: 'Help centre' },
   // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: "About us" is back in the header
@@ -47,7 +47,7 @@ export const HOME_FOOTER_COLUMNS = [
   { title: 'Company', links: [
     { href: '/how-it-works', label: 'How it works' },
     // [WEB-BLOG-RITUALS-1 2026-09-27] Blog = the Puja & Havan Guide.
-    { href: '/rituals', label: 'Blog' },
+    { href: '/rituals/', label: 'Blog' },
     { href: '/help', label: 'Help centre' },
     // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: About us in the footer too.
     { href: '/about', label: 'About us' },

@@ -42,4 +42,4 @@ Rituals are performed with devotion by verified priests. Benefits described are 
 
 - [Create your account](/help/getting-started/create-your-account)
 - [Puja or havan?](/help/getting-started/puja-or-havan)
-- [Choosing and booking a ritual](/help/booking-and-paying/find-a-creator-or-show)
+- [Choosing and booking a ritual](/help/booking-and-paying/how-to-book)

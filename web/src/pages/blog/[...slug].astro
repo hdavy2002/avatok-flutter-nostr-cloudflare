@@ -13,7 +13,7 @@ export const prerender = false;
 
 const slug = Astro.params.slug ?? '';
 if (slug === '') {
-  return Astro.redirect('/rituals', 301);
+  return Astro.redirect('/rituals/', 301);
 }
 
 const html = `<!doctype html>
@@ -32,7 +32,7 @@ const html = `<!doctype html>
 <body><main>
 <h1>This page has been removed</h1>
 <p>Read our Puja &amp; Havan Guide instead — the meaning, benefits and history of every ritual we perform.</p>
-<a href="/rituals">Go to the Blog</a>
+<a href="/rituals/">Go to the Blog</a>
 </main></body></html>`;
 
 return new Response(html, {

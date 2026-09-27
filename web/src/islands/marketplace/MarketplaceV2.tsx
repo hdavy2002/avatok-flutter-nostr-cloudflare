@@ -516,7 +516,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
         : 'New havans and pujas are added every few days. Read about it in the guide, or ask us to schedule one.'}</p>
       <div className="mk-empty-actions">
         {status === 'error' && <button type="button" className="grand-button mk-retry" onClick={() => setReload((n) => n + 1)}>Try again</button>}
-        <a className="grand-button" href={emptyGuide?.href ?? '/rituals'}>
+        <a className="grand-button" href={emptyGuide?.href ?? '/rituals/'}>
           {emptyGuide ? <>Read about {emptyGuide.title}</> : 'Read about it in the guide'} <span aria-hidden="true">→</span>
         </a>
         <a className="mk-empty-ask" href="/contact">Ask us to schedule one</a>
@@ -645,7 +645,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
       {deities.length > 0 && (
         <section className="mk-deities" aria-labelledby="mk-deity-title">
           <div className="mk-wrap">
-            <div className="grand-section-heading"><h2 id="mk-deity-title"><span aria-hidden="true">✽</span> Browse by deity</h2><a className="mk-seeall mk-seeall--teal" href="/rituals">All deities →</a></div>
+            <div className="grand-section-heading"><h2 id="mk-deity-title"><span aria-hidden="true">✽</span> Browse by deity</h2><a className="mk-seeall mk-seeall--teal" href="/rituals/">All deities →</a></div>
             <div className="mk-deity-row">
               {deities.map((d, i) => (
                 <a key={d.name} className="mk-deity" {...filterLink({ q: d.name }, () => capture('marketplace_search', { q: d.name, source: 'deity' }))}>

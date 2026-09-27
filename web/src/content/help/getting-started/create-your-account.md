@@ -37,7 +37,7 @@ Verifying a real mobile number is how Saa Thum confirms you're a genuine person 
 
 ## What happens after you sign up
 
-Creating your account on the web is the first step, not the whole thing. Once it's created, you land on [Our Pujas](/marketplace), ready to choose a ritual. You can book, pay and watch right in your browser — no app needed. See [Choosing and booking a ritual](/help/booking-and-paying/find-a-creator-or-show).
+Creating your account on the web is the first step, not the whole thing. Once it's created, you land on [Our Pujas](/marketplace), ready to choose a ritual. You can book, pay and watch right in your browser — no app needed. See [Choosing and booking a ritual](/help/booking-and-paying/how-to-book).
 
 ## Already have an account?
 

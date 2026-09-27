@@ -39,7 +39,7 @@ const content: PublicContent = {
   modifiedAt: '2026-09-25',
   image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },
   breadcrumbs: [
-    { name: 'Puja & Havan Guide', path: '/rituals' },
+    { name: 'Puja & Havan Guide', path: '/rituals/' },
     { name: ritual.title, path: ritual.href },
   ],
   article: { authorName: 'Saa Thum', section: ritualCategories[ritual.category], keywords: ritual.tags },
@@ -57,7 +57,7 @@ const story = storyFor(ritual.slug);
 <Base content={content}>
   <main class="idea-page creator-guide" id="main-content" data-ritual-article={ritual.slug}>
     <div class="guide-shell">
-      <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/rituals">Puja &amp; Havan Guide</a><span aria-hidden="true">/</span><a href={'/rituals?for=' + ritual.category + '#idea-catalogue'}>{ritualCategories[ritual.category]}</a></nav>
+      <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/rituals/">Puja &amp; Havan Guide</a><span aria-hidden="true">/</span><a href={'/rituals/?for=' + ritual.category + '#idea-catalogue'}>{ritualCategories[ritual.category]}</a></nav>
       <header class="guide-heading">
         <p class="idea-kicker">{ritual.deity}</p>
         <div class="idea-chips"><span class:list={['idea-format', ritual.type === 'havan' ? 'live' : 'private']}>{ritualTypes[ritual.type]}</span><span>{ritualCategories[ritual.category]}</span><span>{ritual.duration}</span></div>
@@ -88,7 +88,7 @@ const story = storyFor(ritual.slug);
           <section id="from-home"><p class="idea-kicker">{isHavan ? '09' : '08'} · From anywhere</p><h2>Taking part from home, live</h2><p>Distance is no barrier to devotion. Wherever you are — in India or abroad — you can be part of the {kind} as it happens.</p><ol class="guide-steps"><li>{isHavan ? 'Join the havan on the date you like.' : 'Book the puja for your family.'}</li><li>On the day, open the live stream on your phone, tablet or TV.</li><li>Sit facing the screen, light a lamp if you wish, and listen to the mantras with a calm, open heart. Chant along if you know them.</li><li>Fold your hands for the aarti at the end and receive the blessing.</li><li>Missed a moment? Watch the replay for 7 days.</li></ol><div class="guide-audience"><strong>Keep ready at home (optional)</strong><p>{keepReady.join(' · ')}.</p></div></section>
           <section id="prasad"><p class="idea-kicker">{isHavan ? '10' : '09'} · Prasad</p><h2>Prasad by courier</h2><p>After the {kind}, blessed prasad and sacred items — such as a sacred thread, kumkum or vibhuti, where the ritual uses them — are packed with care and sent by courier. We deliver across India, and internationally too, so families living abroad can receive the blessing at home.</p></section>
           <section id="good-to-know"><p class="idea-kicker">{isHavan ? '11' : '10'} · Good to know</p><h2>Before you join</h2><p>Many families avoid new rituals during a period of mourning (sutak) in the family, and during solar or lunar eclipse hours. Some traditions also avoid new-beginning rituals during Pitru Paksha and Kharmas. If you are unsure, ask us — we will help you choose a good date.</p><p>Changed plans? You get a full refund if you cancel at least 24 hours before the scheduled start — see our <a href="/refunds">refund policy</a>.</p></section>
-          <div class="guide-ticket"><p class="guide-note">{isHavan ? 'Sab ki aahuti, sab ka ashirwad.' : 'Faith, brought home to you.'}</p><h2>{isHavan ? 'Join the ' + ritual.title : 'Book the ' + ritual.title}</h2><p>{isHavan ? <Fragment>Open havans starting from <span data-saathum-price={ritual.slug} data-saathum-type={ritual.type}>{livePrice ? rupees(livePrice) : ''}</span>. Watch live, pray together, and receive prasad by courier.</Fragment> : 'Choose a date and watch it performed live — with prasad sent by courier.'}</p><a class="idea-button" href={bookHref} data-ritual-book={ritual.slug}>{isHavan ? 'Join this havan ↗' : 'Book this puja ↗'}</a><a class="guide-back" href="/rituals">Explore more havans &amp; pujas</a></div>
+          <div class="guide-ticket"><p class="guide-note">{isHavan ? 'Sab ki aahuti, sab ka ashirwad.' : 'Faith, brought home to you.'}</p><h2>{isHavan ? 'Join the ' + ritual.title : 'Book the ' + ritual.title}</h2><p>{isHavan ? <Fragment>Open havans starting from <span data-saathum-price={ritual.slug} data-saathum-type={ritual.type}>{livePrice ? rupees(livePrice) : ''}</span>. Watch live, pray together, and receive prasad by courier.</Fragment> : 'Choose a date and watch it performed live — with prasad sent by courier.'}</p><a class="idea-button" href={bookHref} data-ritual-book={ritual.slug}>{isHavan ? 'Join this havan ↗' : 'Book this puja ↗'}</a><a class="guide-back" href="/rituals/">Explore more havans &amp; pujas</a></div>
         </div>
       </div>
     </div>

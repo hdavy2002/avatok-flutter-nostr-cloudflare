@@ -89,14 +89,14 @@ assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'),
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [WEB-NAV-HOME-1 2026-09-27] Header menu is Home (/) + Explore (/marketplace) + How it works
 // + [WEB-HIW-2 2026-09-27] Help centre (/help) + [WEB-BLOG-RITUALS-1] Blog (/rituals).
-for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Blog','/rituals'],['Help centre','/help']]) {
+for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Blog','/rituals/'],['Help centre','/help']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/rituals','/help','/about','/contact','/terms','/privacy','/cookies','/refunds']) {
+for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/rituals/','/help','/about','/contact','/terms','/privacy','/cookies','/refunds']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
 for (const href of ['/grievance','/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
@@ -109,10 +109,10 @@ assert.match(visibleText, /Saa Thum makes no claims of guaranteed outcomes\./, '
 
 // [SAATHUM-GUIDE-1 2026-09-25] Owner replaced the sample listing cards with eight
 // havan KNOWLEDGE cards that open the Puja & Havan Guide — no prices, no fake slots.
-const havanReadLinks = [...html.matchAll(/class="grand-booking-link" href="(\/rituals\/[a-z0-9-]+)"/g)].map(m => m[1]);
+const havanReadLinks = [...html.matchAll(/class="grand-booking-link" href="(\/rituals\/[a-z0-9-]+)\/"/g)].map(m => m[1]);
 assert.equal(havanReadLinks.length, 8, 'Eight havan cards each link to their guide article');
 assert(havanReadLinks.every(href => /-havan$/.test(href)), 'Homepage guide cards are all havans');
-assert.match(html, /href="\/rituals"[^>]*>Explore more havans &amp; pujas/, 'Explore more havans & pujas button links to /rituals');
+assert.match(html, /href="\/rituals\/"[^>]*>Explore more havans &amp; pujas/, 'Explore more havans & pujas button links to /rituals');
 assert.doesNotMatch(visibleText, /Live now|Starts in|seats left/, 'No invented availability labels on the knowledge cards');
 assert.doesNotMatch(bodyHtml, /href="\/(?:l|listing)\/sample[^"\s]*"/, 'Samples must not invent listing destinations');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
@@ -245,13 +245,13 @@ assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
 assert.match(guide, /CollectionPage/);
 assert.match(guide, /ItemList/);
 assert(meta(guide, 'og:title') && meta(guide, 'og:description'));
-const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)"/g)].map(m => m[1]))];
+const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)\/"/g)].map(m => m[1]))];
 assert.equal(ritualLinks.length, 55, 'Every ritual has its own article');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'),'utf8');
 assert.match(sitemapIndexSource,/<sitemapindex/,'sitemap.xml is implemented as a sitemap index');
 assert(sitemapIndexSource.includes('/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
-assert(sitemap.includes('<loc>https://saathum.com/rituals</loc>'), 'Guide is in the sitemap');
+assert(sitemap.includes('<loc>https://saathum.com/rituals/</loc>'), 'Guide is in the sitemap');
 assert(!sitemap.includes('https://saathum.com/ideas<'), 'Retired /ideas is out of the sitemap');
 assert(!sitemap.includes('https://saathum.com/blog/creator-ideas/'), 'Archived creator guides stay out of the sitemap');
 assert(!sitemap.includes('https://saathum.com/organisers'), '/organisers archived: not in sitemap');
@@ -275,7 +275,7 @@ for (const href of ritualLinks) {
  assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
  assert.equal(meta(article, 'og:type'), 'article');
  assert.match(article, /BreadcrumbList/);
- assert(sitemap.includes('https://saathum.com' + href + '<'), 'Article in sitemap: ' + href);
+ assert(sitemap.includes('https://saathum.com' + href + '/<'), 'Article in sitemap: ' + href);
  // Artwork: one file per ritual at /assets/saathum-rituals/<slug>.png, landscape, unique.
  const file = resolve(root, 'assets/saathum-rituals', slug + '.png');
  assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
@@ -309,3 +309,6 @@ console.log('Homepage title, description, canonical and share image passed.');
 // new workflow step or trigger — B2 rule 8, S10 brief phase 1. Same pattern
 // check-performance.mjs already uses to fan out to its sub-checks.
 execFileSync(process.execPath, ['scripts/check-organisers.mjs'], { stdio: 'inherit' });
+
+// [WEB-SEO-REBRAND-1 2026-09-27] Brand-leak guard rides this same CI step.
+execFileSync(process.execPath, ['scripts/check-brand-leaks.mjs'], { stdio: 'inherit' });

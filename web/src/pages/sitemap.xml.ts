@@ -39,7 +39,9 @@ export const GET: APIRoute = async () => {
     '/sitemap-pages.xml',
     '/sitemap-directory.xml',
     ...Array.from({ length: manifest.listings.pages }, (_, index) => `/sitemap-listings.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
-    ...Array.from({ length: manifest.creators.pages }, (_, index) => `/sitemap-creators.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
+    // [WEB-SEO-REBRAND-1 2026-09-27] Creator profiles are no longer listed: Saa Thum has
+    // no outside creators, and /c/* is noindex (lib/seo/policy.ts). The feed still
+    // answers at /sitemap-creators.xml but nothing points search engines at it.
   ];
   const entries = sitemaps.map(
     (path) =>

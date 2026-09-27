@@ -10,6 +10,9 @@ export interface RoutePolicy {
 const PRIVATE_PREFIXES = [
   '/dashboard', '/admin', '/vision', '/archive', '/book', '/watch', '/live',
   '/session', '/consult', '/talk', '/j', '/pay', '/embed', '/test',
+  // [WEB-SEO-REBRAND-1 2026-09-27] Creator profile pages: no outside creators any
+  // more, and profiles name real people. Never indexed.
+  '/c',
 ];
 
 const PRIVATE_EXACT = new Set([
@@ -35,6 +38,14 @@ function prefixed(path: string, prefix: string): boolean {
 
 export function canonicalUrl(pathname: string): string {
   const path = normalizePath(pathname);
+  // [WEB-SEO-REBRAND-1 2026-09-27] /rituals/* is excluded from the worker
+  // (astro.config.mjs routes.extend.exclude) and served as static assets, and
+  // Cloudflare Pages answers /rituals/x with a 308 to /rituals/x/. The canonical
+  // (and the sitemap) must name the URL that answers 200, not the one that
+  // redirects — otherwise Google sees canonical -> redirect -> canonical.
+  if (path === '/rituals' || path.startsWith('/rituals/')) {
+    return new URL(path + '/', 'https://saathum.com').toString();
+  }
   return new URL(path === '/' ? '/' : path, 'https://saathum.com').toString();
 }
 

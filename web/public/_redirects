@@ -48,3 +48,8 @@
 # already excluded from nav/footer/sitemap via archivedPages.ts).
 /organisers / 301
 /organisers/ / 301
+
+# [WEB-SEO-REBRAND-1 2026-09-27] Help article slug renamed — the old URL carried the
+# marketplace-era word "creator". Same article, so a 301 is correct here.
+/help/booking-and-paying/find-a-creator-or-show  /help/booking-and-paying/how-to-book  301
+/help/booking-and-paying/find-a-creator-or-show/ /help/booking-and-paying/how-to-book  301

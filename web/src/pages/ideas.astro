@@ -7,7 +7,7 @@ import { publicImage, publicImageSrcSet } from '../lib/config';
 // prerender back to true.
 export const prerender = false;
 const REMOVED = true;
-if (REMOVED) return Astro.redirect('/rituals', 301);
+if (REMOVED) return Astro.redirect('/rituals/', 301);
 import Base from '../layouts/Base.astro';
 import TruckBorder from '../components/TruckBorder.astro';
 import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';
