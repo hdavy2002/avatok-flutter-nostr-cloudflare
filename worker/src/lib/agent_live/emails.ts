@@ -6,7 +6,7 @@
 // which are not exported. Content and shape intentionally mirror them.
 import type { Env } from "../../types";
 import { clerkEmail } from "../../ledger";
-import { buildIcs, icsB64, signJoinTokenV2 } from "../../cal/ics";
+import { buildIcs, icsB64 } from "../../cal/ics";
 import { enqueueEmail, verifiedClerkEmail, type EmailQueueStatus } from "../email_outbox";
 
 const inr = (tokens: number): string => `₹${tokens}`;
@@ -74,14 +74,8 @@ export interface AgentConfirmationCtx {
  * buyer never has to sign into a dashboard to open the talk room.
  */
 export async function queueAgentConfirmation(env: Env, c: AgentConfirmationCtx): Promise<EmailQueueStatus> {
-  let joinUrl = `${webBase(env)}/talk/${encodeURIComponent(c.bookingId)}`;
-  try {
-    const token = await signJoinTokenV2(env, {
-      bookingId: c.bookingId, listingId: c.agentId, accountId: c.buyerUid,
-      kind: "agent", expMs: c.endsAt + 24 * 60 * 60 * 1000,
-    });
-    joinUrl = `${webBase(env)}/j/${token}`;
-  } catch { /* fall back to the bare (login-gated) talk path */ }
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /talk and /j web rooms deleted — link to My events.
+  const joinUrl = `${webBase(env)}/dashboard/my-events`;
 
   const when = fmtInTz(c.startsAt, c.buyerTz);
   const body = `

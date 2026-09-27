@@ -7494,5 +7494,13 @@
     "flags": [],
     "no_telemetry": "Hostname/identifier rename with no new user flow; verified by curl against the live site and scripts/check-brand-leaks.mjs in the web deploy.",
     "success": []
+  },
+  "WEB-OLD-CHECKOUT-GONE-2": {
+    "description": "[WEB-OLD-CHECKOUT-GONE-2] Worker half of retiring the old web checkout (BookingFlow/islands/checkout gateway steps) and old listing detail page (/<handle>/<slug>, /l/<id> now 301 to /book/<id>); delete ~220 unreachable web files. Worker: every customer link that pointed at the deleted /live, /session, /consult, /talk and /j web rooms (booking confirmation + reminder emails, agent confirmation email, commercial notification deeplinks, booking destination API) now points at /dashboard/my-events; /api/me/dashboard events no longer emit join_url (the YouTube video is the join path); listing-published email links /book/<id>.",
+    "shipped": "2026-09-27",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Link/URL change only — no new event or response code. Verify directly: GET https://saathum.com/l/<id> and /<handle>/<slug> answer 301 to /book/<id>; /book/<id>/checkout renders SaathumCheckout; /api/me/dashboard items carry no join_url; a new booking confirmation email's button opens https://saathum.com/dashboard/my-events."
   }
 }

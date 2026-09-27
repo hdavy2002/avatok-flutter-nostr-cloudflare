@@ -355,10 +355,10 @@ export async function joinInfo(req: Request, env: Env, token: string): Promise<R
   ).bind(bk.id).first<{ present: number }>();
   const isCommercialConsult = String(bk.id).startsWith("commercial-booking-") || Boolean(commercialGrant);
   const destination = isLive && bk.listing_id
-    ? { kind: "live", listing_id: bk.listing_id, booking_id: bk.id, path: `/live/${encodeURIComponent(bk.listing_id)}` }
+    ? { kind: "live", listing_id: bk.listing_id, booking_id: bk.id, path: "/dashboard/my-events" } // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /live deleted
     : isCommercialConsult
-      ? { kind: "consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: `/session/${encodeURIComponent(bk.id)}` }
-      : { kind: "legacy_consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: `/consult/${encodeURIComponent(bk.id)}` };
+      ? { kind: "consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: "/dashboard/my-events" }
+      : { kind: "legacy_consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: "/dashboard/my-events" };
   return json({
     booking_id: bk.id, listing_id: bk.listing_id ?? null, kind: bk.kind,
     title, starts_at: bk.starts_at, ends_at: bk.ends_at, status: bk.status,

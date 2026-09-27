@@ -5,7 +5,7 @@
 // best-effort: never blocks money/booking ops.
 import type { Env } from "../types";
 import { clerkEmail } from "../ledger";
-import { buildIcs, icsB64, joinUrlFor, signJoinToken, signJoinTokenV2 } from "./ics";
+import { buildIcs, icsB64 } from "./ics";
 import { commercialEmailKey, enqueueEmail, verifiedClerkEmail, type EmailDeliveryStatus, type EmailQueueStatus } from "../lib/email_outbox";
 
 const inr = (tokens: number): string => `\u20b9${tokens}`;
@@ -70,11 +70,10 @@ function webBase(env: Env): string {
 }
 
 /** The canonical room URL. Correct for the CREATOR (who is signed in on the app). */
-function commercialDestination(env: Env, c: CommercialConfirmationCtx): string {
-  const path = c.kind === "live_event"
-    ? `/live/${encodeURIComponent(c.listingId)}`
-    : `/session/${encodeURIComponent(c.bookingId ?? "")}`;
-  return `${webBase(env)}${path}`;
+function commercialDestination(env: Env, _c: CommercialConfirmationCtx): string {
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] The old /live, /session and /j web rooms were deleted.
+  // Saa Thum customers join from My events (the event's live video is there).
+  return `${webBase(env)}/dashboard/my-events`;
 }
 
 /**
@@ -91,18 +90,8 @@ function commercialDestination(env: Env, c: CommercialConfirmationCtx): string {
  * slightly worse is far better than a confirmation email that never sends.
  */
 async function buyerDestination(env: Env, c: CommercialConfirmationCtx): Promise<string> {
-  try {
-    const token = await signJoinTokenV2(env, {
-      bookingId: c.bookingId ?? null,
-      listingId: c.listingId,
-      accountId: c.buyerId,
-      kind: c.kind,
-      expMs: c.end + 24 * 60 * 60 * 1000,
-    });
-    return `${webBase(env)}/j/${token}`;
-  } catch {
-    return commercialDestination(env, c);
-  }
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /j/<token> is gone (410); every buyer link goes to My events.
+  return commercialDestination(env, c);
 }
 
 /**
@@ -203,15 +192,17 @@ export async function emailListingChangesRequested(env: Env, c: { listingId: str
 }
 
 export async function emailListingPublished(env: Env, c: { listingId: string; creatorId: string; title: string; start: number; end: number }): Promise<EmailQueueStatus> {
-  const url = `${webBase(env)}/live/${encodeURIComponent(c.listingId)}`;
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /live/<id> deleted — the public event page is /book/<id>.
+  const url = `${webBase(env)}/book/${encodeURIComponent(c.listingId)}`;
   const ics = { name: "saathum-event.ics", content: icsB64(buildIcs({ uid: c.listingId, title: c.title, start: c.start, end: c.end, url })) };
   return queueEmail(env, c.creatorId, `Your listing is live: ${c.title}`, shell("Your listing is now live", `<p style="font-weight:600">${escapeHtml(c.title)}</p><p>Starts: ${whenUtc(c.start)}</p><p>Ends: ${whenUtc(c.end)}</p><p>Your calendar invite is attached. We’ll send an email reminder 24 hours before the event and an app notification 30 minutes before it starts.</p>`, { label: "Open your live listing", url }), ics, { outboxKey: `listing-published:${c.listingId}:v1`, messageVersion: "listing-published.v1", verified: true });
 }
 
 async function joinCta(env: Env, bookingId: string, start: number): Promise<{ label: string; url: string }> {
   // Token valid until 24h after start — covers reschedules + late joins.
-  const token = await signJoinToken(env, bookingId, start + 86_400_000);
-  return { label: "Open in Saa Thum", url: joinUrlFor(token) };
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /j/<token> deleted — reminders open My events.
+  void bookingId; void start;
+  return { label: "Open My events", url: `${webBase(env)}/dashboard/my-events` };
 }
 
 /** Booking confirmed → buyer + creator, with ICS attachment + join link. */

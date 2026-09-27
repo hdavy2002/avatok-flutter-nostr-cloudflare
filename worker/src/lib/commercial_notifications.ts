@@ -39,9 +39,8 @@ function stableId(event: Event, uid: string): string {
 function data(event: Event): Record<string, string> {
   // Deliberately construct an allowlist. Provider call ids, access tokens and
   // join URLs must never cross the notification boundary.
-  const deeplink = event.deeplink ?? (event.bookingId
-    ? `/session/${encodeURIComponent(event.bookingId)}`
-    : event.listingId ? `/live/${encodeURIComponent(event.listingId)}` : null);
+  // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] /session and /live web rooms deleted; customers join from My events.
+  const deeplink = event.deeplink ?? (event.bookingId || event.listingId ? "/dashboard/my-events" : null);
   return {
     kind: "commercial",
     type: event.type,

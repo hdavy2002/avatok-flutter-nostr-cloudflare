@@ -145,8 +145,9 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
     };
     // Only to a seat holder (paid or free). Unpaid pending_payment rows never carry it.
     if (paid && typeof r.youtube_video_id === "string" && r.youtube_video_id) item.youtube_video_id = r.youtube_video_id;
-    // The customer joins from the web live page (lib/commercial_notifications.ts link).
-    if (paid && (state === "upcoming" || state === "live")) item.join_url = `/live/${encodeURIComponent(listing.id)}`;
+    // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] No join_url any more: the old /live/<id> web room was deleted. A paid
+    // seat joins through the event's YouTube video above; until the admin pastes it,
+    // MyEvents shows "Your join link will appear here in a moment…".
     return item;
   }).filter((i) => (scope === "past") !== isUpcomingScope(i.state as any));
   items.sort((x: any, y: any) => scope === "past"
