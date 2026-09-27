@@ -47,14 +47,14 @@ function inviteHtml(inviterName: string, link: string): string {
   const who = esc(inviterName);
   return `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-    <h2 style="margin:0 0 12px">${who} is inviting you to join Saathum 👋</h2>
-    <p style="margin:0 0 12px;line-height:1.5">Saathum is an AI-powered messenger. Ava, your in-chat
+    <h2 style="margin:0 0 12px">${who} is inviting you to join Saa Thum 👋</h2>
+    <p style="margin:0 0 12px;line-height:1.5">Saa Thum is an AI-powered messenger. Ava, your in-chat
       assistant, watches for scams, can reply for you when you're away, and pulls up files mid-chat —
       and you can talk with up to 25 people at once.</p>
     <p style="margin:0 0 12px;line-height:1.5">${who} thought you'd like it. Tap below to join with their link:</p>
     <p style="margin:20px 0"><a href="${esc(link)}"
-      style="background:#08C4C4;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600">Join ${who} on Saathum</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Sent on behalf of ${who} via Saathum · reply to reach them directly.
+      style="background:#08C4C4;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600">Join ${who} on Saa Thum</a></p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Sent on behalf of ${who} via Saa Thum · reply to reach them directly.
       Don't want these? Just ignore this email.</p>
   </div>`;
 }
@@ -87,13 +87,13 @@ export async function inviteEmail(req: Request, env: Env): Promise<Response> {
     if (email) replyTo = { email, name: inviterName };
   } catch { /* best-effort */ }
 
-  const subject = `${inviterName} is inviting you to join Saathum`;
+  const subject = `${inviterName} is inviting you to join Saa Thum`;
   try {
     await env.Q_EMAIL.send({
       to: toEmail,
       subject,
       html: inviteHtml(inviterName, link),
-      from: `${inviterName} via Saathum <noreply@saathum.com>`,
+      from: `${inviterName} via Saa Thum <noreply@saathum.com>`,
       ...(replyTo ? { replyTo } : {}),
     });
   } catch (e) {

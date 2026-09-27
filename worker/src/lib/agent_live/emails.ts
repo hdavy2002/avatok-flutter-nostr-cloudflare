@@ -22,7 +22,7 @@ function shell(title: string, bodyHtml: string, cta?: { label: string; url: stri
     <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
     ${bodyHtml}
     ${cta ? `<p style="margin:20px 0"><a href="${escapeHtml(cta.url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${escapeHtml(cta.label)}</a></p>` : ""}
-    <p style="color:#999;font-size:12px;margin-top:20px">Saathum · AI voice agent session · times shown in your timezone.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum · AI voice agent session · times shown in your timezone.</p>
   </div>`;
 }
 
@@ -113,7 +113,7 @@ export async function queueAgentRefundEmail(env: Env, c: AgentRefundEmailCtx): P
   const body = `
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(c.agentTitle)}</p>
     <p style="margin:0 0 8px">Refunded in full: <b>${inr(c.amount)}</b></p>
-    <p style="margin:0 0 8px">Your session could not be delivered (${escapeHtml(c.reason)}). Sorry about that — nothing further to do; the tokens are back in your AvaWallet.</p>`;
+    <p style="margin:0 0 8px">Your session could not be delivered (${escapeHtml(c.reason)}). Sorry about that — nothing further to do; the tokens are back in your Saa Thum wallet.</p>`;
   return queueEmail(env, c.buyerUid, `Refund issued: ${c.agentTitle}`,
     shell("Refund issued", body),
     { outboxKey: `agentlive-refund:${c.bookingId}`, orderId: `agl_${c.bookingId}` });

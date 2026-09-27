@@ -517,7 +517,7 @@ async function dispatchAlert(env: Env, channels: string[], severity: string, mes
   if (channels.includes("email")) {
     try {
       const to = (env as any).ALERT_EMAIL || "hdavy2005@gmail.com";
-      await env.Q_EMAIL.send({ to, subject: `[AvaAdmin ${severity}] ${message}`, text: message, kind: "admin_alert" });
+      await env.Q_EMAIL.send({ to, subject: `[Saa Thum Admin ${severity}] ${message}`, text: message, kind: "admin_alert" });
     } catch { /* degrade */ }
   }
   // Slack webhook (optional; degrade if unset).

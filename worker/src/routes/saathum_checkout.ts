@@ -591,10 +591,10 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
     <p style="margin:0 0 8px">We'll send the live link by email 30 minutes before the ${escapeHtml(emailCopy.noun)} starts.</p>
     ${prasadNote}
     <p style="margin:20px 0 0;color:#999;font-size:12px">Your payment receipt is attached. Receipt no. ${escapeHtml(row.receipt_no ?? "")}</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saathum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
   </div>`;
   const result = await enqueueEmail(env, {
-    to, subject: `Booking confirmed — ${listing?.title ?? "Saathum"}`, html,
+    to, subject: `Booking confirmed — ${listing?.title ?? "Saa Thum"}`, html,
     kind: "saathum_checkout_confirmation", orderId: row.commercial_order_id, recipientId: row.uid,
     messageVersion: "saathum-checkout-confirmation.v1",
     attachments: [{ name: `${row.receipt_no ?? "receipt"}.pdf`, content: pdfBase64 }],
@@ -645,9 +645,9 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
     <p style="margin:0 0 8px">${readyLine}</p>
-    <p style="margin:0 0 8px">Watch the live ${escapeHtml(reminderCopy.noun)} from your Saathum dashboard. Keep this email handy.</p>
+    <p style="margin:0 0 8px">Watch the live ${escapeHtml(reminderCopy.noun)} from your Saa Thum dashboard. Keep this email handy.</p>
     <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Join the live ${escapeHtml(reminderCopy.noun)}</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saathum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
   </div>`;
   const result = await enqueueEmail(env, {
     to, subject: `Starting in 30 minutes: ${title}`, html,

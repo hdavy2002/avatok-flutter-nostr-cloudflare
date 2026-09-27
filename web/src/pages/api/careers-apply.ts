@@ -82,7 +82,7 @@ export const POST: APIRoute = async (context) => {
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   const attachment = { filename: safeFilename(resume.name), content: btoa(binary), type: resume.type };
   const sender = {
-    name: env.BREVO_SENDER_NAME || `${ORG.name} Careers`,
+    name: env.BREVO_SENDER_NAME || `${ORG.name} Support`,
     email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com',
   };
 
@@ -122,7 +122,7 @@ export const POST: APIRoute = async (context) => {
         html: acknowledgementHtml(name, role),
         text: `Hi ${name},\n\nThank you for applying for the ${role} role at ${ORG.name}. We’ve received your resume and our team will review it carefully. If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.\n\nWarmly,\nThe ${ORG.name} team`,
         from: sender,
-        replyTo: { email: 'support@saathum.com', name: `${ORG.name} Careers` },
+        replyTo: { email: 'support@saathum.com', name: `${ORG.name} Support` },
         tags: ['website-careers-acknowledgement'],
       },
       env,

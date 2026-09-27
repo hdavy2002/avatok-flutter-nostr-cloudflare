@@ -23,7 +23,7 @@ function shell(title: string, bodyHtml: string, cta?: { label: string; url: stri
     <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
     ${bodyHtml}
     ${cta ? `<p style="margin:20px 0"><a href="${escapeHtml(cta.url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${escapeHtml(cta.label)}</a></p>` : ""}
-    <p style="color:#999;font-size:12px;margin-top:20px">Saathum · times shown in UTC — the join page and app show your local time.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum · times shown in UTC — the join page and app show your local time.</p>
   </div>`;
 }
 
@@ -211,7 +211,7 @@ export async function emailListingPublished(env: Env, c: { listingId: string; cr
 async function joinCta(env: Env, bookingId: string, start: number): Promise<{ label: string; url: string }> {
   // Token valid until 24h after start — covers reschedules + late joins.
   const token = await signJoinToken(env, bookingId, start + 86_400_000);
-  return { label: "Open in Saathum", url: joinUrlFor(token) };
+  return { label: "Open in Saa Thum", url: joinUrlFor(token) };
 }
 
 /** Booking confirmed → buyer + creator, with ICS attachment + join link. */
@@ -276,7 +276,7 @@ export function reminderEmailHtml(tier: "24h" | "60m", o: { title: string; start
   if (tier === "24h") {
     return {
       subject: `Tomorrow: ${o.title}`,
-      html: shell("Tomorrow on Saathum", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">${whenUtc(o.start)} with ${escapeHtml(o.otherName)}.</p><p style="margin:0 0 8px">Your invite is ready whenever you need it.</p>`, { label: "View booking", url: o.joinUrl }),
+      html: shell("Tomorrow on Saa Thum", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">${whenUtc(o.start)} with ${escapeHtml(o.otherName)}.</p><p style="margin:0 0 8px">Your invite is ready whenever you need it.</p>`, { label: "View booking", url: o.joinUrl }),
     };
   }
   return {

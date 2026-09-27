@@ -44,7 +44,7 @@ function welcomeHtml(): string {
 
 async function sendWelcome(env: Record<string, string | undefined>, email: string) {
   const sender = {
-    name: env.BREVO_SENDER_NAME || `${ORG.name} Joinlist`,
+    name: env.BREVO_SENDER_NAME || `${ORG.name} Support`,
     email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com',
   };
   try {

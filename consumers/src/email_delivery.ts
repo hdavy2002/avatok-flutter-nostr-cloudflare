@@ -100,7 +100,7 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env, opts?: { throwOn
       from: msg.from,
       replyTo: msg.replyTo,
       attachments: msg.attachments,
-      headers: { "X-AvaTOK-Outbox-Key": key, "X-AvaTOK-Kind": msg.kind ?? "email" },
+      headers: { "X-Saathum-Outbox-Key": key, "X-Saathum-Kind": msg.kind ?? "email" },
     },
     env,
   );

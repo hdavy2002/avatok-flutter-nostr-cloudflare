@@ -71,12 +71,12 @@ async function signJoinTokenV2(env: Env, c: {
 async function nameOf(env: Env, uid: string): Promise<string> {
   try {
     const r = await env.DB_META.prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
-    return r?.name || r?.handle || "a Saathum user";
-  } catch { return "a Saathum user"; }
+    return r?.name || r?.handle || "a Saa Thum user";
+  } catch { return "a Saa Thum user"; }
 }
 
 function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; otherName: string; joinUrl: string }): { subject: string; html: string } {
-  const head = tier === "24h" ? "Tomorrow on Saathum" : "Starting within the hour";
+  const head = tier === "24h" ? "Tomorrow on Saa Thum" : "Starting within the hour";
   const line = tier === "24h"
     ? `${new Date(o.start).toUTCString()} with ${o.otherName}.`
     : `Within 1 hour you have a session with ${o.otherName} — here is the link to join.`;
@@ -88,7 +88,7 @@ function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; ot
     <p style="margin:0 0 8px">${line}</p>
     <p style="margin:0 0 8px">${tier === "24h" ? "Your invite is ready whenever you need it." : "The same invite lives in your calendar attachment."}</p>
     <p style="margin:20px 0"><a href="${o.joinUrl}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${tier === "24h" ? "View booking" : "Join now"}</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saathum · times shown in UTC — the join page and app show your local time.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum · times shown in UTC — the join page and app show your local time.</p>
   </div>`;
   return { subject, html };
 }
@@ -198,7 +198,7 @@ export async function bookingReminderLadder(env: Env, sendEmail: SendEmail): Pro
 }
 
 async function remind(env: Env, sendEmail: SendEmail, b: DueBooking, tier: "24h" | "60m", push: boolean): Promise<void> {
-  const title = b.title ?? "Your Saathum session";
+  const title = b.title ?? "Your Saa Thum session";
   // Commercial consultations resolve through the authenticated session
   // destination. Legacy calendar bookings keep their signed /j invitation;
   // that path is still required for genuinely old rows.

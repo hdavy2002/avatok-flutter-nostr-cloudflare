@@ -256,7 +256,7 @@ export async function moneyDlq(env: Env, body: unknown, error?: string): Promise
   try {
     await env.Q_EMAIL.send({
       to: env.ALERT_EMAIL || "hdavy2005@gmail.com",
-      subject: "[avatok] settlement job dead-lettered",
+      subject: "[Saa Thum] settlement job dead-lettered",
       html: `<p>A refund/settlement job exhausted its retries and landed in the DLQ.</p>
              <pre>${JSON.stringify(body ?? {}, null, 2)}</pre>
              <p>failed_settlements id: <b>${id}</b> — retry it from the admin money console.</p>`,

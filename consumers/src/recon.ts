@@ -145,7 +145,7 @@ async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> 
     : `<p>${diffs.length} invariant violation(s). Ledger and balances disagree — investigate before more money moves.</p>`;
   const html = `
   <div style="font-family:system-ui,sans-serif">
-    <h2>${tag} AvaWallet reconciliation ${isDrill ? "drill" : "mismatch"} — ${date}</h2>
+    <h2>${tag} Saa Thum wallet reconciliation ${isDrill ? "drill" : "mismatch"} — ${date}</h2>
     ${banner}
     <table style="border-collapse:collapse"><tr><th align="left">kind</th><th align="left">account</th><th align="right">expected (ledger Σ)</th><th align="right">actual</th></tr>${rows}</table>
     <p>Option: freeze money ops via remote config (<code>PUT /api/admin/config</code> kill switch) until resolved.<br>
@@ -157,7 +157,7 @@ async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> 
         to,
         subject: `${tag} Wallet recon ${isDrill ? "drill" : "mismatch"} — ${date} (${diffs.length})`,
         html,
-        from: "Saathum Ops <noreply@saathum.com>",
+        from: "Saa Thum Support <noreply@saathum.com>",
       },
       env,
     );

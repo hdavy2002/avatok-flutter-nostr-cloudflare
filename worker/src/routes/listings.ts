@@ -199,7 +199,7 @@ async function maybeUid(req: Request, env: Env): Promise<string | null> {
 
 async function nameOf(env: Env, uid: string): Promise<string> {
   const r = await metaDb(env).prepare("SELECT display_name, handle FROM users WHERE uid=?1").bind(uid).first<any>();
-  return r?.display_name || r?.handle || "an AvaTOK creator";
+  return r?.display_name || r?.handle || "a Saa Thum organiser";
 }
 
 function parseJson<T>(s: unknown, fallback: T): T {
