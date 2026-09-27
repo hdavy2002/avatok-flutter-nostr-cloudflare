@@ -90,6 +90,19 @@ upload bug) · `auth_guest_token_issued`.
 `market_card_click` {listing_id, kind, position, cta: details|book|calendar} ·
 `market_favorite_toggle` {listing_id, on} · `market_live_rail_loaded` {count}.
 
+**`[MKT-V2-1 2026-09-27]` The new `/marketplace`** (`islands/marketplace/MarketplaceV2.tsx`)
+replaced the bazaar grid (`ExploreGrid`/`FilterRail`/`LiveNowRail` — deleted), so the
+`market_*` events above are no longer emitted by `/marketplace`. It emits:
+`marketplace_loaded` {count, live_count, ms, q, type} — once per page load, after
+`/api/explore` (≤3×30) + `/api/explore/live-now` · `marketplace_search` {q, source:
+url|hero|deity|festival|temple, type?, when?} · `marketplace_filter` {key: q|intention|when|
+price|sort|prasad|priv|clear|show_more, value} · `marketplace_tab` {type: all|havan|puja|
+satsang|sermon|meditation|festival|gathering, source?: toolbar|rail_see_all|festival_panel} ·
+`marketplace_card_click` {action: art|title|book|benefits|reviews|remind|whatsapp|tooltip|
+join_live, listing_id, position, rail: havans|pujas|gatherings|grid|live}. Load failures go
+through `captureException` {surface: 'marketplace', endpoint}. The homepage "Book now"
+shelf keeps `home_booknow_loaded` / `home_booknow_click` (same shared `BookCard`).
+
 ### 2.4 Listing details (`ListingDetailView`, `/l /e /watch /live /c`)
 
 `listing_view` {listing_id, kind, free_entry, status, seats_left, has_video,
