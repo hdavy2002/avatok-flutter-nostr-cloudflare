@@ -3905,6 +3905,10 @@ export async function exploreAnonCached(
       trackImpressions(env, req, null, APP, surface, (body.listings ?? []).map((c) => String(c.id)));
     } catch { /* telemetry is best-effort */ }
     const out = new Response(hit.body, hit);
+    // The stored copy can come back carrying the zone's Browser Cache TTL (4 h was
+    // observed on 2026-09-27), which would pin a guest's browser to a stale list.
+    // Re-state the real TTL on every hit.
+    out.headers.set("cache-control", `public, max-age=${ttlSeconds}`);
     out.headers.set("x-saathum-cache", "hit");
     return out;
   }
