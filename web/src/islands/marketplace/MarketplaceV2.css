@@ -189,3 +189,46 @@
   .folk-site[data-design="saathum-reference-v5"] .mk-hero-img { transform: none; }
 }
 .folk-site[data-design="saathum-reference-v5"] .mk-hero-stats-slot { display: contents; }
+
+/* [MKT-V2-3 2026-09-27] LARGE-SCREEN SCALE. Owner: on a big monitor the page looked tiny
+   next to the approved mockup, which he reviewed at an effective ~1000–1330px width.
+   The marketplace <main> (NOT header/footer, NOT the homepage) is zoomed so a 1860px
+   screen shows the mockup's layout at the mockup's proportions: 4 tabs per row,
+   5 deities per row, 2 cards per row, festival + temples side by side. Phone/tablet
+   CSS above is untouched. Firefox ≥126 / all Chromium / Safari support `zoom`. */
+@media (min-width: 1250px) and (max-width: 1499px) {
+  .folk-site[data-design="saathum-reference-v5"] .mk { zoom: 1.2; }
+  /* zoom does NOT change what media queries see, so the approved (≤1399px) layout is set explicitly … */
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-tabs-inner { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-deity-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* … and vw-based sizes are divided by the zoom, so they compute as if the viewport were real-width ÷ zoom. */
+  .folk-site[data-design="saathum-reference-v5"] .mk h2 { font-size: clamp(25px, calc(2.25vw / 1.2), 39px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-section { padding-left: clamp(16px, calc(7vw / 1.2), 140px); padding-right: clamp(16px, calc(7vw / 1.2), 140px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-head h2 { font-size: clamp(26px, calc(2.8vw / 1.2), 40px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-eyebrow { font-size: clamp(11px, calc(.9vw / 1.2), 14px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-hero h1 { font-size: clamp(32px, calc(3.1vw / 1.2), 56px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-lead { font-size: clamp(16px, calc(1.25vw / 1.2), 20px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-intent h2 { font-size: clamp(22px, calc(2vw / 1.2), 34px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-empty h2 { font-size: clamp(22px, calc(2vw / 1.2), 32px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-panel h2 { font-size: clamp(20px, calc(1.7vw / 1.2), 28px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .grand-category-copy h3 { font-size: clamp(14px, calc(1.12vw / 1.2), 21px); }
+}
+@media (min-width: 1500px) {
+  .folk-site[data-design="saathum-reference-v5"] .mk { zoom: 1.4; }
+  /* zoom does NOT change what media queries see, so the approved (≤1399px) layout is set explicitly … */
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-tabs-inner { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-deity-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* … and vw-based sizes are divided by the zoom, so they compute as if the viewport were real-width ÷ zoom. */
+  .folk-site[data-design="saathum-reference-v5"] .mk h2 { font-size: clamp(25px, calc(2.25vw / 1.4), 39px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-section { padding-left: clamp(16px, calc(7vw / 1.4), 140px); padding-right: clamp(16px, calc(7vw / 1.4), 140px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .bn-head h2 { font-size: clamp(26px, calc(2.8vw / 1.4), 40px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-eyebrow { font-size: clamp(11px, calc(.9vw / 1.4), 14px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-hero h1 { font-size: clamp(32px, calc(3.1vw / 1.4), 56px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-lead { font-size: clamp(16px, calc(1.25vw / 1.4), 20px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-intent h2 { font-size: clamp(22px, calc(2vw / 1.4), 34px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-empty h2 { font-size: clamp(22px, calc(2vw / 1.4), 32px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .mk-panel h2 { font-size: clamp(20px, calc(1.7vw / 1.4), 28px); }
+  .folk-site[data-design="saathum-reference-v5"] .mk .grand-category-copy h3 { font-size: clamp(14px, calc(1.12vw / 1.4), 21px); }
+}

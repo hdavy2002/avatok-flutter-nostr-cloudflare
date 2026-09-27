@@ -228,7 +228,7 @@ const TABS: { key: '' | TypeKey; label: string; sub: string; art: string; color:
   { key: 'puja', label: 'Pujas', sub: 'Personal & family', art: 'category-aarti', color: EVENT_TYPE_COPY.puja.color.bg },
   { key: 'satsang', label: 'Satsang', sub: 'Kirtan & discourse', art: 'category-bhajan', color: EVENT_TYPE_COPY.satsang.color.bg },
   { key: 'sermon', label: 'Sermons', sub: 'Katha & path', art: 'category-satsang', color: EVENT_TYPE_COPY.sermon.color.bg },
-  { key: 'meditation', label: 'Meditation', sub: 'Guided sessions', art: 'category-yoga', color: EVENT_TYPE_COPY.meditation.color.bg },
+  { key: 'meditation', label: 'Meditation', sub: 'Guided mornings', art: 'category-yoga', color: EVENT_TYPE_COPY.meditation.color.bg },
   { key: 'festival', label: 'Festival specials', sub: 'Navratri · Diwali · Chhath', art: 'category-festival', color: '#a8741a' },
 ];
 const CHIPS: { key: '' | TypeKey; label: string; color?: string }[] = [
@@ -424,6 +424,15 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
     return out;
   }, [items, festivals]);
 
+  // [MKT-V2-3] Tab sub-lines that depend on real listings (never a hardcoded price).
+  const tabSub = useMemo(() => {
+    const out: Record<string, string> = {};
+    const havanPrices = items.filter((i) => i.eventType === 'havan' && i.price != null && i.price > 0).map((i) => i.price as number);
+    if (havanPrices.length) out.havan = `Shared fire rituals · from ₹${Math.min(...havanPrices).toLocaleString('en-IN')}`;
+    if (items.some((i) => i.eventType === 'puja' && (i.visibility === 'private' || i.mode === 'one_on_one'))) out.puja = 'Personal & family · 1:1 available';
+    return out;
+  }, [items]);
+
   const results = useMemo(() => {
     const list = items.filter((it) =>
       matchesType(it, filters.type, festivals)
@@ -446,7 +455,16 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
     let w = 0; let sum = 0;
     for (const i of items) if (i.ratingAvg != null && i.ratingCount > 0) { sum += i.ratingAvg * i.ratingCount; w += i.ratingCount; }
     const upcoming = items.filter((i) => i.liveNow || (i.startsAt != null && i.startsAt < now + 30 * DAY_MS)).length;
-    return { towns, devotees, rating: w > 0 ? sum / w : null, upcoming };
+    // Cities for the hero lead: most-listed first, up to three.
+    const cityCount = new Map<string, { city: string; n: number }>();
+    for (const i of items) {
+      const city = (i.location ?? '').trim();
+      if (!city) continue;
+      const k = norm(city); const cur = cityCount.get(k);
+      if (cur) cur.n++; else cityCount.set(k, { city, n: 1 });
+    }
+    const cities = [...cityCount.values()].sort((a, b) => b.n - a.n || a.city.localeCompare(b.city)).slice(0, 3).map((c) => c.city);
+    return { towns, devotees, rating: w > 0 ? sum / w : null, upcoming, cities };
   }, [items, Math.floor(now / 60_000)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const temples = useMemo(() => {
@@ -472,11 +490,12 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
     capture('marketplace_card_click', { action, listing_id: it.id, position, rail });
 
   // ------------------------------------------------------------ hero portals
-  // Stats card only with ≥3 upcoming events; temple towns only with ≥2 cities (thin numbers look fake).
+  // [MKT-V2-3] Stats card whenever something is listed; each stat hidden only when it is zero.
   const heroStats = mounted && ready && typeof document !== 'undefined' ? document.getElementById('mk-hero-stats') : null;
   const heroCount = mounted && ready && typeof document !== 'undefined' ? document.getElementById('mk-hero-count') : null;
+  const heroCities = mounted && ready && typeof document !== 'undefined' ? document.getElementById('mk-hero-cities') : null;
   const statCells = [
-    stats.towns >= 2 && <div key="t"><b>{stats.towns.toLocaleString('en-IN')}</b><span>{stats.towns === 1 ? 'temple town' : 'temple towns'}</span></div>,
+    stats.towns > 0 && <div key="t"><b>{stats.towns.toLocaleString('en-IN')}</b><span>{stats.towns === 1 ? 'temple' : 'temples'}</span></div>,
     stats.devotees > 0 && <div key="d"><b>{stats.devotees.toLocaleString('en-IN')}</b><span>devotees joined</span></div>,
     stats.rating != null && <div key="r"><b>{stats.rating.toFixed(1)}★</b><span>average rating</span></div>,
   ].filter(Boolean);
@@ -515,8 +534,11 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
   // ------------------------------------------------------------ render
   return (
     <>
-      {heroStats && stats.upcoming >= 3 && statCells.length > 0 && createPortal(<div className="mk-hero-stats">{statCells}</div>, heroStats)}
-      {heroCount && stats.upcoming > 0 && createPortal(<> · {plural(stats.upcoming, 'upcoming event')}</>, heroCount)}
+      {heroStats && items.length > 0 && statCells.length > 0 && createPortal(<div className="mk-hero-stats">{statCells}</div>, heroStats)}
+      {heroCount && items.length > 0 && createPortal(stats.upcoming > 0
+        ? <> · {plural(stats.upcoming, 'EVENT', 'EVENTS')} THIS MONTH</>
+        : <> · {plural(items.length, 'UPCOMING EVENT', 'UPCOMING EVENTS')}</>, heroCount)}
+      {heroCities && stats.cities.length > 0 && createPortal(<> in {stats.cities.join(', ')} and more</>, heroCities)}
 
       {/* ② CATEGORY TABS */}
       <section className="mk-tabs" aria-label="Browse by category">
@@ -528,7 +550,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
                 aria-current={filters.type === t.key ? 'true' : undefined}
                 {...filterLink({ type: t.key }, () => capture('marketplace_tab', { type: t.key || 'all' }))}>
                 <img src={publicImage(`/assets/saathum-booking/${t.art}.png`, { width: 240, fit: 'scale-down' })} alt="" width={120} height={120} loading="lazy" decoding="async" />
-                <span className="mk-tab-copy"><b>{t.label}</b><small>{t.sub}</small></span>
+                <span className="mk-tab-copy"><b>{t.label}</b><small>{tabSub[t.key] ?? t.sub}</small></span>
                 {ready && n > 0 && <span className="mk-tab-count" aria-label={plural(n, 'event')}>{n}</span>}
               </a>
             );
