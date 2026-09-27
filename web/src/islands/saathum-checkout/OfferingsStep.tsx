@@ -1,5 +1,5 @@
 /* [SAATHUM-CHECKOUT-UI 2026-09-26] Step 3 — Offerings: chadhava qty,
- * dakshina for the priest, prasad courier toggle + (when on) the REQUIRED
+ * offering for the priest, prasad courier toggle + (when on) the REQUIRED
  * shipping address. Chadhava images fall back gracefully on 404, per spec's
  * seed-data note. The live total footer reads the debounced quote the parent
  * (SaathumCheckout) fetches from POST /checkout/quote. */
@@ -158,7 +158,7 @@ export function OfferingsStep({
       {zoom && <ChadhavaLightbox item={zoom} onClose={() => setZoom(null)} />}
 
       <div className="sthc-fld" style={{ marginTop: 10 }}>
-        <label>Dakshina for the priest <em>Optional</em></label>
+        <label>Offering for the priest <em>Optional</em></label>
       </div>
       <div className="sthc-chips">
         {dakshinaPresets.map((v) => (

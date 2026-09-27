@@ -142,9 +142,9 @@ describe("computeQuote — event_type rules", () => {
     if (!q.ok) { expect(q.error).toBe("not_offered_for_event_type"); expect(q.field).toBe("prasad"); }
   });
 
-  it("labels the offering line 'Offering' for non-ritual, 'Dakshina for the priest' for ritual", () => {
+  it("labels the offering line 'Offering' for non-ritual, 'Offering for the priest' for ritual", () => {
     const r = computeQuote({ ...base, listing, chadhava: [], dakshinaRupees: 51, prasad: false });
-    if (r.ok) expect(r.value.lines.find((l) => l.kind === "dakshina")?.label).toBe("Dakshina for the priest");
+    if (r.ok) expect(r.value.lines.find((l) => l.kind === "dakshina")?.label).toBe("Offering for the priest");
     const nr = computeQuote({ ...base, listing: nonRitual, chadhava: [], dakshinaRupees: 51, prasad: false });
     if (nr.ok) expect(nr.value.lines.find((l) => l.kind === "dakshina")?.label).toBe("Offering");
   });

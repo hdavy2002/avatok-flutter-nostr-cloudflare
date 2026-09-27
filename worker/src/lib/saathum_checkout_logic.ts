@@ -168,7 +168,7 @@ export function computeQuote(input: QuoteInput): Ok<Quote> | FieldError {
   const ritual = isRitual(listing.event_type);
   const copy = eventTypeCopy(listing.event_type);
   if (!Number.isSafeInteger(dakshina) || dakshina < 0 || dakshina > MAX_DAKSHINA_RUPEES) {
-    return { ok: false, error: "invalid_dakshina", message: `Dakshina must be between 0 and ${MAX_DAKSHINA_RUPEES}.`, field: "dakshina_rupees" };
+    return { ok: false, error: "invalid_dakshina", message: `Offering must be between 0 and ${MAX_DAKSHINA_RUPEES}.`, field: "dakshina_rupees" };
   }
   // [SAATHUM-EVENT-TYPES 2026-09-27] Owner decision: satsang/sermon/meditation never
   // take chadhava or prasad. Checked before anything else so the client gets one clear
@@ -202,7 +202,7 @@ export function computeQuote(input: QuoteInput): Ok<Quote> | FieldError {
       lines.push({ kind: "chadhava", id: item.id, label: item.title, qty: sel.qty, unit_rupees: item.price_rupees, amount_rupees: item.price_rupees * sel.qty });
     }
   }
-  if (dakshina > 0) lines.push({ kind: "dakshina", label: ritual ? "Dakshina for the priest" : "Offering", qty: 1, unit_rupees: dakshina, amount_rupees: dakshina });
+  if (dakshina > 0) lines.push({ kind: "dakshina", label: ritual ? "Offering for the priest" : "Offering", qty: 1, unit_rupees: dakshina, amount_rupees: dakshina });
   if (ritual && prasad) lines.push({ kind: "prasad", label: "Prasad courier", qty: 1, unit_rupees: listing.prasad_price_rupees, amount_rupees: listing.prasad_price_rupees });
 
   const subtotal_rupees = lines.reduce((sum, l) => sum + l.amount_rupees, 0);
