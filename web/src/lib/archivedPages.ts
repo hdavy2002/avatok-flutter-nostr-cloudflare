@@ -29,7 +29,7 @@ export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason
   { path: '/tokens', label: 'Tokens & Wallet', reason: 'wallet not used for bookings' },
   { path: '/payouts', label: 'Payouts', reason: 'seller payouts' },
   { path: '/organisers', label: 'For organisers / Guides', reason: 'seller onboarding' },
-  { path: '/careers', label: 'Careers', reason: 'owner removed 2026-09-25' },
+  // [WEB-CAREERS-GONE-1 2026-09-27] /careers DELETED (410), no longer archived — see pages/careers.astro.
   // [WEB-ABOUT-FOLK-1 2026-09-27] /about UN-archived by owner — rebuilt on the folk
   // shell and back in the header + footer menus (lib/homeNavigation.ts).
   { path: '/grievance', label: 'Grievance Redressal', reason: 'owner removed 2026-09-25' },
