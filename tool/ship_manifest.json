@@ -7439,5 +7439,52 @@
       }
     ],
     "_verified_at": "web/src/islands/home/BookNowShelf.tsx; web/src/pages/book/[id]/checkout.astro; web/src/islands/saathum-checkout/YouStep.tsx"
+  },
+  "SAATHUM-UPI-FIX": {
+    "description": "[SAATHUM-UPI-FIX] Checkout refreshes the Clerk token before Pay and while polling; expired JWT had blocked every UPI checkout.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_pay_started",
+        "exists": true,
+        "min_events": 1,
+        "note": "Pay step reached = a checkout row + UPI QR were created (was never reached before)."
+      }
+    ],
+    "_verified_at": "web/src/islands/saathum-checkout/SaathumCheckout.tsx; web/src/islands/saathum-checkout/PayStep.tsx"
+  },
+  "SAATHUM-CHECKOUT-READABLE": {
+    "description": "[SAATHUM-CHECKOUT-READABLE] Larger checkout text; bigger chadhava thumbnails with a zoom lightbox.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_chadhava_zoom",
+        "property": "chadhava_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Devotees open the chadhava lightbox."
+      }
+    ],
+    "_verified_at": "web/src/islands/saathum-checkout/checkout.css; web/src/islands/saathum-checkout/OfferingsStep.tsx"
+  },
+  "SAATHUM-UPI-SETTINGS": {
+    "description": "[SAATHUM-UPI-SETTINGS] Admin UPI settings: admin-set VPA/payee used by checkout QR, rail status, SMS companion download.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin_upi_settings_updated",
+        "property": "vpa_set",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner saved a UPI ID from /admin/upi."
+      }
+    ],
+    "_verified_at": "worker/src/routes/upi_settings.ts; worker/src/lib/upi_settings.ts; web/src/islands/admin2/UpiSettings.tsx"
   }
 }
