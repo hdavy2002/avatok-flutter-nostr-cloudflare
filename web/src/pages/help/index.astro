@@ -92,13 +92,6 @@ const quick = QUICK.flatMap((c) => {
 
 const n = tree.length;
 const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 ? 2 : Math.min(n, 3)}`;
-
-const POLICY_LINKS = [
-  { href: '/terms', label: 'Terms of service' },
-  { href: '/privacy', label: 'Privacy policy' },
-  { href: '/refunds', label: 'Refunds' },
-  { href: '/community-guidelines', label: 'Community guidelines' },
-];
 ---
 <Base content={HELP_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
@@ -217,11 +210,6 @@ const POLICY_LINKS = [
         </div>
       </section>
 
-      <div class="hs-wrap">
-        <nav class="hs-policies" aria-label="Policies">
-          {POLICY_LINKS.map((p, i) => (<>{i > 0 && <span aria-hidden="true">·</span>}<a href={p.href}>{p.label}</a></>))}
-        </nav>
-      </div>
       <p class="grand-booking-note">Saa Thum performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
