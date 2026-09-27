@@ -38,7 +38,13 @@ assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking
 assert.match(html, /data-grand-artwork="hero"/, 'Grand hero artwork is rendered');
 assert.doesNotMatch(html, /folk-seal|folk-handnote|folk-art-note/, 'Retired compact badges and notes are absent');
 assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
-const renderedFolkArtwork = new Set(['satsang', 'lotus']);
+// [BRAND-LOGO-1 2026-09-27] The lotus sticker no longer renders in the header/
+// footer — the single horizontal Saa Thum logo does. Assert that instead.
+assert.match(html, /class="avh-logo-mark"[^>]*saathum-logo-horizontal|saathum-logo-horizontal[^>]*class="avh-logo-mark"|class="avh-logo-mark"/, 'Header brand logo is rendered');
+assert.match(html, /class="bf-logo-mark"/, 'Footer brand logo is rendered');
+assert.match(html, /rel="icon" href="\/assets\/saathum-logo\/favicon-512\.png"/, 'Diya favicon is linked');
+assert.doesNotMatch(html, /avh-logo-text|bf-logo-text|app-logo2\.png/, 'Retired icon + text brand lockup and old favicon are absent');
+const renderedFolkArtwork = new Set(['satsang']);
 for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
   if (name !== 'border' && renderedFolkArtwork.has(name)) assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
   if (name === 'border') assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');

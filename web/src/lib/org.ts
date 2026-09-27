@@ -93,10 +93,11 @@ export const ORG: OrgConstants = {
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
   url: 'https://saathum.com/',
+  // [BRAND-LOGO-1 2026-09-27] Square diya mark for Google's Organization logo.
   logo: {
-    url: 'https://saathum.com/app-logo2.png',
-    width: 251,
-    height: 256,
+    url: 'https://saathum.com/assets/saathum-logo/favicon-512.png',
+    width: 512,
+    height: 512,
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   description:
