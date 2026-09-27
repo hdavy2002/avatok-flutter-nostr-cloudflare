@@ -55,7 +55,7 @@
 .bn-when { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: 10px; }
 .bn-date { display: flex; align-items: center; gap: 6px; font: 800 14px/1.3 Nunito, sans-serif; text-shadow: 0 1px 3px #000a; }
 .bn-date svg { width: 16px; height: 16px; flex: none; }
-.bn-cd-label { display: block; margin-top: 6px; font: 800 11px Nunito, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #F6B93B; text-shadow: 0 1px 3px #000c; }
+.bn-cd-label { display: block; margin-top: 6px; font: 800 12.5px Nunito, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #F6B93B; text-shadow: 0 1px 3px #000c; }
 .bn-cd-label--live { font-size: 13px; letter-spacing: .04em; }
 .bn-cd { display: flex; align-items: flex-start; margin-top: 3px; }
 .bn-cd-group { display: inline-flex; align-items: flex-start; }
@@ -69,27 +69,27 @@
 .bn-title { margin: 0; font-family: Comfortaa, sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2; }
 .bn-title a { color: #173f3f; text-decoration: none; }
 .bn-title a:hover { text-decoration: underline; }
-.bn-deity { margin-top: -6px; font: 800 12px Nunito, sans-serif; color: #7a4a1e; }
-.bn-desc { margin: 0; font: 500 14.5px/1.45 Nunito, sans-serif; color: #3c4a4c; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bn-deity { margin-top: -6px; font: 800 14px Nunito, sans-serif; color: #7a4a1e; }
+.bn-desc { margin: 0; font: 500 16px/1.45 Nunito, sans-serif; color: #3c4a4c; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bn-blips { display: flex; flex-wrap: wrap; gap: 6px; }
-.bn-blip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; background: #f3e7d2; color: #2c3b3d; font: 700 12.5px Nunito, sans-serif; }
-.bn-blip svg { width: 14px; height: 14px; flex: none; }
+.bn-blip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; background: #f3e7d2; color: #2c3b3d; font: 700 14px Nunito, sans-serif; }
+.bn-blip svg { width: 16px; height: 16px; flex: none; }
 .bn-blip a { color: inherit; }
 .bn-blip--star { background: #fff1c9; }
 .bn-blip--booked { background: #e2efe3; color: #1d5a3a; }
 .bn-feats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px 12px; border: 1px dashed #d8c3a0; border-radius: 12px; background: #fff; }
-.bn-feat { position: relative; display: flex; align-items: center; gap: 6px; font: 700 12.5px/1.25 Nunito, sans-serif; color: #2c3b3d; }
+.bn-feat { position: relative; display: flex; align-items: center; gap: 7px; font: 700 14.5px/1.3 Nunito, sans-serif; color: #2c3b3d; }
 .bn-feat--off { color: #8a8378; }
 .bn-info { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #e8dcc5; color: #6b4a2b; font: 900 10px Nunito, sans-serif; border: 0; padding: 0; cursor: help; flex: none; }
-.bn-tip { position: absolute; left: 0; bottom: calc(100% + 8px); width: 210px; padding: 8px 10px; border-radius: 10px; background: #173f3f; color: #fff; font: 700 12px/1.4 Nunito, sans-serif; box-shadow: 0 8px 20px #0004; opacity: 0; pointer-events: none; transition: .15s; z-index: 5; }
+.bn-tip { position: absolute; left: 0; bottom: calc(100% + 8px); width: 210px; padding: 8px 10px; border-radius: 10px; background: #173f3f; color: #fff; font: 700 13.5px/1.4 Nunito, sans-serif; box-shadow: 0 8px 20px #0004; opacity: 0; pointer-events: none; transition: .15s; z-index: 5; }
 .bn-tip::after { content: ""; position: absolute; left: 12px; top: 100%; border: 6px solid transparent; border-top-color: #173f3f; }
 .bn-feat:hover .bn-tip, .bn-feat:focus-within .bn-tip, .bn-feat--show .bn-tip { opacity: 1; }
-.bn-yes, .bn-no { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; color: #fff; }
+.bn-yes, .bn-no { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; color: #fff; }
 .bn-yes { background: #1e8a4c; } .bn-no { background: #b9b0a3; }
 .bn-yes svg, .bn-no svg { width: 11px; height: 11px; }
 .bn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.bn-price-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
-.bn-price small { display: block; font: 800 11px Nunito, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7a6a55; }
+.bn-price-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding-top: 2px; }
+.bn-price small { display: block; font: 800 12.5px Nunito, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #7a6a55; }
 .bn-price b { font: 900 28px/1 Nunito, sans-serif; color: #9b1c14; }
 .bn-icons { display: flex; gap: 6px; }
 .bn-ib { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; }
@@ -97,13 +97,20 @@
 .bn-ib--wa { background: #25D366; color: #fff; }
 .bn-ib--bell { background: #f3e7d2; color: #5a2d12; }
 .bn-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.bn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 8px; border-radius: 12px; font: 900 14px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; }
+.bn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 8px; border-radius: 12px; font: 900 15.5px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; }
 .bn-btn--book { background: var(--bn-red); color: #fff; box-shadow: 0 3px 0 #7a150f; }
 .bn-btn--ben { border: 2px solid #173f3f; color: #173f3f; }
-.bn-foot { margin-top: -2px; display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; font: 600 11.5px/1.35 Nunito, sans-serif; color: #7a6a55; }
+.bn-foot { margin-top: 2px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font: 600 14px/1.35 Nunito, sans-serif; color: #6b5a45; min-width: 0; }
+.bn-foot-performer { display: flex; align-items: center; justify-content: center; gap: 10px; max-width: 100%; min-width: 0; }
+.bn-foot-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bn-foot-name b { color: #173f3f; font-weight: 800; }
+.bn-foot-cancel { font: 600 13px Nunito, sans-serif; color: #7a6a55; }
+/* [SAATHUM-CARD-POLISH] date moved off the photo, beside the price */
+.bn-datebar { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 9px 12px; border-radius: 12px; background: #fff4dc; border: 1px solid #ecd6a8; font: 800 15px/1.3 Nunito, sans-serif; color: #5a2d12; }
+.bn-datebar svg { width: 18px; height: 18px; flex: none; color: #b3261e; }
 /* [SAATHUM-EVENT-TYPES §5] Small round performer photo (or initials) beside the footer line. */
-.bn-performer-photo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid #fff; box-shadow: 0 1px 4px #0003; }
-.bn-performer-initials { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8dcc5; color: #5a2d12; font: 900 11px Nunito, sans-serif; }
+.bn-performer-photo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid #fff; box-shadow: 0 1px 4px #0003; }
+.bn-performer-initials { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8dcc5; color: #5a2d12; font: 900 14px Nunito, sans-serif; }
 
 .bn-more { display: flex; justify-content: center; margin-top: 30px; }
 .bn-more-btn { padding: 14px 28px; border-radius: 999px; background: #F6B93B; color: #3a1d0e; font: 900 16px Nunito, sans-serif; letter-spacing: .03em; text-align: center; text-decoration: none; box-shadow: 0 4px 0 #a8741a, 0 10px 22px #7a4a1a40; }

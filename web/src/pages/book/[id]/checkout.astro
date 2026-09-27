@@ -86,17 +86,26 @@ const backHref = `/book/${encodeURIComponent(listing.id)}`;
   <main class="mx-auto max-w-5xl px-4 py-8">
     {isLiveEvent ? (
       <div class="sthc-wrap">
-        <div class="sthc-strip">
-          <div class="sthc-strip-thumb">
-            {coverUrl ? (
-              <img src={cfImage(coverUrl, { width: 96, fit: 'cover' })} alt="" />
-            ) : null}
+        {/* [SAATHUM-CHECKOUT-POLISH 2026-09-27] Owner: a broad event image with the details overlaid, sign-in below. */}
+        <div class="sthc-hero">
+          {coverUrl ? (
+            <img
+              src={cfImage(coverUrl, { width: 1280, fit: 'cover', quality: 70 })}
+              srcset={[640, 960, 1280].map((w) => `${cfImage(coverUrl, { width: w, fit: 'cover', quality: 70 })} ${w}w`).join(', ')}
+              sizes="(max-width: 800px) 100vw, 760px"
+              alt=""
+              width="1280"
+              height="560"
+              fetchpriority="high"
+            />
+          ) : null}
+          <div class="sthc-hero-shade"></div>
+          <a class="sthc-hero-back" href={backHref}>&larr; Back to event</a>
+          <div class="sthc-hero-info">
+            <span class="sthc-hero-kicker">You are booking</span>
+            <h1>{listing.title}</h1>
+            {startsAtLabel && <p>📅 {startsAtLabel}{listing.duration_min ? ` · ${listing.duration_min >= 60 ? `${Math.round(listing.duration_min / 6) / 10} hr` : `${listing.duration_min} min`}` : ''}</p>}
           </div>
-          <div class="sthc-strip-info">
-            <h4>{listing.title}</h4>
-            {startsAtLabel && <p>{startsAtLabel}</p>}
-          </div>
-          <a class="sthc-strip-back" href={backHref}>&larr; Back to event</a>
         </div>
         <SaathumCheckout client:load listingId={listing.id} />
       </div>

@@ -317,7 +317,7 @@ EMAIL_PROVIDER = "cloudflare_then_brevo"
 # verified), and nobody can sign in. Flip this the same way EMAIL_PROVIDER was
 # phased in - as its own deliberate, sequenced deploy, not bundled with the
 # rest of the Saathum rename merge.
-EMAIL_FROM_DEFAULT = "Saathum <noreply@saathum.com>"
+EMAIL_FROM_DEFAULT = "Saa Thum <noreply@saathum.com>"
 # AVA CORE (Phase 0, AVA-CORE-4): the ONE reasoner slot behind avaReason()
 # (src/ava_reason.ts). Per-call overrides (BRAIN_EXTRACT_MODEL etc.) still WIN.
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
@@ -583,7 +583,7 @@ EMAIL_PROVIDER = "cloudflare_then_brevo"
 # touching the prod value — see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
 # Until saathum.com is onboarded in Cloudflare Email Sending + verified in
 # Brevo, sends with this value will fail closed (by design — see prod comment).
-EMAIL_FROM_DEFAULT = "Saathum <noreply@saathum.com>"
+EMAIL_FROM_DEFAULT = "Saa Thum <noreply@saathum.com>"
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])
 AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"

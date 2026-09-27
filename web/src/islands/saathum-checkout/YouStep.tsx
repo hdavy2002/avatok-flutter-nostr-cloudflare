@@ -128,6 +128,15 @@ export function YouStep({
           {phase === 'sending' ? 'Sending…' : 'Send code →'}
         </button>
       )}
+      {/* [SAATHUM-CHECKOUT-POLISH 2026-09-27] Owner: mobile verification is skippable for now (SMS not fully set up). */}
+      {phase !== 'code' && phase !== 'verifying' && (
+        <button
+          className="sthc-btn sthc-btn--link"
+          onClick={() => { capture('saathum_checkout_phone_skipped', { listing_id: listingId, event_type: eventType }); onVerified(); }}
+        >
+          Skip for now →
+        </button>
+      )}
       {(phase === 'code' || phase === 'verifying') && (
         <>
           <div className="sthc-fld">

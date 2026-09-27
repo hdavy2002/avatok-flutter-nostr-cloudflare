@@ -338,12 +338,6 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
           {it.category && <span className="bn-pill bn-pill--soft">{it.category}</span>}
         </span>
         <span className="bn-when">
-          {it.startsAt != null && (
-            <span className="bn-date">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-              {whenLabel(it.startsAt, it.durationMin)}
-            </span>
-          )}
           {!it.liveNow && it.startsAt != null && <>
             <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
@@ -372,6 +366,13 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
             />
           ))}
         </div>
+        {/* [SAATHUM-CARD-POLISH 2026-09-27] Owner: the date on the photo was hard to read — it lives here now. */}
+        {it.startsAt != null && (
+          <div className="bn-datebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+            <span>{whenLabel(it.startsAt, it.durationMin)}</span>
+          </div>
+        )}
         <div className="bn-price-row">
           {it.price != null
             ? <div className="bn-price"><small>Starting from</small><b>₹{it.price.toLocaleString('en-IN')}</b></div>
@@ -392,10 +393,13 @@ function BookCard({ it, now, origin, index, sample }: { it: Item; now: number; o
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">
-          {it.performerPhotoUrl
-            ? <img className="bn-performer-photo" src={it.performerPhotoUrl} alt="" width={28} height={28} loading="lazy" decoding="async" />
-            : <span className="bn-performer-initials" aria-hidden="true">{initials(it.performedBy || copy.performerFallback)}</span>}
-          <span>{copy.footer(it.performedBy)}</span>
+          <div className="bn-foot-performer" title={`${copy.performerLabel} ${it.performedBy || copy.performerFallback}`}>
+            {it.performerPhotoUrl
+              ? <img className="bn-performer-photo" src={it.performerPhotoUrl} alt="" width={40} height={40} loading="lazy" decoding="async" />
+              : <span className="bn-performer-initials" aria-hidden="true">{initials(it.performedBy || copy.performerFallback)}</span>}
+            <span className="bn-foot-name">{copy.performerLabel} <b>{it.performedBy || copy.performerFallback}</b></span>
+          </div>
+          <div className="bn-foot-cancel">Free cancellation 24 hrs before</div>
         </div>
       </div>
     </article>

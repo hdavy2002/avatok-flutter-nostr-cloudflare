@@ -7423,5 +7423,21 @@
       }
     ],
     "_verified_at": "web/public/assets/saathum-booking-stickers; web/public/assets/saathum-chadhava"
+  },
+  "SAATHUM-POLISH-2": {
+    "description": "[SAATHUM-POLISH-2] Card: bigger text, date moved off the photo beside the price, one-line priest name with ellipsis + 40px photo, cancellation on its own line; checkout: broad event banner above the step card, skippable mobile verification; email sender name 'Saa Thum'.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_step",
+        "property": "step",
+        "exists": true,
+        "min_events": 1,
+        "note": "Checkout steps still flow with the new banner."
+      }
+    ],
+    "_verified_at": "web/src/islands/home/BookNowShelf.tsx; web/src/pages/book/[id]/checkout.astro; web/src/islands/saathum-checkout/YouStep.tsx"
   }
 }
