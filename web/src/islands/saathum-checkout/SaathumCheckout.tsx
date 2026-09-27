@@ -181,9 +181,26 @@ function Inner({ listingId }: { listingId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, listingId, offerings.chadhava, offerings.dakshina_rupees, offerings.prasad, step, checkout]);
 
+  // [SAATHUM-UPI-FIX 2026-09-27] Clerk session JWTs live ~60s. The token was
+  // captured once at the phone gate, so by the time a devotee filled sankalp +
+  // offerings and pressed Pay the server answered `auth: expired` and no UPI
+  // QR was ever created. Keep it fresh while the checkout is open, and always
+  // mint a fresh one right before a money call.
+  const hasToken = !!token;
+  useEffect(() => {
+    if (!hasToken) return;
+    const id = window.setInterval(() => {
+      getActiveToken().then((t) => { if (t) setToken(t); }).catch(() => { /* next tick retries */ });
+    }, 40_000);
+    return () => clearInterval(id);
+  }, [hasToken]);
+
   async function onPay() {
-    if (!token) { setStep('you'); return; }
     if (!config) return;
+    const fresh = await getActiveToken().catch(() => null);
+    const auth = fresh ?? token;
+    if (!auth) { setStep('you'); return; }
+    if (fresh) setToken(fresh);
     setPaying(true);
     setPayErr(null);
     const requestKey = requestKeyFor(listingId);
@@ -204,7 +221,7 @@ function Inner({ listingId }: { listingId: string }) {
           accept_terms: true,
           accept_refund: true,
         },
-        token,
+        auth,
       );
       storeCheckoutId(listingId, c.checkout_id);
       setCheckout(c);

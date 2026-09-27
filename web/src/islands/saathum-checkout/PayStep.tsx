@@ -44,6 +44,10 @@ export function PayStep({
   const [utrBusy, setUtrBusy] = useState(false);
   const [utrErr, setUtrErr] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  // Poll with the LATEST token — the parent refreshes it every 40s and a
+  // closure-captured one expires mid-payment. [SAATHUM-UPI-FIX]
+  const authRef = useRef(auth);
+  authRef.current = auth;
 
   useEffect(() => {
     capture('saathum_checkout_step', { step: 'pay', listing_id: listingId, event_type: eventType });
@@ -62,7 +66,7 @@ export function PayStep({
     let stopped = false;
     async function tick() {
       try {
-        const c = await getCheckout(checkout.checkout_id, auth);
+        const c = await getCheckout(checkout.checkout_id, authRef.current);
         if (!stopped) onUpdate(c);
       } catch (e) {
         captureException(e, { where: 'saathum_checkout_poll' });
@@ -131,7 +135,7 @@ export function PayStep({
         <div className="sthc-kick">Step {stepIndex} of {totalSteps} · Pay</div>
         <h3 className="sthc-h3">This payment expired</h3>
         <div className="sthc-dots">{Array.from({ length: totalSteps }, (_, i) => <i key={i} className="on" />)}</div>
-        <p style={{ font: '700 14px/1.5 Nunito, sans-serif', color: 'var(--body)' }}>
+        <p style={{ font: '700 17px/1.5 Nunito, sans-serif', color: 'var(--body)' }}>
           If you already paid, keep your receipt and contact us with your UTR. Otherwise, start again to get a fresh QR.
         </p>
         <button className="sthc-btn" onClick={onStartAgain}>Start again →</button>
