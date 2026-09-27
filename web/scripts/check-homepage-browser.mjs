@@ -17,6 +17,7 @@ const server = createServer(async (request, response) => {
     let pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     pathname = pathname.replace(/^\/cdn-cgi\/image\/[^/]+\//, '/');
     if (pathname.endsWith('/')) pathname += 'index.html';
+    else if (!extname(pathname)) pathname += '/index.html'; // [MKT-V2-4] extensionless routes (/how-it-works) → their built index.html
     const file = resolve(root, '.' + pathname);
     if (!file.startsWith(root + sep)) {
       if (!response.headersSent && !response.writableEnded) response.writeHead(403).end();
@@ -174,9 +175,16 @@ try {
       await page.locator('#avh-drawer').waitFor({ state: 'hidden' });
       assert(await page.getByRole('button', { name: 'Open menu', exact: true }).evaluate(el => el === document.activeElement), name + ': Escape restores focus');
       await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-      // [MKT-V2-4] The menu no longer has an in-page anchor (By intention); a menu link must still close it.
-      await page.locator('#avh-drawer').getByRole('link', { name: 'How it works', exact: true }).click();
-      assert(!(await page.locator('#avh-drawer').evaluate(dialog => dialog.open)), name + ': menu link selection closes menu');
+      // [MKT-V2-4] The menu no longer has an in-page anchor (By intention). A menu link now
+      // NAVIGATES, so the drawer cannot be inspected afterwards (the old page is gone — that
+      // was the 30s locator timeout in run 36289487658). Assert the navigation itself, then
+      // return to the homepage for the signed-in checks below.
+      await Promise.all([
+        page.waitForURL(/\/how-it-works\/?$/, { waitUntil: 'commit' }),
+        page.locator('#avh-drawer').getByRole('link', { name: 'How it works', exact: true }).click(),
+      ]);
+      assert(/\/how-it-works\/?$/.test(page.url()), name + ': menu link navigates');
+      await page.goto('http://127.0.0.1:4179/', { waitUntil: 'networkidle' });
     }
     await page.context().addCookies([{ name: '__client_uat', value: '1', url: 'http://127.0.0.1:4179' }]);
     await page.reload({ waitUntil: 'networkidle' });
