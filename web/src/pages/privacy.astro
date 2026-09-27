@@ -1,179 +1,138 @@
 ---
+// [WEB-LEGAL-FOLK-1 2026-09-27] /privacy rebuilt to the owner-approved mockup
+// design/legal-pages/saathum-privacy-mock.src.html. OWNER: "exact replica of
+// what you have shown me, not an inspired version." Replaces the
+// layouts/Content.astro version — same policy text, word-for-word (mock's
+// two stray "Ava" references in section 4 already read "Saa Thum" — keep
+// that), on the new folk shell.
+//
+// NOTE FOR AI:
+//  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
+//    styles/legal-folk.css. Same conventions as pages/refunds.astro:
+//    Base chrome={false}, `.folk-site[data-design="saathum-reference-v5"]`,
+//    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
+//  - This page supplies only content props (title/lead/updated/sticker/toc/
+//    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
+//  - Prose text below is UNCHANGED from the mock — do not "improve" the
+//    wording; this is a shell swap, not a copy edit.
+//  - Emails stay plain text "support (@) saathum.com", never mailto.
 export const prerender = true;
-import Content from '../layouts/Content.astro';
+import LegalFolk from '../layouts/LegalFolk.astro';
+
+const toc = [
+  { id: 'collect', label: 'Information we collect' },
+  { id: 'use', label: 'How we use information' },
+  { id: 'google', label: 'Google APIs and Google user data' },
+  { id: 'ai', label: 'AI features and your data' },
+  { id: 'share', label: 'How we share information' },
+  { id: 'retention', label: 'Data retention' },
+  { id: 'rights', label: 'Your rights and choices' },
+  { id: 'security', label: 'Security' },
+  { id: 'transfers', label: 'International transfers' },
+  { id: 'children', label: 'Children' },
+  { id: 'changes', label: 'Changes to this policy' },
+  { id: 'contact', label: 'Contact us' },
+];
 ---
 
-<Content
-  kicker="Legal"
+<LegalFolk
   title="Privacy Policy"
+  titleHtml="Privacy <em>Policy</em>"
+  eyebrow="Legal"
+  lead="How the Saa Thum team collects, uses, and protects your information while we test an early product with a small group of invited users."
   description="What Saa Thum collects, why we collect it, how we protect it, and the control you have over your information."
   image="/og/privacy.png"
-  lead="How the Saa Thum team collects, uses, and protects your information while we test an early product with a small group of invited users."
   updated="2026-09-25"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/privacy-sticker-v2.png', width: 1206, height: 1304 }}
+  sticker={{ src: '/assets/saathum-editorial-stickers-v2/privacy-sticker-v2.png', width: 1206, height: 1304, alt: 'A teal lotus-shaped shield with a golden padlock and a diya — privacy.' }}
+  stamp={{ src: '/assets/saathum-bright/lotus.png', width: 1254, height: 1254 }}
+  toc={toc}
+  railCard={{
+    title: 'We never sell your data',
+    html: 'Ask us to delete your account and data at any time at support (@) saathum.com.',
+    image: { src: '/diya-logo.png', width: 1254, height: 1254 },
+  }}
 >
-  <p data-i18n="web-privacy.e4bc847d00bc3f7f">
+  <p>
     This Privacy Policy explains how the Saa Thum founding team ("Saa Thum", "we", "us", or "our")
     handles personal information in connection with the Saa Thum websites, apps, and services
     (collectively, the "Services").
   </p>
 
-
+  <div class="lg-note lg-note--plain">
+    <div>
+      <span class="lg-tag">Testing stage</span>
+      <p>
+        Because we are at the testing stage, please note that Saa Thum is a pre-release product,
+        that access is invite-only, and that <strong>test data may be reset</strong> as we build.
+        Do not put information into Saa Thum that you could not afford to lose or would not want
+        handled by an early-stage service. We still protect what you give us as described below,
+        and you can ask us to delete it at any time.
+      </p>
+    </div>
+  </div>
 
   <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.6ef246cdfb1b6bec">Because we are at the testing stage, please note that Saa Thum is a pre-release product, that
-    access is invite-only, and that</ui-copy> <strong data-i18n="web-privacy.576b66c8b56756ac">test data may be reset</strong> <ui-copy style="display:contents" data-i18n="web-privacy.0ae53d0f539ad2c3">as we build. Do not put
-    information into Saa Thum that you could not afford to lose or would not want handled by an
-    early-stage service. We still protect what you give us as described below, and you can ask us
-    to delete it at any time.</ui-copy>
-  </p>
-
-  <p data-i18n="web-privacy.ede01a500b095363">
     By using the Services you agree to the practices described here. If you do not agree, please do
     not use the Services.
   </p>
 
-  <h2 data-i18n="web-privacy.331e44fd15c9e213">1. Information we collect</h2>
-  <p data-i18n="web-privacy.de353d84e9b4a154">We collect information in three ways:</p>
+  <h2 id="collect"><span class="lg-n">1.</span>Information we collect</h2>
+  <p>We collect information in three ways:</p>
   <ul>
-    <li><strong data-i18n="web-privacy.9ed67b256a58af79">Information you give us</strong> <ui-copy style="display:contents" data-i18n="web-privacy.c4386f477a41f032">— such as your name, email address, handle,
-      profile details, payment and payout details, identity-verification data (for KYC where
-      required), and any content you create, upload, or send.</ui-copy></li>
-    <li><strong data-i18n="web-privacy.132cba883d63e30c">Biometric identifiers</strong> <ui-copy style="display:contents" data-i18n="web-privacy.bdd1079206a75ee0">— before you post publicly we ask you to complete a
-      liveness check, which produces a scan of facial geometry. We collect this only with your
-      prior written consent, we never sell or profit from it, and we destroy it on a published
-      timetable.</ui-copy></li>
-    <li><strong data-i18n="web-privacy.dbdfa7a50ca2ff7b">Information we collect automatically</strong> <ui-copy style="display:contents" data-i18n="web-privacy.d4087a2ebf65601c">— such as device and browser type,
-      IP address, approximate location, pages viewed, and interactions with the Services, collected
-      through cookies and similar technologies (see our</ui-copy> <a data-i18n="web-privacy.ee290b3ddbc8e7e9" href="/cookies">Cookie Policy</a>).</li>
-    <li><strong data-i18n="web-privacy.95a665285c954735">Information from third parties</strong> <ui-copy style="display:contents" data-i18n="web-privacy.d5f36e60b017882b">— such as authentication providers,
-      payment processors, and analytics partners that help us run the Services.</ui-copy></li>
+    <li><strong>Information you give us</strong> — such as your name, email address, handle, profile details, payment and payout details, identity-verification data (for KYC where required), and any content you create, upload, or send.</li>
+    <li><strong>Biometric identifiers</strong> — before you post publicly we ask you to complete a liveness check, which produces a scan of facial geometry. We collect this only with your prior written consent, we never sell or profit from it, and we destroy it on a published timetable.</li>
+    <li><strong>Information we collect automatically</strong> — such as device and browser type, IP address, approximate location, pages viewed, and interactions with the Services, collected through cookies and similar technologies (see our <a href="/cookies">Cookie Policy</a>).</li>
+    <li><strong>Information from third parties</strong> — such as authentication providers, payment processors, and analytics partners that help us run the Services.</li>
   </ul>
 
-  <h2 data-i18n="web-privacy.4cb9675ad1588d1a">2. How we use information</h2>
+  <h2 id="use"><span class="lg-n">2.</span>How we use information</h2>
   <ul>
-    <li data-i18n="web-privacy.7d052589f265ba48">To provide, maintain, and improve the Services.</li>
-    <li data-i18n="web-privacy.17f743c16397c38b">To process payments, payouts, bookings, and transactions.</li>
-    <li data-i18n="web-privacy.cff1759b36fee8e2">To verify identity, keep the community safe, and prevent fraud and abuse.</li>
-    <li data-i18n="web-privacy.6040d160d4082354">To personalize features, including AI-powered features.</li>
-    <li data-i18n="web-privacy.fde82c696e0d613b">To communicate with you about your account, updates, and support requests.</li>
-    <li><ui-copy style="display:contents" data-i18n="web-privacy.39cc75bc1233bdaf">To comply with legal obligations and enforce our</ui-copy> <a data-i18n="web-privacy.4afa55bf7aec7ddc" href="/terms">Terms of Service</a>.</li>
+    <li>To provide, maintain, and improve the Services.</li>
+    <li>To process payments, payouts, bookings, and transactions.</li>
+    <li>To verify identity, keep the community safe, and prevent fraud and abuse.</li>
+    <li>To personalize features, including AI-powered features.</li>
+    <li>To communicate with you about your account, updates, and support requests.</li>
+    <li>To comply with legal obligations and enforce our <a href="/terms">Terms of Service</a>.</li>
   </ul>
 
-  <h2 data-i18n="web-privacy.6ff5e2e8a5f9acf0">3. Google APIs and Google user data</h2>
-  <p>
-    If you choose to connect a Google Account, Saa Thum uses Google OAuth and requests only
-    Google Drive's limited <code>drive.file</code> access. This lets Saa Thum create files in your
-    Google Drive when you ask it to (for example, saving a booking receipt) and open only the
-    files that Saa Thum created or that you explicitly select. Saa Thum cannot see, read or change
-    any other file in your Google Drive. Saa Thum does not request access to your Google Calendar,
-    Gmail, Contacts or any other Google service.
-  </p>
-  <p>
-    Google user data is used only to provide the feature you requested, is transmitted over
-    encrypted connections, and is never sold, used for advertising, used to determine
-    creditworthiness, or transferred to anyone else except as necessary to provide that feature
-    or where required by law. Saa Thum's use and transfer to any other app of information
-    received from Google APIs will adhere to the
-    <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>,
-    including the Limited Use requirements.
-  </p>
-  <p>
-    <strong>Google user data and AI.</strong> Saa Thum does not send any data received from Google
-    APIs to any AI or machine-learning model &mdash; neither a self-hosted model nor a
-    third-party AI service &mdash; and does not use Google user data to train, fine-tune or
-    improve any AI model, whether generalized, foundational or Saa Thum's own.
-  </p>
-  <p>
-    You can disconnect Google at any time from Saa Thum's settings or from your Google
-    Account's third-party connections (myaccount.google.com/connections). When disconnected,
-    Saa Thum stops making Google API requests for that connection. You can ask us to delete
-    stored Google-related data and tokens by contacting
-    support (@) saathum.com; tokens are encrypted at rest and
-    are deleted when the connection is removed, subject to legally required retention.
-  </p>
+  <h2 id="google"><span class="lg-n">3.</span>Google APIs and Google user data</h2>
+  <p>If you choose to connect a Google Account, Saa Thum uses Google OAuth and requests only Google Drive's limited <code>drive.file</code> access. This lets Saa Thum create files in your Google Drive when you ask it to (for example, saving a booking receipt) and open only the files that Saa Thum created or that you explicitly select. Saa Thum cannot see, read or change any other file in your Google Drive. Saa Thum does not request access to your Google Calendar, Gmail, Contacts or any other Google service.</p>
+  <p>Google user data is used only to provide the feature you requested, is transmitted over encrypted connections, and is never sold, used for advertising, used to determine creditworthiness, or transferred to anyone else except as necessary to provide that feature or where required by law. Saa Thum's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+  <p><strong>Google user data and AI.</strong> Saa Thum does not send any data received from Google APIs to any AI or machine-learning model — neither a self-hosted model nor a third-party AI service — and does not use Google user data to train, fine-tune or improve any AI model, whether generalized, foundational or Saa Thum's own.</p>
+  <p>You can disconnect Google at any time from Saa Thum's settings or from your Google Account's third-party connections (myaccount.google.com/connections). When disconnected, Saa Thum stops making Google API requests for that connection. You can ask us to delete stored Google-related data and tokens by contacting support (@) saathum.com; tokens are encrypted at rest and are deleted when the connection is removed, subject to legally required retention.</p>
 
-  <h2 data-i18n="web-privacy.6b0438d77b09ae00">4. AI features and your data</h2>
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.3ace7dc08419996d">Saa Thum is an AI-centric platform. Some features use machine-learning models to generate,
-    summarize, translate, or recommend content. AI outputs can be inaccurate or incomplete —
-    please review the section on AI in our</ui-copy> <a data-i18n="web-privacy.4afa55bf7aec7ddc" href="/terms">Terms of Service</a><ui-copy style="display:contents" data-i18n="web-privacy.0754f824fa5b2b86">. Private and
-    end-to-end encrypted content is processed on-device wherever feasible and is not used to train
-    shared models without your consent. Some communication features are server-readable so Ava can
-    provide the service you request; content is handled according to the controls and disclosures
-    shown inside the relevant feature. Where a feature is explicitly described as end-to-end
-    encrypted, processing remains limited to the participating devices except where you choose to
-    share that content with Ava.</ui-copy>
-  </p>
+  <h2 id="ai"><span class="lg-n">4.</span>AI features and your data</h2>
+  <p>Saa Thum is an AI-centric platform. Some features use machine-learning models to generate, summarize, translate, or recommend content. AI outputs can be inaccurate or incomplete — please review the section on AI in our <a href="/terms">Terms of Service</a>. Private and end-to-end encrypted content is processed on-device wherever feasible and is not used to train shared models without your consent. Some communication features are server-readable so Saa Thum can provide the service you request; content is handled according to the controls and disclosures shown inside the relevant feature. Where a feature is explicitly described as end-to-end encrypted, processing remains limited to the participating devices except where you choose to share that content with Saa Thum.</p>
+  <p><strong>Which AI services we use.</strong> Saa Thum does not run its own self-hosted AI model. AI features use third-party AI services acting as our service providers: Cloudflare Workers AI, OpenAI and Google Gemini (and, for some features, OpenRouter and Groq). We send these providers only the content needed for the AI feature you use. As explained in section 3, data received from Google APIs is never sent to any of these AI services.</p>
 
-  <p>
-    <strong>Which AI services we use.</strong> Saa Thum does not run its own self-hosted AI model.
-    AI features use third-party AI services acting as our service providers: Cloudflare
-    Workers AI, OpenAI and Google Gemini (and, for some features, OpenRouter and Groq). We send
-    these providers only the content needed for the AI feature you use. As
-    explained in section 3, data received from Google APIs is never sent to any of these AI
-    services.
-  </p>
-
-  <h2 data-i18n="web-privacy.03aa2b9c8c79c6bf">5. How we share information</h2>
-  <p><ui-copy style="display:contents" data-i18n="web-privacy.461d939acca81102">We do</ui-copy> <strong data-i18n="web-privacy.254bb97b57f12e16">not</strong> <ui-copy style="display:contents" data-i18n="web-privacy.fba47347ff88ef4d">sell your personal information. We share it only:</ui-copy></p>
+  <h2 id="share"><span class="lg-n">5.</span>How we share information</h2>
+  <p>We do <strong>not</strong> sell your personal information. We share it only:</p>
   <ul>
-    <li data-i18n="web-privacy.3be4c67f5e1e1175">With service providers (e.g. hosting, payments, email, analytics) under contract.</li>
-    <li data-i18n="web-privacy.3c74c5b2a0ebddba">With other users when you choose to make content or a profile public.</li>
-    <li data-i18n="web-privacy.e3bc97c3f3417b0c">To comply with law, legal process, or to protect rights, safety, and property.</li>
-    <li data-i18n="web-privacy.dd7db2bf30b5531a">In connection with a merger, acquisition, or sale of assets, with notice where required.</li>
+    <li>With service providers (e.g. hosting, payments, email, analytics) under contract.</li>
+    <li>With other users when you choose to make content or a profile public.</li>
+    <li>To comply with law, legal process, or to protect rights, safety, and property.</li>
+    <li>In connection with a merger, acquisition, or sale of assets, with notice where required.</li>
   </ul>
 
-  <h2 data-i18n="web-privacy.ab54ff6918eedd7e">6. Data retention</h2>
-  <p data-i18n="web-privacy.4d3d1d0c2476353c">
-    We keep personal information for as long as your account is active or as needed to provide the
-    Services, comply with legal obligations, resolve disputes, and enforce our agreements. You can
-    request deletion of your account and data at any time.
-  </p>
+  <h2 id="retention"><span class="lg-n">6.</span>Data retention</h2>
+  <p>We keep personal information for as long as your account is active or as needed to provide the Services, comply with legal obligations, resolve disputes, and enforce our agreements. You can request deletion of your account and data at any time.</p>
 
-  <h2 data-i18n="web-privacy.a321f9f1f441f960">7. Your rights and choices</h2>
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.00ec7b19b686be7a">Depending on where you live, you may have the right to access, correct, export, or delete your
-    personal information, and to object to or restrict certain processing. To exercise these rights,
-    contact us at</ui-copy> support (@) saathum.com<ui-copy style="display:contents" data-i18n="web-privacy.22f7d6dd2f6fb1a5">. You can also manage
-    cookies through your browser and our cookie controls.</ui-copy>
-  </p>
+  <h2 id="rights"><span class="lg-n">7.</span>Your rights and choices</h2>
+  <p>Depending on where you live, you may have the right to access, correct, export, or delete your personal information, and to object to or restrict certain processing. To exercise these rights, contact us at support (@) saathum.com. You can also manage cookies through your browser and our cookie controls.</p>
 
-  <h2 data-i18n="web-privacy.0b5e5072dc49b58e">8. Security</h2>
-  <p data-i18n="web-privacy.56d6d0b7a129da08">
-    We use technical and organizational measures designed to protect personal information,
-    including encryption in transit and at rest. No method of transmission or storage is perfectly
-    secure, so we cannot guarantee absolute security.
-  </p>
+  <h2 id="security"><span class="lg-n">8.</span>Security</h2>
+  <p>We use technical and organizational measures designed to protect personal information, including encryption in transit and at rest. No method of transmission or storage is perfectly secure, so we cannot guarantee absolute security.</p>
+  <p>Saa Thum user data is hosted using secure infrastructure selected by Saa Thum. We describe the locations and providers used for your data in the applicable service notices.</p>
 
-  <p data-i18n="web-privacy.0d7c064e2dd42ba5">
-    Saa Thum user data is hosted using secure infrastructure selected by Saa Thum
-    We describe the locations and providers used for your data in the applicable service notices.
-  </p>
+  <h2 id="transfers"><span class="lg-n">9.</span>International transfers</h2>
+  <p>We operate globally. Your information may be processed in countries other than your own, including countries where our infrastructure and service providers operate, where data-protection laws may differ. We take steps to ensure appropriate safeguards are in place.</p>
 
-  <h2 data-i18n="web-privacy.24e30990d30b8f6b">9. International transfers</h2>
-  <p data-i18n="web-privacy.89058a50cd8df44d">
-    We operate globally. Your information may be processed in countries other than your own,
-    including countries where our infrastructure and service providers operate, where
-    data-protection laws may differ. We take steps to ensure appropriate safeguards are in place.
-  </p>
+  <h2 id="children"><span class="lg-n">10.</span>Children</h2>
+  <p>The Services are not directed to children under 13 (or the minimum age required in your jurisdiction). We do not knowingly collect personal information from children. If you believe a child has provided us information, contact support (@) saathum.com.</p>
 
-  <h2 data-i18n="web-privacy.9101f6b5865ab494">10. Children</h2>
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.e7a1d5fc2f511781">The Services are not directed to children under 13 (or the minimum age required in your
-    jurisdiction). We do not knowingly collect personal information from children. If you believe a
-    child has provided us information, contact</ui-copy> support (@) saathum.com.
-  </p>
+  <h2 id="changes"><span class="lg-n">11.</span>Changes to this policy</h2>
+  <p>We may update this Privacy Policy from time to time. We will post the updated version here and revise the "Last updated" date above. Material changes may be communicated through the Services.</p>
 
-  <h2 data-i18n="web-privacy.f5007dc76b66f358">11. Changes to this policy</h2>
-  <p data-i18n="web-privacy.fb79674166dbd4be">
-    We may update this Privacy Policy from time to time. We will post the updated version here and
-    revise the "Last updated" date above. Material changes may be communicated through the Services.
-  </p>
-
-  <h2 data-i18n="web-privacy.d53e9dfc1e011983">12. Contact us</h2>
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-privacy.82bf233498e024a4">Questions about privacy? Email</ui-copy> support (@) saathum.com <ui-copy style="display:contents" data-i18n="web-privacy.dc76dc158a8d8124">or use
-    our</ui-copy> <a data-i18n="web-privacy.5d1fabafc7eb451a" href="/contact">contact page</a><ui-copy style="display:contents" data-i18n="web-privacy.15b3b59534295685">.</ui-copy>
-  </p>
-</Content>
+  <h2 id="contact"><span class="lg-n">12.</span>Contact us</h2>
+  <p>Questions about privacy? Email support (@) saathum.com or use our <a href="/contact">contact page</a>.</p>
+</LegalFolk>

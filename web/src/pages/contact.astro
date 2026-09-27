@@ -1,92 +1,101 @@
 ---
+// [WEB-LEGAL-FOLK-1 2026-09-27] /contact rebuilt to the owner-approved mockup
+// design/legal-pages/saathum-contact-mock.src.html. OWNER: "exact replica of
+// what you have shown me, not an inspired version." Replaces the
+// layouts/Content.astro version — same form fields/attributes and the same
+// real /api/contact handler, on the new folk shell.
+//
+// NOTE FOR AI:
+//  - Shell + CSS: layouts/LegalFolk.astro (props documented there, including
+//    the contact-page addendum) + its styles/legal-folk.css. Same
+//    conventions as pages/refunds.astro. `contact={true}` renders this
+//    page's slot directly after the hero + ribbon, with NO rail and NO ask
+//    band — this page supplies its own `.lg-contact` section.
+//  - The contact page has no "Last updated" date, so `updated` is omitted
+//    and `metaPill="support (@) saathum.com"` replaces the hero-meta pill
+//    text instead (see LegalFolk.astro's addendum note).
+//  - Form field names/attributes/options/maxlengths/honeypot and the
+//    delivery note are UNCHANGED from the previous contact.astro. The
+//    mock's demo <script> is replaced by the real /api/contact POST
+//    handler with the same status messages as before — only the status
+//    element's class changed, to the shared `lg-cstatus` (+ .ok/.err)
+//    rule in legal-folk.css.
+//  - Every control keeps a stable id (c-name/c-email/c-category/c-subject/
+//    c-message) as in the mock, for label association and future JS hooks.
+//  - Side-card images go through publicImage() directly (width 320,
+//    fit scale-down) since LegalFolk has no side-card prop — contact is the
+//    only page on this layout using `.lg-side-card`.
+//  - Emails stay plain text "support (@) saathum.com" — no email link —
+//    except the existing delivery-note "support@saathum.com" which is not a
+//    link and stays exactly as the previous page had it.
 export const prerender = true;
-import Content from '../layouts/Content.astro';
+import LegalFolk from '../layouts/LegalFolk.astro';
+import { publicImage } from '../lib/config';
+
+const linkImg = publicImage('/assets/saathum-how-it-works/link.webp', { width: 320, fit: 'scale-down' });
+const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
+const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-sticker-v2.png', { width: 320, fit: 'scale-down' });
 ---
 
-<Content
-  kicker="Talk to a human"
+<LegalFolk
   title="Contact us"
+  titleHtml="Contact <em>us</em>"
+  eyebrow="Talk to a human"
+  lead="Questions, feedback, press, partnerships, or a problem to report? Your message goes straight to the Saa Thum support team."
   description="Get in touch with Saa Thum — support, press, partnerships, or to report something that isn't right."
   image="/og/contact.png"
-  lead="Questions, feedback, press, partnerships, or a problem to report? Your message goes straight to the Saa Thum support team."
-  width="wide"
-  tone="pink"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/contact-sticker-v2.png', width: 1201, height: 1309 }}
+  metaPill="support (@) saathum.com"
+  sticker={{
+    src: '/assets/saathum-legal/contact-welcome.png',
+    width: 790,
+    height: 1009,
+    alt: 'A smiling woman in a silk saree welcoming you with joined hands, a lit diya on a lotus below.',
+  }}
+  contact
 >
-  <p>
-    <ui-copy style="display:contents" data-i18n="web-contact.3561417b16521b57">You can always email us directly at</ui-copy> support (@) saathum.com<ui-copy style="display:contents" data-i18n="web-contact.5ebe030573ca42a3">, or
-    use the form below. For anything about your data, see our</ui-copy> <a data-i18n="web-contact.506ff394621596dd" href="/privacy">Privacy Policy</a>.
-  </p>
-
-
-
-  <form id="contact-form" class="cform" novalidate>
-    <label class="honeypot" aria-hidden="true">
-      <span data-i18n="web-contact.78dd534863d4fb0a">Company website</span>
-      <input type="text" name="company" tabindex="-1" autocomplete="off" />
-    </label>
-    <div class="row">
-      <label>
-        <span data-i18n="web-contact.2c6b2e253c01fb2e">Your name</span>
-        <input type="text" name="name" autocomplete="name" required maxlength="120" />
-      </label>
-      <label>
-        <span data-i18n="web-contact.969ccbd3cf6300ec">Email</span>
-        <input type="email" name="email" autocomplete="email" required maxlength="200" />
-      </label>
+  <section class="lg-contact lg-wrap">
+    <div class="lg-contact-inner">
+      <form id="contact-form" class="lg-cform" novalidate>
+        <p class="lg-intro">You can always email us directly at support (@) saathum.com, or use the form below. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>
+        <label class="lg-honeypot" aria-hidden="true"><span>Company website</span><input type="text" name="company" tabindex="-1" autocomplete="off" /></label>
+        <div class="lg-row">
+          <label><span>Your name</span><input id="c-name" type="text" name="name" autocomplete="name" required maxlength="120" /></label>
+          <label><span>Email</span><input id="c-email" type="email" name="email" autocomplete="email" required maxlength="200" /></label>
+        </div>
+        <label><span>What can we help with?</span>
+          <select id="c-category" name="category">
+            <option value="Support">Product support</option>
+            <option value="Feedback">Feedback or an idea</option>
+            <option value="Safety">Safety or abuse report</option>
+            <option value="Privacy">Privacy request</option>
+            <option value="Press">Press or media</option>
+            <option value="Partnership">Partnership</option>
+            <option value="Other">Something else</option>
+          </select>
+        </label>
+        <label><span>Subject</span><input id="c-subject" type="text" name="subject" maxlength="160" placeholder="What’s this about?" /></label>
+        <label><span>Message</span><textarea id="c-message" name="message" rows="6" required maxlength="5000" placeholder="How can we help?"></textarea></label>
+        <button type="submit" class="lg-btn">Send message <span aria-hidden="true">→</span></button>
+        <p class="lg-cstatus" id="contact-status" role="status" aria-live="polite"></p>
+        <p class="lg-delivery-note">Every form submission is delivered through Brevo to <strong>support@saathum.com</strong>.</p>
+      </form>
+      <aside class="lg-side">
+        <div class="lg-side-card lg-side-card--red">
+          <div><span class="lg-tag">Email</span><h3>Write to us directly</h3><p><strong>support (@) saathum.com</strong></p><p>Your message goes straight to the Saa Thum support team.</p></div>
+          <img src={linkImg} alt="" aria-hidden="true" width="384" height="640" loading="lazy" decoding="async" />
+        </div>
+        <div class="lg-side-card lg-side-card--terra">
+          <div><span class="lg-tag">Help centre</span><h3>Answers in plain English</h3><p>Booking, joining live, prasad, refunds and your account — <a href="/help">browse the Help centre</a>.</p></div>
+          <img src={ontimeImg} alt="" aria-hidden="true" width="443" height="494" loading="lazy" decoding="async" />
+        </div>
+        <div class="lg-side-card lg-side-card--plum">
+          <div><span class="lg-tag">Your data</span><h3>Privacy requests</h3><p>Pick “Privacy request” in the form, or read our <a href="/privacy">Privacy Policy</a>.</p></div>
+          <img src={privacyImg} alt="" aria-hidden="true" width="1206" height="1304" loading="lazy" decoding="async" />
+        </div>
+      </aside>
     </div>
-    <label>
-      <span data-i18n="web-contact.80d7546c2da066f8">What can we help with?</span>
-      <select name="category">
-        <option data-i18n="web-contact.f2d5cbe11cddc437" value="Support">Product support</option>
-        <option data-i18n="web-contact.045cad4755b7ffcc" value="Feedback">Feedback or an idea</option>
-        <option data-i18n="web-contact.9ffa741ded2441d8" value="Safety">Safety or abuse report</option>
-        <option data-i18n="web-contact.6e7dbc6b206c441e" value="Privacy">Privacy request</option>
-        <option data-i18n="web-contact.57e09dc50abdcdfc" value="Press">Press or media</option>
-        <option data-i18n="web-contact.b61dd8f40159a9b8" value="Partnership">Partnership</option>
-        <option data-i18n="web-contact.cc72843144841a6f" value="Other">Something else</option>
-      </select>
-    </label>
-    <label>
-      <span data-i18n="web-contact.68971283841aecdf">Subject</span>
-      <input data-india-i18n-attr="placeholder:web-contact.416de4ff9b44bc18" type="text" name="subject" maxlength="160" placeholder="What’s this about?" />
-    </label>
-    <label>
-      <span data-i18n="web-contact.2f77668a9dfbf8d5">Message</span>
-      <textarea data-india-i18n-attr="placeholder:web-contact.7b56e0d0b308abe4" name="message" rows="6" required maxlength="5000" placeholder="How can we help?"></textarea>
-    </label>
-    <button data-i18n="web-contact.93a26b1eaff99b3a" type="submit" class="cbtn">Send message</button>
-    <p class="cstatus" id="contact-status" role="status" aria-live="polite"></p>
-    <p class="delivery-note"><ui-copy style="display:contents" data-i18n="web-contact.5ff3490d40ebce43">Every form submission is delivered through Brevo to</ui-copy> <strong>support@saathum.com</strong>.</p>
-  </form>
-</Content>
-
-<style>
-  .cform { width: min(100%, 820px); margin: 36px auto 0; padding: clamp(22px, 4vw, 42px); display: flex; flex-direction: column; gap: 20px; border: 1px solid #181816; border-radius: 24px; background: #fffdf7; box-shadow: 12px 12px 0 #4f5cff; }
-  .cform .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .cform label { display: flex; flex-direction: column; gap: 8px; font-weight: 800; color: #181816; font-size: 17px; }
-  .cform input, .cform textarea, .cform select {
-    width: 100%; font-family: 'DM Sans', sans-serif; font-size: 17px; font-weight: 600; color: #181816;
-    background: #fff; border: 1px solid #181816; border-radius: 15px;
-    padding: 14px 16px; outline: none; box-shadow: 3px 3px 0 #181816; transition: box-shadow .12s ease, transform .12s ease;
-  }
-  .cform input:focus, .cform textarea:focus, .cform select:focus { box-shadow: 5px 5px 0 #4f5cff; transform: translate(-1px,-1px); }
-  .cform textarea { resize: vertical; }
-  .cform .honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
-  .cbtn {
-    align-self: center; font-family: 'DM Sans', sans-serif; font-weight: 800; font-size: 17px;
-    color: #181816; background: #ffd95e; border: 1px solid #181816; border-radius: 999px;
-    padding: 14px 28px; cursor: pointer; box-shadow: 4px 4px 0 #181816;
-    transition: transform .12s ease, box-shadow .12s ease;
-  }
-  .cbtn:hover:not(:disabled) { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 #181816; }
-  .cbtn:disabled { opacity: .6; cursor: default; }
-  .cstatus { font-weight: 800; margin: 0; min-height: 1.2em; text-align: center; }
-  .cstatus.ok { color: #176b43; }
-  .cstatus.err { color: #b42525; }
-  .delivery-note { margin: 0; font-size: 14px; color: rgba(24,24,22,.65); text-align: center; }
-  @media (max-width: 560px) { .cform { box-shadow: 7px 7px 0 #4f5cff; } .cform .row { grid-template-columns: 1fr; } }
-</style>
+  </section>
+</LegalFolk>
 
 <script>
   const form = document.getElementById('contact-form') as HTMLFormElement | null;
@@ -97,14 +106,14 @@ import Content from '../layouts/Content.astro';
       const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
       const data = Object.fromEntries(new FormData(form).entries());
       if (!data.name || !data.email || !data.message) {
-        statusEl.className = 'cstatus err';
+        statusEl.className = 'lg-cstatus err';
         statusEl.textContent = 'Please fill in your name, email, and message.';
         return;
       }
       btn.disabled = true;
       const prev = btn.textContent;
       btn.textContent = 'Sending…';
-      statusEl.className = 'cstatus';
+      statusEl.className = 'lg-cstatus';
       statusEl.textContent = '';
       try {
         const res = await fetch('/api/contact', {
@@ -115,14 +124,14 @@ import Content from '../layouts/Content.astro';
         const out = await res.json().catch(() => ({}));
         if (res.ok && out.ok) {
           form.reset();
-          statusEl.className = 'cstatus ok';
+          statusEl.className = 'lg-cstatus ok';
           statusEl.textContent = 'Thanks! Your message is on its way — we’ll be in touch.';
         } else {
-          statusEl.className = 'cstatus err';
+          statusEl.className = 'lg-cstatus err';
           statusEl.textContent = out.error || 'Could not send your message. Please email support@saathum.com.';
         }
       } catch {
-        statusEl.className = 'cstatus err';
+        statusEl.className = 'lg-cstatus err';
         statusEl.textContent = 'Network error. Please email support@saathum.com.';
       } finally {
         btn.disabled = false;

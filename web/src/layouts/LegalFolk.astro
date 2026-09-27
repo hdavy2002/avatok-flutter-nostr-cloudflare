@@ -1,0 +1,191 @@
+---
+// [WEB-LEGAL-FOLK-1 2026-09-27] Shared layout for the folk-shell legal /
+// contact pages — the owner-approved mockup
+// design/legal-pages/saathum-refunds-mock.src.html reproduced 1:1 (see
+// build-mock.py for how the five sibling mocks share this same
+// header/hero/rail/article/ask structure). OWNER: "exact replica of what you
+// have shown me, not an inspired version."
+//
+// NOTE FOR AI:
+//  - Same shell as pages/how-it-works.astro / pages/marketplace.astro: Base
+//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
+//    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer are
+//    NOT copied — the live components are the header and footer.
+//  - Page CSS: styles/legal-folk.css (scoped under `.lg`). Every rule there is
+//    the mockup's rule, `lg-` prefixed. The gold ribbon is the live
+//    `.grand-divider` (identical rule to the mockup's `.ribbon`).
+//  - This layout builds its own PublicContent SEO object from
+//    title/description/image/updated, the same derivation
+//    layouts/Content.astro used (kind 'page', key/canonicalPath =
+//    Astro.url.pathname, modifiedAt from `updated`), so a page moving onto
+//    this layout keeps its title, canonical, summary and social card.
+//  - `contact` (default false) renders the slot directly inside <main class
+//    ="lg"> right after the hero + ribbon, with NO body grid/rail and NO ask
+//    band — the contact page supplies its own `.lg-contact` section and its
+//    own closing. Every other legal page gets: hero -> ribbon -> body grid
+//    (rail + article/prose slot) -> ask band.
+//  - The hero's help link is class="help-crosslink" (exactly that string —
+//    scripts/check-help.mjs asserts it on /refunds at deploy time); the
+//    `.lg-hero-meta .help-crosslink` rule in legal-folk.css is the mock's `.link` rule.
+//  - Exactly one <h1> per page (title/titleHtml). Emails stay plain text
+//    "name (@) saathum.com", never mailto. Brand text is "Saa Thum".
+//  - [WEB-LEGAL-FOLK-1 2026-09-27 contact addendum] `updated` is now OPTIONAL
+//    and `metaPill?: string` was added: when set, it replaces the hero-meta
+//    pill's text (default "Last updated <date>") — contact.astro uses it for
+//    "support (@) saathum.com" since a contact page has no last-updated date.
+//    When `updated` is omitted, the SEO object's `modifiedAt` is omitted too.
+export interface Props {
+  /** Plain-text page title, used as the SEO fallback and as the h1 text when titleHtml is omitted. */
+  title: string;
+  /** Optional HTML for the h1 (e.g. with an <em> highlight), rendered via set:html. Defaults to `title`. */
+  titleHtml?: string;
+  eyebrow: string;
+  lead: string;
+  /** SEO summary — becomes the page's meta description / og:description. */
+  description?: string;
+  /** Per-page OpenGraph image path. */
+  image?: string;
+  /** ISO date string. Rendered as "Last updated <Month D, YYYY>" in the hero pill. Optional — omit for a page with no last-updated date (e.g. contact). */
+  updated?: string;
+  /** Overrides the hero-meta pill's text (default "Last updated <date>"). Use for a page with no last-updated date, e.g. contact's "support (@) saathum.com". */
+  metaPill?: string;
+  helpHref?: string;
+  helpLabel?: string;
+  sticker: { src: string; width: number; height: number; alt: string };
+  stamp?: { src: string; width: number; height: number };
+  toc?: { id: string; label: string }[];
+  railCard?: { title: string; html: string; image: { src: string; width: number; height: number } };
+  /** true: contact page — slot renders directly after hero+ribbon, no rail/ask band. Default false. */
+  contact?: boolean;
+}
+
+import type { PublicContent } from '../lib/seo/types';
+import Base from './Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { publicImage, publicImageSrcSet } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import '../styles/saathum-folk.css';
+import '../styles/legal-folk.css';
+
+const {
+  title,
+  titleHtml,
+  eyebrow,
+  lead,
+  description,
+  image,
+  updated,
+  metaPill,
+  helpHref,
+  helpLabel,
+  sticker,
+  stamp,
+  toc = [],
+  railCard,
+  contact = false,
+} = Astro.props;
+
+const updatedLabel = updated ? new Date(updated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined;
+const pillText = metaPill ?? (updatedLabel ? `Last updated ${updatedLabel}` : '');
+
+// [WEB-SEO-AUTO-1 convention, same derivation as layouts/Content.astro] Every
+// page on this layout inherits the same typed metadata/schema/social-card
+// pipeline from its ordinary title/description/image/updated props.
+const content: PublicContent = {
+  kind: 'page',
+  key: Astro.url.pathname,
+  canonicalPath: Astro.url.pathname,
+  title,
+  summary: description,
+  visibility: 'public',
+  modifiedAt: updated ? new Date(updated).toISOString() : undefined,
+  image: image ? { url: image, alt: `${title} — Saa Thum` } : undefined,
+};
+
+const stickerSrc = publicImage(sticker.src, { width: 720, fit: 'scale-down' });
+const stickerSrcSet = publicImageSrcSet(sticker.src, [320, 480, 720], { fit: 'scale-down' });
+const stampSrc = stamp ? publicImage(stamp.src, { width: 320, fit: 'scale-down' }) : undefined;
+const railCardImgSrc = railCard ? publicImage(railCard.image.src, { width: 384, fit: 'scale-down' }) : undefined;
+const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
+---
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="lg">
+      <!-- HERO -->
+      <section class="lg-hero lg-wrap" aria-labelledby="page-title">
+        <div class="lg-hero-inner">
+          <div>
+            <p class="lg-eyebrow">{eyebrow}</p>
+            {titleHtml
+              ? <h1 id="page-title" set:html={titleHtml} />
+              : <h1 id="page-title">{title}</h1>}
+            <p class="lg-lead">{lead}</p>
+            <div class="lg-hero-meta">
+              <span class="lg-pill"><span class="lg-dot"></span>{pillText}</span>
+              {helpHref && <a class="help-crosslink" href={helpHref}>{helpLabel ?? 'Read the plain-English version in the Help centre'} <span aria-hidden="true">→</span></a>}
+            </div>
+          </div>
+          <div class="lg-hero-art">
+            <img class="lg-sticker" src={stickerSrc} srcset={stickerSrcSet} sizes="(max-width: 1100px) min(320px, 100vw), 440px" alt={sticker.alt} width={sticker.width} height={sticker.height} decoding="async" />
+            {stampSrc && <img class="lg-stamp" src={stampSrc} alt="" aria-hidden="true" width={stamp!.width} height={stamp!.height} decoding="async" />}
+          </div>
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
+
+      {contact ? (
+        <slot />
+      ) : (
+        <>
+          <section class="lg-body lg-wrap">
+            <div class="lg-body-inner">
+              <aside class="lg-rail">
+                <nav class="lg-toc" aria-label="On this page">
+                  <b>On this page</b>
+                  <ol>
+                    {toc.map((item) => <li><a href={`#${item.id}`}>{item.label}</a></li>)}
+                  </ol>
+                </nav>
+                {railCard && (
+                  <div class="lg-rail-card">
+                    <div>
+                      <b>{railCard.title}</b>
+                      <span set:html={railCard.html} />
+                    </div>
+                    <img src={railCardImgSrc} alt="" aria-hidden="true" width={railCard.image.width} height={railCard.image.height} loading="lazy" decoding="async" />
+                  </div>
+                )}
+              </aside>
+              <article class="lg-article"><div class="lg-prose">
+                <slot />
+              </div></article>
+            </div>
+          </section>
+
+          <section class="lg-ask" aria-labelledby="ask-title">
+            <div class="lg-wrap lg-ask-inner">
+              <img src={namasteSrc} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
+              <div>
+                <h2 id="ask-title">Still have a question? <span>We are a namaste away.</span></h2>
+                <p>Write to support (@) saathum.com, or read the plain-English version of every policy in the Help centre.</p>
+              </div>
+              <div class="lg-ask-actions">
+                <a class="lg-btn lg-btn--paper" href="/contact">Contact us</a>
+                <a class="lg-btn lg-btn--paper" href="/help">Help centre</a>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

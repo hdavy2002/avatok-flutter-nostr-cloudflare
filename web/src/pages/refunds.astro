@@ -1,46 +1,83 @@
 ---
-// rebrand: reviewed — [SAATHUM-REFUNDS-1 2026-09-25] Owner rewrite: no marketplace, no tokens.
-// What you see is what you pay; full refund if you cancel 24+ hours before the scheduled
-// start, by request with the 12-digit UPI transaction number. Same Content layout and
-// elements as before — text only.
+// [WEB-LEGAL-FOLK-1 2026-09-27] /refunds rebuilt to the owner-approved mockup
+// design/legal-pages/saathum-refunds-mock.src.html. OWNER: "exact replica of
+// what you have shown me, not an inspired version." Replaces the
+// [SAATHUM-REFUNDS-1] layouts/Content.astro version — same policy text,
+// word-for-word, on the new folk shell.
+//
+// NOTE FOR AI:
+//  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
+//    styles/legal-folk.css. Same conventions as pages/how-it-works.astro:
+//    Base chrome={false}, `.folk-site[data-design="saathum-reference-v5"]`,
+//    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
+//  - This page supplies only content props (title/lead/updated/sticker/toc/
+//    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
+//  - Prose text below is UNCHANGED from the previous refunds.astro — do not
+//    "improve" the wording; this is a shell swap, not a copy edit.
+//  - Emails stay plain text "support (@) saathum.com", never mailto.
 export const prerender = true;
-import Content from '../layouts/Content.astro';
+import LegalFolk from '../layouts/LegalFolk.astro';
+import { publicImage } from '../lib/config';
+
+const toc = [
+  { id: 'price', label: 'What you see is what you pay' },
+  { id: 'cancel', label: 'Cancelling your booking' },
+  { id: 'request', label: 'How to request a refund' },
+  { id: 'refund-paid', label: 'How your refund is paid' },
+  { id: 'we-cancel', label: "If we cancel or can't perform your ritual" },
+  { id: 'missed', label: 'If you miss the live stream' },
+  { id: 'disputes', label: 'Wrong or duplicate payments' },
+  { id: 'rights', label: 'Your rights' },
+];
+const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
 ---
 
-<Content
-  kicker="Legal"
+<LegalFolk
   title="Refunds & Cancellations"
+  titleHtml="Refunds &amp; <em>Cancellations</em>"
+  eyebrow="Legal"
+  lead="What you see is what you pay. Cancel at least 24 hours before your ritual and we refund you in full."
   description="How cancellations and refunds work for pujas and havans booked on Saa Thum — what you see is what you pay, and how to request a refund with your UPI transaction number."
   image="/og/refunds.png"
-  lead="What you see is what you pay. Cancel at least 24 hours before your ritual and we refund you in full."
   updated="2026-09-25"
   helpHref="/help/billing/refunds"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143 }}
+  sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
+  stamp={{ src: '/assets/saathum-how-it-works/ontime.webp', width: 443, height: 494 }}
+  toc={toc}
+  railCard={{
+    title: 'Keep your UTR handy',
+    html: 'Your 12-digit UPI transaction number is how we find your payment. <a href="/help/billing/refunds">Read the help centre</a>',
+    image: { src: '/assets/saathum-how-it-works/link.webp', width: 384, height: 640 },
+  }}
 >
   <p>
     This policy explains how cancellations and refunds work for pujas and havans you book on
     Saa Thum. It sits alongside our <a href="/terms">Terms of Service</a>.
   </p>
 
-  <h2 id="price">1. What you see is what you pay</h2>
+  <h2 id="price"><span class="lg-n">1.</span>What you see is what you pay</h2>
   <p>
     The price shown on a ritual is the full price you pay. There are no tokens, wallets, credits or
     extra charges added at checkout.
   </p>
 
-  <h2 id="cancel">2. Cancelling your booking</h2>
-  <div class="note">
-    <p>
-      <strong>Cancel at least 24 hours before the scheduled start</strong> of your puja or havan and
-      you get a full refund of the amount you paid.
-    </p>
+  <h2 id="cancel"><span class="lg-n">2.</span>Cancelling your booking</h2>
+  <div class="lg-note">
+    <div>
+      <span class="lg-tag">The 24-hour rule</span>
+      <p>
+        <strong>Cancel at least 24 hours before the scheduled start</strong> of your puja or havan and
+        you get a full refund of the amount you paid.
+      </p>
+    </div>
+    <img src={ontimeImg} alt="" aria-hidden="true" width="443" height="494" />
   </div>
   <p>
     Cancellations made less than 24 hours before the scheduled start are not refunded, because
     our priests have already prepared your ritual and your sankalp.
   </p>
 
-  <h2 id="request">3. How to request a refund</h2>
+  <h2 id="request"><span class="lg-n">3.</span>How to request a refund</h2>
   <p>
     Refunds are not automatic — you need to send us a request. Email
     support (@) saathum.com or use our
@@ -57,26 +94,26 @@ import Content from '../layouts/Content.astro';
     app) by opening the payment in your transaction history, and in your bank's payment SMS.
   </p>
 
-  <h2 id="refund-paid">4. How your refund is paid</h2>
+  <h2 id="refund-paid"><span class="lg-n">4.</span>How your refund is paid</h2>
   <p>
     Once we've located your payment and confirmed your cancellation was made at least 24 hours
     before the scheduled start, we refund the full amount to the UPI account you paid from. We'll
     let you know by email when the refund has been sent.
   </p>
 
-  <h2 id="we-cancel">5. If we cancel or can't perform your ritual</h2>
+  <h2 id="we-cancel"><span class="lg-n">5.</span>If we cancel or can't perform your ritual</h2>
   <p>
     If we cancel your puja or havan, or can't perform it, you get a full refund. Send us a
     request the same way, with your 12-digit UPI transaction number, and we'll refund you.
   </p>
 
-  <h2 id="missed">6. If you miss the live stream</h2>
+  <h2 id="missed"><span class="lg-n">6.</span>If you miss the live stream</h2>
   <p>
     Your sankalp is still performed at the altar, so a booking you miss watching is not refunded.
     The replay is available for 7 days.
   </p>
 
-  <h2 id="disputes">7. Wrong or duplicate payments</h2>
+  <h2 id="disputes"><span class="lg-n">7.</span>Wrong or duplicate payments</h2>
   <p>
     If you think you were charged by mistake or paid twice, email
     support (@) saathum.com with the 12-digit UPI transaction
@@ -84,8 +121,8 @@ import Content from '../layouts/Content.astro';
     faster, and we'll sort it out directly.
   </p>
 
-  <h2 id="rights">8. Your rights</h2>
+  <h2 id="rights"><span class="lg-n">8.</span>Your rights</h2>
   <p>
     Nothing in this policy limits any rights you have under applicable consumer protection law.
   </p>
-</Content>
+</LegalFolk>

@@ -204,6 +204,13 @@ design/
 !/design/live-streaming/README.md
 !/design/live-streaming/assets/
 !/design/live-streaming/assets/**
+# [WEB-LEGAL-FOLK-1 2026-09-27] Approved legal/contact page mockups (small
+# .src.html with {{IMG_x}} placeholders + the generator) that the live pages'
+# comments point at. Same alternating-negation dance as live-streaming above.
+!/design/legal-pages/
+/design/legal-pages/*
+!/design/legal-pages/*.src.html
+!/design/legal-pages/build-mock.py
 
 # [DEMO-LISTING-1 2026-08-26] Build output, not source. web/scripts/copy-design-demo.mjs
 # regenerates web/src/generated/ from design/live-streaming/ on every build and dev
