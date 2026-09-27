@@ -41,6 +41,8 @@ function periodStart(period: string, now: number): number {
 // ---------------------------------------------------------------------------
 // GET /api/verse/summary
 // ---------------------------------------------------------------------------
+const STATEMENT_EMAIL_OFF: boolean = true; // [EMAIL-NO-WALLET-1]
+
 export async function verseSummary(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -316,7 +318,8 @@ export async function verseStatement(req: Request, env: Env): Promise<Response> 
     `TOTAL,,,${inr(totals.gross)},${inr(totals.fee)},${inr(totals.net)},`,
   ].join("\n");
 
-  if (u.get("email") === "1") {
+  // [EMAIL-NO-WALLET-1] Earnings-statement EMAIL switched off (no token/wallet system); CSV/JSON download unaffected.
+  if (u.get("email") === "1" && !STATEMENT_EMAIL_OFF) {
     const email = await clerkEmail(env, ctx.uid);
     if (email) {
       const tbl = items.map((i) => `<tr><td>${i.date}</td><td>${i.type}</td><td>${i.listing}</td><td align="right">₹${inr(i.gross)}</td><td align="right">₹${inr(i.platform_fee)}</td><td align="right">₹${inr(i.net)}</td></tr>`).join("");

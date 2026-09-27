@@ -209,7 +209,7 @@ export async function cancelBooking(req: Request, env: Env): Promise<Response> {
     ).bind(orderId, byCreator ? "creator" : "buyer", now).run();
     const consult = (await metaDb(env).prepare("SELECT kind FROM bookings WHERE id=?1").bind(bookingId).first<any>())?.kind !== "live_event";
     await env.Q_MONEY.send({ type: "cancel", sid: consult ? bookingId : bk.listing_id, kind: consult ? "consult" : "live_event", orderId });
-    refundNote = "Refund per the cancellation rules is on its way to the buyer's wallet (email follows).";
+    refundNote = "A refund per the cancellation rules is on its way (email follows)."; // [EMAIL-NO-WALLET-1]
   }
 
   // Refund (legacy paid bookings; booking paid the host directly, so refund = host→buyer).
@@ -221,7 +221,7 @@ export async function cancelBooking(req: Request, env: Env): Promise<Response> {
     if (amount > 0) {
       const t = await transferTokens(env, creatorId, buyerId, amount, APP, `refund:${bookingId}`, 0);
       if (t.ok) {
-        refundNote = `Refund: ${pct}% (\u20b9${amount}) returned to the buyer's wallet.`;
+        refundNote = `Refund: ${pct}% (\u20b9${amount}) is on its way to the buyer.`; // [EMAIL-NO-WALLET-1]
         const reason = byCreator ? "creator cancelled — full refund" : (h24 ? "cancelled ≥24h before — full refund" : "cancelled <24h before — 50% refund");
         try { await emailRefundIssued(env, buyerId, { title: list[0]?.title ?? "Booking", amount, reason }); } catch { /* best-effort */ }
         await metaDb(env).prepare("UPDATE bookings SET status='refunded', updated_at=?2 WHERE id=?1").bind(bookingId, Date.now()).run();

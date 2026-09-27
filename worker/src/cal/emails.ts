@@ -257,14 +257,20 @@ export async function emailRefundIssued(env: Env, uid: string, o: { title: strin
     shell("Refund issued", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">Refunded: <b>${inr(o.amount)}</b></p><p style="margin:0 0 8px">Reason: ${escapeHtml(o.reason)}</p>${o.detail ? `<p style="margin:0 0 8px">${escapeHtml(o.detail)}</p>` : ""}`));
 }
 
+const WALLET_EMAILS_OFF = true; // [EMAIL-NO-WALLET-1]
+
 /** Settlement paid → creator (Phase 7 hooks in). */
 export async function emailSettlementPaid(env: Env, uid: string, o: { title: string; gross: number; fee: number; net: number; receiptId?: string }): Promise<void> {
+  // [EMAIL-NO-WALLET-1] Wallet settlement emails switched off - Saa Thum runs no token/wallet system.
+  if (WALLET_EMAILS_OFF) return;
   await queueEmail(env, uid, `Settlement paid: ${o.title}`,
-    shell("Settlement paid", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">Gross ${inr(o.gross)} · fee ${inr(o.fee)} · <b>net ${inr(o.net)}</b> to your AvaWallet.</p>${o.receiptId ? `<p style="margin:0 0 8px">Receipt: ${escapeHtml(o.receiptId)}</p>` : ""}`));
+    shell("Settlement paid", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">Gross ${inr(o.gross)} · fee ${inr(o.fee)} · <b>net ${inr(o.net)}</b></p>${o.receiptId ? `<p style="margin:0 0 8px">Receipt: ${escapeHtml(o.receiptId)}</p>` : ""}`));
 }
 
 /** Payout sent/failed → creator (Phase 3 Wise status hooks in). */
 export async function emailPayoutStatus(env: Env, uid: string, o: { amount: number; status: "sent" | "failed"; detail?: string }): Promise<void> {
+  // [EMAIL-NO-WALLET-1] Payout emails switched off - no token/wallet payouts for now.
+  if (WALLET_EMAILS_OFF) return;
   await queueEmail(env, uid, `Payout ${o.status}: ${inr(o.amount)}`,
     shell(o.status === "sent" ? "Payout sent 🎉" : "Payout failed",
       `<p style="margin:0 0 8px">Amount: <b>${inr(o.amount)}</b></p>${o.detail ? `<p style="margin:0 0 8px">${escapeHtml(o.detail)}</p>` : ""}`));

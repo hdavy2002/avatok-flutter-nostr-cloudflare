@@ -28,14 +28,17 @@ function payoutEnabled(env: Env): boolean {
 // Status email via Cloudflare Email Service (Brevo fallback) (best-effort;
 // address resolved from Clerk — D1 stores only email hashes). Phase 3
 // acceptance: status emails on sent/failed.
+const PAYOUT_EMAILS_OFF = true; // [EMAIL-NO-WALLET-1]
 async function payoutEmail(env: Env, uid: string, subject: string, lines: string[]): Promise<void> {
+  // [EMAIL-NO-WALLET-1] No token/wallet payouts on Saa Thum for now - payout emails are switched off.
+  if (PAYOUT_EMAILS_OFF) return;
   try {
     const email = await clerkEmail(env, uid);
     if (!email) return;
     const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
       <h2 style="margin:0 0 12px">${subject}</h2>
       ${lines.map((l) => `<p style="color:#444;margin:0 0 8px">${l}</p>`).join("")}
-      <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum payouts · 1 Token = $0.01</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum payouts</p>
     </div>`;
     await env.Q_EMAIL.send({ to: email, subject: `Saa Thum payout — ${subject}`, html });
   } catch { /* never block payout flow on email */ }

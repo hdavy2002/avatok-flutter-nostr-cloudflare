@@ -321,8 +321,12 @@ export async function clerkEmail(env: Env, uid: string): Promise<string | null> 
 
 export interface ReceiptLine { label: string; amount: number; } // coins (1 = $0.01)
 const inr = (tokens: number) => `\u20b9${tokens}`;
+const WALLET_EMAILS_OFF = true; // [EMAIL-NO-WALLET-1]
 
 export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purchase", opts: { orderId: string; title: string; lines: ReceiptLine[]; total: number; date?: number }): Promise<boolean> {
+  // [EMAIL-NO-WALLET-1] Owner decision 2026-09-27: Saa Thum runs no token/wallet system, so
+  // wallet/token receipt emails are switched off. Delete this return to revive.
+  if (WALLET_EMAILS_OFF) return false;
   const email = await clerkEmail(env, uid);
   if (!email) return false;
   const when = new Date(opts.date ?? Date.now()).toUTCString();
@@ -335,7 +339,7 @@ export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purcha
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">${rows}
       <tr><td style="padding:10px 12px 0 0;font-weight:700;border-top:1px solid #eee">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eee">${inr(opts.total)}</td></tr>
     </table>
-    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "Saa Thum wallet"} · Order ${opts.orderId}<br>1 Token = $0.01</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "Saa Thum"} · Order ${opts.orderId}</p>
   </div>`;
   try {
     await env.Q_EMAIL.send({ to: email, subject: `Your Saa Thum receipt — ${opts.title}`, html });

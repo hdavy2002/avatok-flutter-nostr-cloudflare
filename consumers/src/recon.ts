@@ -126,7 +126,9 @@ export async function reconWallet(env: Env): Promise<void> {
   ).bind(date, ok ? 1 : 0, JSON.stringify(diffs), now).run();
   try { env.ANALYTICS?.writeDataPoint({ blobs: ["wallet_recon", ok ? "ok" : "mismatch"], doubles: [diffs.length], indexes: ["cron"] }); } catch { /* best-effort */ }
 
-  if (!ok) await alertEmail(env, date, diffs);
+  // [EMAIL-NO-WALLET-1] Wallet recon alert email switched off - no token/wallet system on Saa Thum for now.
+  // The run is still recorded in recon_runs. Restore: `if (!ok) await alertEmail(...)`.
+  void alertEmail; void ok;
 }
 
 async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> {

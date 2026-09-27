@@ -113,7 +113,7 @@ export async function queueAgentRefundEmail(env: Env, c: AgentRefundEmailCtx): P
   const body = `
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(c.agentTitle)}</p>
     <p style="margin:0 0 8px">Refunded in full: <b>${inr(c.amount)}</b></p>
-    <p style="margin:0 0 8px">Your session could not be delivered (${escapeHtml(c.reason)}). Sorry about that — nothing further to do; the tokens are back in your Saa Thum wallet.</p>`;
+    <p style="margin:0 0 8px">Your session could not be delivered (${escapeHtml(c.reason)}). Sorry about that — nothing further to do.</p>`;
   return queueEmail(env, c.buyerUid, `Refund issued: ${c.agentTitle}`,
     shell("Refund issued", body),
     { outboxKey: `agentlive-refund:${c.bookingId}`, orderId: `agl_${c.bookingId}` });
