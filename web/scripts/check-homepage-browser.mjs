@@ -62,7 +62,8 @@ try {
       });
       assert(headerGeometry.navRight < headerGeometry.authLeft, name + ': header links and auth controls do not collide');
       const headerType = await page.locator('header').evaluate(header => ({
-        logoSize: header.querySelector('.avh-logo-text')?.getBoundingClientRect().height ?? 0,
+        // [BRAND-LOGO-1 2026-09-27] The brand is now one image (.avh-logo-mark), not icon + text.
+        logoSize: header.querySelector('.avh-logo-mark')?.getBoundingClientRect().height ?? 0,
         navSize: parseFloat(getComputedStyle(header.querySelector('.avh-nav a')).fontSize),
         barRight: header.querySelector('.avh-bar')?.getBoundingClientRect().right ?? 0,
       }));
