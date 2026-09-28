@@ -77,6 +77,16 @@ git worktree remove ../wt-<issue-id-lowercase> && git branch -D issue/<issue-id-
 Then deploy from `main` as usual (commit-before-deploy still applies). Never push the
 `issue/*` branch itself to GitHub unless the owner asks to park work there.
 
+**THE MAGIC WORDS: "land it"** (owner decision 2026-09-28). When the owner says
+"land it" (or "merge it", "finish it"), run the whole *Finishing an issue* block
+above without further questions: update from `origin/main`, re-run the checks,
+fast-forward `main`, update the main folder, delete the worktree and the
+`issue/*` branch, then run `scripts/git_hygiene.py` and report in one or two plain
+lines what landed and that the folder is gone. "land it" does NOT deploy — if the
+change needs to go live, ask "Deploy to the live site now?" in the same reply
+(or deploy directly if he said "land it and deploy"). Say plainly if a rebase hit a
+conflict with another agent's work and how you resolved it.
+
 **Conflict avoidance:** branches delay conflicts, they do not remove them. If a new
 issue touches the same files as one already in flight (same page, same route,
 `tool/ship_manifest.json`), tell the owner and suggest doing it after the other one
