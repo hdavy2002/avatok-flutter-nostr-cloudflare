@@ -137,8 +137,16 @@ export function ReviewStep({
         <span>I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a></span>
       </label>
       <label className="sthc-check">
-        <input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} />
-        <span>I have read the <a href="/refunds" target="_blank" rel="noopener noreferrer">Refund policy</a></span>
+        <input
+          type="checkbox"
+          checked={refund}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setRefund(checked);
+            if (checked) capture('saathum_checkout_refund_policy_ticked', { listing_id: listingId });
+          }}
+        />
+        <span>I have read and agree to the <a href="/refunds" target="_blank" rel="noopener noreferrer">refund policy</a></span>
       </label>
 
       <button className="sthc-btn" disabled={!canPay} onClick={onPay}>

@@ -16,7 +16,7 @@ import { scheduleStateOf, durationLabel } from '../../lib/card';
 import { ritualBySlug } from '../../lib/ritualGuides';
 import { ritualStories } from '../../lib/ritualStories';
 import { listingPath } from '../../lib/urls';
-import { copyFor, socialProof } from '../../lib/eventTypes';
+import { copyFor, socialProof, refundWindowHoursFor, refundWindowLabel } from '../../lib/eventTypes';
 import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
 import LiveOverlay from '../../islands/eventpage/LiveOverlay.tsx';
 import type { CoverMedia, Listing } from '../../lib/types';
@@ -28,6 +28,11 @@ const { listing } = Astro.props;
 const attrs = (listing.attrs ?? {}) as Record<string, unknown>;
 const now = Date.now();
 const copy = copyFor(attrs);
+// [REFUND-POLICY-WEB-1 2026-09-28] Prefer the listing's own refund_window_hours
+// (server) when present; otherwise the event type's default (havan/puja: 24,
+// satsang/sermon/meditation: 72). See lib/eventTypes.ts.
+const refundWindowHours = refundWindowHoursFor(attrs, listing.refund_window_hours);
+const refundWindowText = refundWindowLabel(refundWindowHours);
 
 function attrBool(keys: string[], fallback: boolean): boolean {
   for (const k of keys) {
@@ -311,7 +316,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             <span class="ep-btn ep-btn--book" aria-disabled="true">Booking closed</span>
           )}
           <a class="ep-btn ep-btn--ghost" href={readMoreHref} data-ep-action="benefits" data-ep-listing-id={listing.id}>{copy.readMore}</a>
-          <div class="ep-fine">{copy.footer(performedByRaw)}</div>
+          <div class="ep-fine">{copy.footer(performedByRaw, refundWindowText)}</div>
           <div class="ep-trust">
             <div><span>🔒</span>UPI payment</div>
             {prasadCourier && <div><span>📦</span>Prasad ships same day</div>}
@@ -401,7 +406,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
         </details>
         <details>
           <summary>Can I cancel?</summary>
-          <p>Full refund if you cancel at least 24 hours before the start.</p>
+          <p>Full refund if you cancel at least {refundWindowText} before the start. See our <a href="/refunds">refund policy</a>.</p>
         </details>
       </div>
     </div>

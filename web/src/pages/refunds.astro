@@ -5,6 +5,14 @@
 // [SAATHUM-REFUNDS-1] layouts/Content.astro version — same policy text,
 // word-for-word, on the new folk shell.
 //
+// [REFUND-POLICY-WEB-1 2026-09-28] OWNER DECISION: no automatic refunds.
+// Cancellation window is now per event type — havan/puja: at least 24 hours
+// before start; satsang/sermon/meditation: at least 3 days before start — each
+// with its own plain-English reason (team + priest arrangements/travel/
+// samagri for havan & puja; venue booking + speaker travel for the talks).
+// The window numbers here MUST match lib/eventTypes.ts's refundWindowHours
+// (24 / 72) — do not hardcode a different number without updating both.
+//
 // NOTE FOR AI:
 //  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
 //    styles/legal-folk.css. Same conventions as pages/how-it-works.astro:
@@ -12,9 +20,9 @@
 //    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
 //  - This page supplies only content props (title/lead/updated/sticker/toc/
 //    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
-//  - Prose text below is UNCHANGED from the previous refunds.astro — do not
-//    "improve" the wording; this is a shell swap, not a copy edit.
 //  - Emails stay plain text "support (@) saathum.com", never mailto.
+//  - No company/entity name here (CLAUDE.md "THERE IS NO COMPANY") — this
+//    page names no entity and that stays true after this edit.
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
@@ -24,8 +32,8 @@ const toc = [
   { id: 'cancel', label: 'Cancelling your booking' },
   { id: 'request', label: 'How to request a refund' },
   { id: 'refund-paid', label: 'How your refund is paid' },
-  { id: 'we-cancel', label: "If we cancel or can't perform your ritual" },
-  { id: 'missed', label: 'If you weren\'t free at the time' },
+  { id: 'we-cancel', label: "If we cancel or can't perform your event" },
+  { id: 'missed', label: 'No automatic refunds for missed attendance' },
   { id: 'disputes', label: 'Wrong or duplicate payments' },
   { id: 'rights', label: 'Your rights' },
 ];
@@ -36,10 +44,10 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   title="Refunds & Cancellations"
   titleHtml="Refunds &amp; <em>Cancellations</em>"
   eyebrow="Legal"
-  lead="What you see is what you pay. Cancel at least 24 hours before your ritual and we refund you in full."
-  description="How cancellations and refunds work for pujas and havans booked on Saa Thum — what you see is what you pay, and how to request a refund with your UPI transaction number."
+  lead="What you see is what you pay. Cancel with enough notice — 24 hours for a havan or puja, 3 days for a satsang, sermon or meditation — and we refund you in full."
+  description="How cancellations and refunds work on Saa Thum — the notice period for each event type, why it exists, and how to request a refund with your UPI transaction number."
   image="/og/refunds.png"
-  updated="2026-09-25"
+  updated="2026-09-28"
   helpHref="/help/billing/refunds"
   sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
   stamp={{ src: '/assets/saathum-how-it-works/ontime.webp', width: 443, height: 494 }}
@@ -51,31 +59,65 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   }}
 >
   <p>
-    This policy explains how cancellations and refunds work for pujas and havans you book on
-    Saa Thum. It sits alongside our <a href="/terms">Terms of Service</a>.
+    This policy explains how cancellations and refunds work for the pujas, havans, satsangs,
+    sermons and meditation sessions you book on Saa Thum. It sits alongside our
+    <a href="/terms">Terms of Service</a>.
   </p>
 
   <h2 id="price"><span class="lg-n">1.</span>What you see is what you pay</h2>
   <p>
-    The price shown on a ritual is the full price you pay. There are no tokens, wallets, credits or
-    extra charges added at checkout.
+    The price shown on an event is the full price you pay. There are no tokens, wallets, credits
+    or extra charges added at checkout.
   </p>
 
   <h2 id="cancel"><span class="lg-n">2.</span>Cancelling your booking</h2>
+  <p>
+    <strong>Refunds are not automatic, and there are no refunds for cancelling after your event's
+    notice period, or for simply missing it.</strong> How much notice you need to give depends on
+    what you booked:
+  </p>
+  <div class="lg-tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Event type</th>
+          <th>Cancel at least</th>
+          <th>Why we need the notice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Havan &amp; Puja</strong></td>
+          <td>24 hours before the start</td>
+          <td>
+            By then our team has made arrangements, and often travelled to a remote location; the
+            priest has given his valuable time and travelled to perform it; and the havan samagri,
+            flowers and puja materials have already been bought for you.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Satsang, Sermon &amp; Meditation</strong></td>
+          <td>3 days before the start</td>
+          <td>
+            A hall or venue has been booked for the gathering or meditation, and the preacher or
+            teacher has often travelled from far away — which is why these need more notice.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <div class="lg-note">
     <div>
-      <span class="lg-tag">The 24-hour rule</span>
+      <span class="lg-tag">No automatic refunds</span>
       <p>
-        <strong>Cancel at least 24 hours before the scheduled start</strong> of your puja or havan and
-        you get a full refund of the amount you paid.
+        Cancel within your event's notice period above and you get a <strong>full refund</strong> of
+        the amount you paid. Cancellations made after that window are not refunded — and neither is
+        simply not showing up.
       </p>
     </div>
     <img src={ontimeImg} alt="" aria-hidden="true" width="443" height="494" />
   </div>
-  <p>
-    Cancellations made less than 24 hours before the scheduled start are not refunded, because
-    our priests have already prepared your ritual and your sankalp.
-  </p>
 
   <h2 id="request"><span class="lg-n">3.</span>How to request a refund</h2>
   <p>
@@ -85,7 +127,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   </p>
   <ol>
     <li>Your full name, and the email or phone number you booked with.</li>
-    <li>The ritual you booked and its scheduled date and time.</li>
+    <li>The event you booked and its scheduled date and time.</li>
     <li><strong>Your 12-digit UPI transaction number</strong> (also called the UTR or UPI reference number) for the payment.</li>
   </ol>
   <p>
@@ -96,21 +138,26 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
 
   <h2 id="refund-paid"><span class="lg-n">4.</span>How your refund is paid</h2>
   <p>
-    Once we've located your payment and confirmed your cancellation was made at least 24 hours
-    before the scheduled start, we refund the full amount to the UPI account you paid from. We'll
-    let you know by email when the refund has been sent.
+    Once we've located your payment and confirmed your cancellation was made within your event's
+    notice period above, we refund the full amount to the UPI account you paid from. We'll let
+    you know by email when the refund has been sent.
   </p>
 
-  <h2 id="we-cancel"><span class="lg-n">5.</span>If we cancel or can't perform your ritual</h2>
+  <h2 id="we-cancel"><span class="lg-n">5.</span>If we cancel or can't perform your event</h2>
   <p>
-    If we cancel your puja or havan, or can't perform it, you get a full refund. Send us a
-    request the same way, with your 12-digit UPI transaction number, and we'll refund you.
+    If we cancel your event, or can't perform it, you get a full refund regardless of notice.
+    Send us a request the same way, with your 12-digit UPI transaction number, and we'll refund
+    you.
   </p>
 
-  <h2 id="missed"><span class="lg-n">6.</span>If you weren't free at the time</h2>
+  <h2 id="missed"><span class="lg-n">6.</span>No automatic refunds for missed attendance</h2>
   <p>
-    Your sankalp is still performed at the altar, so it is not refunded.
-    Your video is sent to you when the ritual finishes.
+    For a havan or puja, your sankalp is still performed at the altar even if you couldn't join,
+    so it is not refunded — your video is sent to you when the ritual finishes. For a satsang,
+    sermon or meditation session, the event still takes place at its scheduled time whether or not
+    you were free to attend, so a missed session is not refunded either — your video is sent to
+    you when it finishes. There are no automatic or partial refunds for missed attendance of any
+    kind.
   </p>
 
   <h2 id="disputes"><span class="lg-n">7.</span>Wrong or duplicate payments</h2>

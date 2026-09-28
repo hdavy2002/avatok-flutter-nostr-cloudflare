@@ -219,7 +219,7 @@ function Inner({ listingId }: { listingId: string }) {
           sankalp,
           address: isRitual && offerings.prasad && address ? address : undefined,
           accept_terms: true,
-          accept_refund: true,
+          refund_policy_accepted: true,
         },
         auth,
       );

@@ -49,8 +49,15 @@ export interface EventTypeCopy {
   benefitsKicker: string;
   /** Checkout offering label (dakshina / offering). */
   offeringLabel: string;
-  /** Line under the card buttons. */
-  footer: (performer: string | null) => string;
+  /** Line under the card buttons. Second arg is the pre-formatted cancellation
+   *  window label (see refundWindowLabel) so this stays in step with the
+   *  per-type refund window below instead of a hardcoded "24 hrs". */
+  footer: (performer: string | null, windowLabel: string) => string;
+  /** [REFUND-POLICY-WEB-1 2026-09-28] Hours before start by which a refund must
+   *  be requested (owner decision 2026-09-28) — havan/puja: 24, satsang/sermon/
+   *  meditation: 72 (3 days). Prefer a listing's own `refund_window_hours` when
+   *  the worker sends one; this is only the per-type fallback/default. */
+  refundWindowHours: number;
   /** The three "How it works" steps. */
   steps: { title: string; body: string; sticker: string }[];
   /** Checkout "done" headline. */
@@ -75,7 +82,8 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
     performerLabel: 'Performed by', performerField: "Priest's name", performerFallback: 'temple priests',
     startsIn: 'Havan starts in', cta: 'Book with my sankalp', ctaShort: 'Book now', readMore: 'Read benefits',
     aboutKicker: 'About this havan', benefitsKicker: 'What devotees traditionally seek', offeringLabel: 'Offering for the priest',
-    footer: (p) => `Performed by ${p || 'temple priests'} · Free cancellation 24 hrs before`,
+    footer: (p, w) => `Performed by ${p || 'temple priests'} · Free cancellation up to ${w} before`,
+    refundWindowHours: 24,
     steps: RITUAL_STEPS('havan'), doneTitle: 'Your sankalp is booked 🙏',
   },
   puja: {
@@ -83,7 +91,8 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
     performerLabel: 'Performed by', performerField: "Priest's name", performerFallback: 'temple priests',
     startsIn: 'Puja starts in', cta: 'Book with my sankalp', ctaShort: 'Book now', readMore: 'Read benefits',
     aboutKicker: 'About this puja', benefitsKicker: 'What devotees traditionally seek', offeringLabel: 'Offering for the priest',
-    footer: (p) => `Performed by ${p || 'temple priests'} · Free cancellation 24 hrs before`,
+    footer: (p, w) => `Performed by ${p || 'temple priests'} · Free cancellation up to ${w} before`,
+    refundWindowHours: 24,
     steps: RITUAL_STEPS('puja'), doneTitle: 'Your sankalp is booked 🙏',
   },
   satsang: {
@@ -91,7 +100,8 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
     performerLabel: 'Led by', performerField: "Speaker's name", performerFallback: 'our speaker',
     startsIn: 'Satsang starts in', cta: 'Reserve my seat', ctaShort: 'Reserve', readMore: 'Read more',
     aboutKicker: 'About this satsang', benefitsKicker: 'What you will take away', offeringLabel: 'Offering (optional)',
-    footer: (p) => `Led by ${p || 'our speaker'} · Free cancellation 24 hrs before`,
+    footer: (p, w) => `Led by ${p || 'our speaker'} · Free cancellation up to ${w} before`,
+    refundWindowHours: 72,
     steps: TALK_STEPS('satsang'), doneTitle: 'Your seat is reserved 🙏',
   },
   sermon: {
@@ -99,7 +109,8 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
     performerLabel: 'Delivered by', performerField: "Speaker's name", performerFallback: 'our speaker',
     startsIn: 'Sermon starts in', cta: 'Reserve my seat', ctaShort: 'Reserve', readMore: 'Read more',
     aboutKicker: 'About this sermon', benefitsKicker: 'What you will take away', offeringLabel: 'Offering (optional)',
-    footer: (p) => `Delivered by ${p || 'our speaker'} · Free cancellation 24 hrs before`,
+    footer: (p, w) => `Delivered by ${p || 'our speaker'} · Free cancellation up to ${w} before`,
+    refundWindowHours: 72,
     steps: TALK_STEPS('sermon'), doneTitle: 'Your seat is reserved 🙏',
   },
   meditation: {
@@ -107,7 +118,8 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
     performerLabel: 'Guided by', performerField: "Guide's name", performerFallback: 'our guide',
     startsIn: 'Session starts in', cta: 'Join the session', ctaShort: 'Join', readMore: 'Read more',
     aboutKicker: 'About this session', benefitsKicker: 'What people practise it for', offeringLabel: 'Offering (optional)',
-    footer: (p) => `Guided by ${p || 'our guide'} · Free cancellation 24 hrs before`,
+    footer: (p, w) => `Guided by ${p || 'our guide'} · Free cancellation up to ${w} before`,
+    refundWindowHours: 72,
     steps: TALK_STEPS('meditation session'), doneTitle: 'You are in 🙏',
   },
 };
@@ -119,6 +131,28 @@ export function eventTypeOf(attrs: Record<string, unknown> | null | undefined): 
 
 export function copyFor(attrs: Record<string, unknown> | null | undefined): EventTypeCopy {
   return EVENT_TYPE_COPY[eventTypeOf(attrs)];
+}
+
+/** [REFUND-POLICY-WEB-1 2026-09-28] Human label for a refund-window hour count —
+ *  "24 hrs" for a same-day window, "N days" once it's a whole number of days ≥ 2
+ *  (72 -> "3 days"), otherwise "N hrs". Single source so the event page, checkout
+ *  and refunds copy never drift from each other. */
+export function refundWindowLabel(hours: number): string {
+  if (hours > 24 && hours % 24 === 0) return `${hours / 24} days`;
+  return `${hours} hrs`;
+}
+
+/** The refund window (in hours) to show for a listing: its own server-sent
+ *  `refund_window_hours` when present and positive, else the event type's
+ *  default (havan/puja: 24, satsang/sermon/meditation: 72). */
+export function refundWindowHoursFor(
+  attrs: Record<string, unknown> | null | undefined,
+  listingRefundWindowHours?: number | null,
+): number {
+  if (typeof listingRefundWindowHours === 'number' && Number.isFinite(listingRefundWindowHours) && listingRefundWindowHours > 0) {
+    return listingRefundWindowHours;
+  }
+  return copyFor(attrs).refundWindowHours;
 }
 
 /** Social-proof numbers the admin can set (owner decision 2026-09-27). Real + admin extra. */

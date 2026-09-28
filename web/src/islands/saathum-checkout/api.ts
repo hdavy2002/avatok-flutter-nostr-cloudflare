@@ -28,7 +28,9 @@ export interface CreateCheckoutBody {
   sankalp: Sankalp;
   address?: Address;
   accept_terms: true;
-  accept_refund: true;
+  /** [REFUND-POLICY-WEB-1 2026-09-28] Required alongside accept_terms — the
+   *  server rejects with 400 {error:"refund_policy_required"} when missing. */
+  refund_policy_accepted: true;
 }
 
 export async function createCheckout(body: CreateCheckoutBody, auth: string): Promise<Checkout> {

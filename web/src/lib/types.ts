@@ -336,6 +336,11 @@ export interface Listing extends Card {
   creator_trust_stats?: CreatorTrustStats | null;
   /** [LIST-TRUST-1] Rolling count of bookings in the last 24h, backs urgency copy. */
   booked_24h?: number;
+  /** [REFUND-POLICY-WEB-1 2026-09-28] Hours before start by which a refund must be
+   *  requested (owner decision 2026-09-28). Optional — absent on a worker deploy
+   *  that predates this; fall back to lib/eventTypes.ts's refundWindowHoursFor()
+   *  (havan/puja: 24, satsang/sermon/meditation: 72). */
+  refund_window_hours?: number | null;
 }
 
 export interface CreatorStats {
