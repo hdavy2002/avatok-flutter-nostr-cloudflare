@@ -4,9 +4,15 @@
 // /privacy, /cookies. OWNER asked for "a disclaimer page like this", pointing
 // at vama.app's disclaimer (faith-based outcomes, no medical / black-magic /
 // supernatural claims, acceptance of Terms + Privacy, right to change the
-// service, refund summary, contact). Adapted to Saa Thum — not copied:
+// service, refund summary, contact), then: "also say we dont perform any animal
+// sacrifice etc, expand on such topic and add more to cover us. we do positive
+// things". Adapted to Saa Thum — not copied:
 //  - Saa Thum's own services only: havan, puja, satsang, sermon, meditation,
 //    chadhava offerings, prasad. No astrology (removed site-wide 2026-09-27).
+//  - "Only positive rituals" section: no animal sacrifice, no meat/alcohol/
+//    blood offerings, no black magic / vashikaran / rituals to harm or control
+//    anyone, no exorcism, no fear selling; sankalps asking for harm are
+//    declined and refunded in full.
 //  - Refund section SUMMARISES pages/refunds.astro and links to it. The
 //    windows (24 h havan/puja, 3 days satsang/sermon/meditation) MUST match
 //    refunds.astro and lib/eventTypes.ts refundWindowHours (24 / 72). Saa Thum
@@ -25,10 +31,16 @@ import { publicImage } from '../lib/config';
 
 const toc = [
   { id: 'faith', label: 'Faith and tradition' },
+  { id: 'positive', label: 'Only positive rituals' },
+  { id: 'sankalp', label: 'Your sankalp and wishes' },
+  { id: 'respect', label: 'Respect for all' },
   { id: 'no-guarantee', label: 'No guaranteed results' },
   { id: 'advice', label: 'Not a substitute for professional advice' },
+  { id: 'traditions', label: 'Traditions and information' },
+  { id: 'delivery', label: 'Videos, prasad and offerings' },
   { id: 'agreement', label: 'Using Saa Thum means you agree' },
   { id: 'changes', label: 'Changes to our services and terms' },
+  { id: 'liability', label: 'Limits of our responsibility' },
   { id: 'refunds', label: 'Refunds and cancellations' },
   { id: 'contact', label: 'Contact us' },
 ];
@@ -39,8 +51,8 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   title="Disclaimer"
   titleHtml="<em>Disclaimer</em>"
   eyebrow="Legal"
-  lead="Every havan, puja and satsang on Saa Thum is performed with devotion, as per Hindu tradition. The results rest with your faith — please read what we can, and can't, promise."
-  description="Saa Thum's disclaimer — rituals are offered for religious and cultural purposes, outcomes are a matter of faith and not guaranteed, and how our terms, changes and refunds work."
+  lead="Saa Thum performs only positive, peaceful rituals — havans, pujas, satsangs and meditation for blessings, gratitude and wellbeing, as per Hindu tradition. The results rest with your faith. Please read what we do, what we never do, and what we can and can't promise."
+  description="Saa Thum's disclaimer — only positive rituals, no animal sacrifice or black magic, outcomes are a matter of faith and not guaranteed, and how our terms, changes and refunds work."
   image="/og/terms.png"
   updated="2026-09-29"
   sticker={{ src: '/assets/saathum-booking-stickers/sankalp-thali.png', width: 1024, height: 1024, alt: 'A brass puja thali with a kalash, coconut, kumkum and a sankalp scroll — the disclaimer page.' }}
@@ -69,60 +81,137 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     ritual brings into your life is a matter of your personal faith and belief.
   </p>
 
-  <h2 id="no-guarantee"><span class="lg-n">2.</span>No guaranteed results</h2>
+  <h2 id="positive"><span class="lg-n">2.</span>Only positive rituals</h2>
+  <p>
+    Everything we perform is sattvic, peaceful and positive — prayers for blessings, peace,
+    good health, prosperity, protection of the family, gratitude, new beginnings and the memory of
+    loved ones. Our offerings are pure: ghee, havan samagri, grains, flowers, fruits, sweets,
+    incense and holy water. <strong>Saa Thum never performs, arranges or promotes:</strong>
+  </p>
+  <ul>
+    <li><strong>Animal sacrifice (bali) of any kind</strong>, or any ritual that hurts, kills or harms an animal.</li>
+    <li>Offerings of meat, blood or alcohol, or any other tamasic offering.</li>
+    <li>Black magic, tantrik "totke", vashikaran, maran, uchchatan or any ritual meant to harm, punish, control or influence another person against their will.</li>
+    <li>Exorcism, "removal" of spirits, ghosts or curses, or any claim to cast or break a spell.</li>
+    <li>Human sacrifice, self-harm, or any practice that puts a person's body, health or dignity at risk.</li>
+    <li>Rituals that damage nature — we use natural samagri and keep the sacred fire safe and contained.</li>
+    <li>Anything that is against the law in India, including laws against cruelty to animals and against black magic and inhuman practices.</li>
+  </ul>
+
+  <div class="lg-note">
+    <div>
+      <span class="lg-tag">We only do good</span>
+      <p>
+        We never sell a ritual through fear. We will never tell you that something terrible will
+        happen unless you book, and we never ask you to pay to "remove" a dosha, a curse or evil
+        eye. Every havan and puja on Saa Thum is an act of prayer, gratitude and hope.
+      </p>
+    </div>
+    <img src={lotusImg} alt="" aria-hidden="true" width="1254" height="1254" />
+  </div>
+
+  <h2 id="sankalp"><span class="lg-n">3.</span>Your sankalp and wishes</h2>
+  <p>
+    When you book a havan or puja, your sankalp — your name, gotra, family names and wish — is
+    offered at the altar for the wellbeing of you and your loved ones. A sankalp is a prayer, not an
+    instruction to anyone, and it can only ask for good.
+  </p>
+  <p>
+    We may decline, or gently reword, a wish that asks for harm, revenge or loss to another person;
+    to control someone's mind, love or marriage; to win something by unfair means; or for anything
+    unlawful, hateful or indecent. If we decline your booking for this reason, you get a full refund.
+  </p>
+
+  <h2 id="respect"><span class="lg-n">4.</span>Respect for all</h2>
+  <p>
+    Saa Thum is open to every devotee, whatever their caste, gender, language, region or
+    background, in India and around the world. We respect every faith and tradition, and we never
+    speak against any religion or community. We ask the same respect from everyone who uses our
+    services.
+  </p>
+
+  <h2 id="no-guarantee"><span class="lg-n">5.</span>No guaranteed results</h2>
   <p>
     Saa Thum does not guarantee any specific result or outcome from any havan, puja, sankalp,
     offering, satsang, sermon or meditation session. The benefits we describe on our event pages
     and in our <a href="/rituals/">Puja &amp; Havan Guide</a> come from the scriptures, traditional
     beliefs and long-standing practices — and they may vary from person to person.
   </p>
-
-  <div class="lg-note">
+  <div class="lg-note lg-note--plain">
     <div>
       <span class="lg-tag">What we never claim</span>
       <p>
-        Saa Thum does <strong>not</strong> claim to cure any illness or medical condition, remove
-        black magic, evil eye or curses, or produce any supernatural result. We never sell rituals
-        through fear.
+        Saa Thum does <strong>not</strong> claim to cure any illness or medical condition, to
+        predict the future, to remove black magic, evil eye or curses, or to produce any
+        supernatural result.
       </p>
     </div>
-    <img src={lotusImg} alt="" aria-hidden="true" width="1254" height="1254" />
   </div>
 
-  <h2 id="advice"><span class="lg-n">3.</span>Not a substitute for professional advice</h2>
+  <h2 id="advice"><span class="lg-n">6.</span>Not a substitute for professional advice</h2>
   <p>
     A ritual is an act of faith, not a treatment or a solution to a practical problem. For any
     health, financial, legal or personal matter, please seek advice from a qualified professional
-    — a doctor, a financial adviser, a lawyer or a counsellor. In a medical emergency, contact your
-    local emergency services straight away.
+    — a doctor, a financial adviser, a lawyer or a counsellor. Please never stop or delay medical
+    treatment because of a ritual. In an emergency, contact your local emergency services straight
+    away.
   </p>
 
-  <h2 id="agreement"><span class="lg-n">4.</span>Using Saa Thum means you agree</h2>
+  <h2 id="traditions"><span class="lg-n">7.</span>Traditions and information</h2>
+  <p>
+    Hindu rituals are performed differently in different regions, families and lineages — the
+    mantras, steps, muhurat and samagri can vary. Our priests follow the tradition they were trained
+    in, and it may differ from the one your family follows.
+  </p>
+  <p>
+    The articles in our Puja &amp; Havan Guide and the descriptions on our event pages are shared
+    for general and devotional understanding. We write them with care, but they are not scholarly
+    or religious rulings, and they may contain mistakes. If you spot one, please tell us.
+  </p>
+
+  <h2 id="delivery"><span class="lg-n">8.</span>Videos, prasad and offerings</h2>
+  <ul>
+    <li><strong>Videos</strong> — the video of your event is sent to you to download after it finishes. Start times and durations are approximate, and a technical, weather or travel problem can delay an event or its video. If we cannot perform your event at all, you get a full refund.</li>
+    <li><strong>Prasad</strong> — prasad is prepared and packed with care and sent by courier. Delivery times depend on the courier and, for international orders, on customs, so we can't promise a delivery date. Prasad is food: please check the contents if you have allergies or dietary restrictions, and eat it soon after it arrives.</li>
+    <li><strong>Chadhava offerings</strong> — offerings you choose are offered on your behalf at the ritual and are not returned or sent to you.</li>
+  </ul>
+
+  <h2 id="agreement"><span class="lg-n">9.</span>Using Saa Thum means you agree</h2>
   <p>
     By visiting saathum.com, signing up, booking an event or otherwise using our services, you
     confirm that you have read, understood and agree to be bound by our
-    <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.
+    <a href="/terms">Terms of Service</a>, <a href="/privacy">Privacy Policy</a> and this
+    disclaimer.
   </p>
   <p>
-    If you do not accept or agree with any part of the Terms of Service or the Privacy Policy,
-    please do not use our services. We may end your access to the services if you do not agree to
-    them.
+    If you do not accept or agree with any part of them, please do not use our services. We may end
+    your access to the services if you do not agree to them, or if you misuse them.
   </p>
 
-  <h2 id="changes"><span class="lg-n">5.</span>Changes to our services and terms</h2>
+  <h2 id="changes"><span class="lg-n">10.</span>Changes to our services and terms</h2>
   <p>
-    We may, at our sole discretion, change or replace any part of our Terms of Service, or change,
-    suspend or discontinue any part of our services — including any feature, event, content or
-    database — at any time. We will tell you by posting a notice on the site or by sending a message
-    to the email address or phone number linked to your account.
+    We may, at our sole discretion, change or replace any part of our Terms of Service or this
+    disclaimer, or change, suspend or discontinue any part of our services — including any feature,
+    event, content or database — at any time. We will tell you by posting a notice on the site or by
+    sending a message to the email address or phone number linked to your account.
   </p>
   <p>
     We may also set limits on certain features or restrict your access to part or all of the
-    services. Please check our terms from time to time. If you keep using Saa Thum after a change
+    services. Please check these pages from time to time. If you keep using Saa Thum after a change
     is posted, it means you accept that change.
   </p>
 
-  <h2 id="refunds"><span class="lg-n">6.</span>Refunds and cancellations</h2>
+  <h2 id="liability"><span class="lg-n">11.</span>Limits of our responsibility</h2>
+  <p>
+    Any decision you make in your life, business, health or relationships is yours. To the fullest
+    extent the law allows, Saa Thum and its team are not responsible for any decision you make, or
+    any outcome you expect, because of a ritual, a sankalp or anything you read on our site. Where
+    something goes wrong with a booking, our responsibility is limited to what our
+    <a href="/refunds">Refund Policy</a> and applicable law provide. Nothing in this disclaimer
+    limits any rights you have under consumer protection law.
+  </p>
+
+  <h2 id="refunds"><span class="lg-n">12.</span>Refunds and cancellations</h2>
   <p>
     We want every devotee to have a good experience with the havans, pujas, satsangs, sermons and
     meditation sessions they book. Because our team, priests and venues are arranged in advance,
@@ -140,7 +229,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     and aren't made.
   </p>
 
-  <h2 id="contact"><span class="lg-n">7.</span>Contact us</h2>
+  <h2 id="contact"><span class="lg-n">13.</span>Contact us</h2>
   <p>
     For any question about this disclaimer, a refund or a cancellation, email
     support (@) saathum.com or use our <a href="/contact">contact form</a>.
