@@ -1,6 +1,37 @@
 {
   "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
   "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+  "WA-LOGIN-1": {
+    "description": "[WA-LOGIN-1] Owner decision 2026-09-28: every website user must have a verified WhatsApp number; login by email code, Google, or WhatsApp code (international numbers, not just +91). Added lib/phone_e164.ts normalizeE164 (used by routes/phone_otp.ts and routes/me_dashboard.ts phone routes in place of the +91-only indianMobileE164, kept as a thin wrapper). GET /api/account/phone/status now returns `whatsapp` and needs_phone=!verified for every account (retired the PHONE_OTP_REQUIRED_SINCE grandfathering). New unauthenticated routes/whatsapp_auth.ts: POST /api/auth/whatsapp/send + /verify (sign in with a Clerk ticket when the number is already a live account's verified phone, else a single-use KV-backed proof), and authenticated POST /api/account/phone/claim to attach that proof to the freshly-created/signed-in account. New authz.ts requireVerifiedWhatsApp gates routes/saathum_checkout.ts saathumCheckoutCreate (POST /api/saathum/checkout) with 403 whatsapp_required — browsing, quotes, the phone/whatsapp routes themselves and sign-out/deletion are NOT gated.",
+    "shipped": "2026-09-28",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "auth_whatsapp_send",
+        "property": "outcome",
+        "equals": "sent",
+        "min_events": 1,
+        "note": "A WhatsApp login code actually going out. outcome carrying a rate_limited_phone/rate_limited_ip/global_breaker/not_on_whatsapp/provider_error value instead means the send path, not just the request, is failing."
+      },
+      {
+        "event": "auth_whatsapp_verify",
+        "property": "outcome",
+        "in": ["signed_in", "needs_email"],
+        "min_events": 1,
+        "note": "A correct code being accepted, either path: signed_in (number already a verified account phone) or needs_email (new number, proof issued). wrong_code/expired alone would only prove people are typing codes, not that a correct one ever succeeds."
+      },
+      {
+        "event": "phone_claim",
+        "property": "outcome",
+        "equals": "claimed",
+        "min_events": 1,
+        "note": "The needs_email handoff actually completing — a signed-in account attaching the WhatsApp-verified number via /api/account/phone/claim. This is the step that proves the two-part flow (verify anonymously, then claim once signed in) is not silently broken in the middle."
+      }
+    ],
+    "_verified_at": "worker/src/routes/whatsapp_auth.ts (auth_whatsapp_send/auth_whatsapp_verify/phone_claim track() call sites), worker/src/authz.ts requireVerifiedWhatsApp, worker/src/routes/saathum_checkout.ts saathumCheckoutCreate whatsapp_required_blocked track() call site — all read directly from the code, 2026-09-28"
+  },
   "SAATHUM-FLAGS-1": {
     "description": "[SAATHUM-FLAGS-1] Saathum rename lane 02-flags: added subscriptionPlansEnabled and teamsEnabled to PlatformConfig + DEFAULTS (both default false), each a Saathum product-scope gate layered on top of the existing engineering-readiness flags (billingEnabled, teamIvrEnabled) rather than replacing them. Wired into the actual server choke points: routes/subscribe.ts subscribeCheckout/subscribeAndroidVerify, routes/plans.ts getPlans, and routes/team.ts flagOff() (the single guard every /api/team/* handler calls first). Confirmed listingFeeEnabled/agentListingsEnabled/freeSessionsEnabled/listingPromotionsEnabled/listingMaxPerBookingEnabled/listingSlotsEnabled were already false in DEFAULTS and are read as strict `=== true` gates (safe default is off already); no config.ts change was needed for those six. Did NOT touch the number system or its flags.",
     "shipped": "2026-09-20",
