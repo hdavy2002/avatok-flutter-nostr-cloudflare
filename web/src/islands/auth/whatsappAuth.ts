@@ -94,11 +94,15 @@ export interface TicketSignIn {
 
 /** Redeem a `status: 'signed_in'` ticket against Clerk, minting a real session. */
 export async function redeemWhatsAppTicket(
-  signIn: TicketSignIn | null | undefined,
-  setActive: (p: { session: string }) => Promise<unknown>,
+  // Typed `unknown` on purpose: callers pass the same Clerk `signIn` resource they
+  // hand passwordless.ts (typed there as the narrower PwlSignIn), and the real
+  // resource does support strategy:'ticket'.
+  signInResource: unknown,
+  setActive: ((p: { session: string }) => Promise<unknown>) | undefined,
   ticket: string,
 ): Promise<void> {
-  if (!signIn) throw new PasswordlessError('Sign-in is still loading. Try again in a moment.', 'signin_unavailable');
+  const signIn = signInResource as TicketSignIn | null | undefined;
+  if (!signIn || !setActive) throw new PasswordlessError('Sign-in is still loading. Try again in a moment.', 'signin_unavailable');
   const res = await signIn.create({ strategy: 'ticket', ticket });
   if (res.status !== 'complete' || !res.createdSessionId) {
     throw new PasswordlessError('That didn’t complete sign-in. Please try again.', 'ticket_incomplete');

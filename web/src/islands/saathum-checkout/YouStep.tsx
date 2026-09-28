@@ -135,7 +135,10 @@ export function YouStep({
           onVerified();
           return;
         }
-      } catch { /* falls through to the normal phone step below */ }
+      } catch (e) {
+        // Proof expired/taken — fall through to the normal WhatsApp step below.
+        captureException(e, { where: 'saathum_checkout_wa_claim' });
+      }
     }
     onSignedIn();
   }
@@ -195,7 +198,12 @@ export function YouStep({
           </button>
         </div>
         {method === 'email' ? (
+          <>
+          {readWaProof() && (
+            <p className="sthc-hint">Your WhatsApp number {readWaProof()?.phone_masked} is verified. Now add your email — we send your booking and receipts there.</p>
+          )}
           <EmailCodeSignIn reason="so we can send your booking" onAuthed={() => void afterEmailSignedIn()} />
+          </>
         ) : (
           <>
             {phase !== 'code' && phase !== 'verifying' && (
