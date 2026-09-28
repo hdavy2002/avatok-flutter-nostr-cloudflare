@@ -225,6 +225,25 @@ function Inner() {
       });
       // A failed status read lets the person in rather than trapping a signed-in
       // user on a form; bootstrap still refuses an unverified phone server-side.
+      // [WA-CLAIM-RACE-1] A WhatsApp number verified moments ago (needs_email
+      // hand-off) whose claim didn't land: claim it here instead of asking again.
+      if (st && st.needs_phone) {
+        const pending = readWaProof();
+        if (pending) {
+          try {
+            const token = await getActiveTokenWaited();
+            if (token) {
+              await claimWhatsAppProof(pending.proof, token);
+              capture('auth_phone_gate', { outcome: 'claimed_pending_proof' });
+              setBoot('leaving');
+              location.href = destination();
+              return;
+            }
+          } catch (e) {
+            captureException(e, { where: 'signup_finish_claim' });
+          }
+        }
+      }
       if (!st || !st.needs_phone) {
         setBoot('leaving');
         location.href = destination();

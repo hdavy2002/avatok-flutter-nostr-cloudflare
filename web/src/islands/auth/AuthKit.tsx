@@ -70,9 +70,14 @@ export function useClerkStalled(isLoaded: boolean, ms = 8000): boolean {
  * Returns true while the redirect is pending, so the caller can render nothing
  * rather than flashing a login form at someone who is already logged in.
  */
-export function useRedirectIfSignedIn(to: () => string): boolean {
+export function useRedirectIfSignedIn(to: () => string, hold?: { current: boolean }): boolean {
   const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => {
+    // [WA-CLAIM-RACE-1] `hold` is set while the page itself is finishing a
+    // sign-in (e.g. attaching a verified WhatsApp number). Redirecting the moment
+    // the session appears aborted that request ("Failed to fetch") and sent the
+    // person to the WhatsApp gate a second time; the page redirects itself when done.
+    if (hold?.current) return;
     if (isLoaded && isSignedIn) location.href = to();
     // `to` is a fresh closure each render; the auth state is the real trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps

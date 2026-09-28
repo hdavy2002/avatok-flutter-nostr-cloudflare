@@ -55,6 +55,7 @@ import {
 } from './whatsappAuth';
 import { WhatsAppNumberInput } from './WhatsAppNumberInput';
 import { getActiveTokenWaited } from '../../lib/clerk';
+import { ApiError } from '../../lib/apiClient';
 import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
 
 /** Where to land after a successful sign-in. Honours ?redirect_url= / ?next= (same-origin only).
@@ -107,7 +108,8 @@ function Inner() {
   const stalled = useClerkStalled(isLoaded);
   // Already signed in? Go where they were headed. Nothing on this form can
   // succeed for them — see useRedirectIfSignedIn.
-  const leaving = useRedirectIfSignedIn(nextUrl);
+  const finishingRef = useRef(false); // [WA-CLAIM-RACE-1] holds the auto-redirect while we finish sign-in
+  const leaving = useRedirectIfSignedIn(nextUrl, finishingRef);
   useFormReady(isLoaded && !leaving, 'sign_in');
   // §2.2 auth_signin_start/_result — startRef anchors the `ms` on the result.
   const startRef = useRef<number>(0);
@@ -166,6 +168,7 @@ function Inner() {
     }
     setSubmitting(true);
     setFormError(null);
+    finishingRef.current = true; // [WA-CLAIM-RACE-1] we redirect ourselves after the claim
     try {
       const { created } = await withTrace(() => verifyPasswordlessCode({
         mode,
@@ -189,6 +192,7 @@ function Inner() {
       await claimPendingWaProof();
       location.href = finishUrl(nextUrl());
     } catch (err) {
+      finishingRef.current = false;
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
       setFormError(message);
       capture('auth_signin_result', {
@@ -257,6 +261,7 @@ function Inner() {
     try {
       const r = await verifyWhatsAppCode(waE164(), waCode.trim());
       if (r.status === 'signed_in') {
+        finishingRef.current = true;
         await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, r.ticket);
         location.href = finishUrl(nextUrl());
         return;
@@ -269,6 +274,7 @@ function Inner() {
       setMethodState('email');
       setStage('email');
     } catch (err) {
+      finishingRef.current = false;
       setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
     } finally {
       setSubmitting(false);
@@ -282,8 +288,10 @@ function Inner() {
     try {
       const token = await getActiveTokenWaited();
       if (token) await claimWhatsAppProof(pending.proof, token);
-    } catch {
-      clearWaProof(); // the phone gate will ask again rather than looping forever
+    } catch (e) {
+      // Only a definite server answer (expired / invalid / taken) discards the
+      // proof; a network blip keeps it so the WhatsApp gate can claim it instead.
+      if (e instanceof ApiError) clearWaProof();
     }
   }
 
