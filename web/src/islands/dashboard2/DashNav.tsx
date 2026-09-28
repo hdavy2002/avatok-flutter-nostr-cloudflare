@@ -51,14 +51,18 @@ function markLanded(sessionKey: string, active: DashKey) {
   capture('dash2_login_landed', { screen: active, path: location.pathname });
 }
 
-/** Phone gate: an account that still owes a verified phone finishes sign-up first. */
+/** WhatsApp gate: an account that still owes a verified WhatsApp number finishes sign-up first.
+ * [WA-WEB-1 2026-09-28] Every signed-in surface must send an unverified account
+ * here and back — the dashboard is the one every screen island sits behind. */
 async function phoneGate(): Promise<boolean> {
   try {
     const st = await getPhoneStatus();
     if (st.needs_phone) {
+      capture('whatsapp_gate_shown', { surface: 'dashboard' });
       location.replace(finishUrl(location.pathname + location.search));
       return false;
     }
+    capture('whatsapp_gate_passed', { surface: 'dashboard' });
   } catch (err) {
     // Same rule as SignUpIsland: a failed status read lets the person in
     // (bootstrap still refuses an unverified phone server-side). Recorded.

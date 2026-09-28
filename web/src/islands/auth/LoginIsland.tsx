@@ -49,6 +49,13 @@ import {
   sendPasswordlessCode, verifyPasswordlessCode, continueWithGoogle, pwlError, finishUrl,
   type PwlMode, type PwlSignIn, type PwlSignUp,
 } from './passwordless';
+import {
+  sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
+  storeWaProof, readWaProof, clearWaProof, claimWhatsAppProof,
+} from './whatsappAuth';
+import { WhatsAppNumberInput } from './WhatsAppNumberInput';
+import { getActiveTokenWaited } from '../../lib/clerk';
+import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
 
 /** Where to land after a successful sign-in. Honours ?redirect_url= / ?next= (same-origin only).
  *
@@ -77,6 +84,22 @@ function Inner() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resent, setResent] = useState(false);
+
+  // [WA-WEB-1 2026-09-28] Login method choice: email code / WhatsApp code
+  // (Google keeps its own button below, unaffected by this choice).
+  const [method, setMethodState] = useState<'email' | 'whatsapp'>('email');
+  const [waStage, setWaStage] = useState<'number' | 'code' | 'needs_email'>('number');
+  const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
+  const [waNational, setWaNational] = useState('');
+  const [waCode, setWaCode] = useState('');
+  const [waResendAt, setWaResendAt] = useState(0);
+  const [waPhoneMasked, setWaPhoneMasked] = useState('');
+
+  function setMethod(m: 'email' | 'whatsapp') {
+    setMethodState(m);
+    setFormError(null);
+    capture('login_method_chosen', { method: m, surface: 'sign_in' });
+  }
 
   const isLoaded = signInLoaded && signUpLoaded;
   const stalled = useClerkStalled(isLoaded);
@@ -158,6 +181,10 @@ function Inner() {
       if (user && !savedCountry) {
         try { await user.update({ unsafeMetadata: { ...(user.unsafeMetadata ?? {}), country: 'GLOBAL' } }); } catch { /* routing still succeeds */ }
       }
+      // [WA-WEB-1] If this email step finished a "Continue with WhatsApp" ->
+      // needs_email hand-off, attach the verified number now — the person is
+      // never asked for a second WhatsApp code.
+      await claimPendingWaProof();
       location.href = finishUrl(nextUrl());
     } catch (err) {
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
@@ -193,9 +220,68 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
+      capture('login_method_chosen', { method: 'google', surface: 'sign_in' });
       await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(nextUrl())); // [WEB-PHONE-OTP-1]
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
+    }
+  }
+
+  /* ── WhatsApp login (owner decision 2026-09-28) ──────────────────────── */
+  const waE164 = () => toE164(waCountry, waNational);
+  const waResendIn = Math.max(0, Math.ceil((waResendAt - Date.now()) / 1000));
+
+  async function sendWa() {
+    if (submitting || waNational.replace(/\D/g, '').length < 4) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const r = await sendWhatsAppCode(waE164());
+      setWaPhoneMasked(r.phone_masked);
+      setWaCode('');
+      setWaStage('code');
+      setWaResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
+    } catch (err) {
+      setFormError(waApiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function verifyWa() {
+    if (submitting || waCode.trim().length < 4) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const r = await verifyWhatsAppCode(waE164(), waCode.trim());
+      if (r.status === 'signed_in') {
+        await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, r.ticket);
+        location.href = finishUrl(nextUrl());
+        return;
+      }
+      // needs_email: a brand-new number. Keep the proof for after the email
+      // step, and hand off to the same one-box email flow used elsewhere.
+      storeWaProof(r.proof, r.phone_masked);
+      setWaPhoneMasked(r.phone_masked);
+      setWaStage('needs_email');
+      setMethodState('email');
+      setStage('email');
+    } catch (err) {
+      setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** After an email code completes sign-up/sign-in, attach a pending WhatsApp proof, if any. */
+  async function claimPendingWaProof() {
+    const pending = readWaProof();
+    if (!pending) return;
+    try {
+      const token = await getActiveTokenWaited();
+      if (token) await claimWhatsAppProof(pending.proof, token);
+    } catch {
+      clearWaProof(); // the phone gate will ask again rather than looping forever
     }
   }
 
@@ -229,12 +315,79 @@ function Inner() {
     );
   }
 
+  const methodTabs = (
+    <div className="auth-row" role="tablist" aria-label="Sign-in method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+      <button type="button" role="tab" aria-selected={method === 'email'} className={`auth-btn auth-btn--${method === 'email' ? 'ghost' : 'ink'}`}
+        onClick={() => setMethod('email')} disabled={waStage === 'needs_email'}>
+        Continue with email
+      </button>
+      <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`auth-btn auth-btn--${method === 'whatsapp' ? 'ghost' : 'ink'}`}
+        onClick={() => setMethod('whatsapp')}>
+        Continue with WhatsApp
+      </button>
+    </div>
+  );
+
+  if (method === 'whatsapp') {
+    return (
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : verifyWa()); }} noValidate>
+        <div className="auth-desktop-head">
+          <p className="auth-eyebrow"><UiText id="web-auth.6621249514b7887c" source="Welcome back" /></p>
+          <h1 className="auth-h2">Good to see you</h1>
+        </div>
+        {methodTabs}
+        {(formError || stalled) && (
+          <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
+        )}
+        {waStage === 'number' && (
+          <>
+            <WhatsAppNumberInput
+              value={waNational} countryCode={waCountry}
+              onChange={(n, c) => { setWaNational(n); setWaCountry(c); }}
+              label="WhatsApp number" autoFocus
+            />
+            <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to sign you in.</p>
+            <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
+          </>
+        )}
+        {waStage === 'code' && (
+          <>
+            <p className="auth-footline" style={{ textAlign: 'left' }}>We sent a 6-digit code on WhatsApp to <strong>{waPhoneMasked}</strong>.</p>
+            <Field label="Verification code" name="waCode" inputMode="numeric" maxLength={6}
+              autoComplete="one-time-code" placeholder="123456" value={waCode} onChange={setWaCode} />
+            <Button type="submit" loading={submitting}>Verify and log in</Button>
+            <div className="auth-foot">
+              <p className="auth-footline">
+                {waResendIn > 0 ? `Resend in ${waResendIn}s` : (
+                  <a href="#resend" onClick={(ev) => { ev.preventDefault(); void sendWa(); }}>Resend code</a>
+                )}
+                {' '}
+                <a href="#change" onClick={(ev) => { ev.preventDefault(); setWaStage('number'); setWaCode(''); setFormError(null); }}>Use a different number</a>
+              </p>
+            </div>
+          </>
+        )}
+        <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+        <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
+        <div className="auth-foot">
+          <p className="auth-footline"><UiText id="web-auth.38c1c4457cd164cc" source="New here?" /><a href="/sign-up"><UiText id="web-auth.86033f75a4c0876a" source="Create an account" /></a>
+          </p>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form className="auth-form" onSubmit={onSubmitEmail} noValidate>
       <div className="auth-desktop-head">
         <p className="auth-eyebrow"><UiText id="web-auth.6621249514b7887c" source="Welcome back" /></p>
         <h1 className="auth-h2"><UiText id="web-auth.c3854d65cd242a9e" source="Good to" /> <UiText id="web-auth.10c91675b679b066" source="see you" /></h1>
       </div>
+
+      {waStage === 'needs_email' && (
+        <p className="auth-hint">Add your email — we need it for receipts and event links. You won’t be asked for a second WhatsApp code.</p>
+      )}
+      {waStage !== 'needs_email' && methodTabs}
 
       {(formError || stalled) && (
         <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
@@ -257,9 +410,12 @@ function Inner() {
           its loading state, and if loading fails the message above explains it. */}
       <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}><UiText id="web-auth.88d420398edd3a06" source="Email me a code" />{" "}</Button>
 
-      <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-
-      <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
+      {waStage !== 'needs_email' && (
+        <>
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
+        </>
+      )}
 
       <div className="auth-foot">
         <p className="auth-aside"><UiText id="web-auth.147f03f49b15afba" source="Time for chai?" /><br /><UiText id="web-auth.eef3540404312d17" source="That's sorted too." /></p>

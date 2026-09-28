@@ -59,6 +59,13 @@ import {
   sendPhoneCode, verifyPhoneCode, getPhoneStatus, apiMessage, apiCode,
   type PwlSignIn,
 } from './passwordless';
+import {
+  sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
+  storeWaProof, readWaProof, claimWhatsAppProof,
+} from './whatsappAuth';
+import { WhatsAppNumberInput } from './WhatsAppNumberInput';
+import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
+import { getActiveTokenWaited } from '../../lib/clerk';
 import { DEFAULT_LANDING, safeSameOriginPath } from '../../lib/authRedirect';
 
 /* [WEB-PHONE-OTP-1 2026-09-10] ONE SCREEN, TWO INLINE CODES (owner decision).
@@ -248,6 +255,17 @@ function Inner() {
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const decided = useRef(false);
 
+  // [WA-WEB-1 2026-09-28] Method choice for a fresh sign-up (not shown in
+  // finish/resume mode — that screen exists only to collect the WhatsApp
+  // number of an account that already exists).
+  const [method, setMethod] = useState<'email' | 'whatsapp'>('email');
+  const [waStage, setWaStage] = useState<'number' | 'code'>('number');
+  const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
+  const [waNational, setWaNational] = useState('');
+  const [waCode, setWaCode] = useState('');
+  const [waResendAt, setWaResendAt] = useState(0);
+  const [waPhoneMasked, setWaPhoneMasked] = useState('');
+
   const emailResendIn = useCountdown(emailResendAt);
   const phoneResendIn = useCountdown(phoneResendAt);
 
@@ -314,9 +332,59 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
+      capture('login_method_chosen', { method: 'google', surface: 'sign_up' });
       await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(params.next ?? landingFor(role), role));
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
+    }
+  }
+
+  /* ── WhatsApp sign-up (owner decision 2026-09-28) ────────────────────── */
+  function chooseMethod(m: 'email' | 'whatsapp') {
+    setMethod(m);
+    setFormError(null);
+    capture('login_method_chosen', { method: m, surface: 'sign_up' });
+  }
+  const waE164 = () => toE164(waCountry, waNational);
+  const waResendIn = Math.max(0, Math.ceil((waResendAt - Date.now()) / 1000));
+
+  async function sendWa() {
+    if (submitting || waNational.replace(/\D/g, '').length < 4) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const r = await sendWhatsAppCode(waE164());
+      setWaPhoneMasked(r.phone_masked);
+      setWaCode('');
+      setWaStage('code');
+      setWaResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
+    } catch (err) {
+      setFormError(waApiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function verifyWa() {
+    if (submitting || waCode.trim().length < 4) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const r = await verifyWhatsAppCode(waE164(), waCode.trim());
+      if (r.status === 'signed_in') {
+        await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, r.ticket);
+        location.href = destination();
+        return;
+      }
+      // needs_email: a brand-new number. Keep the proof for after the email
+      // step (verifyEmail claims it), and switch to the ordinary sign-up form.
+      storeWaProof(r.proof, r.phone_masked);
+      setWaPhoneMasked(r.phone_masked);
+      setMethod('email');
+    } catch (err) {
+      setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -379,6 +447,21 @@ function Inner() {
         await setActive({ session: res.createdSessionId });
         setEmailStep('verified');
         capture('auth_email_verified', { surface: 'sign_up', email: email.trim().toLowerCase() });
+        // [WA-WEB-1 2026-09-28] "Continue with WhatsApp" -> needs_email left a
+        // proof waiting: attach it now and skip the phone step entirely — the
+        // person is never asked for a second WhatsApp code.
+        const pending = readWaProof();
+        if (pending) {
+          try {
+            const token = await getActiveTokenWaited();
+            if (token) {
+              const claimed = await claimWhatsAppProof(pending.proof, token);
+              setVerifiedPhone(claimed.phone);
+              setPhoneStep('verified');
+              return;
+            }
+          } catch { /* falls through to the ordinary phone step below */ }
+        }
         setTimeout(() => phoneInputRef.current?.focus(), 250);
         return;
       }
@@ -392,9 +475,10 @@ function Inner() {
   }
 
   /* ── Phone ─────────────────────────────────────────────────────────────── */
-  function onPhoneChange(v: string) {
-    const digits = v.replace(/\D/g, '').replace(/^91(?=\d{10})/, '').slice(0, 10);
-    setPhone(digits);
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY.code);
+  function onPhoneChange(v: string, c: string) {
+    setPhone(v);
+    setPhoneCountry(c);
     clearErr('phone', 'phoneCode');
     // Editing the number after a code was sent (or after verifying) starts over.
     if (phoneStep === 'code' || phoneStep === 'verified') {
@@ -410,15 +494,15 @@ function Inner() {
       setErrors((e) => ({ ...e, phone: 'Verify your email first.' }));
       return;
     }
-    if (!/^[6-9]\d{9}$/.test(phone)) {
-      setErrors((e) => ({ ...e, phone: 'Enter your 10-digit mobile number.' }));
+    if (phone.replace(/\D/g, '').length < 4) {
+      setErrors((e) => ({ ...e, phone: 'Enter your WhatsApp number.' }));
       return;
     }
     clearErr('phone', 'phoneCode');
     const prevStep = phoneStep;
     setPhoneStep('sending');
     try {
-      const r = await sendPhoneCode(`+91${phone}`);
+      const r = await sendPhoneCode(toE164(phoneCountry, phone));
       if (r.already_verified) {
         setVerifiedPhone(r.phone);
         setPhoneStep('verified');
@@ -518,12 +602,71 @@ function Inner() {
   const phoneBusy = phoneStep === 'sending' || phoneStep === 'verifying';
   const phoneUnlocked = emailStep === 'verified';
 
+  // [WA-WEB-1 2026-09-28] The WhatsApp-first sign-up path — only offered on a
+  // fresh sign-up, never in finish/resume mode.
+  if (!resume && method === 'whatsapp') {
+    return (
+      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : verifyWa()); }} noValidate>
+        <div className="auth-desktop-head">
+          <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
+          <h1 className="auth-h2">Create my account</h1>
+        </div>
+        <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ink" onClick={() => chooseMethod('email')}>Continue with email</button>
+          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+        </div>
+        {(formError || stalled) && (
+          <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
+        )}
+        {waStage === 'number' && (
+          <>
+            <WhatsAppNumberInput
+              value={waNational} countryCode={waCountry}
+              onChange={(n, c) => { setWaNational(n); setWaCountry(c); }}
+              label="WhatsApp number" autoFocus
+            />
+            <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to create your account.</p>
+            <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
+          </>
+        )}
+        {waStage === 'code' && (
+          <>
+            <p className="auth-footline" style={{ textAlign: 'left' }}>We sent a 6-digit code on WhatsApp to <strong>{waPhoneMasked}</strong>.</p>
+            <Field label="Verification code" name="waCode" inputMode="numeric" maxLength={6}
+              autoComplete="one-time-code" placeholder="123456" value={waCode} onChange={setWaCode} />
+            <Button type="submit" loading={submitting}>Verify and continue</Button>
+            <div className="auth-foot">
+              <p className="auth-footline">
+                {waResendIn > 0 ? `Resend in ${waResendIn}s` : (
+                  <a href="#resend" onClick={(ev) => { ev.preventDefault(); void sendWa(); }}>Resend code</a>
+                )}
+              </p>
+            </div>
+          </>
+        )}
+        <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+        <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+        <div className="auth-foot">
+          <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
+          </p>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form className="auth-form auth-form--signup" onSubmit={onSubmit} noValidate>
       <div className="auth-desktop-head">
         <p className="auth-eyebrow">{resume ? uiT("web-auth.be98b10d2db32b3f","One last step") : uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
         <h1 className="auth-h2">{resume ? uiT("web-auth.94a5c55cacd8f799","Verify your phone") : uiT("web-auth.862d3b2696cfbc19","Create my account")}</h1>
       </div>
+
+      {!resume && (
+        <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('email')}>Continue with email</button>
+          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ink" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+        </div>
+      )}
 
       {(formError || stalled) && (
         <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
@@ -599,12 +742,12 @@ function Inner() {
 
       {/* ── Phone + slide-out code ── */}
       <VerifyField
-        id="su-phone" label={uiT("web-auth.815abc2ef7daf8ed","WhatsApp number · India")} verified={phoneStep === 'verified'} error={errors.phone}
+        id="su-phone" label={uiT("web-auth.815abc2ef7daf8ed","WhatsApp number")} verified={phoneStep === 'verified'} error={errors.phone}
         action={
           <button
             type="button" className="auth-inline-btn"
             onClick={() => void sendPhone()}
-            disabled={!phoneUnlocked || phoneBusy || phone.length !== 10 || phoneStep === 'code' && phoneResendIn > 0}
+            disabled={!phoneUnlocked || phoneBusy || phone.replace(/\D/g, '').length < 4 || (phoneStep === 'code' && phoneResendIn > 0)}
           >
             {phoneStep === 'sending' ? uiT("web-auth.b8ed5279e897be5d","Sending…") : phoneStep === 'code' || phoneStep === 'verifying' ? uiT("web-auth.c16bc82bf1f04ede","Sent") : uiT("web-auth.9c45665a6ee4c7d0","Send OTP")}
           </button>
@@ -617,30 +760,18 @@ function Inner() {
           </p>
         }
       >
-        <span className="auth-prefix" aria-hidden="true">+91</span>
-        <input
-          ref={phoneInputRef}
-          id="su-phone" name="phone" type="tel" inputMode="numeric" autoComplete="tel-national"
-          placeholder="98765 43210"
-          className={`auth-box auth-box--action auth-box--prefixed${phoneStep === 'verified' ? ' is-verified' : ''}`}
-          value={phone}
-          maxLength={14}
-          disabled={!phoneUnlocked}
-          readOnly={phoneBusy}
-          aria-invalid={errors.phone ? true : undefined}
-          aria-describedby={errors.phone ? uiT("web-auth.52da322279034269","su-phone-err") : undefined}
-          onChange={(e) => onPhoneChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            if (phoneStep === 'idle') void sendPhone();
-          }}
+        <WhatsAppNumberInput
+          id="su-phone" value={phone} countryCode={phoneCountry}
+          onChange={onPhoneChange}
+          label="" disabled={!phoneUnlocked || phoneBusy}
+          error={undefined}
+          classes={{ field: '', box: `auth-box auth-box--action${phoneStep === 'verified' ? ' is-verified' : ''}` }}
         />
       </VerifyField>
       <CodeReveal
         open={phoneStep === 'code' || phoneStep === 'verifying'}
         label={uiT("web-auth.086206876a33de3f","WhatsApp code")}
-        sentTo={`+91 ${phone.slice(0, 5)} ${phone.slice(5)}`}
+        sentTo={toE164(phoneCountry, phone)}
         value={phoneCode}
         onChange={(v) => { setPhoneCode(v); clearErr('phoneCode'); }}
         onSubmit={(c) => void verifyPhone(c)}

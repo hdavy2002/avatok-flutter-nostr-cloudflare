@@ -35,6 +35,8 @@ import { toast } from '../../components/ui/sonner';
 import { Shimmer } from './Shimmer';
 import { errBody, errCode, errMessage, meApi } from './accountApi';
 import { DASH_LOGOUT } from './nav';
+import { WhatsAppNumberInput } from '../auth/WhatsAppNumberInput';
+import { DEFAULT_COUNTRY, findCountry, toE164 } from '../../lib/countries';
 import { currentSubscription, disablePush, enablePush, IOS_INSTALL_HINT, pushSupport } from './webPush'; // [DASH2-PUSH]
 
 /* ── types ──────────────────────────────────────────────────────────────── */
@@ -360,6 +362,7 @@ const RESEND_GAP_S = 30; // mirrors RESEND_GAP_MS in worker/src/routes/phone_otp
 function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenChange: (o: boolean) => void; onChanged: (phone: Profile['phone']) => void }) {
   const reduce = useReducedMotion();
   const [step, setStep] = useState<PhoneStep>('number');
+  const [country, setCountry] = useState(DEFAULT_COUNTRY.code);
   const [digits, setDigits] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -372,16 +375,19 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
 
   useEffect(() => {
     if (!open) return;
-    setStep('number'); setDigits(''); setCode(''); setErr(''); setBusy(false); setExpiresAt(null); setResendAt(null); setNewMasked(null);
+    setStep('number'); setCountry(DEFAULT_COUNTRY.code); setDigits(''); setCode(''); setErr(''); setBusy(false); setExpiresAt(null); setResendAt(null); setNewMasked(null);
   }, [open]);
 
-  const valid = /^[6-9]\d{9}$/.test(digits);
+  // [WA-WEB-1 2026-09-28] International numbers are allowed; only the Indian
+  // mobile-prefix shape gets a friendlier hint, everything else just needs a
+  // few digits.
+  const valid = country === 'IN' ? /^[6-9]\d{9}$/.test(digits) : digits.length >= 4;
 
   const start = async (isResend = false) => {
     if (!valid || busy) return;
     setBusy(true); setErr('');
     try {
-      const r = await meApi<{ ok: boolean; expires_in_s: number }>('/api/me/phone/start', { method: 'POST', body: { phone: `+91${digits}` } });
+      const r = await meApi<{ ok: boolean; expires_in_s: number }>('/api/me/phone/start', { method: 'POST', body: { phone: toE164(country, digits) } });
       const now = Date.now();
       setExpiresAt(now + (r.expires_in_s || 600) * 1000);
       setResendAt(now + RESEND_GAP_S * 1000);
@@ -431,9 +437,9 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-left">
-          <DialogTitle className="font-dash">Change phone number</DialogTitle>
+          <DialogTitle className="font-dash">Change WhatsApp number</DialogTitle>
           <DialogDescription className="text-[13.5px]">
-            Your current number stays on your account until the new one is verified. Then we swap them in one step, so you are never left without a phone.
+            The code comes on WhatsApp. Your current number stays on your account until the new one is confirmed — then we swap them in one step, so you are never left without a WhatsApp number.
           </DialogDescription>
         </DialogHeader>
 
@@ -455,16 +461,19 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
           <AnimatePresence mode="wait" initial={false}>
             {step === 'number' && (
               <motion.form key="number" {...slide} transition={{ duration: 0.18 }} onSubmit={(e) => { e.preventDefault(); void start(); }} className="space-y-3">
-                <Label htmlFor="ph-new" className="text-[13px] font-bold">New WhatsApp number</Label>
-                <div className="flex">
-                  <span className="flex h-11 items-center rounded-l-md border border-r-0 border-input bg-muted px-3 text-[15px] font-extrabold text-muted-foreground">+91</span>
-                  <Input id="ph-new" inputMode="numeric" autoComplete="tel-national" autoFocus placeholder="98765 43210"
-                    value={digits} onChange={(e) => { setDigits(e.target.value.replace(/\D/g, '').slice(-10)); setErr(''); }}
-                    className="rounded-l-none text-[16px] font-bold tracking-[0.08em]" aria-invalid={!!err} aria-describedby="ph-err" />
-                </div>
-                {digits.length === 10 && !valid && <FieldError msg="Indian mobile numbers start with 6, 7, 8 or 9." />}
+                <WhatsAppNumberInput
+                  id="ph-new" label="New WhatsApp number" autoFocus
+                  value={digits} countryCode={country}
+                  onChange={(n, c) => { setDigits(n); setCountry(c); setErr(''); }}
+                  error={country === 'IN' && digits.length === 10 && !valid ? 'Indian mobile numbers start with 6, 7, 8 or 9.' : undefined}
+                  classes={{
+                    field: '', label: 'text-[13px] font-bold',
+                    box: 'flex h-11 w-full rounded-md border border-input bg-card px-3 py-2 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+                    err: 'mt-1.5 text-[12.5px] font-bold text-primary',
+                  }}
+                />
                 <FieldError id="ph-err" msg={err} />
-                <p className="text-[12.5px] font-semibold text-muted-foreground">We’ll text a 6-digit code to this number.</p>
+                <p className="text-[12.5px] font-semibold text-muted-foreground">We’ll send a 6-digit code on WhatsApp to this number. Your current number stays on your account until this one is verified.</p>
                 <Button type="submit" variant="accent" className="w-full" disabled={!valid || busy || resendIn > 0}>
                   {busy ? <Loader2 className="animate-spin" /> : <Smartphone />} {resendIn > 0 ? `Send code in ${resendIn}s` : 'Send code'}
                 </Button>
@@ -473,7 +482,7 @@ function PhoneDialog({ open, onOpenChange, onChanged }: { open: boolean; onOpenC
             {step === 'code' && (
               <motion.div key="code" {...slide} transition={{ duration: 0.18 }} className="space-y-3">
                 <p className="text-[14px] font-semibold text-foreground">
-                  Enter the code sent on WhatsApp to <strong className="font-extrabold tracking-[0.04em]">+91 {digits.slice(0, 5)} {digits.slice(5)}</strong>
+                  Enter the code sent on WhatsApp to <strong className="font-extrabold tracking-[0.04em]">+{findCountry(country).dial} {digits}</strong>
                   <button type="button" className="ml-2 text-[13px] font-bold text-accent underline underline-offset-2" onClick={() => { setStep('number'); setErr(''); }}>Change</button>
                 </p>
                 <div className="flex justify-center py-1">
@@ -524,10 +533,10 @@ function PhoneCard({ profile, onPhone }: { profile: Profile; onPhone: (p: Profil
   const [open, setOpen] = useState(false);
   const has = !!profile.phone?.e164_masked;
   return (
-    <ProfileCard id="phone" icon={<Phone className="h-5 w-5" />} title="Phone" description="Used to sign in and for booking updates.">
+    <ProfileCard id="phone" icon={<Phone className="h-5 w-5" />} title="WhatsApp number" description="Every Saathum account needs a verified WhatsApp number — used to sign in and for booking updates.">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-dash text-[18px] font-bold tracking-[0.06em] text-foreground">{has ? profile.phone.e164_masked : 'No phone yet'}</span>
+          <span className="font-dash text-[18px] font-bold tracking-[0.06em] text-foreground">{has ? profile.phone.e164_masked : 'No WhatsApp number yet'}</span>
           {has && profile.phone.verified && <Badge variant="accent"><BadgeCheck className="h-3.5 w-3.5" />Verified</Badge>}
         </div>
         <Button variant="outline" onClick={() => { capture('dash2_phone_change', { step: 'open', ok: true }); setOpen(true); }}>
