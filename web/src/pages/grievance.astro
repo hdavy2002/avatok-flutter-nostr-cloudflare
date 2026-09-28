@@ -1,0 +1,140 @@
+---
+// [WEB-GRIEVANCE-1 2026-09-29] /grievance — Grievance Redressal Mechanism,
+// OWNER-SUPPLIED copy (two escalation levels: L1 Customer Support, L2 Nodal
+// Officer Aarti Sharma; acknowledgement within 48 hours, resolution within
+// 7–10 working days). Built on the approved folk legal shell
+// (layouts/LegalFolk.astro), same look as /refunds, /terms, /disclaimer.
+//
+// History: the old avaTOK /grievance page (IT-Rules Grievance Officer) was
+// removed by the owner on 2026-09-25 ([SAATHUM-ENTITY-1]) and its URL was
+// 301'd to / and listed as 410 Gone ([WEB-OLD-PAGES-GONE-1]). This is a NEW
+// Saa Thum page at the same URL — the redirect, the 410 entry and the
+// check-homepage "hidden from footer" assertion were removed in the same change.
+//
+// NOTE FOR AI:
+//  - Names, emails and timelines here are the owner's. Do not change the
+//    officer, the 48 h / 7–10 working-day timeline or the levels without him.
+//    The help centre (report-a-problem.md, help/index.astro) must stay in step.
+//  - Emails stay plain text "name (@) saathum.com", never mailto.
+//  - No company/entity name (CLAUDE.md "THERE IS NO COMPANY"). Brand is "Saa Thum".
+export const prerender = true;
+import LegalFolk from '../layouts/LegalFolk.astro';
+import { publicImage } from '../lib/config';
+
+const toc = [
+  { id: 'commitment', label: 'Our commitment' },
+  { id: 'levels', label: 'Escalation levels' },
+  { id: 'l1', label: 'Level 1 — Customer Support' },
+  { id: 'l2', label: 'Level 2 — Nodal Officer' },
+  { id: 'timeline', label: 'Resolution timeline' },
+  { id: 'include', label: 'What to include' },
+  { id: 'thanks', label: 'Thank you' },
+];
+const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, fit: 'scale-down' });
+---
+
+<LegalFolk
+  title="Grievance Redressal"
+  titleHtml="Grievance <em>Redressal</em>"
+  eyebrow="Legal"
+  lead="If you have a concern, complaint or grievance about our services, we are here to help. Here is who to contact, how to escalate, and how quickly we respond."
+  description="Saa Thum's Grievance Redressal Mechanism — contact Customer Support first, escalate to our Nodal Officer, with acknowledgement within 48 hours and resolution within 7–10 working days."
+  image="/og/terms.png"
+  updated="2026-09-29"
+  helpHref="/help/account-and-safety/report-a-problem"
+  sticker={{ src: '/assets/saathum-booking-stickers/booking-blessed.png', width: 1024, height: 1024, alt: 'A smiling woman in a saree with folded hands in namaste, a pink lotus in front of her — we are here to help.' }}
+  stamp={{ src: '/assets/saathum-how-it-works/namaste.webp', width: 550, height: 640 }}
+  toc={toc}
+  railCard={{
+    title: 'Start with support',
+    html: 'Most concerns are solved at Level 1. Email support (@) saathum.com and we reply within 48 hours. <a href="/contact">Contact form</a>',
+    image: { src: '/assets/saathum-how-it-works/link.webp', width: 384, height: 640 },
+  }}
+>
+  <h2 id="commitment"><span class="lg-n">1.</span>Our commitment</h2>
+  <p>
+    At Saa Thum, we are committed to providing a seamless and trustworthy experience. If you have
+    any concerns, complaints or grievances related to our services, we are here to assist you. You
+    may reach out to our Grievance Redressal Officers through the escalation levels below.
+  </p>
+
+  <h2 id="levels"><span class="lg-n">2.</span>Escalation levels</h2>
+  <div class="lg-tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Level</th>
+          <th>Who</th>
+          <th>Contact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Level 1 (L1)</strong></td>
+          <td>Customer Support</td>
+          <td>support (@) saathum.com</td>
+        </tr>
+        <tr>
+          <td><strong>Level 2 (L2)</strong></td>
+          <td>Aarti Sharma, Nodal Officer</td>
+          <td>Aarti.Sharma (@) saathum.com</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="l1"><span class="lg-n">3.</span>Level 1 — Customer Support</h2>
+  <p>
+    For general queries, order-related concerns, refunds, payments, delivery issues or service
+    complaints, please contact:
+  </p>
+  <p><strong>Email:</strong> support (@) saathum.com</p>
+  <p>
+    Our support team will acknowledge your complaint within <strong>48 hours</strong> and aim to
+    resolve it at the earliest. You can also reach us through our <a href="/contact">contact form</a>.
+  </p>
+
+  <h2 id="l2"><span class="lg-n">4.</span>Level 2 — Nodal Officer</h2>
+  <p>
+    If your concern is not resolved satisfactorily at Level 1, you may escalate it to our Nodal
+    Officer:
+  </p>
+  <ul>
+    <li><strong>Name:</strong> Aarti Sharma</li>
+    <li><strong>Designation:</strong> Nodal Officer</li>
+    <li><strong>Email:</strong> Aarti.Sharma (@) saathum.com</li>
+  </ul>
+  <p>
+    The Nodal Officer will review the matter and ensure an appropriate resolution within a
+    reasonable timeframe.
+  </p>
+
+  <h2 id="timeline"><span class="lg-n">5.</span>Resolution timeline</h2>
+  <div class="lg-note">
+    <div>
+      <span class="lg-tag">Our promise</span>
+      <p>
+        Complaints will be <strong>acknowledged within 48 hours</strong> of receipt. A
+        <strong>resolution will be provided within 7–10 working days</strong>, depending on the
+        nature of the grievance.
+      </p>
+    </div>
+    <img src={lotusImg} alt="" aria-hidden="true" width="1254" height="1254" />
+  </div>
+
+  <h2 id="include"><span class="lg-n">6.</span>What to include</h2>
+  <p>To help us resolve your grievance quickly, please include:</p>
+  <ol>
+    <li>Your full name, and the email or phone number you booked with.</li>
+    <li>The event or order your complaint is about, and its date.</li>
+    <li>A clear description of the problem and the outcome you are seeking.</li>
+    <li>For a payment or refund, your 12-digit UPI transaction number.</li>
+    <li>When escalating to Level 2, the date you first contacted Customer Support.</li>
+  </ol>
+
+  <h2 id="thanks"><span class="lg-n">7.</span>Thank you</h2>
+  <p>
+    We value your trust and are committed to resolving your concerns fairly, transparently and
+    promptly. Thank you for being a part of Saa Thum.
+  </p>
+</LegalFolk>

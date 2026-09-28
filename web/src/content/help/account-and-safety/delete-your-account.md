@@ -12,7 +12,7 @@ faq:
   - q: "How do I cancel a deletion I've already started?"
     a: "Just sign back in before the 30 days are up — Saa Thum will show you the grace period is running and offer to reactivate your account."
   - q: "Can I get things purged sooner, or check they were actually removed?"
-    a: "Email privacy (@) saathum.com with your account email and what you'd like checked or removed. For a formal complaint, use grievance (@) saathum.com."
+    a: "Email privacy (@) saathum.com with your account email and what you'd like checked or removed. For a formal complaint, see our Grievance Redressal page."
 draft: false
 ---
 

@@ -3,14 +3,14 @@ title: "Report a problem on Saa Thum"
 description: "How to report a problem with a ritual, a booking or a payment on Saa Thum — what to include and who reads it."
 section: account-and-safety
 order: 3
-updated: 2026-09-11
+updated: 2026-09-29
 keywords: ["report", "block", "complaint", "grievance", "abuse", "contact support", "billing issue"]
 audience: both
 faq:
   - q: "Who do I email to report abuse or unsafe content?"
-    a: "support (@) saathum.com, or use the in-app report tool — for a formal complaint under Indian law, email grievance (@) saathum.com instead."
+    a: "support (@) saathum.com, or use the in-app report tool. If support has not resolved your complaint, escalate it to our Nodal Officer, Aarti Sharma, at Aarti.Sharma (@) saathum.com — see our Grievance Redressal page."
   - q: "How fast will a formal grievance be acknowledged?"
-    a: "Within 24 hours, with a resolution within 15 days of receipt. Complaints about non-consensual intimate imagery are acted on within 24 hours."
+    a: "Within 48 hours of receipt, with a resolution within 7–10 working days depending on the nature of the grievance."
 draft: false
 ---
 
@@ -36,16 +36,17 @@ For anything about a charge or a refund, email **support (@) saathum.com** with 
 
 ## Filing a formal complaint (Grievance Redressal)
 
-For a formal complaint under India's IT Intermediary Guidelines, 2021 — about unlawful content, a decision Saa Thum took on your account or content that support hasn't resolved, misuse of your personal data, or non-consensual intimate imagery — email **grievance (@) saathum.com** with the subject line *Grievance*. This reaches Saa Thum's Grievance Officer, **Depika Singh**, directly.
+Our [Grievance Redressal](/grievance) page sets out two escalation levels:
 
-Include what you can: your full name and the email/phone linked to your account, a clear description of the harm, the exact location of the content (link, handle, group, approximate date/time), any evidence you have, and the outcome you're seeking. One complaint per issue keeps the record clear.
+- **Level 1 — Customer Support:** email **support (@) saathum.com** for general queries, order-related concerns, refunds, payments, delivery issues or service complaints.
+- **Level 2 — Nodal Officer:** if your concern is not resolved satisfactorily at Level 1, escalate it to **Aarti Sharma**, Nodal Officer, at **Aarti.Sharma (@) saathum.com**.
 
-**Timelines under the IT Rules, 2021:**
+Include what you can: your full name and the email/phone you booked with, the event or order, a clear description of the problem, any evidence you have, and the outcome you're seeking. For a payment, add your 12-digit UPI transaction number.
 
-- Acknowledgement — within **24 hours** of receiving your complaint.
-- Resolution — within **15 days**.
-- Non-consensual intimate imagery (nudity, a sexual act, or impersonation, including morphed or AI-generated images) — acted on within **24 hours**.
+**Timelines:**
 
+- Acknowledgement — within **48 hours** of receiving your complaint.
+- Resolution — within **7–10 working days**, depending on the nature of the grievance.
 
 ## Other ways to reach us
 

@@ -60,6 +60,8 @@ export const HOME_FOOTER_COLUMNS = [
     { href: '/cookies', label: 'Cookies' },
     // [WEB-DISCLAIMER-1 2026-09-29] Disclaimer page added by owner.
     { href: '/disclaimer', label: 'Disclaimer' },
+    // [WEB-GRIEVANCE-1 2026-09-29] New Saa Thum Grievance Redressal page (owner copy).
+    { href: '/grievance', label: 'Grievance Redressal' },
     // [SAATHUM-ENTITY-1 2026-09-25] Grievance Redressal page removed by owner.
   ] },
 ];

@@ -7,14 +7,14 @@ import { defineMiddleware } from 'astro:middleware';
 // this middleware sees every one of these requests.
 //
 // NOTE FOR AI: paths already 301'd in public/_redirects (/tokens, /payouts, /dmca,
-// /grievance, /organisers, /child-safety, /community-guidelines, /biometric-retention,
+// /organisers, /child-safety, /community-guidelines, /biometric-retention,
 // /india, /ideas via page) keep their redirect — _redirects wins before this runs.
 // Do not re-create any of these pages; build new Saa Thum pages instead.
 const GONE_EXACT = new Set([
   '/add',
   '/careers',
   '/acceptable-use', '/consultation-terms', '/marketplace-terms', '/prohibited-services', '/recording',
-  '/biometric-retention', '/child-safety', '/community-guidelines', '/dmca', '/grievance',
+  '/biometric-retention', '/child-safety', '/community-guidelines', '/dmca',
   '/organisers', '/payouts', '/pricing-fees', '/tokens',
   '/pricing', '/pricing-preview', '/global-ideas', '/global-next', '/india-next', '/india',
   '/ideas', '/landing-steps-preview',

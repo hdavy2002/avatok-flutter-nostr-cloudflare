@@ -60,6 +60,7 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ['/terms', 'yearly', '0.3'],
   ['/cookies', 'yearly', '0.3'],
   ['/disclaimer', 'yearly', '0.3'],
+  ['/grievance', 'yearly', '0.3'],
 ];
 
 export const GET: APIRoute = async () => {
