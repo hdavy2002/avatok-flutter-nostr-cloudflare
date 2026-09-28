@@ -40,6 +40,66 @@ gh workflow run android.yml --ref main -f environment=prod -f artifact=apk -f pl
 `android.yml` has a **guard step**: prod must be built from `main`, staging from
 `staging`. A mismatched dispatch fails fast instead of shipping the wrong code.
 
+### RULE 3 — Every issue gets its OWN branch AND its OWN worktree (owner decision 2026-09-28)
+
+The main folder (`/Users/davy/Documents/websites/avaTOK-2-Flutter`) is shared by
+every agent. Editing there is what made agents wait on each other ("another agent
+is working on X"), sweep each other's files into commits, and pile unpushed
+commits on `main`. So: **never edit code in the main folder.** It stays on a clean
+`main` that matches GitHub.
+
+**Starting an issue** (pick a short issue id, e.g. `SAATHUM-PAY-ICONS-1`):
+
+```bash
+cd /Users/davy/Documents/websites/avaTOK-2-Flutter
+git fetch -q origin
+git worktree add -b issue/<issue-id-lowercase> ../wt-<issue-id-lowercase> origin/main
+cd ../wt-<issue-id-lowercase>
+ln -s ../avaTOK-2-Flutter/web/node_modules web/node_modules        # only if you need web tooling
+ln -s ../avaTOK-2-Flutter/worker/node_modules worker/node_modules  # only if you need worker tooling
+```
+
+Do ALL edits, commits (`scripts/git_safe_commit.py` with explicit paths) and checks
+inside that worktree. Never run `npm install` in a worktree — it would rewrite the
+shared `node_modules` (see the sandbox-npm trap); symlink as above.
+
+**Finishing an issue** — land it the same day; long-lived branches rot:
+
+```bash
+cd ../wt-<issue-id-lowercase>
+git fetch -q origin && git rebase origin/main        # conflicts? resolve here, keep BOTH sides' intent
+# re-run the checks that apply (worker: npx tsc --noEmit; python3 tool/check_ship_readiness.py --check all)
+ALLOW_PUSH=1 git push origin HEAD:main               # fast-forward only; if rejected, fetch + rebase again
+cd ../avaTOK-2-Flutter && git pull -q --ff-only      # keep the main folder in step
+git worktree remove ../wt-<issue-id-lowercase> && git branch -D issue/<issue-id-lowercase>
+```
+
+Then deploy from `main` as usual (commit-before-deploy still applies). Never push the
+`issue/*` branch itself to GitHub unless the owner asks to park work there.
+
+**Conflict avoidance:** branches delay conflicts, they do not remove them. If a new
+issue touches the same files as one already in flight (same page, same route,
+`tool/ship_manifest.json`), tell the owner and suggest doing it after the other one
+lands. Keep issues small. Keep at most ~4 worktrees at once (disk).
+
+### RULE 4 — Hygiene check at the START of every session, and nag the owner
+
+The owner asked (2026-09-28) to be reminded periodically so old work does not pile
+up again (on 2026-09-28 we cleaned 70 local branches, 38 GitHub branches, 12
+worktrees, 3 stashes and 6 tags). Before the first real task of a session run:
+
+```bash
+python3 scripts/git_hygiene.py
+```
+
+- Prints one "clean" line → say nothing about it.
+- Lists findings → tell the owner in ONE or two plain sentences at the top of your
+  reply (e.g. "Heads-up: the worktree for SAATHUM-X hasn't been touched in 4 days and
+  has 3 unmerged commits — merge or delete?"). Then carry on with his request.
+- **Never delete anything the check reports without asking.** It is read-only on
+  purpose. Also run it after finishing an issue, to confirm your own worktree and
+  branch are gone.
+
 ### SHIP IT — OWNER'S RELEASE COMMAND (canonical)
 
 The exact owner phrase **“ship it”** is an explicit request for the complete
@@ -334,6 +394,10 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
   builds run in GitHub Actions.
 
 ### Git protocol (MANDATORY — this repo is shared by multiple agents)
+
+> **Since 2026-09-28 every issue is worked in its own worktree + `issue/*` branch —
+> see RULE 3 at the top of this file.** The rules below (safe commit with explicit
+> paths, safe push, one issue per commit) still apply inside that worktree.
 
 - **NO AUTO-BUILD — builds are MANUAL ONLY (owner decision 2026-07-04, PERMANENT).**
   Every build workflow (`android.yml`, `avaconsult.yml`, `macos.yml`, `web-deploy.yml`)
