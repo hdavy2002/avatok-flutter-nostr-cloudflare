@@ -9,50 +9,32 @@ Instructions cannot change an existing runtime model; disclose any mismatch.
 
 ---
 
-## 🚨 STAGING vs PRODUCTION — AI READ THIS FIRST (2026-07-09)
+## 🚨 PRODUCTION ONLY — AI READ THIS FIRST (owner decision 2026-09-28)
 
 **The owner is not a developer and will never type a deploy command. You handle all
-of this. He tells you WHICH environment in plain English; you do the rest.**
+of this.**
 
-### RULE 1 — At the start of EVERY new session, ask with a widget
+**There is no staging environment in use.** The `staging` branch was deleted on
+2026-09-28 and the owner does no staging builds. `.avatok-target` stays `prod`
+permanently — never write `staging` into it.
 
-Before doing any real work in a fresh session (first substantive request — not for
-pure chat or a one-line factual question), call **AskUserQuestion**:
+### RULE 1 — Do NOT ask which environment at session start
 
-> **header:** `Scope`
-> **question:** "What are we working on in this session?"
-> **options:** `Staging feature` · `Staging bug` · `Production feature` · `Production bug`
->
-> (the tool always offers "Other" automatically, where he can type a custom issue)
+Never show a `Scope` / "Staging feature · Staging bug · Production feature ·
+Production bug" widget. It was removed on 2026-09-28 because it added a question
+to every session and the answer was never honoured. Every session is production.
+Because production is live, say so in one line and confirm before a production
+write (worker deploy, flag set, D1 migration, web deploy) unless the owner asked
+for that exact action in his message.
 
-Then **write the resulting environment into `.avatok-target`** (`staging` or `prod`)
-and say so in one short line. That file is the single source of truth for the rest
-of the session; `scripts/cf.sh` and `scripts/flags.sh` read it.
+### RULE 2 — On a build request, ask ONE widget question, then do it all
 
-- Answer is *Other* / ambiguous → ask one follow-up, or default to **staging**.
-- Anything production → say plainly that production is live, and confirm before
-  each write.
-- If the owner already stated the environment in his message, skip the widget and
-  just write the file.
-
-### RULE 2 — On any build request, ask TWO widget questions, then do it all
-
-Any request to build, deploy, ship, release, or "push it up" starts with
-AskUserQuestion — **never** infer the answer from `.avatok-target` or the branch.
-A build is the moment a mistake reaches real users.
-
-1. **`Environment`** — "Staging build or production build?" → `Staging` · `Production`
-2. **`Format`** — "APK or AAB?" → `APK (Recommended)` · `AAB` · `Both`
-   (APK is the standing default — owner decision 2026-07-04.)
-
-Then do the whole thing yourself. Do **not** hand him commands:
+Builds are always production, from `main`. Ask only **`Format`** — "APK or AAB?" →
+`APK (Recommended)` · `AAB` · `Both` (APK is the standing default — owner decision
+2026-07-04). Then do the whole thing yourself. Do **not** hand him commands:
 
 ```bash
-# staging build  (staging code, staging backend)
-gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk -f play_track=none
-
-# production build (main code, prod backend) — only on an explicit request
-gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
+gh workflow run android.yml --ref main -f environment=prod -f artifact=apk -f play_track=none
 ```
 
 `android.yml` has a **guard step**: prod must be built from `main`, staging from
