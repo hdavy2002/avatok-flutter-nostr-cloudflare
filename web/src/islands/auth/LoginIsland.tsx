@@ -87,7 +87,9 @@ function Inner() {
 
   // [WA-WEB-1 2026-09-28] Login method choice: email code / WhatsApp code
   // (Google keeps its own button below, unaffected by this choice).
-  const [method, setMethodState] = useState<'email' | 'whatsapp'>('email');
+  // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default; a pending
+  // WhatsApp proof (needs_email hand-off) reopens on email.
+  const [method, setMethodState] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
   const [waStage, setWaStage] = useState<'number' | 'code' | 'needs_email'>('number');
   const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
   const [waNational, setWaNational] = useState('');
@@ -317,13 +319,13 @@ function Inner() {
 
   const methodTabs = (
     <div className="auth-row" role="tablist" aria-label="Sign-in method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-      <button type="button" role="tab" aria-selected={method === 'email'} className={`auth-btn auth-btn--${method === 'email' ? 'ghost' : 'ink'}`}
-        onClick={() => setMethod('email')} disabled={waStage === 'needs_email'}>
-        Continue with email
-      </button>
-      <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`auth-btn auth-btn--${method === 'whatsapp' ? 'ghost' : 'ink'}`}
+      <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`auth-btn auth-btn--${method === 'whatsapp' ? 'ink' : 'ghost'}`}
         onClick={() => setMethod('whatsapp')}>
         Continue with WhatsApp
+      </button>
+      <button type="button" role="tab" aria-selected={method === 'email'} className={`auth-btn auth-btn--${method === 'email' ? 'ink' : 'ghost'}`}
+        onClick={() => setMethod('email')} disabled={waStage === 'needs_email'}>
+        Continue with email
       </button>
     </div>
   );

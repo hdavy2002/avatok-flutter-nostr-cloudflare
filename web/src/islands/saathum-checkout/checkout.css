@@ -66,6 +66,9 @@ select.sthc-in { appearance: auto; }
 }
 .sthc-btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
 .sthc-btn--ghost { background: #fff; color: var(--teal); border: 2px solid var(--teal); box-shadow: none; margin-top: 8px; }
+/* [CHECKOUT-LOGIN-CHOICE-1] Sign-in method choice: three equal, always-visible buttons. */
+.sthc-choice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.sthc-choice .sthc-btn { margin-top: 0; padding-left: 6px; padding-right: 6px; }
 .sthc-btn--link { background: none; border: 0; box-shadow: none; color: var(--sub); font: 700 12.5px Nunito, sans-serif; text-decoration: underline; padding: 6px; width: auto; }
 
 .sthc-back { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; margin-bottom: 10px; color: var(--sub); font: 800 12.5px Nunito, sans-serif; cursor: pointer; }

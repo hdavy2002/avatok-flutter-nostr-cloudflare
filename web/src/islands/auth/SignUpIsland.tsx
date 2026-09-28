@@ -258,7 +258,8 @@ function Inner() {
   // [WA-WEB-1 2026-09-28] Method choice for a fresh sign-up (not shown in
   // finish/resume mode — that screen exists only to collect the WhatsApp
   // number of an account that already exists).
-  const [method, setMethod] = useState<'email' | 'whatsapp'>('email');
+  // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default.
+  const [method, setMethod] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
   const [waStage, setWaStage] = useState<'number' | 'code'>('number');
   const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
   const [waNational, setWaNational] = useState('');
@@ -612,8 +613,8 @@ function Inner() {
           <h1 className="auth-h2">Create my account</h1>
         </div>
         <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ink" onClick={() => chooseMethod('email')}>Continue with email</button>
-          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ink" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('email')}>Continue with email</button>
         </div>
         {(formError || stalled) && (
           <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
@@ -663,8 +664,8 @@ function Inner() {
 
       {!resume && (
         <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('email')}>Continue with email</button>
-          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ink" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
+          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ink" onClick={() => chooseMethod('email')}>Continue with email</button>
         </div>
       )}
 

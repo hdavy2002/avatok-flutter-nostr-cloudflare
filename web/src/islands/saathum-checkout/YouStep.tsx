@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
-import { sendPhoneCode, verifyPhoneCode, apiMessage, apiCode } from '../auth/passwordless';
+import { sendPhoneCode, verifyPhoneCode, apiMessage, apiCode, continueWithGoogle, finishUrl } from '../auth/passwordless';
 import {
   sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
   storeWaProof, readWaProof, claimWhatsAppProof,
@@ -58,7 +58,10 @@ export function YouStep({
   const { signIn, setActive } = useSignIn();
   useSignUp(); // keeps the Clerk sign-up resource warm for EmailCodeSignIn's own hook usage
 
-  const [method, setMethod] = useState<'email' | 'whatsapp'>('email');
+  // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp is the default; email second, Google third.
+  // A pending WhatsApp proof (needs_email hand-off) reopens on email.
+  const [method, setMethod] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'sending' | 'code' | 'verifying'>('idle');
   const [country, setCountry] = useState(DEFAULT_COUNTRY.code);
   const [phone, setPhone] = useState('');
@@ -72,6 +75,21 @@ export function YouStep({
     capture('saathum_checkout_step', { step: 'you', listing_id: listingId, event_type: eventType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function google() {
+    setErr(null);
+    setGoogleBusy(true);
+    capture('login_method_chosen', { method: 'google', surface: 'checkout' });
+    try {
+      // Back to this checkout after Google; finishUrl sends an account without a
+      // verified WhatsApp through the WhatsApp gate first.
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(window.location.pathname + window.location.search));
+    } catch (e) {
+      setGoogleBusy(false);
+      setErr('Couldn’t open Google sign-in. Please try again.');
+      captureException(e, { where: 'saathum_checkout_google' });
+    }
+  }
 
   function chooseMethod(m: 'email' | 'whatsapp') {
     setMethod(m);
@@ -189,12 +207,15 @@ export function YouStep({
         <div className="sthc-kick">Step {stepIndex} of {totalSteps} · You</div>
         <h3 className="sthc-h3">Sign in to book</h3>
         <div className="sthc-dots">{dots}</div>
-        <div className="sthc-fld" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <button type="button" className={`sthc-btn${method === 'email' ? '' : ' sthc-btn--link'}`} onClick={() => chooseMethod('email')}>
-            Continue with email
+        <div className="sthc-choice" role="tablist" aria-label="How do you want to sign in?">
+          <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`sthc-btn${method === 'whatsapp' ? '' : ' sthc-btn--ghost'}`} onClick={() => chooseMethod('whatsapp')}>
+            WhatsApp
           </button>
-          <button type="button" className={`sthc-btn${method === 'whatsapp' ? '' : ' sthc-btn--link'}`} onClick={() => chooseMethod('whatsapp')}>
-            Continue with WhatsApp
+          <button type="button" role="tab" aria-selected={method === 'email'} className={`sthc-btn${method === 'email' ? '' : ' sthc-btn--ghost'}`} onClick={() => chooseMethod('email')}>
+            Email
+          </button>
+          <button type="button" className="sthc-btn sthc-btn--ghost" disabled={googleBusy} onClick={() => void google()}>
+            {googleBusy ? 'Opening…' : 'Google'}
           </button>
         </div>
         {method === 'email' ? (
