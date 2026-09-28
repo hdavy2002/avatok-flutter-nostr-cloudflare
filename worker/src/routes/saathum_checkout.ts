@@ -27,6 +27,9 @@ import {
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
 import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
+// [WA-NOTIFY-2 2026-09-28] Late-buyer live-link fan-out + the internal watch URL
+// builder, both shared with lib/whatsapp_notify.ts's own bulk/late-buyer WhatsApp path.
+import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst } from "../lib/whatsapp_notify";
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -560,10 +563,47 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
 
     await track(env, row.uid, "saathum_checkout_confirmed", APP, { listing_id: row.listing_id, total_rupees: row.total_rupees, via: "customer", event_type: eventTypeOf(listingAttrsForEvent) });
     await sendSaathumConfirmationEmail(env, checkoutId).catch((err) => trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent:email", handled: true, app_name: APP }));
+    // [WA-NOTIFY-2 2026-09-28] Owner decision: people can keep booking while a show
+    // is live, and a buyer who confirms while it's live/linked must get the same
+    // WhatsApp + email a bulk admin-save fan-out would have given them — never blocks
+    // or slows this confirmation (each send is only a cheap D1 outbox insert, exactly
+    // like the bulk path; the actual WhatsApp/email delivery happens off the request,
+    // via the cron drain / email queue). Both are no-ops when the flag is off, when the
+    // listing has no live link yet, or when it's cancelled/completed.
+    await notifySaathumLateBuyerIfLive(env, checkoutId, row.uid, row.listing_id)
+      .catch((err) => trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent:late_buyer", handled: true, app_name: APP }));
   } catch (err) {
     await db.prepare(`UPDATE saathum_checkouts SET status='review_pending', reason_code='finalize_error', updated_at=?2 WHERE checkout_id=?1`).bind(checkoutId, Date.now()).run().catch(() => {});
     await trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent", handled: true, app_name: APP });
   }
+}
+
+/**
+ * [WA-NOTIFY-2 2026-09-28] Called once, right after a checkout confirms. If the
+ * listing already has a live-stream link saved (event_videos) and isn't
+ * cancelled/completed, this buyer gets the same live-link WhatsApp + email a bulk
+ * admin-save fan-out would have sent — they booked after the link went out, so the
+ * bulk send never reached them. Idempotent through the SAME outbox keys the bulk
+ * path uses (checkout_id+kind+url_hash for WhatsApp, checkout_id+kind+url_hash for
+ * email), so if this checkout is somehow already covered it is a silent no-op, never
+ * a double send. Both sub-sends are independently gated on saathumLiveLinkNotifyEnabled
+ * inside lib/whatsapp_notify.ts / the email functions above, so this function itself
+ * carries no flag check — it only decides WHETHER a live link exists to notify about.
+ */
+async function notifySaathumLateBuyerIfLive(env: Env, checkoutId: string, uid: string, listingId: string): Promise<void> {
+  const db = metaDb(env);
+  const listing = await db.prepare(`SELECT status FROM listings WHERE id=?1`).bind(listingId).first<{ status: string }>();
+  if (!listing || listing.status === "cancelled" || listing.status === "completed") return;
+  const video = await db.prepare(`SELECT source_url, youtube_video_id FROM event_videos WHERE listing_id=?1`)
+    .bind(listingId).first<{ source_url: string | null; youtube_video_id: string }>();
+  const url = video?.source_url || (video?.youtube_video_id ? `https://www.youtube.com/watch?v=${video.youtube_video_id}` : null);
+  if (!url) return;
+  await Promise.all([
+    sendSaathumLiveLinkWhatsAppForCheckout(env, listingId, checkoutId, uid, url)
+      .catch((err) => trackException(env, err, { uid, route: "notifySaathumLateBuyerIfLive:whatsapp", handled: true, app_name: APP })),
+    sendSaathumLiveLinkEmailForCheckout(env, listingId, checkoutId, uid, url)
+      .catch((err) => trackException(env, err, { uid, route: "notifySaathumLateBuyerIfLive:email", handled: true, app_name: APP })),
+  ]);
 }
 
 async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promise<void> {
@@ -708,6 +748,91 @@ export async function sendSaathumVideoReadyEmails(env: Env, listingId: string, u
   return { sent };
 }
 
+// ---------------------------------------------------------------------------
+// [WA-NOTIFY-2 2026-09-28] Live-link email — mirrors sendSaathumVideoReadyEmails
+// above (same enqueueEmail/outbox-key shape) but for the live-stream link instead
+// of the finished video, and carries ONLY the internal watch-page URL, never the
+// raw YouTube link (owner decision — see lib/whatsapp_notify.ts saathumWatchUrl).
+// Two entry points share this core: the bulk fan-out (every confirmed buyer, fired
+// from the admin save in routes/me_dashboard.ts adminEventVideo) and the late-buyer
+// single send (one checkout, fired from finalizeSaathumCheckoutByIntent below when a
+// booking confirms while the show is already live/linked). Both are outboxKey-deduped
+// per checkout+kind+urlHash, so the two paths can never double-email the same buyer.
+// Both are gated on saathumLiveLinkNotifyEnabled (routes/config.ts) — the watch page
+// doesn't exist yet, so this must stay dark until it ships.
+// ---------------------------------------------------------------------------
+async function enqueueLiveLinkEmailsForBuyers(
+  env: Env, listingId: string, urlHash: string, trigger: "link_saved" | "late_buyer",
+  buyers: { checkout_id: string; uid: string; commercial_order_id: string | null }[],
+): Promise<{ sent: number }> {
+  const db = metaDb(env);
+  const listing = await db.prepare(`SELECT title,attrs,starts_at FROM listings WHERE id=?1`).bind(listingId)
+    .first<{ title: string; attrs: string | null; starts_at: number | null }>();
+  const noun = eventTypeCopy(eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}))).noun;
+  const title = listing?.title ?? "Saa Thum booking";
+  const watch = saathumWatchUrl(env, listingId);
+  const startsAt = listing?.starts_at ?? null;
+  const alreadyStarted = startsAt != null && Date.now() >= startsAt;
+  const whenLine = alreadyStarted
+    ? `The live ${noun} is live now.`
+    : startsAt != null
+      ? `The live ${noun} starts ${formatIst(startsAt)}.`
+      : `The live ${noun} starts soon — check the event page for the exact time.`;
+  const subject = `${alreadyStarted ? "Live now" : "Starting soon"}: ${title}`;
+  let sent = 0;
+  for (const row of buyers) {
+    try {
+      const to = await emailFor(env, row.uid).catch(() => null);
+      if (!to) continue;
+      const html = `
+  <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+    <h2 style="margin:0 0 12px">🙏 ${escapeHtml(title)}</h2>
+    <p style="margin:0 0 8px">${escapeHtml(whenLine)}</p>
+    <p style="margin:20px 0"><a href="${escapeHtml(watch)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Watch</a></p>
+    <p style="margin:0 0 8px;color:#999;font-size:12px">This link is only for your booking — please don't share it.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+  </div>`;
+      const r = await enqueueEmail(env, {
+        to, subject, html,
+        kind: "saathum_live_link", orderId: row.commercial_order_id, recipientId: row.uid,
+        messageVersion: "saathum-live-link.v1", outboxKey: `saathum-live-link:${row.checkout_id}:${urlHash}`,
+      });
+      if (r.status !== "unavailable" && r.status !== "failed") sent++;
+    } catch (err) {
+      await trackException(env, err, { uid: row.uid, route: "sendSaathumLiveLinkEmails", handled: true, app_name: APP, extra: { trigger } });
+    }
+  }
+  await track(env, "system", "saathum_live_link_emails", APP, { listing_id: listingId, recipients: buyers.length, sent, trigger });
+  return { sent };
+}
+
+/** Bulk: every confirmed buyer of the listing (admin-save path). */
+export async function sendSaathumLiveLinkEmails(env: Env, listingId: string, url: string): Promise<{ sent: number }> {
+  const config = await readConfig(env);
+  if (!config.saathumLiveLinkNotifyEnabled) return { sent: 0 };
+  const db = metaDb(env);
+  const rows = await db.prepare(
+    `SELECT checkout_id, uid, commercial_order_id FROM saathum_checkouts WHERE listing_id=?1 AND status='confirmed' LIMIT 2000`,
+  ).bind(listingId).all<{ checkout_id: string; uid: string; commercial_order_id: string | null }>();
+  const urlHash = (await sha256Hex(url)).slice(0, 16);
+  return enqueueLiveLinkEmailsForBuyers(env, listingId, urlHash, "link_saved", rows.results ?? []);
+}
+
+/** Late buyer: ONE checkout, fired at confirmation time (see finalizeSaathumCheckoutByIntent). */
+export async function sendSaathumLiveLinkEmailForCheckout(
+  env: Env, listingId: string, checkoutId: string, uid: string, url: string,
+): Promise<{ sent: number }> {
+  const config = await readConfig(env);
+  if (!config.saathumLiveLinkNotifyEnabled) return { sent: 0 };
+  const db = metaDb(env);
+  const row = await db.prepare(`SELECT commercial_order_id FROM saathum_checkouts WHERE checkout_id=?1`)
+    .bind(checkoutId).first<{ commercial_order_id: string | null }>();
+  const urlHash = (await sha256Hex(url)).slice(0, 16);
+  return enqueueLiveLinkEmailsForBuyers(env, listingId, urlHash, "late_buyer", [
+    { checkout_id: checkoutId, uid, commercial_order_id: row?.commercial_order_id ?? null },
+  ]);
+}
+
 export async function runSaathumReminders(env: Env): Promise<{ scanned: number; sent: number }> {
   const db = metaDb(env);
   const now = Date.now();
@@ -737,4 +862,43 @@ export async function runSaathumReminders(env: Env): Promise<{ scanned: number; 
     }
   }
   return { scanned, sent };
+}
+
+// ---------------------------------------------------------------------------
+// [WA-NOTIFY-2 2026-09-28] GET /api/saathum/watch/:listingId — entitlement check
+// for the (not-yet-built) internal watch page. Requires a signed-in, WhatsApp-
+// verified account (same requireVerifiedWhatsApp gate as checkout creation) AND a
+// confirmed saathum_checkouts row for this exact listing — otherwise 403 not_booked.
+// A listing with no live link queued yet is 404 no_stream, so the page can tell
+// "you're not booked" apart from "the stream isn't up yet". Never returns the raw
+// YouTube url as a link the buyer could re-share — only the video id, for the
+// watch page's own (future) embedded player to use.
+// ---------------------------------------------------------------------------
+export async function saathumWatchGet(req: Request, env: Env, listingId: string): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return failure(auth.error, auth.status);
+  const waErr = await requireVerifiedWhatsApp(env, auth.uid);
+  if (waErr) return failure(waErr.error, waErr.status);
+  if (!listingId || listingId.length > 200) return failure("not_found", 404);
+  const db = metaDb(env);
+  const booked = await db.prepare(
+    `SELECT 1 FROM saathum_checkouts WHERE listing_id=?1 AND uid=?2 AND status='confirmed' LIMIT 1`,
+  ).bind(listingId, auth.uid).first();
+  if (!booked) {
+    await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "not_booked" });
+    return failure("not_booked", 403);
+  }
+  const listing = await db.prepare(`SELECT title, starts_at, status FROM listings WHERE id=?1`)
+    .bind(listingId).first<{ title: string; starts_at: number | null; status: string }>();
+  const video = await db.prepare(`SELECT youtube_video_id FROM event_videos WHERE listing_id=?1`)
+    .bind(listingId).first<{ youtube_video_id: string }>();
+  if (!listing || !video?.youtube_video_id) {
+    await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "no_stream" });
+    return failure("no_stream", 404);
+  }
+  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "ok" });
+  return json({
+    ok: true, listing_id: listingId, title: listing.title, starts_at: listing.starts_at,
+    status: listing.status, youtube_video_id: video.youtube_video_id,
+  });
 }

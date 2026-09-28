@@ -30,13 +30,30 @@ import type { Env } from "../types";
 import { sha256Hex } from "../util";
 import { track, trackException } from "../hooks";
 import { sendWhatsAppText } from "./whatsapp_send";
+import { readConfig } from "../routes/config"; // [WA-NOTIFY-2] saathumLiveLinkNotifyEnabled kill switch
 
 const APP = "saathum";
 const MAX_SEND_ATTEMPTS = 6;
 
 export type NotifyKind = "live_link" | "video_ready";
+// [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
+// existing bulk admin-save fan-out, "late_buyer" is the single-checkout send
+// fired the moment a booking confirms while the show is already live/linked.
+export type NotifyTrigger = "link_saved" | "late_buyer";
 
 export type NotifyResult = { recipients: number; sent: number; skipped_no_phone: number; failed: number };
+
+/**
+ * [WA-NOTIFY-2 2026-09-28] Owner decision: buyers never get the raw YouTube link —
+ * only a link to Saa Thum's own watch page, which will later gate on a confirmed
+ * booking + verified WhatsApp (GET /api/saathum/watch/:listingId). Same WEB_BASE_URL
+ * fallback pattern as routes/pay.ts's payWebhook return-URL builder — the one other
+ * place in the worker that builds a public saathum.com URL from env.
+ */
+export function saathumWatchUrl(env: Env, listingId: string): string {
+  const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
+  return `${base}/watch/${encodeURIComponent(listingId)}`;
+}
 
 /** "Sun, 4 Oct 2026 at 7:00 PM IST" */
 export function formatIst(ms: number): string {
@@ -59,18 +76,15 @@ async function verifiedWhatsAppNumber(env: Env, uid: string): Promise<string | n
   return row?.e164 ?? null;
 }
 
-async function enqueueWhatsAppNotifications(
-  env: Env, listingId: string, kind: NotifyKind, url: string,
+async function enqueueWhatsAppForBuyers(
+  env: Env, listingId: string, kind: NotifyKind, url: string, trigger: NotifyTrigger,
+  buyers: { checkout_id: string; uid: string }[],
   buildText: (title: string, startsAtMs: number | null) => string,
 ): Promise<NotifyResult> {
   const db = env.DB_META;
   const listing = await db.prepare("SELECT title, starts_at FROM listings WHERE id=?1")
     .bind(listingId).first<{ title: string; starts_at: number | null }>().catch(() => null);
   const text = buildText(listing?.title ?? "Saa Thum booking", listing?.starts_at ?? null);
-  const rows = await db.prepare(
-    `SELECT checkout_id, uid FROM saathum_checkouts WHERE listing_id=?1 AND status='confirmed' LIMIT 2000`,
-  ).bind(listingId).all<{ checkout_id: string; uid: string }>();
-  const buyers = rows.results ?? [];
   const urlHash = (await sha256Hex(url)).slice(0, 16);
   const now = Date.now();
   let sent = 0, skipped = 0, failed = 0;
@@ -94,22 +108,64 @@ async function enqueueWhatsAppNotifications(
   }
   // Never log full phone numbers here — recipients/sent/skipped/failed are counts only.
   await track(env, "system", "whatsapp_event_notify", APP, {
-    kind, listing_id: listingId, recipients: buyers.length, sent, skipped_no_phone: skipped, failed,
+    kind, trigger, listing_id: listingId, recipients: buyers.length, sent, skipped_no_phone: skipped, failed,
   });
   return { recipients: buyers.length, sent, skipped_no_phone: skipped, failed };
 }
 
-/** Owner decision 2026-09-28: admin sets/changes the live-stream link -> every confirmed buyer. */
-export function sendSaathumLiveLinkWhatsApp(env: Env, listingId: string, url: string): Promise<NotifyResult> {
-  return enqueueWhatsAppNotifications(env, listingId, "live_link", url, (title, startsAtMs) => {
+/** Bulk fan-out: every confirmed buyer of the listing (the existing admin-save path). */
+async function enqueueWhatsAppNotifications(
+  env: Env, listingId: string, kind: NotifyKind, url: string, trigger: NotifyTrigger,
+  buildText: (title: string, startsAtMs: number | null) => string,
+): Promise<NotifyResult> {
+  const rows = await env.DB_META.prepare(
+    `SELECT checkout_id, uid FROM saathum_checkouts WHERE listing_id=?1 AND status='confirmed' LIMIT 2000`,
+  ).bind(listingId).all<{ checkout_id: string; uid: string }>();
+  return enqueueWhatsAppForBuyers(env, listingId, kind, url, trigger, rows.results ?? [], buildText);
+}
+
+/**
+ * [WA-NOTIFY-2 2026-09-28] Owner decision: buyers never see the raw YouTube link —
+ * the message carries only the internal watch-page URL (saathumWatchUrl above).
+ * Dedupe is still keyed on a hash of the SAVED youtube url/id (`url` here), so a
+ * corrected stream link still re-notifies even though the text never changes shape.
+ * Gated on the `saathumLiveLinkNotifyEnabled` kill switch — the watch page does not
+ * exist yet, so this must stay off until it does (see routes/config.ts).
+ */
+export async function sendSaathumLiveLinkWhatsApp(env: Env, listingId: string, url: string): Promise<NotifyResult> {
+  const config = await readConfig(env);
+  if (!config.saathumLiveLinkNotifyEnabled) return { recipients: 0, sent: 0, skipped_no_phone: 0, failed: 0 };
+  const watch = saathumWatchUrl(env, listingId);
+  return enqueueWhatsAppNotifications(env, listingId, "live_link", url, "link_saved", (title, startsAtMs) => {
     const when = startsAtMs ? formatIst(startsAtMs) : "soon — check the event page for the exact time";
-    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${url}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
+    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
   });
 }
 
-/** Owner decision 2026-09-28: admin sets/changes the video-download link -> every confirmed buyer. */
+/**
+ * [WA-NOTIFY-2 2026-09-28] Late-buyer path: ONE checkout, fired the moment it
+ * confirms while the listing already has a live link and isn't cancelled/completed
+ * (see routes/saathum_checkout.ts finalizeSaathumCheckoutByIntent). Same outbox
+ * UNIQUE(checkout_id, kind, url_hash) key as the bulk path, so if the bulk send
+ * already covered this checkout (unlikely — it wasn't confirmed yet) this is a
+ * no-op INSERT OR IGNORE, never a double send. Same kill switch as the bulk path.
+ */
+export async function sendSaathumLiveLinkWhatsAppForCheckout(
+  env: Env, listingId: string, checkoutId: string, uid: string, url: string,
+): Promise<NotifyResult> {
+  const config = await readConfig(env);
+  if (!config.saathumLiveLinkNotifyEnabled) return { recipients: 0, sent: 0, skipped_no_phone: 0, failed: 0 };
+  const watch = saathumWatchUrl(env, listingId);
+  return enqueueWhatsAppForBuyers(env, listingId, "live_link", url, "late_buyer", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
+    const when = startsAtMs ? formatIst(startsAtMs) : "soon — check the event page for the exact time";
+    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
+  });
+}
+
+/** Owner decision 2026-09-28: admin sets/changes the video-download link -> every confirmed
+ *  buyer. Unaffected by saathumLiveLinkNotifyEnabled — the download link is unchanged. */
 export function sendSaathumVideoReadyWhatsApp(env: Env, listingId: string, url: string): Promise<NotifyResult> {
-  return enqueueWhatsAppNotifications(env, listingId, "video_ready", url, (title) => {
+  return enqueueWhatsAppNotifications(env, listingId, "video_ready", url, "link_saved", (title) => {
     return `🙏 ${title}\nYour video is ready. Download it here: ${url}\n\nIt also stays under My events on saathum.com.\n— Saa Thum`;
   });
 }

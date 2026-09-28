@@ -88,7 +88,7 @@ import { saathumChadhavaPublic } from "./routes/saathum_chadhava";
 import {
   saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
-  runSaathumReminders,
+  runSaathumReminders, saathumWatchGet, // [WA-NOTIFY-2]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
@@ -1016,6 +1016,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/saathum/checkout/quote" && req.method === "POST") return await saathumCheckoutQuote(req, env);
       if (p === "/api/saathum/checkout" && req.method === "POST") return await saathumCheckoutCreate(req, env);
       if (p === "/api/saathum/my-checkouts" && req.method === "GET") return await saathumMyCheckouts(req, env);
+      // [WA-NOTIFY-2 2026-09-28] Entitlement check for the (not-yet-built) internal
+      // watch page — see routes/saathum_checkout.ts saathumWatchGet.
+      if (p.startsWith("/api/saathum/watch/") && req.method === "GET") {
+        return await saathumWatchGet(req, env, decodeURIComponent(p.slice("/api/saathum/watch/".length)));
+      }
       if (p.startsWith("/api/saathum/checkout/")) {
         const rest = p.slice("/api/saathum/checkout/".length).split("/");
         const checkoutId = rest[0];

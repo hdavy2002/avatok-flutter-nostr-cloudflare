@@ -7669,5 +7669,32 @@
         "note": "The run was tagged with which link type triggered it."
       }
     ]
+  },
+  "WA-NOTIFY-2": {
+    "description": "[WA-NOTIFY-2 2026-09-28] Owner decisions on top of WA-NOTIFY-1: (1) the live-link WhatsApp text and a new matching email (routes/saathum_checkout.ts sendSaathumLiveLinkEmails, mirroring sendSaathumVideoReadyEmails) now carry ONLY an internal watch-page URL (https://saathum.com/watch/<listingId>, lib/whatsapp_notify.ts saathumWatchUrl, built off env.WEB_BASE_URL the same way routes/pay.ts's payWebhook return-URL is) — the raw YouTube link is never sent to a buyer. Dedupe stays keyed on a hash of the SAVED youtube url, so a corrected stream link still re-notifies even though the text is unchanged in shape. (2) People can keep booking while a show is live/linked; finalizeSaathumCheckoutByIntent (the SOLE place a saathum_checkout becomes status='confirmed' — both the SMS webhook and the customer poll funnel through it) now calls notifySaathumLateBuyerIfLive, which queues that ONE buyer's live-link WhatsApp (sendSaathumLiveLinkWhatsAppForCheckout) + email (sendSaathumLiveLinkEmailForCheckout) when the listing already has an event_videos link and isn't cancelled/completed — same outbox keys as the bulk path, so no double send, and wrapped in .catch(trackException) so it can never fail or slow the confirmation. (3) New kill switch routes/config.ts saathumLiveLinkNotifyEnabled (default false) gates every live-link WhatsApp/email send, bulk and late-buyer alike, because the watch page does not exist yet; the unrelated video-download flow is not gated by it. (4) New GET /api/saathum/watch/:listingId (requireUser + requireVerifiedWhatsApp) returns {ok,listing_id,title,starts_at,status,youtube_video_id} only for a caller with a confirmed saathum_checkouts row for that listing (403 not_booked otherwise, 404 no_stream when no live link is set yet) — the entitlement check the future watch page will call; never returns the raw YouTube url. (5) Checked whether checkout creation is currently allowed while a listing is live: worker/src/lib/listing_schedule.ts bookability() (line ~104) explicitly returns ok:true for state 'live' (unless the event's own window has already ended) and for 'starting' within LATE_BOOKING_GRACE_MS — booking while live is already allowed today and was NOT changed, per the coordinator's instruction to report only.",
+    "shipped": "2026-09-28",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": ["saathumLiveLinkNotifyEnabled"],
+    "success": [
+      {
+        "event": "whatsapp_event_notify",
+        "property": "trigger",
+        "in": ["link_saved", "late_buyer"],
+        "note": "Every live-link/video-ready WhatsApp enqueue (bulk admin-save or the single late-buyer send) is now tagged with which path queued it. Absent entirely — with whatsapp_event_notify still firing untagged — means this build didn't ship, since the property is unconditional on every call site."
+      },
+      {
+        "event": "saathum_live_link_emails",
+        "property": "trigger",
+        "in": ["link_saved", "late_buyer"],
+        "note": "The new live-link email fired at least once, tagged by which path queued it. Requires saathumLiveLinkNotifyEnabled=true (default false) AND an admin saving a live link, or a buyer confirming while one is already set — will not appear until the owner turns the flag on after the watch page ships."
+      },
+      {
+        "event": "saathum_watch_access",
+        "property": "outcome",
+        "in": ["ok", "not_booked", "no_stream"],
+        "note": "GET /api/saathum/watch/:listingId was actually called and returned one of the three documented outcomes — proves the entitlement gate (requireVerifiedWhatsApp + confirmed-checkout check) runs end to end. Will not appear until the (not-yet-built) watch page calls this endpoint."
+      }
+    ]
   }
 }

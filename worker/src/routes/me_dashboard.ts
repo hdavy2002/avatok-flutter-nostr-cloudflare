@@ -30,6 +30,7 @@ import {
 } from "../lib/me_dashboard_data";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
 import { sendSaathumLiveLinkWhatsApp } from "../lib/whatsapp_notify";
+import { sendSaathumLiveLinkEmails } from "./saathum_checkout"; // [WA-NOTIFY-2]
 import {
   buildAdminRefundsQuery, parseRefundStatus, decodeRefundCursor, encodeRefundCursor, customerName,
   ADMIN_REFUND_COUNTS_SQL, ADMIN_REFUNDS_PAGE, type AdminRefundRow,
@@ -770,6 +771,13 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   if (listing.status !== "cancelled" && listing.status !== "completed") {
     await sendSaathumLiveLinkWhatsApp(env, listingId, url.slice(0, 500)).catch((e) =>
       trackException(env, e, { uid: admin.uid, route: "me_dashboard:live_link_whatsapp", handled: true, app_name: APP, extra: { area: "dash2" } }),
+    );
+    // [WA-NOTIFY-2 2026-09-28] Owner decision: the live-link message gets a matching
+    // email alongside the WhatsApp send, same guard, same D1-insert-only cost. Both
+    // are no-ops while saathumLiveLinkNotifyEnabled is off (routes/config.ts) — the
+    // watch page they link to doesn't exist yet.
+    await sendSaathumLiveLinkEmails(env, listingId, url.slice(0, 500)).catch((e) =>
+      trackException(env, e, { uid: admin.uid, route: "me_dashboard:live_link_email", handled: true, app_name: APP, extra: { area: "dash2" } }),
     );
   }
   return json({ ok: true, youtube_video_id: id });
