@@ -5,7 +5,7 @@
 // implements, and worker/migrations/2026-09-26-saathum-checkout.sql for why
 // payment matching here does NOT reuse hdfc_sms_smoke_intents (amount cap).
 import type { Env } from "../types";
-import { requireUser, isFail } from "../authz";
+import { requireUser, isFail, requireVerifiedWhatsApp } from "../authz"; // [WA-LOGIN-1]
 import { metaDb } from "../db/shard";
 import { json } from "../util";
 import { rateLimit } from "../money";
@@ -226,6 +226,14 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   const auth = await requireUser(req, env);
   if (isFail(auth)) return failure(auth.error, auth.status);
   const { uid } = auth;
+  // [WA-LOGIN-1 2026-09-28] Owner decision: no booking/checkout without a
+  // verified WhatsApp number. Checked here (not in requireUser) so browsing,
+  // quotes and every other authenticated route stay ungated.
+  const waGate = await requireVerifiedWhatsApp(env, uid);
+  if (waGate) {
+    void track(env, uid, "whatsapp_required_blocked", APP, { route: "/api/saathum/checkout" });
+    return failure("whatsapp_required", 403, { message: "Verify your WhatsApp number to continue." });
+  }
   let b: Record<string, unknown>;
   try { b = await req.json(); } catch { return failure("invalid_request"); }
   if (typeof b.listing_id !== "string" || typeof b.request_key !== "string" || !UUID.test(b.request_key)) return failure("invalid_request");

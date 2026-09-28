@@ -55,6 +55,7 @@ import { adminListings, adminListingAction, adminListingDetail, adminEditListing
 import { listingReview } from "./routes/listing_review";
 import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
 import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp"; // [WEB-PHONE-OTP-1]
+import { whatsappAuthSend, whatsappAuthVerify, accountPhoneClaim } from "./routes/whatsapp_auth"; // [WA-LOGIN-1]
 import { meDashboardRoute } from "./routes/me_dashboard"; // [DASH2-API]
 import { admin2Route } from "./routes/admin2"; // [ADMIN2-API]
 import { mePushRoute } from "./routes/me_push"; import { runPushReminders } from "./lib/web_push"; // [DASH2-PUSH]
@@ -1447,6 +1448,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/account/phone/send" && req.method === "POST") return await phoneOtpSend(req, env);
       if (p === "/api/account/phone/verify" && req.method === "POST") return await phoneOtpVerify(req, env);
       if (p === "/api/account/phone/status" && req.method === "GET") return await phoneOtpStatus(req, env);
+      // [WA-LOGIN-1 2026-09-28] Sign in with a verified WhatsApp number — no session
+      // required to send/verify a code; the authenticated claim step is what actually
+      // attaches a phone to an account. See routes/whatsapp_auth.ts.
+      if (p === "/api/auth/whatsapp/send" && req.method === "POST") return await whatsappAuthSend(req, env);
+      if (p === "/api/auth/whatsapp/verify" && req.method === "POST") return await whatsappAuthVerify(req, env);
+      if (p === "/api/account/phone/claim" && req.method === "POST") return await accountPhoneClaim(req, env);
       // [WEB-APP-ONBOARD-1] The app reporting that a web-born account has now
       // been through onboarding. This is the only thing that lifts the gate.
       if (p === "/api/account/app-onboarded" && req.method === "POST") return await webAccountAppOnboarded(req, env);
