@@ -95,6 +95,27 @@ async function twoFactor(env: Env, path: string): Promise<TfResponse | null> {
   }
 }
 
+/**
+ * [WA-LOGIN-1 2026-09-28] Preflight WhatsApp-presence check, for a caller that
+ * wants to fail fast BEFORE sending — the unauthenticated WhatsApp-login faucet
+ * (routes/whatsapp_auth.ts) checks this first so a number that isn't on
+ * WhatsApp never costs a real send attempt (send failures are exactly the kind
+ * of provider signal that risks the linked number's ban status — see the
+ * WasenderAPI warning at the top of this file). `sendOtp` below still does the
+ * same check as its OWN fallback when a send fails, so authenticated phone
+ * verification (routes/phone_otp.ts, routes/me_dashboard.ts) is unaffected.
+ * Returns null when the provider can't be reached or isn't wasender — callers
+ * should not block a send on that, only on a definite `false`.
+ */
+export async function checkOnWhatsapp(env: Env, e164: string): Promise<boolean | null> {
+  if (otpProvider(env) !== "wasender") return null;
+  const chk = await wasender(env, `/on-whatsapp/${encodeURIComponent(e164)}`);
+  if (chk && chk.body?.success === true && typeof chk.body?.data?.exists === "boolean") {
+    return chk.body.data.exists as boolean;
+  }
+  return null;
+}
+
 /** Send a fresh code to an E.164 number. `ttlMin` only feeds the message text. */
 export async function sendOtp(env: Env, e164: string, ttlMin: number): Promise<SendResult> {
   const provider = otpProvider(env);
