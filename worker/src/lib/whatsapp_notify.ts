@@ -44,15 +44,19 @@ export type NotifyTrigger = "link_saved" | "late_buyer";
 export type NotifyResult = { recipients: number; sent: number; skipped_no_phone: number; failed: number };
 
 /**
- * [WA-NOTIFY-2 2026-09-28] Owner decision: buyers never get the raw YouTube link —
- * only a link to Saa Thum's own watch page, which will later gate on a confirmed
- * booking + verified WhatsApp (GET /api/saathum/watch/:listingId). Same WEB_BASE_URL
- * fallback pattern as routes/pay.ts's payWebhook return-URL builder — the one other
- * place in the worker that builds a public saathum.com URL from env.
+ * [WA-NOTIFY-2 2026-09-28, SAATHUM-WATCH-1 2026-09-28] Owner decision: buyers
+ * never get the raw YouTube link — only a link to the listing detail page,
+ * which IS the watch page (there is no separate /watch route — see
+ * web/src/pages/book/[id].astro and routes/saathum_checkout.ts saathumWatchGet).
+ * It gates on a confirmed booking + verified WhatsApp (GET
+ * /api/saathum/watch/:listingId) before it ever hands back a video id. Same
+ * WEB_BASE_URL fallback pattern as routes/pay.ts's payWebhook return-URL
+ * builder — the one other place in the worker that builds a public
+ * saathum.com URL from env.
  */
 export function saathumWatchUrl(env: Env, listingId: string): string {
   const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
-  return `${base}/watch/${encodeURIComponent(listingId)}`;
+  return `${base}/book/${encodeURIComponent(listingId)}`;
 }
 
 /** "Sun, 4 Oct 2026 at 7:00 PM IST" */

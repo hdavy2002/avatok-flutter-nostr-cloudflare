@@ -8,7 +8,7 @@
  * the owner hasn't generated every sticker yet.
  */
 import { useEffect, useState } from 'react';
-import { fetchReceiptBlob } from './api';
+import { fetchReceiptBlob, getLiveState } from './api';
 import { capture, captureException } from '../../lib/analytics';
 import type { Checkout } from './types';
 import type { EventType, EventTypeCopy } from '../../lib/eventTypes';
@@ -41,12 +41,37 @@ export function DoneStep({
 }) {
   const [downloading, setDownloading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // [SAATHUM-WATCH-1 2026-09-28] Owner decision: if the event is ALREADY live at
+  // the moment payment confirms, skip this thank-you step entirely and send the
+  // buyer straight to the listing page, where the player now shows (LiveOverlay,
+  // web/src/islands/eventpage/LiveOverlay.tsx). Not-live keeps this step exactly
+  // as before (receipt download etc.).
+  const [checkingLive, setCheckingLive] = useState(true);
 
   useEffect(() => {
     capture('saathum_checkout_step', { step: 'done', listing_id: listingId, event_type: eventType });
     capture('saathum_checkout_done');
+    let active = true;
+    getLiveState(listingId)
+      .then((ls) => {
+        if (!active) return;
+        if (ls.state === 'live') {
+          window.location.replace(`/book/${encodeURIComponent(listingId)}`);
+          return;
+        }
+        setCheckingLive(false);
+      })
+      .catch((e) => {
+        captureException(e, { where: 'saathum_checkout_done_live_check' });
+        if (active) setCheckingLive(false);
+      });
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (checkingLive) {
+    return <div className="sthc-card sthc-done"><p role="status">Loading…</p></div>;
+  }
 
   async function downloadReceipt() {
     setErr(null);

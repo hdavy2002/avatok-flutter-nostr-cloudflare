@@ -88,9 +88,10 @@ export interface PlatformConfig {
    * the live-link WhatsApp message and its matching email (lib/whatsapp_notify.ts
    * sendSaathumLiveLinkWhatsApp / routes/saathum_checkout.ts sendSaathumLiveLinkEmails,
    * both the bulk admin-save fan-out AND the late-buyer single send at checkout
-   * confirmation) are queued ONLY while this is true. Default false: the watch page
-   * (saathum.com/watch/<listingId>) does not exist yet, so turning this on before it
-   * ships would hand buyers a dead link. The unrelated video-download flow
+   * confirmation) are queued ONLY while this is true. Default false. [SAATHUM-WATCH-1
+   * 2026-09-28] The watch page now exists — it IS the listing detail page
+   * (saathum.com/book/<listingId>, web/src/pages/book/[id].astro) — so this can be
+   * turned on once that build is verified in prod. The unrelated video-download flow
    * (sendSaathumVideoReadyWhatsApp / sendSaathumVideoReadyEmails) is NOT gated by this. */
   saathumLiveLinkNotifyEnabled: boolean;
   /**

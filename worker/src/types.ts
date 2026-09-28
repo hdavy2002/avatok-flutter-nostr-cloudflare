@@ -303,6 +303,12 @@ export interface Env {
   // Secret — `scripts/cf.sh worker secret put WASENDER_API_KEY`. SET => every phone code
   // goes on WhatsApp. UNSET => break-glass fallback to 2Factor SMS above.
   WASENDER_API_KEY?: string;
+  // [SAATHUM-WATCH-1 2026-09-28] YouTube Data API v3 key used by the 5-minute
+  // cron (index.ts scheduled() -> lib/saathum_stream_state.ts) to detect when a
+  // saved live stream has actually ended (liveStreamingDetails.actualEndTime).
+  // Optional — unset skips the API check quietly and falls back to the clock
+  // rule (starts_at + duration_min + 60min grace) in lib/saathum_stream_state.ts.
+  YOUTUBE_API_KEY?: string;
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
   // [AGENT-LIVE-1] OpenAI API key for the gpt-live-1 realtime WebSocket relay,
   // the gpt-6-astra backend/vision calls and the RAG Files/Vector Store APIs.

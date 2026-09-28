@@ -70,6 +70,12 @@ export interface Card {
   joinable?: boolean;
   /** Live state hint when applicable. */
   live?: boolean;
+  /** [SAATHUM-WATCH-1 2026-09-28] The listing's YouTube stream is live RIGHT NOW
+   *  (event_videos row exists, not ended, within its live window — worker
+   *  lib/saathum_stream_state.ts). Distinct from `live`/`joinable` above, which
+   *  track the unrelated call/session "live" concept. Never a video id. Optional —
+   *  absent on a client older than 2026-09-28. */
+  is_live_stream?: boolean;
   status?: string | null;
   /** [LISTING-EXPIRY-1] Server-decided position in time (worker lib/listing_schedule.ts):
    *  upcoming | starting | live | ended | cancelled | expired | open | unpublished.

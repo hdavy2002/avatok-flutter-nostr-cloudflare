@@ -32,6 +32,10 @@ export interface Item {
   imageSrcSet: string | null;
   mode: 'live' | 'one_on_one';
   liveNow: boolean;
+  /** [SAATHUM-WATCH-1 2026-09-28] The listing's YouTube stream is live right now
+   *  (card.is_live_stream) — distinct from liveNow above (the schedule/session
+   *  "live" concept). Drives the LIVE tile badge only. */
+  isLiveStream: boolean;
   startsAt: number | null;
   durationMin: number | null;
   location: string | null;
@@ -138,6 +142,7 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
     imageSrcSet: srcSet,
     mode: oneOnOne ? 'one_on_one' : 'live',
     liveNow,
+    isLiveStream: !!card.is_live_stream,
     startsAt: c.startsAt,
     durationMin: c.durationMin,
     location: c.location,
@@ -286,6 +291,11 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
         <span className="bn-top">
           <span className="bn-top-left">
             <span className="bn-type-badge" style={{ background: copy.color.bg, color: copy.color.fg }}>{copy.badge}</span>
+            {/* [SAATHUM-WATCH-1 2026-09-28] The YouTube stream is live right now —
+                reuses the existing red "live" pill style, distinct from the
+                liveNow/"Happening now" pill below (a different, session-based
+                notion of live). */}
+            {it.isLiveStream && <span className="bn-pill bn-pill--live"><i />LIVE</span>}
             {it.visibility === 'private'
               ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
               : it.mode === 'live'

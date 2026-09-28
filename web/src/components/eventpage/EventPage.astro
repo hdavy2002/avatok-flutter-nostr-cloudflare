@@ -18,6 +18,7 @@ import { ritualStories } from '../../lib/ritualStories';
 import { listingPath } from '../../lib/urls';
 import { copyFor, socialProof } from '../../lib/eventTypes';
 import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
+import LiveOverlay from '../../islands/eventpage/LiveOverlay.tsx';
 import type { CoverMedia, Listing } from '../../lib/types';
 import './eventpage.css';
 
@@ -233,6 +234,12 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
           )}
           {liveNow && <span class="ep-cdl">Happening now</span>}
         </div>
+        {/* [SAATHUM-WATCH-1 2026-09-28] Client-fetched — public live-state first,
+            then (only if signed in) the entitled watch call. Renders nothing until
+            it knows the stream is live/ended, so a non-Saa-Thum-stream listing (the
+            common case today) shows exactly the SSR hero above, unchanged. Covers
+            the whole photo (badges/countdown included) when it does render. */}
+        <LiveOverlay client:visible listingId={listing.id} checkoutHref={checkoutHref} />
       </div>
       {showThumbs && (
         <div class="ep-thumbs">

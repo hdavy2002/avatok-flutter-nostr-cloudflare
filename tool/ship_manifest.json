@@ -1,6 +1,36 @@
 {
   "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
   "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+  "SAATHUM-WATCH-1": {
+    "description": "[SAATHUM-WATCH-1 2026-09-28] The listing detail page (web/src/pages/book/[id].astro, worker/src/routes/saathum_checkout.ts) IS the watch page now — no separate /watch route. New public GET /api/saathum/live-state/:listingId (no video id) plus stream_state added to the existing entitled GET /api/saathum/watch/:listingId; both and the explore/marketplace feed's per-card is_live_stream flag share ONE state rule in worker/src/lib/saathum_stream_state.ts (event_videos row exists, not ended, now >= starts_at-15min = live; ended_at set OR listing completed/cancelled OR past starts_at+duration+60min grace = ended). New nullable event_videos.ended_at column, set by the 5-minute cron's YouTube Data API v3 check (checkSaathumStreamEnds, skips quietly when YOUTUBE_API_KEY is unset) or the clock fallback alone. New web/src/islands/eventpage/LiveOverlay.tsx: public live-state fetch for every visitor, then (only if signed in) the entitled watch fetch — shows a LIVE NOW + Book-to-watch overlay, the embedded youtube-nocookie player for a confirmed WhatsApp-verified buyer, or an ended overlay (with a WhatsApp/email note for buyers), reusing the page's existing pill/button styles. Marketplace/home tiles (web/src/islands/home/BookCard.tsx) show a LIVE badge from card.is_live_stream. DoneStep.tsx now redirects straight to /book/<listingId> when the event is already live at payment confirmation. whatsapp_notify.ts saathumWatchUrl now points at /book/<listingId> instead of the never-built /watch/<listingId>, and notifySaathumLateBuyerIfLive uses the shared state helper so an ended stream never messages a late buyer a dead link.",
+    "shipped": "2026-09-28",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_live_overlay_shown",
+        "property": "state",
+        "exists": true,
+        "min_events": 1,
+        "note": "A visitor actually saw the LIVE or ended overlay on /book/<id> (LiveOverlay.tsx). Absent entirely once an event has gone live means the island isn't mounting or live-state is failing before it ever sets a visible phase."
+      },
+      {
+        "event": "saathum_live_player_started",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A confirmed, WhatsApp-verified buyer's embedded player actually rendered. Absent while saathum_live_overlay_shown(state=live) is present means the entitled GET /api/saathum/watch/:id is denying booked buyers (see saathum_watch_denied) or the video id never reached the client."
+      },
+      {
+        "event": "saathum_stream_end_check",
+        "property": "api",
+        "exists": true,
+        "min_events": 1,
+        "note": "The 5-minute cron ran checkSaathumStreamEnds. api='skipped' every time means YOUTUBE_API_KEY was never set (the clock-fallback grace period is the only thing marking streams ended); api='error' repeatedly means the YouTube Data API call itself is failing (bad key, quota)."
+      }
+    ]
+  },
   "WA-WEB-1": {
     "description": "[WA-WEB-1 2026-09-28] Every signed-in Saathum web user now needs a verified WhatsApp number. New client pieces: web/src/lib/countries.ts (static dial-code + flag list, no new dep) and web/src/islands/auth/WhatsAppNumberInput.tsx (shared country-picker field, reused on /sign-in, /sign-up, checkout's You step and the dashboard profile change-number dialog) and web/src/islands/auth/whatsappAuth.ts (client wrapper for the new unauthenticated POST /api/auth/whatsapp/{send,verify} and the authed POST /api/account/phone/claim, matching the contract the server-side agent built in parallel). /sign-in and /sign-up now offer 'Continue with email' / 'Continue with WhatsApp' alongside Google; a brand-new WhatsApp number gets a 'needs_email' hand-off (proof kept in sessionStorage, 30 min TTL) that claims the number once the email step produces a session, so no second WhatsApp code is ever asked for. Checkout's YouStep dropped the old +91-only, skippable phone step in favour of the same choice and the same claim flow, with NO skip button. DashNav's phoneGate is unchanged in behaviour (existing needs_phone -> finishUrl redirect) but now fires whatsapp_gate_shown/whatsapp_gate_passed. Existing /api/account/phone/* and /api/me/phone/* calls now carry international E.164 numbers from the shared picker instead of a hardcoded +91. Also fixed an unrelated but blocking bug found while working in this worktree: web/node_modules was a relative symlink one '..' short for the worktree's directory depth (pointed at a nonexistent .../wt-wa-web-1/avaTOK-2-Flutter instead of .../websites/avaTOK-2-Flutter), so no build/check tool could resolve here at all; repointed to '../../avaTOK-2-Flutter/web/node_modules'.",
     "shipped": "2026-09-28",

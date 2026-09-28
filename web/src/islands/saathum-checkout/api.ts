@@ -64,6 +64,21 @@ export async function updateCheckoutAddress(id: string, address: Address, auth: 
   return r.checkout;
 }
 
+// [SAATHUM-WATCH-1 2026-09-28] Live-state (public) + watch (entitled) — shared by
+// the listing detail page's LiveOverlay island and the checkout DoneStep redirect.
+export interface LiveState { listing_id: string; state: 'none' | 'live' | 'ended'; ended_at?: number }
+export function getLiveState(listingId: string, signal?: AbortSignal): Promise<LiveState> {
+  return request<LiveState>(`/api/saathum/live-state/${encodeURIComponent(listingId)}`, { signal });
+}
+
+export interface WatchInfo {
+  ok: true; listing_id: string; title: string; starts_at: number | null; status: string;
+  youtube_video_id: string; stream_state: 'none' | 'live' | 'ended';
+}
+export function getWatch(listingId: string, auth: string, signal?: AbortSignal): Promise<WatchInfo> {
+  return request<WatchInfo>(`/api/saathum/watch/${encodeURIComponent(listingId)}`, { auth, signal });
+}
+
 /** GET .../receipt.pdf WITH the auth header — a plain link/href can't carry a
  * bearer token, so this fetches the blob and hands back an object URL to
  * download, mirroring dashboard2/accountApi.ts's meBlob(). */

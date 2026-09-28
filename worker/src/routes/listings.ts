@@ -98,6 +98,7 @@ import { promosFor, activePromoPct } from "../lib/listing_promos";
 // APPROVED reviews only", shared with routes/reviews.ts. reviews.ts does not
 // import from this file, so this direction is not a cycle.
 import { recomputeReviewAggregates } from "./reviews";
+import { eventVideoRowsFor, isLiveStreamCard } from "../lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -725,7 +726,14 @@ async function maxPerBookingEnabled(env: Env): Promise<boolean> {
   return (await readConfig(env)).listingMaxPerBookingEnabled === true;
 }
 
-function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>, maxPerBookingOn = false) {
+function shapeCard(
+  r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>,
+  stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>, maxPerBookingOn = false,
+  // [SAATHUM-WATCH-1 2026-09-28] event_videos rows for this page's ids, keyed by
+  // listing_id — see eventVideoRowsFor. Optional/omittable everywhere shapeCard is
+  // called without it (e.g. a future call site) so is_live_stream just reads false.
+  videoRows?: Map<string, { youtube_video_id: string; source_url: string | null; ended_at: number | null }>,
+) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
   const { pct } = activePromoPct(promos.filter((p) => p.kind === "early_bird"), now);
@@ -845,6 +853,10 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // other money entry point. Defaults false: a pre-migration row (or a
     // client older than this change) reads exactly as before.
     is_example: !!r.is_example,
+    // [SAATHUM-WATCH-1 2026-09-28] Whether this listing's YouTube stream is live
+    // RIGHT NOW (owner rule: event_videos row exists, not ended, now >=
+    // starts_at-15min — worker/src/lib/saathum_stream_state.ts). Never a video id.
+    is_live_stream: isLiveStreamCard(videoRows?.get(String(r.id)), r.status, r.starts_at, r.duration_min),
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -3805,10 +3817,11 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const pageIds = page.map((r) => String(r.id));
-  const [promos, cardStats, favs] = await Promise.all([
+  const [promos, cardStats, favs, videoRows] = await Promise.all([
     promosForCards(env, pageIds),
     cardStatsFor(env, pageIds),
     favoritesFor(env, uid, pageIds), // [UI-MKT-3] hydrate heart state per fetch
+    eventVideoRowsFor(env, pageIds), // [SAATHUM-WATCH-1] tile LIVE badge, no N+1
   ]);
   trackImpressions(env, req, uid, APP, "explore", pageIds);
 
@@ -3829,7 +3842,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
     vertical,
     section: isSection(section) ? section : null,
     section_counts: sectionCounts,
-    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)),
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn, videoRows)),
     cursor: rows.length > limit ? String(offset + limit) : null,
   });
 }
@@ -3946,14 +3959,15 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   const rows = (rs.results ?? []) as any[];
   const rowIds = rows.map((r) => String(r.id));
   // [MKT-SPEED-1] Independent per-card lookups run in parallel (was four in a row).
-  const [promos, cardStats, favs, mpbOn] = await Promise.all([
+  const [promos, cardStats, favs, mpbOn, videoRows] = await Promise.all([
     promosForCards(env, rowIds),
     cardStatsFor(env, rowIds),
     favoritesFor(env, uid, rowIds), // [UI-MKT-3]
     maxPerBookingEnabled(env), // [MAXBOOK-DARK-1]
+    eventVideoRowsFor(env, rowIds), // [SAATHUM-WATCH-1] tile LIVE badge, no N+1
   ]);
   trackImpressions(env, req, uid, APP, "live_now", rowIds);
-  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats, mpbOn), joinable: true })) });
+  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats, mpbOn, videoRows), joinable: true })) });
 }
 
 // GET /api/explore/search — A1: FTS5 + filters + sorts; partial title AND creator name hit.
@@ -4061,6 +4075,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const promos = await promosForCards(env, page.map((r) => r.id));
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
+  const videoRows = await eventVideoRowsFor(env, page.map((r) => String(r.id))); // [SAATHUM-WATCH-1]
   const g = geoOf(req);
   track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, section: isSection(section) ? section : null, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
@@ -4071,7 +4086,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
     // [MARKET-SECTION-1] Search returns the same catalogue-wide counts as browse,
     // so the sidebar does not blank out the moment someone types a query.
     section_counts: await sectionCountsFor(env, req, uid),
-    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)),
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn, videoRows)),
     cursor: rows.length > limit ? String(offset + limit) : null,
   });
 }

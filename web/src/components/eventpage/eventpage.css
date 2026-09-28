@@ -54,6 +54,16 @@
 .ep-cdl { display: block; margin-top: 8px; font: 800 12px Nunito, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--ep-gold); }
 .ep-cd { display: flex; gap: 6px; margin-top: 4px; }
 .ep-cd span { min-width: 54px; text-align: center; padding: 5px 6px; border-radius: 10px; background: #fffaf01f; border: 1px solid #fffaf040; backdrop-filter: blur(4px); }
+
+/* [SAATHUM-WATCH-1 2026-09-28] Hero overlay for a live/ended stream, and the
+   embedded player that replaces the photo — both fill .ep-art exactly like the
+   photo does, and sit above everything else in it (badges, gradient, countdown). */
+.ep-live-cover { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+.ep-live-cover--dim { background: linear-gradient(180deg, #00000066 0%, #140a06cc 100%); }
+.ep-live-cover .ep-pill--live { font-size: 15px; padding: 9px 18px; }
+.ep-live-cta { position: static; width: auto; padding-left: 28px; padding-right: 28px; }
+.ep-live-ended-note { margin: 0; padding: 0 24px; color: #fff8ec; font: 700 14px Nunito, sans-serif; max-width: 380px; }
+.ep-live-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
 .ep-cd b { display: block; font: 900 26px/1.1 Nunito, sans-serif; font-variant-numeric: tabular-nums; }
 .ep-cd small { font: 700 11px Nunito, sans-serif; opacity: .85; }
 .ep-cd span:last-child b { color: #ff7a95; }

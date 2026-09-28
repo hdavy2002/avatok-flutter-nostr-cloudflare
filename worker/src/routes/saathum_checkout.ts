@@ -27,6 +27,9 @@ import {
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
 import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
+// [SAATHUM-WATCH-1 2026-09-28] The one shared definition of "is this event's
+// live stream live/ended/none" — see the file's own doc comment.
+import { computeStreamState, streamStateForListing } from "../lib/saathum_stream_state";
 // [WA-NOTIFY-2 2026-09-28] Late-buyer live-link fan-out + the internal watch URL
 // builder, both shared with lib/whatsapp_notify.ts's own bulk/late-buyer WhatsApp path.
 import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst } from "../lib/whatsapp_notify";
@@ -591,11 +594,13 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
  * carries no flag check — it only decides WHETHER a live link exists to notify about.
  */
 async function notifySaathumLateBuyerIfLive(env: Env, checkoutId: string, uid: string, listingId: string): Promise<void> {
-  const db = metaDb(env);
-  const listing = await db.prepare(`SELECT status FROM listings WHERE id=?1`).bind(listingId).first<{ status: string }>();
-  if (!listing || listing.status === "cancelled" || listing.status === "completed") return;
-  const video = await db.prepare(`SELECT source_url, youtube_video_id FROM event_videos WHERE listing_id=?1`)
-    .bind(listingId).first<{ source_url: string | null; youtube_video_id: string }>();
+  // [SAATHUM-WATCH-1 2026-09-28] Uses the SAME state helper as live-state/watch,
+  // so a stream that has actually ended (ended_at set, or past the clock grace)
+  // never sends a late buyer a "watch now" message for a dead stream — it used to
+  // check only cancelled/completed, missing the far more common "the show just
+  // finished normally" case.
+  const { state, video } = await streamStateForListing(env, listingId);
+  if (state !== "live") return;
   const url = video?.source_url || (video?.youtube_video_id ? `https://www.youtube.com/watch?v=${video.youtube_video_id}` : null);
   if (!url) return;
   await Promise.all([
@@ -888,17 +893,42 @@ export async function saathumWatchGet(req: Request, env: Env, listingId: string)
     await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "not_booked" });
     return failure("not_booked", 403);
   }
-  const listing = await db.prepare(`SELECT title, starts_at, status FROM listings WHERE id=?1`)
-    .bind(listingId).first<{ title: string; starts_at: number | null; status: string }>();
-  const video = await db.prepare(`SELECT youtube_video_id FROM event_videos WHERE listing_id=?1`)
-    .bind(listingId).first<{ youtube_video_id: string }>();
+  const listing = await db.prepare(`SELECT title, starts_at, duration_min, status FROM listings WHERE id=?1`)
+    .bind(listingId).first<{ title: string; starts_at: number | null; duration_min: number | null; status: string }>();
+  const video = await db.prepare(`SELECT youtube_video_id, ended_at FROM event_videos WHERE listing_id=?1`)
+    .bind(listingId).first<{ youtube_video_id: string; ended_at: number | null }>();
   if (!listing || !video?.youtube_video_id) {
     await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "no_stream" });
     return failure("no_stream", 404);
   }
-  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "ok" });
+  // [SAATHUM-WATCH-1 2026-09-28] Same state rule as /api/saathum/live-state — the
+  // page uses this to decide whether to show the player, "ended", or neither.
+  const stream_state = computeStreamState({
+    hasVideo: true, endedAt: video.ended_at, listingStatus: listing.status,
+    startsAt: listing.starts_at, durationMin: listing.duration_min, now: Date.now(),
+  });
+  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "ok", stream_state });
   return json({
     ok: true, listing_id: listingId, title: listing.title, starts_at: listing.starts_at,
-    status: listing.status, youtube_video_id: video.youtube_video_id,
+    status: listing.status, youtube_video_id: video.youtube_video_id, stream_state,
   });
+}
+
+// ---------------------------------------------------------------------------
+// [SAATHUM-WATCH-1 2026-09-28] GET /api/saathum/live-state/:listingId — PUBLIC,
+// unauthenticated. Tells the listing detail page (web/src/pages/book/[id].astro)
+// whether to show the "LIVE NOW / Book to watch" overlay, the "ended" overlay, or
+// neither — WITHOUT ever disclosing a video id (that only ever comes from the
+// authed/entitled saathumWatchGet above). Cache-friendly: short max-age so a
+// signed-out visitor's overlay updates within ~30s of the admin flipping the link
+// live, without hitting D1 on every page view.
+// ---------------------------------------------------------------------------
+export async function saathumLiveStateGet(req: Request, env: Env, listingId: string): Promise<Response> {
+  if (!listingId || listingId.length > 200) return failure("not_found", 404);
+  const { state, endedAt } = await streamStateForListing(env, listingId);
+  return json(
+    { listing_id: listingId, state, ...(endedAt != null ? { ended_at: endedAt } : {}) },
+    200,
+    { "cache-control": "public, max-age=30" },
+  );
 }

@@ -88,9 +88,10 @@ import { saathumChadhavaPublic } from "./routes/saathum_chadhava";
 import {
   saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
-  runSaathumReminders, saathumWatchGet, // [WA-NOTIFY-2]
+  runSaathumReminders, saathumWatchGet, saathumLiveStateGet, // [WA-NOTIFY-2] [SAATHUM-WATCH-1]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+import { checkSaathumStreamEnds } from "./lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -538,6 +539,12 @@ export default {
         runWhatsAppOutboxDrain(env)
           .then((r) => { if (r.scanned) console.log("[whatsapp-outbox-drain]", JSON.stringify(r)); })
           .catch((e) => { console.error("[whatsapp-outbox-drain] failed:", String(e)); }),
+        // [SAATHUM-WATCH-1 2026-09-28] Marks event_videos.ended_at from the YouTube
+        // Data API for recently-started streams; never throws, and is a silent
+        // no-op (api:'skipped') when YOUTUBE_API_KEY isn't set.
+        checkSaathumStreamEnds(env)
+          .then((r) => { if (r.checked) console.log("[saathum-stream-end-check]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[saathum-stream-end-check] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
       ]),
@@ -1016,10 +1023,16 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/saathum/checkout/quote" && req.method === "POST") return await saathumCheckoutQuote(req, env);
       if (p === "/api/saathum/checkout" && req.method === "POST") return await saathumCheckoutCreate(req, env);
       if (p === "/api/saathum/my-checkouts" && req.method === "GET") return await saathumMyCheckouts(req, env);
-      // [WA-NOTIFY-2 2026-09-28] Entitlement check for the (not-yet-built) internal
-      // watch page — see routes/saathum_checkout.ts saathumWatchGet.
+      // [WA-NOTIFY-2 2026-09-28, SAATHUM-WATCH-1] Entitlement check backing the
+      // embedded player on the listing detail page — see saathumWatchGet.
       if (p.startsWith("/api/saathum/watch/") && req.method === "GET") {
         return await saathumWatchGet(req, env, decodeURIComponent(p.slice("/api/saathum/watch/".length)));
+      }
+      // [SAATHUM-WATCH-1 2026-09-28] Public, unauthenticated — powers the LIVE NOW /
+      // ended overlay on the listing detail page (web/src/pages/book/[id].astro) for
+      // every visitor, signed-in or not. Never returns a video id (see saathumWatchGet).
+      if (p.startsWith("/api/saathum/live-state/") && req.method === "GET") {
+        return await saathumLiveStateGet(req, env, decodeURIComponent(p.slice("/api/saathum/live-state/".length)));
       }
       if (p.startsWith("/api/saathum/checkout/")) {
         const rest = p.slice("/api/saathum/checkout/".length).split("/");

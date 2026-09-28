@@ -1,0 +1,17 @@
+-- [SAATHUM-WATCH-1 2026-09-28] Adds the "this stream has ended" flag to
+-- event_videos. DB: avatok-meta (DB_META). ALTER-only file on purpose
+-- (CLAUDE.md rule 6: d1_apply_alters.py applies ONLY ALTER ... ADD COLUMN
+-- lines — a CREATE TABLE in the same file would be skipped silently).
+-- NOT APPLIED by the implementing agent.
+--
+-- Apply with:
+--   python3 scripts/d1_apply_alters.py migrations/2026-09-28-saathum-watch-1-ended-at.sql
+--   (or: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-28-saathum-watch-1-ended-at.sql)
+--
+-- Set once, by the 5-minute cron (lib/saathum_stream_state.ts checkSaathumStreamEnds,
+-- via the YouTube Data API v3 liveStreamingDetails.actualEndTime) or left NULL
+-- forever when YOUTUBE_API_KEY is unset — the clock fallback in
+-- lib/saathum_stream_state.ts computeStreamState() still calls the stream
+-- ended once now() passes starts_at + duration_min + 60min grace, with or
+-- without this column ever being set.
+ALTER TABLE event_videos ADD COLUMN ended_at INTEGER;
