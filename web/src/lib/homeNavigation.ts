@@ -58,6 +58,8 @@ export const HOME_FOOTER_COLUMNS = [
     { href: '/privacy', label: 'Privacy' },
     { href: '/terms', label: 'Terms' },
     { href: '/cookies', label: 'Cookies' },
+    // [WEB-DISCLAIMER-1 2026-09-29] Disclaimer page added by owner.
+    { href: '/disclaimer', label: 'Disclaimer' },
     // [SAATHUM-ENTITY-1 2026-09-25] Grievance Redressal page removed by owner.
   ] },
 ];
