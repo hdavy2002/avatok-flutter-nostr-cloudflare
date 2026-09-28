@@ -27,6 +27,7 @@ import {
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
 import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
+import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
 // [SAATHUM-WATCH-1 2026-09-28] The one shared definition of "is this event's
 // live stream live/ended/none" — see the file's own doc comment.
 import { computeStreamState, streamStateForListing } from "../lib/saathum_stream_state";
@@ -36,6 +37,11 @@ import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst } fr
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
+// [REFUND-POLICY-SRV-1] Bump this string whenever the refund policy text changes, so
+// `saathum_checkouts.refund_policy_version` records exactly which wording a buyer agreed
+// to — never re-derive it live from "the current policy", the same reason snapshots
+// elsewhere in this codebase are immutable.
+const REFUND_POLICY_VERSION = "refunds-2026-09-28";
 
 function parseJsonSafe<T>(s: unknown, fallback: T): T {
   if (typeof s !== "string" || !s) return fallback;
@@ -192,6 +198,7 @@ type CheckoutRowDb = {
   receiving_account_key: string; amount_paise: number; payer_reference: string | null; reference_revision: number;
   reason_code: string | null; utr: string | null; commercial_order_id: string | null; receipt_no: string | null;
   created_at: number; expires_at: number; updated_at: number; confirmed_at: number | null; email_sent_at: number | null;
+  refund_policy_accepted_at: number | null; refund_policy_version: string | null;
 };
 
 async function loadOwnCheckout(env: Env, uid: string, checkoutId: string): Promise<CheckoutRowDb | null> {
@@ -200,8 +207,11 @@ async function loadOwnCheckout(env: Env, uid: string, checkoutId: string): Promi
 }
 
 async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
-  const listing = await metaDb(env).prepare(`SELECT id,title,starts_at,duration_min,cover_media FROM listings WHERE id=?1`).bind(row.listing_id).first<{ id: string; title: string; starts_at: number | null; duration_min: number | null; cover_media: string | null }>();
+  const listing = await metaDb(env).prepare(`SELECT id,title,starts_at,duration_min,cover_media,attrs FROM listings WHERE id=?1`).bind(row.listing_id).first<{ id: string; title: string; starts_at: number | null; duration_min: number | null; cover_media: string | null; attrs: string | null }>();
   const cover = parseJsonSafe<unknown[]>(listing?.cover_media ?? null, []);
+  // [REFUND-POLICY-SRV-1] So the site can say "Free cancellation up to 24 hrs before" vs
+  // "3 days before" correctly per event_type, without re-deriving the rule client-side.
+  const eventType = eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}));
   const now = Date.now();
   const status = externalStatus(row, now);
   const config = await readConfig(env);
@@ -216,7 +226,7 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
     : null;
   return {
     checkout_id: row.checkout_id,
-    listing: { id: row.listing_id, title: listing?.title ?? "Saa Thum booking", starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null) },
+    listing: { id: row.listing_id, title: listing?.title ?? "Saa Thum booking", starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null), refund_window_hours: refundWindowHours(eventType) },
     status,
     quote: JSON.parse(row.quote_json) as Quote,
     sankalp: JSON.parse(row.sankalp_json) as Sankalp,
@@ -252,7 +262,15 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   let b: Record<string, unknown>;
   try { b = await req.json(); } catch { return failure("invalid_request"); }
   if (typeof b.listing_id !== "string" || typeof b.request_key !== "string" || !UUID.test(b.request_key)) return failure("invalid_request");
-  if (b.accept_terms !== true || b.accept_refund !== true) return failure("terms_required", 400, { message: "You must accept the terms and refund policy." });
+  if (b.accept_terms !== true) return failure("terms_required", 400, { message: "You must accept the terms and refund policy." });
+  // [REFUND-POLICY-SRV-1] Owner decision 2026-09-28: a SEPARATE refund-policy tickbox is
+  // now required alongside the terms tickbox. `refund_policy_accepted` is the contract
+  // field name going forward; `accept_refund` (the pre-existing field) is still honoured
+  // so an older client keeps working, but a new client should send the new name.
+  const refundPolicyAccepted = b.refund_policy_accepted === true || b.accept_refund === true;
+  if (!refundPolicyAccepted) {
+    return failure("refund_policy_required", 400, { message: "Please read and accept the refund policy to continue." });
+  }
 
   const throttle = await limited(env, `create:${uid}`, 10); if (throttle) return throttle;
   const db = metaDb(env);
@@ -312,13 +330,15 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
     await db.prepare(
       `INSERT INTO saathum_checkouts
         (checkout_id,uid,listing_id,request_key,quote_json,subtotal_rupees,gst_rupees,total_rupees,ticket_rupees,
-         sankalp_json,prasad,address_json,status,receiving_account_key,amount_paise,created_at,expires_at,updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'awaiting_payment',?13,?14,?15,?16,?15)`,
+         sankalp_json,prasad,address_json,status,receiving_account_key,amount_paise,created_at,expires_at,updated_at,
+         refund_policy_accepted_at,refund_policy_version)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'awaiting_payment',?13,?14,?15,?16,?15,?15,?17)`,
     ).bind(
       checkoutId, uid, row.id, b.request_key, JSON.stringify(quote.value),
       quote.value.subtotal_rupees, quote.value.gst_rupees, quote.value.total_rupees, snapshot.price_rupees,
       JSON.stringify(sankalp.value), prasad ? 1 : 0, address ? JSON.stringify(address) : null,
       p.account, quote.value.total_rupees * 100, now, now + CHECKOUT_EXPIRY_MS,
+      REFUND_POLICY_VERSION,
     ).run();
   } catch (err) {
     await trackException(env, err, { uid, route: "/api/saathum/checkout", method: "POST", handled: true, app_name: APP });
@@ -332,6 +352,11 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   await track(env, uid, "saathum_checkout_created", APP, {
     listing_id: row.id, total_rupees: quote.value.total_rupees, prasad, chadhava_count: chadhava.filter((c) => c.qty > 0).length,
     event_type: snapshot.event_type,
+  });
+  // [REFUND-POLICY-SRV-1] Confirms the tickbox gate actually ran — checkout creation
+  // above already 400s without it, so every row from here on has a real acceptance.
+  await track(env, uid, "saathum_checkout_refund_policy_accepted", APP, {
+    listing_id: row.id, checkout_id: checkoutId, policy_version: REFUND_POLICY_VERSION,
   });
   const created = await loadOwnCheckout(env, uid, checkoutId);
   if (!created) return failure("checkout_unavailable", 503);

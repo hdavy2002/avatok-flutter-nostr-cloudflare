@@ -7,7 +7,7 @@ import type { Env } from "../types";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { escrowBalance, refund } from "../ledger";
-import { executeCommercialRefund } from "../lib/commercial_refund_rail";
+import { autoRefundsAllowed, executeCommercialRefund, trackAutoRefundSuppressed } from "../lib/commercial_refund_rail";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { json } from "../util";
 import {
@@ -262,7 +262,7 @@ async function markReview(env: Env, authority: Authority, operationId: string, r
   return json(response, 202);
 }
 
-async function cancelOne(env: Env, authority: Authority, uid: string, idem: string, action: Action): Promise<Response> {
+async function cancelOne(env: Env, authority: Authority, uid: string, idem: string, action: Action, opts: { systemCaller?: boolean } = {}): Promise<Response> {
   const requestHash = await sha256(`${uid}:${authority.order_id}:${idem}:${action}`);
   const operationId = `commercial-cancel:${await sha256(`${authority.order_id}:${idem}:${action}`).then((v) => v.slice(0, 48))}`;
   await metaDb(env).prepare(
@@ -331,6 +331,14 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   // the buyer by the tax.
   const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
   const refundable = gross + gstAmount;
+  // [REFUND-POLICY-SRV-1] A buyer or creator hitting cancel themselves (opts.systemCaller
+  // unset) is a person deciding — never gated. A system caller (the orphan/no-show sweep
+  // or a listing takedown, both reached only through cancelAuthoritiesAsCreator) is an
+  // AUTOMATIC refund and is suppressed to review_pending while autoRefundsEnabled is off.
+  if (opts.systemCaller && refundable > 0 && !(await autoRefundsAllowed(env))) {
+    trackAutoRefundSuppressed(env, { path: `lifecycle:${action}`, orderId: authority.order_id, listingId: authority.listing_id, amount: refundable });
+    return await markReview(env, authority, operationId, "auto_refund_suppressed");
+  }
   if (refundable > 0 && (await escrowBalance(env, authority.order_id)) < refundable) {
     return await markReview(env, authority, operationId, "escrow_balance_below_snapshot_gross");
   }
@@ -789,7 +797,7 @@ async function cancelAuthoritiesAsCreator(
   const summary: SystemCancelSummary = { scanned: authorities.length, refunded: 0, no_refund: 0, review_pending: 0, failed: 0 };
   for (const authority of authorities) {
     try {
-      const response = await cancelOne(env, authority, authority.creator_id, idem, action);
+      const response = await cancelOne(env, authority, authority.creator_id, idem, action, { systemCaller: true });
       const body = await response.clone().json().catch(() => ({})) as Record<string, unknown>;
       const state = String(body.state ?? "");
       if (response.ok && (state === "refunded" || state === "refund_pending")) summary.refunded++;

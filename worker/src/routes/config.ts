@@ -56,6 +56,23 @@ export interface PlatformConfig {
   commercialProviderFailureRefundPct: number;
   commercialLateCancelRefundPct: number;
   /**
+   * [REFUND-POLICY-SRV-1] Owner decision 2026-09-28: "No automatic refunds anywhere."
+   * By the time an event happens the team has travelled, the priest/preacher has
+   * travelled, samagri was bought, a hall/venue was booked — so money only goes back
+   * when a PERSON decides it: a buyer's own refund request inside the allowed window
+   * (routes/commercial_lifecycle.ts's public cancel route, gated separately by
+   * lib/refund_window.ts), or an admin action (routes/commercial_admin_claims.ts).
+   *
+   * DEFAULT FALSE. Every SYSTEM-DECIDED refund — a cron/queue sweep or a settlement
+   * job's own no-show/outage verdict, where nobody clicked anything — checks this
+   * before executeCommercialRefund moves money (see lib/commercial_refund_rail.ts
+   * autoRefundsAllowed/trackAutoRefundSuppressed). While false those cases are left
+   * `review_pending` (the existing admin-visible screen), never silently dropped, and
+   * emit `auto_refund_suppressed` telemetry so the owner can decide by hand. Setting
+   * this true restores the pre-2026-09-28 automatic behaviour with no further changes.
+   */
+  autoRefundsEnabled: boolean;
+  /**
    * [TAX-GST-1] (owner decision 2026-08-29) 18% GST on top of the listing price.
    *
    * ⚠️ `gstEnabled` DEFAULTS FALSE AND MUST STAY FALSE UNTIL avaTOK HAS A GSTIN.
@@ -2062,6 +2079,10 @@ const DEFAULTS: PlatformConfig = {
   commercialCreatorCancelRefundPct: 100,
   commercialProviderFailureRefundPct: 100,
   commercialLateCancelRefundPct: 0,
+  // [REFUND-POLICY-SRV-1] See the interface comment. OFF until the owner flips it —
+  // every system-decided refund (sweeps, settlement no-show/outage verdicts) is
+  // suppressed to review_pending while this is false.
+  autoRefundsEnabled: false,
   // [TAX-GST-1] See the interface comment. OFF until there is a GSTIN — this is the flag
   // that decides whether a real person is charged a tax we cannot yet remit.
   gstEnabled: false,

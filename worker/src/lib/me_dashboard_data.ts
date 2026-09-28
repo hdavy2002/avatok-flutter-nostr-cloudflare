@@ -69,6 +69,9 @@ SELECT * FROM (
          COALESCE(x.paid_at, x.created_at) AS sort_ts,
          l.title AS event_title, l.category AS category, c.label AS category_label, l.kind AS listing_kind,
          ${startsMsSql("l")} AS event_starts_at,
+         -- [REFUND-POLICY-SRV-1] event_type drives the per-type refund-request window
+         -- (lib/refund_window.ts) — havan/puja=24h, satsang/sermon/meditation=72h.
+         json_extract(l.attrs,'$.event_type') AS event_type,
          rf.refund_status, rf.refund_requested_at, rf.refund_refunded_at, rf.refund_amount_paise, rf.refund_vpa, rf.refund_utr,
          CASE WHEN x.base_status='refunded' OR rf.refund_status='refunded' THEN 'refunded'
               WHEN x.base_status='pending' THEN 'pending'
@@ -85,6 +88,7 @@ export type PaymentRow = {
   base_status: "paid" | "pending" | "refunded"; paid_at: number | null; utr: string | null;
   created_at: number; sort_ts: number; event_title: string | null; category: string | null;
   category_label: string | null; listing_kind: string | null; event_starts_at: number | null;
+  event_type: string | null;
   refund_status: "requested" | "refunded" | "rejected" | null; refund_requested_at: number | null;
   refund_refunded_at: number | null; refund_amount_paise: number | null; refund_vpa: string | null;
   refund_utr: string | null; status: "paid" | "pending" | "refund_requested" | "refunded";

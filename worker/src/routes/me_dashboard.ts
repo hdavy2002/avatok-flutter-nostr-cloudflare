@@ -29,6 +29,7 @@ import {
   buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, type PaymentRow,
 } from "../lib/me_dashboard_data";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
+import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
 import { sendSaathumLiveLinkWhatsApp } from "../lib/whatsapp_notify";
 import { sendSaathumLiveLinkEmails } from "./saathum_checkout"; // [WA-NOTIFY-2]
 import {
@@ -170,6 +171,9 @@ function paymentLine(p: PaymentRow) {
     category_label: p.category_label, event_starts_at: p.event_starts_at,
     amount_paise: Number(p.amount_paise), status: p.status,
     paid_at: p.base_status === "pending" ? null : p.paid_at,
+    // [REFUND-POLICY-SRV-1] So the website can say "Free cancellation up to 24 hrs
+    // before" vs "3 days before" correctly per event_type (lib/refund_window.ts).
+    refund_window_hours: refundWindowHours(p.event_type),
   };
 }
 
@@ -225,7 +229,7 @@ export async function mePaymentDetail(req: Request, env: Env, id: string): Promi
     ...(p.utr ? { utr: p.utr } : {}),
     order_id: p.order_id,
     ...(refund ? { refund } : {}),
-    can_request_refund: refundEligibility({ status: p.status, eventStartsAt: p.event_starts_at }).ok && !p.id.startsWith("agl_") && !(p.order_id ?? "").startsWith("agl_"),
+    can_request_refund: refundEligibility({ status: p.status, eventStartsAt: p.event_starts_at, eventType: p.event_type }).ok && !p.id.startsWith("agl_") && !(p.order_id ?? "").startsWith("agl_"),
     receipt_url: receiptAvailable(p) ? `/api/me/payments/${encodeURIComponent(p.id)}/receipt.pdf` : null,
   }, 200, { "cache-control": "private, no-store" });
 }
@@ -249,9 +253,17 @@ export async function meRefundRequest(req: Request, env: Env, id: string): Promi
     return err(409, "not_refundable_here", "This booking can't be refunded from the dashboard. Please contact support@saathum.com.");
   }
   const now = Date.now();
-  const ok = refundEligibility({ status: p.status, eventStartsAt: p.event_starts_at, now });
+  const ok = refundEligibility({ status: p.status, eventStartsAt: p.event_starts_at, eventType: p.event_type, now });
   if (!ok.ok) {
     await tel(env, a.uid, "dash2_refund_request", { payment_id: p.id, ok: false, reason_code: ok.error });
+    // [REFUND-POLICY-SRV-1] Separate, specifically-named event for the window refusal
+    // so the owner can pull just these without filtering dash2_refund_request by reason.
+    if (ok.error === "refund_window_closed") {
+      await tel(env, a.uid, "refund_request_refused_window", {
+        listing_id: p.listing_id, event_type: p.event_type ?? "havan",
+        hours_before: p.event_starts_at ? Math.max(0, Math.floor((p.event_starts_at - now) / 3_600_000)) : null,
+      });
+    }
     return err(409, ok.error, ok.message);
   }
   const refundId = crypto.randomUUID();

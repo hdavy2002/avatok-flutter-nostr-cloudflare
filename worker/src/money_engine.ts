@@ -13,6 +13,7 @@ import { metaDb } from "./db/shard";
 import { nowMs } from "./clock";
 import { evaluate, type Action, type Phase, type RuleCfg, type SessionCtx } from "./rules";
 import { refund, release, clerkEmail } from "./ledger";
+import { autoRefundsAllowed, trackAutoRefundSuppressed } from "./lib/commercial_refund_rail";
 import { settleTranslation } from "./routes/translate";
 import { emailRefundIssued, emailSettlementPaid } from "./cal/emails";
 import { notifyUser } from "./notify";
@@ -116,6 +117,19 @@ async function applyAction(env: Env, ctx: SessionCtx, a: Action): Promise<void> 
   const db = metaDb(env);
   switch (a.kind) {
     case "refund": {
+      // [REFUND-POLICY-SRV-1] Fully automatic — this legacy Phase-7 rule engine is
+      // driven entirely by the minute-cron sweep (consumers/src/money_sweep.ts), nobody
+      // decided anything. Suppressed while autoRefundsEnabled is off: deliberately do
+      // NOT write a settlement_log row, so the order stays 'held' (visible, not lost)
+      // and the sweep keeps re-offering this decision every tick until the owner flips
+      // the switch, instead of it being silently skipped forever.
+      if (!(await autoRefundsAllowed(env))) {
+        trackAutoRefundSuppressed(env, {
+          path: `legacy_money_engine:${a.rule}`, orderId: a.orderId,
+          listingId: ctx.kind === "live_event" ? ctx.sid : null, amount: a.amount,
+        });
+        return;
+      }
       // Money first (WalletDO op_id dedupe makes the op itself idempotent),
       // THEN the log row — so a crash between the two retries safely, and the
       // log row's freshness gates the one-time side effects (emails/push).

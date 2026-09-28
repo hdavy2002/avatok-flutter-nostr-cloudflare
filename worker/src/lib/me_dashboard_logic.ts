@@ -2,7 +2,11 @@
 // No I/O here, so every rule the spec (Specs/SPEC-2026-09-25-DASHBOARD-2.md) makes
 // about state, refunds, VPAs and cursors is unit-tested in isolation.
 import { scheduleState, eventWindow, type ScheduleState } from "./listing_schedule";
+import { refundWindowHours } from "./refund_window";
 
+// [REFUND-POLICY-SRV-1] Kept as the pre-existing default (havan/puja) for any caller
+// that still imports this directly; refundEligibility() below no longer uses it when
+// an event_type is available and instead asks lib/refund_window.ts per listing type.
 export const REFUND_WINDOW_MS = 24 * 60 * 60_000;
 export const PAGE_SIZE = 20;
 export const PHONE_SENDS_PER_WINDOW = 3;
@@ -59,12 +63,16 @@ export type RefundEligibility = { ok: true } | { ok: false; error: string; messa
 
 /**
  * A customer may REQUEST a refund only for a paid payment whose event starts at least
- * 24 hours from now, and only when no request is already open (or done).
- * Owner decision 2026-09-25; the refund itself is then made manually by an admin.
+ * N hours from now — N is `refundWindowHours(eventType)` (lib/refund_window.ts):
+ * 24h for havan/puja (and any missing/unrecognised event_type), 72h (3 days) for
+ * satsang/sermon/meditation — and only when no request is already open (or done).
+ * Owner decision 2026-09-25 (window exists), refined 2026-09-28 (per-event-type
+ * window replaces the flat 24h); the refund itself is then made manually by an admin.
  */
 export function refundEligibility(args: {
   status: PaymentStatus;
   eventStartsAt: number | null;
+  eventType?: string | null;
   now?: number;
 }): RefundEligibility {
   const now = args.now ?? Date.now();
@@ -74,8 +82,10 @@ export function refundEligibility(args: {
   if (args.eventStartsAt === null || !Number.isFinite(args.eventStartsAt)) {
     return { ok: false, error: "no_event_time", message: "This booking has no fixed start time, so it cannot be refunded online." };
   }
-  if (args.eventStartsAt - now < REFUND_WINDOW_MS) {
-    return { ok: false, error: "refund_window_closed", message: "Refunds can be requested only until 24 hours before the event starts." };
+  const hours = refundWindowHours(args.eventType);
+  if (args.eventStartsAt - now < hours * 60 * 60_000) {
+    const when = hours >= 72 ? "3 days" : `${hours} hours`;
+    return { ok: false, error: "refund_window_closed", message: `Refunds can be requested only until ${when} before the event starts.` };
   }
   return { ok: true };
 }

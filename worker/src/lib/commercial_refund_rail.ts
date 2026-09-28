@@ -35,6 +35,41 @@ import { refund, refundExternal } from "../ledger";
 import { refundCashfreeOrder } from "./cashfree";
 import { isGatewayId, resolveGateway } from "./payments/registry";
 import type { GatewayId } from "./payments/types";
+import { readConfig } from "../routes/config";
+import { track } from "../hooks";
+
+/**
+ * [REFUND-POLICY-SRV-1] Owner decision 2026-09-28: "No automatic refunds anywhere."
+ * Call this before any SYSTEM-DECIDED refund — a cron/queue sweep, or a settlement
+ * job's own no-show/outage verdict, where nobody clicked anything — is allowed to move
+ * money. Default false (see config.ts DEFAULTS.autoRefundsEnabled).
+ *
+ * Never call this for a refund a BUYER OR CREATOR asked for by hitting cancel
+ * themselves (the public route in routes/commercial_lifecycle.ts) — that is a person
+ * deciding, and the owner's rule explicitly keeps that path working. That route's own
+ * window check lives in lib/refund_window.ts for Saathum checkouts.
+ */
+export async function autoRefundsAllowed(env: Env): Promise<boolean> {
+  const config = await readConfig(env);
+  return config.autoRefundsEnabled === true;
+}
+
+/**
+ * [REFUND-POLICY-SRV-1] "Do not lose the case": every caller that skips a refund because
+ * `autoRefundsAllowed` is false must call this so the owner can find it and decide by
+ * hand. Best-effort, never throws — telemetry must never block the caller from putting
+ * the order into a state (review_pending) an admin can see.
+ */
+export function trackAutoRefundSuppressed(env: Env, args: {
+  path: string; orderId: string; listingId: string | null; amount: number;
+}): void {
+  void track(env, "server", "auto_refund_suppressed", "commercial", {
+    path: args.path,
+    order_id: args.orderId,
+    listing_id: args.listingId ?? "",
+    amount: Math.trunc(args.amount),
+  }).catch(() => undefined);
+}
 
 export type RefundRail =
   | { rail: "wallet" }

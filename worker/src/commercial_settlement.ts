@@ -12,7 +12,7 @@ import { ACCT_PLATFORM_TAX } from "./lib/commercial_tax";
 import { commercialEvent } from "./lib/commercial_telemetry";
 import { notifyCommercialUsers } from "./lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "./commercial_money_claim";
-import { executeCommercialRefund, finalizeCommercialRefund } from "./lib/commercial_refund_rail";
+import { autoRefundsAllowed, executeCommercialRefund, finalizeCommercialRefund, trackAutoRefundSuppressed } from "./lib/commercial_refund_rail";
 import { readConfig } from "./routes/config";
 import { commercialQuoteError, type CommercialQuote } from "./lib/session_pricing";
 
@@ -758,6 +758,15 @@ async function applyPartialCommercialSettlement(
   env: Env, job: SettlementJob, authority: SettlementAuthority,
   parts: ReturnType<typeof partialRefundSplit> & { reason: string; claimId: string; telemetryOutcome: string },
 ): Promise<void> {
+  // [REFUND-POLICY-SRV-1] Fully automatic — the host-no-return grace timer or the outage
+  // detector decided this, nobody clicked anything. When it includes a refund leg
+  // (refundable > 0) the WHOLE job is left review_pending while autoRefundsEnabled is
+  // off, rather than paying the creator's consumed share now and refunding later: the
+  // settlement money plan is meant to be applied as one unit (see the R2 comment above).
+  if (parts.refundable > 0 && !(await autoRefundsAllowed(env))) {
+    trackAutoRefundSuppressed(env, { path: `settlement:${parts.reason}`, orderId: authority.order_id, listingId: authority.listing_id, amount: parts.refundable });
+    return await markReview(env, job.settlement_job_id, "auto_refund_suppressed");
+  }
   const claim = await claimCommercialMoney(env, {
     orderId: authority.order_id, claimType: "settlement", claimId: parts.claimId,
   });
@@ -986,6 +995,12 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
         const gross = Math.trunc(Number(authority.gross_amount));
         const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
         const refundable = gross + gstAmount;
+        // [REFUND-POLICY-SRV-1] Fully automatic — the settlement job itself decided the
+        // host failed to deliver. Suppressed to review_pending while autoRefundsEnabled is off.
+        if (!(await autoRefundsAllowed(env))) {
+          trackAutoRefundSuppressed(env, { path: "settlement:live_creator_no_show", orderId: authority.order_id, listingId: authority.listing_id, amount: refundable });
+          return await markReview(env, job.settlement_job_id, "auto_refund_suppressed");
+        }
         const claimed = await claimCommercialMoney(env, {
           orderId: authority.order_id, claimType: "refund", claimId: `no-show:${job.settlement_job_id}`,
         });
@@ -1056,6 +1071,15 @@ async function refundCreatorNoShow(
   job: SettlementJob,
   authority: SettlementAuthority,
 ): Promise<"refunded" | "review_pending"> {
+  // [REFUND-POLICY-SRV-1] Fully automatic — a consult check-in deadline passed and
+  // NOBODY decided anything. Suppressed to review_pending while autoRefundsEnabled is off.
+  if (!(await autoRefundsAllowed(env))) {
+    const gross = Math.trunc(Number(authority.gross_amount));
+    const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+    trackAutoRefundSuppressed(env, { path: "settlement:creator_no_show", orderId: authority.order_id, listingId: authority.listing_id, amount: gross + gstAmount });
+    await markReview(env, job.settlement_job_id, "auto_refund_suppressed");
+    return "review_pending";
+  }
   const claim = await claimCommercialMoney(env, {
     orderId: authority.order_id,
     claimType: "refund",
@@ -1136,6 +1160,18 @@ async function finalizeOverdueNoShow(
        WHERE commercial_session_id=?1 AND settlement_state NOT IN ('settled','refunded')`,
     ).bind(authority.commercial_session_id, Date.now()).run();
     commercialEvent(env, "settlement", null, { outcome: "review_pending", reason: "creator_no_show" });
+    return "review_pending";
+  }
+  // [REFUND-POLICY-SRV-1] Fully automatic — runCommercialHostNoShowSweep is a cron sweep,
+  // nobody decided anything. Suppressed to review_pending while autoRefundsEnabled is off.
+  if (!(await autoRefundsAllowed(env))) {
+    const gross0 = Math.trunc(Number(authority.gross_amount));
+    const gst0 = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+    trackAutoRefundSuppressed(env, { path: "settlement:overdue_no_show_sweep", orderId: authority.order_id, listingId: authority.listing_id, amount: gross0 + gst0 });
+    await metaDb(env).prepare(
+      `UPDATE commercial_sessions SET settlement_state='review_pending',updated_at=?2
+       WHERE commercial_session_id=?1 AND settlement_state NOT IN ('settled','refunded')`,
+    ).bind(authority.commercial_session_id, Date.now()).run();
     return "review_pending";
   }
   const claim = await claimCommercialMoney(env, {
