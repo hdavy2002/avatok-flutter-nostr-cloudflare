@@ -174,3 +174,13 @@
   .ep-badge { font-size: 15px; padding: 7px 14px; }
   .ep-performer-wide { flex-direction: column; text-align: center; gap: 12px; }
 }
+
+/* [EVENTPAGE-ABOUT-ART-1 2026-09-28, owner request] The havan-kund art in "About this …"
+   is bigger and sits inside the text on the right (text wraps around it), not as a
+   small corner sticker. */
+.ep-sec .ep-about-art { float: right; width: 190px; height: 190px; margin: 0 0 12px 20px; shape-outside: circle(50%); }
+.ep-sec .ep-about-art img { width: 100%; height: 100%; object-fit: contain; }
+.ep-sec#about::after { content: ""; display: block; clear: both; }
+@media (max-width: 640px) {
+  .ep-sec .ep-about-art { width: 120px; height: 120px; margin-left: 12px; }
+}
