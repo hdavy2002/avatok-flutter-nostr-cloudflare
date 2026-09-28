@@ -56,6 +56,7 @@ import {
 } from "../lib/admin2_events_logic";
 import { eventTypeOf } from "../lib/event_types";
 import { sendSaathumVideoReadyEmails } from "./saathum_checkout";
+import { sendSaathumVideoReadyWhatsApp } from "../lib/whatsapp_notify";
 
 const APP = "saathum";
 /** The listing module's app tag — releaseBlocks() keys calendar blocks on it. */
@@ -371,6 +372,10 @@ async function writeMediaAndAttrs(env: Env, adminUid: string, id: string, cover:
   const newVideo = changes.video_download_url?.to;
   if (typeof newVideo === "string" && newVideo) {
     await sendSaathumVideoReadyEmails(env, id, newVideo).catch((e) => trackException(env, e, { uid: adminUid, route: "admin2_events:video_ready", handled: true, app_name: "saathum" }));
+    // [WA-NOTIFY-1 2026-09-28] Owner decision: WhatsApp the download link to every
+    // confirmed buyer too. Only queues D1 rows here (see lib/whatsapp_notify.ts) —
+    // the actual sends are paced by the cron drain, never inline with this save.
+    await sendSaathumVideoReadyWhatsApp(env, id, newVideo).catch((e) => trackException(env, e, { uid: adminUid, route: "admin2_events:video_ready_whatsapp", handled: true, app_name: "saathum" }));
   }
   return null;
 }

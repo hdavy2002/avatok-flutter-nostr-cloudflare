@@ -29,6 +29,7 @@ import {
   buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, type PaymentRow,
 } from "../lib/me_dashboard_data";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
+import { sendSaathumLiveLinkWhatsApp } from "../lib/whatsapp_notify";
 import {
   buildAdminRefundsQuery, parseRefundStatus, decodeRefundCursor, encodeRefundCursor, customerName,
   ADMIN_REFUND_COUNTS_SQL, ADMIN_REFUNDS_PAGE, type AdminRefundRow,
@@ -740,7 +741,8 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   }
   const b = await body(req, 2048);
   if (!b || typeof b.url !== "string") return err(400, "invalid_request", "Send {url}.", { field: "url" });
-  const listing = await db.prepare("SELECT id FROM listings WHERE id=?1").bind(listingId).first();
+  const listing = await db.prepare("SELECT id, status, starts_at FROM listings WHERE id=?1")
+    .bind(listingId).first<{ id: string; status: string; starts_at: number | null }>();
   if (!listing) return err(404, "not_found", "No such listing.");
   const url = b.url.trim();
   if (!url) {
@@ -756,6 +758,20 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
        updated_at=excluded.updated_at, admin_uid=excluded.admin_uid`,
   ).bind(listingId, id, url.slice(0, 500), Date.now(), admin.uid).run();
   await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: false });
+  // [WA-NOTIFY-1 2026-09-28] Owner decision: this is the admin's only place to enter
+  // a live-stream link (it takes "a YouTube video or live link" — see the error
+  // message above), so a save here WhatsApps every confirmed buyer that the stream
+  // starts at <time>, with this link. Only queues D1 rows (lib/whatsapp_notify.ts);
+  // the actual sends are paced by the cron drain. Never lets a WhatsApp failure
+  // fail this save.
+  // Guarded to cancelled/completed events never firing a "the live stream starts"
+  // message about a link that is, in practice, a post-event recording pasted into
+  // this same field — this endpoint has no status restriction on writes at all.
+  if (listing.status !== "cancelled" && listing.status !== "completed") {
+    await sendSaathumLiveLinkWhatsApp(env, listingId, url.slice(0, 500)).catch((e) =>
+      trackException(env, e, { uid: admin.uid, route: "me_dashboard:live_link_whatsapp", handled: true, app_name: APP, extra: { area: "dash2" } }),
+    );
+  }
   return json({ ok: true, youtube_video_id: id });
 }
 

@@ -90,6 +90,7 @@ import {
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
   runSaathumReminders,
 } from "./routes/saathum_checkout";
+import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -530,6 +531,13 @@ export default {
         runSaathumReminders(env)
           .then((r) => { if (r.sent) console.log("[saathum-reminders]", JSON.stringify(r)); })
           .catch((e) => { console.error("[saathum-reminders] failed:", String(e)); }),
+        // [WA-NOTIFY-1 2026-09-28] Drains whatsapp_outbox at ~1 msg/2s, capped at 25
+        // per tick (this cron runs every 5 min — see the crons comment above), so a
+        // ban-risking burst on the unofficial WasenderAPI number never happens even
+        // when an event with hundreds of buyers gets its live/video link saved at once.
+        runWhatsAppOutboxDrain(env)
+          .then((r) => { if (r.scanned) console.log("[whatsapp-outbox-drain]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[whatsapp-outbox-drain] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
       ]),

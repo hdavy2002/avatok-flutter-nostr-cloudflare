@@ -7607,5 +7607,29 @@
         "note": "A WhatsApp code was received and accepted end to end."
       }
     ]
+  },
+  "WA-NOTIFY-1": {
+    "description": "[WA-NOTIFY-1] Confirmed Saa Thum buyers now get a WhatsApp message (via WasenderAPI, lib/whatsapp_send.ts) in addition to the existing emails when the admin enters/changes an event's live-stream link (PUT /api/admin/listings/:id/youtube, routes/me_dashboard.ts adminEventVideo) or its video-download link (routes/admin2_events.ts writeMediaAndAttrs, attrs.video_download_url). Recipients are strictly saathum_checkouts.status='confirmed' for that listing, filtered to buyers with a WhatsApp-verified phone (contact_verification + phone_otp, mirroring routes/phone_otp.ts phoneOtpStatus); buyers with no verified number are skipped and counted, never blocked or substituted. Sends are queued into a new whatsapp_outbox table (migrations/2026-09-28-whatsapp-outbox.sql, UNIQUE(checkout_id,kind,url_hash) so a re-save of the same link never re-sends and a corrected link does) and drained by the existing 5-minute cron (index.ts scheduled(), runWhatsAppOutboxDrain) at ~1 message/2s capped at 25/tick, to avoid bursting the unofficial WasenderAPI number. The admin save path only ever inserts D1 rows and is wrapped in .catch(trackException) at both call sites, so a WhatsApp failure can never fail the save.",
+    "shipped": "2026-09-28",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "whatsapp_event_notify",
+        "property": "sent",
+        "gte": 1,
+        "note": "At least one confirmed buyer with a verified WhatsApp number was queued for a live-link or video-ready notification."
+      },
+      {
+        "event": "whatsapp_event_notify",
+        "property": "kind",
+        "in": [
+          "live_link",
+          "video_ready"
+        ],
+        "note": "The run was tagged with which link type triggered it."
+      }
+    ]
   }
 }
