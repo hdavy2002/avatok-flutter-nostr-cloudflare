@@ -47,7 +47,15 @@ export function WhatsAppNumberInput({
   value, countryCode, onChange, disabled, error, label = 'WhatsApp number', id, autoFocus, classes,
 }: WhatsAppNumberInputProps) {
   const c = { ...DEFAULT_CLASSES, ...classes };
-  const countryBoxCls = classes?.countryBox ?? c.box;
+  // [SIGNUP-EMAIL-STEPS-1 2026-09-28] A caller that adds an "--action" modifier
+  // to `box` (the inline Verify/Send-OTP overlay pattern in AuthKit) wants that
+  // padding on the NUMBER input only — the country button is a small flag+dial
+  // button, not a text box with room for an absolutely-positioned button. Left
+  // unfiltered, the modifier's reserved padding made the country box balloon
+  // (its fixed flex-basis couldn't grow, so the reserved space just broke the
+  // layout) and pushed the action button out past the number box's edge.
+  const countryBoxCls = classes?.countryBox
+    ?? c.box.split(/\s+/).filter((cls) => cls && !cls.endsWith('--action')).join(' ');
   const genId = useRef(`wa-num-${Math.random().toString(36).slice(2)}`).current;
   const inputId = id ?? genId;
   const [open, setOpen] = useState(false);
@@ -75,11 +83,11 @@ export function WhatsAppNumberInput({
   return (
     <div className={c.field}>
       {label && <label className={c.label} htmlFor={inputId}>{label}</label>}
-      <div style={{ display: 'flex', gap: 8, position: 'relative' }} ref={popRef}>
+      <div style={{ display: 'flex', gap: 8, position: 'relative', width: '100%' }} ref={popRef}>
         <button
           type="button"
           className={countryBoxCls}
-          style={{ flex: '0 0 96px', textAlign: 'left', cursor: disabled ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ flex: '0 0 96px', minWidth: 0, textAlign: 'left', cursor: disabled ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}
           onClick={() => !disabled && setOpen((o) => !o)}
           disabled={disabled}
           aria-haspopup="listbox"
@@ -130,7 +138,7 @@ export function WhatsAppNumberInput({
         <input
           id={inputId}
           className={c.box}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 0 }}
           type="tel"
           inputMode="numeric"
           autoComplete="tel-national"
