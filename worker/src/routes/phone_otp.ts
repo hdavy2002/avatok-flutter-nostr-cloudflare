@@ -29,12 +29,22 @@
 //
 //   POST /api/account/phone/send    { phone }  -> { ok, phone, expires_in_s, resend_after_s }
 //   POST /api/account/phone/verify  { code }   -> { ok, verified, phone }
-//   GET  /api/account/phone/status             -> { verified, phone, has_account, needs_phone }
+//   GET  /api/account/phone/status             -> { verified, phone, has_account, needs_phone, whatsapp }
+//
+// [WA-LOGIN-1 2026-09-28] OWNER DECISION: every website user must have a verified
+// WhatsApp number — login by email code, Google or WhatsApp code, all gated on it,
+// with NO grandfathering (needs_phone below is now simply !verified for everyone).
+// normalizeE164 (lib/phone_e164.ts) replaces the +91-only indianMobileE164 here so
+// an international WhatsApp number works, not just Indian mobiles. The new
+// unauthenticated WhatsApp-login send/verify + the account/phone/claim handoff
+// live in routes/whatsapp_auth.ts, which reuses this file's ledger, phoneTakenByOther
+// and the new verifiedAccountForPhone.
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
 import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender";
+import { normalizeE164, INVALID_PHONE_MESSAGE } from "../lib/phone_e164"; // [WA-LOGIN-1]
 
 const APP = "avatok";
 
@@ -53,13 +63,17 @@ export const MAX_VERIFY_ATTEMPTS = 5;
  */
 export const PHONE_OTP_REQUIRED_SINCE = Date.UTC(2026, 8, 10, 12, 0, 0);
 
-/** Accepts "98765 43210", "+91 98765 43210", "09876543210". Returns +91XXXXXXXXXX or null. */
+/**
+ * [WA-LOGIN-1 2026-09-28] Thin India-only wrapper over lib/phone_e164.ts's
+ * general normalizeE164, kept for any caller that still wants a strict +91
+ * check. The routes below (send/verify) now call normalizeE164 directly so
+ * international numbers work, per the owner's 2026-09-28 WhatsApp-login
+ * decision. Accepts "98765 43210", "+91 98765 43210", "09876543210".
+ * Returns +91XXXXXXXXXX or null.
+ */
 export function indianMobileE164(raw: unknown): string | null {
-  let d = String(raw ?? "").replace(/\D/g, "");
-  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
-  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
-  if (!/^[6-9]\d{9}$/.test(d)) return null;
-  return "+91" + d;
+  const e164 = normalizeE164(raw, "IN");
+  return e164 && /^\+91\d{10}$/.test(e164) ? e164 : null;
 }
 
 function mask(e164: string): string {
@@ -78,6 +92,23 @@ export async function phoneTakenByOther(env: Env, hash: string, uid: string): Pr
   return !!row;
 }
 
+/**
+ * [WA-LOGIN-1 2026-09-28] Which LIVE account (if any) has this phone hash as its
+ * verified number — no uid to exclude, unlike phoneTakenByOther, because the
+ * caller here (the unauthenticated WhatsApp-login verify step) doesn't have one
+ * yet. Same "pending/processed deletion releases the number" rule.
+ */
+export async function verifiedAccountForPhone(env: Env, hash: string): Promise<string | null> {
+  const row = await env.DB_META.prepare(
+    `SELECT cv.uid FROM contact_verification cv
+       LEFT JOIN deletion_requests d ON d.uid = cv.uid
+      WHERE cv.phone_hash = ?1 AND cv.phone_verified = 1
+        AND (d.uid IS NULL OR d.status = 'cancelled')
+      LIMIT 1`,
+  ).bind(hash).first<{ uid: string }>().catch(() => null);
+  return row?.uid ?? null;
+}
+
 export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -87,9 +118,11 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
   }
 
   const b = (await req.json().catch(() => ({}))) as { phone?: unknown };
-  const e164 = indianMobileE164(b?.phone);
+  // [WA-LOGIN-1 2026-09-28] normalizeE164 (not the +91-only indianMobileE164)
+  // so this account's phone can be any country's WhatsApp number.
+  const e164 = normalizeE164(b?.phone);
   if (!e164) {
-    return json({ error: "invalid_phone", message: "Enter a 10-digit Indian mobile number.", field: "phone" }, 400);
+    return json({ error: "invalid_phone", message: INVALID_PHONE_MESSAGE, field: "phone" }, 400);
   }
 
   const db = env.DB_META;
@@ -253,14 +286,14 @@ export async function phoneOtpStatus(req: Request, env: Env): Promise<Response> 
   const u = await db.prepare("SELECT created_via, created_at FROM users WHERE uid=?1")
     .bind(ctx.uid).first<{ created_via: string | null; created_at: number | null }>().catch(() => null);
 
-  // No row yet = a brand-new web account (email-code or Google) that has not been
-  // opened. A web-born row created since launch also owes the phone. Everyone
-  // else — app users, earlier web buyers — is grandfathered.
-  const needsPhone = !verified && (
-    !u || (u.created_via === "web" && Number(u.created_at ?? 0) >= PHONE_OTP_REQUIRED_SINCE)
-  );
+  // [WA-LOGIN-1 2026-09-28] OWNER DECISION: every website user must have a
+  // verified WhatsApp number, with NO grandfathering — an existing account with
+  // no verified number must verify at its next login same as a new one. This
+  // retires the PHONE_OTP_REQUIRED_SINCE web-only/date-gated carve-out below;
+  // the constant and its comment stay only as a record of the old rule.
+  const needsPhone = !verified;
 
-  return json({ verified, phone, has_account: !!u, needs_phone: needsPhone });
+  return json({ verified, phone, has_account: !!u, needs_phone: needsPhone, whatsapp: verified });
 }
 
 /** For /api/account/bootstrap: is this exact number the account's verified phone? */

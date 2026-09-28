@@ -78,6 +78,20 @@ export async function requireStripeKyc(env: Env, uid: string): Promise<AuthFail 
   return { error: "document verification (Stripe Identity) required for payouts", status: 403 };
 }
 
+// [WA-LOGIN-1 2026-09-28] Owner decision: every website user must have a verified
+// WhatsApp number, and a booking/checkout/payment route must refuse to start one
+// for an account that doesn't. Read-only browsing, the phone/whatsapp routes
+// themselves, and sign-out/deletion are NEVER gated by this — see
+// routes/phone_otp.ts and routes/whatsapp_auth.ts for how a number gets verified.
+// Same read shape as kycVerified/requireKyc above.
+export async function requireVerifiedWhatsApp(env: Env, uid: string): Promise<AuthFail | null> {
+  const cv = await env.DB_META
+    .prepare("SELECT phone_verified FROM contact_verification WHERE uid = ?1")
+    .bind(uid).first<{ phone_verified: number }>().catch(() => null);
+  if (cv && Number(cv.phone_verified) === 1) return null;
+  return { error: "whatsapp_required", status: 403 };
+}
+
 // Hard block — does `owner` block `other`? (recipient blocks sender → no delivery)
 // Consolidated on the `blocks` table (uid renamed; blocked_uid holds a uid value),
 // which social.ts manages — so the messaging gate honours the same block list.

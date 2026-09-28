@@ -15,10 +15,11 @@ import { requireAdmin } from "./admin_money";
 import { HIDDEN_LISTING_SQL } from "./listings";
 import { notStuckLiveSql } from "../lib/listing_schedule";
 import {
-  indianMobileE164, phoneTakenByOther, OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS,
+  phoneTakenByOther, OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS,
   MAX_SENDS_PER_UID_HOUR, MAX_SENDS_PER_PHONE_HOUR, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
 import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender"; // [WA-OTP-1]
+import { normalizeE164, INVALID_PHONE_MESSAGE } from "../lib/phone_e164"; // [WA-LOGIN-1]
 import {
   eventState, isUpcomingScope, refundEligibility, normalizeVpa, encodeCursor, decodeCursor,
   maskE164, rupeesParamToPaise, msParam, istTimeOfDay, istYear, PAGE_SIZE,
@@ -495,8 +496,10 @@ export async function mePhoneStart(req: Request, env: Env): Promise<Response> {
   if (!otpProvider(env)) return err(503, "otp_unavailable", "Phone verification isn't available right now. Please try again shortly.");
   const b = await body(req, 2048);
   if (!b) return err(400, "invalid_request", "Send a JSON body.");
-  const e164 = indianMobileE164(b.phone);
-  if (!e164) return err(400, "invalid_phone", "Enter a 10-digit Indian mobile number.", { field: "phone" });
+  // [WA-LOGIN-1 2026-09-28] normalizeE164, not the +91-only indianMobileE164 —
+  // international WhatsApp numbers are allowed on the account phone too.
+  const e164 = normalizeE164(b.phone);
+  if (!e164) return err(400, "invalid_phone", INVALID_PHONE_MESSAGE, { field: "phone" });
   const db = env.DB_META, now = Date.now(), hash = await sha256Hex(e164);
   const step = (ok: boolean, outcome: string, extra: Record<string, unknown> = {}) =>
     tel(env, a.uid, "dash2_phone_change", { step: "start", ok, outcome, phone_masked: maskE164(e164), ...extra });
