@@ -8,7 +8,7 @@ keywords: ["report", "block", "complaint", "grievance", "abuse", "contact suppor
 audience: both
 faq:
   - q: "Who do I email to report abuse or unsafe content?"
-    a: "support (@) saathum.com, or use the in-app report tool. If support has not resolved your complaint, escalate it to our Nodal Officer, Aarti Sharma, at Aarti.Sharma (@) saathum.com — see our Grievance Redressal page."
+    a: "support (@) saathum.com, or use the in-app report tool. If support has not resolved your complaint, escalate it to our Nodal Officer, Depika Singh, at grievance (@) saathum.com — see our Grievance Redressal page."
   - q: "How fast will a formal grievance be acknowledged?"
     a: "Within 48 hours of receipt, with a resolution within 7–10 working days depending on the nature of the grievance."
 draft: false
@@ -39,7 +39,7 @@ For anything about a charge or a refund, email **support (@) saathum.com** with 
 Our [Grievance Redressal](/grievance) page sets out two escalation levels:
 
 - **Level 1 — Customer Support:** email **support (@) saathum.com** for general queries, order-related concerns, refunds, payments, delivery issues or service complaints.
-- **Level 2 — Nodal Officer:** if your concern is not resolved satisfactorily at Level 1, escalate it to **Aarti Sharma**, Nodal Officer, at **Aarti.Sharma (@) saathum.com**.
+- **Level 2 — Nodal Officer:** if your concern is not resolved satisfactorily at Level 1, escalate it to **Depika Singh**, Nodal Officer, at **grievance (@) saathum.com**.
 
 Include what you can: your full name and the email/phone you booked with, the event or order, a clear description of the problem, any evidence you have, and the outcome you're seeking. For a payment, add your 12-digit UPI transaction number.
 
