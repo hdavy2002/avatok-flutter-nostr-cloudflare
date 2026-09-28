@@ -147,6 +147,9 @@ function shapeRow(r: any, now: number) {
   const attrs = attrsOf(r.attrs);
   const starts = r.starts_ms != null ? Number(r.starts_ms) : null;
   const row = { kind: "live_event", status: r.status, starts_at: starts, duration_min: r.duration_min };
+  // [SAATHUM-WATCH-1 2026-09-28] Stream-end (YouTube check or its clock fallback)
+  // wins over the raw schedule window — see tabOf()'s doc comment.
+  const streamEnded = r.stream_ended_at != null;
   return {
     id: String(r.id),
     title: String(r.title ?? ""),
@@ -161,8 +164,9 @@ function shapeRow(r: any, now: number) {
     seats_booked: Number(r.seats_booked ?? 0),
     pending_payments: Number(r.pending_payments ?? 0),
     status: String(r.status ?? ""),
-    tab: tabOf(row, now),
+    tab: tabOf(row, now, streamEnded),
     schedule_state: scheduleState(row, now),
+    stream_ended: streamEnded,
     youtube_set: !!r.youtube_video_id,
     poster_status: attrs.poster?.status ?? null,
     book_url: `/book/${encodeURIComponent(String(r.id))}`,
@@ -172,7 +176,7 @@ function shapeRow(r: any, now: number) {
 
 const ROW_COLS = `l.id, l.title, l.category, c.label AS category_label, l.attrs, l.cover_media,
   ${startsMsSql("l")} AS starts_ms, l.duration_min, l.price, l.capacity, l.status, l.updated_at, l.creator_id,
-  ${SEATS_SQL} AS seats_booked, ${PENDING_PAY_SQL} AS pending_payments, v.youtube_video_id`;
+  ${SEATS_SQL} AS seats_booked, ${PENDING_PAY_SQL} AS pending_payments, v.youtube_video_id, v.ended_at AS stream_ended_at`;
 
 export async function adminEventsList(req: Request, env: Env): Promise<Response> {
   const a = await admin(req, env); if (a instanceof Response) return a;

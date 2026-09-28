@@ -22,18 +22,24 @@ type ListingRow = { kind?: unknown; status?: unknown; starts_at?: unknown; durat
  *   - "starting" (start passed, provider not yet confirmed live) is still "upcoming":
  *     calling it live would tell the customer the pandit is on when he is not;
  *   - cancelled / completed / expired all read as "ended".
+ *
+ * [SAATHUM-WATCH-1 2026-09-28] `streamEnded` — event_videos.ended_at IS NOT NULL, i.e.
+ * the YouTube stream-end check (or its clock fallback) already decided this Saa Thum
+ * stream is over — forces "ended" even if the raw schedule window hasn't closed yet
+ * (host ended early), same rule as tabOf() on the admin side.
  */
-export function eventState(listing: ListingRow, paid: boolean, now = Date.now()): { state: EventState; schedule: ScheduleState } {
+export function eventState(listing: ListingRow, paid: boolean, now = Date.now(), streamEnded = false): { state: EventState; schedule: ScheduleState } {
   const schedule = scheduleState(listing, now);
-  const over = schedule === "ended" || schedule === "cancelled" || schedule === "expired";
+  const over = streamEnded || schedule === "ended" || schedule === "cancelled" || schedule === "expired";
   if (!paid) return { state: over ? "ended" : "pending_payment", schedule };
+  if (over) return { state: "ended", schedule };
   if (schedule === "live") {
     const win = eventWindow(listing);
     // A live projection long past its scheduled end is stuck; the show is over for the buyer.
     if (win && now >= win.end + 6 * 60 * 60_000) return { state: "ended", schedule };
     return { state: "live", schedule };
   }
-  if (over || schedule === "unpublished") return { state: "ended", schedule };
+  if (schedule === "unpublished") return { state: "ended", schedule };
   return { state: "upcoming", schedule };
 }
 

@@ -24,23 +24,38 @@ export function parseTab(raw: string | null | undefined): EventTab {
 /**
  * Which admin tab a listing row belongs in. Uses scheduleState() so the admin and
  * the customer surfaces can never disagree about whether a show is over.
+ *
+ * [SAATHUM-WATCH-1 2026-09-28] `streamEnded` — event_videos.ended_at IS NOT NULL,
+ * i.e. the YouTube stream-end check (or the clock fallback inside it) already
+ * decided this Saa Thum stream is over — moves a row to Past even while the raw
+ * schedule window hasn't technically closed yet (e.g. the host ended early).
+ * Checked FIRST (after cancelled/drafts) so it wins over "live"/"upcoming".
  */
-export function tabOf(row: { kind?: unknown; status?: unknown; starts_at?: unknown; duration_min?: unknown }, now = Date.now()): EventTab {
+export function tabOf(
+  row: { kind?: unknown; status?: unknown; starts_at?: unknown; duration_min?: unknown },
+  now = Date.now(),
+  streamEnded = false,
+): EventTab {
   const status = String(row.status ?? "");
   if (status === "cancelled") return "cancelled";
   if ((DRAFT_STATUSES as readonly string[]).includes(status)) return "drafts";
+  if (streamEnded) return "past";
   const state = scheduleState({ ...row, kind: row.kind ?? "live_event" }, now);
   if (state === "live" || state === "starting") return "live";
   if (state === "ended" || state === "expired") return "past";
   return "upcoming"; // upcoming, or a published row with no start time yet ("open")
 }
 
-/** SQL CASE giving the same answer as tabOf() for alias `a`; `nowRef` is a bind like `?1`. */
+/** SQL CASE giving the same answer as tabOf() for alias `a`; `nowRef` is a bind like `?1`.
+ *  Self-contained (a correlated subquery on event_videos) so a caller doesn't need to
+ *  remember to LEFT JOIN it — see tabOf's own doc comment for the streamEnded rule. */
 export function tabSql(a: string, nowRef: string): string {
   const s = startsMsSql(a);
+  const streamEnded = `(SELECT v.ended_at FROM event_videos v WHERE v.listing_id=${a}.id) IS NOT NULL`;
   return `(CASE
     WHEN ${a}.status='cancelled' THEN 'cancelled'
     WHEN ${a}.status IN ('draft','pending_review','approved','rejected') THEN 'drafts'
+    WHEN ${streamEnded} THEN 'past'
     WHEN ${a}.status='live' THEN 'live'
     WHEN ${a}.status='completed' THEN 'past'
     WHEN ${a}.status='published' AND ${s} IS NOT NULL AND ${endMsSql(a)} <= ${nowRef} THEN 'past'

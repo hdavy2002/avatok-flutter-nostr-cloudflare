@@ -117,43 +117,47 @@ export function isLiveStreamCard(
 const APP = "saathum";
 
 /**
- * [SAATHUM-WATCH-1] Cron sweep (index.ts scheduled(), every 5 min): asks
- * YouTube whether a saved-but-not-yet-ended live stream has actually ended
- * (liveStreamingDetails.actualEndTime), for listings that started within the
- * last 24h — anything older is already past the clock-fallback grace window
- * in computeStreamState and does not need an API call to be treated as ended.
- * Batches up to 50 video ids per YouTube call (their own limit). Skips
- * quietly (one `track`, never an exception) when YOUTUBE_API_KEY is unset —
- * the clock fallback alone still marks old streams ended.
+ * [SAATHUM-WATCH-1] Cron sweep (index.ts scheduled(), every 5 min), two passes:
+ *   1. Asks YouTube whether a saved-but-not-yet-ended live stream has actually
+ *      ended (liveStreamingDetails.actualEndTime), for listings that started
+ *      within the last 24h. Batches up to 50 video ids per call (YouTube's
+ *      limit). Skipped quietly (one `track`, never an exception) when
+ *      YOUTUBE_API_KEY is unset.
+ *   2. ALWAYS runs regardless of (1): persists ended_at for any video whose
+ *      scheduled window + grace has passed but pass (1) hasn't (yet, or ever,
+ *      without an API key) confirmed via YouTube — the same clock rule
+ *      computeStreamState() already uses at read time, just written down here
+ *      so admin archive / user past-events / tiles and the
+ *      saathum_stream_ended_archived telemetry all get one definite moment.
+ * Each pass emits saathum_stream_ended_archived {listing_id, via} exactly once
+ * per listing, because both UPDATEs are guarded by `ended_at IS NULL`.
  */
 export async function checkSaathumStreamEnds(env: Env): Promise<{ checked: number; ended: number; api: "ok" | "skipped" | "error" }> {
   const apiKey = (env.YOUTUBE_API_KEY ?? "").trim();
-  if (!apiKey) {
-    await track(env, "system", "saathum_stream_end_check", APP, { checked: 0, ended: 0, api: "skipped" });
-    return { checked: 0, ended: 0, api: "skipped" };
-  }
   const db = env.DB_META;
-  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  let rows: { listing_id: string; youtube_video_id: string }[] = [];
-  try {
-    const rs = await db.prepare(
-      `SELECT v.listing_id AS listing_id, v.youtube_video_id AS youtube_video_id
-         FROM event_videos v JOIN listings l ON l.id = v.listing_id
-        WHERE v.ended_at IS NULL AND l.starts_at IS NOT NULL AND l.starts_at >= ?1
-        LIMIT 500`,
-    ).bind(dayAgo).all<{ listing_id: string; youtube_video_id: string }>();
-    rows = rs.results ?? [];
-  } catch (err) {
-    await trackException(env, err, { route: "checkSaathumStreamEnds:query", handled: true, app_name: APP });
-    return { checked: 0, ended: 0, api: "error" };
-  }
-  if (!rows.length) {
-    await track(env, "system", "saathum_stream_end_check", APP, { checked: 0, ended: 0, api: "ok" });
-    return { checked: 0, ended: 0, api: "ok" };
-  }
-  let ended = 0;
-  let apiOutcome: "ok" | "error" = "ok";
   const now = Date.now();
+  let rows: { listing_id: string; youtube_video_id: string }[] = [];
+  let ended = 0;
+  let apiOutcome: "ok" | "skipped" | "error" = apiKey ? "ok" : "skipped";
+  // [SAATHUM-WATCH-1 2026-09-28] The YouTube API pass and the clock-fallback pass below
+  // both run every time — no early return — so a missing API key, or no listing due for
+  // an API check right now, never stops old streams from still getting archived by clock.
+  if (apiKey) {
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    try {
+      const rs = await db.prepare(
+        `SELECT v.listing_id AS listing_id, v.youtube_video_id AS youtube_video_id
+           FROM event_videos v JOIN listings l ON l.id = v.listing_id
+          WHERE v.ended_at IS NULL AND l.starts_at IS NOT NULL AND l.starts_at >= ?1
+          LIMIT 500`,
+      ).bind(dayAgo).all<{ listing_id: string; youtube_video_id: string }>();
+      rows = rs.results ?? [];
+    } catch (err) {
+      await trackException(env, err, { route: "checkSaathumStreamEnds:query", handled: true, app_name: APP });
+      apiOutcome = "error";
+      rows = [];
+    }
+  }
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50);
     const idParam = batch.map((b) => b.youtube_video_id).join(",");
@@ -172,11 +176,35 @@ export async function checkSaathumStreamEnds(env: Env): Promise<{ checked: numbe
         await db.prepare(`UPDATE event_videos SET ended_at=?2 WHERE listing_id=?1 AND ended_at IS NULL`)
           .bind(b.listing_id, now).run().catch(() => {});
         ended++;
+        // [SAATHUM-WATCH-1 2026-09-28] Fires once: the WHERE above only ever matches a
+        // listing while its ended_at is still NULL, so a later cron pass can't re-fire this.
+        void track(env, "system", "saathum_stream_ended_archived", APP, { listing_id: b.listing_id, via: "youtube" });
       }
     } catch (err) {
       apiOutcome = "error";
       await trackException(env, err, { route: "checkSaathumStreamEnds:youtube_api", handled: true, app_name: APP });
     }
+  }
+  // [SAATHUM-WATCH-1 2026-09-28] Persist the clock fallback too (not just compute it at
+  // read time): a stream whose YouTube id we don't have an actualEndTime for yet, but
+  // whose scheduled window + grace has long passed, is written to ended_at here so the
+  // admin archive / user past-events / tile "not live" all get the SAME one-time
+  // "this is now archived" moment (and so `via: 'clock'` telemetry fires exactly once).
+  try {
+    const graceRows = await db.prepare(
+      `SELECT v.listing_id AS listing_id
+         FROM event_videos v JOIN listings l ON l.id = v.listing_id
+        WHERE v.ended_at IS NULL AND l.starts_at IS NOT NULL
+          AND (l.starts_at + COALESCE(l.duration_min, 0) * 60000 + ?1) < ?2
+        LIMIT 500`,
+    ).bind(CLOCK_GRACE_MS, now).all<{ listing_id: string }>();
+    for (const r of graceRows.results ?? []) {
+      await db.prepare(`UPDATE event_videos SET ended_at=?2 WHERE listing_id=?1 AND ended_at IS NULL`)
+        .bind(r.listing_id, now).run().catch(() => {});
+      void track(env, "system", "saathum_stream_ended_archived", APP, { listing_id: r.listing_id, via: "clock" });
+    }
+  } catch (err) {
+    await trackException(env, err, { route: "checkSaathumStreamEnds:clock_fallback", handled: true, app_name: APP });
   }
   await track(env, "system", "saathum_stream_end_check", APP, { checked: rows.length, ended, api: apiOutcome });
   return { checked: rows.length, ended, api: apiOutcome };

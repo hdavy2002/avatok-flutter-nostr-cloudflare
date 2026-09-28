@@ -101,8 +101,17 @@ async function seatsTaken(env: Env, listingId: string): Promise<number> {
   } catch { return 0; }
 }
 
+const EVENT_ENDED_MESSAGE = "This event has ended — bookings are closed.";
+
 async function computeBookable(env: Env, row: ListingRow, snapshot: ListingSnapshot): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (row.kind !== "live_event") return { ok: false, reason: "not_a_live_event" };
+  // [SAATHUM-WATCH-1 2026-09-28] Owner decision: once the stream has ended (YouTube
+  // actualEndTime, or the clock fallback — lib/saathum_stream_state.ts, the SAME rule
+  // the watch page and the tiles use), bookings stop, even if the naive schedule
+  // window (bookability() below) hasn't technically closed yet. Checked BEFORE
+  // bookability() so this is the one that wins.
+  const { state } = await streamStateForListing(env, row.id);
+  if (state === "ended") return { ok: false, reason: EVENT_ENDED_MESSAGE };
   const b = bookability(row, Date.now());
   if (!b.ok) return { ok: false, reason: b.reason };
   const capacity = snapshot.visibility === "private" ? 1 : row.capacity;
@@ -279,7 +288,14 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   }
 
   const bookableCheck = await computeBookable(env, row, snapshot);
-  if (!bookableCheck.ok) return failure(bookableCheck.reason, 409);
+  if (!bookableCheck.ok) {
+    // [SAATHUM-WATCH-1 2026-09-28] Telemetry for the specific "stream already
+    // ended" refusal, distinct from sold-out/cancelled/etc.
+    if (bookableCheck.reason === EVENT_ENDED_MESSAGE) {
+      void track(env, uid, "saathum_checkout_refused_ended", APP, { listing_id: row.id });
+    }
+    return failure(bookableCheck.reason, 409, { message: bookableCheck.reason });
+  }
 
   const [chadhavaCatalog, config, p] = await Promise.all([loadChadhavaCatalog(env), readConfig(env), hdfcPolicy(env)]);
   const chadhava = ritual && Array.isArray(b.chadhava) ? (b.chadhava as { id: string; qty: number }[]) : [];

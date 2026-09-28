@@ -9,8 +9,14 @@
 //    booking: the hero photo is REPLACED by the embedded YouTube player. The
 //    video id comes ONLY from the entitled GET /api/saathum/watch/:id — never
 //    rendered into the page HTML for anyone else.
-//  - state 'ended': overlay "This live stream has ended"; a confirmed buyer
-//    also sees "Your video will come on WhatsApp and email." No player ever.
+//  - state 'ended': overlay "This live stream has ended." — a confirmed buyer
+//    also sees the download/WhatsApp/email note (owner copy, 2026-09-28). No
+//    player ever. The event also STOPS TAKING BOOKINGS the moment it's ended:
+//    this island swaps the page's own "Book with my sankalp" button (and its
+//    own book CTA in the live overlay, which this phase never renders) for a
+//    non-clickable "Event ended" pill, reusing the existing disabled-button
+//    style the SSR page already uses for "Booking closed". Checkout creation
+//    is refused server-side either way (saathum_checkout.ts computeBookable).
 //  - state 'none': this island renders nothing — the page's own SSR
 //    badge/countdown keeps showing exactly as before.
 //
@@ -96,6 +102,22 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
     }
   }, [phase, listingId]);
 
+  // [SAATHUM-WATCH-1 2026-09-28] Booking is closed once the stream has ended — the
+  // page's own SSR "Book with my sankalp" button was rendered before we knew that
+  // (or the show ended early, ahead of the schedule window SSR checks), so swap it
+  // here for the same disabled-button markup the SSR page already uses for
+  // "Booking closed", reusing its exact classes/attrs (no new styles).
+  useEffect(() => {
+    if (phase.kind !== 'ended_overlay') return;
+    const btn = document.querySelector<HTMLAnchorElement>('a[data-ep-action="book"]');
+    if (!btn) return;
+    const span = document.createElement('span');
+    span.className = btn.className;
+    span.setAttribute('aria-disabled', 'true');
+    span.textContent = 'Event ended';
+    btn.replaceWith(span);
+  }, [phase]);
+
   if (phase.kind === 'hidden') return null;
 
   if (phase.kind === 'player') {
@@ -127,11 +149,17 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
     );
   }
 
-  // ended_overlay
+  // ended_overlay — owner copy 2026-09-28: buyers get the full download note,
+  // everyone else just sees that the stream has ended.
   return (
     <div className="ep-live-cover ep-live-cover--dim">
-      <span className="ep-pill ep-pill--soft">This live stream has ended</span>
-      {phase.buyer && <p className="ep-live-ended-note">Your video will come on WhatsApp and email.</p>}
+      <span className="ep-pill ep-pill--soft">This live stream has ended.</span>
+      {phase.buyer && (
+        <p className="ep-live-ended-note">
+          You can download your video from your dashboard under Past events. Once it&rsquo;s ready, we&rsquo;ll
+          also send you the direct link on WhatsApp and email. The video can take 24 to 48 hours to appear.
+        </p>
+      )}
     </div>
   );
 }

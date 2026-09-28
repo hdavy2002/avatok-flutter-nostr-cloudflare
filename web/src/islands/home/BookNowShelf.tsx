@@ -60,7 +60,7 @@ function sampleItems(samples: GuideLink[], now: number): Item[] {
       id: 'sample-' + i, title: g.title, deity: null,
       blurb: 'Sample card — shown only with ?booknow=preview so the design can be reviewed before real listings exist.',
       image: publicImage(g.image, { width: 900, fit: 'scale-down' }), imageSrcSet: null,
-      mode: p.mode, liveNow: false, startsAt: now + p.off, durationMin: 120,
+      mode: p.mode, liveNow: false, isLiveStream: false, startsAt: now + p.off, durationMin: 120,
       location: p.city, category: null, intention: null, ratingAvg: p.r, ratingCount: p.rc, booked: p.booked, price: p.price,
       prasad: p.prasad, videoDownload: p.mode === 'live', visibility: 'public',
       eventType: eventTypeForSample(g.title), performedBy: null, performerPhotoUrl: null,

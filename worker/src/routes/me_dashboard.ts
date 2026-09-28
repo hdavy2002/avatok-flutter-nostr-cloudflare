@@ -138,7 +138,8 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
   const rs = await env.DB_META.prepare(EVENTS_SQL).bind(a.uid, now).all<any>();
   const items = (rs.results ?? []).map((r) => {
     const paid = Number(r.paid) === 1;
-    const { state, schedule } = eventState(r, paid, now);
+    const streamEnded = r.stream_ended_at != null;
+    const { state, schedule } = eventState(r, paid, now, streamEnded);
     const listing = shapeListing(r);
     const endsAt = r.ends_ms != null ? Number(r.ends_ms) : null;
     const item: Record<string, unknown> = {
