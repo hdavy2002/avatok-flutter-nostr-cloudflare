@@ -27,7 +27,7 @@
 // id in the DOM.
 import { useEffect, useRef, useState } from 'react';
 import { IslandBoundary } from '../../components/IslandBoundary';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { ClerkIsland, getActiveTokenWaited } from '../../lib/clerk';
 import { ApiError } from '../../lib/apiClient';
 import { getLiveState, getWatch } from '../saathum-checkout/api';
 import { capture, captureException } from '../../lib/analytics';
@@ -64,7 +64,11 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
 
       // Only ever call the entitled endpoint when a session token exists —
       // a signed-out visitor never triggers it.
-      const token = await getActiveToken().catch(() => null);
+      // [SAATHUM-LIVE-TOKEN-WAIT-1 2026-09-29] Wait (up to 5s) for Clerk to load.
+      // This island hydrates before Clerk has restored the session, so the plain
+      // getActiveToken() said "signed out" and a PAYING buyer (or an admin preview)
+      // got the "Book to watch" overlay / nothing instead of the player.
+      const token = await getActiveTokenWaited(5000).catch(() => null);
       if (token) {
         try {
           const w = await getWatch(listingId, token, ctrl.signal, wantPreview);
