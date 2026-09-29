@@ -23,7 +23,8 @@ import {
 import { renderSaathumReceiptPdf } from "../lib/me_receipt_pdf";
 import {
   computeQuote, validateAddress, validateSankalp, normalizeUtr, addressLocked,
-  externalStatus, CHECKOUT_EXPIRY_MS, DAKSHINA_PRESETS, dueForReminder,
+  externalStatus, externalReason, receiptAmounts, CHECKOUT_EXPIRY_MS, DAKSHINA_PRESETS, dueForReminder,
+  LATE_SMS_GRACE_MS, // [SAATHUM-UPI-3LAYER 2026-09-29]
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
 import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
@@ -33,7 +34,10 @@ import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-
 import { computeStreamState, streamStateForListing } from "../lib/saathum_stream_state";
 // [WA-NOTIFY-2 2026-09-28] Late-buyer live-link fan-out + the internal watch URL
 // builder, both shared with lib/whatsapp_notify.ts's own bulk/late-buyer WhatsApp path.
-import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst } from "../lib/whatsapp_notify";
+import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sendSaathumPaymentWhatsApp } from "../lib/whatsapp_notify";
+// [SAATHUM-UPI-3LAYER 2026-09-29] Unique payable amount per open checkout.
+import { reserveUniqueAmount, releaseAmount, dropReservation } from "../lib/saathum_upi3";
+import { AMOUNT_COOLDOWN_MS } from "../lib/saathum_checkout_logic";
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -199,6 +203,10 @@ type CheckoutRowDb = {
   reason_code: string | null; utr: string | null; commercial_order_id: string | null; receipt_no: string | null;
   created_at: number; expires_at: number; updated_at: number; confirmed_at: number | null; email_sent_at: number | null;
   refund_policy_accepted_at: number | null; refund_policy_version: string | null;
+  // [SAATHUM-UPI-3LAYER 2026-09-29]
+  rounding_discount_paise: number; paid_claimed_at: number | null; payer_vpa: string | null;
+  matched_message_hash: string | null; confirm_source: string | null; reviewed_by: string | null;
+  review_note: string | null; reviewed_at: number | null; review_alerted_at: number | null;
 };
 
 async function loadOwnCheckout(env: Env, uid: string, checkoutId: string): Promise<CheckoutRowDb | null> {
@@ -214,6 +222,7 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
   const eventType = eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}));
   const now = Date.now();
   const status = externalStatus(row, now);
+  const reasonCode = externalReason(row, now); // [SAATHUM-UPI-3LAYER 2026-09-29]
   const config = await readConfig(env);
   const p = await hdfcPolicy(env);
   const canPay = p.enabled && status === "awaiting_payment";
@@ -235,9 +244,18 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
     can_edit_address: !addressLocked(listing?.starts_at ?? null, now),
     payment: {
       upi_url: upiUrl, vpa: p.vpa || null, payee_name: p.payee_name,
-      amount_rupees: row.total_rupees, expires_at: row.expires_at, utr: row.utr,
+      // [SAATHUM-UPI-3LAYER 2026-09-29] The exact amount to pay (total minus the unique-amount
+      // rounding discount), in rupees with paise -- e.g. 199.01. Was the whole-rupee total.
+      amount_rupees: row.amount_paise / 100, amount_paise: row.amount_paise,
+      expires_at: row.expires_at, utr: row.utr,
       reference_revision: row.reference_revision, reason_code: status === "awaiting_payment" ? row.reason_code : null,
     },
+    // [SAATHUM-UPI-3LAYER 2026-09-29] Contract fields for the confirmation page.
+    reason_code: reasonCode,
+    pay_amount_paise: row.amount_paise,
+    rounding_discount_paise: row.rounding_discount_paise ?? 0,
+    paid_claimed_at: row.paid_claimed_at ?? null,
+    upi: { vpa: p.vpa || null, payee_name: p.payee_name, uri: upiUrl },
     receipt_url: status === "confirmed" ? `/api/saathum/checkout/${row.checkout_id}/receipt.pdf` : null,
     confirmed_at: row.confirmed_at, created_at: row.created_at,
     ...(config.saathumGstEnabled === undefined ? {} : {}),
@@ -326,21 +344,38 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   if (prasad && !address) return failure("address_required", 400, { message: "A shipping address is required for prasad courier.", field: "address" });
 
   const checkoutId = crypto.randomUUID(), now = Date.now();
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Reserve a payable amount no other open checkout holds:
+  // total*100 - k paise, k in 1..199. The buyer pays slightly LESS than the bill; the
+  // difference is the "UPI rounding discount" on the receipt. See lib/saathum_upi3.ts.
+  let reservation: Awaited<ReturnType<typeof reserveUniqueAmount>>;
+  try {
+    reservation = await reserveUniqueAmount(env, {
+      account: p.account, totalRupees: quote.value.total_rupees, checkoutId, now, expiresAt: now + CHECKOUT_EXPIRY_MS,
+    });
+  } catch (err) {
+    await trackException(env, err, { uid, route: "/api/saathum/checkout:reserve", method: "POST", handled: true, app_name: APP });
+    return failure("checkout_unavailable", 503);
+  }
+  if (!reservation) {
+    console.error("[saathum-checkout] amount_pool_exhausted", JSON.stringify({ total_rupees: quote.value.total_rupees }));
+    return failure("amount_pool_exhausted", 503, { message: "Too many payments are in progress right now. Please try again in a few minutes.", retryable: true });
+  }
   try {
     await db.prepare(
       `INSERT INTO saathum_checkouts
         (checkout_id,uid,listing_id,request_key,quote_json,subtotal_rupees,gst_rupees,total_rupees,ticket_rupees,
          sankalp_json,prasad,address_json,status,receiving_account_key,amount_paise,created_at,expires_at,updated_at,
-         refund_policy_accepted_at,refund_policy_version)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'awaiting_payment',?13,?14,?15,?16,?15,?15,?17)`,
+         refund_policy_accepted_at,refund_policy_version,rounding_discount_paise)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'awaiting_payment',?13,?14,?15,?16,?15,?15,?17,?18)`,
     ).bind(
       checkoutId, uid, row.id, b.request_key, JSON.stringify(quote.value),
       quote.value.subtotal_rupees, quote.value.gst_rupees, quote.value.total_rupees, snapshot.price_rupees,
       JSON.stringify(sankalp.value), prasad ? 1 : 0, address ? JSON.stringify(address) : null,
-      p.account, quote.value.total_rupees * 100, now, now + CHECKOUT_EXPIRY_MS,
-      REFUND_POLICY_VERSION,
+      p.account, reservation.amountPaise, now, now + CHECKOUT_EXPIRY_MS,
+      REFUND_POLICY_VERSION, reservation.roundingDiscountPaise,
     ).run();
   } catch (err) {
+    await dropReservation(env, checkoutId);
     await trackException(env, err, { uid, route: "/api/saathum/checkout", method: "POST", handled: true, app_name: APP });
     return failure("checkout_unavailable", 503);
   }
@@ -371,8 +406,38 @@ export async function saathumCheckoutGet(req: Request, env: Env, id: string): Pr
   if (isFail(auth)) return failure(auth.error, auth.status);
   let row = await loadOwnCheckout(env, auth.uid, id);
   if (!row) return failure("not_found", 404);
-  if (row.status === "awaiting_payment") {
-    await finalizeSaathumCheckoutByIntent(env, row.checkout_id).catch((err) => trackException(env, err, { uid: auth.uid, route: "/api/saathum/checkout/:id", method: "GET", handled: true, app_name: APP }));
+  if (isOpenForMatching(row)) {
+    // [SAATHUM-UPI-3LAYER 2026-09-29] Polling also retries matching (typed UTR first, then the
+    // unique-amount rule), so a confirmation never depends on the ingest hook alone.
+    await reconcileOpenCheckout(env, row.checkout_id).catch((err) => trackException(env, err, { uid: auth.uid, route: "/api/saathum/checkout/:id", method: "GET", handled: true, app_name: APP }));
+    row = (await loadOwnCheckout(env, auth.uid, id)) ?? row;
+  }
+  return json({ checkout: await checkoutEnvelope(env, row) });
+}
+
+// ---------------------------------------------------------------------------
+// [SAATHUM-UPI-3LAYER 2026-09-29] POST /api/saathum/checkout/:id/paid (signed in)
+// The buyer tapped "I've paid". Stamps paid_claimed_at once (idempotent), then tries to
+// match immediately. After PAID_CLAIM_REVIEW_MS (180 s) without a bank confirmation the
+// envelope reads status=review_pending / reason_code=awaiting_bank (computed on read, and
+// persisted by the cron). Automatic matching keeps running, so a late SMS still confirms.
+// ---------------------------------------------------------------------------
+export async function saathumCheckoutPaid(req: Request, env: Env, id: string): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return failure(auth.error, auth.status);
+  const throttle = await limited(env, `paid:${auth.uid}`, 20); if (throttle) return throttle;
+  let row = await loadOwnCheckout(env, auth.uid, id);
+  if (!row) return failure("not_found", 404);
+  const now = Date.now();
+  if (row.status === "awaiting_payment" && row.expires_at > now && !row.paid_claimed_at) {
+    await metaDb(env).prepare(
+      `UPDATE saathum_checkouts SET paid_claimed_at=?3, updated_at=?3 WHERE checkout_id=?1 AND uid=?2 AND status='awaiting_payment' AND paid_claimed_at IS NULL`,
+    ).bind(id, auth.uid, now).run();
+    await track(env, auth.uid, "saathum_checkout_paid_claimed", APP, { checkout_id: id });
+    row = (await loadOwnCheckout(env, auth.uid, id)) ?? row;
+  }
+  if (isOpenForMatching(row)) {
+    await reconcileOpenCheckout(env, row.checkout_id).catch((err) => trackException(env, err, { uid: auth.uid, route: "/api/saathum/checkout/:id/paid", method: "POST", handled: true, app_name: APP }));
     row = (await loadOwnCheckout(env, auth.uid, id)) ?? row;
   }
   return json({ checkout: await checkoutEnvelope(env, row) });
@@ -488,7 +553,7 @@ export async function saathumCheckoutReceiptPdf(req: Request, env: Env, id: stri
     receiptNo: row.receipt_no, issuedAt: row.confirmed_at ?? row.created_at,
     billedTo: { name: sankalp.name || null, email, address: address ? [address.line1, address.line2, `${address.city}, ${address.state} ${address.pincode}`].filter(Boolean) as string[] : [] },
     item: { title: listing?.title ?? "Saa Thum booking", startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
-    lines: quote.lines, gstRatePct: quote.gst_rate_pct, gstRupees: quote.gst_rupees, subtotalRupees: quote.subtotal_rupees, totalRupees: quote.total_rupees,
+    ...receiptMoney(quote, row), // [SAATHUM-UPI-3LAYER 2026-09-29] collected amount + rounding-discount line
     paidAt: row.confirmed_at, utr: row.utr, paymentId: row.checkout_id, orderId: row.commercial_order_id,
   });
   try { await env.DIGITAL.put(key, pdf, { httpMetadata: { contentType: "application/pdf" }, customMetadata: { uid: auth.uid, checkout_id: row.checkout_id } }); } catch { /* best-effort cache */ }
@@ -541,26 +606,75 @@ async function saveToProfile(env: Env, uid: string, v: { sankalp?: any; address?
   catch (err) { await trackException(env, err, { uid, route: "saathum_checkout.saveToProfile", handled: true, app_name: APP }); }
 }
 
-export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: string): Promise<void> {
-  const db = metaDb(env);
-  const row = await db.prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
-  if (!row || row.status !== "awaiting_payment" || !row.payer_reference) return;
-  const now = Date.now();
-  const receipt = await db.prepare(
-    `SELECT bank_reference, payer_vpa FROM hdfc_sms_smoke_receipts
-      WHERE receiving_account_key=?1 AND bank_reference=?2 AND amount_paise=?3 AND disposition='accepted'
-        AND received_at_end_ms>=?4 AND received_at_ms<=?5`,
-  ).bind(row.receiving_account_key, row.payer_reference, row.amount_paise, row.created_at, row.expires_at + 86_400_000).first<{ bank_reference: string; payer_vpa: string | null }>();
-  if (!receipt) return;
+// ---------------------------------------------------------------------------
+// [SAATHUM-UPI-3LAYER 2026-09-29] Payment confirmation: ONE shared path.
+//   - typed-UTR path (optional, unchanged behaviour)  -> finalizeSaathumCheckoutByIntent
+//   - unique-amount auto-match from a bank SMS         -> matchSaathumReceipt
+//   - manual admin confirm                             -> routes/saathum_payment_review.ts
+// all end in confirmSaathumCheckout(), so the email, WhatsApp, ticket provisioning and
+// receipt happen identically however the payment was confirmed.
+// ---------------------------------------------------------------------------
 
-  // First writer wins — the guard (status='awaiting_payment' AND payer_reference
-  // unchanged) makes a concurrent SMS-webhook call and a concurrent customer
-  // GET/UTR call converge on exactly one confirmation.
-  const claim = await db.prepare(
-    `UPDATE saathum_checkouts SET status='confirmed', utr=?3, confirmed_at=?4, updated_at=?4
-      WHERE checkout_id=?1 AND status='awaiting_payment' AND payer_reference=?2`,
-  ).bind(checkoutId, row.payer_reference, row.payer_reference, now).run();
-  if (Number((claim as any).meta?.changes ?? 0) !== 1) return; // lost the race or already confirmed elsewhere
+/** Receipt PDF money block: totals on the amount actually collected. */
+function receiptMoney(quote: Quote, row: Pick<CheckoutRowDb, "amount_paise">) {
+  const a = receiptAmounts(quote, row.amount_paise);
+  return { lines: a.lines, gstRatePct: quote.gst_rate_pct, gstRupees: a.gstRupees, subtotalRupees: a.subtotalRupees, totalRupees: a.totalRupees };
+}
+
+/** A checkout automatic matching may still confirm (typed UTR or unique amount). A row that
+ * was already claimed and then failed provisioning (confirmed_at set) is never re-claimed. */
+function isOpenForMatching(row: Pick<CheckoutRowDb, "status" | "confirmed_at" | "reason_code">): boolean {
+  return (row.status === "awaiting_payment" || row.status === "review_pending") && !row.confirmed_at
+    && row.reason_code !== "provisioning_failed" && row.reason_code !== "finalize_error";
+}
+
+/** UTR path first, then the unique-amount rule. Idempotent; safe from GET/paid/ingest. */
+async function reconcileOpenCheckout(env: Env, checkoutId: string): Promise<void> {
+  await finalizeSaathumCheckoutByIntent(env, checkoutId);
+  const row = await metaDb(env).prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
+  if (row && isOpenForMatching(row)) await matchSaathumCheckoutToReceipts(env, row);
+}
+
+export type ConfirmEvidence = {
+  via: "sms_auto" | "utr" | "admin";
+  bankReference: string | null;
+  payerVpa?: string | null;
+  messageHash?: string | null;
+  adminUid?: string | null;
+  note?: string | null;
+  /** Typed-UTR path: only claim if the buyer's UTR is still the one we matched. */
+  expectPayerReference?: string | null;
+};
+
+/**
+ * First-writer-wins confirmation shared by every path. Returns "confirmed" once provisioning
+ * succeeded, "lost" when another writer got there first (or the bank reference is already
+ * claimed by a different checkout), "failed" when the claim succeeded but provisioning did not
+ * (row parked in review_pending with a reason_code -- never left half-confirmed).
+ */
+export async function confirmSaathumCheckout(env: Env, checkoutId: string, ev: ConfirmEvidence): Promise<"confirmed" | "lost" | "failed"> {
+  const db = metaDb(env);
+  const now = Date.now();
+  const admin = ev.via === "admin";
+  let claim;
+  try {
+    claim = await db.prepare(
+      `UPDATE saathum_checkouts SET status='confirmed', payer_reference=COALESCE(?2,payer_reference), utr=COALESCE(?2,payer_reference),
+              confirmed_at=?3, updated_at=?3, reason_code=NULL, payer_vpa=COALESCE(?4,payer_vpa), matched_message_hash=?5,
+              confirm_source=?6, reviewed_by=COALESCE(?7,reviewed_by), review_note=COALESCE(?8,review_note),
+              reviewed_at=CASE WHEN ?7 IS NULL THEN reviewed_at ELSE ?3 END
+        WHERE checkout_id=?1 AND status IN ('awaiting_payment','review_pending')
+          AND (?9=1 OR confirmed_at IS NULL) AND (?10 IS NULL OR payer_reference=?10)`,
+    ).bind(checkoutId, ev.bankReference, now, ev.payerVpa ?? null, ev.messageHash ?? null, ev.via, ev.adminUid ?? null, ev.note ?? null, admin ? 1 : 0, ev.expectPayerReference ?? null).run();
+  } catch {
+    // UNIQUE(receiving_account_key, payer_reference): this bank transaction already confirmed
+    // (or is claimed by) another checkout -- never double-confirm one bank_reference.
+    return "lost";
+  }
+  if (Number((claim as any).meta?.changes ?? 0) !== 1) return "lost"; // lost the race or already confirmed elsewhere
+  const row = await db.prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
+  if (!row) return "failed";
+  const gatewayRef = row.payer_reference ?? `manual-${checkoutId}`;
 
   try {
     const config = await readConfig(env);
@@ -577,13 +691,13 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
     await freezeCommercialPurchaseQuote(env, orderId, purchaseQuote);
     const resp = await provisionFromGatewayPurchase(env, {
       uid: row.uid, listingId: row.listing_id, bookingId: null, kind: "live_event",
-      chargedTokens: purchaseQuote.pricing.buyerTotal, purchaseId: checkoutId, gatewayRef: row.payer_reference,
+      chargedTokens: purchaseQuote.pricing.buyerTotal, purchaseId: checkoutId, gatewayRef,
       gateway: "hdfc_sms",
     });
     if (!resp.ok) {
       await db.prepare(`UPDATE saathum_checkouts SET status='review_pending', reason_code='provisioning_failed', updated_at=?2 WHERE checkout_id=?1`).bind(checkoutId, Date.now()).run();
-      await trackException(env, new Error(`saathum provisioning failed: ${resp.status}`), { uid: row.uid, route: "finalizeSaathumCheckoutByIntent", handled: true, app_name: APP });
-      return;
+      await trackException(env, new Error(`saathum provisioning failed: ${resp.status}`), { uid: row.uid, route: "confirmSaathumCheckout", handled: true, app_name: APP });
+      return "failed";
     }
 
     // Receipt number: SH-<year>-NNNNNN, scoped to Saa Thum's own counter.
@@ -597,16 +711,20 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
 
     // Mirror into hdfc_sms_payment_intents (protocol v1 shape) so Dashboard 2
     // billing, admin payments and refunds keep working (spec §Payment rail).
-    // amount_paise here is the FULL total the customer paid, per spec — not just
-    // the ticket portion that went through escrow above.
+    // amount_paise here is the amount actually COLLECTED (total minus the unique-amount
+    // rounding discount), not just the ticket portion that went through escrow above.
     await db.prepare(
       `INSERT INTO hdfc_sms_payment_intents (intent_id,uid,listing_id,kind,amount_paise,status,bank_reference,commercial_order_id,expires_at,created_at,updated_at)
        VALUES (?1,?2,?3,'live_event',?4,'confirmed',?5,?6,?7,?8,?9)
        ON CONFLICT(intent_id) DO UPDATE SET status='confirmed', bank_reference=excluded.bank_reference, commercial_order_id=excluded.commercial_order_id, updated_at=excluded.updated_at`,
-    ).bind(checkoutId, row.uid, row.listing_id, row.amount_paise, row.payer_reference, orderId, row.expires_at, row.created_at, Date.now()).run().catch(() => {});
+    ).bind(checkoutId, row.uid, row.listing_id, row.amount_paise, gatewayRef, orderId, row.expires_at, row.created_at, Date.now()).run().catch(() => {});
 
-    await track(env, row.uid, "saathum_checkout_confirmed", APP, { listing_id: row.listing_id, total_rupees: row.total_rupees, via: "customer", event_type: eventTypeOf(listingAttrsForEvent) });
-    await sendSaathumConfirmationEmail(env, checkoutId).catch((err) => trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent:email", handled: true, app_name: APP }));
+    await releaseAmount(env, checkoutId, now); // payment consumed: the slot is free again
+    await track(env, row.uid, "saathum_checkout_confirmed", APP, { listing_id: row.listing_id, total_rupees: row.total_rupees, pay_amount_paise: row.amount_paise, via: ev.via, admin_uid: ev.adminUid ?? undefined, event_type: eventTypeOf(listingAttrsForEvent) });
+    await sendSaathumConfirmationEmail(env, checkoutId).catch((err) => trackException(env, err, { uid: row.uid, route: "confirmSaathumCheckout:email", handled: true, app_name: APP }));
+    // [SAATHUM-UPI-3LAYER 2026-09-29] "Payment received" WhatsApp (outbox, deduped per checkout).
+    await sendSaathumPaymentWhatsApp(env, "booking_confirmed", row.listing_id, checkoutId, row.uid)
+      .catch((err) => trackException(env, err, { uid: row.uid, route: "confirmSaathumCheckout:whatsapp", handled: true, app_name: APP }));
     // [WA-NOTIFY-2 2026-09-28] Owner decision: people can keep booking while a show
     // is live, and a buyer who confirms while it's live/linked must get the same
     // WhatsApp + email a bulk admin-save fan-out would have given them — never blocks
@@ -615,11 +733,132 @@ export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: stri
     // via the cron drain / email queue). Both are no-ops when the flag is off, when the
     // listing has no live link yet, or when it's cancelled/completed.
     await notifySaathumLateBuyerIfLive(env, checkoutId, row.uid, row.listing_id)
-      .catch((err) => trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent:late_buyer", handled: true, app_name: APP }));
+      .catch((err) => trackException(env, err, { uid: row.uid, route: "confirmSaathumCheckout:late_buyer", handled: true, app_name: APP }));
+    return "confirmed";
   } catch (err) {
     await db.prepare(`UPDATE saathum_checkouts SET status='review_pending', reason_code='finalize_error', updated_at=?2 WHERE checkout_id=?1`).bind(checkoutId, Date.now()).run().catch(() => {});
-    await trackException(env, err, { uid: row.uid, route: "finalizeSaathumCheckoutByIntent", handled: true, app_name: APP });
+    await trackException(env, err, { uid: row.uid, route: "confirmSaathumCheckout", handled: true, app_name: APP });
+    return "failed";
   }
+}
+
+/** Typed-UTR path (optional). Idempotent -- safe from GET/UTR and the SMS webhook. Matches by
+ * (receiving_account_key, bank_reference, amount_paise): the buyer's UTR is the disambiguator. */
+export async function finalizeSaathumCheckoutByIntent(env: Env, checkoutId: string): Promise<void> {
+  const db = metaDb(env);
+  const row = await db.prepare(`SELECT * FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<CheckoutRowDb>();
+  if (!row || !isOpenForMatching(row) || !row.payer_reference) return;
+  const receipt = await db.prepare(
+    `SELECT message_hash, bank_reference, payer_vpa FROM hdfc_sms_smoke_receipts
+      WHERE receiving_account_key=?1 AND bank_reference=?2 AND amount_paise=?3 AND disposition='accepted'
+        AND received_at_end_ms>=?4 AND received_at_ms<=?5`,
+  ).bind(row.receiving_account_key, row.payer_reference, row.amount_paise, row.created_at, row.expires_at + LATE_SMS_GRACE_MS).first<{ message_hash: string; bank_reference: string; payer_vpa: string | null }>();
+  if (!receipt) return;
+  await confirmSaathumCheckout(env, checkoutId, {
+    via: "utr", bankReference: row.payer_reference, payerVpa: receipt.payer_vpa, messageHash: receipt.message_hash, expectPayerReference: row.payer_reference,
+  });
+}
+
+export type SmsReceiptEvidence = {
+  message_hash: string; receiving_account_key: string; bank_reference: string | null; amount_paise: number;
+  received_at_ms: number; received_at_end_ms: number; payer_vpa?: string | null;
+};
+export type MatchOutcome = { result: "confirmed" | "failed" | "no_candidate" | "ambiguous" | "reference_claimed" | "lost"; checkout_id?: string };
+
+/**
+ * [SAATHUM-UPI-3LAYER 2026-09-29] Auto-match a bank SMS to a checkout WITHOUT a buyer-typed
+ * UTR. Exactly-one-candidate rule: candidates are checkouts on the same account whose payable
+ * amount equals the SMS amount, still awaiting_payment/review_pending (a late SMS after
+ * review_pending still confirms), created before the SMS ended, with the SMS no later than
+ * expires_at + 24 h. Exactly 1 -> confirm; 0 or >1 -> stays unmatched (admin queue). A bank
+ * reference that any checkout already carries is never matched again (no double confirm).
+ */
+export async function matchSaathumReceipt(env: Env, r: SmsReceiptEvidence): Promise<MatchOutcome> {
+  if (!r.bank_reference) return { result: "no_candidate" };
+  const db = metaDb(env);
+  const claimed = await db.prepare(
+    `SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND (payer_reference=?2 OR matched_message_hash=?3) LIMIT 1`,
+  ).bind(r.receiving_account_key, r.bank_reference, r.message_hash).first<{ checkout_id: string }>();
+  if (claimed) return { result: "reference_claimed", checkout_id: claimed.checkout_id };
+  const candidates = await db.prepare(
+    `SELECT checkout_id FROM saathum_checkouts
+      WHERE receiving_account_key=?1 AND amount_paise=?2 AND status IN ('awaiting_payment','review_pending')
+        AND confirmed_at IS NULL AND (reason_code IS NULL OR reason_code NOT IN ('provisioning_failed','finalize_error'))
+        AND created_at<=?3 AND ?4<=expires_at+?5
+      LIMIT 3`,
+  ).bind(r.receiving_account_key, r.amount_paise, r.received_at_end_ms, r.received_at_ms, LATE_SMS_GRACE_MS).all<{ checkout_id: string }>();
+  const list = candidates.results ?? [];
+  if (list.length === 0) return { result: "no_candidate" };
+  if (list.length > 1) return { result: "ambiguous" };
+  const id = list[0].checkout_id;
+  const out = await confirmSaathumCheckout(env, id, {
+    via: "sms_auto", bankReference: r.bank_reference, payerVpa: r.payer_vpa ?? null, messageHash: r.message_hash,
+  });
+  return { result: out, checkout_id: id };
+}
+
+/** Checkout-centric retry (GET/paid polling): find accepted SMS evidence for this exact amount. */
+async function matchSaathumCheckoutToReceipts(env: Env, row: CheckoutRowDb): Promise<void> {
+  const rows = await metaDb(env).prepare(
+    `SELECT message_hash, receiving_account_key, bank_reference, amount_paise, received_at_ms, received_at_end_ms, payer_vpa
+       FROM hdfc_sms_smoke_receipts
+      WHERE receiving_account_key=?1 AND amount_paise=?2 AND disposition='accepted' AND bank_reference IS NOT NULL
+        AND claimed_intent_id IS NULL AND received_at_end_ms>=?3 AND received_at_ms<=?4
+      ORDER BY received_at_ms ASC LIMIT 3`,
+  ).bind(row.receiving_account_key, row.amount_paise, row.created_at, row.expires_at + LATE_SMS_GRACE_MS).all<SmsReceiptEvidence>();
+  for (const r of rows.results ?? []) {
+    const out = await matchSaathumReceipt(env, r);
+    if (out.result === "confirmed" || out.result === "failed") return;
+  }
+}
+
+/**
+ * [SAATHUM-UPI-3LAYER 2026-09-29] Admin reject: checkout -> cancelled with a reason, the amount slot
+ * cools down for 2 h, and the buyer gets "we could not find your payment" by email + WhatsApp.
+ * Only an unconfirmed checkout can be rejected. Returns false when it was not rejectable.
+ */
+export async function rejectSaathumCheckout(env: Env, checkoutId: string, adminUid: string, reason: string): Promise<boolean> {
+  const db = metaDb(env);
+  const now = Date.now();
+  const res = await db.prepare(
+    `UPDATE saathum_checkouts SET status='cancelled', reason_code='rejected', review_note=?2, reviewed_by=?3, reviewed_at=?4, updated_at=?4
+      WHERE checkout_id=?1 AND status IN ('awaiting_payment','review_pending') AND confirmed_at IS NULL`,
+  ).bind(checkoutId, reason, adminUid, now).run();
+  if (Number((res as any).meta?.changes ?? 0) !== 1) return false;
+  await releaseAmount(env, checkoutId, now, AMOUNT_COOLDOWN_MS);
+  const row = await db.prepare(`SELECT uid, listing_id FROM saathum_checkouts WHERE checkout_id=?1`).bind(checkoutId).first<{ uid: string; listing_id: string }>();
+  if (row) {
+    await track(env, row.uid, "saathum_checkout_rejected", APP, { checkout_id: checkoutId, admin_uid: adminUid });
+    await sendSaathumPaymentWhatsApp(env, "booking_rejected", row.listing_id, checkoutId, row.uid)
+      .catch((err) => trackException(env, err, { uid: row.uid, route: "rejectSaathumCheckout:whatsapp", handled: true, app_name: APP }));
+    await sendSaathumRejectedEmail(env, checkoutId).catch((err) => trackException(env, err, { uid: row.uid, route: "rejectSaathumCheckout:email", handled: true, app_name: APP }));
+  }
+  return true;
+}
+
+async function sendSaathumRejectedEmail(env: Env, checkoutId: string): Promise<void> {
+  const db = metaDb(env);
+  const row = await db.prepare(`SELECT uid, listing_id FROM saathum_checkouts WHERE checkout_id=?1 AND status='cancelled' AND reason_code='rejected'`).bind(checkoutId).first<{ uid: string; listing_id: string }>();
+  if (!row) return;
+  const [listing, to] = await Promise.all([
+    db.prepare(`SELECT title FROM listings WHERE id=?1`).bind(row.listing_id).first<{ title: string }>(),
+    emailFor(env, row.uid).catch(() => null),
+  ]);
+  if (!to) return;
+  const title = listing?.title ?? "Saa Thum booking";
+  const html = `
+  <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+    <h2 style="margin:0 0 12px">We could not find your payment</h2>
+    <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
+    <p style="margin:0 0 8px">We were not able to match a payment to this booking, so it has not been confirmed.</p>
+    <p style="margin:0 0 8px">If you did pay, please write to support@saathum.com with your UPI reference number and we will sort it out.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+  </div>`;
+  await enqueueEmail(env, {
+    to, subject: `We could not find your payment — ${title}`, html,
+    kind: "saathum_checkout_rejected", orderId: null, recipientId: row.uid,
+    messageVersion: "saathum-checkout-rejected.v1", outboxKey: `saathum-checkout-rejected:${checkoutId}`,
+  });
 }
 
 /**
@@ -671,7 +910,7 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
     receiptNo: row.receipt_no ?? checkoutId, issuedAt: row.confirmed_at ?? Date.now(),
     billedTo: { name: sankalp.name || null, email: to, address: address ? [address.line1, address.line2, `${address.city}, ${address.state} ${address.pincode}`].filter(Boolean) as string[] : [] },
     item: { title: listing?.title ?? "Saa Thum booking", startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
-    lines: quote.lines, gstRatePct: quote.gst_rate_pct, gstRupees: quote.gst_rupees, subtotalRupees: quote.subtotal_rupees, totalRupees: quote.total_rupees,
+    ...receiptMoney(quote, row), // [SAATHUM-UPI-3LAYER 2026-09-29]
     paidAt: row.confirmed_at, utr: row.utr, paymentId: row.checkout_id, orderId: row.commercial_order_id,
   });
   let bin = ""; for (const byte of pdf) bin += String.fromCharCode(byte);

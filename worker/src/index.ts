@@ -89,8 +89,12 @@ import {
   saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
   runSaathumReminders, saathumWatchGet, saathumLiveStateGet, // [WA-NOTIFY-2] [SAATHUM-WATCH-1]
+  saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+// [SAATHUM-UPI-3LAYER 2026-09-29] Admin review queue + cron sweeps for the 3-layer UPI confirmation.
+import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumCheckoutReject } from "./routes/saathum_payment_review";
+import { runSaathumPaymentSweeps } from "./lib/saathum_upi3";
 import { checkSaathumStreamEnds } from "./lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
@@ -532,6 +536,11 @@ export default {
         runSaathumReminders(env)
           .then((r) => { if (r.sent) console.log("[saathum-reminders]", JSON.stringify(r)); })
           .catch((e) => { console.error("[saathum-reminders] failed:", String(e)); }),
+        // [SAATHUM-UPI-3LAYER 2026-09-29] Persists review_pending after 180 s, admin WhatsApp alert for
+        // items pending >10 min, stale SMS-source alert (15 min, hourly re-alert, "recovered"). Never throws.
+        runSaathumPaymentSweeps(env)
+          .then((r) => { if (r.pending || r.review_alerts || r.stale || r.recovered) console.log("[saathum-payment-sweeps]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[saathum-payment-sweeps] failed:", String(e)); }),
         // [WA-NOTIFY-1 2026-09-28] Drains whatsapp_outbox at ~1 msg/2s, capped at 25
         // per tick (this cron runs every 5 min — see the crons comment above), so a
         // ban-risking burst on the unofficial WasenderAPI number never happens even
@@ -587,6 +596,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (p === "/api/admin/upi-settings" && req.method === "GET") return await getUpiSettings(req, env);
     if (p === "/api/admin/upi-settings" && req.method === "PUT") return await putUpiSettings(req, env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
+    // [SAATHUM-UPI-3LAYER 2026-09-29] Layer 3: manual verification queue (requireAdmin inside each handler).
+    if (p === "/api/admin/saathum/payments/review" && req.method === "GET") return await adminSaathumReviewList(req, env);
+    {
+      const m = p.match(/^\/api\/admin\/saathum\/(?:checkout|payments\/review)\/([^/]+)\/(confirm|reject)$/);
+      if (m && req.method === "POST") return m[2] === "confirm" ? await adminSaathumCheckoutConfirm(req, env, m[1]) : await adminSaathumCheckoutReject(req, env, m[1]);
+    }
 
     // Messenger Phase 1 billing authority. These endpoints are mounted for
     // client contract testing, but the master flag in config.ts remains dark;
@@ -1039,6 +1054,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const checkoutId = rest[0];
         if (rest.length === 1 && req.method === "GET") return await saathumCheckoutGet(req, env, checkoutId);
         if (rest.length === 2 && rest[1] === "utr" && req.method === "POST") return await saathumCheckoutUtr(req, env, checkoutId);
+        if (rest.length === 2 && rest[1] === "paid" && req.method === "POST") return await saathumCheckoutPaid(req, env, checkoutId); // [SAATHUM-UPI-3LAYER 2026-09-29]
         if (rest.length === 2 && rest[1] === "address" && req.method === "PUT") return await saathumCheckoutAddress(req, env, checkoutId);
         if (rest.length === 2 && rest[1] === "receipt.pdf" && req.method === "GET") return await saathumCheckoutReceiptPdf(req, env, checkoutId);
       }

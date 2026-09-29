@@ -399,6 +399,12 @@ export interface Env {
   HDFC_SMS_DEVICE_ID?: string;
   HDFC_SMS_DEVICE_SECRET?: string;
   HDFC_SMS_ACCOUNT_SUFFIX?: string;
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Optional second ingest device (Google Messages watcher
+  // daemon on the Mac mini) -- same HMAC scheme as the companion app -- and the owner/admin
+  // WhatsApp number (digits, E.164) that receives stale-source and review-queue alerts.
+  HDFC_SMS_WATCHER_DEVICE_ID?: string;
+  HDFC_SMS_WATCHER_DEVICE_SECRET?: string;
+  ADMIN_ALERT_WHATSAPP?: string;
 
   // [PAY-RAIL-1] The generic multi-gateway layer (lib/payments/*, routes/pay.ts).
   // Absent ⇒ that adapter's `configured(env)` is false and it simply does not appear in

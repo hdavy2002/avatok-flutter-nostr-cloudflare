@@ -228,16 +228,77 @@ export function addressLocked(startsAt: number | null, now = Date.now()): boolea
 export type CheckoutRow = {
   status: "awaiting_payment" | "confirmed" | "review_pending" | "expired" | "cancelled";
   expires_at: number;
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Optional so pre-3-layer callers/tests keep working.
+  paid_claimed_at?: number | null;
+  reason_code?: string | null;
 };
+
+/** [SAATHUM-UPI-3LAYER 2026-09-29] Buyer tapped "I've paid" and 3 minutes passed with no
+ * bank confirmation: the checkout is shown as review_pending / awaiting_bank. Automatic
+ * matching keeps running, so a late SMS still confirms it. */
+export const PAID_CLAIM_REVIEW_MS = 180_000;
+/** A review_pending item older than this pings the admin WhatsApp (once per item). */
+export const REVIEW_ALERT_AFTER_MS = 10 * 60_000;
+/** A released amount slot is not re-issued for this long after expiry/cancel. */
+export const AMOUNT_COOLDOWN_MS = 2 * 60 * 60_000;
+/** SMS accepted as a late payment up to this long after the checkout window closed. */
+export const LATE_SMS_GRACE_MS = 24 * 60 * 60_000;
+/** k in 1..MAX_ROUNDING_DISCOUNT_PAISE: the buyer pays total*100 - k paise. */
+export const MAX_ROUNDING_DISCOUNT_PAISE = 199;
 
 /** External status the HTTP contract exposes -- collapses the DB's `cancelled`
  * into `expired` (the contract's enum has no `cancelled`) and expires a stale
- * `awaiting_payment` row on read without needing a cron. */
+ * `awaiting_payment` row on read without needing a cron. A buyer who said "I've paid"
+ * more than PAID_CLAIM_REVIEW_MS ago is review_pending (computed on read). */
 export function externalStatus(row: CheckoutRow, now = Date.now()): "awaiting_payment" | "confirmed" | "review_pending" | "expired" {
   if (row.status === "confirmed" || row.status === "review_pending") return row.status;
-  if (row.status === "cancelled") return "expired";
-  if (row.status === "awaiting_payment" && row.expires_at <= now) return "expired";
+  if (row.status === "cancelled" || row.status === "expired") return "expired";
+  if (row.status === "awaiting_payment") {
+    if (row.paid_claimed_at && now - row.paid_claimed_at > PAID_CLAIM_REVIEW_MS) return "review_pending";
+    if (row.expires_at <= now) return "expired";
+  }
   return "awaiting_payment";
+}
+
+/** reason_code the envelope exposes: `awaiting_bank` for the 3-minute rule, the stored
+ * code for provisioning problems / admin rejections, else null. */
+export function externalReason(row: CheckoutRow, now = Date.now()): string | null {
+  const s = externalStatus(row, now);
+  if (s === "review_pending") return row.reason_code ?? "awaiting_bank";
+  if (s === "awaiting_payment") return row.reason_code ?? null;
+  if (s === "expired" && row.status === "cancelled") return row.reason_code ?? null;
+  return null;
+}
+
+export type ReceiptLine = { label: string; qty: number; unit_rupees: number; amount_rupees: number };
+
+/**
+ * [SAATHUM-UPI-3LAYER 2026-09-29] Receipt + GST on the amount actually COLLECTED. The
+ * buyer paid total*100 - k paise; the k paise is shown as a "UPI rounding discount" line
+ * and is split between the taxable value and the GST in the same proportion as the
+ * original total, so subtotal + GST always equals what the bank received. Values are
+ * (fractional) rupees rounded to 2 dp; with k = 0 the result is identical to the quote.
+ */
+export function receiptAmounts(quote: Quote, payPaise: number): {
+  lines: ReceiptLine[]; subtotalRupees: number; gstRupees: number; totalRupees: number; discountPaise: number;
+} {
+  const totalPaise = quote.total_rupees * 100;
+  const discount = Math.max(0, totalPaise - payPaise);
+  const base: ReceiptLine[] = quote.lines.map((l) => ({ label: l.label, qty: l.qty, unit_rupees: l.unit_rupees, amount_rupees: l.amount_rupees }));
+  if (discount === 0) {
+    return { lines: base, subtotalRupees: quote.subtotal_rupees, gstRupees: quote.gst_rupees, totalRupees: quote.total_rupees, discountPaise: 0 };
+  }
+  const gstShare = quote.gst_rupees > 0 ? Math.round((discount * quote.gst_rupees) / quote.total_rupees) : 0;
+  const taxableCut = discount - gstShare;
+  const r2 = (paise: number) => Math.round(paise) / 100;
+  base.push({ label: "UPI rounding discount", qty: 1, unit_rupees: -r2(taxableCut), amount_rupees: -r2(taxableCut) });
+  return {
+    lines: base,
+    subtotalRupees: r2(quote.subtotal_rupees * 100 - taxableCut),
+    gstRupees: r2(quote.gst_rupees * 100 - gstShare),
+    totalRupees: r2(payPaise),
+    discountPaise: discount,
+  };
 }
 
 /** How long a checkout's payment window stays open before it must be re-created. */
