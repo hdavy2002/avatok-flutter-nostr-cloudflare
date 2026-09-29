@@ -7851,5 +7851,21 @@
         "note": "An admin saved a live link; the listing's live-state should then read none/live, never ended, until the show runs."
       }
     ]
+  },
+  "SAATHUM-ENDED-OFF-FEED-1": {
+    "description": "[SAATHUM-ENDED-OFF-FEED-1 2026-09-29] Public feeds (explore browse, section counts, live-now, search) exclude listings whose event_videos.ended_at is set; ended events live only in admin past events and buyers' Past events.",
+    "shipped": "2026-09-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_stream_ended_archived",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A stream was archived; that listing must then be absent from /api/explore."
+      }
+    ]
   }
 }

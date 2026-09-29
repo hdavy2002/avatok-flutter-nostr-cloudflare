@@ -727,6 +727,12 @@ async function maxPerBookingEnabled(env: Env): Promise<boolean> {
   return (await readConfig(env)).listingMaxPerBookingEnabled === true;
 }
 
+// [SAATHUM-ENDED-OFF-FEED-1 2026-09-29] Owner: an event whose live stream has ended
+// leaves the public feeds (homepage shelf, marketplace, live-now) and lives only in
+// the admin dashboard's past events (admin2_events_logic streamEnded) and buyers'
+// Past events. ended_at is set by the YouTube check or the clock sweep
+// (lib/saathum_stream_state.ts checkSaathumStreamEnds).
+const NOT_STREAM_ENDED = "NOT EXISTS (SELECT 1 FROM event_videos ev WHERE ev.listing_id = l.id AND ev.ended_at IS NOT NULL)";
 function shapeCard(
   r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>,
   stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>, maxPerBookingOn = false,
@@ -3759,7 +3765,7 @@ function blockFilter(uid: string | null, binds: unknown[], where: string[]): voi
 export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const uid = await maybeUid(req, env);
   const u = new URL(req.url).searchParams;
-  const where = ["l.status IN ('published','live')"];
+  const where = ["l.status IN ('published','live')", NOT_STREAM_ENDED];
   const binds: unknown[] = [];
   // Hide expired marketplace listings (creator listings have no expiry → null shows).
   binds.push(Date.now());
@@ -3859,7 +3865,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
  */
 async function sectionCountsFor(env: Env, req: Request, uid: string | null): Promise<Record<string, number> | null> {
   try {
-    const where = ["l.status IN ('published','live')"];
+    const where = ["l.status IN ('published','live')", NOT_STREAM_ENDED];
     const binds: unknown[] = [];
     binds.push(Date.now());
     where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
@@ -3938,7 +3944,7 @@ export async function exploreAnonCached(
 // GET /api/explore/live-now — the red-dot rail.
 export async function exploreLiveNow(req: Request, env: Env): Promise<Response> {
   const uid = await maybeUid(req, env);
-  const where = ["l.status='live'"];
+  const where = ["l.status='live'", NOT_STREAM_ENDED];
   const binds: unknown[] = [];
   // [LISTING-EXPIRY-1] A `live` row hours past its scheduled end is a stuck projection
   // (the provider's "ended" webhook never landed), not a show anyone can join.
@@ -3976,7 +3982,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const uid = await maybeUid(req, env);
   const u = new URL(req.url).searchParams;
   const q = (u.get("q") || "").trim();
-  const where = ["l.status IN ('published','live')"];
+  const where = ["l.status IN ('published','live')", NOT_STREAM_ENDED];
   const binds: unknown[] = [];
   // [WEB-GATEWAY-E 2026-09-18] Same gate as exploreBrowse — a search hit on a
   // badged example must not reach a caller (the app) that never asked for one.
