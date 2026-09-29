@@ -483,6 +483,14 @@ describe('admin confirm / reject (layer 3)', () => {
     expect(f.sql.prepare('SELECT reserved_until FROM saathum_amount_reservations WHERE checkout_id=?').get(id)?.reserved_until).toBeGreaterThan(now + 100 * MIN); // 2 h cooldown
     expect(H.emails.filter((e) => e.kind === 'saathum_checkout_rejected')).toHaveLength(1);
     expect(f.sql.prepare(`SELECT count(*) n FROM whatsapp_outbox WHERE checkout_id=? AND kind='booking_rejected'`).get(id)?.n).toBe(1);
+    // [SAATHUM-REJECT-COPY-1] soft tone, asks for the 12-digit UTR or a screenshot, quotes the booking ID
+    const rej = H.emails.find((e) => e.kind === 'saathum_checkout_rejected');
+    expect(rej.html).toContain('12-digit UPI transaction ID');
+    expect(rej.html).toContain('screenshot');
+    expect(rej.html).toContain('SAA-');
+    const waBody = JSON.stringify(f.sql.prepare(`SELECT * FROM whatsapp_outbox WHERE checkout_id=? AND kind='booking_rejected'`).get(id));
+    expect(waBody).toContain('12-digit');
+    expect(waBody).toContain('screenshot');
     expect(H.provision).toBe(0);
     // a late SMS must not resurrect a rejected checkout
     await ingest(await sms({ amount: '199.99' }));

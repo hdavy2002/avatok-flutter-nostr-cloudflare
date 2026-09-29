@@ -34,7 +34,7 @@ import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-
 import { computeStreamState, streamStateForListing } from "../lib/saathum_stream_state";
 // [WA-NOTIFY-2 2026-09-28] Late-buyer live-link fan-out + the internal watch URL
 // builder, both shared with lib/whatsapp_notify.ts's own bulk/late-buyer WhatsApp path.
-import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sendSaathumPaymentWhatsApp } from "../lib/whatsapp_notify";
+import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sendSaathumPaymentWhatsApp, bookingRef } from "../lib/whatsapp_notify";
 // [SAATHUM-UPI-3LAYER 2026-09-29] Unique payable amount per open checkout.
 import { reserveUniqueAmount, releaseAmount, dropReservation } from "../lib/saathum_upi3";
 import { AMOUNT_COOLDOWN_MS } from "../lib/saathum_checkout_logic";
@@ -852,16 +852,22 @@ async function sendSaathumRejectedEmail(env: Env, checkoutId: string): Promise<v
   const title = listing?.title ?? "Saa Thum booking";
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-    <h2 style="margin:0 0 12px">We could not find your payment</h2>
+    <h2 style="margin:0 0 12px">We couldn’t find your payment yet</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
-    <p style="margin:0 0 8px">We were not able to match a payment to this booking, so it has not been confirmed.</p>
-    <p style="margin:0 0 8px">If you did pay, please write to support@saathum.com with your UPI reference number and we will sort it out.</p>
+    <p style="margin:0 0 8px">Namaste. We’re sorry — we weren’t able to match a payment to this booking, so it isn’t confirmed yet.</p>
+    <p style="margin:0 0 8px">If money has left your account, please don’t worry. Simply write to <a href="mailto:support@saathum.com">support@saathum.com</a> with either:</p>
+    <ul style="margin:0 0 8px;padding-left:20px">
+      <li>the <b>12-digit UPI transaction ID (UTR)</b> — you’ll find it in your UPI app’s payment history or in your bank SMS, or</li>
+      <li>a <b>screenshot</b> of the payment.</li>
+    </ul>
+    <p style="margin:0 0 8px">Please mention booking ID <b>${bookingRef(checkoutId)}</b>. We’ll check it and set it right quickly.</p>
+    <p style="margin:0 0 8px">With warm regards,<br>Team Saa Thum</p>
     <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
   </div>`;
   await enqueueEmail(env, {
-    to, subject: `We could not find your payment — ${title}`, html,
+    to, subject: `About your payment for ${title}`, html,
     kind: "saathum_checkout_rejected", orderId: null, recipientId: row.uid,
-    messageVersion: "saathum-checkout-rejected.v1", outboxKey: `saathum-checkout-rejected:${checkoutId}`,
+    messageVersion: "saathum-checkout-rejected.v2", outboxKey: `saathum-checkout-rejected:${checkoutId}`,
   });
 }
 

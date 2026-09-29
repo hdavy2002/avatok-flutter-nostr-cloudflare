@@ -35,6 +35,9 @@ import { readConfig } from "../routes/config"; // [WA-NOTIFY-2] saathumLiveLinkN
 const APP = "saathum";
 const MAX_SEND_ATTEMPTS = 6;
 
+/** Buyer-facing booking reference, same as the web checkout shows (SAA- + first 8 of the checkout id). */
+export const bookingRef = (checkoutId: string) => `SAA-${checkoutId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+
 export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected"; // [SAATHUM-UPI-3LAYER 2026-09-29]
 // [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
 // existing bulk admin-save fan-out, "late_buyer" is the single-checkout send
@@ -179,7 +182,8 @@ export async function sendSaathumPaymentWhatsApp(
   const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
   return enqueueWhatsAppForBuyers(env, listingId, kind, `payment:${kind}`, "payment", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
     if (kind === "booking_rejected") {
-      return `Saa Thum: we could not find your payment for "${title}", so the booking was not confirmed. If you did pay, please contact support@saathum.com with your UPI reference and we will sort it out.\n— Saa Thum`;
+      // [SAATHUM-REJECT-COPY-1 2026-09-29] Owner: soft tone; ask for the 12-digit transaction ID or a screenshot.
+      return `🙏 Namaste. We're sorry — we couldn't find your payment for "${title}" yet, so this booking isn't confirmed.\n\nIf money has left your account, please don't worry. Just email support@saathum.com with the 12-digit UPI transaction ID (UTR) from your UPI app or bank SMS, or a screenshot of the payment, and quote booking ID ${bookingRef(checkoutId)}. We'll set it right quickly.\n— Saa Thum`;
     }
     const when = startsAtMs ? `\n${formatIst(startsAtMs)}` : "";
     return `🙏 Payment received. Your booking is confirmed.\n${title}${when}\nYour receipt is in your email and under My events: ${base}/dashboard/my-events\n— Saa Thum`;
