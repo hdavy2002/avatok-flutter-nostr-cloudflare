@@ -245,6 +245,12 @@ export async function receiptCandidates(db:D1Database,hash:string,now=Date.now()
  WHERE hdfc_sms_smoke_receipts.message_hash=?1`).bind(hash,now).all<{intent_id:string;uid:string}>();
 }
 export interface Evidence {payer_vpa?:string|null;message_hash:string;receiving_account_key:string;bank_reference:string|null;amount_paise:number;received_at_ms:number;received_at_end_ms:number;ingested_at:number;disposition:string;reason_code:string|null;claimed_intent_id:string|null}
+// [SAATHUM-UPI-3LAYER 2026-09-29] The same bank SMS can arrive from the companion app AND the Google
+// Messages watcher with timestamps that differ by seconds (occasionally minutes). Same
+// (account, bank_reference, amount, INR) with received_at within DUPLICATE_DELIVERY_TOLERANCE_MS
+// (10 min, inlined as 600000 in the conflict predicate below) is a duplicate delivery: the canonical
+// row is kept untouched. A different amount/account/VPA or a wider gap stays an evidence conflict.
+export const DUPLICATE_DELIVERY_TOLERANCE_MS=600000;
 export async function storeEvidence(db:D1Database,e:Evidence,raw:{device:string;sender:string;message:string;received:string;nonce:string}):Promise<Evidence|null> {
  // Raw transport dedup is allowed ONLY with the exact-row existence guard below.
  // Duplicate bank identities update the canonical row rather than violating UNIQUE.
@@ -254,7 +260,7 @@ export async function storeEvidence(db:D1Database,e:Evidence,raw:{device:string;
    WHERE disposition<>'legacy' AND (message_hash=?1 OR (receiving_account_key=?2 AND bank_reference=?3))
    AND EXISTS(SELECT 1 FROM hdfc_sms_receipts WHERE message_hash=?1)
    AND (receiving_account_key<>?2 OR bank_reference IS NOT ?3 OR amount_paise IS NOT ?4 OR currency IS NOT 'INR'
-    OR payer_vpa IS NOT ?9 OR received_at_end_ms<?5 OR received_at_ms>?6 OR (?7<>'accepted' AND reason_code IS NOT ?8))`).bind(e.message_hash,e.receiving_account_key,e.bank_reference,e.amount_paise,e.received_at_ms,e.received_at_end_ms,e.disposition,e.reason_code,e.payer_vpa??null),
+    OR payer_vpa IS NOT ?9 OR received_at_end_ms<?5-600000 OR received_at_ms>?6+600000 OR (?7<>'accepted' AND reason_code IS NOT ?8))`).bind(e.message_hash,e.receiving_account_key,e.bank_reference,e.amount_paise,e.received_at_ms,e.received_at_end_ms,e.disposition,e.reason_code,e.payer_vpa??null),
   db.prepare(`INSERT INTO hdfc_sms_smoke_receipts(message_hash,receiving_account_key,bank_reference,amount_paise,currency,received_at_ms,received_at_end_ms,ingested_at,disposition,reason_code,payer_vpa)
    SELECT ?1,?2,?3,?4,'INR',?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM hdfc_sms_receipts WHERE message_hash=?1)
    AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE message_hash=?1 OR (receiving_account_key=?2 AND bank_reference=?3))`).bind(e.message_hash,e.receiving_account_key,e.bank_reference,e.amount_paise,e.received_at_ms,e.received_at_end_ms,e.ingested_at,e.disposition,e.reason_code,e.payer_vpa??null),

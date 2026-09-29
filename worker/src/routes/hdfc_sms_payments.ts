@@ -6,7 +6,8 @@ import { rateLimit } from '../money';
 import { requireAdmin } from './admin_money';
 import { hmacSha256Hex,sha256Hex,constantTimeEqual } from '../lib/payments/types';
 import { SMOKE_LISTING,UUID,policy,currentIntent,readIntent,legacyIntent,publicIntent,createIntent,saveReference,normalizeReference,parseReference,parsePayerVpa,receiptCandidates,parseAmountPaise,isHdfcSender,hasAccountSuffix,matchIntent,boundedBody,timestampInterval,storeEvidence } from '../lib/hdfc_sms_smoke';
-import { finalizeSaathumCheckoutByIntent } from './saathum_checkout';
+import { finalizeSaathumCheckoutByIntent,matchSaathumReceipt } from './saathum_checkout';
+import { resolveSmsDevice,touchSourceHealth } from '../lib/saathum_upi3'; // [SAATHUM-UPI-3LAYER 2026-09-29]
 import { trackException } from '../hooks';
 export const UPI_SMOKE_TEST_LISTING_ID=SMOKE_LISTING;
 const failure=(error:string,status=503)=>json({error,retryable:status===503||status===429},status);
@@ -74,16 +75,19 @@ const ack=(receipt:string|null,state:string,match:string,reason:string|null)=>js
 export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
  const b=await boundedBody(req);if(!b)return failure('invalid_payload',400);
  const device=field(b,'device_id',128),sender=field(b,'sender',32),message=field(b,'message',4096),received=field(b,'received_at',40),sent=field(b,'sent_at',40),hash=field(b,'message_hash',64),nonce=field(b,'nonce',128),signature=field(b,'signature',64);
- if(!device||device!==env.HDFC_SMS_DEVICE_ID||!env.HDFC_SMS_DEVICE_SECRET||!sender||!message||!received||!sent||!hash||!nonce||!signature||!/^[a-f0-9]{64}$/.test(hash)||!/^[a-f0-9]{64}$/i.test(signature)||(b.sim_slot!==undefined&&b.sim_slot!==null&&(!Number.isInteger(b.sim_slot)||Number(b.sim_slot)<-1||Number(b.sim_slot)>8)))return failure('invalid_device_payload',401);
+ // [SAATHUM-UPI-3LAYER 2026-09-29] Companion app OR Google Messages watcher; same canonical HMAC string.
+ const dev=device?resolveSmsDevice(env,device):null;
+ if(!device||!dev||!sender||!message||!received||!sent||!hash||!nonce||!signature||!/^[a-f0-9]{64}$/.test(hash)||!/^[a-f0-9]{64}$/i.test(signature)||(b.sim_slot!==undefined&&b.sim_slot!==null&&(!Number.isInteger(b.sim_slot)||Number(b.sim_slot)<-1||Number(b.sim_slot)>8)))return failure('invalid_device_payload',401);
  const window=timestampInterval(received),sentWindow=timestampInterval(sent),now=Date.now();
  if(!window||!sentWindow||Math.abs(now-sentWindow.start)>300000)return failure('invalid_timestamp',400);
- const expected=await hmacSha256Hex(env.HDFC_SMS_DEVICE_SECRET,[device,sender,message,received,b.sim_slot??'',hash,nonce,sent].join('\n'));
+ const expected=await hmacSha256Hex(dev.secret,[device,sender,message,received,b.sim_slot??'',hash,nonce,sent].join('\n'));
  if(!constantTimeEqual(expected,signature.toLowerCase()))return failure('invalid_signature',401);
  if(!constantTimeEqual(await sha256Hex(`${sender}|${message}|${received}`),hash))return failure('message_hash_mismatch',400);
  try{
   const p=await policy(env);if(!p.ready)return failure('schema_not_ready');
   if(!p.configured)return failure('configuration_incomplete');
   const throttle=await limited(env,`incoming:${device}`,120);if(throttle)return throttle;
+  await touchSourceHealth(env,device,dev.source,'sms',now); // [SAATHUM-UPI-3LAYER 2026-09-29]
   const amount=parseAmountPaise(message),reference=parseReference(message),payerVpa=parsePayerVpa(message);
   // Never retain unrelated raw messages, OTPs or password notifications.
   if(!isHdfcSender(sender)||!amount)return ack(null,'ignored','unmatched',!isHdfcSender(sender)?'sender_not_allowed':'not_supported_credit');
@@ -107,13 +111,21 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
   // SMS device's ack either way.
   if(receipt.disposition==='accepted'&&receipt.bank_reference){
    try{
-    const waiting=await db.prepare(`SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND amount_paise=?3 AND status='awaiting_payment'`).bind(receipt.receiving_account_key,receipt.bank_reference,receipt.amount_paise).first<{checkout_id:string}>();
+    const waiting=await db.prepare(`SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND amount_paise=?3 AND status IN ('awaiting_payment','review_pending') AND confirmed_at IS NULL`).bind(receipt.receiving_account_key,receipt.bank_reference,receipt.amount_paise).first<{checkout_id:string}>();
     if(waiting)await finalizeSaathumCheckoutByIntent(env,waiting.checkout_id);
+    // [SAATHUM-UPI-3LAYER 2026-09-29] No UTR needed: the payable amount is unique per open
+    // checkout, so exactly one waiting candidate confirms; 0 or >1 stays unmatched for the admin
+    // queue. A reference any checkout already carries is never matched again, so the same SMS
+    // arriving from both devices (or twice) confirms exactly once.
+    if(!receipt.claimed_intent_id)await matchSaathumReceipt(env,receipt);
    }catch(err){await trackException(env,err,{route:'/api/sms/incoming',handled:true,app_name:'saathum'});}
   }
   if(receipt.disposition==='legacy')return ack(receipt.message_hash,'review_pending','unmatched','legacy_unverified');
   if(receipt.disposition!=='accepted')return ack(receipt.message_hash,'review_pending','unmatched',receipt.reason_code);
   if(receipt.claimed_intent_id)return ack(receipt.message_hash,'accepted','confirmed',null);
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Confirmed a Saa Thum checkout (this delivery or an earlier one).
+  const saathumHit=await db.prepare(`SELECT 1 AS x FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND status='confirmed'`).bind(receipt.receiving_account_key,receipt.bank_reference).first().catch(()=>null);
+  if(saathumHit)return ack(receipt.message_hash,'accepted','confirmed',null);
   const unassigned=await db.prepare(`SELECT intent_id FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?1 AND payer_vpa IS NULL AND payer_reference IS NULL AND superseded_by IS NULL AND recover_until>=?2
    AND amount_paise=?3 AND created_at<=?4 AND expires_at>=?5 AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE claimed_intent_id=hdfc_sms_smoke_intents.intent_id) LIMIT 1`).bind(p.account,now,receipt.amount_paise,receipt.received_at_end_ms,receipt.received_at_ms).first();
   return ack(receipt.message_hash,'accepted',unassigned?'awaiting_reference':'unmatched',unassigned?'reference_required':'no_match');
@@ -123,8 +135,13 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
 export async function hdfcSmsHeartbeat(req:Request,env:Env):Promise<Response>{
  const b=await boundedBody(req,2048);if(!b)return failure('invalid_payload',400);
  const device=field(b,'device_id',128),nonce=field(b,'nonce',128),sent=field(b,'sent_at',40),signature=field(b,'signature',64);
- if(!device||device!==env.HDFC_SMS_DEVICE_ID||!env.HDFC_SMS_DEVICE_SECRET||!nonce||!sent||!signature)return failure('unknown_device',401);
+ const dev=device?resolveSmsDevice(env,device):null; // [SAATHUM-UPI-3LAYER 2026-09-29]
+ if(!device||!dev||!nonce||!sent||!signature)return failure('unknown_device',401);
  const time=timestampInterval(sent);if(!time||Math.abs(Date.now()-time.start)>300000)return failure('invalid_timestamp',400);
- const expected=await hmacSha256Hex(env.HDFC_SMS_DEVICE_SECRET,`${device}\n${nonce}\n${sent}`);
- return constantTimeEqual(expected,signature.toLowerCase())?json({ok:true}):failure('invalid_signature',401);
+ const expected=await hmacSha256Hex(dev.secret,`${device}\n${nonce}\n${sent}`);
+ if(!constantTimeEqual(expected,signature.toLowerCase()))return failure('invalid_signature',401);
+ // Optional companion health payload (unsigned, so only bounded non-negative integers are kept).
+ const count=(...keys:string[])=>{for(const k of keys){const v=b[k];if(Number.isInteger(v)&&Number(v)>=0&&Number(v)<=1e9)return Number(v);}return null;};
+ await touchSourceHealth(env,device,dev.source,'heartbeat',Date.now(),null,{pending:count('pending_count','pending'),failed:count('failed_count','failed')}); // [SAATHUM-UPI-3LAYER 2026-09-29] feeds the stale-source cron alert
+ return json({ok:true});
 }
