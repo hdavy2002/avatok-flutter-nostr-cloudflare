@@ -213,7 +213,7 @@ function matchesPrice(it: Item, price: string): boolean {
   return p > 1000;
 }
 
-const soonest = (a: Item, b: Item) => Number(b.liveNow) - Number(a.liveNow) || (a.startsAt ?? Infinity) - (b.startsAt ?? Infinity);
+const soonest = (a: Item, b: Item) => Number(b.isLiveStream) - Number(a.isLiveStream) || Number(b.liveNow) - Number(a.liveNow) || (a.startsAt ?? Infinity) - (b.startsAt ?? Infinity);
 function sorter(sort: string): (a: Item, b: Item) => number {
   if (sort === 'booked') return (a, b) => b.booked - a.booked || soonest(a, b);
   if (sort === 'price') return (a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || soonest(a, b);

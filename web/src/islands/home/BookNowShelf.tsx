@@ -96,7 +96,7 @@ export default function BookNowShelf({ guides, samples, exploreHref = '/marketpl
           cursor = (res as { cursor?: string | null }).cursor ?? undefined;
           if (!cursor) break;
         }
-        collected.sort((a, b) => Number(b.liveNow) - Number(a.liveNow) || (a.startsAt ?? 0) - (b.startsAt ?? 0));
+        collected.sort((a, b) => Number(b.isLiveStream) - Number(a.isLiveStream) || Number(b.liveNow) - Number(a.liveNow) || (a.startsAt ?? 0) - (b.startsAt ?? 0));
         const top = collected.slice(0, MAX);
         if (top.length === 0 && preview) { setSample(true); setItems(sampleItems(samples, Date.now())); }
         else setItems(top);

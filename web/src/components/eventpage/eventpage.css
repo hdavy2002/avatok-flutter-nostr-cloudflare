@@ -199,3 +199,6 @@
 .d2-player:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
 .d2-player:fullscreen .d2-player-frame { width: 100%; height: auto; aspect-ratio: 16/9; max-height: 100vh; }
 .ep-art .d2-player img { position: static; }
+
+/* [SAATHUM-LIVE-FAST-1] the overlay CTA is a button, not a full-width bar */
+.ep-live-cover .ep-btn.ep-live-cta { display: inline-flex; width: auto !important; flex: 0 0 auto; align-self: center; max-width: calc(100% - 32px); }

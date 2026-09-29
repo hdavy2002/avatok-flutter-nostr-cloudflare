@@ -62,6 +62,10 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
       const wantPreview = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('preview') === 'live';
       if (publicState === 'none' && !wantPreview) { setPhase({ kind: 'hidden' }); return; }
+      // [SAATHUM-LIVE-FAST-1 2026-09-29] Paint the public overlay IMMEDIATELY, then
+      // upgrade to the player if the entitled read says so. Waiting for Clerk first
+      // (up to 5s) left the page looking not-live for seconds.
+      if (publicState !== 'none') setPhase(publicState === 'live' ? { kind: 'live_overlay' } : { kind: 'ended_overlay', buyer: false });
 
       // Only ever call the entitled endpoint when a session token exists —
       // a signed-out visitor never triggers it.

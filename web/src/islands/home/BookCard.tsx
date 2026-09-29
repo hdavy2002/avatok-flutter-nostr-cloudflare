@@ -108,7 +108,9 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
   const state = scheduleStateOf(card, now);
   if (state === 'ended' || state === 'cancelled' || state === 'expired' || state === 'unpublished') return null;
   const liveNow = state === 'live' || c.live;
-  if (!liveNow && (c.startsAt == null || c.startsAt <= now)) return null;
+  // [SAATHUM-LIVE-FAST-1 2026-09-29] A card whose YouTube stream is live stays in the
+  // feed after its start time — that is exactly when people should see and book it.
+  if (!liveNow && !card.is_live_stream && (c.startsAt == null || c.startsAt <= now)) return null;
   const attrsEarly = (card.attrs ?? null) as Record<string, unknown> | null;
   // [SAATHUM-EVENT-FIELDS-1] The admin links the article explicitly; title matching is the fallback.
   const linkedSlug = typeof attrsEarly?.guide_slug === 'string' ? (attrsEarly.guide_slug as string) : '';
