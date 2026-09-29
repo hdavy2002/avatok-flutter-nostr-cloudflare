@@ -78,6 +78,23 @@ export function DoneStep({
     }
   }
 
+  // [SAATHUM-LIVE-CARD-1 2026-09-29] Owner: someone who books while the stream is
+  // live is taken straight to it. Short delay so "Payment received" registers;
+  // the Watch now button below stays as the manual path.
+  const [redirectIn, setRedirectIn] = useState<number | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    capture('saathum_checkout_live_redirect', { listing_id: listingId });
+    let n = 5;
+    setRedirectIn(n);
+    const t = window.setInterval(() => {
+      n -= 1;
+      setRedirectIn(n);
+      if (n <= 0) { clearInterval(t); window.location.href = `/book/${encodeURIComponent(listingId)}`; }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [live, listingId]);
+
   return (
     <div className="sthc-card sthc-done sthc-pf">
       <div className="sthc-kick">Booked</div>
@@ -96,7 +113,7 @@ export function DoneStep({
       {live && (
         <div style={{ margin: '12px 0' }}>
           <span className="live-pill"><i></i>The puja is live now</span>
-          <a className="sthc-btn sthc-btn--teal" style={{ marginTop: 12 }} href={`/book/${encodeURIComponent(listingId)}`}>&#9654; Watch now</a>
+          <a className="sthc-btn sthc-btn--teal" style={{ marginTop: 12 }} href={`/book/${encodeURIComponent(listingId)}`}>&#9654; Watch now{redirectIn != null && redirectIn > 0 ? ` (opening in ${redirectIn}s)` : ''}</a>
         </div>
       )}
 

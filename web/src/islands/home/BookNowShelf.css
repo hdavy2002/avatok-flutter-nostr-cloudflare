@@ -57,6 +57,9 @@
 .bn-date svg { width: 16px; height: 16px; flex: none; }
 .bn-cd-label { display: block; margin-top: 6px; font: 800 12.5px Nunito, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #F6B93B; text-shadow: 0 1px 3px #000c; }
 .bn-cd-label--live { font-size: 13px; letter-spacing: .04em; }
+/* [SAATHUM-LIVE-CARD-1] live-streaming banner that replaces the countdown */
+.bn-cd-label--stream { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: #d7261e; color: #fff; font-size: 13.5px; font-weight: 900; letter-spacing: .06em; text-shadow: none; box-shadow: 0 2px 8px #0006; }
+.bn-cd-label--stream i { width: 9px; height: 9px; border-radius: 50%; background: #fff; animation: bn-pulse 1.4s infinite; }
 .bn-cd { display: flex; align-items: flex-start; margin-top: 3px; }
 .bn-cd-group { display: inline-flex; align-items: flex-start; }
 .bn-cd em { font: 900 18px Nunito, sans-serif; font-style: normal; padding: 4px 3px 0; opacity: .8; }

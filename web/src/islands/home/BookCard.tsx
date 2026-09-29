@@ -308,11 +308,14 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           {it.category && <span className="bn-pill bn-pill--soft">{it.category}</span>}
         </span>
         <span className="bn-when">
-          {!it.liveNow && it.startsAt != null && <>
+          {/* [SAATHUM-LIVE-CARD-1 2026-09-29] Owner: a card whose YouTube stream is
+              live must SAY so — the countdown gives way to a live-streaming banner. */}
+          {it.isLiveStream && <span className="bn-cd-label bn-cd-label--stream"><i />Live streaming now</span>}
+          {!it.isLiveStream && !it.liveNow && it.startsAt != null && <>
             <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
           </>}
-          {it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now</span>}
+          {!it.isLiveStream && it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now</span>}
         </span>
       </a>
       <div className="bn-body">
@@ -361,7 +364,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track('book')}>{copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track(it.isLiveStream ? 'book_live' : 'book')}>{it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">
