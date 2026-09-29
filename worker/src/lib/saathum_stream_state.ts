@@ -149,8 +149,13 @@ export async function checkSaathumStreamEnds(env: Env): Promise<{ checked: numbe
         `SELECT v.listing_id AS listing_id, v.youtube_video_id AS youtube_video_id
            FROM event_videos v JOIN listings l ON l.id = v.listing_id
           WHERE v.ended_at IS NULL AND l.starts_at IS NOT NULL AND l.starts_at >= ?1
+            AND l.starts_at - ?2 <= ?3
           LIMIT 500`,
-      ).bind(dayAgo).all<{ listing_id: string; youtube_video_id: string }>();
+      // [SAATHUM-LIVE-ENDED-RESET-1 2026-09-29] Only ask YouTube about events whose live
+      // window has OPENED. A future event's link (e.g. a test video, or last week's
+      // stream pasted early) already has an actualEndTime, and this pass archived it
+      // weeks ahead of the show.
+      ).bind(dayAgo, EARLY_WINDOW_MS, now).all<{ listing_id: string; youtube_video_id: string }>();
       rows = rs.results ?? [];
     } catch (err) {
       await trackException(env, err, { route: "checkSaathumStreamEnds:query", handled: true, app_name: APP });

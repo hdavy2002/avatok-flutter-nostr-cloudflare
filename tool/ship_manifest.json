@@ -7835,5 +7835,21 @@
         "note": "The owner opened a listing with ?preview=live and the server served the player in preview mode."
       }
     ]
+  },
+  "SAATHUM-LIVE-ENDED-RESET-1": {
+    "description": "[SAATHUM-LIVE-ENDED-RESET-1 2026-09-29] Saving a different YouTube link on an event clears event_videos.ended_at, and the 5-min YouTube end-check cron only looks at events whose live window has opened (starts_at - 15min <= now), so a link saved weeks early is never archived as 'ended' before the show.",
+    "shipped": "2026-09-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dash2_video_link_set",
+        "property": "cleared",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin saved a live link; the listing's live-state should then read none/live, never ended, until the show runs."
+      }
+    ]
   }
 }

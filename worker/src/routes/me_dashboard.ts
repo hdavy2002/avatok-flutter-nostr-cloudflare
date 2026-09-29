@@ -769,8 +769,11 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   await db.prepare(
     `INSERT INTO event_videos (listing_id, youtube_video_id, source_url, updated_at, admin_uid) VALUES (?1,?2,?3,?4,?5)
      ON CONFLICT(listing_id) DO UPDATE SET youtube_video_id=excluded.youtube_video_id, source_url=excluded.source_url,
-       updated_at=excluded.updated_at, admin_uid=excluded.admin_uid`,
+       updated_at=excluded.updated_at, admin_uid=excluded.admin_uid,
+       ended_at=CASE WHEN event_videos.youtube_video_id = excluded.youtube_video_id THEN event_videos.ended_at ELSE NULL END`,
   ).bind(listingId, id, url.slice(0, 500), Date.now(), admin.uid).run();
+  // [SAATHUM-LIVE-ENDED-RESET-1 2026-09-29] ^ a NEW video id clears ended_at: "ended" belonged
+  // to the old stream, and keeping it made a freshly linked stream show "has ended".
   await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: false });
   // [WA-NOTIFY-1 2026-09-28] Owner decision: this is the admin's only place to enter
   // a live-stream link (it takes "a YouTube video or live link" — see the error
