@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS sms_source_health (
   last_heartbeat_at INTEGER,
   last_sms_at       INTEGER,
   last_error        TEXT,
+  pending_count     INTEGER,                -- companion health payload (optional): unsent SMS queue
+  failed_count      INTEGER,                -- companion health payload (optional): failed uploads
   alerted_at        INTEGER,                -- last stale alert sent (hourly re-alert)
   stale_alert_open  INTEGER NOT NULL DEFAULT 0, -- 1 while a stale alert is outstanding (drives "recovered")
   updated_at        INTEGER NOT NULL

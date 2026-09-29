@@ -140,6 +140,8 @@ export async function hdfcSmsHeartbeat(req:Request,env:Env):Promise<Response>{
  const time=timestampInterval(sent);if(!time||Math.abs(Date.now()-time.start)>300000)return failure('invalid_timestamp',400);
  const expected=await hmacSha256Hex(dev.secret,`${device}\n${nonce}\n${sent}`);
  if(!constantTimeEqual(expected,signature.toLowerCase()))return failure('invalid_signature',401);
- await touchSourceHealth(env,device,dev.source,'heartbeat'); // [SAATHUM-UPI-3LAYER 2026-09-29] feeds the stale-source cron alert
+ // Optional companion health payload (unsigned, so only bounded non-negative integers are kept).
+ const count=(...keys:string[])=>{for(const k of keys){const v=b[k];if(Number.isInteger(v)&&Number(v)>=0&&Number(v)<=1e9)return Number(v);}return null;};
+ await touchSourceHealth(env,device,dev.source,'heartbeat',Date.now(),null,{pending:count('pending_count','pending'),failed:count('failed_count','failed')}); // [SAATHUM-UPI-3LAYER 2026-09-29] feeds the stale-source cron alert
  return json({ok:true});
 }

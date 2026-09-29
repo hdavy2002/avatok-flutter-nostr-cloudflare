@@ -94,17 +94,19 @@ export function resolveSmsDevice(env: Env, deviceId: string): { source: SmsSourc
 /** Best-effort upsert; never breaks the SMS ack (table may not be migrated yet). */
 export async function touchSourceHealth(
   env: Env, deviceId: string, source: SmsSource, kind: "heartbeat" | "sms", now = Date.now(), error: string | null = null,
+  health: { pending?: number | null; failed?: number | null } = {},
 ): Promise<void> {
   try {
     await metaDb(env).prepare(
-      `INSERT INTO sms_source_health (device_id,source,last_heartbeat_at,last_sms_at,last_error,updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6)
+      `INSERT INTO sms_source_health (device_id,source,last_heartbeat_at,last_sms_at,last_error,updated_at,pending_count,failed_count)
+       VALUES (?1,?2,?3,?4,?5,?6,?8,?9)
        ON CONFLICT(device_id) DO UPDATE SET
          source=excluded.source,
          last_heartbeat_at=CASE WHEN ?7='heartbeat' THEN excluded.last_heartbeat_at ELSE sms_source_health.last_heartbeat_at END,
          last_sms_at=CASE WHEN ?7='sms' THEN excluded.last_sms_at ELSE sms_source_health.last_sms_at END,
-         last_error=?5, updated_at=excluded.updated_at`,
-    ).bind(deviceId, source, kind === "heartbeat" ? now : null, kind === "sms" ? now : null, error, now, kind).run();
+         last_error=?5, updated_at=excluded.updated_at,
+         pending_count=COALESCE(?8, sms_source_health.pending_count), failed_count=COALESCE(?9, sms_source_health.failed_count)`,
+    ).bind(deviceId, source, kind === "heartbeat" ? now : null, kind === "sms" ? now : null, error, now, kind, health.pending ?? null, health.failed ?? null).run();
   } catch (err) {
     await trackException(env, err, { route: "sms_source_health", handled: true, app_name: APP });
   }

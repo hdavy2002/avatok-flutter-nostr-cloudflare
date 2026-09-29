@@ -255,6 +255,70 @@ describe('auto-match (no UTR)', () => {
   });
 });
 
+describe('duplicate delivery tolerance (companion + watcher timestamps differ)', () => {
+  const smokeRows = () => f.sql.prepare('SELECT disposition,reason_code FROM hdfc_sms_smoke_receipts').all() as any[];
+  const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+
+  it('companion then watcher 3 s apart confirms once and is the same ack', async () => {
+    const id = insertCheckout({ amount_paise: 19999 });
+    const first = await ingest(await sms({ device: 'test-device', received: iso(-5000) }));
+    expect(first.body.match_state).toBe('confirmed');
+    const second = await ingest(await sms({ device: 'watcher-1', received: iso(-2000) }));
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ receipt_state: 'accepted', match_state: 'confirmed' });
+    expect(second.body.receipt_id).toBe(first.body.receipt_id); // canonical row kept
+    expect(smokeRows()).toEqual([{ disposition: 'accepted', reason_code: null }]);
+    expect(row(id).status).toBe('confirmed');
+    expect(H.provision).toBe(1);
+    expect(H.emails.filter((e) => e.kind === 'saathum_checkout_confirmation')).toHaveLength(1);
+    const health = f.sql.prepare('SELECT device_id,last_sms_at FROM sms_source_health ORDER BY device_id').all() as any[];
+    expect(health).toEqual([{ device_id: 'test-device', last_sms_at: now }, { device_id: 'watcher-1', last_sms_at: now }]);
+  });
+
+  it('watcher first, companion 4 minutes apart later, confirms once', async () => {
+    const id = insertCheckout({ amount_paise: 19999 });
+    const first = await ingest(await sms({ device: 'watcher-1', received: iso(0) }));
+    expect(first.body.match_state).toBe('confirmed');
+    const second = await ingest(await sms({ device: 'test-device', received: iso(-4 * MIN) }));
+    expect(second.body).toMatchObject({ receipt_state: 'accepted', match_state: 'confirmed' });
+    expect(smokeRows()).toEqual([{ disposition: 'accepted', reason_code: null }]);
+    expect(row(id).status).toBe('confirmed');
+    expect(H.provision).toBe(1);
+  });
+
+  it('more than 10 minutes apart stays a conflict (manual review)', async () => {
+    insertCheckout({ amount_paise: 19999, created_at: now - 30 * MIN, expires_at: now + 30 * MIN });
+    await ingest(await sms({ device: 'watcher-1', received: iso(0) }));
+    const late = await ingest(await sms({ device: 'test-device', received: iso(-11 * MIN) }));
+    expect(late.body).toMatchObject({ receipt_state: 'review_pending', match_state: 'unmatched' });
+    expect(smokeRows()).toEqual([{ disposition: 'review_required', reason_code: 'evidence_conflict' }]);
+  });
+
+  it('same reference with a different amount goes to review, never a duplicate', async () => {
+    const id = insertCheckout({ amount_paise: 19999 });
+    await ingest(await sms({ device: 'test-device', received: iso(-3000) }));
+    const other = await ingest(await sms({ device: 'watcher-1', amount: '150.00', received: iso(-2000) }));
+    expect(other.body).toMatchObject({ receipt_state: 'review_pending', match_state: 'unmatched' });
+    expect(smokeRows()).toEqual([{ disposition: 'review_required', reason_code: 'evidence_conflict' }]);
+    expect(row(id).status).toBe('confirmed'); // already confirmed once; nothing else confirms
+    expect(H.provision).toBe(1);
+  });
+
+  it('heartbeat stores the optional companion health counts and keeps them when omitted', async () => {
+    const hb = async (extra: Record<string, unknown>) => {
+      const nonce = uuid(), sent = new Date(now).toISOString();
+      const signature = await hmacSha256Hex(f.env.HDFC_SMS_DEVICE_SECRET!, `test-device\n${nonce}\n${sent}`);
+      return (await hdfcSmsHeartbeat(request('/heartbeat', { device_id: 'test-device', nonce, sent_at: sent, signature, ...extra }), f.env)).status;
+    };
+    expect(await hb({ pending_count: 3, failed_count: 1 })).toBe(200);
+    expect(f.sql.prepare('SELECT pending_count,failed_count FROM sms_source_health').get()).toEqual({ pending_count: 3, failed_count: 1 });
+    expect(await hb({})).toBe(200);
+    expect(f.sql.prepare('SELECT pending_count,failed_count FROM sms_source_health').get()).toEqual({ pending_count: 3, failed_count: 1 });
+    expect(await hb({ pending_count: -5, failed_count: 'x' })).toBe(200); // junk ignored
+    expect(f.sql.prepare('SELECT pending_count,failed_count FROM sms_source_health').get()).toEqual({ pending_count: 3, failed_count: 1 });
+  });
+});
+
 describe('multi-device ingest', () => {
   it('accepts the watcher device signature on /api/sms/incoming and /api/sms/heartbeat', async () => {
     expect((await ingest(await sms({ device: 'watcher-1', amount: '5.00' }))).status).toBe(200);
