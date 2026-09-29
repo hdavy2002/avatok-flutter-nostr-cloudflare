@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -27,8 +28,8 @@ Use a DEDICATED Google account that is signed in on the payment phone
    (you may see "Use Messages for web" / pairing choices - just get the page to load).
 3. Open DevTools -> Network tab, reload, find the request named "config"
    (URL ends in /web/config). Right-click it -> Copy -> "Copy as cURL".
-   (Alternative: paste a JSON object of the cookies SID, HSID, SSID, APISID,
-    SAPISID, OSID and __Secure-1PSIDTS.)
+   (Easiest alternative: DevTools -> Application -> Cookies -> https://messages.google.com,
+    click any row, press Cmd+A then Cmd+C, and run:  gmwatch login --clipboard )
 4. Paste it below, press Enter, then press Ctrl-D to finish.
 5. CLOSE the private window WITHOUT signing out (signing out kills the cookies).
 6. An emoji will appear here. Tap the SAME emoji in the notification/pairing
@@ -43,7 +44,11 @@ func cmdLogin(args []string) error {
 		return err
 	}
 	var input []byte
-	if len(args) > 0 && args[0] != "-" {
+	if len(args) > 0 && args[0] == "--clipboard" {
+		// Read straight from the macOS clipboard so the cookies never have to be
+		// pasted anywhere visible.
+		input, err = exec.Command("pbpaste").Output()
+	} else if len(args) > 0 && args[0] != "-" {
 		input, err = os.ReadFile(args[0])
 	} else {
 		fmt.Fprint(os.Stderr, loginInstructions)

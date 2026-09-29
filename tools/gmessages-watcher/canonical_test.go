@@ -157,3 +157,17 @@ func TestDeriveHeartbeatURL(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestParseCookiesDevToolsTable(t *testing.T) {
+	table := "SID\taaa\t.google.com\t/\t2027\t10\nHSID\tbbb\t.google.com\nOSID\tccc\tmessages.google.com\nSSID\tddd\t.google.com\nAPISID\teee\nSAPISID\tfff\n"
+	m, err := ParseCookies(table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miss := missingCookies(m); len(miss) != 0 {
+		t.Fatalf("missing %v", miss)
+	}
+	if m["OSID"] != "ccc" {
+		t.Fatalf("OSID=%q", m["OSID"])
+	}
+}

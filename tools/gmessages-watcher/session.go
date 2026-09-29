@@ -80,6 +80,24 @@ func ParseCookies(in string) (map[string]string, error) {
 		}
 		return m, nil
 	}
+	// Chrome DevTools -> Application -> Cookies table copied as rows:
+	// "name<TAB>value<TAB>domain<TAB>..." one cookie per line.
+	if strings.Contains(in, "\t") && !strings.Contains(strings.ToLower(in), "curl") {
+		out := map[string]string{}
+		for _, line := range strings.Split(in, "\n") {
+			f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+			if len(f) < 2 {
+				continue
+			}
+			k, v := strings.TrimSpace(f[0]), strings.TrimSpace(f[1])
+			if k != "" && v != "" {
+				out[k] = v
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
 	raw := ""
 	if strings.Contains(strings.ToLower(in), "curl") {
 		if m := reHeaderCookie.FindStringSubmatch(in); m != nil {
