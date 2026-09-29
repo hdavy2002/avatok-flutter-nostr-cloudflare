@@ -34,6 +34,7 @@ const toc = [
   { id: 'refund-paid', label: 'How your refund is paid' },
   { id: 'we-cancel', label: "If we cancel or can't perform your event" },
   { id: 'missed', label: 'No automatic refunds for missed attendance' },
+  { id: 'outcome', label: 'No refunds based on the outcome' },
   { id: 'disputes', label: 'Wrong or duplicate payments' },
   { id: 'rights', label: 'Your rights' },
 ];
@@ -47,7 +48,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   lead="What you see is what you pay. Cancel with enough notice — 24 hours for a havan or puja, 3 days for a satsang, sermon or meditation — and we refund you in full."
   description="How cancellations and refunds work on Saa Thum — the notice period for each event type, why it exists, and how to request a refund with your UPI transaction number."
   image="/og/refunds.png"
-  updated="2026-09-28"
+  updated="2026-09-30"
   helpHref="/help/billing/refunds"
   sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
   stamp={{ src: '/assets/saathum-how-it-works/ontime.webp', width: 443, height: 494 }}
@@ -160,8 +161,14 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
     kind.
   </p>
 
+  <!-- [SAATHUM-NO-OUTCOME-REFUND-1 2026-09-30] OWNER: no refund for dissatisfaction with a ritual's outcome. -->
+  <h2 id="outcome"><span class="lg-n">7.</span>No refunds based on the outcome</h2>
+  <p>
+    The outcome of a puja, havan, satsang, sermon or meditation is a matter of faith. It can't be promised or measured. Our pujaris and team perform every ritual sincerely and in full, so we don't give refunds because of how you feel about the result. If we could not perform your ritual, you get a full refund.
+  </p>
+
   <!-- [WEB-REFRAME-1 2026-09-29] OWNER: charawa is not returned/refunded; weather delays. -->
-  <h2 id="charawa"><span class="lg-n">7.</span>Charawa and weather delays</h2>
+  <h2 id="charawa"><span class="lg-n">8.</span>Charawa and weather delays</h2>
   <p>
     What you offer at the altar — chadhava, vastra, coconut, flowers or dakshina — is given to
     the deity during your puja. By tradition it stays at the temple, so charawa is not returned
@@ -174,7 +181,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
     email, and send the video and prasad as soon as we can.
   </p>
 
-  <h2 id="disputes"><span class="lg-n">8.</span>Wrong or duplicate payments</h2>
+  <h2 id="disputes"><span class="lg-n">9.</span>Wrong or duplicate payments</h2>
   <p>
     If you think you were charged by mistake or paid twice, email
     support (@) saathum.com with the 12-digit UPI transaction
@@ -182,7 +189,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
     faster, and we'll sort it out directly.
   </p>
 
-  <h2 id="rights"><span class="lg-n">9.</span>Your rights</h2>
+  <h2 id="rights"><span class="lg-n">10.</span>Your rights</h2>
   <p>
     Nothing in this policy limits any rights you have under applicable consumer protection law.
   </p>

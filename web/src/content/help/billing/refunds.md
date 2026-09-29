@@ -3,7 +3,7 @@ title: "Refunds and cancellations"
 description: "How to cancel a puja, havan, satsang, sermon or meditation and request a refund with your 12-digit UPI transaction number."
 section: billing
 order: 1
-updated: 2026-09-29
+updated: 2026-09-30
 keywords: ["refund", "cancellation", "cancel puja", "paisa wapas", "utr number", "upi transaction id", "refund request"]
 audience: buyer
 faq:
@@ -11,6 +11,8 @@ faq:
     a: "Yes — for a havan or puja, cancel at least 24 hours before the scheduled start; for a satsang, sermon or meditation, cancel at least 3 days before. Cancellations after that window are not refunded, and neither is missing the event."
   - q: "Is the refund automatic?"
     a: "No. Email support (@) saathum.com or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
+  - q: "Can I get a refund if I am not happy with the outcome of my puja, havan or session?"
+    a: "No. The outcome of a puja, havan, satsang, sermon or meditation is a matter of faith and can't be promised or measured. Our pujaris and team perform every ritual sincerely and in full, so we don't give refunds because of how you feel about the result. If we could not perform your ritual, you get a full refund."
   - q: "Can I get my charawa back or refunded?"
     a: "No. Charawa (chadhava, vastra, coconut, flowers or dakshina) is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded."
   - q: "Is a weather delay a reason for a refund?"
@@ -56,6 +58,10 @@ If we cancel your event or can't perform it, you get a full refund regardless of
 ## No automatic refunds for missed attendance
 
 For a havan or puja, your sankalp is still performed even if you couldn't join, so the booking isn't refunded. For a satsang, sermon or meditation session, the event still happens at its scheduled time, so a missed session isn't refunded either. Your video is sent to you when it finishes.
+
+## No refunds based on the outcome
+
+The outcome of a puja, havan, satsang, sermon or meditation is a matter of faith. It can't be promised or measured. Our pujaris and team perform every ritual sincerely and in full, so we don't give refunds because of how you feel about the result. If we could not perform your ritual, you get a full refund.
 
 ## Charawa is not refunded
 

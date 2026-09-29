@@ -148,7 +148,7 @@ export function ReviewStep({
             if (checked) capture('saathum_checkout_refund_policy_ticked', { listing_id: listingId });
           }}
         />
-        <span>I have read and agree to the <a href="/refunds" target="_blank" rel="noopener noreferrer">refund policy</a></span>
+        <span>I have read and agree to the <a href="/refunds" target="_blank" rel="noopener noreferrer">refund policy</a>, including that there are no refunds based on the outcome of a ritual</span>
       </label>
       <label className="sthc-check">
         <input
