@@ -155,10 +155,6 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
     used to be hand-placed on index/organisers now lives here. */}
 <div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style={folk ? `display:contents;${folkBorder}` : 'display:contents'}>
 <header class:list={['avh', folk && 'avh--folk', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
-  {/* [WEB-STICKY-RIBBON-1 2026-09-29] OWNER: the marigold border above the header must stay
-      pinned with the sticky header, so it now sits INSIDE <header> (was a sibling above it,
-      which scrolled away while the bar stuck). */}
-  {folk && <div class="folk-ribbon" aria-hidden="true"></div>}
   {!folk && <TruckBorder kind="jhalar" count={60} class="avh-band" />}
   <div class="avh-bar">
   {/* [SHV2-S8 2026-09-21] D8/A2: diya mark + "Saa Thum" set in the existing
@@ -209,6 +205,9 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   </button>
   </div>
 
+  {/* [WEB-STICKY-RIBBON-1 2026-09-29] OWNER: the marigold border sits BELOW the header bar and
+      stays pinned with it — it lives inside the sticky <header>, after the bar. */}
+  {folk && <div class="folk-ribbon" aria-hidden="true"></div>}
 </header>
 
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
