@@ -89,8 +89,13 @@ import {
   saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
   runSaathumReminders, saathumWatchGet, saathumLiveStateGet, // [WA-NOTIFY-2] [SAATHUM-WATCH-1]
+  saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+// [SAATHUM-UPI-3LAYER 2026-09-29] Admin review queue + cron sweeps for the 3-layer UPI confirmation.
+import { smsForwarderIncoming, adminForwarderCaptures } from "./routes/sms_forwarder";
+import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumCheckoutReject } from "./routes/saathum_payment_review";
+import { runSaathumPaymentSweeps } from "./lib/saathum_upi3";
 import { checkSaathumStreamEnds } from "./lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
@@ -532,6 +537,11 @@ export default {
         runSaathumReminders(env)
           .then((r) => { if (r.sent) console.log("[saathum-reminders]", JSON.stringify(r)); })
           .catch((e) => { console.error("[saathum-reminders] failed:", String(e)); }),
+        // [SAATHUM-UPI-3LAYER 2026-09-29] Persists review_pending after 180 s, admin WhatsApp alert for
+        // items pending >10 min, stale SMS-source alert (15 min, hourly re-alert, "recovered"). Never throws.
+        runSaathumPaymentSweeps(env)
+          .then((r) => { if (r.pending || r.review_alerts || r.stale || r.recovered || r.forwarder_silent || r.forwarder_recovered) console.log("[saathum-payment-sweeps]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[saathum-payment-sweeps] failed:", String(e)); }),
         // [WA-NOTIFY-1 2026-09-28] Drains whatsapp_outbox at ~1 msg/2s, capped at 25
         // per tick (this cron runs every 5 min — see the crons comment above), so a
         // ban-risking burst on the unofficial WasenderAPI number never happens even
@@ -587,6 +597,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (p === "/api/admin/upi-settings" && req.method === "GET") return await getUpiSettings(req, env);
     if (p === "/api/admin/upi-settings" && req.method === "PUT") return await putUpiSettings(req, env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
+    // [SAATHUM-UPI-3LAYER 2026-09-29] Layer 3: manual verification queue (requireAdmin inside each handler).
+    if (p === "/api/admin/saathum/payments/review" && req.method === "GET") return await adminSaathumReviewList(req, env);
+    // [SAATHUM-UPI-3LAYER 2026-09-29] Redacted last-20 requests from the SMS-forwarder app (capture mode).
+    if (p === "/api/admin/saathum/forwarder/captures" && req.method === "GET") return await adminForwarderCaptures(req, env);
+    {
+      const m = p.match(/^\/api\/admin\/saathum\/(?:checkout|payments\/review)\/([^/]+)\/(confirm|reject)$/);
+      if (m && req.method === "POST") return m[2] === "confirm" ? await adminSaathumCheckoutConfirm(req, env, m[1]) : await adminSaathumCheckoutReject(req, env, m[1]);
+    }
 
     // Messenger Phase 1 billing authority. These endpoints are mounted for
     // client contract testing, but the master flag in config.ts remains dark;
@@ -1039,6 +1057,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const checkoutId = rest[0];
         if (rest.length === 1 && req.method === "GET") return await saathumCheckoutGet(req, env, checkoutId);
         if (rest.length === 2 && rest[1] === "utr" && req.method === "POST") return await saathumCheckoutUtr(req, env, checkoutId);
+        if (rest.length === 2 && rest[1] === "paid" && req.method === "POST") return await saathumCheckoutPaid(req, env, checkoutId); // [SAATHUM-UPI-3LAYER 2026-09-29]
         if (rest.length === 2 && rest[1] === "address" && req.method === "PUT") return await saathumCheckoutAddress(req, env, checkoutId);
         if (rest.length === 2 && rest[1] === "receipt.pdf" && req.method === "GET") return await saathumCheckoutReceiptPdf(req, env, checkoutId);
       }
@@ -1345,6 +1364,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // the commercial rail. Gated behind hdfcSmsRailEnabled (default false): every
       // request 410s before any handler — including requireAdmin/HMAC checks — runs.
       // Flip the flag to restore; nothing below was deleted. See REPORT.md.
+      // [SAATHUM-UPI-3LAYER 2026-09-29] Layer 2: third-party SMS-forwarder app (cannot sign HMAC). The
+      // handler itself does token auth (404 unless SMS_FORWARDER_TOKEN is set and matches), the
+      // saathumSmsIngestEnabled + smsForwarderEnabled gates and rate limiting.
+      if ((p === "/api/sms/forward" || p.startsWith("/api/sms/forward/")) && (req.method === "POST" || req.method === "GET")) {
+        return await smsForwarderIncoming(req, env, p.length > "/api/sms/forward/".length ? p.slice("/api/sms/forward/".length) : null);
+      }
       if (p.startsWith("/api/pay/hdfc-sms/") || p === "/api/sms/incoming" || p === "/api/sms/heartbeat") {
         const hdfcCfg = await readConfig(env);
         // [SAATHUM-CHECKOUT-API 2026-09-26] The bank-SMS ingress (HMAC-signed by the

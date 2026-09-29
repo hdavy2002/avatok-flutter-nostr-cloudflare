@@ -35,11 +35,11 @@ import { readConfig } from "../routes/config"; // [WA-NOTIFY-2] saathumLiveLinkN
 const APP = "saathum";
 const MAX_SEND_ATTEMPTS = 6;
 
-export type NotifyKind = "live_link" | "video_ready";
+export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected"; // [SAATHUM-UPI-3LAYER 2026-09-29]
 // [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
 // existing bulk admin-save fan-out, "late_buyer" is the single-checkout send
 // fired the moment a booking confirms while the show is already live/linked.
-export type NotifyTrigger = "link_saved" | "late_buyer";
+export type NotifyTrigger = "link_saved" | "late_buyer" | "payment";
 
 export type NotifyResult = { recipients: number; sent: number; skipped_no_phone: number; failed: number };
 
@@ -69,7 +69,7 @@ export function formatIst(ms: number): string {
 }
 
 /** Mirrors phoneOtpStatus's lookup (routes/phone_otp.ts) without importing a route module. */
-async function verifiedWhatsAppNumber(env: Env, uid: string): Promise<string | null> {
+export async function verifiedWhatsAppNumber(env: Env, uid: string): Promise<string | null> {
   const db = env.DB_META;
   const cv = await db.prepare("SELECT phone_verified, phone_hash FROM contact_verification WHERE uid=?1")
     .bind(uid).first<{ phone_verified: number; phone_hash: string | null }>().catch(() => null);
@@ -163,6 +163,26 @@ export async function sendSaathumLiveLinkWhatsAppForCheckout(
   return enqueueWhatsAppForBuyers(env, listingId, "live_link", url, "late_buyer", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
     const when = startsAtMs ? formatIst(startsAtMs) : "soon — check the event page for the exact time";
     return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
+  });
+}
+
+/**
+ * [SAATHUM-UPI-3LAYER 2026-09-29] Payment-outcome WhatsApp for ONE checkout, queued in the same
+ * outbox (paced cron drain). Sent by the shared confirm path (auto-match AND admin confirm) and
+ * by admin reject. Idempotent: UNIQUE(checkout_id, kind, url_hash) with a fixed hash per kind, so
+ * a duplicate SMS, a retry or a double click can never send twice. Not behind the live-link
+ * kill switch: a buyer who paid must always hear back. Buyers without a verified number are skipped.
+ */
+export async function sendSaathumPaymentWhatsApp(
+  env: Env, kind: "booking_confirmed" | "booking_rejected", listingId: string, checkoutId: string, uid: string,
+): Promise<NotifyResult> {
+  const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
+  return enqueueWhatsAppForBuyers(env, listingId, kind, `payment:${kind}`, "payment", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
+    if (kind === "booking_rejected") {
+      return `Saa Thum: we could not find your payment for "${title}", so the booking was not confirmed. If you did pay, please contact support@saathum.com with your UPI reference and we will sort it out.\n— Saa Thum`;
+    }
+    const when = startsAtMs ? `\n${formatIst(startsAtMs)}` : "";
+    return `🙏 Payment received. Your booking is confirmed.\n${title}${when}\nYour receipt is in your email and under My events: ${base}/dashboard/my-events\n— Saa Thum`;
   });
 }
 

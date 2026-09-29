@@ -132,7 +132,13 @@ export type SaathumReceiptInput = {
   orderId: string | null;
 };
 
-const rupeesAscii = (n: number): string => `Rs. ${n.toLocaleString("en-IN")}`;
+// [SAATHUM-UPI-3LAYER 2026-09-29] Fractional rupees (rounding discount, collected total) show
+// two decimals; whole-rupee receipts render exactly as before. Negative -> "-Rs. 0.99".
+const rupeesAscii = (n: number): string => {
+  const abs = Math.abs(n);
+  const body = Number.isInteger(abs) ? abs.toLocaleString("en-IN") : abs.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${n < 0 ? "-" : ""}Rs. ${body}`;
+};
 
 export async function renderSaathumReceiptPdf(r: SaathumReceiptInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create();

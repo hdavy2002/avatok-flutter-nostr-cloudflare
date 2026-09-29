@@ -101,6 +101,12 @@ export interface PlatformConfig {
    *  (/api/sms/incoming, /api/sms/heartbeat) for Saa Thum checkout verification even
    *  while hdfcSmsRailEnabled keeps the ₹1 smoke harness dark. Kill switch. Default true. */
   saathumSmsIngestEnabled: boolean;
+  /** [SAATHUM-UPI-3LAYER 2026-09-29] Layer 2 kill switch: the third-party SMS-forwarder app's webhook
+   *  (/api/sms/forward/:token). Also needs saathumSmsIngestEnabled + the SMS_FORWARDER_TOKEN secret. Default false. */
+  smsForwarderEnabled: boolean;
+  /** [SAATHUM-UPI-3LAYER 2026-09-29] Onboarding aid: store the last 20 redacted forwarder requests so the
+   *  app's exact payload format can be read at /api/admin/saathum/forwarder/captures. Default false. */
+  smsForwarderCaptureEnabled: boolean;
   /** [WA-NOTIFY-2 2026-09-28] Kill switch for the buyer-facing internal watch page flow —
    * the live-link WhatsApp message and its matching email (lib/whatsapp_notify.ts
    * sendSaathumLiveLinkWhatsApp / routes/saathum_checkout.ts sendSaathumLiveLinkEmails,
@@ -2091,6 +2097,8 @@ const DEFAULTS: PlatformConfig = {
   // GST charge, independent of avaTOK's (still-unregistered) gstEnabled.
   saathumGstEnabled: true,
   saathumSmsIngestEnabled: true,
+  smsForwarderEnabled: false,
+  smsForwarderCaptureEnabled: false,
   // [WA-NOTIFY-2 2026-09-28] See the interface comment. OFF until the watch page exists.
   saathumLiveLinkNotifyEnabled: false,
   // [PAY-CASHFREE-1] See the interface comment. Both OFF until the sandbox has been
