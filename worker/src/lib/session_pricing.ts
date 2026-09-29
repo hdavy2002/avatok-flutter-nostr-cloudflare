@@ -232,9 +232,13 @@ export function sessionSplitFor(gross: number, durationMin: number): SessionSpli
  */
 export function priceFloorError(price: unknown, freeEntry: boolean): string | null {
   if (freeEntry) return null;
+  // [SAATHUM-PRICE-FLOOR-1 2026-09-29, owner decision] Saathum sells its own pujas/havans
+  // directly, so the old avaTOK creator floor (49 tokens/hour, protecting creators from the
+  // flat session fee) no longer applies: any whole-rupee price from Rs 1 is allowed.
   const p = Math.trunc(Number(price) || 0);
-  if (p < MIN_PRICE_TOKENS_PER_HOUR) {
-    return `Price must be at least ${MIN_PRICE_TOKENS_PER_HOUR} tokens/hour — below that the flat fee leaves you nothing.`;
-  }
+  if (p < LISTING_MIN_PRICE_RUPEES) return `Price must be at least ₹${LISTING_MIN_PRICE_RUPEES}.`;
   return null;
 }
+
+/** [SAATHUM-PRICE-FLOOR-1] The listing price floor in rupees (was MIN_PRICE_TOKENS_PER_HOUR). */
+export const LISTING_MIN_PRICE_RUPEES = 1;
