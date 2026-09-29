@@ -222,3 +222,72 @@ select.sthc-in { appearance: auto; }
   .sthc-qty button { width: 36px; height: 36px; }
   .sthc-two-col { grid-template-columns: 1fr; }
 }
+
+/* [SAATHUM-UPI-3LAYER 2026-09-29] Approved payment screens — exact replica of
+ * Claude outputs/saathum-payment-mock.html. Scoped to .sthc-pf cards so the
+ * earlier steps are untouched; sizes are the mock's (nothing below 15px). */
+.sthc-card.sthc-pf { padding: 26px; border-width: 6px; }
+.sthc-pf .sthc-h3 { font-size: 28px; }
+.sthc-pf .sthc-done p, .sthc-done.sthc-pf p { margin: 8px 0; }
+.sthc-pf .sthc-hint { font-size: 15px; line-height: 1.45; padding: 12px 14px; margin: 6px 0 12px; }
+.sthc-pf .sthc-btn { font-size: 18px; padding: 16px; text-decoration: none; }
+.sthc-pf .sthc-btn + .sthc-btn { margin-top: 12px; }
+.sthc-btn--teal { background: var(--teal); color: #fff; box-shadow: 0 3px 0 #0b2626; }
+.sthc-pf .sthc-btn--ghost { background: #fff; color: var(--teal); border: 2px solid var(--teal); box-shadow: none; margin-top: 10px; }
+.sthc-pf .sthc-btn--ghost.sthc-btn--teal { background: var(--teal); color: #fff; }
+.sthc-pf .sthc-row { font-size: 17px; padding: 10px 0; }
+.sthc-pf .sthc-row.tot { font-size: 21px; }
+.sthc-pf .sthc-row small { display: block; font: 600 15px Nunito, sans-serif; color: var(--sub); }
+.sthc-row .disc { color: var(--green); font-weight: 900; }
+.sthc-pf .sthc-fld label { display: block; font-size: 16px; }
+.sthc-pf .sthc-countdown { font-size: 16px; }
+.sthc-pf .sthc-utr-in { font-size: 22px; }
+.sthc-pf .sthc-err { font-size: 15px; }
+
+.ev-strip { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; }
+.ev-thumb { width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, #e9903a, #b3261e); display: grid; place-items: center; font-size: 30px; flex: none; overflow: hidden; }
+.ev-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ev-strip b { display: block; font: 800 17px/1.25 Nunito, sans-serif; color: var(--teal); }
+.ev-strip small { font: 700 15px Nunito, sans-serif; color: var(--sub); }
+.amount-box { margin: 14px 0 6px; padding: 16px 12px; border-radius: 16px; background: #fff; border: 2px solid var(--gold); text-align: center; }
+.amount-box .lbl { font: 800 16px Nunito, sans-serif; color: var(--sub); }
+.amount-box .amt { font: 700 52px/1.1 Comfortaa, sans-serif; color: var(--teal); margin: 4px 0; }
+.amount-box .exact { font: 900 16px Nunito, sans-serif; color: #5a3d12; background: #fff3c4; display: inline-block; padding: 6px 12px; border-radius: 999px; }
+.sthc-qr-wrap > img.qr { width: 240px; height: 240px; margin: 14px auto 6px; border: 8px solid #fff; border-radius: 14px; box-shadow: 0 6px 16px #0002; background: #fff; display: block; }
+.payee { margin: 6px 0 14px; font: 700 16px/1.5 Nunito, sans-serif; color: var(--body); }
+.payee b { color: var(--teal); font-weight: 900; }
+.payee code { font: 800 16px Nunito, sans-serif; background: var(--chip); padding: 2px 8px; border-radius: 8px; color: var(--ink); }
+/* Hint under the QR: real spacing (the mock's -4px margin made it overlap the button). */
+.only-mobile-tag { display: block; text-align: center; font: 700 15px/1.45 Nunito, sans-serif; color: var(--sub); margin: 0 0 14px; }
+.sthc-apps--pf { display: flex; justify-content: center; gap: 18px; margin: 16px 0 12px; }
+.sthc-apps--pf a { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 800 15px Nunito, sans-serif; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.sthc-apps--pf .sthc-app-ic { width: 48px; height: 48px; border-radius: 50%; background: #fff; border: 1.5px solid #e6d3b0; box-shadow: 0 2px 6px #0001; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sthc-apps--pf .sthc-app-ic img { width: 30px; height: 30px; object-fit: contain; }
+.wait-ring { width: 132px; height: 132px; margin: 8px auto 6px; position: relative; }
+.wait-ring svg { transform: rotate(-90deg); }
+.wait-ring .t { position: absolute; inset: 0; display: grid; place-items: center; font: 700 34px Comfortaa, sans-serif; color: var(--teal); }
+.steps-list { list-style: none; padding: 0; margin: 8px 0 12px; text-align: left; }
+.steps-list li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font: 700 17px/1.4 Nunito, sans-serif; color: var(--body); }
+.steps-list .dot { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 900 15px Nunito, sans-serif; background: #eadbc0; color: var(--sub); }
+.steps-list .dot.ok { background: var(--green); color: #fff; }
+.steps-list .dot.now { background: var(--gold); color: #3a2206; }
+details.utr { margin: 6px 0 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; }
+details.utr summary { padding: 13px 14px; font: 800 16px Nunito, sans-serif; color: var(--teal); cursor: pointer; }
+details.utr .in { padding: 0 14px 14px; }
+.book-box { margin: 14px 0; padding: 6px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; text-align: left; }
+.book-box .sthc-row:last-child { border: 0; }
+.book-box .sthc-row span:last-child { text-align: right; color: var(--teal); font-weight: 900; }
+.tick { width: 84px; height: 84px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font: 900 46px Nunito, sans-serif; margin: 4px auto 10px; box-shadow: 0 6px 16px #1e8a4c55; }
+.live-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: #d6f2d8; color: #17613b; font: 900 15px Nunito, sans-serif; }
+.live-pill i { width: 10px; height: 10px; border-radius: 50%; background: #e02b20; animation: sthc-pulse 1.2s infinite; }
+@keyframes sthc-pulse { 50% { opacity: .35; } }
+.support { margin: 12px 0 4px; padding: 14px; border-radius: 14px; background: #fbf3e3; border: 1px solid var(--line); text-align: left; font: 700 16px/1.6 Nunito, sans-serif; color: var(--body); }
+.support b { color: var(--teal); font-weight: 900; }
+.support a { color: var(--red); font-weight: 800; }
+.soft-icon { width: 76px; height: 76px; border-radius: 50%; background: #fff3c4; display: grid; place-items: center; font-size: 38px; margin: 4px auto 10px; border: 3px solid #fff; box-shadow: 0 4px 12px #5a2c0f22; }
+.soft-icon.rose { background: #fbe3dc; }
+@media (max-width: 520px) {
+  .sthc-card.sthc-pf { padding: 26px; border-width: 6px; }
+  .sthc-pf .sthc-h3 { font-size: 28px; }
+}
+.support b { white-space: nowrap; }

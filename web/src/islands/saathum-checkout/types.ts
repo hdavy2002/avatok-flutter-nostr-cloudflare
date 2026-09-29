@@ -81,6 +81,7 @@ export interface CheckoutPayment {
   upi_url: string | null;
   vpa: string;
   payee_name: string;
+  /** Exact payable amount in rupees with paise (total minus rounding discount). */
   amount_rupees: number;
   expires_at: number;
   utr: string | null;
@@ -103,6 +104,12 @@ export interface Checkout {
   receipt_url: string | null;
   confirmed_at: number | null;
   created_at: number;
+  /** [SAATHUM-UPI-3LAYER] Envelope fields — optional so an older worker still parses. */
+  reason_code?: string | null;
+  pay_amount_paise?: number;
+  rounding_discount_paise?: number;
+  paid_claimed_at?: number | null;
+  upi?: { vpa: string | null; payee_name: string; uri: string | null };
 }
 
 export interface ChadhavaSelection {

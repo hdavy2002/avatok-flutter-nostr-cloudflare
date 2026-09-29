@@ -114,7 +114,7 @@ function Inner({ listingId }: { listingId: string }) {
         const c = await getCheckout(id, t);
         setCheckout(c);
         storeCheckoutId(listingId, c.checkout_id);
-        setStep(c.status === 'confirmed' ? 'done' : 'pay');
+        setStep(c.status === 'confirmed' ? 'done' : 'pay'); // review_pending / expired / rejected all render inside PayStep
         if (fromQuery) { url.searchParams.delete('checkout'); window.history.replaceState(null, '', url.pathname + url.search); }
       } catch {
         /* the stored/linked checkout is gone or not this account's — start fresh */
