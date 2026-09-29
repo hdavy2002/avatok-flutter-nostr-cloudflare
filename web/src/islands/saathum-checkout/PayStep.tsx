@@ -10,8 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { UPI_APPS } from '../checkout/upiAppLinks';
-import { upiAppHref, upiPlatform } from '../checkout/upiAppLinks';
+import { upiPlatform } from '../checkout/upiAppLinks';
 import type { UpiPlatform } from '../checkout/upiAppLinks';
 import { getCheckout, markPaid, submitUtr } from './api';
 import { ApiError } from '../../lib/apiClient';
@@ -24,8 +23,11 @@ const POLL_WAIT_MS = 3000;
 const POLL_REVIEW_MS = 20000;
 const CLAIM_WINDOW_MS = 180000;
 const RING = 364.4;
-// Mock order: Google Pay, PhonePe, Paytm.
-const APP_ORDER = ['google-pay', 'phonepe', 'paytm'];
+// [SAATHUM-PAY-QR-ONLY-1 2026-09-29, owner decision] No "open UPI app" buttons.
+// UPI apps (ICICI iMobile etc.) refuse unsigned payment links opened from a website
+// ("Request Restricted" / "technical error"), so the customer pays by scanning the QR
+// (another phone, or a saved image via the app's gallery scan) or by entering the
+// UPI ID + exact amount by hand.
 
 function Dots({ n }: { n: number }) {
   return <div className="sthc-dots">{Array.from({ length: n }, (_, i) => <i key={i} className="on" />)}</div>;
@@ -73,6 +75,7 @@ export function PayStep({
   const [utrSent, setUtrSent] = useState(false);
   const [paidBusy, setPaidBusy] = useState(false);
   const [paidErr, setPaidErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState<'vpa' | 'amount' | null>(null);
   // Poll with the LATEST token — the parent refreshes it every 40s. [SAATHUM-UPI-FIX]
   const authRef = useRef(auth);
   authRef.current = auth;
@@ -125,7 +128,7 @@ export function PayStep({
     if (upi) {
       void QRCode.toDataURL(upi, { width: 480, margin: 1, errorCorrectionLevel: 'M' })
         .then((img) => { if (active) setQr(img); })
-        .catch(() => { if (active) setQrError('QR unavailable. Use the payment app button.'); });
+        .catch(() => { if (active) setQrError('QR unavailable. Pay to the UPI ID below and type the exact amount.'); });
     }
     return () => { active = false; };
   }, [upi]);
@@ -283,11 +286,17 @@ export function PayStep({
   const lines = checkout.quote.lines;
   const rounding = (checkout.rounding_discount_paise ?? 0) / 100;
   const phone = platform !== 'desktop';
-  const apps = APP_ORDER.map((id) => UPI_APPS.find((a) => a.id === id)).filter((a): a is (typeof UPI_APPS)[number] => !!a);
   const payee = checkout.upi?.payee_name ?? checkout.payment.payee_name;
   const vpa = checkout.upi?.vpa ?? checkout.payment.vpa;
   const cover = checkout.listing.cover_url;
-  const href = typeof window !== 'undefined' ? window.location.href : undefined;
+  const amountText = payableRupees(checkout).toFixed(2);
+  const copy = (what: 'vpa' | 'amount', text: string) => {
+    capture('saathum_checkout_pay_copy', { what });
+    void navigator.clipboard?.writeText(text).then(
+      () => { setCopied(what); window.setTimeout(() => setCopied(null), 2000); },
+      (e) => captureException(e, { where: 'saathum_pay_copy', what }),
+    );
+  };
   return (
     <div className="sthc-card sthc-qr-wrap sthc-pf">
       <div className="sthc-kick" style={{ textAlign: 'left' }}>Last step &middot; Pay</div>
@@ -326,21 +335,35 @@ export function PayStep({
 
       <div className="payee">Paying to <b>{payee}</b>{vpa && <><br />UPI ID <code>{vpa}</code></>}</div>
 
-      {upi && phone && (
-        <>
-          <a className="sthc-btn sthc-btn--teal" href={upi}>Pay with UPI app &rarr;</a>
-          <nav className="sthc-apps sthc-apps--pf" aria-label="Payment apps">
-            {apps.map((app) => (
-              <a key={app.id} href={upiAppHref(app, upi, platform, href)} aria-label={`Pay with ${app.name}`}>
-                <span className="sthc-app-ic"><img src={app.icon} alt="" /></span>{app.name}
-              </a>
-            ))}
-          </nav>
-        </>
-      )}
-      {!phone && <span className="only-mobile-tag">Scan the QR with any UPI app on your phone</span>}
+      <div className="sthc-hint" style={{ textAlign: 'left' }}>
+        {phone ? (
+          <>
+            <b>How to pay</b><br />
+            1. Tap <b>Save QR</b> below.<br />
+            2. Open any UPI app (Google Pay, PhonePe, Paytm, BHIM&hellip;) and tap <b>Scan</b>.<br />
+            3. Pick the saved QR from your gallery and pay <b>{payable}</b>.<br />
+            Or pay to the UPI ID above and type the exact amount.
+          </>
+        ) : (
+          <>Scan this QR with any UPI app on your phone and pay <b>{payable}</b>.</>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', margin: '10px 0' }}>
+        {qr && phone && (
+          <a className="sthc-btn sthc-btn--teal" href={qr} download={`saathum-pay-${amountText}.png`}
+            onClick={() => capture('saathum_checkout_pay_qr_saved')}>Save QR</a>
+        )}
+        {vpa && (
+          <button className="sthc-btn sthc-btn--ghost" type="button" onClick={() => copy('vpa', vpa)}>
+            {copied === 'vpa' ? 'UPI ID copied' : 'Copy UPI ID'}
+          </button>
+        )}
+        <button className="sthc-btn sthc-btn--ghost" type="button" onClick={() => copy('amount', amountText)}>
+          {copied === 'amount' ? 'Amount copied' : `Copy amount ₹${amountText}`}
+        </button>
+      </div>
 
-      <div className="sthc-hint sthc-hint--gold" style={{ textAlign: 'left' }}>After paying in your UPI app, come back here and tap the button below.</div>
+      <div className="sthc-hint sthc-hint--gold" style={{ textAlign: 'left' }}>After paying, come back here and tap the button below.</div>
       {paidErr && <p className="sthc-err" role="alert">{paidErr}</p>}
       <button className="sthc-btn" type="button" disabled={paidBusy} onClick={() => void iHavePaid()}>
         {paidBusy ? 'Please wait…' : <>I&rsquo;ve paid &rarr;</>}
