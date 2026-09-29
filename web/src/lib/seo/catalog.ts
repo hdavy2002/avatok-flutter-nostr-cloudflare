@@ -25,6 +25,18 @@ export const HOW_IT_WORKS_SEO: PublicContent = {
   image: { url: '/og-editorial.png', alt: 'Performed for you, in three simple steps — Saa Thum' },
 };
 
+// [WEB-TEMPLES-1 2026-09-29] /temples — "Our temples" (header + footer menus).
+export const TEMPLES_SEO: PublicContent = {
+  kind: 'page',
+  key: '/temples',
+  canonicalPath: '/temples',
+  title: 'Our temples — Haridwar, Rishikesh, Kedarnath, Badrinath & Himachal',
+  summary: 'The temples Saa Thum works with across Uttarakhand and Himachal. Our team visits with a camera crew and live streams your puja, sends the full video if the network drops, and ships dry prasad the same day.',
+  visibility: 'public',
+  modifiedAt: new Date('2026-09-29').toISOString(),
+  image: { url: '/og-editorial.png', alt: 'The temples we work with — Saa Thum' },
+};
+
 export const HELP_SEO: PublicContent = {
   kind: 'collection',
   key: 'help',

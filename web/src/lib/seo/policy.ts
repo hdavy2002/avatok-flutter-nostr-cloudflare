@@ -21,7 +21,7 @@ const PRIVATE_EXACT = new Set([
 ]);
 
 const PUBLIC_EXACT = new Set([
-  '/', '/marketplace', '/help', '/how-it-works', '/privacy',
+  '/', '/marketplace', '/help', '/how-it-works', '/temples', '/privacy',
   '/terms', '/cookies', '/refunds', '/contact', '/rituals', '/disclaimer', '/grievance',
 ]);
 

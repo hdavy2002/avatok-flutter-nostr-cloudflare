@@ -32,6 +32,7 @@ export const GET: APIRoute = () => {
 - [Complete ritual index](${SITE}/llms-rituals.txt): Canonical titles, summaries and URLs generated from the public ritual catalogue.
 - [Marketplace](${SITE}/marketplace): Currently public and bookable rituals.
 - [How it works](${SITE}/how-it-works): The four kinds of events (havan, puja, satsang, meditation), booking, the day of the event, how to sit for each, the video and prasad.
+- [Our temples](${SITE}/temples): The temples Saa Thum works with in Uttarakhand and Himachal, how the crew live streams from the temple, the full-video fallback, same-day dry prasad, and why charawa is not returned.
 - [Help centre](${SITE}/help): Public support documentation.
 - [Refund policy](${SITE}/refunds): Current cancellation and refund terms.
 - [Privacy](${SITE}/privacy): Privacy policy.

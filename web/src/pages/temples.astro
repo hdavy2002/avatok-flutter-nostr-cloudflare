@@ -1,0 +1,199 @@
+---
+// [WEB-TEMPLES-1 2026-09-29] /temples — "Our temples", built from the
+// owner-approved mockup design/temples-page/saathum-temples-mock.src.html.
+// OWNER: page lists the temples Saa Thum works with; explains the crew visit,
+// live streaming, the full-video fallback when the internet drops, same-day dry
+// prasad, and that charawa is not returned or refunded. Linked from the header
+// and footer menus as "Our temples".
+//
+// NOTE FOR AI:
+//  - Same shell as pages/how-it-works.astro: Base chrome={false}, the
+//    `.folk-site[data-design="saathum-reference-v5"]` wrapper, SiteHeader/
+//    SiteFooter `folk`, Comfortaa+Nunito. Page CSS: styles/temples.css (`.tp`).
+//  - Temple list lives in lib/temples.ts (with the owner's exclusion rules).
+//    Temple photos arrive later: cards without `photo: true` show a placeholder.
+//  - The hero uses the existing how-it-works painting until the owner supplies
+//    a crew photo.
+//  - Never name YouTube; say "live streaming". Emails as "name (@) saathum.com".
+export const prerender = true;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { publicImage, publicImageSrcSet } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import { TEMPLES_SEO } from '../lib/seo/catalog';
+import { TEMPLE_REGIONS, TEMPLE_COUNT, templePhotoPath } from '../lib/temples';
+import '../styles/saathum-folk.css';
+import '../styles/temples.css';
+
+const A = '/assets/saathum-how-it-works/';
+const sticker = (name: string, width = 420) => publicImage(`${A}${name}.webp`, { width, fit: 'scale-down' });
+const IMG = {
+  havan: sticker('havan'),
+  link: sticker('link'),
+  namaste: sticker('namaste', 340),
+  emblem: publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 240, fit: 'scale-down' }),
+};
+const heroSrc = publicImage(`${A}hero.png`, { width: 1280, fit: 'scale-down' });
+const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 'scale-down' });
+const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 640, height: 480, fit: 'cover' });
+---
+<Base content={TEMPLES_SEO} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="tp">
+      <!-- HERO -->
+      <section class="tp-hero tp-wrap" aria-labelledby="page-title">
+        <div class="tp-hero-inner">
+          <div class="tp-hero-copy">
+            <p class="tp-eyebrow">Our temples</p>
+            <h1 id="page-title">The temples we work with, <em>from Haridwar to the high Himalaya.</em></h1>
+            <p class="tp-lead">Saa Thum works with the priests of old, well-loved temples across Uttarakhand and Himachal. Many are small village shrines that most pilgrims never reach. We go there for you, with a camera, so you can take part from home.</p>
+            <div class="tp-pills"><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_COUNT} temples</span><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_REGIONS.length} regions</span><span class="tp-pill"><span class="tp-dot"></span>Uttarakhand &amp; Himachal</span></div>
+            <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">See all temples <span aria-hidden="true">↓</span></a></div>
+          </div>
+          <div class="tp-hero-art">
+            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home, watching a havan on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
+            <img class="tp-stamp" src={IMG.havan} alt="" aria-hidden="true" width="640" height="558" decoding="async" />
+          </div>
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
+
+      <!-- HOW IT REACHES YOU -->
+      <section class="tp-how tp-wrap" aria-labelledby="how-title">
+        <div class="tp-sec-head"><h2 id="how-title"><span aria-hidden="true">✽</span>How a temple puja reaches you</h2>
+        <p>You don't need to travel. Our team makes the journey on your behalf.</p></div>
+        <div class="tp-how-grid">
+          <article class="tp-how-card">
+            <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 40h10l5-8h18l5 8h10v30H22Z" fill="#fff6e6"/><circle cx="46" cy="55" r="10" fill="#d87332"/><circle cx="46" cy="55" r="4" fill="#fff6e6"/><path d="M70 47h4"/></g></svg>
+            <h3>We go to the temple</h3><p>Our team travels to the temple with a camera crew and works alongside the temple's own priest.</p>
+          </article>
+          <article class="tp-how-card">
+            <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="50" cy="52" r="7" fill="#ad3028"/><path d="M36 38a20 20 0 0 0 0 28M64 38a20 20 0 0 1 0 28M28 30a31 31 0 0 0 0 44M72 30a31 31 0 0 1 0 44"/></g></svg>
+            <h3>Live streaming for you</h3><p>We set up live streaming at the altar, so you can watch your puja or havan from home as it happens.</p>
+          </article>
+          <article class="tp-how-card tp-how-card--warn">
+            <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><rect x="22" y="28" width="56" height="38" rx="6" fill="#fff6e6"/><path d="M44 38l14 9-14 9Z" fill="#ad3028"/><path d="M50 70v10m-8-6 8 7 8-7"/></g></svg>
+            <h3>If the internet drops</h3><p>Mountain networks can fail, at the temple or at your end. We record the full ritual on camera anyway and send you a link to watch or download it.</p>
+          </article>
+          <article class="tp-how-card">
+            <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M24 38 50 26l26 12v28L50 78 24 66Z" fill="#d87332"/><path d="M24 38l26 12 26-12M50 50v28"/><path d="M37 32l26 12" stroke="#fff6e6"/></g></svg>
+            <h3>Prasad the same day</h3><p>If you chose prasad, we pack it and send it on the day of the puja. Only dry, sealed prasad, so it reaches you fresh.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- TEMPLES DIRECTORY -->
+      <section class="tp-dir" id="temples" aria-labelledby="dir-title">
+        <div class="tp-wrap">
+          <div class="tp-sec-head"><h2 id="dir-title"><span aria-hidden="true">✽</span>Temples we work with</h2>
+          <p>Pick a region to see its temples. Each event page tells you which temple your puja or havan is performed at.</p></div>
+          <div class="tp-chips" role="group" aria-label="Filter temples by region">
+            <button class="tp-chip" type="button" data-region="all" aria-pressed="true">All<small>{TEMPLE_COUNT}</small></button>
+            {TEMPLE_REGIONS.map((r) => (
+              <button class="tp-chip" type="button" data-region={r.key} aria-pressed="false">{r.name}<small>{r.temples.length}</small></button>
+            ))}
+          </div>
+          {TEMPLE_REGIONS.map((r) => (
+            <div class="tp-region" data-region={r.key}>
+              <div class="tp-region-head"><h3 id={`r-${r.key}`}>{r.name}</h3><p>{r.blurb}</p></div>
+              <div class="tp-grid">
+                {r.temples.map((tm) => (
+                  <article class="tp-card">
+                    {tm.photo ? (
+                      <img class="tp-photo" src={cardPhoto(tm.slug)} alt={`${tm.name}, ${tm.place}`} width="640" height="480" loading="lazy" decoding="async" />
+                    ) : (
+                      <div class="tp-ph" role="img" aria-label={`Photo of ${tm.name} coming soon`}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4Z"/><circle cx="12" cy="13" r="3.6"/></svg>
+                        <b>Photo coming soon</b>
+                      </div>
+                    )}
+                    <div class="tp-card-body">
+                      <h3>{tm.name}</h3>
+                      <p class="tp-place"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>{tm.place}</p>
+                      <span class="tp-deity">{tm.deity}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p class="tp-dir-note">We add temples as our team builds a relationship with each temple's priests. If you have a family temple in the hills you would like us to visit, write to us at support (@) saathum.com.</p>
+        </div>
+      </section>
+
+      <!-- PRASAD -->
+      <section class="tp-prasad tp-wrap" aria-labelledby="prasad-title">
+        <div class="tp-sec-head"><h2 id="prasad-title"><span aria-hidden="true">✽</span>Prasad that survives the journey</h2>
+        <p>Prasad travels from the hills to your door by courier, sometimes across the world. So we choose it carefully.</p></div>
+        <div class="tp-prasad-grid">
+          <div class="tp-list tp-list--yes"><h3>What we send</h3><ul>
+            <li>Dry prasad such as mishri, elaichi dana and dry fruits</li>
+            <li>Roli, chandan, moli and akshat from the altar</li>
+            <li>Rudraksh, and vibhuti or bhasma where the temple offers it</li>
+            <li>Everything sealed and packed so nothing leaks or breaks</li></ul></div>
+          <div class="tp-list tp-list--no"><h3>What we don't send</h3><ul>
+            <li>Wet sweets, such as peda, laddoo made with milk, or halwa</li>
+            <li>Fresh fruit and fresh flowers</li>
+            <li>Anything made with milk, curd or ghee that can spoil</li>
+            <li>Liquids such as Gangajal in open bottles</li></ul></div>
+          <div class="tp-prasad-art"><img src={IMG.link} alt="" aria-hidden="true" width="384" height="640" loading="lazy" decoding="async" /></div>
+        </div>
+        <p class="tp-sameday"><span class="tp-pill"><span class="tp-dot"></span>Shipped the same day</span>Your prasad leaves the temple on the day of your puja. Delivery time depends on where you live.</p>
+      </section>
+
+      <!-- CHARAWA -->
+      <section class="tp-charawa tp-wrap" aria-labelledby="charawa-title">
+        <div class="tp-charawa-card">
+          <img src={IMG.emblem} alt="" aria-hidden="true" width="240" height="240" loading="lazy" decoding="async" />
+          <div><h2 id="charawa-title">Your charawa stays with the deity</h2>
+          <p>What you offer at the altar, such as chadhava, vastra, coconut, flowers or dakshina, is given to the deity during your puja. By tradition it stays at the temple. Charawa is not returned to you and cannot be refunded once the puja has been performed.</p></div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section class="tp-faq tp-wrap" aria-labelledby="faq-title">
+        <div class="tp-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Common questions</h2></div>
+        <div class="tp-faq-box">
+          <details open><summary>Who performs the puja at the temple?</summary><p>The temple's own priest. Our team looks after the camera, the live streaming and sending your prasad.</p></details>
+          <details><summary>What happens if the live stream stops?</summary><p>Networks in the hills can drop, at the temple or at your end. We record every ritual in full, so if the stream breaks we send you a link to watch or download the complete video.</p></details>
+          <details><summary>Can I choose the temple?</summary><p>Each event is performed at the temple named on its event page. Pick the event at the temple you feel close to.</p></details>
+          <details><summary>When will my prasad arrive?</summary><p>We send it on the day of the puja. Delivery time depends on your location and the courier.</p></details>
+          <details><summary>Can I get my charawa back or refunded?</summary><p>No. Charawa is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded.</p></details>
+        </div>
+      </section>
+      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. Saa Thum is not the temple's management and makes no claims of guaranteed outcomes.</p></div>
+      <div class="grand-divider" aria-hidden="true"></div>
+
+      <!-- CLOSING BAND -->
+      <section class="tp-ask" aria-labelledby="ask-title">
+        <div class="tp-wrap tp-ask-inner">
+          <img src={IMG.namaste} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
+          <div>
+            <h2 id="ask-title">Sit at a Himalayan temple, <span>from your living room.</span></h2>
+            <p>Join a havan with families from around the world, or write to us at support (@) saathum.com with a question.</p>
+          </div>
+          <div class="tp-ask-actions"><a class="tp-btn tp-btn--paper" href="/marketplace">Join a havan</a><a class="tp-btn tp-btn--paper" href="/how-it-works">How it works</a></div>
+        </div>
+      </section>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>
+
+<script>
+  const chips = document.querySelectorAll<HTMLButtonElement>('.tp-chip');
+  const regions = document.querySelectorAll<HTMLElement>('.tp-region');
+  chips.forEach((c) => c.addEventListener('click', () => {
+    const r = c.dataset.region;
+    chips.forEach((x) => x.setAttribute('aria-pressed', x === c ? 'true' : 'false'));
+    regions.forEach((g) => { g.hidden = !(r === 'all' || g.dataset.region === r); });
+  }));
+</script>

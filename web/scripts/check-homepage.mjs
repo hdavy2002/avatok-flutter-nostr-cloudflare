@@ -89,14 +89,14 @@ assert(visibleText.includes('Made in India with Love ❤️ and cutting chai.'),
 const headerHtml = html.match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
 // [WEB-NAV-HOME-1 2026-09-27] Header menu is Home (/) + Explore (/marketplace) + How it works
 // + [WEB-HIW-2 2026-09-27] Help centre (/help) + [WEB-BLOG-RITUALS-1] Blog (/rituals).
-for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Blog','/rituals/'],['Help centre','/help']]) {
+for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it works','/how-it-works'],['Our temples','/temples'],['Blog','/rituals/'],['Help centre','/help']]) {
   assert(headerHtml.includes('href="' + href + '"'), 'Restored header destination: ' + label);
   assert(headerHtml.includes('>' + label + '</a>'), 'Restored header label: ' + label);
 }
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/rituals/','/help','/about','/contact','/terms','/privacy','/cookies','/refunds','/disclaimer','/grievance']) {
+for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/temples','/rituals/','/help','/about','/contact','/terms','/privacy','/cookies','/refunds','/disclaimer','/grievance']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
 for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {

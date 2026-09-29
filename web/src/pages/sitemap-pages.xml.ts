@@ -53,6 +53,7 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ['/rituals/', 'weekly', '0.9'],
   ...rituals.map(ritual => [ritual.href, 'monthly', '0.8'] as [string, string, string]),
   ['/how-it-works', 'monthly', '0.8'],
+  ['/temples', 'monthly', '0.8'],
   ['/about', 'monthly', '0.8'],
   ['/contact', 'monthly', '0.5'],
   ['/refunds', 'monthly', '0.5'],

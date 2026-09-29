@@ -28,6 +28,8 @@ export const HOME_HEADER_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/marketplace', label: 'Explore' },
   { href: '/how-it-works', label: 'How it works' },
+  // [WEB-TEMPLES-1 2026-09-29] OWNER DECISION: "Our temples" in the header menu.
+  { href: '/temples', label: 'Our temples' },
   // [WEB-BLOG-RITUALS-1 2026-09-27] OWNER DECISION: "Blog" menu item = the Puja &
   // Havan Guide at /rituals (the new blog). The old /blog articles were removed.
   { href: '/rituals/', label: 'Blog' },
@@ -46,6 +48,8 @@ export const HOME_FOOTER_COLUMNS = [
   ] },
   { title: 'Company', links: [
     { href: '/how-it-works', label: 'How it works' },
+    // [WEB-TEMPLES-1 2026-09-29] OWNER DECISION: "Our temples" in the footer menu too.
+    { href: '/temples', label: 'Our temples' },
     // [WEB-BLOG-RITUALS-1 2026-09-27] Blog = the Puja & Havan Guide.
     { href: '/rituals/', label: 'Blog' },
     { href: '/help', label: 'Help centre' },
