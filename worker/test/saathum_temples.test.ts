@@ -93,7 +93,7 @@ describe("admin temple API", () => {
     expect(env.db.prepare("SELECT COUNT(*) n FROM admin_audit WHERE action='temple_create'").get().n).toBe(1);
   });
   it("returns the existing row for a case-insensitive duplicate, and adds nothing", async () => {
-    const res = await adminTempleCreate(post({ name: "  kunjapuri DEVI temple", place: " hilltop above rishikesh, narendra nagar ROAD " }), env);
+    const res = await adminTempleCreate(post({ name: "  kunjapuri DEVI temple", place: " RISHIKESH " }), env);
     const b: any = await res.json();
     expect(res.status).toBe(200);
     expect(b.created).toBe(false);
@@ -138,8 +138,8 @@ describe("temple_id on event save", () => {
     expect(await templeForListing(env, "ev1")).toBeNull();
     await setListingTemple(env, "ev1", "temple_kunjapuri-devi-temple");
     const t = await templeForListing(env, "ev1");
-    expect(t).toEqual({ id: "temple_kunjapuri-devi-temple", name: "Kunjapuri Devi Temple", place: "Hilltop above Rishikesh, Narendra Nagar road" });
-    expect(templeLabel(t!)).toBe("Kunjapuri Devi Temple, Hilltop above Rishikesh, Narendra Nagar road");
+    expect(t).toEqual({ id: "temple_kunjapuri-devi-temple", name: "Kunjapuri Devi Temple", place: "Rishikesh" });
+    expect(templeLabel(t!)).toBe("Kunjapuri Devi Temple, Rishikesh");
     expect(await templeForListing(env, "ev2")).toBeNull();
     await setListingTemple(env, "ev1", null);
     expect(await templeForListing(env, "ev1")).toBeNull();

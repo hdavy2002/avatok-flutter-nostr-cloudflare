@@ -7,7 +7,7 @@ export const MARKETPLACE_SEO: PublicContent = {
   title: 'Havans & Pujas at Himalayan Temples · Saa Thum',
   summary: 'Book havans and pujas performed by pujaris at positive Himalayan temples. Filter by deity, wish, date or price; your sankalp in your name and gotra, the video filmed by our crew, dry prasad delivered to your door.',
   visibility: 'public',
-  image: { url: '/assets/saathum-grand/hero.png', alt: 'Pujas and havans performed by Saa Thum priests.' },
+  image: { url: '/assets/saathum-grand/hero.png', alt: 'Havans and pujas at Himalayan temples — Saa Thum.' },
 };
 
 // [WEB-HIW-2 2026-09-27] /how-it-works moved off layouts/Content.astro onto the

@@ -19,7 +19,7 @@ export const HOME_SEO: PublicContent = {
   visibility: 'public',
   image: {
     url: '/assets/saathum-grand/hero.png',
-    alt: 'Saa Thum havans and pujas, with the video and prasad delivered to you.',
-    revision: 'saathum-home-v1',
+    alt: 'A havan at a Himalayan temple, performed in your name — Saa Thum.',
+    revision: 'saathum-home-v2',
   },
 };
