@@ -116,7 +116,7 @@ try {
     assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
     const footer = page.locator('footer');
     // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan footer: Child Safety, Payouts, Careers archived.
-    for (const label of ['All pujas', 'Cookies', 'Refund policy', 'Contact']) {
+    for (const label of ['Our temples', 'Cookies', 'Refund policy', 'Contact']) { // [WEB-FOOTER-BROWSE-1] 'All pujas' left the footer
       assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
     }
     const footerBoxes = await footer.locator('.bf-col, .bf-legal-links').evaluateAll(elements => elements.map(el => {

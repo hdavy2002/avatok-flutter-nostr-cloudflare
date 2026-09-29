@@ -23,7 +23,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import { publicImage, publicImageSrcSet } from '../lib/config';
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import { TEMPLES_SEO } from '../lib/seo/catalog';
-import { TEMPLE_REGIONS, TEMPLE_COUNT, templePhotoPath } from '../lib/temples';
+import { TEMPLE_REGIONS, TEMPLE_COUNT, TEMPLE_PHOTO_CREDITS, templePhotoPath } from '../lib/temples';
 import '../styles/saathum-folk.css';
 import '../styles/temples.css';
 
@@ -35,8 +35,11 @@ const IMG = {
   namaste: sticker('namaste', 340),
   emblem: publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 240, fit: 'scale-down' }),
 };
-const heroSrc = publicImage(`${A}hero.png`, { width: 1280, fit: 'scale-down' });
-const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 'scale-down' });
+// [WEB-TEMPLES-2 2026-09-29] OWNER: the hero is the crew photo (design/temple-crew/crew.png),
+// big and centred under the copy, exactly as the approved mockup looks.
+const CREW = '/assets/saathum-temples/crew.jpg';
+const heroSrc = publicImage(CREW, { width: 1280, fit: 'scale-down' });
+const heroSrcSet = publicImageSrcSet(CREW, [640, 900, 1280, 1536], { fit: 'scale-down' });
 const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 640, height: 480, fit: 'cover' });
 ---
 <Base content={TEMPLES_SEO} chrome={false} indiaLandingLanguage={false}>
@@ -59,7 +62,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
             <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">See all temples <span aria-hidden="true">↓</span></a></div>
           </div>
           <div class="tp-hero-art">
-            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home, watching a havan on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
+            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt="The Saa Thum crew filming a puja at a Himalayan temple for devotees watching from home." width="1536" height="1024" fetchpriority="high" decoding="async" />
             <img class="tp-stamp" src={IMG.havan} alt="" aria-hidden="true" width="640" height="558" decoding="async" />
           </div>
         </div>
@@ -169,7 +172,12 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
           <details><summary>Can I get my charawa back or refunded?</summary><p>No. Charawa is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded.</p></details>
         </div>
       </section>
-      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. Saa Thum is not the temple's management and makes no claims of guaranteed outcomes.</p></div>
+      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. Saa Thum is not the temple's management and makes no claims of guaranteed outcomes.</p>
+        {TEMPLE_PHOTO_CREDITS.length > 0 && (
+          <p class="tp-credits">Photo credits (Wikimedia Commons): {TEMPLE_PHOTO_CREDITS.map((tm, i) => (
+            <span>{i > 0 ? ' · ' : ''}{tm.name}: <a href={tm.credit!.url} rel="noopener" target="_blank">{tm.credit!.by}</a>, {tm.credit!.license}</span>
+          ))}.</p>
+        )}</div>
       <div class="grand-divider" aria-hidden="true"></div>
 
       <!-- CLOSING BAND -->

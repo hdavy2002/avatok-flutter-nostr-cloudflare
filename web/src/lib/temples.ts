@@ -14,12 +14,58 @@
 //    here without their credit line — the owner chose no credit lines.
 //  - Mockup: design/temples-page/saathum-temples-mock.src.html (owner-approved).
 
-export type Temple = { slug: string; name: string; place: string; deity: string; photo?: boolean };
+export type PhotoCredit = { by: string; license: string; url: string };
+export type Temple = { slug: string; name: string; place: string; deity: string; photo?: boolean; credit?: PhotoCredit };
 export type TempleRegion = { key: string; name: string; blurb: string; temples: Temple[] };
 
-const t = (name: string, place: string, deity: string, photo = false): Temple => ({
-  slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), name, place, deity, photo,
-});
+// [WEB-TEMPLES-2 2026-09-29] OWNER DECISION: show the interim Wikimedia Commons
+// photos on the live page so he can see the look before his AI pictures arrive.
+// No credit line on the cards (owner choice); the licences (CC BY-SA) still require
+// attribution, so every one is credited in the page's "Photo credits" footnote.
+// Replace a photo with the owner's own picture -> delete its PHOTO_CREDITS entry.
+const PHOTO_CREDITS: Record<string, PhotoCredit> = {
+  "kunjapuri-devi-temple": {
+    "by": "Travel & Shit from Brighton, UK",
+    "license": "CC BY-SA 2.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Kunjapuri_Temple,_Rishikesh,_Uttarakhand,_India_(15110748073).jpg"
+  },
+  "bilkeshwar-mahadev-temple": {
+    "by": "User:Pandeetjee",
+    "license": "CC BY-SA 3.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Nandi_ji_bilkeshwar_mahadev_haridwar_2014-01-20_16-56.JPG"
+  },
+  "daksheshwar-mahadev-temple": {
+    "by": "World8115",
+    "license": "CC BY-SA 3.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Daksheshwar_Mahadev_temple,_Kankhal3.JPG"
+  },
+  "kashi-vishwanath-temple": {
+    "by": "ShalinishuklaV",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Guptkashi.jpg"
+  },
+  "omkareshwar-temple": {
+    "by": "Ms Sarah Welch",
+    "license": "CC0",
+    "url": "https://commons.wikimedia.org/wiki/File:005232023_Omkareshwar_temple,_Ukhimath_Uttarakhand_053.jpg"
+  },
+  "bijli-mahadev-temple": {
+    "by": "Akshat Sharma",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Bijli_Mahadev_Temple.jpg"
+  },
+  "prashar-rishi-temple": {
+    "by": "Harvinder Chandigarh",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Prashar_Lake,Mandi_,Himachal_Pardesh.jpg"
+  }
+};
+
+const t = (name: string, place: string, deity: string): Temple => {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const credit = PHOTO_CREDITS[slug];
+  return { slug, name, place, deity, photo: Boolean(credit), credit };
+};
 
 export const TEMPLE_REGIONS: TempleRegion[] = [
   { key: 'rishikesh', name: 'Rishikesh', blurb: 'On the Ganga, at the foot of the Garhwal hills.', temples: [
@@ -61,4 +107,5 @@ export const TEMPLE_REGIONS: TempleRegion[] = [
 ];
 
 export const TEMPLE_COUNT = TEMPLE_REGIONS.reduce((n, r) => n + r.temples.length, 0);
+export const TEMPLE_PHOTO_CREDITS = TEMPLE_REGIONS.flatMap((r) => r.temples).filter((tm) => tm.credit);
 export const templePhotoPath = (slug: string) => `/assets/saathum-temples/${slug}.jpg`;
