@@ -1,0 +1,11 @@
+---
+// [SAATHUM-UPI3 2026-09-29] Layer 3 of the UPI confirmation: an admin confirms or rejects
+// checkouts the bank SMS could not match. Contract: Specs/PLAN-SAATHUM-UPI-3LAYER.md.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import PaymentReview from '../../islands/admin2/PaymentReview.tsx';
+---
+
+<Admin2 title="Payment verification" active="verify" subtitle="Payments the bank SMS has not confirmed yet. Confirm what you can see in the bank, reject what you can’t find.">
+  <PaymentReview client:load />
+</Admin2>
