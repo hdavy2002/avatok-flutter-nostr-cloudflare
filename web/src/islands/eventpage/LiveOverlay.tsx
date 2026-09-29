@@ -134,6 +134,22 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
     btn.replaceWith(span);
   }, [phase]);
 
+  // [SAATHUM-LIVE-BOOKING-1 2026-09-29] While the stream is live, bookings are OPEN
+  // (the server allows it). The SSR page may already have rendered "Booking closed"
+  // because the scheduled start passed — swap it back for a live book button.
+  useEffect(() => {
+    if (phase.kind !== 'live_overlay') return;
+    const closed = document.querySelector<HTMLElement>('span.ep-btn--book[aria-disabled="true"]');
+    if (!closed) return;
+    const a = document.createElement('a');
+    a.className = closed.className;
+    a.href = checkoutHref;
+    a.setAttribute('data-ep-action', 'book');
+    a.setAttribute('data-ep-listing-id', listingId);
+    a.textContent = 'Book & watch live →';
+    closed.replaceWith(a);
+  }, [phase, checkoutHref, listingId]);
+
   if (phase.kind === 'hidden') return null;
 
   if (phase.kind === 'player') {
