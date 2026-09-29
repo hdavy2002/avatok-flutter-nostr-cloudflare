@@ -43,6 +43,12 @@ export async function getCheckout(id: string, auth: string): Promise<Checkout> {
   return r.checkout;
 }
 
+/** [SAATHUM-UPI-3LAYER] "I've paid" — stamps paid_claimed_at server-side. */
+export async function markPaid(id: string, auth: string): Promise<Checkout> {
+  const r = await request<{ checkout: Checkout }>(`/api/saathum/checkout/${encodeURIComponent(id)}/paid`, { method: 'POST', body: {}, auth });
+  return r.checkout;
+}
+
 export async function submitUtr(
   id: string,
   utr: string,
