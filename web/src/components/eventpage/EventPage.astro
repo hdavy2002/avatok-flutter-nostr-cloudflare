@@ -17,7 +17,7 @@ import { ritualBySlug } from '../../lib/ritualGuides';
 import { ritualStories } from '../../lib/ritualStories';
 import { listingPath } from '../../lib/urls';
 import { whatsappShareHref } from '../../lib/shareText';
-import { copyFor, socialProof, refundWindowHoursFor, refundWindowLabel } from '../../lib/eventTypes';
+import { copyFor, socialProof, refundWindowHoursFor, refundWindowLabel, collectiveSankalpLabels, takesPersonalSankalp } from '../../lib/eventTypes';
 import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
 import LiveOverlay from '../../islands/eventpage/LiveOverlay.tsx';
 import type { CoverMedia, Listing } from '../../lib/types';
@@ -174,7 +174,7 @@ function waHref(): string {
   return whatsappShareHref({
     title: listing.title, url: `${origin}${canonicalHref}`,
     hook: typeof (attrs as any).ad_hook?.text === 'string' ? (attrs as any).ad_hook.text : null,
-    startsAt: startMs, place: location, price, free: Boolean(listing.free_entry), ritual: copy.ritual,
+    startsAt: startMs, place: location, price, free: Boolean(listing.free_entry), ritual: copy.ritual, personalSankalp: takesPersonalSankalp(attrs),
   });
 }
 
@@ -182,7 +182,17 @@ function waHref(): string {
 // ritual types (havan, puja) — satsang/sermon/meditation never offer them.
 const ticks: { key: string; label: string; tip?: string }[] = [];
 if (prasadCourier) ticks.push({ key: 'prasad', label: 'Prasad courier' });
-if (copy.ritual) ticks.push({ key: 'sankalp', label: 'Sankalp in your name' });
+// [SAATHUM-SHARED-SANKALP-1 2026-09-30] Public havans/pujas carry a COLLECTIVE sankalp
+// (picked by the admin, recited for everyone); only a one-family ritual says "in your name".
+const collectiveSankalp = collectiveSankalpLabels(attrs as Record<string, unknown>);
+if (copy.ritual) ticks.push(takesPersonalSankalp(attrs as Record<string, unknown>)
+  ? { key: 'sankalp', label: 'Sankalp in your name' }
+  : {
+    key: 'sankalp', label: 'Collective sankalp',
+    tip: collectiveSankalp.length
+      ? `Recited for every devotee: ${collectiveSankalp.join(' · ')}.`
+      : `One sankalp is recited for every devotee who joins the ${copy.noun}.`,
+  });
 if (videoDownload) ticks.push({ key: 'video', label: 'Video download', tip: 'You can download your video anytime.' });
 ticks.push({
   key: 'visibility',

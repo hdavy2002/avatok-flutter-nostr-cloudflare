@@ -303,6 +303,8 @@ function Inner({ listingId }: { listingId: string }) {
             value={sankalp}
             listingId={listingId}
             ritual={isRitual}
+            personal={isRitual && config.listing.personal_sankalp === true}
+            collective={config.listing.collective_sankalp ?? []}
             eventType={evType}
             stepIndex={stepIndex}
             totalSteps={totalSteps}

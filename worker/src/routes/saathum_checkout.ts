@@ -28,7 +28,7 @@ import {
   LATE_SMS_GRACE_MS, // [SAATHUM-UPI-3LAYER 2026-09-29]
   type Quote, type ListingSnapshot, type ChadhavaCatalogItem, type Address, type Sankalp,
 } from "../lib/saathum_checkout_logic";
-import { eventTypeOf, eventTypeCopy, isRitual } from "../lib/event_types";
+import { eventTypeOf, eventTypeCopy, isRitual, takesPersonalSankalp, collectiveSankalpsOf, COLLECTIVE_SANKALPS } from "../lib/event_types";
 import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
 // [SAATHUM-WATCH-1 2026-09-28] The one shared definition of "is this event's
 // live stream live/ended/none" — see the file's own doc comment.
@@ -166,6 +166,10 @@ export async function saathumCheckoutConfig(req: Request, env: Env): Promise<Res
       cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null),
       deity: typeof attrs.deity === "string" ? attrs.deity : null, location: row.location ?? null,
       event_type: snapshot.event_type, ritual,
+      // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Personal sankalp (gotra/family/wish) only
+      // for a one-family ritual; public havans/pujas carry a collective sankalp instead.
+      personal_sankalp: takesPersonalSankalp(attrs),
+      collective_sankalp: collectiveSankalpsOf(attrs).map((id) => ({ id, label: COLLECTIVE_SANKALPS[id] })),
       performer: { name: snapshot.performer_name, photo_url: snapshot.performer_photo_url },
       // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] null when the event has no temple.
       temple: await templeForListing(env, row.id),
@@ -341,7 +345,9 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   // types (satsang, sermon, meditation) take only the attendee's name.
   const ritual = isRitual(snapshot.event_type);
 
-  const sankalp = validateSankalp(b.sankalp, ritual);
+  // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Public havans/pujas take a name only (gotra,
+  // family and wish are dropped, never saved); a one-family ritual keeps the full sankalp.
+  const sankalp = validateSankalp(b.sankalp, takesPersonalSankalp(attrs));
   if (!sankalp.ok) return failure(sankalp.error, 400, { message: sankalp.message, field: sankalp.field });
   const prasad = b.prasad === true;
   let address: Address | null = null;
@@ -1007,8 +1013,12 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
       .toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })
     : null;
   const title = listing?.title ?? "Saa Thum booking";
-  const readyLine = ritual
+  // [SAATHUM-SHARED-SANKALP-1 2026-09-30] A public havan/puja no longer takes a personal
+  // sankalp — only a one-family ritual may say "your sankalp".
+  const readyLine = ritual && takesPersonalSankalp(listingAttrsForCopy)
     ? `${escapeHtml(sankalp.name || "Your")} sankalp is ready — the priest will begin shortly.`
+    : ritual
+    ? `Your place is booked — the ${escapeHtml(reminderCopy.noun)} will begin shortly.`
     : `Your seat is ready — the ${escapeHtml(reminderCopy.noun)} will begin shortly.`;
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">

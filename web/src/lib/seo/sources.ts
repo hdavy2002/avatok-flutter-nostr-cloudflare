@@ -1,6 +1,6 @@
 import type { Creator, Listing } from '../types';
 import { scheduleStateOf } from '../card';
-import { copyFor } from '../eventTypes';
+import { copyFor, takesPersonalSankalp } from '../eventTypes';
 import { listingPath, creatorPath } from '../urls';
 import type { ContentState, PublicContent } from './types';
 
@@ -102,7 +102,7 @@ function listingShareDescription(listing: Listing, state: ContentState, price: n
   const copy = copyFor(attrs);
   const title = listing.title.trim();
   if (state !== 'active') {
-    return `This ${copy.noun} has ended. Book the next havan or puja at a Himalayan temple in your name – watch it live from anywhere.`;
+    return `This ${copy.noun} has ended. Book the next havan or puja at a Himalayan temple – watch it live from anywhere.`;
   }
   // The AI ad line often opens by repeating the title ("Gayatri Havan: Seek…"); drop that.
   const rawHook = typeof attrs.ad_hook?.text === 'string' ? attrs.ad_hook.text.replace(/\s+/g, ' ').trim() : '';
@@ -114,7 +114,8 @@ function listingShareDescription(listing: Listing, state: ContentState, price: n
   // Kept under ~165 chars (truncateAtWord) so the call to book is never cut off.
   const priceText = Boolean(listing.free_entry) || amount === 0 ? 'free to join'
     : Number.isFinite(amount) && amount > 0 ? `from ₹${amount.toLocaleString('en-IN')}` : '';
-  const close = [copy.ritual ? 'Sankalp in your name & gotra' : '', priceText].filter(Boolean).join(', ');
+  // [SAATHUM-SHARED-SANKALP-1] Only a one-family ritual promises a personal sankalp.
+  const close = [takesPersonalSankalp(attrs) ? 'Sankalp in your name & gotra' : '', priceText].filter(Boolean).join(', ');
   return [
     hook && /[.!?]$/.test(hook) ? hook : hook ? `${hook}.` : '',
     `Watch it live from ${place}${when ? ` on ${when.full}` : ''}.`,

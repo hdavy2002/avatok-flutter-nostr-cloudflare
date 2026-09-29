@@ -7883,5 +7883,21 @@
         "note": "Streams end via youtube (preferred) or clock (2h backstop); a listing is completed only after this."
       }
     ]
+  },
+  "SAATHUM-SHARED-SANKALP-1": {
+    "description": "[SAATHUM-SHARED-SANKALP-1 2026-09-30] Owner decision: public havans/pujas no longer take a personal sankalp. Admin picks ready-made collective sankalps (attrs.collective_sankalp); checkout asks for the name only (gotra/family/wish dropped server-side). Only a one-family ritual (visibility private, or the upcoming format=sankalp) keeps the full sankalp step.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_step",
+        "property": "personal_sankalp",
+        "equals": false,
+        "min_events": 1,
+        "note": "A public havan/puja checkout step fires with personal_sankalp=false (step=details)."
+      }
+    ]
   }
 }

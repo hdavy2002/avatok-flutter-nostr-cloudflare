@@ -57,7 +57,7 @@ If we cancel your event or can't perform it, you get a full refund regardless of
 
 ## No automatic refunds for missed attendance
 
-For a havan or puja, your sankalp is still performed even if you couldn't join, so the booking isn't refunded. For a satsang, sermon or meditation session, the event still happens at its scheduled time, so a missed session isn't refunded either. Your video is sent to you when it finishes.
+For a havan or puja, the ritual and its sankalp are still performed even if you couldn't join, so the booking isn't refunded. For a satsang, sermon or meditation session, the event still happens at its scheduled time, so a missed session isn't refunded either. Your video is sent to you when it finishes.
 
 ## No refunds based on the outcome
 

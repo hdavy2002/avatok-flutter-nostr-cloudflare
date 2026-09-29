@@ -59,6 +59,8 @@ export interface EventDetail extends EventRow {
   // [SAATHUM-EVENT-FIELDS-1] Book now card fields, SEO and the share line.
   location: string | null;
   intention: string | null;
+  /** [SAATHUM-SHARED-SANKALP-1] Collective sankalp keys. */
+  collective_sankalp?: string[];
   prasad_courier: boolean;
   // [SAATHUM-CHADHAVA 2026-09-26]
   video_download: boolean;
@@ -102,6 +104,7 @@ export interface EventsMeta {
   duration: { min: number; max: number };
   deity_suggestions: string[];
   intentions?: { id: string; label: string }[];
+  collective_sankalps?: { id: string; label: string }[];
   limits: { titleMax: number; blurbMax: number; descriptionMax: number; deityMax: number; performedByMax: number; capacityMax: number; locationMax?: number; seoTitleMax?: number; seoDescriptionMax?: number };
 }
 

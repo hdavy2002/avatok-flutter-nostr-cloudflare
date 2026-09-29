@@ -24,7 +24,7 @@ Our crew films your ritual at the temple and live streams it when the mountain n
 
 If snow, a landslide or heavy rain cuts the network, the video may take longer. We tell you on WhatsApp and by email, and upload it as soon as our crew is back in the studio.
 
-On the day, light a lamp at home if you like and sit quietly at the scheduled time — your sankalp is taken in your name at the altar whether or not you are watching.
+On the day, light a lamp at home if you like and sit quietly at the scheduled time — the sankalp is recited at the altar for every devotee whether or not you are watching.
 
 ## What the ritual's status means
 

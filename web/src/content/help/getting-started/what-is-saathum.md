@@ -1,6 +1,6 @@
 ---
 title: "What is Saa Thum?"
-description: "Saa Thum performs havans and pujas for you at peaceful Himalayan temples, in your name and gotra, filmed by our crew, with prasad sent to your door."
+description: "Saa Thum performs havans and pujas for you at peaceful Himalayan temples, filmed by our crew, with prasad sent to your door."
 section: getting-started
 order: 1
 updated: 2026-09-29
@@ -8,11 +8,11 @@ keywords: ["saathum", "what is saathum", "saathum kya hai", "himalayan temple ha
 audience: buyer
 faq:
   - q: "What exactly is Saa Thum?"
-    a: "Saa Thum performs havans and pujas for you at remote, peaceful Himalayan temples. You choose a ritual and share your name, gotra and wish; our crew travels to the temple, the temple's own pujari performs it, and we film it for you. We send you the video, and dry prasad to your door if you'd like."
+    a: "Saa Thum performs havans and pujas for you at remote, peaceful Himalayan temples. You choose a ritual and book with your name; our crew travels to the temple, the temple's own pujari performs it, and we film it for you. We send you the video, and dry prasad to your door if you'd like."
   - q: "What can I book on Saa Thum?"
     a: "Havans and pujas only — positive, benefic rituals for studies, a fresh start, prosperity, health, family, peace and festivals, at temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis."
   - q: "Do I need to be there in person?"
-    a: "No. The ritual is done in your name through the sankalp. We live stream when the mountain network allows, and we always send you the full video to keep."
+    a: "No. The ritual is performed in full, with its sankalp recited for every devotee, whether or not you watch. We live stream when the mountain network allows, and we always send you the full video to keep."
 draft: false
 ---
 
@@ -23,7 +23,7 @@ Saa Thum takes your havan or puja deep into the Himalayas. Our small crew travel
 ## How it works
 
 1. **Choose your ritual.** Pick a havan or puja by what you're hoping for, by deity, or by festival under [Explore](/marketplace). Each event names the temple where it is performed.
-2. **Tell us your sankalp.** Your name, gotra and wish. The pujari speaks them at the altar.
+2. **Book with your name.** Each havan or puja has its own sankalp, which the pujari recites at the altar for every devotee.
 3. **We go to the temple.** Our crew films the ritual and live streams it when the mountain network allows.
 4. **Receive your video and prasad.** We email you the full video, and dry prasad from the temple follows by courier if you chose it.
 

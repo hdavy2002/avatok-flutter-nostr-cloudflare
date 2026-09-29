@@ -24,8 +24,11 @@ export interface ShareInput {
   place?: string | null;
   price?: number | null;
   free?: boolean;
-  /** Havan/puja: mention the sankalp. */
+  /** Havan/puja type (kept for callers; no longer changes the text on its own). */
   ritual?: boolean;
+  /** [SAATHUM-SHARED-SANKALP-1 2026-09-30] Only a one-family ritual takes a personal
+   *  sankalp, so only then does the share line promise "in your name & gotra". */
+  personalSankalp?: boolean;
 }
 
 export function whatsappShareText(i: ShareInput): string {
@@ -37,7 +40,7 @@ export function whatsappShareText(i: ShareInput): string {
   const amount = Number(i.price);
   const priceText = i.free || amount === 0 ? 'Free to join'
     : Number.isFinite(amount) && amount > 0 ? `From ₹${amount.toLocaleString('en-IN')}` : '';
-  const facts = [i.ritual ? 'Sankalp in your name & gotra' : '', priceText].filter(Boolean).join(' · ');
+  const facts = [i.personalSankalp ? 'Sankalp in your name & gotra' : '', priceText].filter(Boolean).join(' · ');
   const lines = [
     `*${title}${when ? ` – live ${when}` : ''}*`,
     hook,

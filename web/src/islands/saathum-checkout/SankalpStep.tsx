@@ -19,6 +19,8 @@ export function SankalpStep({
   onContinue,
   listingId,
   ritual,
+  personal,
+  collective,
   eventType,
   stepIndex,
   totalSteps,
@@ -28,6 +30,8 @@ export function SankalpStep({
   onContinue: (s: Sankalp) => void;
   listingId: string;
   ritual: boolean;
+  personal: boolean;
+  collective: { id: string; label: string }[];
   eventType: EventType;
   stepIndex: number;
   totalSteps: number;
@@ -40,7 +44,7 @@ export function SankalpStep({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: ritual ? 'sankalp' : 'details', listing_id: listingId, event_type: eventType });
+    capture('saathum_checkout_step', { step: personal ? 'sankalp' : 'details', listing_id: listingId, event_type: eventType, ritual, personal_sankalp: personal });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -57,7 +61,7 @@ export function SankalpStep({
   function submit() {
     if (!name.trim()) { setErr('Enter your name.'); return; }
     setErr(null);
-    onContinue(ritual
+    onContinue(personal
       ? {
         name: name.trim(),
         gotra: gotra.trim() || undefined,
@@ -74,8 +78,8 @@ export function SankalpStep({
   return (
     <div className="sthc-card">
       <button className="sthc-back" onClick={onBack} type="button">&larr; Back</button>
-      <div className="sthc-kick">Step {stepIndex} of {totalSteps} · {ritual ? 'Sankalp' : 'Details'}</div>
-      <h3 className="sthc-h3">{ritual ? 'Your sankalp' : 'Your name'}</h3>
+      <div className="sthc-kick">Step {stepIndex} of {totalSteps} · {personal ? 'Sankalp' : 'Details'}</div>
+      <h3 className="sthc-h3">{personal ? 'Your sankalp' : 'Your name'}</h3>
       <div className="sthc-dots">{dots}</div>
 
       <div className="sthc-fld">
@@ -83,7 +87,16 @@ export function SankalpStep({
         <input id="sthc-name" className="sthc-in" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
       </div>
 
-      {ritual && (
+      {ritual && !personal && (
+        <div className="sthc-hint">
+          {collective.length > 0
+            ? <>The pujari recites one sankalp for every devotee: <strong>{collective.map((c) => c.label).join(' · ')}</strong>.</>
+            : <>The pujari recites one sankalp for every devotee who joins.</>}
+          {' '}Your name is for your booking and receipt.
+        </div>
+      )}
+
+      {personal && (
         <>
           <div className="sthc-fld">
             <label htmlFor="sthc-gotra">Gotra <em>Optional</em></label>
@@ -124,7 +137,7 @@ export function SankalpStep({
 
       {err && <p className="sthc-err" role="alert">{err}</p>}
       <div className="sthc-hint sthc-hint--gold">
-        We save {ritual ? 'these' : 'this'} to your profile so next time it&rsquo;s filled in.
+        We save {personal ? 'these' : 'this'} to your profile so next time it&rsquo;s filled in.
       </div>
       <button className="sthc-btn" onClick={submit}>Continue &rarr;</button>
     </div>

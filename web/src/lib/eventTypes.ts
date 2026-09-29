@@ -7,6 +7,10 @@
 //  - Stored as listings.attrs.event_type. Missing/unknown → 'havan' (every event made
 //    before 2026-09-27 was a havan).
 //  - `ritual: true` (havan, puja) = sankalp, chadhava and prasad courier exist.
+//    [SAATHUM-SHARED-SANKALP-1 2026-09-30] A PUBLIC havan/puja carries a collective
+//    sankalp picked by the admin (COLLECTIVE_SANKALPS below) and takes a name only; the
+//    personal sankalp (gotra, family, wish) is only for a one-family ritual — see
+//    takesPersonalSankalp().
 //    Satsang, sermon and meditation NEVER offer sankalp, chadhava or prasad — the owner
 //    was explicit. Their checkout is: sign in → (name only) → optional offering → pay.
 //  - Never write the word "YouTube" on the customer side (owner rule). Say
@@ -65,7 +69,9 @@ export interface EventTypeCopy {
 }
 
 const RITUAL_STEPS = (noun: string) => [
-  { title: 'Book with your sankalp', body: 'Your name, gotra and wish are read out by the priest.', sticker: 'sankalp-thali' },
+  // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Public havans/pujas carry a collective sankalp
+  // chosen by us; the devotee gives only a name (owner decision). No "your sankalp" here.
+  { title: 'Book your place', body: `One sankalp is recited for every devotee who joins the ${noun}.`, sticker: 'sankalp-thali' },
   { title: 'The priest performs it', body: `Your ${noun} is performed at the altar at the scheduled time.`, sticker: 'whatsapp-diya' },
   { title: 'Get the video and prasad', body: 'We email you the video when it finishes. Prasad ships the same day.', sticker: 'prasad-box' },
 ];
@@ -80,20 +86,20 @@ export const EVENT_TYPE_COPY: Record<EventType, EventTypeCopy> = {
   havan: {
     type: 'havan', badge: 'Havan', label: 'Havan', noun: 'havan', color: { bg: '#d9531e', fg: '#fff' }, ritual: true,
     performerLabel: 'Performed by', performerField: "Priest's name", performerFallback: 'temple priests',
-    startsIn: 'Havan starts in', cta: 'Book with my sankalp', ctaShort: 'Book now', readMore: 'Read benefits',
+    startsIn: 'Havan starts in', cta: 'Book my place', ctaShort: 'Book now', readMore: 'Read benefits',
     aboutKicker: 'About this havan', benefitsKicker: 'What devotees traditionally seek', offeringLabel: 'Offering for the priest',
     footer: (p, w) => `Performed by ${p || 'temple priests'} · Free cancellation up to ${w} before`,
     refundWindowHours: 24,
-    steps: RITUAL_STEPS('havan'), doneTitle: 'Your sankalp is booked 🙏',
+    steps: RITUAL_STEPS('havan'), doneTitle: 'You are booked 🙏',
   },
   puja: {
     type: 'puja', badge: 'Puja', label: 'Puja', noun: 'puja', color: { bg: '#b3261e', fg: '#fff' }, ritual: true,
     performerLabel: 'Performed by', performerField: "Priest's name", performerFallback: 'temple priests',
-    startsIn: 'Puja starts in', cta: 'Book with my sankalp', ctaShort: 'Book now', readMore: 'Read benefits',
+    startsIn: 'Puja starts in', cta: 'Book my place', ctaShort: 'Book now', readMore: 'Read benefits',
     aboutKicker: 'About this puja', benefitsKicker: 'What devotees traditionally seek', offeringLabel: 'Offering for the priest',
     footer: (p, w) => `Performed by ${p || 'temple priests'} · Free cancellation up to ${w} before`,
     refundWindowHours: 24,
-    steps: RITUAL_STEPS('puja'), doneTitle: 'Your sankalp is booked 🙏',
+    steps: RITUAL_STEPS('puja'), doneTitle: 'You are booked 🙏',
   },
   satsang: {
     type: 'satsang', badge: 'Satsang', label: 'Satsang', noun: 'satsang', color: { bg: '#1f6f6a', fg: '#fff' }, ritual: false,
@@ -165,4 +171,37 @@ export function socialProof(
   const set = n('rating_display');
   const rating = set >= 1 && set <= 5 ? set : (real.ratingCount > 0 && real.ratingAvg ? real.ratingAvg : null);
   return { booked: Math.round(real.booked + n('booked_boost')), rating: reviews > 0 ? rating : null, reviews: rating ? reviews : 0 };
+}
+
+// ---------------------------------------------------------------------------
+// [SAATHUM-SHARED-SANKALP-1 2026-09-30] Collective sankalps. OWNER DECISION: public
+// havans and pujas no longer ask for gotra/family/wish. The admin picks ready-made
+// sankalps on the event; the pujari recites them for everyone. Keys mirror
+// worker/src/lib/event_types.ts COLLECTIVE_SANKALPS — keep the two in step.
+// ---------------------------------------------------------------------------
+export const COLLECTIVE_SANKALPS: Record<string, string> = {
+  education: 'Education & studies',
+  good_health: 'Good health',
+  family_health: 'Health of the family',
+  departed: 'Peace for departed souls',
+  new_beginnings: 'New beginnings',
+  career: 'Career & livelihood',
+  prosperity: 'Prosperity',
+  peace: 'Peace & protection',
+  harmony: 'Harmony at home',
+};
+
+/** Labels of the listing's collective sankalps, in the admin's order. */
+export function collectiveSankalpLabels(attrs: Record<string, unknown> | null | undefined): string[] {
+  const raw = attrs?.collective_sankalp;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const k of raw) if (typeof k === 'string' && COLLECTIVE_SANKALPS[k] && !out.includes(COLLECTIVE_SANKALPS[k])) out.push(COLLECTIVE_SANKALPS[k]);
+  return out;
+}
+
+/** True only when checkout collects a PERSONAL sankalp (one-family ritual). */
+export function takesPersonalSankalp(attrs: Record<string, unknown> | null | undefined): boolean {
+  if (!copyFor(attrs).ritual) return false;
+  return attrs?.visibility === 'private' || attrs?.format === 'sankalp';
 }

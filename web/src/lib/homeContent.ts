@@ -8,7 +8,7 @@ export const HOME_HERO = {
   titleLineOne: 'Your Puja,',
   titleLineTwo: 'in the Peaceful Himalayas.',
   lead: 'Living abroad or unable to travel? Saa Thum arranges puja and havan in your name at peaceful Himalayan temples, where people have come to pray for generations — helping you stay connected to your faith from home.',
-  proof: 'Sankalp in your name · Filmed at the temple · Prasad at your door.',
+  proof: 'One sankalp for every devotee · Filmed at the temple · Prasad at your door.',
 } as const;
 
 export const HOME_SEO: PublicContent = {

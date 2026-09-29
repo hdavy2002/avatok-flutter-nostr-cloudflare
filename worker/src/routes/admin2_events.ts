@@ -57,7 +57,7 @@ import {
   nextCoverMedia, normalizeEventInput, parseTab, posterPlan, splitPatch, tabOf, tabSql, enforceEventTypeRules,
   type EventPatch, type EventTab,
 } from "../lib/admin2_events_logic";
-import { eventTypeOf } from "../lib/event_types";
+import { eventTypeOf, collectiveSankalpsOf, COLLECTIVE_SANKALPS } from "../lib/event_types";
 import { sendSaathumVideoReadyEmails } from "./saathum_checkout";
 import { sendSaathumVideoReadyWhatsApp } from "../lib/whatsapp_notify";
 import { createTemple, listTemples, normalizeTempleInput, parseTempleIdInput, setListingTemple, templeExists, templeForListing, TEMPLE_LIMITS } from "../lib/temples";
@@ -231,6 +231,8 @@ export async function adminEventsMeta(req: Request, env: Env): Promise<Response>
     duration: { min: LIMITS.durationMin, max: LIMITS.durationMax },
     deity_suggestions: DEITY_SUGGESTIONS,
     intentions: Object.entries(INTENTIONS).map(([id, label]) => ({ id, label })),
+    // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Ready-made collective sankalps for the form.
+    collective_sankalps: Object.entries(COLLECTIVE_SANKALPS).map(([id, label]) => ({ id, label })),
     limits: LIMITS,
   });
 }
@@ -266,6 +268,7 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       // [SAATHUM-EVENT-FIELDS-1] Book now card fields + SEO + share line.
       location: row.location ?? null,
       intention: typeof attrs.intention === "string" ? attrs.intention : null,
+      collective_sankalp: collectiveSankalpsOf(attrs), // [SAATHUM-SHARED-SANKALP-1]
       prasad_courier: typeof attrs.prasad_courier === "boolean" ? attrs.prasad_courier : true,
       // [SAATHUM-CHADHAVA 2026-09-26] video_download replaces replay; fall back to the old key.
       video_download: typeof attrs.video_download === "boolean" ? attrs.video_download : (typeof attrs.replay === "boolean" ? attrs.replay : true),

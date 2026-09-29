@@ -8,7 +8,7 @@ keywords: ["who performs puja", "pujari", "priest", "temple priest", "sadhu", "c
 audience: buyer
 faq:
   - q: "Who performs my havan or puja?"
-    a: "The temple's own pujari, a priest who has looked after that temple for years, often for generations. He takes your sankalp in your name and gotra at the altar."
+    a: "The temple's own pujari, a priest who has looked after that temple for years, often for generations. He recites the sankalp for every devotee at the altar."
   - q: "What does the Saa Thum crew do?"
     a: "Our crew travels to the temple, sets up the camera, live streams when the network allows, records the whole ritual, and packs and sends your prasad."
   - q: "Does my booking help the temple?"
@@ -20,7 +20,7 @@ draft: false
 
 ## The pujari
 
-Your havan or puja is performed by the temple's own pujari. Many of these families have looked after their temple for generations. He takes your **sankalp in your name and gotra**, with your wish and the names of your family, exactly as he would if you were sitting beside him.
+Your havan or puja is performed by the temple's own pujari. Many of these families have looked after their temple for generations. He recites the **sankalp** for every devotee who joins, exactly as he would if you were sitting beside him.
 
 ## Our crew
 

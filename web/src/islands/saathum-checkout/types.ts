@@ -34,6 +34,11 @@ export interface CheckoutConfigListing {
    * lib/eventTypes.ts — never assume these are present. */
   event_type?: string;
   ritual?: boolean;
+  /** [SAATHUM-SHARED-SANKALP-1 2026-09-30] true only for a one-family ritual; a public
+   *  havan/puja takes a name only. Missing (older worker) → treat as false. */
+  personal_sankalp?: boolean;
+  /** The listing's ready-made collective sankalps, recited for every devotee. */
+  collective_sankalp?: { id: string; label: string }[];
 }
 
 export interface CheckoutConfig {

@@ -8,7 +8,7 @@
 // is the authority for "is this show over"); nothing here changes either.
 import { endMsSql, eventWindow, scheduleState } from "./listing_schedule";
 import { startsMsSql } from "./me_dashboard_data";
-import { EVENT_TYPES, type EventType, isRitual } from "./event_types";
+import { EVENT_TYPES, type EventType, isRitual, COLLECTIVE_SANKALPS } from "./event_types";
 
 export type EventTab = "upcoming" | "live" | "past" | "drafts" | "cancelled";
 export const EVENT_TABS: readonly EventTab[] = ["upcoming", "live", "past", "drafts", "cancelled"];
@@ -151,6 +151,8 @@ export type EventPatch = {
   location?: string | null;
   /** attrs.* — written by this lane (see splitPatch / ATTR_KEYS). */
   intention?: string | null;
+  /** [SAATHUM-SHARED-SANKALP-1] Keys of COLLECTIVE_SANKALPS (lib/event_types.ts). null clears. */
+  collective_sankalp?: string[] | null;
   prasad_courier?: boolean;
   guide_slug?: string | null;
   seo_title?: string | null;
@@ -284,6 +286,18 @@ export function normalizeEventInput(
     if (v && !INTENTIONS[v]) errors.push({ field: "intention", message: "Pick an intention from the list." });
     else patch.intention = v || null;
   }
+  // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Ready-made collective sankalp(s) the pujari
+  // recites for everyone at a public havan/puja. [] or null clears.
+  if (has(body, "collective_sankalp")) {
+    const v = body.collective_sankalp;
+    if (v === null || v === "") patch.collective_sankalp = null;
+    else if (!Array.isArray(v) || v.length > 5 || !v.every((k) => typeof k === "string" && COLLECTIVE_SANKALPS[k])) {
+      errors.push({ field: "collective_sankalp", message: "Pick up to 5 sankalps from the list." });
+    } else {
+      const uniq = [...new Set(v as string[])];
+      patch.collective_sankalp = uniq.length ? uniq : null;
+    }
+  }
   for (const k of ["prasad_courier", "video_download"] as const) {
     if (has(body, k)) {
       if (typeof body[k] !== "boolean") errors.push({ field: k, message: "Choose yes or no." });
@@ -384,8 +398,10 @@ export const ATTR_KEYS = [
   "booked_boost",
   // [SAATHUM-EVENT-TYPES 2026-09-27]
   "event_type", "performer_photo_url", "rating_display", "review_count_boost",
+  // [SAATHUM-SHARED-SANKALP-1 2026-09-30]
+  "collective_sankalp",
 ] as const;
-export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | number | null>>;
+export type AttrPatch = Partial<Record<(typeof ATTR_KEYS)[number], string | boolean | number | string[] | null>>;
 export type SeoPatch = { title?: string | null; description?: string | null };
 
 /** Split a patch into the admin-edit fields and the media/attrs fields this lane writes itself. */
@@ -393,7 +409,7 @@ export function splitPatch(p: EventPatch): { edit: Record<string, unknown>; cove
   const edit: Record<string, unknown> = {};
   for (const k of ADMIN_EDIT_KEYS) if (k in p) edit[k] = (p as Record<string, unknown>)[k];
   const attrs: AttrPatch = {};
-  for (const k of ATTR_KEYS) if (k in p) attrs[k] = (p as Record<string, unknown>)[k] as string | boolean | null;
+  for (const k of ATTR_KEYS) if (k in p) attrs[k] = (p as Record<string, unknown>)[k] as string | boolean | string[] | null;
   let seo: SeoPatch | undefined;
   if ("seo_title" in p || "seo_description" in p) {
     seo = {};
@@ -412,8 +428,9 @@ export function splitPatch(p: EventPatch): { edit: Record<string, unknown>; cove
  */
 export function enforceEventTypeRules(effectiveType: EventType, attrs: AttrPatch): AttrPatch {
   if (isRitual(effectiveType)) return attrs;
-  const { prasad_price_rupees, ...rest } = attrs;
-  return { ...rest, prasad_courier: false };
+  // [SAATHUM-SHARED-SANKALP-1] A non-ritual never carries a sankalp either.
+  const { prasad_price_rupees, collective_sankalp, ...rest } = attrs;
+  return { ...rest, prasad_courier: false, ...(collective_sankalp !== undefined ? { collective_sankalp: null } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -459,7 +476,9 @@ export function autoSeoDescription(row: {
   const place = String(row.location ?? "").trim();
   const price = Number(row.price);
   const tail = [
-    `Join live${place ? ` from ${place}` : ""}, sankalp in your name`,
+    // [SAATHUM-SHARED-SANKALP-1 2026-09-30] No "sankalp in your name" — public events
+    // no longer take a personal sankalp, and satsang/sermon/meditation never did.
+    `Join${place ? ` from ${place}` : " from anywhere"}`,
     Number.isInteger(price) && price > 0 ? `starting from ₹${price.toLocaleString("en-IN")}.` : "from anywhere.",
   ].join(", ");
   const base = lead || `${title} performed live by temple priests.`;

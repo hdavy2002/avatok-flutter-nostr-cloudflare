@@ -18,7 +18,7 @@ import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
 import { payAndJoinPath } from '../../lib/urls';
 import { whatsappShareHref } from '../../lib/shareText';
 import { cfImage, publicImage } from '../../lib/config';
-import { copyFor, eventTypeOf, socialProof, type EventType, type EventTypeCopy } from '../../lib/eventTypes';
+import { copyFor, eventTypeOf, socialProof, collectiveSankalpLabels, takesPersonalSankalp, type EventType, type EventTypeCopy } from '../../lib/eventTypes';
 import './BookNowShelf.css';
 
 /** A ritual article: title, href and a RAW /assets image path (the card calls publicImage). */
@@ -54,6 +54,10 @@ export interface Item {
   visibility: 'public' | 'private';
   /** [SAATHUM-EVENT-TYPES] Drives badge, colour, wording and feature ticks. */
   eventType: EventType;
+  /** [SAATHUM-SHARED-SANKALP-1] true only for a one-family ritual (full personal sankalp). */
+  personalSankalp?: boolean;
+  /** [SAATHUM-SHARED-SANKALP-1] Labels of the listing's collective sankalps. */
+  collectiveSankalp?: string[];
   /** listings.performed_by, when the admin filled it in. */
   performedBy: string | null;
   /** attrs.performer_photo_url — a future field; absent listings fall back to initials. */
@@ -163,6 +167,8 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
     videoDownload: !oneOnOne && attrBool(attrs, ['video_download', 'replay', 'replay_available'], true),
     visibility: attrs?.visibility === 'private' ? 'private' : 'public',
     eventType: eventTypeOf(attrs),
+    personalSankalp: takesPersonalSankalp(attrs),
+    collectiveSankalp: collectiveSankalpLabels(attrs),
     performedBy,
     performerPhotoUrl,
     href,
@@ -199,7 +205,7 @@ function waHref(it: Item, origin: string): string {
   // [WEB-WA-SHARE-2] Readable pitch in the message body — see lib/shareText.ts.
   return whatsappShareHref({
     title: it.title, url: `${origin}${it.href}`, startsAt: it.startsAt, place: it.location,
-    price: it.price, ritual: copyFor({ event_type: it.eventType }).ritual,
+    price: it.price, ritual: copyFor({ event_type: it.eventType }).ritual, personalSankalp: !!it.personalSankalp,
   });
 }
 
@@ -241,7 +247,7 @@ const VISIBILITY_TIP = 'Public: many devotees join the same event together. Priv
 /** [SAATHUM-EVENT-TYPES §Ticks] Ritual types (havan/puja) show sankalp + prasad;
  *  satsang/sermon/meditation never do (owner was explicit). A one-on-one
  *  consult swaps the "Video download" slot for "Private 1:1 call" either way. */
-function ticksFor(it: Item, copy: EventTypeCopy): { on: boolean; label: string; tip?: string; kind?: 'video' | 'visibility' }[] {
+function ticksFor(it: Item, copy: EventTypeCopy): { on: boolean; label: string; tip?: string; kind?: 'video' | 'visibility' | 'sankalp' }[] {
   const videoTick = it.mode === 'live'
     ? { on: it.videoDownload, label: 'Video download', tip: VIDEO_TIP, kind: 'video' as const }
     : { on: true, label: 'Private 1:1 call' };
@@ -254,7 +260,16 @@ function ticksFor(it: Item, copy: EventTypeCopy): { on: boolean; label: string; 
   if (copy.ritual) {
     return [
       { on: it.prasad, label: 'Prasad courier' },
-      { on: true, label: 'Sankalp in your name' },
+      // [SAATHUM-SHARED-SANKALP-1 2026-09-30] Public rituals carry a collective sankalp;
+      // only a one-family ritual says "in your name".
+      it.personalSankalp
+        ? { on: true, label: 'Sankalp in your name' }
+        : {
+          on: true, label: 'Collective sankalp', kind: 'sankalp' as const,
+          tip: it.collectiveSankalp?.length
+            ? `Recited for every devotee: ${it.collectiveSankalp.join(' · ')}.`
+            : 'One sankalp is recited for every devotee who joins.',
+        },
       videoTick,
       visibilityTick,
     ];

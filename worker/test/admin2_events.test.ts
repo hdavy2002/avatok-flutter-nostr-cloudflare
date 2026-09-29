@@ -316,3 +316,33 @@ describe("route table", () => {
     expect(m("GET", "/api/admin/v2/events/abc/publish")).toEqual({ methodNotAllowed: true });
   });
 });
+
+// [SAATHUM-SHARED-SANKALP-1 2026-09-30] Public havans/pujas: collective sankalp, name-only checkout.
+import { takesPersonalSankalp, collectiveSankalpsOf } from "../src/lib/event_types";
+import { enforceEventTypeRules as enforceRules } from "../src/lib/admin2_events_logic";
+describe("collective sankalp (SAATHUM-SHARED-SANKALP-1)", () => {
+  it("public havan/puja takes no personal sankalp; private or sankalp-format does", () => {
+    expect(takesPersonalSankalp({ event_type: "havan" })).toBe(false);
+    expect(takesPersonalSankalp({ event_type: "puja", visibility: "public" })).toBe(false);
+    expect(takesPersonalSankalp({ event_type: "puja", visibility: "private" })).toBe(true);
+    expect(takesPersonalSankalp({ event_type: "havan", format: "sankalp" })).toBe(true);
+    expect(takesPersonalSankalp({ event_type: "satsang", visibility: "private" })).toBe(false);
+  });
+  it("keeps only known keys, in order, deduped", () => {
+    expect(collectiveSankalpsOf({ collective_sankalp: ["departed", "bogus", "good_health", "departed"] })).toEqual(["departed", "good_health"]);
+    expect(collectiveSankalpsOf({})).toEqual([]);
+  });
+  it("validates the admin field", () => {
+    expect(normalizeEventInput({ collective_sankalp: ["education", "education", "departed"] }, { partial: true }).patch.collective_sankalp).toEqual(["education", "departed"]);
+    expect(normalizeEventInput({ collective_sankalp: null }, { partial: true }).patch.collective_sankalp).toBeNull();
+    expect(normalizeEventInput({ collective_sankalp: ["nope"] }, { partial: true }).errors[0]?.field).toBe("collective_sankalp");
+    expect(normalizeEventInput({ collective_sankalp: ["education", "career", "peace", "harmony", "prosperity", "departed"] }, { partial: true }).errors.length).toBe(1);
+  });
+  it("a non-ritual type clears any collective sankalp", () => {
+    expect(enforceRules("satsang", { collective_sankalp: ["education"] }).collective_sankalp).toBeNull();
+    expect(enforceRules("havan", { collective_sankalp: ["education"] }).collective_sankalp).toEqual(["education"]);
+  });
+  it("auto SEO no longer promises a sankalp in your name", () => {
+    expect(autoSeoDescription({ title: "Satsang", location: "Rishikesh", price: 111 })).not.toMatch(/in your name/i);
+  });
+});

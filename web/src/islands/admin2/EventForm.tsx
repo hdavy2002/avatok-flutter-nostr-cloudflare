@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
-import { EVENT_TYPES, EVENT_TYPE_COPY, type EventType } from '../../lib/eventTypes';
+import { EVENT_TYPES, EVENT_TYPE_COPY, COLLECTIVE_SANKALPS, type EventType } from '../../lib/eventTypes';
 import { whatsappShareText } from '../../lib/shareText';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -72,6 +72,9 @@ interface FormState {
   // [SAATHUM-EVENT-FIELDS-1]
   location: string;
   intention: string;
+  /** [SAATHUM-SHARED-SANKALP-1 2026-09-30] Collective sankalp keys, comma-joined (keeps
+   *  the form's plain string compare for "changed"). Ritual types only. */
+  collective_sankalp: string;
   prasad_courier: boolean;
   guide_slug: string;
   seo_title: string;
@@ -101,6 +104,10 @@ const PERFORMER_PLACEHOLDER: Record<EventType, string> = {
   meditation: 'Dr. Meera Iyer',
 };
 
+/** [SAATHUM-SHARED-SANKALP-1] Fallback if the worker meta is older than this form. Mirrors
+ *  COLLECTIVE_SANKALPS in lib/eventTypes.ts and worker/src/lib/event_types.ts. */
+const COLLECTIVE_FALLBACK = Object.entries(COLLECTIVE_SANKALPS).map(([id, label]) => ({ id, label }));
+
 /** Fallback intention list if the worker meta is older than this form. Mirrors ritualGuides ritualCategories. */
 const INTENTIONS_FALLBACK = [
   { id: 'luck', label: 'Good luck' }, { id: 'wealth', label: 'Wealth' }, { id: 'health', label: 'Health' },
@@ -111,7 +118,7 @@ const INTENTIONS_FALLBACK = [
 const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
-  location: '', intention: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
+  location: '', intention: '', collective_sankalp: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
   video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
   event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '', temple_id: '',
 };
@@ -134,6 +141,7 @@ function fromDetail(d: EventDetailResponse): FormState {
     youtube_url: d.youtube?.url ?? '',
     location: e.location ?? '',
     intention: e.intention ?? '',
+    collective_sankalp: (e.collective_sankalp ?? []).join(','),
     prasad_courier: e.prasad_courier ?? true,
     guide_slug: e.guide_slug ?? '',
     video_download: e.video_download ?? true,
@@ -180,12 +188,14 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   if (changed('rating_display')) out.rating_display = f.rating_display.trim() === '' ? null : Number(f.rating_display);
   if (changed('review_count_boost')) out.review_count_boost = f.review_count_boost.trim() === '' ? null : Number(f.review_count_boost);
   if (changed('temple_id')) out.temple_id = f.temple_id || null;
+  if (changed('collective_sankalp')) out.collective_sankalp = f.collective_sankalp ? f.collective_sankalp.split(',') : null;
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
     for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url', 'performer_photo_url'] as const) if (!f[k]) delete out[k];
     if (!f.start_date) { delete out.start_date; delete out.start_time; }
     if (f.capacity === '') delete out.capacity;
     if (!f.temple_id) delete out.temple_id;
+    if (!f.collective_sankalp) delete out.collective_sankalp;
     if (f.rating_display.trim() === '') delete out.rating_display;
     if (f.review_count_boost.trim() === '') delete out.review_count_boost;
   }
@@ -199,6 +209,7 @@ const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier',
   video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url', booked_boost: 'booked_boost',
   event_type: 'event_type', performer_photo_url: 'performer_photo_url', rating_display: 'rating_display', review_count_boost: 'review_count_boost', temple_id: 'temple_id',
+  collective_sankalp: 'collective_sankalp',
 };
 
 type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'perf_photo' | 'poster' | 'article' | 'video_url';
@@ -523,6 +534,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
       startsAt: detail?.event.starts_at ?? null, place: form.location || null,
       price: form.price_rupees ? Number(form.price_rupees) : null,
       ritual: EVENT_TYPE_COPY[form.event_type]?.ritual ?? true,
+      personalSankalp: (EVENT_TYPE_COPY[form.event_type]?.ritual ?? true) && form.visibility === 'private',
     });
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
     capture('admin2_event_share', { channel: 'whatsapp', listing_id: id });
@@ -627,7 +639,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             </ToggleGroup>
             <p className="text-[12px] font-semibold text-muted-foreground">
               {typeCopy.ritual
-                ? 'Ritual event — sankalp, chadhava and prasad courier are offered.'
+                ? 'Ritual event — collective sankalp, chadhava and prasad courier are offered.'
                 : 'Not a ritual — no sankalp, chadhava or prasad; customers just book a seat.'}
             </p>
           </Section>
@@ -762,6 +774,22 @@ export default function EventForm({ eventId }: { eventId?: string }) {
           </Section>
 
           <Section title="On the booking card" subtitle="The badges and ticks customers see on the Book now card.">
+            {typeCopy.ritual && (
+              <Field label="Sankalp for this event" error={errors.collective_sankalp}
+                hint="Recited by the pujari for every devotee. Customers no longer give a gotra or wish for a public event — just a name. Pick up to 5.">
+                <ToggleGroup type="multiple" variant="outline" className="flex-wrap justify-start" disabled={disabled}
+                  value={form.collective_sankalp ? form.collective_sankalp.split(',') : []}
+                  onValueChange={(v: string[]) => {
+                    if (v.length > 5) return;
+                    set('collective_sankalp', v.join(','));
+                    capture('admin2_event_collective_sankalp', { count: v.length, keys: v.join(',') });
+                  }}>
+                  {(meta?.collective_sankalps ?? COLLECTIVE_FALLBACK).map((c) => (
+                    <ToggleGroupItem key={c.id} value={c.id} aria-label={c.label}>{c.label}</ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </Field>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Intention" error={errors.intention} hint="The badge on the photo">
                 <Select value={form.intention || undefined} onValueChange={(v) => set('intention', v === '__none' ? '' : v)} disabled={disabled}>
@@ -810,7 +838,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
               </p>
             </Field>
             <p className="text-[12px] font-semibold text-muted-foreground">
-              {typeCopy.ritual ? '“Sankalp in your name” and “Live on YouTube” always show.' : '“Live on YouTube” always shows.'} Rating and “booked” fill in from real bookings.
+              {typeCopy.ritual ? (form.visibility === 'private' ? '“Sankalp in your name” and “Live on YouTube” always show.' : '“Collective sankalp” and “Live on YouTube” always show.') : '“Live on YouTube” always shows.'} Rating and “booked” fill in from real bookings.
             </p>
             <Field label="Read benefits links to">
               {articleBySlug(form.guide_slug) ? (
