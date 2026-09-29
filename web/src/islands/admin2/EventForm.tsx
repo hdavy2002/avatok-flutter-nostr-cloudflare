@@ -30,6 +30,7 @@ import {
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { EVENT_TYPES, EVENT_TYPE_COPY, type EventType } from '../../lib/eventTypes';
+import { whatsappShareText } from '../../lib/shareText';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
@@ -516,9 +517,13 @@ export default function EventForm({ eventId }: { eventId?: string }) {
 
   function onWhatsApp() {
     if (!id) return;
-    const price = form.price_rupees ? ` Starting from ₹${Number(form.price_rupees).toLocaleString('en-IN')}.` : '';
-    const lead = detail?.event.ad_hook || form.title;
-    const text = `🙏 ${lead} — ${form.title} on Saa Thum.${price} ${shareUrl()}`;
+    // [WEB-WA-SHARE-2] Readable pitch in the message body — see lib/shareText.ts.
+    const text = whatsappShareText({
+      title: form.title, url: shareUrl(), hook: detail?.event.ad_hook || null,
+      startsAt: detail?.event.starts_at ?? null, place: form.location || null,
+      price: form.price_rupees ? Number(form.price_rupees) : null,
+      ritual: EVENT_TYPE_COPY[form.event_type]?.ritual ?? true,
+    });
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
     capture('admin2_event_share', { channel: 'whatsapp', listing_id: id });
   }

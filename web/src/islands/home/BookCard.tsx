@@ -16,6 +16,7 @@ import { useState } from 'react';
 import type { Card } from '../../lib/types';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
 import { payAndJoinPath } from '../../lib/urls';
+import { whatsappShareHref } from '../../lib/shareText';
 import { cfImage, publicImage } from '../../lib/config';
 import { copyFor, eventTypeOf, socialProof, type EventType, type EventTypeCopy } from '../../lib/eventTypes';
 import './BookNowShelf.css';
@@ -193,9 +194,11 @@ function gcalHref(it: Item, origin: string): string {
 }
 
 function waHref(it: Item, origin: string): string {
-  const price = it.price != null ? ` Starting from ₹${it.price.toLocaleString('en-IN')}.` : '';
-  const when = it.startsAt ? ` ${whenLabel(it.startsAt, null)}.` : '';
-  return 'https://wa.me/?text=' + encodeURIComponent(`🙏 ${it.title} on Saa Thum.${when}${price} ${origin}${it.href}`);
+  // [WEB-WA-SHARE-2] Readable pitch in the message body — see lib/shareText.ts.
+  return whatsappShareHref({
+    title: it.title, url: `${origin}${it.href}`, startsAt: it.startsAt, place: it.location,
+    price: it.price, ritual: copyFor({ event_type: it.eventType }).ritual,
+  });
 }
 
 /** Two-letter initials for the performer-photo fallback, e.g. "Pandit Ramesh" → "PR". */

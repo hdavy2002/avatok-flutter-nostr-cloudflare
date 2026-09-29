@@ -16,6 +16,7 @@ import { scheduleStateOf, durationLabel } from '../../lib/card';
 import { ritualBySlug } from '../../lib/ritualGuides';
 import { ritualStories } from '../../lib/ritualStories';
 import { listingPath } from '../../lib/urls';
+import { whatsappShareHref } from '../../lib/shareText';
 import { copyFor, socialProof, refundWindowHoursFor, refundWindowLabel } from '../../lib/eventTypes';
 import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
 import LiveOverlay from '../../islands/eventpage/LiveOverlay.tsx';
@@ -169,9 +170,12 @@ function gcalHref(): string {
   return 'https://calendar.google.com/calendar/render?' + q.toString();
 }
 function waHref(): string {
-  const priceText = price != null ? ` Starting from ₹${price.toLocaleString('en-IN')}.` : '';
-  const whenText = startsAtLabel ? ` ${startsAtLabel}.` : '';
-  return 'https://wa.me/?text=' + encodeURIComponent(`🙏 ${listing.title} on Saa Thum.${whenText}${priceText} ${origin}${canonicalHref}`);
+  // [WEB-WA-SHARE-2] Readable pitch in the message body — see lib/shareText.ts.
+  return whatsappShareHref({
+    title: listing.title, url: `${origin}${canonicalHref}`,
+    hook: typeof (attrs as any).ad_hook?.text === 'string' ? (attrs as any).ad_hook.text : null,
+    startsAt: startMs, place: location, price, free: Boolean(listing.free_entry), ritual: copy.ritual,
+  });
 }
 
 // [SAATHUM-EVENT-TYPES] Sankalp, chadhava and prasad only ever appear for
