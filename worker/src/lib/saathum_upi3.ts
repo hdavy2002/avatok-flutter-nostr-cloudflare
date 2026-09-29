@@ -6,6 +6,7 @@ import type { Env } from "../types";
 import { metaDb } from "../db/shard";
 import { track, trackException } from "../hooks";
 import { sendWhatsAppText } from "./whatsapp_send";
+import { readConfig } from "../routes/config";
 import {
   AMOUNT_COOLDOWN_MS, MAX_ROUNDING_DISCOUNT_PAISE, PAID_CLAIM_REVIEW_MS, REVIEW_ALERT_AFTER_MS,
 } from "./saathum_checkout_logic";
@@ -78,7 +79,7 @@ export async function dropReservation(env: Env, checkoutId: string): Promise<voi
 // ---------------------------------------------------------------------------
 // Ingest-source health (companion app / Google Messages watcher)
 // ---------------------------------------------------------------------------
-export type SmsSource = "companion" | "watcher";
+export type SmsSource = "companion" | "watcher" | "forwarder";
 
 /** Which configured device (if any) this device_id is, and its shared secret. */
 export function resolveSmsDevice(env: Env, deviceId: string): { source: SmsSource; secret: string } | null {
@@ -210,11 +211,69 @@ export async function checkSourceHealth(env: Env, now = Date.now()): Promise<{ s
   return { stale, recovered };
 }
 
+// ---------------------------------------------------------------------------
+// Forwarder (third-party SMS-forward app): no heartbeat, so NO stale-by-heartbeat alert.
+// Instead: alert only if it made zero requests for 24 h WHILE the Google Messages watcher saw
+// HDFC credits in that window (i.e. money is arriving and the forwarder is not relaying it).
+// ---------------------------------------------------------------------------
+export const FORWARDER_DEVICE = "forwarder";
+export const FORWARDER_SILENT_MS = 24 * 3_600_000;
+export const FORWARDER_REALERT_MS = 12 * 3_600_000;
+
+export type ForwarderSilence = { silent: boolean; last_request_at: number | null; watcher_credits_24h: number };
+
+/** Silent = zero forwarder requests in 24 h (or never) AND the watcher stored >=1 HDFC credit in 24 h. */
+export async function forwarderSilence(env: Env, now = Date.now()): Promise<ForwarderSilence> {
+  const db = metaDb(env);
+  const h = await db.prepare(`SELECT last_sms_at FROM sms_source_health WHERE device_id=?1`).bind(FORWARDER_DEVICE)
+    .first<{ last_sms_at: number | null }>().catch(() => null);
+  const last = h?.last_sms_at != null ? Number(h.last_sms_at) : null;
+  const watcher = env.HDFC_SMS_WATCHER_DEVICE_ID;
+  // hdfc_sms_receipts only ever holds HDFC credit evidence (unrelated SMS are never stored).
+  const c = watcher
+    ? await db.prepare(`SELECT count(*) AS n FROM hdfc_sms_receipts WHERE device_id=?1 AND created_at>=?2`).bind(watcher, now - FORWARDER_SILENT_MS)
+      .first<{ n: number }>().catch(() => null)
+    : null;
+  const credits = Number(c?.n ?? 0);
+  const quiet = last === null || now - last > FORWARDER_SILENT_MS;
+  return { silent: quiet && credits > 0, last_request_at: last, watcher_credits_24h: credits };
+}
+
+/** Owner alert for a silent forwarder (re-alert at most every 12 h) and a "receiving again" message. */
+export async function checkForwarderSilence(env: Env, now = Date.now()): Promise<{ silent: number; recovered: number }> {
+  const config = await readConfig(env).catch(() => null);
+  const token = env.SMS_FORWARDER_TOKEN ?? "";
+  if (!config?.smsForwarderEnabled || token.length < 32) return { silent: 0, recovered: 0 };
+  const db = metaDb(env);
+  const s = await forwarderSilence(env, now);
+  const row = await db.prepare(`SELECT alerted_at,stale_alert_open FROM sms_source_health WHERE device_id=?1`).bind(FORWARDER_DEVICE)
+    .first<{ alerted_at: number | null; stale_alert_open: number }>().catch(() => null);
+  if (s.silent) {
+    const due = !row?.stale_alert_open || now - Number(row.alerted_at ?? 0) >= FORWARDER_REALERT_MS;
+    if (!due) return { silent: 0, recovered: 0 };
+    const ok = await alert(env, `Saathum UPI alert: the SMS forwarder app has sent nothing for 24 h, but the Google Messages watcher saw ${s.watcher_credits_24h} HDFC credit(s). Check the forwarder phone/app; payments may need manual review.`);
+    if (!ok) return { silent: 0, recovered: 0 };
+    await db.prepare(
+      `INSERT INTO sms_source_health (device_id,source,alerted_at,stale_alert_open,updated_at) VALUES (?1,'forwarder',?2,1,?2)
+       ON CONFLICT(device_id) DO UPDATE SET alerted_at=?2, stale_alert_open=1`).bind(FORWARDER_DEVICE, now).run();
+    return { silent: 1, recovered: 0 };
+  }
+  if (row?.stale_alert_open) {
+    const ok = await alert(env, `Saathum UPI: the SMS forwarder app is sending again.`);
+    if (ok) {
+      await db.prepare(`UPDATE sms_source_health SET stale_alert_open=0, alerted_at=NULL WHERE device_id=?1`).bind(FORWARDER_DEVICE).run();
+      return { silent: 0, recovered: 1 };
+    }
+  }
+  return { silent: 0, recovered: 0 };
+}
+
 /** Wired into index.ts scheduled(). Never throws. */
 export async function runSaathumPaymentSweeps(env: Env, now = Date.now()) {
-  const out = { pending: 0, review_alerts: 0, stale: 0, recovered: 0 };
+  const out = { pending: 0, review_alerts: 0, stale: 0, recovered: 0, forwarder_silent: 0, forwarder_recovered: 0 };
   try { out.pending = await persistAwaitingBank(env, now); } catch (e) { await trackException(env, e, { route: "saathum_upi3.persist", handled: true, app_name: APP }); }
   try { out.review_alerts = await alertStaleReviews(env, now); } catch (e) { await trackException(env, e, { route: "saathum_upi3.review_alerts", handled: true, app_name: APP }); }
   try { const h = await checkSourceHealth(env, now); out.stale = h.stale; out.recovered = h.recovered; } catch (e) { await trackException(env, e, { route: "saathum_upi3.health", handled: true, app_name: APP }); }
+  try { const f = await checkForwarderSilence(env, now); out.forwarder_silent = f.silent; out.forwarder_recovered = f.recovered; } catch (e) { await trackException(env, e, { route: "saathum_upi3.forwarder", handled: true, app_name: APP }); }
   return out;
 }

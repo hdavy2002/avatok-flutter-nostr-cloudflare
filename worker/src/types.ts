@@ -405,6 +405,10 @@ export interface Env {
   HDFC_SMS_WATCHER_DEVICE_ID?: string;
   HDFC_SMS_WATCHER_DEVICE_SECRET?: string;
   ADMIN_ALERT_WHATSAPP?: string;
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Layer 2 = third-party "Auto Forward SMS - Forwarder" app. It cannot
+  // sign HMAC, so the secret is a >=32-char token in the URL path (/api/sms/forward/:token) or the
+  // X-Forward-Token header. Unset => the endpoint 404s. Set with: wrangler secret put SMS_FORWARDER_TOKEN
+  SMS_FORWARDER_TOKEN?: string;
 
   // [PAY-RAIL-1] The generic multi-gateway layer (lib/payments/*, routes/pay.ts).
   // Absent ⇒ that adapter's `configured(env)` is false and it simply does not appear in

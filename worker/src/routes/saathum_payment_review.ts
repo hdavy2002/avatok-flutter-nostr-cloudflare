@@ -17,10 +17,11 @@ import { requireAdmin } from "./admin_money";
 import { confirmSaathumCheckout, rejectSaathumCheckout } from "./saathum_checkout";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { PAID_CLAIM_REVIEW_MS, externalReason } from "../lib/saathum_checkout_logic";
-import { sourceLastSeen, SOURCE_STALE_MS, type SourceHealthRow } from "../lib/saathum_upi3";
+import { sourceLastSeen, SOURCE_STALE_MS, forwarderSilence, FORWARDER_DEVICE, type SourceHealthRow } from "../lib/saathum_upi3";
 import { policy as hdfcPolicy } from "../lib/hdfc_sms_smoke";
 
 const APP = "saathum";
+const CORROBORATION_WINDOW_MS = 30 * 60_000;
 const err = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
 
 type ReviewRow = {
@@ -55,6 +56,7 @@ export async function adminSaathumReviewList(req: Request, env: Env): Promise<Re
       pay_amount_paise: r.amount_paise, status: "review_pending",
       reason_code: externalReason({ status: "review_pending", expires_at: r.expires_at, reason_code: r.reason_code, paid_claimed_at: r.paid_claimed_at }, now),
       created_at: r.created_at, paid_claimed_at: r.paid_claimed_at, utr: r.utr ?? r.payer_reference,
+      needs_corroboration: false, // unconfirmed rows can never be forwarder-only confirmations (see confirmed_uncorroborated)
     });
   }
   // Bank SMS the automatic matcher could not place: accepted/needs-review evidence not linked to any checkout.
@@ -72,16 +74,48 @@ export async function adminSaathumReviewList(req: Request, env: Env): Promise<Re
     ).bind(p.account, now - 3 * 86_400_000).all<{ message_hash: string; amount_paise: number; payer_vpa: string | null; bank_reference: string | null; received_at_ms: number; source_device: string | null }>().catch(() => null)
     : null;
   const src = await db.prepare(`SELECT device_id,source,last_heartbeat_at,last_sms_at,last_error,alerted_at,stale_alert_open FROM sms_source_health ORDER BY source`).all<SourceHealthRow>().catch(() => null);
+  // [SAATHUM-UPI-3LAYER 2026-09-29] Corroboration warning (never a block): checkouts auto-confirmed ONLY by the
+  // third-party SMS forwarder (matched evidence came from device 'forwarder') that neither the Google Messages
+  // watcher nor the companion delivered within 30 min of the confirmation (matched by bank reference in the
+  // raw hdfc_sms_receipts text). Last 7 days.
+  const unc = await db.prepare(
+    `SELECT c.checkout_id,c.uid,c.sankalp_json,c.amount_paise,c.payer_reference,c.confirmed_at,l.title
+       FROM saathum_checkouts c
+       JOIN hdfc_sms_receipts f ON f.message_hash=c.matched_message_hash AND f.device_id=?3
+       LEFT JOIN listings l ON l.id=c.listing_id
+      WHERE c.status='confirmed' AND c.confirm_source='sms_auto' AND c.confirmed_at>=?1 AND c.payer_reference IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM hdfc_sms_receipts o
+              WHERE o.device_id<>?3 AND instr(o.message,c.payer_reference)>0
+                AND o.created_at BETWEEN c.confirmed_at-?2 AND c.confirmed_at+?2)
+      ORDER BY c.confirmed_at DESC LIMIT 100`,
+  ).bind(now - 7 * 86_400_000, CORROBORATION_WINDOW_MS, FORWARDER_DEVICE)
+    .all<{ checkout_id: string; uid: string; sankalp_json: string; amount_paise: number; payer_reference: string; confirmed_at: number; title: string | null }>().catch(() => null);
+  const confirmed_uncorroborated = (unc?.results ?? []).map((u) => {
+    let buyerName: string | null = null;
+    try { buyerName = (JSON.parse(u.sankalp_json) as { name?: string }).name ?? null; } catch { /* keep null */ }
+    return {
+      checkout_id: u.checkout_id, uid: u.uid, buyer_name: buyerName, listing_title: u.title, pay_amount_paise: u.amount_paise,
+      bank_reference: u.payer_reference, confirmed_at: u.confirmed_at, confirmed_via: "forwarder",
+      needs_corroboration: true,
+      // true for 30 min after confirmation: the watcher/companion may still deliver its copy.
+      corroboration_window_open: now < u.confirmed_at + CORROBORATION_WINDOW_MS,
+    };
+  });
+  const silence = await forwarderSilence(env, now).catch(() => null);
   return json({
     checkouts,
     unmatched_sms: (unmatched?.results ?? []).map((u) => ({
       message_hash: u.message_hash, amount_paise: u.amount_paise, payer_vpa: u.payer_vpa, bank_reference: u.bank_reference,
       received_at_ms: u.received_at_ms, source_device: u.source_device,
     })),
-    sources: (src?.results ?? []).map((s) => ({
-      device_id: s.device_id, source: s.source, last_heartbeat_at: s.last_heartbeat_at, last_sms_at: s.last_sms_at,
-      healthy: now - sourceLastSeen(s) <= SOURCE_STALE_MS,
-    })),
+    sources: (src?.results ?? []).map((s) => s.device_id === FORWARDER_DEVICE
+      // The forwarder has no heartbeat: it is unhealthy only when silent for 24 h while the watcher saw HDFC credits.
+      ? { device_id: s.device_id, source: s.source, last_heartbeat_at: null, last_sms_at: s.last_sms_at, healthy: !(silence?.silent ?? false), heartbeat: false, silent_24h_with_watcher_credits: silence?.silent ?? false }
+      : {
+        device_id: s.device_id, source: s.source, last_heartbeat_at: s.last_heartbeat_at, last_sms_at: s.last_sms_at,
+        healthy: now - sourceLastSeen(s) <= SOURCE_STALE_MS,
+      }),
+    confirmed_uncorroborated,
   });
 }
 
