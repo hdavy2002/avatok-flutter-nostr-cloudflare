@@ -7819,5 +7819,21 @@
         "note": "A Saathum checkout was confirmed; via says which layer did it (sms auto-match, buyer UTR, or admin). Absent once buyers are paying means no layer is confirming."
       }
     ]
+  },
+  "SAATHUM-LIVE-PREVIEW-1": {
+    "description": "[SAATHUM-LIVE-PREVIEW-1 2026-09-29] Admin-only preview of the paid-buyer live player: /book/<id>?preview=live makes GET /api/saathum/watch/:id?preview=1 skip the booking check and the clock window for ADMIN_UIDS, so a future-dated listing with a saved YouTube link shows the embedded player (with an 'Admin preview' tag). Non-admins and the public live-state endpoint are unchanged. Telemetry: saathum_watch_access{outcome:'admin_preview'}, web saathum_live_admin_preview.",
+    "shipped": "2026-09-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_watch_access",
+        "property": "outcome",
+        "equals": "admin_preview",
+        "min_events": 1,
+        "note": "The owner opened a listing with ?preview=live and the server served the player in preview mode."
+      }
+    ]
   }
 }

@@ -36,7 +36,7 @@ type Phase =
   | { kind: 'hidden' }
   | { kind: 'live_overlay' }
   | { kind: 'ended_overlay'; buyer: boolean }
-  | { kind: 'player'; videoId: string };
+  | { kind: 'player'; videoId: string; preview?: boolean };
 
 function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; checkoutHref: string }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' });
@@ -55,17 +55,23 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
         captureException(err, { surface: 'saathum_live_overlay', listing_id: listingId });
         return;
       }
-      if (publicState === 'none') { setPhase({ kind: 'hidden' }); return; }
+      // [SAATHUM-LIVE-PREVIEW-1 2026-09-29] /book/<id>?preview=live lets an ADMIN see the
+      // paid-buyer player before the event date. The server decides who is an admin;
+      // for anyone else the param changes nothing (not_booked -> falls through below).
+      const wantPreview = typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).get('preview') === 'live';
+      if (publicState === 'none' && !wantPreview) { setPhase({ kind: 'hidden' }); return; }
 
       // Only ever call the entitled endpoint when a session token exists —
       // a signed-out visitor never triggers it.
       const token = await getActiveToken().catch(() => null);
       if (token) {
         try {
-          const w = await getWatch(listingId, token, ctrl.signal);
+          const w = await getWatch(listingId, token, ctrl.signal, wantPreview);
           if (ctrl.signal.aborted) return;
           if (w.stream_state === 'live' && w.youtube_video_id) {
-            setPhase({ kind: 'player', videoId: w.youtube_video_id });
+            setPhase({ kind: 'player', videoId: w.youtube_video_id, preview: !!w.preview });
+            if (w.preview) capture('saathum_live_admin_preview', { listing_id: listingId });
             return;
           }
           if (w.stream_state === 'ended') { setPhase({ kind: 'ended_overlay', buyer: true }); return; }
@@ -82,6 +88,7 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
           // public-visitor overlay below, which is the correct experience.
         }
       }
+      if (publicState === 'none') { setPhase({ kind: 'hidden' }); return; } // preview refused
       setPhase(publicState === 'live' ? { kind: 'live_overlay' } : { kind: 'ended_overlay', buyer: false });
     })();
     return () => ctrl.abort();
@@ -130,6 +137,11 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
+        {phase.preview && (
+          <span className="ep-pill ep-pill--soft" style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
+            Admin preview
+          </span>
+        )}
       </div>
     );
   }

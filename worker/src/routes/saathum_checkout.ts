@@ -39,6 +39,7 @@ import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sen
 import { reserveUniqueAmount, releaseAmount, dropReservation } from "../lib/saathum_upi3";
 import { AMOUNT_COOLDOWN_MS } from "../lib/saathum_checkout_logic";
 import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
+import { isAdminUid } from "../lib/admin_calendar_exempt"; // [SAATHUM-LIVE-PREVIEW-1]
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -1185,7 +1186,14 @@ export async function saathumWatchGet(req: Request, env: Env, listingId: string)
   if (waErr) return failure(waErr.error, waErr.status);
   if (!listingId || listingId.length > 200) return failure("not_found", 404);
   const db = metaDb(env);
-  const booked = await db.prepare(
+  // [SAATHUM-LIVE-PREVIEW-1 2026-09-29] Owner request: test the live player on a
+  // future-dated listing. `?preview=1` from an ADMIN_UIDS account skips the booking
+  // check and the clock window and reports stream_state 'live' as long as a link is
+  // saved. Everyone else ignores the param entirely (same not_booked / clock rules),
+  // and the public live-state endpoint never sees it, so the page stays unchanged for
+  // real visitors and no notification, cron or booking rule moves.
+  const preview = new URL(req.url).searchParams.get("preview") === "1" && isAdminUid(env, auth.uid);
+  const booked = preview ? true : await db.prepare(
     `SELECT 1 FROM saathum_checkouts WHERE listing_id=?1 AND uid=?2 AND status='confirmed' LIMIT 1`,
   ).bind(listingId, auth.uid).first();
   if (!booked) {
@@ -1202,14 +1210,15 @@ export async function saathumWatchGet(req: Request, env: Env, listingId: string)
   }
   // [SAATHUM-WATCH-1 2026-09-28] Same state rule as /api/saathum/live-state — the
   // page uses this to decide whether to show the player, "ended", or neither.
-  const stream_state = computeStreamState({
+  const stream_state = preview ? "live" : computeStreamState({
     hasVideo: true, endedAt: video.ended_at, listingStatus: listing.status,
     startsAt: listing.starts_at, durationMin: listing.duration_min, now: Date.now(),
   });
-  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "ok", stream_state });
+  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: preview ? "admin_preview" : "ok", stream_state });
   return json({
     ok: true, listing_id: listingId, title: listing.title, starts_at: listing.starts_at,
     status: listing.status, youtube_video_id: video.youtube_video_id, stream_state,
+    ...(preview ? { preview: true } : {}),
   });
 }
 

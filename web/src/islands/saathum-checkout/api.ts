@@ -84,9 +84,12 @@ export function getLiveState(listingId: string, signal?: AbortSignal): Promise<L
 export interface WatchInfo {
   ok: true; listing_id: string; title: string; starts_at: number | null; status: string;
   youtube_video_id: string; stream_state: 'none' | 'live' | 'ended';
+  preview?: boolean; // [SAATHUM-LIVE-PREVIEW-1] admin-only test view
 }
-export function getWatch(listingId: string, auth: string, signal?: AbortSignal): Promise<WatchInfo> {
-  return request<WatchInfo>(`/api/saathum/watch/${encodeURIComponent(listingId)}`, { auth, signal });
+export function getWatch(listingId: string, auth: string, signal?: AbortSignal, preview = false): Promise<WatchInfo> {
+  return request<WatchInfo>(`/api/saathum/watch/${encodeURIComponent(listingId)}`, {
+    auth, signal, ...(preview ? { query: { preview: '1' } } : {}),
+  });
 }
 
 /** GET .../receipt.pdf WITH the auth header — a plain link/href can't carry a
