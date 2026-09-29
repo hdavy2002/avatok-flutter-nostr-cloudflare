@@ -129,7 +129,7 @@
 .ep-ben { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 6px; }
 .ep-ben div { padding: 16px; border-radius: 14px; background: #fbf3e3; font: 800 14px/1.35 Nunito, sans-serif; color: #2c3b3d; }
 .ep-ben div span { display: block; font-size: 22px; margin-bottom: 6px; }
-.ep-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.ep-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; } /* [SAATHUM-LIVE-STEP-1] 4 steps */
 .ep-step { text-align: center; padding: 10px; }
 .ep-step .ep-stk { width: 160px; height: 160px; margin: 0 auto 12px; }
 .ep-prasad { display: flex; align-items: center; gap: 24px; }

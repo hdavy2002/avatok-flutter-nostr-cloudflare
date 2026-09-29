@@ -62,7 +62,7 @@ export interface EventTypeCopy {
    *  meditation: 72 (3 days). Prefer a listing's own `refund_window_hours` when
    *  the worker sends one; this is only the per-type fallback/default. */
   refundWindowHours: number;
-  /** The three "How it works" steps. */
+  /** The four "How it works" steps. */
   steps: { title: string; body: string; sticker: string }[];
   /** Checkout "done" headline. */
   doneTitle: string;
@@ -73,12 +73,16 @@ const RITUAL_STEPS = (noun: string) => [
   // chosen by us; the devotee gives only a name (owner decision). No "your sankalp" here.
   { title: 'Book your place', body: `One sankalp is recited for every devotee who joins the ${noun}.`, sticker: 'sankalp-thali' },
   { title: 'The priest performs it', body: `Your ${noun} is performed at the altar at the scheduled time.`, sticker: 'whatsapp-diya' },
+  // [SAATHUM-LIVE-STEP-1 2026-09-30] Owner: the event is live streamed, so the devotee is part of the group.
+  { title: 'Watch it live, together', body: `The ${noun} is live streamed to you, so you are part of one group prayer with every devotee.`, sticker: 'live-together' },
   { title: 'Get the video and prasad', body: 'We email you the video when it finishes. Prasad ships the same day.', sticker: 'prasad-box' },
 ];
 
 const TALK_STEPS = (noun: string) => [
   { title: 'Reserve your seat', body: `One booking per family — join the ${noun} from anywhere.`, sticker: 'sankalp-thali' },
   { title: 'It happens on schedule', body: `The ${noun} takes place at the scheduled time.`, sticker: 'whatsapp-diya' },
+  // [SAATHUM-LIVE-STEP-1 2026-09-30]
+  { title: 'Watch it live, together', body: `The ${noun} is live streamed to you, so you are part of the group with everyone who joins.`, sticker: 'live-together' },
   { title: 'Get the video', body: 'We email you the video when it finishes. Download it anytime from My events.', sticker: 'havan-kund' },
 ];
 

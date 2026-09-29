@@ -378,7 +378,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
 
       <div class="ep-sec">
         <div class="ep-kick">How it works</div>
-        <h2>From your home, in three steps</h2>
+        <h2>From your home, in {['one', 'two', 'three', 'four', 'five'][copy.steps.length - 1] ?? copy.steps.length} steps</h2>
         <div class="ep-steps">
           {copy.steps.map((step, i) => (
             <div class="ep-step">
