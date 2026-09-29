@@ -289,6 +289,10 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
   if (!refundPolicyAccepted) {
     return failure("refund_policy_required", 400, { message: "Please read and accept the refund policy to continue." });
   }
+  // [SAATHUM-DISCLAIMER-TICK-1 2026-09-29] Owner: a separate disclaimer tickbox is required too.
+  if (b.disclaimer_accepted !== true) {
+    return failure("disclaimer_required", 400, { message: "Please read and accept the disclaimer to continue." });
+  }
 
   const throttle = await limited(env, `create:${uid}`, 10); if (throttle) return throttle;
   const db = metaDb(env);

@@ -127,7 +127,7 @@ describe('unique amount reservation', () => {
 
   it('create endpoint answers 503 amount_pool_exhausted and stores nothing', async () => {
     for (let i = 0; i < 199; i++) await reserve(uuid(), 200, () => 0);
-    const body = { listing_id: 'L1', request_key: uuid(), accept_terms: true, refund_policy_accepted: true, sankalp: { name: 'Asha' } };
+    const body = { listing_id: 'L1', request_key: uuid(), accept_terms: true, refund_policy_accepted: true, disclaimer_accepted: true, sankalp: { name: 'Asha' } };
     const res = await saathumCheckoutCreate(request('/checkout', body, 'buyer1'), f.env);
     expect(res.status).toBe(503);
     expect((await res.json() as any).error).toBe('amount_pool_exhausted');
@@ -135,7 +135,7 @@ describe('unique amount reservation', () => {
   });
 
   it('create endpoint stores the unique payable amount and the rounding discount', async () => {
-    const body = { listing_id: 'L1', request_key: uuid(), accept_terms: true, refund_policy_accepted: true, sankalp: { name: 'Asha' } };
+    const body = { listing_id: 'L1', request_key: uuid(), accept_terms: true, refund_policy_accepted: true, disclaimer_accepted: true, sankalp: { name: 'Asha' } };
     const res = await saathumCheckoutCreate(request('/checkout', body, 'buyer1'), f.env);
     expect(res.status).toBe(200);
     const { checkout } = await res.json() as any;

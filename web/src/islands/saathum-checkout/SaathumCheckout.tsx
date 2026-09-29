@@ -220,6 +220,7 @@ function Inner({ listingId }: { listingId: string }) {
           address: isRitual && offerings.prasad && address ? address : undefined,
           accept_terms: true,
           refund_policy_accepted: true,
+          disclaimer_accepted: true,
         },
         auth,
       );

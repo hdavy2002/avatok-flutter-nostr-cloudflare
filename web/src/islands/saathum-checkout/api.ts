@@ -31,6 +31,8 @@ export interface CreateCheckoutBody {
   /** [REFUND-POLICY-WEB-1 2026-09-28] Required alongside accept_terms — the
    *  server rejects with 400 {error:"refund_policy_required"} when missing. */
   refund_policy_accepted: true;
+  /** [SAATHUM-DISCLAIMER-TICK-1] Required: buyer ticked the disclaimer. */
+  disclaimer_accepted: true;
 }
 
 export async function createCheckout(body: CreateCheckoutBody, auth: string): Promise<Checkout> {

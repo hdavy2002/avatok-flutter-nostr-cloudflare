@@ -47,6 +47,8 @@ export function ReviewStep({
 }) {
   const [terms, setTerms] = useState(false);
   const [refund, setRefund] = useState(false);
+  // [SAATHUM-DISCLAIMER-TICK-1 2026-09-29] Owner: separate disclaimer tickbox at checkout.
+  const [disclaimer, setDisclaimer] = useState(false);
   const [offeringOther, setOfferingOther] = useState('');
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export function ReviewStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote?.total_rupees]);
 
-  const canPay = terms && refund && !!quote && !paying;
+  const canPay = terms && refund && disclaimer && !!quote && !paying;
   const dots = Array.from({ length: totalSteps }, (_, i) => (
     <i key={i} className={i < stepIndex ? 'on' : ''} />
   ));
@@ -147,6 +149,18 @@ export function ReviewStep({
           }}
         />
         <span>I have read and agree to the <a href="/refunds" target="_blank" rel="noopener noreferrer">refund policy</a></span>
+      </label>
+      <label className="sthc-check">
+        <input
+          type="checkbox"
+          checked={disclaimer}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setDisclaimer(checked);
+            if (checked) capture('saathum_checkout_disclaimer_ticked', { listing_id: listingId });
+          }}
+        />
+        <span>I have read and agree to the <a href="/disclaimer" target="_blank" rel="noopener noreferrer">disclaimer</a></span>
       </label>
 
       <button className="sthc-btn" disabled={!canPay} onClick={onPay}>
