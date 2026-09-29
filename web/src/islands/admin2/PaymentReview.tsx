@@ -5,7 +5,7 @@
  *   POST /api/admin/saathum/checkout/:id/reject   { reason }
  * Refreshes every 20 s; confirm/reject remove the row at once and restore it if the call fails. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Smartphone, WifiOff, X, Check } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Smartphone, WifiOff, X, Check } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
@@ -29,8 +29,18 @@ interface UnmatchedSms {
   message_hash: string; amount_paise: number; payer_vpa: string | null; bank_reference: string | null;
   received_at_ms: number; source_device: string | null;
 }
-interface SourceHealth { device_id: string; source: string; last_heartbeat_at: Ts; last_sms_at: Ts; healthy: boolean }
-interface ReviewData { checkouts: ReviewCheckout[]; unmatched_sms: UnmatchedSms[]; sources: SourceHealth[] }
+interface SourceHealth {
+  device_id: string; source: string; last_heartbeat_at: Ts; last_sms_at: Ts; healthy: boolean;
+  /** false for the forwarder: it never heartbeats. */
+  heartbeat?: boolean; silent_24h_with_watcher_credits?: boolean;
+}
+interface Uncorroborated {
+  checkout_id: string; buyer_name: string | null; listing_title: string | null; pay_amount_paise: number;
+  bank_reference: string | null; confirmed_at: Ts; confirmed_via: string; corroboration_window_open: boolean;
+}
+interface ReviewData { checkouts: ReviewCheckout[]; unmatched_sms: UnmatchedSms[]; sources: SourceHealth[]; confirmed_uncorroborated: Uncorroborated[] }
+interface Capture { id: number; received_at: Ts; method: string; content_type: string | null; top_keys: unknown; body_sample: string }
+interface Captures { capture_enabled: boolean; forwarder_enabled: boolean; captures: Capture[] }
 
 const REFRESH_MS = 20_000;
 const OFFLINE_MS = 15 * 60_000;
@@ -72,20 +82,16 @@ const checkoutMs = (c: ReviewCheckout) => toMs(c.paid_claimed_at) ?? toMs(c.crea
 
 /* ── payment sources strip ─────────────────────────────────────────────── */
 
-function sourceLabel(s: SourceHealth): string {
-  return /watch|gmessages|google|libgm/i.test(`${s.source} ${s.device_id}`) ? 'Google Messages watcher' : 'SMS companion';
-}
+const SOURCE_LABEL: Record<string, string> = {
+  watcher: 'Google Messages watcher', forwarder: 'SMS forwarder app', companion: 'SMS companion (legacy)',
+};
 
 function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number }) {
+  // Watcher and forwarder always show (even before they report); companion only if the payload has it.
   const cards = useMemo(() => {
-    const out: { label: string; s: SourceHealth | null }[] = [];
-    const taken = new Set<string>();
-    for (const label of ['Google Messages watcher', 'SMS companion']) {
-      const s = sources.find((x) => !taken.has(x.device_id) && sourceLabel(x) === label) ?? null;
-      if (s) taken.add(s.device_id);
-      out.push({ label, s });
-    }
-    for (const s of sources) if (!taken.has(s.device_id)) out.push({ label: `${sourceLabel(s)} (${s.device_id})`, s });
+    const out: { key: string; s: SourceHealth | null }[] = [];
+    for (const key of ['watcher', 'forwarder']) out.push({ key, s: sources.find((x) => x.source === key) ?? null });
+    for (const s of sources) if (s.source === 'companion') out.push({ key: 'companion', s });
     return out;
   }, [sources]);
 
@@ -93,31 +99,172 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
     <section aria-label="Payment sources">
       <h2 className="mb-2 font-dash text-[18px] font-bold text-grand-teal">Payment sources</h2>
       <div className="grid gap-3 md:grid-cols-2">
-        {cards.map(({ label, s }) => {
+        {cards.map(({ key, s }) => {
+          const label = SOURCE_LABEL[key];
+          const forwarder = key === 'forwarder';
           const hb = s ? toMs(s.last_heartbeat_at) : null;
-          const healthy = !!s && hb != null && now - hb < OFFLINE_MS && s.healthy !== false;
-          const Icon = label.startsWith('Google') ? Smartphone : Smartphone;
+          const lastSms = s ? toMs(s.last_sms_at) : null;
+          // Forwarder: red only when the server says so. Others: heartbeat < 15 min and server healthy.
+          const healthy = forwarder ? s?.healthy !== false : !!s && hb != null && now - hb < OFFLINE_MS && s.healthy !== false;
           return (
-            <div key={label} className={cn('rounded-xl border bg-card p-4 shadow-sm', healthy ? 'border-accent/50' : 'border-destructive/50')}>
+            <div key={`${key}-${s?.device_id ?? 'none'}`} className={cn('rounded-xl border bg-card p-4 shadow-sm', healthy ? 'border-accent/50' : 'border-destructive/50')}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Icon className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+                  <Smartphone className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="truncate font-dash text-[16px] font-bold text-foreground">{label}</span>
                 </div>
                 {healthy
                   ? <Badge variant="accent" className="text-[13px]"><CheckCircle2 className="mr-1 h-4 w-4" /> Healthy</Badge>
-                  : <Badge variant="destructive" className="text-[13px]"><WifiOff className="mr-1 h-4 w-4" /> Offline</Badge>}
+                  : <Badge variant="destructive" className="text-[13px]"><WifiOff className="mr-1 h-4 w-4" /> {forwarder ? 'Silent' : 'Offline'}</Badge>}
               </div>
-              <p className={cn('mt-2 text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
-                {!s ? 'Never reported in' : healthy ? `Last heartbeat ${ago(hb, now)}` : hb ? `Offline since ${istTime(hb)} (${ago(hb, now)})` : 'Offline — no heartbeat yet'}
-              </p>
-              <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
-                Last SMS: {s && toMs(s.last_sms_at) ? `${ago(toMs(s.last_sms_at), now)} · ${istTime(toMs(s.last_sms_at))}` : 'none yet'}
-              </p>
+              {forwarder ? (
+                <>
+                  <p className={cn('mt-2 text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
+                    {healthy ? 'Sends each message as it arrives (no heartbeat).' : 'No messages for 24 h while bank credits arrived'}
+                  </p>
+                  <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
+                    Last message: {lastSms ? `${ago(lastSms, now)} · ${istTime(lastSms)}` : 'none yet'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className={cn('mt-2 text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
+                    {!s ? 'Never reported in' : healthy ? `Last heartbeat ${ago(hb, now)}` : hb ? `Offline since ${istTime(hb)} (${ago(hb, now)})` : 'Offline — no heartbeat yet'}
+                  </p>
+                  <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
+                    Last SMS: {lastSms ? `${ago(lastSms, now)} · ${istTime(lastSms)}` : 'none yet'}
+                  </p>
+                </>
+              )}
             </div>
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/* ── confirmed by forwarder only (read-only) ───────────────────────────── */
+
+function CorroChip({ open }: { open: boolean }) {
+  return open
+    ? <Badge className="border-transparent bg-amber-100 text-[13px] text-amber-900 hover:bg-amber-100">Awaiting second source</Badge>
+    : <Badge variant="destructive" className="text-[13px]"><AlertTriangle className="mr-1 h-4 w-4" /> Not corroborated, check bank statement</Badge>;
+}
+
+function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }) {
+  if (items.length === 0) return null;
+  return (
+    <section aria-label="Confirmed by forwarder only">
+      <h2 className="font-dash text-[18px] font-bold text-grand-teal">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
+      <p className="mb-2 text-[14px] font-semibold text-muted-foreground">Confirmed automatically from the forwarder app alone. The Google Messages watcher has not yet seen the same bank SMS.</p>
+      <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm md:block">
+        <table className="w-full border-collapse">
+          <thead className="bg-muted/60">
+            <tr><th className={TH}>Buyer</th><th className={TH}>Event</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>Bank ref</th><th className={TH}>Confirmed</th><th className={TH}>Via</th><th className={TH}>Status</th></tr>
+          </thead>
+          <tbody className="divide-y divide-border/40">
+            {items.map((u) => {
+              const t = toMs(u.confirmed_at);
+              return (
+                <tr key={u.checkout_id} className="hover:bg-muted/30">
+                  <td className={`${TD} font-bold`}>{u.buyer_name ?? '—'}</td>
+                  <td className={`${TD} max-w-[200px]`}>{u.listing_title ?? '—'}</td>
+                  <td className={`${TD} whitespace-nowrap text-right text-[16px] font-extrabold tabular-nums`}>{rupees(u.pay_amount_paise)}</td>
+                  <td className={`${TD} text-[13px]`}>{u.bank_reference ? <CopyValue value={u.bank_reference} label="Bank reference" /> : '—'}</td>
+                  <td className={`${TD} whitespace-nowrap text-[13px]`}>{t ? istDateTime(t) : '—'}<div className="text-muted-foreground">{ago(t, now)}</div></td>
+                  <td className={`${TD} text-[13px]`}>{u.confirmed_via}</td>
+                  <td className={TD}><CorroChip open={u.corroboration_window_open} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <ul className="space-y-3 md:hidden">
+        {items.map((u) => {
+          const t = toMs(u.confirmed_at);
+          return (
+            <li key={u.checkout_id} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="font-dash text-[20px] font-bold tabular-nums">{rupees(u.pay_amount_paise)}</div>
+                <div className="text-right text-[13px] font-semibold text-muted-foreground">{ago(t, now)}</div>
+              </div>
+              <div className="mt-1 text-[15px] font-bold">{u.buyer_name ?? '—'}</div>
+              <div className="text-[14px] font-semibold text-muted-foreground">{u.listing_title ?? '—'}</div>
+              <div className="mt-1 text-[13px] font-semibold text-muted-foreground">
+                {t ? istDateTime(t) : '—'} · via {u.confirmed_via}{u.bank_reference ? ` · Ref ${u.bank_reference}` : ''}
+              </div>
+              <div className="mt-2"><CorroChip open={u.corroboration_window_open} /></div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/* ── forwarder setup (collapsible; loads on first open) ────────────────── */
+
+function ForwarderSetup({ now }: { now: number }) {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState<Captures | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true); setErr(null);
+    try { setD(await adminCall<Captures>('/api/admin/saathum/forwarder/captures')); }
+    catch (e) { captureException(e, { where: 'admin2_forwarder_captures' }); setErr(errMessage(e, 'Could not load forwarder captures.')); }
+    finally { setBusy(false); }
+  }, []);
+  useEffect(() => { if (open && !d && !busy) void load(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const flag = (on: boolean | undefined) => (on ? <Badge variant="accent">On</Badge> : <Badge variant="muted">Off</Badge>);
+
+  return (
+    <section aria-label="Forwarder setup" className="rounded-xl border border-border/60 bg-card shadow-sm">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left">
+        <span className="font-dash text-[17px] font-bold text-grand-teal">Forwarder setup</span>
+        <ChevronDown className={cn('h-5 w-5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-border/40 p-4">
+          {err ? <ErrorBox message={err} onRetry={() => void load()} /> : !d ? <ListSkeleton rows={2} /> : (
+            <>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[14px] font-bold">
+                <span className="flex items-center gap-2">Forwarder {flag(d.forwarder_enabled)}</span>
+                <span className="flex items-center gap-2">Capture mode {flag(d.capture_enabled)}</span>
+                <Button variant="outline" size="sm" className="h-10 text-[14px]" disabled={busy} onClick={() => void load()}>
+                  {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Refresh
+                </Button>
+              </div>
+              {d.captures.length === 0 ? (
+                <p className="text-[14px] font-semibold text-muted-foreground">No captures yet. Turn capture mode on and send a test message from the forwarder app.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {d.captures.map((c) => {
+                    const t = toMs(c.received_at);
+                    const keys = Array.isArray(c.top_keys) ? c.top_keys.map(String).join(', ') : String(c.top_keys ?? '');
+                    return (
+                      <li key={c.id} className="rounded-lg border border-border/60 p-3">
+                        <div className="flex flex-wrap items-center gap-2 text-[14px] font-bold">
+                          <Badge variant="outline">{c.method}</Badge>
+                          <span className="text-muted-foreground">{c.content_type ?? 'no content-type'}</span>
+                          <span className="ml-auto text-[13px] font-semibold text-muted-foreground">{t ? `${istDateTime(t)} · ${ago(t, now)}` : ''}</span>
+                        </div>
+                        <p className="mt-1 break-words text-[14px] font-semibold text-muted-foreground">Top keys: <span className="text-foreground">{keys || '—'}</span></p>
+                        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-3 font-mono text-[13px] leading-relaxed text-foreground">{c.body_sample}</pre>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -291,7 +438,7 @@ export default function PaymentReview() {
     inflight.current = true;
     try {
       const r = await adminCall<ReviewData>('/api/admin/saathum/payments/review');
-      setData({ checkouts: r.checkouts ?? [], unmatched_sms: r.unmatched_sms ?? [], sources: r.sources ?? [] });
+      setData({ checkouts: r.checkouts ?? [], unmatched_sms: r.unmatched_sms ?? [], sources: r.sources ?? [], confirmed_uncorroborated: r.confirmed_uncorroborated ?? [] });
       setPhase('ready'); setStale(false); setNow(Date.now());
     } catch (e) {
       if (isAbort(e)) return;
@@ -494,6 +641,10 @@ export default function PaymentReview() {
           </>
         )}
       </section>
+
+      <Uncorroborated items={data?.confirmed_uncorroborated ?? []} now={now} />
+
+      <ForwarderSetup now={now} />
 
       <ConfirmDialog checkout={confirming} sms={sms} now={now} onClose={() => setConfirming(null)} onSubmit={(c, b) => void act('confirm', c, b)} />
       <RejectDialog checkout={rejecting} onClose={() => setRejecting(null)} onSubmit={(c, r) => void act('reject', c, { reason: r })} />
