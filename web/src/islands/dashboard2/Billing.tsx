@@ -653,7 +653,7 @@ function EmptyState({ filtered, onClear }: { filtered: boolean; onClear: () => v
         {filtered ? (
           <Button variant="outline" onClick={onClear}><X /> Clear filters</Button>
         ) : (
-          <Button asChild><a href="/dashboard">Book an event</a></Button>
+          <Button asChild><a href="/marketplace">Book an event</a></Button>
         )}
       </div>
     </div>

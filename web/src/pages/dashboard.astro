@@ -1,13 +1,9 @@
 ---
-// /dashboard — [DASH2-FOUNDATION 2026-09-25] "Book events", the Dashboard 2 home.
-// [ADMIN2-DELETE 2026-09-26] Always Dashboard 2: the v1 fallback, the dashboard2Enabled
-// read and the ?dash2 preview cookie are removed (the v1 dashboard is deleted; git keeps it).
+// /dashboard — [SAATHUM-BOOK-TO-MARKETPLACE-1 2026-09-29, owner decision] The Dashboard 2
+// "Book events" page is removed: browsing and booking happen on the public /marketplace.
+// A link that carries a filter (?cat=, ?q=) goes to /marketplace with it; a bare /dashboard
+// (the header "Dashboard" button) lands on My events.
 export const prerender = false;
-
-import Dashboard2 from '../layouts/Dashboard2.astro';
-import BookEvents from '../islands/dashboard2/BookEvents.tsx';
+const search = Astro.url.search;
+return Astro.redirect(search ? `/marketplace${search}` : '/dashboard/my-events', 302);
 ---
-
-<Dashboard2 title="Book events" active="book" subtitle="Choose a puja or havan and book it in your name and gotra.">
-  <BookEvents client:load />
-</Dashboard2>

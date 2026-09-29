@@ -8,7 +8,7 @@ export type DashKey = 'book' | 'my-events' | 'past' | 'billing' | 'profile';
 export interface DashNavItem { key: DashKey; label: string; short: string; href: string; icon: LucideIcon }
 
 export const DASH_NAV: DashNavItem[] = [
-  { key: 'book', label: 'Book events', short: 'Book', href: '/dashboard', icon: CalendarPlus },
+  { key: 'book', label: 'Book events', short: 'Book', href: '/marketplace', icon: CalendarPlus },
   { key: 'my-events', label: 'My events', short: 'My events', href: '/dashboard/my-events', icon: CalendarCheck },
   { key: 'past', label: 'Past events', short: 'Past', href: '/dashboard/past', icon: History },
   { key: 'billing', label: 'Billing', short: 'Billing', href: '/dashboard/billing', icon: Receipt },

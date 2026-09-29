@@ -186,7 +186,7 @@ export default function PastEvents() {
         icon={<History className="h-6 w-6" />}
         title="No past pujas yet"
         body="Once a puja you booked has taken place, its recording appears here so you can watch it again."
-        action={<Button asChild variant="accent"><a href="/dashboard">Book a puja <ArrowRight /></a></Button>}
+        action={<Button asChild variant="accent"><a href="/marketplace">Book a puja <ArrowRight /></a></Button>}
       />
     );
   }

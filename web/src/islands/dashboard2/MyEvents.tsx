@@ -553,7 +553,7 @@ export default function MyEvents() {
         icon={<Ticket className="h-6 w-6" />}
         title="No upcoming pujas yet"
         body="When you book a puja or havan it appears here, with a countdown, and the video to download when it finishes."
-        action={<Button asChild><a href="/dashboard">Book a puja <ArrowRight /></a></Button>}
+        action={<Button asChild><a href="/marketplace">Book a puja <ArrowRight /></a></Button>}
       />
     );
   }
