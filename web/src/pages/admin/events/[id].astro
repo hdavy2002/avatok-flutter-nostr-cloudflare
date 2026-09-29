@@ -4,10 +4,12 @@
 export const prerender = false;
 import Admin2 from '../../../layouts/Admin2.astro';
 import EventForm from '../../../islands/admin2/EventForm.tsx';
+import WeatherDelayButton from '../../../islands/admin2/WeatherDelayButton.tsx'; // [SAATHUM-WEATHER-NOTICE-1]
 
 const id = String(Astro.params.id ?? '').slice(0, 200);
 ---
 
 <Admin2 title="Edit event" active="events">
   <EventForm client:load eventId={id} />
+  <WeatherDelayButton client:load eventId={id} />
 </Admin2>

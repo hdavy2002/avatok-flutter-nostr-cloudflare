@@ -15,6 +15,7 @@ import { requireAdmin } from "./admin_money";
 import { notStuckLiveSql } from "../lib/listing_schedule";
 import { SMOKE_LISTING_ID, startsMsSql, coverImageUrl } from "../lib/me_dashboard_data";
 import { ADMIN2_EVENT_ROUTES } from "./admin2_events"; // [ADMIN2-EVENTS]
+import { ADMIN2_WEATHER_NOTICE_ROUTES } from "./admin2_weather_notice"; // [SAATHUM-WEATHER-NOTICE-1]
 import { ADMIN2_PEOPLE_ROUTES } from "./admin2_people"; // [ADMIN2-PEOPLE] agent C
 import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
 import { adminAnalytics } from "./admin2_analytics"; // [ADMIN2-ANALYTICS] agent D
@@ -224,6 +225,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: "/api/admin/v2/analytics", handler: adminAnalytics }, // [ADMIN2-ANALYTICS] agent D
   // --- events (agent B) ---
   ...ADMIN2_EVENT_ROUTES,
+  ...ADMIN2_WEATHER_NOTICE_ROUTES, // [SAATHUM-WEATHER-NOTICE-1]
   // --- bookings/payments/customers (agent C) ---
   ...ADMIN2_PEOPLE_ROUTES,
   // --- users (agent E) ---

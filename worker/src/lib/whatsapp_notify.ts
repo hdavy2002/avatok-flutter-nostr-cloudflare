@@ -38,7 +38,7 @@ const MAX_SEND_ATTEMPTS = 6;
 /** Buyer-facing booking reference, same as the web checkout shows (SAA- + first 8 of the checkout id). */
 export const bookingRef = (checkoutId: string) => `SAA-${checkoutId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
-export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected"; // [SAATHUM-UPI-3LAYER 2026-09-29]
+export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected" | "weather_delay"; // [SAATHUM-UPI-3LAYER 2026-09-29] [SAATHUM-WEATHER-NOTICE-1 2026-09-29]
 // [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
 // existing bulk admin-save fan-out, "late_buyer" is the single-checkout send
 // fired the moment a booking confirms while the show is already live/linked.
@@ -188,6 +188,52 @@ export async function sendSaathumPaymentWhatsApp(
     const when = startsAtMs ? `\n${formatIst(startsAtMs)}` : "";
     return `🙏 Payment received. Your booking is confirmed.\n${title}${when}\nYour receipt is in your email and under My events: ${base}/dashboard/my-events\n— Saa Thum`;
   });
+}
+
+/**
+ * [SAATHUM-WEATHER-NOTICE-1 2026-09-29] OWNER DECISION: snow/landslides at remote Himalayan temples
+ * sometimes cut the network, so the video (and prasad courier) is late. One admin click tells every
+ * confirmed buyer of the event. Owner's wording, lightly polished; shared by the WhatsApp and email paths.
+ * NOTE FOR AI: no YouTube mention, brand is "Saa Thum".
+ */
+export function weatherDelayText(name: string, eventTitle: string, ref: string): string {
+  const who = name.trim() || "friend";
+  return `Namaste ${who}. Snow and landslides have cut the network at the temple for ${eventTitle}. Your havan has been performed in your name, and our crew has the full video. We will send it to you as soon as they are back in the studio. Your prasad may also be a little late. Thank you for your patience. — Saa Thum (${ref})`;
+}
+
+/**
+ * Queue the weather-delay WhatsApp for the given confirmed buyers. `dayKey` (IST date) is the outbox
+ * url_hash input, so UNIQUE(checkout_id, kind, url_hash) allows at most one message per buyer per
+ * event per day; a second click the same day is a no-op INSERT OR IGNORE. Buyers without a verified
+ * WhatsApp number are skipped and counted. Only writes rows; the paced cron drain does the sending.
+ */
+export async function sendSaathumWeatherDelayWhatsApp(
+  env: Env, listingId: string, title: string, dayKey: string,
+  buyers: { checkout_id: string; uid: string; name: string }[],
+): Promise<{ queued: number; skipped_no_phone: number; failed: number }> {
+  const db = env.DB_META;
+  const urlHash = (await sha256Hex(`weather_delay:${dayKey}`)).slice(0, 16);
+  const now = Date.now();
+  let queued = 0, skipped = 0, failed = 0;
+  for (const b of buyers) {
+    try {
+      const e164 = await verifiedWhatsAppNumber(env, b.uid);
+      if (!e164) { skipped++; continue; }
+      const res = await db.prepare(
+        `INSERT OR IGNORE INTO whatsapp_outbox
+          (checkout_id, uid, listing_id, kind, url_hash, e164, message, status, attempts, created_at, updated_at)
+         VALUES (?1,?2,?3,'weather_delay',?4,?5,?6,'queued',0,?7,?7)`,
+      ).bind(b.checkout_id, b.uid, listingId, urlHash, e164, weatherDelayText(b.name, title, bookingRef(b.checkout_id)), now).run();
+      if (res.meta?.changes) queued++;
+    } catch (err) {
+      failed++;
+      await trackException(env, err, { uid: b.uid, route: "whatsapp_notify:weather_delay", handled: true, app_name: APP, extra: { listing_id: listingId } });
+    }
+  }
+  await track(env, "system", "whatsapp_event_notify", APP, {
+    kind: "weather_delay", trigger: "admin", listing_id: listingId, recipients: buyers.length, sent: queued, skipped_no_phone: skipped, failed,
+  });
+  return { queued, skipped_no_phone: skipped, failed };
 }
 
 /** Owner decision 2026-09-28: admin sets/changes the video-download link -> every confirmed
