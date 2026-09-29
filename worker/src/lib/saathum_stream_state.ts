@@ -22,7 +22,11 @@ import { track, trackException } from "../hooks";
 export type SaathumStreamState = "none" | "live" | "ended";
 
 const EARLY_WINDOW_MS = 15 * 60 * 1000; // link saved early never shows LIVE ahead of time
-const CLOCK_GRACE_MS = 60 * 60 * 1000; // owner's "grace" fallback when nobody flips it to ended
+// [SAATHUM-FOLLOW-YOUTUBE-1 2026-09-29] Owner: an event FOLLOWS YOUTUBE — it stays live
+// (and bookable) while the stream is live, and ends when YouTube reports the stream
+// ended. This is only the backstop when YouTube never says so: 2 h after the
+// scheduled end. Mirrored as STREAM_OVERRUN_MS in lib/listing_schedule.ts.
+const CLOCK_GRACE_MS = 2 * 60 * 60 * 1000;
 
 export interface StreamStateInput {
   hasVideo: boolean;

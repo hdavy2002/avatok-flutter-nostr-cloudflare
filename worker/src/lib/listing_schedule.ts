@@ -30,6 +30,18 @@ export const LATE_BOOKING_GRACE_MS = 15 * 60_000;
  *  cut off mid-show by a status flip. Public lists hide it at the end time. */
 export const END_GRACE_MS = 15 * 60_000;
 
+/** [SAATHUM-FOLLOW-YOUTUBE-1 2026-09-29] A Saathum event with a saved YouTube stream
+ *  that has not been marked ended (event_videos.ended_at) stays open this long past
+ *  its scheduled end — the stream, not the clock, ends it. Same value as the
+ *  clock backstop in lib/saathum_stream_state.ts. */
+export const STREAM_OVERRUN_MS = 2 * 60 * 60_000;
+
+/** SQL: this listing has a YouTube stream that is still running (not ended, within the overrun cap). */
+export function streamStillOpenSql(alias: string, nowRef: string): string {
+  return `EXISTS (SELECT 1 FROM event_videos ev_open WHERE ev_open.listing_id=${alias}.id
+    AND ev_open.ended_at IS NULL AND ${endMsSql(alias)} + ${STREAM_OVERRUN_MS} > ${nowRef})`;
+}
+
 /** A `live` listing whose scheduled end is this far in the past is treated as a
  *  stuck projection (the provider "ended" webhook never arrived) and is no longer
  *  advertised on the live-now rail. Status authority stays with the provider. */
@@ -143,7 +155,8 @@ export function endMsSql(alias: string): string {
  */
 export function notEndedSql(alias: string, nowRef: string): string {
   return `NOT (${alias}.kind='live_event' AND ${alias}.status='published'
-    AND COALESCE(${alias}.starts_at, 0) > 0 AND ${endMsSql(alias)} <= ${nowRef})`;
+    AND COALESCE(${alias}.starts_at, 0) > 0 AND ${endMsSql(alias)} <= ${nowRef}
+    AND NOT ${streamStillOpenSql(alias, nowRef)})`;
 }
 
 /** WHERE fragment for the live-now rail: a `live` row past end + STUCK_LIVE_MS is not advertised. */

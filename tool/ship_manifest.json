@@ -7867,5 +7867,21 @@
         "note": "A stream was archived; that listing must then be absent from /api/explore."
       }
     ]
+  },
+  "SAATHUM-FOLLOW-YOUTUBE-1": {
+    "description": "[SAATHUM-FOLLOW-YOUTUBE-1 2026-09-29] Owner decision: a Saathum event with a saved YouTube stream follows YouTube — it stays live, listed and bookable past its scheduled end while event_videos.ended_at is NULL, and ends when YouTube reports actualEndTime or at the 2 h backstop after scheduled end. The schedule-expiry cron, notEndedSql and card schedule_state all honour it.",
+    "shipped": "2026-09-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_stream_ended_archived",
+        "property": "via",
+        "exists": true,
+        "min_events": 1,
+        "note": "Streams end via youtube (preferred) or clock (2h backstop); a listing is completed only after this."
+      }
+    ]
   }
 }

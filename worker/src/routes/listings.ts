@@ -60,7 +60,7 @@ import { emailBookingConfirmed } from "../cal/emails";
 // flag check (identityGatingEnabled) and the fail-closed posture.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
-import { scheduleState, bookability, eventWindow, endMsSql, notEndedSql, notStuckLiveSql, END_GRACE_MS } from "../lib/listing_schedule";
+import { scheduleState, bookability, eventWindow, endMsSql, notEndedSql, notStuckLiveSql, END_GRACE_MS, streamStillOpenSql } from "../lib/listing_schedule";
 import { publicDiscoveryReasonSql, publicDiscoveryProjection, publicListingEligibilitySql } from "../lib/public_discovery";
 import { refundOpenOrdersForListing } from "./commercial_lifecycle";
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
@@ -769,7 +769,8 @@ function shapeCard(
     // [LISTING-EXPIRY-1] Where the listing sits in time, decided once on the server
     // (lib/listing_schedule.ts) so the web page, the cards and the app never compute
     // "is this show over?" three different ways. Additive; old clients ignore it.
-    schedule_state: scheduleState(r, now),
+    // [SAATHUM-FOLLOW-YOUTUBE-1] a card whose YouTube stream is live is live, whatever the clock says
+    schedule_state: isLiveStreamCard(videoRows?.get(String(r.id)), r.status, r.starts_at, r.duration_min) ? "live" : scheduleState(r, now),
     ends_at: eventWindow(r)?.end ?? null,
     expires_at: r.expires_at ?? null, expiry_days: r.expiry_days ?? null,
     market_type: r.market_type ?? null, social_sub: r.social_sub ?? null, location: r.location ?? null,
@@ -3313,6 +3314,8 @@ export async function expireEndedEventListings(
       WHERE l.kind='live_event' AND l.status='published' AND COALESCE(l.starts_at,0) > 0
         AND l.is_example=0 -- [WEB-GATEWAY-E] a badged example never expires by the clock
         AND ${endMsSql("l")} + ?2 <= ?1
+        -- [SAATHUM-FOLLOW-YOUTUBE-1] the YouTube stream, not the clock, ends a streamed event
+        AND NOT ${streamStillOpenSql("l", "?1")}
         AND NOT EXISTS (
           SELECT 1 FROM commercial_sessions s
            WHERE s.kind='live_event' AND s.listing_id=l.id AND s.state IN ('backstage','live')
