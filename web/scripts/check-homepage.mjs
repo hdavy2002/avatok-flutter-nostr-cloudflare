@@ -96,7 +96,7 @@ for (const [label, href] of [['Home','/'],['Explore','/marketplace'],['How it wo
 const footerHtml = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? '';
 // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan booking footer: kept pages must be
 // linked; archived pages (src/lib/archivedPages.ts) must NOT be in the footer.
-for (const href of ['/marketplace?q=Puja','/marketplace?q=Havan','/how-it-works','/temples','/rituals/','/help','/about','/contact','/terms','/privacy','/cookies','/refunds','/disclaimer','/grievance']) {
+for (const href of ['/','/marketplace','/how-it-works','/temples','/rituals/','/help','/about','/contact','/terms','/privacy','/cookies','/refunds','/disclaimer','/grievance']) {
   assert(footerHtml.includes('href="' + href + '"'), 'Footer destination remains discoverable: ' + href);
 }
 for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acceptable-use','/recording','/biometric-retention','/dmca','/community-guidelines','/child-safety','/pricing-fees','/tokens','/payouts','/organisers']) {
@@ -127,7 +127,8 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
 }
 const topicSearchTerms = [...html.matchAll(/href="\/marketplace\?q=([^"&]+)"/g)]
   .map(m => decodeURIComponent(m[1].replace(/\+/g, ' ')));
-for (const term of ['Puja', 'Havan', 'Studies', 'Fresh start', 'Prosperity', 'Health', 'Family', 'Festival']) {
+// [WEB-FOOTER-BROWSE-1 2026-09-29] Puja/Havan/Festival searches lived only in the old footer Rituals column.
+for (const term of ['Studies', 'Fresh start', 'Prosperity', 'Health', 'Family']) {
   assert(topicSearchTerms.includes(term), 'Reference category searches marketplace: ' + term);
 }
 assert.match(html, /<a class="grand-button" href="\/marketplace"/, 'No-JS users can still reach the marketplace (plain link, no script needed)');

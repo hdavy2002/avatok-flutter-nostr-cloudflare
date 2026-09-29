@@ -40,18 +40,18 @@ export const HOME_HEADER_LINKS = [
   { href: '/about', label: 'About us' },
 ];
 export const HOME_FOOTER_COLUMNS = [
-  { title: 'Rituals', links: [
-    { href: '/marketplace?q=Puja', label: 'All pujas' },
-    { href: '/marketplace?q=Havan', label: 'All havans' },
-    { href: '/#experiences', label: 'By intention' },
-    { href: '/marketplace?q=Festival', label: 'Festival pujas' },
+  // [WEB-FOOTER-BROWSE-1 2026-09-29] OWNER DECISION: the Rituals column (All pujas,
+  // All havans, By intention, Festival pujas) is replaced by Home, Explore, Blog.
+  { title: 'Browse', links: [
+    { href: '/', label: 'Home' },
+    { href: '/marketplace', label: 'Explore' },
+    { href: '/rituals/', label: 'Blog' },
   ] },
   { title: 'Company', links: [
     { href: '/how-it-works', label: 'How it works' },
     // [WEB-TEMPLES-1 2026-09-29] OWNER DECISION: "Our temples" in the footer menu too.
     { href: '/temples', label: 'Our temples' },
-    // [WEB-BLOG-RITUALS-1 2026-09-27] Blog = the Puja & Havan Guide.
-    { href: '/rituals/', label: 'Blog' },
+    // Blog moved to the Browse column ([WEB-FOOTER-BROWSE-1]).
     { href: '/help', label: 'Help centre' },
     // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: About us in the footer too.
     { href: '/about', label: 'About us' },
