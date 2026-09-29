@@ -19,7 +19,7 @@ export const GET: APIRoute = () => {
 
 ## About
 - Name: Saa Thum. The domain is written saathum.com; "Saa Thum" and "Saathum" are the same service.
-- Based in: West Andheri, Mumbai, Maharashtra, India. The crew works at temples across Uttarakhand and Himachal Pradesh.
+- Based in: Dehradun, Uttarakhand, India. The crew works at temples across Uttarakhand and Himachal Pradesh.
 - Temple policy: only positive temples (Shiva and Parvati, Vishnu, Ram and Sita, Krishna, Himalayan Devis). No temples known for animal sacrifice, fear, tantric, cult or black-magic practices; no Kali, Bhairav or Shani rituals.
 - Who it is for: Hindu families everywhere, and especially the Indian diaspora descended from the girmitiyas (indentured labourers) of Suriname, Guyana, Trinidad and Tobago, Fiji, Mauritius, South Africa and the Caribbean, who often live far from a temple or priest.
 - What it offers: havans and pujas performed at Himalayan temples by their own pujaris, filmed by Saa Thum's crew (live streamed when the network allows); sankalp in your name and gotra for pujas; video download; prasad by courier.

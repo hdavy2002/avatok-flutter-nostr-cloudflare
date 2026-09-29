@@ -10,7 +10,7 @@
 // before changing a value, not just the field's name.
 //
 // [WEB-SEO-REBRAND-1 2026-09-27] OWNER DECISION: Saa Thum is "a small team in
-// West Andheri, Mumbai" (the wording on /about). No company name is published
+// Dehradun, Uttarakhand" (the wording on /about; office moved from Mumbai, owner 2026-09-29). No company name is published
 // and NO foreign entity or address may appear anywhere on saathum.com — the old
 // Delaware values that sat here were removed. When an Indian company is actually
 // registered, set legalName and the registered office here.
@@ -116,11 +116,11 @@ export const ORG: OrgConstants = {
   // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md).
   email: 'support@saathum.com',
   address: {
-    locality: 'Mumbai',
-    region: 'Maharashtra',
+    locality: 'Dehradun',
+    region: 'Uttarakhand',
     country: 'IN',
-    // Publish only the neighbourhood the /about page names, not a street.
-    street: 'West Andheri',
+    // [owner 2026-09-29] Office moved to Dehradun; city only, no street published.
+    street: null,
     postalCode: null,
   },
   parent: {
@@ -131,7 +131,7 @@ export const ORG: OrgConstants = {
   },
   indianEntity: {
     name: '',
-    locality: 'Mumbai',
+    locality: 'Dehradun',
     country: 'IN',
     registeredOffice: null,
   },
@@ -213,7 +213,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'An online havan and puja service at saathum.com, based in West Andheri, Mumbai — its crew travels to positive Himalayan temples where local pujaris perform havans in the devotee\'s name, filmed for families in India and abroad.',
+      'An online havan and puja service at saathum.com, based in Dehradun, Uttarakhand — its crew travels to positive Himalayan temples where local pujaris perform havans in the devotee\'s name, filmed for families in India and abroad.',
     knowsAbout: ['havan', 'puja', 'sankalp', 'Himalayan temples', 'Uttarakhand temples', 'online havan', 'puja video', 'prasad delivery'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
