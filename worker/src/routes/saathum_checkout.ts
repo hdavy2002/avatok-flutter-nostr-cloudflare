@@ -230,7 +230,11 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
     ? `upi://pay?${new URLSearchParams({
       pa: p.vpa, pn: p.payee_name, // [SAATHUM-UPI-SETTINGS] admin-set VPA
       am: (row.amount_paise / 100).toFixed(2), cu: "INR",
-      tr: `ST${row.checkout_id.replace(/-/g, "")}`, tn: "Saa Thum booking",
+      // [SAATHUM-UPI-P2P-1 2026-09-29] No `tr` (merchant transaction ref): the payee is a
+      // personal VPA (e.g. …@pthdfc), and UPI apps such as ICICI iMobile refuse a P2P request
+      // carrying merchant fields ("Request Restricted — incorrect merchant details").
+      // Matching is by the unique amount, so tr was never needed.
+      tn: "Saa Thum booking",
     })}`
     : null;
   return {
