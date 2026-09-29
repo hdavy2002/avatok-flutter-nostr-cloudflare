@@ -87,6 +87,7 @@ export function DoneStep({
 
       <div className="book-box">
         <div className="sthc-row"><span>Event</span><span>{checkout.listing.title}</span></div>
+        {checkout.listing.temple && <div className="sthc-row"><span>Temple</span><span>{checkout.listing.temple.name}, {checkout.listing.temple.place}</span></div>}
         <div className="sthc-row"><span>Date &amp; time</span><span>{whenLabel(checkout.listing.starts_at)}</span></div>
         <div className="sthc-row"><span>Paid</span><span>{rupees(payableRupees(checkout))}</span></div>
         <div className="sthc-row"><span>Booking ID</span><span>{bookingRef(checkout.checkout_id)}</span></div>

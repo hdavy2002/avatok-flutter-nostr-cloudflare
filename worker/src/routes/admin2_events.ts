@@ -12,6 +12,9 @@
 //   POST /api/admin/v2/events/:id/unpublish     back to the Drafts tab (nothing sold only)
 //   POST /api/admin/v2/events/:id/cancel        refund open orders, then cancel
 //   POST /api/admin/v2/events/:id/poster        {action:'generate'|'keep'} AI poster
+//   GET  /api/admin/v2/temples                  [SAATHUM-TEMPLE-FIELD-1] saved temples
+//   POST /api/admin/v2/temples                  {name, place} add a temple (duplicate -> the existing row)
+//   (create/update an event also accept `temple_id`: a saved temple's id, or null to clear)
 //
 // Registered with one spread line in routes/admin2.ts ADMIN2_ROUTES (see bottom).
 //
@@ -57,6 +60,7 @@ import {
 import { eventTypeOf } from "../lib/event_types";
 import { sendSaathumVideoReadyEmails } from "./saathum_checkout";
 import { sendSaathumVideoReadyWhatsApp } from "../lib/whatsapp_notify";
+import { createTemple, listTemples, normalizeTempleInput, parseTempleIdInput, setListingTemple, templeExists, templeForListing, TEMPLE_LIMITS } from "../lib/temples";
 
 const APP = "saathum";
 /** The listing module's app tag — releaseBlocks() keys calendar blocks on it. */
@@ -275,6 +279,9 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       rating_display: typeof attrs.rating_display === "number" && attrs.rating_display >= 1 && attrs.rating_display <= 5 ? attrs.rating_display : null,
       review_count_boost: Number.isInteger(attrs.review_count_boost) && attrs.review_count_boost > 0 ? attrs.review_count_boost : null,
       guide_slug: typeof attrs.guide_slug === "string" ? attrs.guide_slug : null,
+      // [SAATHUM-TEMPLE-FIELD-1 2026-09-29]
+      temple_id: row.temple_id ?? null,
+      temple: await templeForListing(env, id),
       seo: attrs.seo && typeof attrs.seo === "object" ? {
         title: String(attrs.seo.title ?? ""), description: String(attrs.seo.description ?? ""),
         title_source: attrs.seo.title_source === "admin" ? "admin" : "auto",
@@ -418,12 +425,45 @@ async function runAdminEdit(req: Request, env: Env, id: string, edit: Record<str
   return json({ ...b, message: b.message ?? b.error ?? "The event could not be saved." }, res.status);
 }
 
+/** [SAATHUM-TEMPLE-FIELD-1] Validate an optional `temple_id` in an event body. Response = 400. */
+export async function checkTempleInput(env: Env, b: Record<string, unknown>): Promise<Response | { present: false } | { present: true; value: string | null }> {
+  const t = parseTempleIdInput(b);
+  if ("error" in t) return err(400, "invalid_event", t.error, { field: "temple_id" });
+  if (t.present && t.value !== null && !(await templeExists(env, t.value))) {
+    return err(400, "invalid_event", "That temple is not in the list — pick another or add it.", { field: "temple_id" });
+  }
+  return t;
+}
+
+/** GET /api/admin/v2/temples */
+export async function adminTemplesList(req: Request, env: Env): Promise<Response> {
+  const a = await admin(req, env); if (a instanceof Response) return a;
+  return json({ temples: await listTemples(env), limits: TEMPLE_LIMITS });
+}
+
+/** POST /api/admin/v2/temples {name, place} — a case-insensitive duplicate returns the existing row. */
+export async function adminTempleCreate(req: Request, env: Env): Promise<Response> {
+  const a = await admin(req, env); if (a instanceof Response) return a;
+  const b = await readBody(req, 4096);
+  if (!b) return err(400, "invalid_request", "Send the temple as JSON.");
+  const input = normalizeTempleInput(b);
+  if ("error" in input) return err(400, "invalid_temple", input.error, { field: input.field });
+  const { temple, created } = await createTemple(env, input);
+  if (created) {
+    safeTrack(env, a.uid, "admin2_temple_created", { temple_id: temple.id });
+    await audit(env, a.uid, "temple_create", temple.id, { name: temple.name, place: temple.place });
+  }
+  return json({ ok: true, created, temple }, created ? 201 : 200);
+}
+
 export async function adminEventCreate(req: Request, env: Env, exec: Exec): Promise<Response> {
   const a = await admin(req, env); if (a instanceof Response) return a;
   const b = await readBody(req);
   if (!b) return err(400, "invalid_request", "Send the event as JSON.");
   const { patch, errors } = normalizeEventInput(b, { partial: false });
   if (errors.length) return err(400, "invalid_event", errors[0].message, { field: errors[0].field, errors });
+  const templeIn = await checkTempleInput(env, b);
+  if (templeIn instanceof Response) return templeIn;
   const cat = await env.DB_META.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(patch.category).first();
   if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
 
@@ -464,6 +504,7 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
     const e = await runAdminEdit(req, env, id, later, exec);
     if (e) return e;
   }
+  if (templeIn.present) await setListingTemple(env, id, templeIn.value);
   await refreshSeo(env, a.uid, id, split.seo);
   await history(env, { listingId: id, actorId: a.uid, action: "admin2_create", prev: null, next: "draft" });
   safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category, event_type: patch.event_type ?? null });
@@ -479,6 +520,8 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
   if (!row || String(row.kind) !== "live_event") return err(404, "not_found", "No such event.");
   const { patch, errors } = normalizeEventInput(b, { partial: true });
   if (errors.length) return err(400, "invalid_event", errors[0].message, { field: errors[0].field, errors });
+  const templeIn = await checkTempleInput(env, b);
+  if (templeIn instanceof Response) return templeIn;
   if (patch.category) {
     const cat = await env.DB_META.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(patch.category).first();
     if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
@@ -498,6 +541,11 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
   if (e1) return e1;
   const e2 = await writeMediaAndAttrs(env, a.uid, id, cover, attrPatch);
   if (e2) return e2;
+  if (templeIn.present && (templeIn.value ?? null) !== (row.temple_id ?? null)) {
+    if (row.status === "cancelled" || row.status === "completed") return err(409, "listing_closed", `A ${row.status} event cannot be edited.`);
+    await setListingTemple(env, id, templeIn.value);
+    await history(env, { listingId: id, actorId: a.uid, action: "admin_edit", prev: row.status, next: row.status, reason: JSON.stringify({ temple_id: { from: row.temple_id ?? null, to: templeIn.value } }) });
+  }
   await refreshSeo(env, a.uid, id, seo);
   safeTrack(env, a.uid, "admin2_event_updated", { listing_id: id, fields: Object.keys(patch).join(","), event_type: effectiveEventType });
   const out = await detailPayload(env, id, a.uid);
@@ -706,6 +754,8 @@ const ID = "([^/]+)";
 export const ADMIN2_EVENT_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: "/api/admin/v2/events", handler: (req, env) => adminEventsList(req, env) },
   { method: "POST", path: "/api/admin/v2/events", handler: (req, env) => adminEventCreate(req, env, undefined) },
+  { method: "GET", path: "/api/admin/v2/temples", handler: (req, env) => adminTemplesList(req, env) },
+  { method: "POST", path: "/api/admin/v2/temples", handler: (req, env) => adminTempleCreate(req, env) },
   { method: "GET", path: "/api/admin/v2/events/meta", handler: (req, env) => adminEventsMeta(req, env) },
   { method: "GET", path: new RegExp(`^/api/admin/v2/events/${ID}$`), handler: (req, env, [id]) => adminEventDetail(req, env, id) },
   { method: "PUT", path: new RegExp(`^/api/admin/v2/events/${ID}$`), handler: (req, env, [id]) => adminEventUpdate(req, env, id, undefined) },

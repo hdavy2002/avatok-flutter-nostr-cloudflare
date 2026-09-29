@@ -49,7 +49,7 @@ import { fmtDuration, fmtIstDateTime, listingImage, youtubeThumb, ErrorState, Sh
 import { ApiError, adminApi, errMessage, formatPaise } from './adminApi';
 import {
   DURATION_PRESETS, TIME_SLOTS, dateOfYmd, eventsPath, istTodayYmd, looksLikeYoutube, saveYoutube, statusMeta,
-  timeLabel, uploadCover, ymdOf, type Blocker, type EventDetailResponse, type EventsMeta,
+  templeLabel, templesPath, timeLabel, uploadCover, ymdOf, type Blocker, type EventDetailResponse, type EventsMeta, type TempleRow,
 } from './eventsApi';
 
 /* ── form model ─────────────────────────────────────────────────────────── */
@@ -86,6 +86,8 @@ interface FormState {
   performer_photo_url: string;
   rating_display: string;
   review_count_boost: string;
+  // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] id of a saved temple, '' = none.
+  temple_id: string;
 }
 
 /** Admin-form-only placeholder examples for the performer name box — not in eventTypes.ts
@@ -110,7 +112,7 @@ const EMPTY: FormState = {
   duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
   location: '', intention: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
   video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
-  event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '',
+  event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '', temple_id: '',
 };
 
 function fromDetail(d: EventDetailResponse): FormState {
@@ -145,6 +147,7 @@ function fromDetail(d: EventDetailResponse): FormState {
     performer_photo_url: e.performer_photo_url ?? '',
     rating_display: e.rating_display != null ? String(e.rating_display) : '',
     review_count_boost: e.review_count_boost != null ? String(e.review_count_boost) : '',
+    temple_id: e.temple_id ?? '',
   };
 }
 
@@ -175,11 +178,13 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
   if (changed('performer_photo_url')) out.performer_photo_url = f.performer_photo_url.trim() || null;
   if (changed('rating_display')) out.rating_display = f.rating_display.trim() === '' ? null : Number(f.rating_display);
   if (changed('review_count_boost')) out.review_count_boost = f.review_count_boost.trim() === '' ? null : Number(f.review_count_boost);
+  if (changed('temple_id')) out.temple_id = f.temple_id || null;
   if (!base) {
     // Create: omit empties the server treats as "not set yet".
     for (const k of ['deity', 'blurb', 'description', 'performed_by', 'location', 'intention', 'guide_slug', 'seo_title', 'seo_description', 'video_download_url', 'performer_photo_url'] as const) if (!f[k]) delete out[k];
     if (!f.start_date) { delete out.start_date; delete out.start_time; }
     if (f.capacity === '') delete out.capacity;
+    if (!f.temple_id) delete out.temple_id;
     if (f.rating_display.trim() === '') delete out.rating_display;
     if (f.review_count_boost.trim() === '') delete out.review_count_boost;
   }
@@ -192,7 +197,7 @@ const FIELD_OF_BLOCKER: Record<string, keyof FormState> = {
   capacity: 'capacity', location: 'location', intention: 'intention', guide_slug: 'guide_slug',
   seo_title: 'seo_title', seo_description: 'seo_description', prasad_courier: 'prasad_courier',
   video_download: 'video_download', visibility: 'visibility', prasad_price_rupees: 'prasad_price_rupees', video_download_url: 'video_download_url', booked_boost: 'booked_boost',
-  event_type: 'event_type', performer_photo_url: 'performer_photo_url', rating_display: 'rating_display', review_count_boost: 'review_count_boost',
+  event_type: 'event_type', performer_photo_url: 'performer_photo_url', rating_display: 'rating_display', review_count_boost: 'review_count_boost', temple_id: 'temple_id',
 };
 
 type Busy = null | 'save' | 'publish' | 'unpublish' | 'cancel' | 'upload' | 'perf_photo' | 'poster' | 'article' | 'video_url';
@@ -215,6 +220,11 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const refs = useRef<Partial<Record<keyof FormState, HTMLElement | null>>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [articleSlug, setArticleSlug] = useState('');
+  // [SAATHUM-TEMPLE-FIELD-1] Saved temples + the inline "Add a new temple" mini-form.
+  const [temples, setTemples] = useState<TempleRow[]>([]);
+  const [addingTemple, setAddingTemple] = useState(false);
+  const [newTemple, setNewTemple] = useState({ name: '', place: '' });
+  const [templeBusy, setTempleBusy] = useState(false);
   const performerFileRef = useRef<HTMLInputElement | null>(null);
   const groups = useMemo(() => articleGroups(form.event_type), [form.event_type]);
   const typeCopy = EVENT_TYPE_COPY[form.event_type];
@@ -229,6 +239,28 @@ export default function EventForm({ eventId }: { eventId?: string }) {
       captureException(e, { where: 'admin2_event_form_meta' });
     });
   }, []);
+
+  useEffect(() => {
+    adminApi<{ temples: TempleRow[] }>(templesPath).then((r) => setTemples(r.temples ?? [])).catch((e) => {
+      captureException(e, { where: 'admin2_event_form_temples' });
+    });
+  }, []);
+
+  async function saveNewTemple() {
+    const name = newTemple.name.trim(); const place = newTemple.place.trim();
+    if (name.length < 2 || place.length < 2) { setErrors((x) => ({ ...x, temple_id: 'Enter the temple name and the place (at least 2 letters each).' })); return; }
+    setTempleBusy(true);
+    try {
+      const r = await adminApi<{ temple: TempleRow; created: boolean }>(templesPath, { method: 'POST', body: { name, place } });
+      setTemples((list) => (list.some((t) => t.id === r.temple.id) ? list : [...list, r.temple].sort((a, b) => a.name.localeCompare(b.name))));
+      set('temple_id', r.temple.id);
+      setAddingTemple(false); setNewTemple({ name: '', place: '' });
+      toast.success(r.created ? 'Temple saved for future events.' : 'That temple was already saved — selected it.');
+    } catch (e) {
+      captureException(e, { where: 'admin2_event_form_temple_add' });
+      setErrors((x) => ({ ...x, temple_id: errMessage(e) }));
+    } finally { setTempleBusy(false); }
+  }
 
   const load = useCallback(async (targetId: string) => {
     setLoadError(null);
@@ -684,6 +716,43 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                   {errors.performer_photo_url && <p className="text-[13px] font-semibold text-destructive">{errors.performer_photo_url}</p>}
                 </div>
               </div>
+            </Field>
+            <Field label="Temple" error={errors.temple_id} hint="Shown to customers as “Performed at …”. Optional.">
+              <Select value={addingTemple ? '__new' : (form.temple_id || '__none')} disabled={disabled}
+                onValueChange={(v) => {
+                  if (v === '__new') { setAddingTemple(true); return; }
+                  setAddingTemple(false); set('temple_id', v === '__none' ? '' : v);
+                }}>
+                <SelectTrigger ref={(el) => { refs.current.temple_id = el; }} aria-label="Temple"><SelectValue placeholder="Choose a temple" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No temple</SelectItem>
+                  {temples.map((t) => <SelectItem key={t.id} value={t.id}>{templeLabel(t)}</SelectItem>)}
+                  {form.temple_id && !temples.some((t) => t.id === form.temple_id) && (
+                    <SelectItem value={form.temple_id}>{ev?.temple ? templeLabel(ev.temple) : 'Saved temple'}</SelectItem>
+                  )}
+                  <SelectItem value="__new">+ Add a new temple</SelectItem>
+                </SelectContent>
+              </Select>
+              {addingTemple && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="ev-temple-name" className="font-bold">Temple name</Label>
+                    <Input id="ev-temple-name" value={newTemple.name} maxLength={80} disabled={disabled || templeBusy}
+                      onChange={(e) => setNewTemple((n) => ({ ...n, name: e.target.value }))} placeholder="Kunjapuri Devi Temple" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="ev-temple-place" className="font-bold">Place</Label>
+                    <Input id="ev-temple-place" value={newTemple.place} maxLength={80} disabled={disabled || templeBusy}
+                      onChange={(e) => setNewTemple((n) => ({ ...n, place: e.target.value }))} placeholder="Rishikesh" />
+                  </div>
+                  <div className="flex items-center gap-2 sm:col-span-2">
+                    <Button type="button" size="sm" disabled={disabled || templeBusy} onClick={() => void saveNewTemple()}>
+                      {templeBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save temple
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" disabled={templeBusy} onClick={() => { setAddingTemple(false); setNewTemple({ name: '', place: '' }); }}>Cancel</Button>
+                  </div>
+                </div>
+              )}
             </Field>
           </Section>
 

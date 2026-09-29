@@ -83,6 +83,7 @@
 .ep-performer-avatar-sm { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; background: var(--ep-chip); }
 .ep-performer-initials-sm { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--ep-teal); color: #fff; font: 900 14px Nunito, sans-serif; }
 .ep-performer-text { font: 700 13.5px/1.3 Nunito, sans-serif; color: var(--ep-body); }
+.ep-performer-temple { display: block; margin-top: 2px; font-weight: 700; }
 .ep-performer-text b { display: block; font: 800 14.5px Nunito, sans-serif; color: var(--ep-teal); }
 .ep-blips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ep-blip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: var(--ep-chip); color: #2c3b3d; font: 700 13px Nunito, sans-serif; }

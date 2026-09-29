@@ -26,6 +26,8 @@ export interface CheckoutConfigListing {
   cover_url: string | null;
   deity?: string | null;
   location?: string | null;
+  /** [SAATHUM-TEMPLE-FIELD-1] Where it is performed; null/absent = show nothing. */
+  temple?: { id: string; name: string; place: string } | null;
   /** [SAATHUM-EVENT-TYPES 2026-09-27] Added by agent W; absent on an older
    * worker deploy or an event made before this shipped. Fall back to
    * eventTypeOf(listing.attrs) / the type's own `ritual` default — see
@@ -93,7 +95,7 @@ export type CheckoutStatus = 'awaiting_payment' | 'confirmed' | 'review_pending'
 
 export interface Checkout {
   checkout_id: string;
-  listing: { id: string; title: string; starts_at: number; duration_min: number; cover_url: string | null };
+  listing: { id: string; title: string; starts_at: number; duration_min: number; cover_url: string | null; temple?: { id: string; name: string; place: string } | null };
   status: CheckoutStatus;
   quote: Quote;
   sankalp: Sankalp;

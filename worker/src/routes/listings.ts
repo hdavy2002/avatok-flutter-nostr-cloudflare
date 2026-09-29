@@ -99,6 +99,7 @@ import { promosFor, activePromoPct } from "../lib/listing_promos";
 // import from this file, so this direction is not a cycle.
 import { recomputeReviewAggregates } from "./reviews";
 import { eventVideoRowsFor, isLiveStreamCard } from "../lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
+import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -4239,6 +4240,9 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
       intent, detail_template: detailTemplate, price_semantics: priceSemantics,
       booking_open: sellable.ok,
       booking_closed_reason: sellable.ok ? null : sellable.reason,
+      // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] "Performed at <temple>" — null when none is set
+      // (or the temples migration has not run yet; templeForListing never throws).
+      temple: await templeForListing(env, id),
     },
     creator_stats: { rating_avg: prof?.rating_avg ?? null, rating_count: prof?.rating_count ?? 0, follower_count: prof?.follower_count ?? 0 },
     // [LIST-CONTENT-2] new, additive keys — see the comments above for why the trust

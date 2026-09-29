@@ -134,6 +134,9 @@ const bookable = listing.booking_open !== false && scheduleState !== 'ended' && 
 // type, hence the narrow local cast instead of widening that shared type.
 const performedByRaw = (listing as unknown as { performed_by?: string | null }).performed_by || null;
 const performerName = performedByRaw || copy.performerFallback;
+// [SAATHUM-TEMPLE-FIELD-1 2026-09-29] OWNER REQUEST: "Performed at <temple>" under the priest's
+// name. The worker sends `temple` ({name, place} | null) on the listing; nothing shows without one.
+const temple = (listing as unknown as { temple?: { name: string; place: string } | null }).temple || null;
 const performerPhotoUrl = typeof attrs.performer_photo_url === 'string' && attrs.performer_photo_url ? attrs.performer_photo_url : null;
 const performerInitials = performerName
   .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '🙏';
@@ -271,7 +274,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             ) : (
               <span class="ep-performer-initials-sm">{performerInitials}</span>
             )}
-            <span class="ep-performer-text"><b>{copy.performerLabel}</b>{performerName}</span>
+            <span class="ep-performer-text"><b>{copy.performerLabel}</b>{performerName}{temple && <span class="ep-performer-temple">Performed at {temple.name}, {temple.place}</span>}</span>
           </div>
         </div>
 

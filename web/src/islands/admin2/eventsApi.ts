@@ -67,6 +67,9 @@ export interface EventDetail extends EventRow {
   booked_boost: number | null;
   video_download_url: string | null;
   guide_slug: string | null;
+  // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] The saved temple this event is performed at.
+  temple_id: string | null;
+  temple: { id: string; name: string; place: string } | null;
   // [SAATHUM-EVENT-TYPES 2026-09-27] Kind of event + performer photo + social-proof overrides.
   event_type: EventType;
   performer_photo_url: string | null;
@@ -101,6 +104,11 @@ export interface EventsMeta {
   intentions?: { id: string; label: string }[];
   limits: { titleMax: number; blurbMax: number; descriptionMax: number; deityMax: number; performedByMax: number; capacityMax: number; locationMax?: number; seoTitleMax?: number; seoDescriptionMax?: number };
 }
+
+/** [SAATHUM-TEMPLE-FIELD-1] A saved temple (worker/src/lib/temples.ts). */
+export interface TempleRow { id: string; name: string; place: string; region: string | null; created_at: number }
+export const templesPath = '/api/admin/v2/temples';
+export const templeLabel = (t: { name: string; place: string }) => `${t.name}, ${t.place}`;
 
 export const eventsPath = (id?: string, action?: string) =>
   `/api/admin/v2/events${id ? `/${encodeURIComponent(id)}` : ''}${action ? `/${action}` : ''}`;

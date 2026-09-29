@@ -38,6 +38,7 @@ import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sen
 // [SAATHUM-UPI-3LAYER 2026-09-29] Unique payable amount per open checkout.
 import { reserveUniqueAmount, releaseAmount, dropReservation } from "../lib/saathum_upi3";
 import { AMOUNT_COOLDOWN_MS } from "../lib/saathum_checkout_logic";
+import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -158,6 +159,8 @@ export async function saathumCheckoutConfig(req: Request, env: Env): Promise<Res
       deity: typeof attrs.deity === "string" ? attrs.deity : null, location: row.location ?? null,
       event_type: snapshot.event_type, ritual,
       performer: { name: snapshot.performer_name, photo_url: snapshot.performer_photo_url },
+      // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] null when the event has no temple.
+      temple: await templeForListing(env, row.id),
     },
     chadhava,
     dakshina_presets: DAKSHINA_PRESETS,
@@ -239,7 +242,9 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
     : null;
   return {
     checkout_id: row.checkout_id,
-    listing: { id: row.listing_id, title: listing?.title ?? "Saa Thum booking", starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null), refund_window_hours: refundWindowHours(eventType) },
+    listing: { id: row.listing_id, title: listing?.title ?? "Saa Thum booking", starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null), refund_window_hours: refundWindowHours(eventType),
+      // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] null when the event has no temple.
+      temple: await templeForListing(env, row.listing_id) },
     status,
     quote: JSON.parse(row.quote_json) as Quote,
     sankalp: JSON.parse(row.sankalp_json) as Sankalp,
