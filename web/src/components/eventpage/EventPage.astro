@@ -251,7 +251,11 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             it knows the stream is live/ended, so a non-Saa-Thum-stream listing (the
             common case today) shows exactly the SSR hero above, unchanged. Covers
             the whole photo (badges/countdown included) when it does render. */}
-        <LiveOverlay client:visible listingId={listing.id} checkoutHref={checkoutHref} />
+        {/* [SAATHUM-LIVE-HYDRATE-1 2026-09-29] client:load, NOT client:visible — this
+            island renders nothing on the server, so it has zero size and the
+            IntersectionObserver behind client:visible never fired: the overlay
+            and the paid-buyer player never mounted for anyone. */}
+        <LiveOverlay client:load listingId={listing.id} checkoutHref={checkoutHref} />
       </div>
       {showThumbs && (
         <div class="ep-thumbs">
