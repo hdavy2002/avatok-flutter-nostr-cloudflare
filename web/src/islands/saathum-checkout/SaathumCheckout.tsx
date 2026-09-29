@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { ClerkIsland, getActiveToken, getActiveTokenWaited } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { getPhoneStatus } from '../auth/passwordless';
 import { captureException } from '../../lib/analytics';
@@ -83,6 +83,10 @@ function Inner({ listingId }: { listingId: string }) {
   const gateChecked = useRef(false);
   const resumeChecked = useRef(false);
   const [resumeDone, setResumeDone] = useState(false);
+  // [SAATHUM-WA-GATE-FLASH-1 2026-09-29] true once the signed-in WhatsApp check has finished
+  // (either way). Until then a signed-in buyer sees "Checking your account…", never the
+  // WhatsApp form — a verified buyer must not be shown it even for a second.
+  const [gateDone, setGateDone] = useState(false);
 
   // ── config (public, no auth) ──────────────────────────────────────────
   useEffect(() => {
@@ -127,14 +131,19 @@ function Inner({ listingId }: { listingId: string }) {
   // ── auth + phone gate (skips "you" once satisfied) ────────────────────
   const checkGate = useCallback(async () => {
     if (!user) return;
-    const t = await getActiveToken();
-    if (!t) return;
+    // Waited token: right after Clerk loads the session token can be momentarily
+    // null; the plain getter made the gate give up and leave a verified buyer on
+    // the WhatsApp form.
+    const t = await getActiveTokenWaited().catch(() => null);
+    if (!t) { setGateDone(true); return; }
     setToken(t);
     try {
       const status = await getPhoneStatus();
       if (status.verified) advancePastYou();
     } catch (e) {
       captureException(e, { where: 'saathum_checkout_phone_status' });
+    } finally {
+      setGateDone(true);
     }
     try {
       const profile = await getProfile(t);
@@ -274,7 +283,10 @@ function Inner({ listingId }: { listingId: string }) {
   return (
     <div className="sthc">
       <div className="sthc-step-col">
-        {step === 'you' && (
+        {step === 'you' && user && (!resumeDone || !gateDone) && (
+          <div className="sthc-card"><p role="status">Checking your account…</p></div>
+        )}
+        {step === 'you' && (!user || (resumeDone && gateDone)) && (
           <YouStep
             signedIn={Boolean(user)}
             listingId={listingId}
