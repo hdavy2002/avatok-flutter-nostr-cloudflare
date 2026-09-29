@@ -30,11 +30,12 @@ import '../styles/temples.css';
 const A = '/assets/saathum-how-it-works/';
 const sticker = (name: string, width = 420) => publicImage(`${A}${name}.webp`, { width, fit: 'scale-down' });
 const IMG = {
-  havan: sticker('havan'),
   link: sticker('link'),
   namaste: sticker('namaste', 340),
   emblem: publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 240, fit: 'scale-down' }),
 };
+// [WEB-TEMPLES-4 2026-09-29] OWNER: hero photo is now design/temple-crew/crew2.png (saved over
+// crew.jpg) with NO havan sticker on it.
 // [WEB-TEMPLES-2 2026-09-29] OWNER: the hero is the crew photo (design/temple-crew/crew.png),
 // big and centred under the copy, exactly as the approved mockup looks.
 const CREW = '/assets/saathum-temples/crew.jpg';
@@ -62,8 +63,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
             <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">See all temples <span aria-hidden="true">↓</span></a></div>
           </div>
           <div class="tp-hero-art">
-            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt="The Saa Thum crew filming a puja at a Himalayan temple for devotees watching from home." width="1536" height="1024" fetchpriority="high" decoding="async" />
-            <img class="tp-stamp" src={IMG.havan} alt="" aria-hidden="true" width="640" height="558" decoding="async" />
+            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt="The Saa Thum crew filming a havan at a Himalayan temple, a family praying beside the pujari with snow peaks behind." width="1536" height="1024" fetchpriority="high" decoding="async" />
           </div>
         </div>
       </section>
