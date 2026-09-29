@@ -29,7 +29,7 @@ assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main headin
 assert.match(html, /<title[^>]*>Himalayan Temple Havans in Your Name \| Saa Thum/, 'Puja service page title'); // WEB-REFRAME-1
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Deep in the Himalayas, your havan, in your name\./, 'Brief H1'); // WEB-REFRAME-1
+assert.match(visibleText, /Your Puja, in the Peaceful Himalayas\./, 'Brief H1'); // WEB-HERO-PHOTO-1
 assert.match(visibleText, /HIMALAYAN TEMPLE HAVANS/, 'Hero eyebrow'); // WEB-REFRAME-1
 for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'HOW DOES IT WORK?', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
@@ -61,7 +61,7 @@ const grandHeroMetadata = await sharp(grandHeroPath).metadata();
 assert(grandHeroMetadata.hasAlpha, 'Grand hero retains transparent foreground');
 assert.equal(grandHeroMetadata.width, 1214, 'Grand hero width is recorded');
 assert.equal(grandHeroMetadata.height, 1295, 'Grand hero height is recorded');
-assert(html.includes('saathum-grand/hero.png'), 'Exact grand hero source is referenced');
+assert(html.includes('saathum-grand/hero-havan.jpg'), 'Exact hero photo source is referenced'); // WEB-HERO-PHOTO-1
 // [SAATHUM-GUIDE-1 2026-09-25] Listing art left the homepage with the sample listing cards;
 // the havan cards use /assets/saathum-rituals/ (checked below and in check-homepage-browser.mjs).
 for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']]]) {
@@ -250,7 +250,7 @@ console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, s
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
 assert.equal(meta(html, 'og:title'), 'Himalayan Temple Havans in Your Name | Saa Thum', 'A4 og:title (WEB-REFRAME-1)');
-assert.equal(meta(html, 'og:description'), 'Havans in your name at peaceful Himalayan temples, filmed by our crew, with dry prasad to your door. Every booking supports mountain pujaris.', 'A4 og:description (WEB-REFRAME-1)');
+assert.equal(meta(html, 'og:description'), 'Living abroad or unable to travel? We arrange puja and havan in your name at peaceful Himalayan temples, so you stay connected to your faith.', 'A4 og:description (WEB-HERO-PHOTO-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');

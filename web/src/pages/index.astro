@@ -6,10 +6,10 @@ import SiteFooter from '../components/SiteFooter.astro';
 import FolkArtwork from '../components/FolkArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
-import GrandHero from '../components/GrandHero.astro';
 import { publicImage, publicImageSrcSet } from '../lib/config';
 import { HOME_HERO, HOME_SEO } from '../lib/homeContent';
 import '../styles/saathum-folk.css';
+import '../styles/home-hero.css';
 
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service brief.
 // Intention cards (brief §5.3) in the existing six-card design.
@@ -34,6 +34,10 @@ import { featuredHavans, ritualCategoryShort, rituals } from '../lib/ritualGuide
 import BookNowShelf from '../islands/home/BookNowShelf';
 // Raw /assets paths on purpose: a /cdn-cgi/image URL inside serialized island props
 // (HTML-escaped JSON) trips the built-image-source deploy check. The island calls publicImage().
+// [WEB-HERO-PHOTO-1] Full-bleed hero photo (design/temple-crew/havan3.png).
+const HERO_PHOTO = '/assets/saathum-grand/hero-havan.jpg';
+const heroPhoto = publicImage(HERO_PHOTO, { width: 1672, fit: 'scale-down' });
+const heroPhotoSet = publicImageSrcSet(HERO_PHOTO, [640, 900, 1280, 1672], { fit: 'scale-down' });
 const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
 const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'rudra-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: h.image }));
 
@@ -50,19 +54,23 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content">
-      <section class="grand-hero" aria-labelledby="grand-title" data-home-section="hero">
-        <div class="grand-hero-copy">
-          <p class="grand-eyebrow">{HOME_HERO.eyebrow}</p>
-          <h1 id="grand-title">{HOME_HERO.titleLineOne}<br /><em>{HOME_HERO.titleLineTwo}</em></h1>
-          <p class="grand-lead">{HOME_HERO.lead}</p>
-          <div class="grand-actions">
-            <a class="grand-button" href="/marketplace?q=Havan" data-home-cta="hero-join-havan">Join a havan <span aria-hidden="true">→</span></a>
-            <a class="grand-link" href="/how-it-works" data-home-cta="hero-how-it-works">How it works <span aria-hidden="true">→</span></a>
-          </div>
-          <p class="grand-quiet">{HOME_HERO.proof}</p>
+      {/* [WEB-HERO-PHOTO-1 2026-09-29] Owner-approved full-bleed photo hero —
+          design/homepage-hero/saathum-home-hero-mock.src.html, reproduced exactly. Styles: styles/home-hero.css. */}
+      <section class="grand-hero hx" aria-labelledby="grand-title" data-home-section="hero">
+        <div class="grand-hero-art hx-art">
+          <img class="grand-hero-image hx-photo" data-grand-artwork="hero" src={heroPhoto} srcset={heroPhotoSet} sizes="100vw" alt="Our crew filming a havan at a Himalayan temple at dawn, the pujari offering ghee into the fire with snow peaks behind." width="1672" height="941" fetchpriority="high" decoding="async" />
         </div>
-        <div class="grand-hero-art">
-          <GrandHero eager sizes="(max-width: 600px) 94vw, 52vw" alt="A Himalayan pujari offering ghee into a havan fire before an old stone temple, snow peaks glowing at dawn behind, framed by an ornate golden arch with a peacock and an elephant." />
+        <div class="hx-inner">
+          <div class="grand-hero-copy hx-copy">
+            <p class="hx-eyebrow">{HOME_HERO.eyebrow}</p>
+            <h1 id="grand-title">{HOME_HERO.titleLineOne} <em>{HOME_HERO.titleLineTwo}</em></h1>
+            <p class="hx-lead">{HOME_HERO.lead}</p>
+            <div class="hx-actions">
+              <a class="grand-button" href="/marketplace?q=Havan" data-home-cta="hero-join-havan">Join a havan <span aria-hidden="true">→</span></a>
+              <a class="grand-link hx-link" href="/how-it-works" data-home-cta="hero-how-it-works">How it works <span aria-hidden="true">→</span></a>
+            </div>
+            <p class="hx-proof">{HOME_HERO.proof}</p>
+          </div>
         </div>
       </section>
 
