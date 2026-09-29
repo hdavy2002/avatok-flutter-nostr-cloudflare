@@ -78,6 +78,30 @@ export function cfImage(path: string, opts: ImageOptions = {}): string {
   } catch { return path; }
 }
 
+/**
+ * [WEB-OG-SHARE-1 2026-09-29] OWNER DECISION: a shared link previews with the
+ * page's OWN main photo (listing hero, article picture, homepage hero) — not a
+ * branded text card. This turns that photo into a WhatsApp/Facebook-friendly
+ * og:image: 1200x630 JPEG (JPEG, not AVIF: WhatsApp drops AVIF previews),
+ * crop biased to the upper part (faces, crowns, peaks sit high). Accepts a raw URL, a site path, or an already-
+ * transformed /cdn-cgi/image/ URL (its params are replaced). Returns undefined
+ * for anything that must not become a public share image.
+ */
+export const SHARE_IMAGE = { width: 1200, height: 630 } as const;
+export function shareImage(path: string | null | undefined): string | undefined {
+  if (!path) return undefined;
+  try {
+    const u = new URL(path, 'https://saathum.com');
+    if (u.protocol !== 'https:' || !imageHost(u.hostname) || u.username || u.password || u.search || u.hash) return undefined;
+    let source = u.pathname;
+    const transformed = source.match(/^\/cdn-cgi\/image\/[^/]+(\/.+)$/);
+    if (transformed) source = transformed[1];
+    if (privateImagePath(source) || /\.(?:svg|gif)$/i.test(source)) return undefined;
+    if (u.hostname === 'saathum.com') source = (publicImageManifest as Record<string, string>)[source] ?? source;
+    return `${u.origin}/cdn-cgi/image/format=jpeg,quality=80,width=${SHARE_IMAGE.width},height=${SHARE_IMAGE.height},fit=cover,gravity=0.5x0.35${source}`;
+  } catch { return undefined; }
+}
+
 /** Website assets stay on the website origin, never API_BASE. */
 export function publicImage(path: string, opts: ImageOptions = {}): string {
   // Astro dev has no Cloudflare transformation endpoint.

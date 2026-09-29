@@ -1,4 +1,5 @@
 import { ORG } from '../org';
+import { SHARE_IMAGE, shareImage } from '../config';
 import { ApiError, getCreator, getListing } from '../apiClient';
 import { creatorOg, listingOg } from '../og';
 import { ritualBySlug } from '../ritualGuides';
@@ -72,11 +73,16 @@ export async function resolveSeo(args: {
   ]);
   const record = content && policy.indexable ? ogRecordFor(content, title, description) : null;
   const measuredLegacyImage = legacy.image && legacy.imageWidth && legacy.imageHeight ? legacy.image : undefined;
-  const sourceImage = record ? await ogImagePath(record) : measuredLegacyImage ?? '/seo/fallback.png';
+  // [WEB-OG-SHARE-1 2026-09-29] OWNER DECISION: the page's own main photo IS the
+  // share image. Listings are noindex (/book/*) but still shared on WhatsApp, so
+  // this does not depend on indexability. The generated text card (/og/...) is
+  // now only for pages with no photo (collections, help), and fallback.png last.
+  const photo = content?.image ? shareImage(content.image.url) : undefined;
+  const sourceImage = photo ?? (record ? await ogImagePath(record) : measuredLegacyImage ?? '/seo/fallback.png');
   const imageUrl = new URL(sourceImage, ORG.url).toString();
   const imagePathname = new URL(sourceImage, ORG.url).pathname.toLowerCase();
-  const width = measuredLegacyImage ? legacy.imageWidth! : 1200;
-  const height = measuredLegacyImage ? legacy.imageHeight! : 630;
+  const width = photo ? SHARE_IMAGE.width : measuredLegacyImage ? legacy.imageWidth! : 1200;
+  const height = photo ? SHARE_IMAGE.height : measuredLegacyImage ? legacy.imageHeight! : 630;
   const indexable = policy.indexable && !legacy.noindex;
   const ogType = content?.kind === 'article' || content?.kind === 'help' ? 'article'
     : content?.kind === 'creator' ? 'profile'
@@ -91,12 +97,14 @@ export async function resolveSeo(args: {
       : 'noindex, follow',
     locale: content?.locale ?? 'en-IN',
     ogType,
+    ogTitle: content?.shareTitle ? brandTitle(content.shareTitle) : title,
+    ogDescription: content?.shareDescription ? truncateAtWord(content.shareDescription) : description,
     image: {
       url: imageUrl,
       alt: plainText(content?.image?.alt ?? legacy.imageAlt ?? title),
       width,
       height,
-      mime: imagePathname.endsWith('.png') ? 'image/png' : 'image/jpeg',
+      mime: !photo && imagePathname.endsWith('.png') ? 'image/png' : 'image/jpeg',
       revision,
     },
     jsonLd: {},

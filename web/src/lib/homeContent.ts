@@ -19,8 +19,10 @@ export const HOME_SEO: PublicContent = {
   summary: 'Living abroad or unable to travel? We arrange puja and havan in your name at peaceful Himalayan temples, so you stay connected to your faith.',
   visibility: 'public',
   image: {
-    url: '/assets/saathum-grand/hero.png',
-    alt: 'A havan at a Himalayan temple, performed in your name — Saa Thum.',
-    revision: 'saathum-home-v2',
+    // [WEB-OG-SHARE-1] The homepage's actual hero photo (WEB-HERO-PHOTO-1), so a
+    // shared saathum.com link previews with the same picture visitors see first.
+    url: '/assets/saathum-grand/hero-havan.jpg',
+    alt: 'Our crew filming a havan at a Himalayan temple at dawn, the pujari offering ghee into the fire with snow peaks behind.',
+    revision: 'saathum-home-v3',
   },
 };

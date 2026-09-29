@@ -255,7 +255,10 @@ assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert.match(ogImageUrl, /^https:\/\/saathum\.com\/og\/home\/home\.png\?v=[a-f0-9]{64}$/, 'Homepage uses a versioned generated share image');
+// [WEB-OG-SHARE-1 2026-09-29] Owner decision: the share image is the homepage's own hero photo, 1200x630 JPEG.
+// (normalizeBuiltImages maps the built /cdn-cgi/image/.../_images/<hash> URL back to its source path.)
+assert.equal(ogImageUrl, 'https://saathum.com/assets/saathum-grand/hero-havan.jpg', 'Homepage shares its hero photo');
+assert.match(rawHtml, /property="og:image" content="https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=80,width=1200,height=630,fit=cover,gravity=0\.5x0\.35\//, 'Share photo is a 1200x630 JPEG');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');

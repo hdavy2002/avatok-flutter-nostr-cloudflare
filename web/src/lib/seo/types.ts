@@ -66,6 +66,11 @@ export interface PublicContent {
   /** [OG-AD-HOOK-1] One-line ad printed ON the share image (the title/description
    *  already show under it in WhatsApp). `price` is display-ready, e.g. "₹111". */
   ad?: { hook: string; price?: string };
+  /** [WEB-OG-SHARE-1] Link-preview (og:/twitter:) title and description when they
+   *  should read differently from the search <title>/description — e.g. an article
+   *  invites the reader in, a listing invites a booking. Falls back to title/summary. */
+  shareTitle?: string;
+  shareDescription?: string;
 }
 
 export interface SeoImage {
@@ -85,6 +90,9 @@ export interface ResolvedSeo {
   indexable: boolean;
   locale: string;
   ogType: 'website' | 'article' | 'profile';
+  /** [WEB-OG-SHARE-1] What WhatsApp/Facebook/X print under the preview image. */
+  ogTitle: string;
+  ogDescription: string;
   image: SeoImage;
   jsonLd: Record<string, unknown>;
 }
