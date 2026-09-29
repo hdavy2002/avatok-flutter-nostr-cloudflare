@@ -1,0 +1,4 @@
+gmwatch
+*.log
+session.json
+config.json

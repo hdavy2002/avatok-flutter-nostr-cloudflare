@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Install:
+    1. Replace YOUR_USER below (and the binary path if you put it elsewhere).
+    2. cp ai.saathum.gmwatch.plist ~/Library/LaunchAgents/
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.saathum.gmwatch.plist
+  Stop / reload:
+    launchctl bootout gui/$(id -u)/ai.saathum.gmwatch
+  Secrets: keep GMWATCH_DEVICE_ID / GMWATCH_DEVICE_SECRET in
+  ~/Library/Application Support/gmwatch/config.json (chmod 600) rather than in this file.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.saathum.gmwatch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USER/bin/gmwatch</string>
+    <string>run</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/YOUR_USER/Library/Logs/gmwatch.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USER/Library/Logs/gmwatch.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/YOUR_USER</string>
+    <!-- Optional overrides (defaults shown in README):
+    <key>GMWATCH_WEBHOOK_URL</key><string>https://api.avatok.ai/api/sms/incoming</string>
+    <key>GMWATCH_HEARTBEAT_URL</key><string>https://api.avatok.ai/api/sms/heartbeat</string>
+    -->
+  </dict>
+</dict>
+</plist>
