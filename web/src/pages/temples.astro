@@ -132,6 +132,18 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
         </div>
       </section>
 
+      <!-- WEATHER NOTE [WEB-TEMPLES-3 2026-09-29] owner-requested customer note -->
+      <section class="tp-weather tp-wrap" aria-labelledby="weather-title">
+        <div class="tp-weather-card">
+          <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 70 40 40l10 14 8-10 20 26Z" fill="#fff6e6"/><path d="M34 28h14a8 8 0 0 0 0-16 11 11 0 0 0-21 4 6 6 0 0 0 7 12Z" fill="#d87332" transform="translate(12 6)"/><path d="M58 76v4m8-6v4m8-4v4"/></g></svg>
+          <div>
+            <h2 id="weather-title">A note about weather in the mountains</h2>
+            <p>Sometimes your video is delayed. Mountain regions often have landslides and snowstorms that cut the network. Do not worry: our team has filmed the whole ritual and will upload it as soon as they are back in the studio. When this happens, we tell you about the delay on WhatsApp and by email.</p>
+            <p>For the same reason, your prasad courier can be delayed too. Please keep rain, snow, landslides and other natural events in mind when you book.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- PRASAD -->
       <section class="tp-prasad tp-wrap" aria-labelledby="prasad-title">
         <div class="tp-sec-head"><h2 id="prasad-title"><span aria-hidden="true">✽</span>Prasad that survives the journey</h2>
@@ -168,7 +180,8 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
           <details open><summary>Who performs the puja at the temple?</summary><p>The temple's own priest. Our team looks after the camera, the live streaming and sending your prasad.</p></details>
           <details><summary>What happens if the live stream stops?</summary><p>Networks in the hills can drop, at the temple or at your end. We record every ritual in full, so if the stream breaks we send you a link to watch or download the complete video.</p></details>
           <details><summary>Can I choose the temple?</summary><p>Each event is performed at the temple named on its event page. Pick the event at the temple you feel close to.</p></details>
-          <details><summary>When will my prasad arrive?</summary><p>We send it on the day of the puja. Delivery time depends on your location and the courier.</p></details>
+          <details><summary>Why is my video late?</summary><p>Landslides, snowstorms and heavy rain can cut the network in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio. We tell you about the delay on WhatsApp and by email.</p></details>
+          <details><summary>When will my prasad arrive?</summary><p>We send it on the day of the puja. Delivery time depends on your location and the courier, and mountain weather such as rain, snow or landslides can delay it.</p></details>
           <details><summary>Can I get my charawa back or refunded?</summary><p>No. Charawa is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded.</p></details>
         </div>
       </section>

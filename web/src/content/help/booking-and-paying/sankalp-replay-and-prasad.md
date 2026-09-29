@@ -32,6 +32,8 @@ Your gotra is your family lineage. It's optional — if you don't know yours, pr
 
 When the ritual finishes, we email you the video to download. It also stays under **My events**, so you can download it anytime.
 
+At mountain temples, landslides or snow can cut the network. If that delays your video, we tell you on WhatsApp and by email and upload it as soon as our crew is back in the studio. See [Temple visits, weather and delays](/help/booking-and-paying/delays-from-the-mountains).
+
 ## Prasad
 
-Choose prasad delivery at checkout and add a delivery address. We post prasad to your door after the ritual.
+Choose prasad delivery at checkout and add a delivery address. We post prasad to your door after the ritual. Mountain weather such as rain, snow or landslides can delay the courier.
