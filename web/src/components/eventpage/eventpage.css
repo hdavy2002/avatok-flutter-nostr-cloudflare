@@ -185,3 +185,17 @@
 @media (max-width: 640px) {
   .ep-sec .ep-about-art { width: 120px; height: 120px; margin-left: 12px; }
 }
+
+/* [SAATHUM-LIVE-GUARDED-1 2026-09-29] Guarded YouTube player on the event hero.
+ * Copies of the dash2.css .d2-player rules (that sheet is not loaded here). */
+.ep-live-cover--player { display: block; background: #000; }
+.ep-live-cover--player .ep-live-guarded { position: absolute; inset: 0; height: 100%; border-radius: 0; }
+.ep-live-cover--player .d2-player-frame { height: 100%; aspect-ratio: auto; }
+.ep-live-preview-tag { position: absolute; top: 10px; right: 10px; z-index: 40; pointer-events: none; }
+.d2-player .d2-player-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.d2-player input[type='range'] { accent-color: hsl(var(--primary, 3 69% 46%)); }
+.d2-player-pseudo-fs { position: fixed !important; inset: 0 !important; z-index: 1000 !important; width: 100vw !important; height: 100dvh !important; max-width: none !important; border-radius: 0 !important; background: #000; display: flex; align-items: center; justify-content: center; }
+.d2-player-pseudo-fs .d2-player-frame { width: 100%; max-height: 100dvh; }
+.d2-player:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
+.d2-player:fullscreen .d2-player-frame { width: 100%; height: auto; aspect-ratio: 16/9; max-height: 100vh; }
+.ep-art .d2-player img { position: static; }

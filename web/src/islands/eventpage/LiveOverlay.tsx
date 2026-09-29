@@ -31,6 +31,7 @@ import { ClerkIsland, getActiveTokenWaited } from '../../lib/clerk';
 import { ApiError } from '../../lib/apiClient';
 import { getLiveState, getWatch } from '../saathum-checkout/api';
 import { capture, captureException } from '../../lib/analytics';
+import { YouTubeGuardedPlayer } from '../../components/dash2/YouTubeGuardedPlayer';
 
 type Phase =
   | { kind: 'hidden' }
@@ -132,20 +133,22 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
   if (phase.kind === 'hidden') return null;
 
   if (phase.kind === 'player') {
+    // [SAATHUM-LIVE-GUARDED-1 2026-09-29] Owner: viewers must never reach YouTube
+    // (logo, title, "Watch on YouTube", right-click → copy URL) or they share the
+    // paid stream. The guarded player puts a transparent shield over the whole
+    // iframe and drives YouTube through our own controls (play/pause, mute,
+    // volume, fullscreen of OUR wrapper) — same component as the dashboard.
     return (
-      <div className="ep-live-cover" aria-label="Live now">
-        <iframe
-          className="ep-live-frame"
-          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(phase.videoId)}?autoplay=1&mute=1&modestbranding=1&rel=0&playsinline=1`}
+      <div className="ep-live-cover ep-live-cover--player" aria-label="Live now">
+        <YouTubeGuardedPlayer
+          videoId={phase.videoId}
           title="Live stream"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
+          autoPlay
+          className="ep-live-guarded"
+          onPlay={() => capture('saathum_live_player_play', { listing_id: listingId, preview: !!phase.preview })}
+          onError={(code) => capture('saathum_live_player_error', { listing_id: listingId, code })}
         />
-        {phase.preview && (
-          <span className="ep-pill ep-pill--soft" style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
-            Admin preview
-          </span>
-        )}
+        {phase.preview && <span className="ep-pill ep-pill--soft ep-live-preview-tag">Admin preview</span>}
       </div>
     );
   }
