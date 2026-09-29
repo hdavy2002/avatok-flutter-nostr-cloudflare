@@ -55,3 +55,12 @@
 # [SAATHUM-DEBRAND-1 2026-09-27] The admin account's handle changed to "saathum";
 # listing URLs moved from /<old-handle>/<slug> to /saathum/<slug>.
 /humphrey/*   /saathum/:splat   301
+# [WEB-REFRAME-1 2026-09-29] Rituals removed under the positive-temple policy.
+/rituals/navagraha-havan/*   /rituals/  301
+/rituals/navagraha-havan     /rituals/  301
+/rituals/lalita-havan/*      /rituals/  301
+/rituals/lalita-havan        /rituals/  301
+/rituals/navagraha-puja/*    /rituals/  301
+/rituals/navagraha-puja      /rituals/  301
+/rituals/shani-shanti-puja/* /rituals/  301
+/rituals/shani-shanti-puja   /rituals/  301

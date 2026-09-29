@@ -3,12 +3,14 @@ title: "Getting your ritual video"
 description: "How you receive the video of the puja or havan you booked, what the ritual's status means, and what happens if it can't be performed."
 section: booking-and-paying
 order: 3
-updated: 2026-09-27
+updated: 2026-09-29
 keywords: ["puja video", "havan video", "download video", "missed puja", "puja not performed", "refund", "video kab milega"]
 audience: buyer
 faq:
   - q: "How do I see my puja or havan?"
-    a: "When the ritual finishes, we email you the video to download. It also sits under My events, so you can download it anytime."
+    a: "Our crew films your ritual at the temple and live streams it when the mountain network allows. When it finishes, we email you the full video to download. It also sits under My events."
+  - q: "Why is my video late?"
+    a: "Landslides, snowstorms and heavy rain can cut the network in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio. We tell you about the delay on WhatsApp and by email."
   - q: "What if the ritual isn't performed?"
     a: "You get a full refund. Email support (@) saathum.com with your 12-digit UPI transaction number and we'll refund you."
 draft: false
@@ -18,7 +20,9 @@ draft: false
 
 ## Your video
 
-When your ritual finishes, we email you the full video to download. You'll also find it under **My events**, and you can download it anytime.
+Our crew films your ritual at the temple and live streams it when the mountain network allows. When it finishes, we email you the full video to download. You'll also find it under **My events**, and you can download it anytime.
+
+If snow, a landslide or heavy rain cuts the network, the video may take longer. We tell you on WhatsApp and by email, and upload it as soon as our crew is back in the studio.
 
 On the day, light a lamp at home if you like and sit quietly at the scheduled time — your sankalp is taken in your name at the altar whether or not you are watching.
 
@@ -27,7 +31,7 @@ On the day, light a lamp at home if you like and sit quietly at the scheduled ti
 Every page reads the ritual's status from the same clock, checkout included:
 
 - **Upcoming** — before the scheduled start.
-- **In progress** — our priest is performing the ritual.
+- **In progress** — the temple's pujari is performing the ritual.
 - **Completed** — the ritual is done; your video follows by email.
 - **Cancelled** — the ritual was cancelled; request your full refund with your UPI transaction number.
 

@@ -1,4 +1,8 @@
 ---
+// [WEB-ABOUT-HIMALAYA-1 2026-09-29] OWNER: new origin story — the snowstorm night with a
+// Himalayan pujari, the village that helped the next morning, and Saa Thum's mission to
+// support remote mountain temples. Copy = design/about-page/saathum-about-himalaya-mock.src.html
+// (same design; only the words changed). The girmitiya story is now one short section.
 // [WEB-ABOUT-FOLK-1 2026-09-27] /about rebuilt to the owner-approved mockup
 // design/about-page/saathum-about-mock.src.html (built by
 // design/about-page/build-about-mock.py). OWNER: "exact replica of what you
@@ -39,9 +43,9 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import '../styles/saathum-folk.css';
 import '../styles/about-folk.css';
 
-const title = 'About us — our story began on a ship, a long time ago';
-const description = 'Saa Thum was started to bring India closer to the girmitiya diaspora — families in Suriname, Guyana, Trinidad, Fiji, Mauritius and beyond — with pujas and havans performed by temple priests, sankalp in your name, and prasad sent to your door.';
-const updated = '2026-09-27';
+const title = 'About us — it began on a snowbound night in a Himalayan temple';
+const description = 'Saa Thum was born in a snowstorm, when a Himalayan pujari sheltered our co-founder for the night. Today our crew travels to remote, positive mountain temples to perform havans in your name, and every booking supports the pujaris and villages who keep them alive.';
+const updated = '2026-09-29';
 const STICKER = '/assets/saathum-about/about-sticker.png';
 const OG_ART = '/assets/saathum-about/about-og-woman.jpg';
 
@@ -81,57 +85,62 @@ const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { wi
           </figure>
 
           <article class="ab-story">
-            <p class="ab-eyebrow">About Saa Thum</p>
-            <h1 id="page-title">Our story began on a ship, <em>a long time ago.</em></h1>
-            <p class="ab-lead">Saa Thum was started to bring India closer to the families the world forgot were Indian.</p>
-            <div class="ab-story-meta"><span class="ab-pill"><span class="ab-dot"></span>West Andheri, Mumbai</span></div>
-
-            <div class="ab-prose">
-              <h2>Their great-grandparents crossed the kala pani</h2>
-              <p class="ab-drop">Between 1834 and 1917, more than a million Indians boarded ships at Calcutta and Madras with a thumbprint on a contract they could not read. The British called it indenture. The people called themselves <strong>girmitiyas</strong>, after the “agreement” that took them away. They were sent to cut sugarcane on islands most of them had never heard of: Mauritius, Guyana, Trinidad, Suriname, Jamaica, Fiji, St Lucia, St Kitts, Grenada, St Vincent, Belize, Natal, Réunion, the Seychelles.</p>
-              <p>Most never came back. They were promised a return passage after five years; the ship rarely came. So they stayed, and they built a small India from whatever had fit in a cloth bundle: a Ramcharitmanas wrapped in a saree, a handful of tulsi seeds, the tune of a bhajan, and the name of a village nobody ever wrote down.</p>
-              <ul class="ab-places" aria-label="Where the Indian diaspora of the indenture era lives today">
-                <li>Suriname</li><li>Guyana</li><li>Trinidad &amp; Tobago</li><li>Fiji</li><li>Mauritius</li><li>Jamaica</li><li>St Lucia</li><li>St Kitts &amp; Nevis</li><li>Grenada</li><li>St Vincent</li><li>Belize</li><li>South Africa</li><li>Réunion</li><li>Seychelles</li><li>Kenya &amp; East Africa</li><li>Malaysia</li>
-              </ul>
-
-              <h2>What stayed, and what slipped away</h2>
-              <p>Five generations later, so much of it is still there. Diwali lights up Paramaribo and Port of Spain. The Ramayan is read aloud in Sarnami, in Fiji Hindi, in a Bhojpuri that India itself has half forgotten. Grandmothers still tie the mauli, still keep the fast, still say <strong>“Ram Ram”</strong> at the door.</p>
-              <p>But some things could not survive the crossing. There was no Ganga to bring water from. There was often no priest on the plantation, so the eldest man learned the mantras as best he could and passed them down by memory, a little thinner each time. Today a family in Nickerie or Lautoka can drive for hours and not find a mandir. When a mother falls ill and a daughter wants a sankalp made in her name, when a son buys his first home and wants a havan before the first night, when a grandfather passes and the family wants his shraddh done properly, they often cannot. Not because the faith is gone. Because the hands that knew how are gone.</p>
-              <p>We heard the same sentence again and again: <strong>“My grandfather knew exactly what to do. He never got the chance to teach us.”</strong></p>
-
-              <h2>India, a stranger with a familiar face</h2>
-              <p>The obvious answer is “go to India”. It is not so simple. A trip for a family of four can cost a year of savings. The village written on a great-grandfather's emigration pass may have changed its name, its district, or simply vanished into a city. There is no cousin waiting at the airport. The country that lives in their bedtime stories, that they have prayed towards their whole lives, does not recognise them when they arrive, and they arrive speaking a Hindi that makes shopkeepers smile.</p>
-              <p>India feels like a strange land, even to people whose whole life has been an act of remembering it. That is the heartbreak Saa Thum was built for.</p>
-
-              <div class="ab-quote">
-                <p>You should not need a passport, a year's savings and a guide <span>to come home for a puja.</span></p>
-                <img src={emblemSrc} alt="" aria-hidden="true" width="2048" height="2048" loading="lazy" decoding="async" />
-              </div>
-
-              <h2>So we lit a diya in Andheri</h2>
-              <p>Saa Thum is a small team in <strong>West Andheri, Mumbai</strong>. We work with temple priests who have spent their lives performing pujas and havans, and we send the video of every ritual so that a family anywhere in the world can sit in front of the fire from their own living room.</p>
-              <p>When you book a puja, the priest takes your <strong>sankalp in your name and your gotra</strong>, with your wish and the names of your family, exactly as he would if you were sitting beside him. When you join a havan, you join it with hundreds, sometimes thousands of other families, and every aahuti offered together makes it stronger. Afterwards the <strong>prasad is couriered to your door</strong>, whether that door is in Chaguanas, Nadi or Durban, and the video is yours to keep, so a grandmother can watch it with her chai in the morning.</p>
-              <p>The rituals are performed by people who know them by heart. Every booking supports those priests and their families, so they can keep doing this work full time. And every booking is a small repair in a thread that was pulled thin a hundred and fifty years ago.</p>
-
-              <h2>What we promise</h2>
-              <ul class="ab-promise">
-                <li>We only perform positive, benefic rituals. No fear, no curses, no “do this or something bad will happen”.</li>
-                <li>We never promise outcomes. A havan is an offering and a prayer, not a guarantee, and we will not lie to you about that.</li>
-                <li>What you see is what you pay. No tokens, no wallets, no surprises at checkout.</li>
-                <li>Real priests, real fire, real prasad. If we cannot perform your ritual, we tell you and refund you.</li>
-                <li>We explain every puja and havan in plain English: the deity, the story behind it, and what it means to take part from far away.</li>
-              </ul>
-
-              <p>Saa Thum means “with you”. That is the whole idea. Wherever the ships took your family, we would like to be the ones who bring the diya back.</p>
-
-              <div class="ab-where">
-                <div>
-                  <span class="ab-tag">Where we are</span>
-                  <p><strong>Saa Thum, West Andheri, Mumbai, India</strong>Write to us at support (@) saathum.com. We reply to every family.</p>
-                </div>
-                <a class="ab-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a>
-              </div>
-            </div>
+          <p class="ab-eyebrow">About Saa Thum</p>
+          <h1 id="page-title">It began on a snowbound night, <em>in a temple no map remembers.</em></h1>
+          <p class="ab-lead">Saa Thum was born high in the Himalayas, from a cup of hot tea, a borrowed quilt and the kindness of a pujari who had almost nothing and gave it all.</p>
+          <div class="ab-story-meta"><span class="ab-pill"><span class="ab-dot"></span>Himalayan temples · Uttarakhand &amp; Himachal</span></div>
+          
+          <div class="ab-prose">
+          <h2>Caught by the storm</h2>
+          <p class="ab-drop">Davy, one of our co-founders, has spent years walking the high trails of the Himalayas. On one of those treks the sky turned in the space of an hour. The light went grey, then white. The wind came down off the ridge so hard it pushed the breath back into his chest, and the snow began to fall sideways, filling the path in front of him faster than he could follow it.</p>
+          <p>Somewhere below, through the swirl, he saw a small flicker of orange. It was a diya, burning in the doorway of a stone temple no bigger than a village house, its slate roof already heavy with snow.</p>
+          
+          <h2>A cup of tea, a quilt, and a long night</h2>
+          <p>The pujari did not ask who he was or where he was going. He took one look at the stranger at his door, stamping frozen boots, and pulled him inside next to the fire. Within minutes there was a steel glass of ginger tea in Davy's hands, so hot he could barely hold it. Then came rotis from the tawa, a bowl of dal, and one blanket after another, until finally a thick cotton quilt that smelled of woodsmoke and old camphor.</p>
+          <p>Outside, the storm roared against the walls all night. Inside, the two of them talked. The pujari spoke about the temple his family had looked after for generations, the festivals the whole valley still climbs up for, and the sadhus meditating in caves further up the mountain. Through every winter he carries food up to them, on paths that most people would not walk in summer.</p>
+          <p>Hardly any pilgrims ever come, he said, smiling. The buses go to the famous shrines. Up here it is only the mountain, the bell, and whoever the snow sends to the door.</p>
+          
+          <div class="ab-quote">
+          <p>They had so little, <span>and they gave me everything they had.</span></p>
+          <img src={emblemSrc} alt="" aria-hidden="true" width="2048" height="2048" loading="lazy" decoding="async" />
+          </div>
+          
+          <h2>The morning the village carried him</h2>
+          <p>By dawn the storm had passed and the whole valley shone. Davy set off down the trail, but a few hundred metres on, the fresh snow gave way on a hidden patch of ice, and he went down hard. His leg would not take his weight.</p>
+          <p>The village came to him before he could even call out. Someone ran for the pujari. A grandmother warmed turmeric and mustard oil and wrapped his leg in a cloth. Young men cut him a walking stick from a deodar branch, and between them they helped him, step by careful step, down to the road. Children ran ahead to clear the snow from the steepest turns, and at every bend someone new was waiting to take his arm.</p>
+          <p>Nobody asked for anything in return. When he tried to pay, they laughed and pressed a packet of prasad into his hand instead.</p>
+          
+          <h2>The temples the pilgrim routes forget</h2>
+          <p>On the long drive home, Davy could not stop thinking about that temple. Over the months that followed he went looking, and he found it was not alone. All across the Himalayas there are small temples of Shiva and Parvati, of Vishnu, of Ram and Sita, of the gentle mountain Devis, each with its own old tradition, each kept alive by a pujari and a village who ask for nothing.</p>
+          <p>Ordinary pilgrimage never reaches them. And the people who keep them alive face the hardest winters in India, with no road in the snow and very little income, while still feeding the sadhus in the caves above.</p>
+          
+          <h2>So we built Saa Thum</h2>
+          <p>Saa Thum exists to bring those temples to you, and to give something back to the people who keep them alive.</p>
+          <p>Our small crew travels deep into the mountains, carries the camera up the trail, and sets up beside the altar. The temple's own pujari performs your havan or puja with your <strong>sankalp in your name and your gotra</strong>, with your wish and the names of your family, exactly as if you were sitting beside him. We live stream it when the mountain network allows, and we always record the whole ritual, so the video is yours to keep. Dry prasad from the temple is packed the same day and couriered to your door.</p>
+          <p>Every booking gives a Himalayan pujari and his village a fair, steady income through the long winters, and a way to share a lifetime of devotion with families far away. It is our way of returning a cup of tea on a snowbound night.</p>
+          
+          <h2>For families far from home</h2>
+          <p>Many of the families who book with us live far from India, in the UK, the Caribbean, Fiji, Mauritius, North America and beyond. Some have never seen the Himalayas. Through Saa Thum, a grandmother in Port of Spain or a family in Leicester can hear their names spoken at a mountain temple, and watch the fire rise with the snow peaks behind it.</p>
+          
+          <h2>What we promise</h2>
+          <ul class="ab-promise">
+          <li>We only work with positive temples: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. No animal sacrifice, no dark or cult practices, ever.</li>
+          <li>We only perform benefic rituals. No fear, no curses, no “do this or something bad will happen”.</li>
+          <li>We never promise outcomes. A havan is an offering and a prayer, not a guarantee.</li>
+          <li>A fair share of every booking goes to the temple, the pujari and his village.</li>
+          <li>What you see is what you pay. And if the mountains delay your video or prasad, we tell you on WhatsApp and by email.</li>
+          </ul>
+          
+          <p>Saa Thum means “with you”. That night in the snow, a stranger was with Davy when he needed it most. Now we would like to be with you, and with them.</p>
+          
+          <div class="ab-where">
+          <div>
+          <span class="ab-tag">Where we are</span>
+          <p><strong>Saa Thum, West Andheri, Mumbai, India</strong>Our crew works across Uttarakhand and Himachal. Write to us at support (@) saathum.com. We reply to every family.</p>
+          </div>
+          <a class="ab-btn" href="/temples">See our temples <span aria-hidden="true">→</span></a>
+          </div>
+          </div>
           </article>
         </div>
       </section>
@@ -141,8 +150,8 @@ const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { wi
         <div class="ab-wrap ab-ask-inner">
           <img src={namasteSrc} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
           <div>
-            <h2 id="ask-title">Want to talk to us? <span>We are a namaste away.</span></h2>
-            <p>Write to support (@) saathum.com, tell us your family's story, or ask us how a puja or havan works from where you live.</p>
+            <h2 id="ask-title">Come to the mountains with us, <span>from wherever you are.</span></h2>
+            <p>Join a havan at a Himalayan temple, or write to support (@) saathum.com and tell us your family's story.</p>
           </div>
           <div class="ab-ask-actions">
             <a class="ab-btn ab-btn--paper" href="/contact">Contact us</a>

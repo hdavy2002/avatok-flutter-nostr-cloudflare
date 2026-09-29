@@ -4,8 +4,8 @@ export const MARKETPLACE_SEO: PublicContent = {
   kind: 'collection',
   key: 'marketplace',
   canonicalPath: '/marketplace',
-  title: 'Pujas, Havans & Satsang — performed by temple priests · Saa Thum',
-  summary: 'Search and book pujas, havans, satsang, sermons and meditation, performed by temple priests. Filter by deity, wish, date or price; your sankalp in your name and gotra, the video sent to you, prasad delivered to your door.',
+  title: 'Havans & Pujas at Himalayan Temples · Saa Thum',
+  summary: 'Book havans and pujas performed by pujaris at positive Himalayan temples. Filter by deity, wish, date or price; your sankalp in your name and gotra, the video filmed by our crew, dry prasad delivered to your door.',
   visibility: 'public',
   image: { url: '/assets/saathum-grand/hero.png', alt: 'Pujas and havans performed by Saa Thum priests.' },
 };
@@ -18,11 +18,11 @@ export const HOW_IT_WORKS_SEO: PublicContent = {
   kind: 'page',
   key: '/how-it-works',
   canonicalPath: '/how-it-works',
-  title: 'Performed for you, in three simple steps',
-  summary: 'How Saa Thum performs a puja or havan in your name and gotra and sends you the video — plus puja vs havan, and answers to common questions.',
+  title: 'How we perform your havan at a Himalayan temple',
+  summary: 'How our crew travels to a Himalayan temple, how the pujari performs your havan or puja in your name and gotra, live streaming and the full video, weather delays and same-day dry prasad.',
   visibility: 'public',
   modifiedAt: new Date('2026-09-27').toISOString(),
-  image: { url: '/og-editorial.png', alt: 'Performed for you, in three simple steps — Saa Thum' },
+  image: { url: '/og-editorial.png', alt: 'How we perform your havan at a Himalayan temple — Saa Thum' },
 };
 
 // [WEB-TEMPLES-1 2026-09-29] /temples — "Our temples" (header + footer menus).

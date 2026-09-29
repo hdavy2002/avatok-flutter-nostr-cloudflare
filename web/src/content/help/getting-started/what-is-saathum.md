@@ -1,43 +1,45 @@
 ---
 title: "What is Saa Thum?"
-description: "Saa Thum performs pujas and havans for you — in your name and gotra, by our priests at a real altar, with the video sent to you and prasad to your door."
+description: "Saa Thum performs havans and pujas for you at peaceful Himalayan temples, in your name and gotra, filmed by our crew, with prasad sent to your door."
 section: getting-started
 order: 1
-updated: 2026-09-25
-keywords: ["saathum", "what is saathum", "saathum kya hai", "online puja", "book a puja", "havan online", "puja in my name", "puja video"]
+updated: 2026-09-29
+keywords: ["saathum", "what is saathum", "saathum kya hai", "himalayan temple havan", "online havan", "puja in my name", "havan uttarakhand", "puja video"]
 audience: buyer
 faq:
   - q: "What exactly is Saa Thum?"
-    a: "Saa Thum performs pujas and havans for you. You choose a ritual, share your name, gotra and wish, and our priests perform it at a real altar. We send you the video when it finishes, and prasad to your door if you'd like."
+    a: "Saa Thum performs havans and pujas for you at remote, peaceful Himalayan temples. You choose a ritual and share your name, gotra and wish; our crew travels to the temple, the temple's own pujari performs it, and we film it for you. We send you the video, and dry prasad to your door if you'd like."
   - q: "What can I book on Saa Thum?"
-    a: "Pujas and havans only — positive, benefic rituals for studies, a fresh start, prosperity, health, family, peace and festivals. We don't offer aarti or darshan bookings, yoga, or private sessions."
+    a: "Havans and pujas only — positive, benefic rituals for studies, a fresh start, prosperity, health, family, peace and festivals, at temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis."
   - q: "Do I need to be there in person?"
-    a: "No. The ritual is done in your name through the sankalp. We send you the video afterwards to keep."
+    a: "No. The ritual is done in your name through the sankalp. We live stream when the mountain network allows, and we always send you the full video to keep."
 draft: false
 ---
 
-<!-- rebrand: reviewed -->
+<!-- [WEB-REFRAME-1 2026-09-29] Rewritten around the Himalayan temple story. -->
 
-Saa Thum performs pujas and havans for you. That's all we do, and we do it well.
+Saa Thum takes your havan or puja deep into the Himalayas. Our small crew travels to remote, peaceful mountain temples that ordinary pilgrimage never reaches, and the temple's own pujari performs your ritual in your name.
 
 ## How it works
 
-1. **Choose your ritual.** Pick a puja or a havan — by what you're hoping for, by deity, or by festival. See every ritual on [Our Pujas](/marketplace).
-2. **Tell us your sankalp.** Your name, gotra and wish. Our priest speaks them at the altar.
-3. **Receive your video.** When the ritual finishes we email you the video to download, and prasad follows by courier if you'd like.
+1. **Choose your ritual.** Pick a havan or puja by what you're hoping for, by deity, or by festival under [Explore](/marketplace). Each event names the temple where it is performed.
+2. **Tell us your sankalp.** Your name, gotra and wish. The pujari speaks them at the altar.
+3. **We go to the temple.** Our crew films the ritual and live streams it when the mountain network allows.
+4. **Receive your video and prasad.** We email you the full video, and dry prasad from the temple follows by courier if you chose it.
 
-## A service, not a platform
+## Why the mountains
 
-Our priests are ours; the experience is ours; the responsibility is ours. There are no sellers or creators to choose between — you book a ritual with Saa Thum, and we perform it.
+Across Uttarakhand and Himachal there are small temples kept alive by a pujari and his village, far from the pilgrim routes. The families who look after them face hard winters and very little income, and many still feed the sadhus meditating in the caves above. Every booking gives them a fair, steady income and a way to share their devotion with families everywhere. Read how it began on [About us](/about).
 
-## Only positive rituals
+## Only positive temples, only positive rituals
 
-Every ritual we perform is benefic — for learning, prosperity, health, love, peace and celebration. We don't do fear, we don't do fierce rituals, and we never tell you something bad will happen if you don't book.
+We work only with positive temples: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. We stay away from temples known for animal sacrifice, fear or dark practices, and every ritual we perform is benefic. We never tell you something bad will happen if you don't book. See [Our temples and our temple promise](/help/getting-started/our-temples-and-our-promise).
 
-Rituals are performed with devotion by verified priests. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
+Rituals are performed with devotion by the pujaris of the temples we work with. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
 
 ## Where to next
 
 - [Create your account](/help/getting-started/create-your-account)
 - [Puja or havan?](/help/getting-started/puja-or-havan)
 - [Choosing and booking a ritual](/help/booking-and-paying/how-to-book)
+- [Temple visits, weather and delays](/help/booking-and-paying/delays-from-the-mountains)

@@ -15,13 +15,14 @@ export const GET: APIRoute = () => {
   // sentences they find — keep them factual and never promise outcomes.
   const body = `# Saa Thum (saathum.com)
 
-> Saa Thum (saathum.com) is an online havan and puja service run by a small team in West Andheri, Mumbai, India. Temple priests perform havans, pujas, satsangs and meditations for families in India and around the world. For a puja, the priest takes a sankalp in the devotee's name and gotra; havans are open, shared events that many families join together. Devotees can download the video afterwards, and prasad can be sent by courier, including internationally. Tagline: "Faith, brought home to you."
+> Saa Thum (saathum.com) is an online havan and puja service. Our crew travels to remote, peaceful Himalayan temples in Uttarakhand and Himachal, where the temple's own pujari performs havans and pujas with a sankalp in your name and gotra. We live stream when the mountain network allows, always send the full video, and courier dry prasad from the temple. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and every booking supports the pujaris and villages who keep them alive. Tagline: "Faith, brought home to you."
 
 ## About
 - Name: Saa Thum. The domain is written saathum.com; "Saa Thum" and "Saathum" are the same service.
-- Based in: West Andheri, Mumbai, Maharashtra, India.
+- Based in: West Andheri, Mumbai, Maharashtra, India. The crew works at temples across Uttarakhand and Himachal Pradesh.
+- Temple policy: only positive temples (Shiva and Parvati, Vishnu, Ram and Sita, Krishna, Himalayan Devis). No temples known for animal sacrifice, fear, tantric, cult or black-magic practices; no Kali, Bhairav or Shani rituals.
 - Who it is for: Hindu families everywhere, and especially the Indian diaspora descended from the girmitiyas (indentured labourers) of Suriname, Guyana, Trinidad and Tobago, Fiji, Mauritius, South Africa and the Caribbean, who often live far from a temple or priest.
-- What it offers: havans, pujas, satsangs and meditations performed by temple priests; sankalp in your name and gotra for pujas; video download; prasad by courier.
+- What it offers: havans and pujas performed at Himalayan temples by their own pujaris, filmed by Saa Thum's crew (live streamed when the network allows); sankalp in your name and gotra for pujas; video download; prasad by courier.
 - What it does not do: it performs only positive, benefic rituals and never promises outcomes, cures or guaranteed results.
 - Payment: prices are shown in Indian rupees as "starting from"; what you see at checkout is what you pay.
 

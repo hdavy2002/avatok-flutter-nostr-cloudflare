@@ -3,7 +3,7 @@ title: "Puja or havan?"
 description: "The difference between a puja and a havan, how long each takes, and how to choose the right ritual for what you're hoping for."
 section: getting-started
 order: 2
-updated: 2026-09-25
+updated: 2026-09-29
 keywords: ["puja vs havan", "havan kya hai", "difference between puja and havan", "which puja", "havan online", "puja online"]
 audience: buyer
 faq:
@@ -27,5 +27,7 @@ Offerings into a sacred fire, with Vedic mantras. A havan usually takes **60–1
 ## Choosing by what you're hoping for
 
 You don't need to know the right ritual in advance. On the [home page](/#experiences) you can browse by intention — success in studies, a fresh start, prosperity, health and peace, love and family, or festival pujas — and each ritual page explains what families traditionally perform it for, who it's for and the best time to book.
+
+Both are performed at the Himalayan temple named on the event page, by that temple's own pujari, and filmed by our crew. See [Our temples](/temples).
 
 Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.

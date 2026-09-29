@@ -12,7 +12,7 @@ faq:
   - q: "Do I need the app to book?"
     a: "No. You can choose, book, pay and watch right in your browser at saathum.com."
   - q: "Can I include my family?"
-    a: "Yes — add their names when you book, and the priest includes them in the sankalp."
+    a: "Yes — add their names when you book, and the pujari includes them in the sankalp."
 draft: false
 ---
 
@@ -24,7 +24,7 @@ Start on [Our Pujas](/marketplace), or browse by intention on the [home page](/#
 
 ## What a ritual page tells you
 
-Each ritual page shows the deity, the altar and city, the next date and time (in IST, with your own local time alongside), the price, and what's included — by default:
+Each ritual page shows the deity, the Himalayan temple where it is performed, the next date and time (in IST, with your own local time alongside), the price, and what's included — by default:
 
 - Sankalp in your name and gotra
 - A video of the ritual to download

@@ -3,7 +3,7 @@ title: "Refunds and cancellations"
 description: "How to cancel a puja, havan, satsang, sermon or meditation and request a refund with your 12-digit UPI transaction number."
 section: billing
 order: 1
-updated: 2026-09-28
+updated: 2026-09-29
 keywords: ["refund", "cancellation", "cancel puja", "paisa wapas", "utr number", "upi transaction id", "refund request"]
 audience: buyer
 faq:
@@ -11,6 +11,10 @@ faq:
     a: "Yes — for a havan or puja, cancel at least 24 hours before the scheduled start; for a satsang, sermon or meditation, cancel at least 3 days before. Cancellations after that window are not refunded, and neither is missing the event."
   - q: "Is the refund automatic?"
     a: "No. Email support (@) saathum.com or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
+  - q: "Can I get my charawa back or refunded?"
+    a: "No. Charawa (chadhava, vastra, coconut, flowers or dakshina) is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded."
+  - q: "Is a weather delay a reason for a refund?"
+    a: "No. If snow, landslides or heavy rain delay your video or prasad, the ritual has still been performed in your name; we tell you on WhatsApp and email and send the video and prasad as soon as we can."
   - q: "Where do I find my UPI transaction number?"
     a: "Open the payment in your UPI app's transaction history (Google Pay, PhonePe, Paytm, BHIM or your bank's app), or check your bank's payment SMS. It's the 12-digit UTR / UPI reference number."
 draft: false
@@ -52,6 +56,14 @@ If we cancel your event or can't perform it, you get a full refund regardless of
 ## No automatic refunds for missed attendance
 
 For a havan or puja, your sankalp is still performed even if you couldn't join, so the booking isn't refunded. For a satsang, sermon or meditation session, the event still happens at its scheduled time, so a missed session isn't refunded either. Your video is sent to you when it finishes.
+
+## Charawa is not refunded
+
+What you offer at the altar — chadhava, vastra, coconut, flowers or dakshina — is given to the deity during your puja. By tradition it stays at the temple, so charawa is not returned or refunded once the puja has been performed.
+
+## Weather delays
+
+Many of our temples are high in the mountains. If snow, landslides or heavy rain delay your video or prasad, your ritual has still been performed in your name, so a delay is not a reason for a refund. We tell you about any delay on WhatsApp and by email. See [Temple visits, weather and delays](/help/booking-and-paying/delays-from-the-mountains).
 
 ## Wrong or duplicate payments
 

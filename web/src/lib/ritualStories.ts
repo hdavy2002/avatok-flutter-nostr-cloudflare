@@ -35,10 +35,6 @@ export const ritualStories: Record<string, RitualStory> = {
     why: 'Satyanarayana is Lord Vishnu as the embodiment of truth (satya). Worshipping him is an act of gratitude, and a promise to live truthfully.',
     story: 'The Satyanarayan katha, traditionally linked to the Skanda Purana, tells of a poor Brahmin, a woodcutter, a merchant and a king whose lives changed after they worshipped Satyanarayana with faith — and of the troubles that came when they forgot their promise. Its lesson is simple: remember the divine in good times, not only in bad.',
   },
-  'navagraha-havan': {
-    why: 'The Navagraha are the nine celestial deities of Hindu tradition: the Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu and Ketu. Honouring all nine together seeks balance across every area of life.',
-    story: 'Navagraha worship is an ancient part of Indian temple life — most great South Indian temples have a shrine where the nine planets stand facing different directions. A Navagraha havan offers each planet its own grain, colour and wood, a practice handed down through generations of priests.',
-  },
   'vastu-shanti-havan': {
     why: 'Vastu Purusha is the spirit of every building and plot of land. Honouring him, with Ganesha, seeks harmony between the people who live in a space and the space itself.',
     story: 'Tradition, preserved in texts like the Matsya Purana, tells that a great being once covered the whole earth, and the gods pressed him down with their presence to steady the world. Moved by his plight, they granted him a boon: he would be honoured before any building rose. That being is Vastu Purusha, and this havan is his worship.',
@@ -106,10 +102,6 @@ export const ritualStories: Record<string, RitualStory> = {
   'santana-gopala-havan': {
     why: 'Santana Gopala is Krishna as a child — the giver of children and the protector of little ones. He is prayed to by couples hoping for a baby.',
     story: 'A story in the Mahabharata tradition tells of a Brahmin in Dwarka who lost child after child. Arjuna vowed to help and failed; then Krishna himself travelled beyond the worlds and returned all the children to their parents. Santana Gopala is Krishna as that giver of children.',
-  },
-  'lalita-havan': {
-    why: 'Lalita Tripurasundari is the Divine Mother in her most beautiful and playful form. She is honoured for love, grace, charm and joy.',
-    story: 'The Lalita Sahasranama — her thousand names — appears in the Brahmanda Purana, where Lord Hayagriva teaches it to the sage Agastya. It is chanted in homes and temples across India, especially on Fridays and during Navratri.',
   },
   'shanti-havan': {
     why: 'Shanti means peace. This havan uses the Vedic Shanti mantras, which pray for peace in the sky, the earth, the waters, the plants and every living being.',
@@ -191,14 +183,6 @@ export const ritualStories: Record<string, RitualStory> = {
   'sundarkand-path': {
     why: 'The Sundarkand tells of Hanuman’s journey to find Sita. Reciting it is a traditional way to seek hope and success when a task feels impossible.',
     story: 'Sundarkand is the fifth chapter of Tulsidas’s Ramcharitmanas. It follows Hanuman’s leap across the ocean, his meeting with Sita in Lanka and the joyful news he brings back to Rama — a story of hope from beginning to end.',
-  },
-  'navagraha-puja': {
-    why: 'The nine planetary deities are honoured together to bring balance to every part of life.',
-    story: 'Navagraha shrines are found in temples across India, where devotees walk around the nine deities in prayer. This puja brings that same practice to the altar without the fire of a havan.',
-  },
-  'shani-shanti-puja': {
-    why: 'Shani Dev, the planet Saturn, is the lord of karma and discipline. He rewards patience and honest effort, and is prayed to gently for his grace.',
-    story: 'Tradition tells that Shani is the son of Surya, the Sun, and Chhaya. Devotees offer him sesame oil and black sesame on Saturdays, and Hanuman is also prayed to, because legend says Shani promised never to trouble Hanuman’s devotees.',
   },
   'durga-puja': {
     why: 'Durga is the Divine Mother as strength and protection. She is prayed to for courage and for the safety of the whole family.',

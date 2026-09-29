@@ -26,11 +26,11 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, /<title[^>]*>Book Havans &amp; Pujas Online \| Saa Thum/, 'Puja service page title');
+assert.match(html, /<title[^>]*>Himalayan Temple Havans in Your Name \| Saa Thum/, 'Puja service page title'); // WEB-REFRAME-1
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Sab ki aahuti, sab ka ashirwad\./, 'Brief H1');
-assert.match(visibleText, /HAVANS\s*(?:·|•|&middot;|&#183;|&#x[Bb]7;)\s*OPEN TO ALL/, 'Hero eyebrow');
+assert.match(visibleText, /Deep in the Himalayas, your havan, in your name\./, 'Brief H1'); // WEB-REFRAME-1
+assert.match(visibleText, /HIMALAYAN TEMPLE HAVANS/, 'Hero eyebrow'); // WEB-REFRAME-1
 for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'HOW DOES IT WORK?', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
@@ -194,9 +194,10 @@ for (const list of [routesJson.include, routesJson.exclude]) {
   for (const rule of list) assert(!splats.some(prefix => rule !== prefix + '*' && (rule.startsWith(prefix) || rule + '/' === prefix)), 'Cloudflare rejects overlapping _routes.json rules: ' + rule);
 }
 const guide = normalizeBuiltImages(readFileSync(resolve(root, 'rituals/index.html'), 'utf8'), { root });
-assert.equal((guide.match(/data-idea-card/g) || []).length, 55, 'All 55 rituals (30 havans + 25 pujas) are in the guide');
-assert.equal((guide.match(/data-format="havan"/g) || []).length, 31, '30 havan cards + the Havans filter');
-assert.equal((guide.match(/data-format="puja"/g) || []).length, 26, '25 puja cards + the Pujas filter');
+// [WEB-REFRAME-1 2026-09-29] Navagraha Havan/Puja, Lalita Havan and Shani Shanti Puja removed (temple policy).
+assert.equal((guide.match(/data-idea-card/g) || []).length, 51, 'All 51 rituals (28 havans + 23 pujas) are in the guide');
+assert.equal((guide.match(/data-format="havan"/g) || []).length, 29, '28 havan cards + the Havans filter');
+assert.equal((guide.match(/data-format="puja"/g) || []).length, 24, '23 puja cards + the Pujas filter');
 assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main heading');
 assert.match(guide, /class="bazaar-footer bazaar-footer--folk"/, 'Guide uses shared footer');
 assert.match(guide, /avh--sticky/, 'Guide uses shared header');
@@ -205,7 +206,7 @@ assert.match(guide, /CollectionPage/);
 assert.match(guide, /ItemList/);
 assert(meta(guide, 'og:title') && meta(guide, 'og:description'));
 const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)\/"/g)].map(m => m[1]))];
-assert.equal(ritualLinks.length, 55, 'Every ritual has its own article');
+assert.equal(ritualLinks.length, 51, 'Every ritual has its own article');
 const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'),'utf8');
 assert.match(sitemapIndexSource,/<sitemapindex/,'sitemap.xml is implemented as a sitemap index');
@@ -245,11 +246,11 @@ for (const href of ritualLinks) {
  ritualImages.add(hash);
  assert(article.includes('saathum-rituals/' + slug + '.png'), 'Article shows its own artwork: ' + href);
 }
-console.log('Puja & Havan Guide checks passed: 55 articles, sections, sitemap, sharing and unique artwork.');
+console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Book Havans &#38; Pujas Online | Saa Thum', 'A4 og:title (WEB-SEO-AUTO-1)');
-assert.equal(meta(html, 'og:description'), 'Join havans for health, prosperity, peace and new beginnings. Our priests perform your sankalp, we send you the video to download, and prasad comes to your home.', 'A4 og:description (WEB-SEO-AUTO-1)');
+assert.equal(meta(html, 'og:title'), 'Himalayan Temple Havans in Your Name | Saa Thum', 'A4 og:title (WEB-REFRAME-1)');
+assert.equal(meta(html, 'og:description'), 'Havans in your name at peaceful Himalayan temples, filmed by our crew, with dry prasad to your door. Every booking supports mountain pujaris.', 'A4 og:description (WEB-REFRAME-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');

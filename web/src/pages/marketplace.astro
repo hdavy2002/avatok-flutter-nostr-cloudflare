@@ -45,7 +45,7 @@ const guides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image 
 const deities = [
   { name: 'Ganesha', slug: 'ganapati-havan' }, { name: 'Lakshmi', slug: 'lakshmi-havan' }, { name: 'Shiva', slug: 'mahamrityunjaya-havan' },
   { name: 'Saraswati', slug: 'saraswati-havan' }, { name: 'Hanuman', slug: 'hanuman-havan' }, { name: 'Vishnu', slug: 'satyanarayana-havan' },
-  { name: 'Krishna', slug: 'krishna-havan' }, { name: 'Navagraha', slug: 'navagraha-havan' }, { name: 'Durga', slug: 'lalita-havan' }, { name: 'Rama', slug: 'rama-havan' },
+  { name: 'Krishna', slug: 'krishna-havan' }, { name: 'Parvati', slug: 'swayamvara-parvati-havan' }, { name: 'Durga', slug: 'durga-puja' }, { name: 'Rama', slug: 'rama-havan' },
 ].flatMap(d => { const r = ritualBySlug(d.slug); return r ? [{ name: d.name, image: r.image }] : []; });
 const heroImage = ritualBySlug('lakshmi-havan')?.image ?? '/assets/saathum-grand/hero.png';
 // Same six intention tiles as the homepage; each searches the marketplace.

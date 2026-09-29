@@ -35,7 +35,7 @@ import BookNowShelf from '../islands/home/BookNowShelf';
 // Raw /assets paths on purpose: a /cdn-cgi/image URL inside serialized island props
 // (HTML-escaped JSON) trips the built-image-source deploy check. The island calls publicImage().
 const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
-const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'navagraha-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: h.image }));
+const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-havan', 'mahamrityunjaya-havan', 'rudra-havan'].includes(h.slug)).map(h => ({ title: h.title, href: h.href, image: h.image }));
 
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
@@ -90,7 +90,7 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
           <div class="grand-joining" id="joining" data-home-section="joining">
             <ol class="grand-step-grid" aria-label="How it works, in three steps">
               <li><a href="/marketplace" data-home-cta="steps-book" aria-describedby="step-tip-book"><FolkIcon kind="ticket" /><span class="grand-step-number">01</span><span class="grand-step-label">Book an event</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-book">Pay using Stripe for international and UPI for India.</span></li>
-              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch" aria-describedby="step-tip-watch"><FolkIcon kind="live" /><span class="grand-step-number">02</span><span class="grand-step-label">Get the video</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-watch">We email you the video to download when it finishes.</span></li>
+              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch" aria-describedby="step-tip-watch"><FolkIcon kind="live" /><span class="grand-step-number">02</span><span class="grand-step-label">Get the video</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-watch">Filmed at the temple by our crew. We email you the video to download when it finishes.</span></li>
               <li><a href="/help/booking-and-paying/sankalp-replay-and-prasad" data-home-cta="steps-prasad" aria-describedby="step-tip-prasad"><FolkIcon kind="prasad" /><span class="grand-step-number">03</span><span class="grand-step-label">Get prasad delivered</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-prasad">Prasad is optional, for a havan or puja, and available pan-India for now.</span></li>
             </ol>
           </div>
@@ -131,7 +131,7 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 
       <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
         <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
-        <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Every ritual we perform is benefic. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
+        <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Only positive Himalayan temples, only benefic rituals. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
         <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 
