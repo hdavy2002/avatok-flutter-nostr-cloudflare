@@ -4,9 +4,9 @@
    under the sticky header, and the copy is overlaid on a deep-teal scrim (left on desktop,
    bottom on phones). OWNER: exact replica, not an inspired version.
    Scoped with `.grand-hero.hx` so it overrides the old split-hero rules in saathum-folk.css. */
-.folk-site[data-design="saathum-reference-v5"] .grand-hero.hx { position: relative; isolation: isolate; max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; align-items: center; min-height: clamp(560px, calc(100vh - 113px), 860px); color: #fff; overflow: hidden; }
+.folk-site[data-design="saathum-reference-v5"] .grand-hero.hx { position: relative; isolation: isolate; max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; align-items: center; min-height: clamp(560px, min(calc(100vh - 113px), 56.25vw), 1200px); /* [owner 2026-09-29] wide screens: grow toward the photo shape so peaks and heads are not cut */ color: #fff; overflow: hidden; }
 .folk-site[data-design="saathum-reference-v5"] .grand-hero.hx .hx-art { position: absolute; inset: 0; z-index: -2; display: block; width: 100%; height: 100%; align-self: stretch; justify-self: stretch; }
-.folk-site[data-design="saathum-reference-v5"] .grand-hero.hx .hx-photo { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; object-fit: cover; object-position: 62% 50%; }
+.folk-site[data-design="saathum-reference-v5"] .grand-hero.hx .hx-photo { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; object-fit: cover; object-position: 62% 30%; }
 .folk-site[data-design="saathum-reference-v5"] .grand-hero.hx::before { content: ""; position: absolute; inset: 0; z-index: -1;
   background:
     linear-gradient(90deg, rgba(9, 32, 37, .86) 0%, rgba(9, 32, 37, .72) 30%, rgba(9, 32, 37, .38) 52%, rgba(9, 32, 37, 0) 70%),
