@@ -138,7 +138,8 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
   // (the server allows it). The SSR page may already have rendered "Booking closed"
   // because the scheduled start passed — swap it back for a live book button.
   useEffect(() => {
-    if (phase.kind !== 'live_overlay') return;
+    // Also while the player is showing (admin preview, or a buyer booking for another family).
+    if (phase.kind !== 'live_overlay' && phase.kind !== 'player') return;
     const closed = document.querySelector<HTMLElement>('span.ep-btn--book[aria-disabled="true"]');
     if (!closed) return;
     const a = document.createElement('a');
