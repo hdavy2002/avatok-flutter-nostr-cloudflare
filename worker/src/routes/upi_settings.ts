@@ -9,7 +9,7 @@ import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { metaDb } from "../db/shard";
 import { policy } from "../lib/hdfc_sms_smoke";
-import { UPI_SETTINGS_KEY, VPA_RE, clearUpiSettingsCache, readUpiSettings, type UpiSettings } from "../lib/upi_settings";
+import { MCC_RE, MERCHANT_REF_RE, UPI_SETTINGS_KEY, VPA_RE, clearUpiSettingsCache, readUpiSettings, type UpiSettings } from "../lib/upi_settings";
 
 const NO_STORE = { "cache-control": "private, no-store" };
 
@@ -43,7 +43,17 @@ export async function putUpiSettings(req: Request, env: Env): Promise<Response> 
   if (payee.length > 60 || /[\u0000-\u001f\u007f]/.test(payee)) return json({ error: "bad_payee", field: "payee_name", message: "Payee name must be 60 characters or fewer." }, 400);
 
   const before = await readUpiSettings(env);
-  const next: UpiSettings = { vpa: vpa || null, payee_name: payee || null, updated_at: Date.now(), updated_by: a.uid };
+  // [SAATHUM-UPI-MCC-1] Merchant fields: absent key = keep the saved value (the admin
+  // screen does not send them yet); "" / null = clear.
+  const pick = (k: "merchant_code" | "merchant_ref", re: RegExp): string | null | Response => {
+    if (!(k in body)) return before[k] ?? null;
+    const v = typeof body[k] === "string" ? (body[k] as string).trim() : "";
+    if (!v) return null;
+    return re.test(v) ? v : json({ error: `bad_${k}`, field: k, message: k === "merchant_code" ? "Merchant code must be 4 digits." : "Merchant reference must be 4–35 letters or digits." }, 400);
+  };
+  const mc = pick("merchant_code", MCC_RE); if (mc instanceof Response) return mc;
+  const mref = pick("merchant_ref", MERCHANT_REF_RE); if (mref instanceof Response) return mref;
+  const next: UpiSettings = { vpa: vpa || null, payee_name: payee || null, merchant_code: mc, merchant_ref: mref, updated_at: Date.now(), updated_by: a.uid };
   await env.TOKENS.put(UPI_SETTINGS_KEY, JSON.stringify(next));
   clearUpiSettingsCache();
   try {

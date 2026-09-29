@@ -13,7 +13,13 @@ import type { Env } from '../types';
 export const UPI_SETTINGS_KEY = 'upi_settings:v1';
 export const VPA_RE = /^[A-Za-z0-9._-]{2,200}@[A-Za-z0-9.-]{2,80}$/;
 
-export interface UpiSettings { vpa: string | null; payee_name: string | null; updated_at: number | null; updated_by: string | null }
+// [SAATHUM-UPI-MCC-1 2026-09-29] merchant_code (MCC) + merchant_ref (the `tr` printed in the
+// bank's static merchant QR). Only set for a MERCHANT VPA (e.g. HDFC SmartHub Vyapar):
+// UPI apps (ICICI iMobile) reject a merchant VPA intent with no merchant fields as
+// "Request Restricted — incorrect merchant details". Leave both null for a personal VPA.
+export interface UpiSettings { vpa: string | null; payee_name: string | null; merchant_code?: string | null; merchant_ref?: string | null; updated_at: number | null; updated_by: string | null }
+export const MCC_RE = /^\d{4}$/;
+export const MERCHANT_REF_RE = /^[A-Za-z0-9]{4,35}$/;
 export interface EffectiveUpi { vpa: string; payee_name: string; source: 'admin' | 'env' | 'none' }
 
 let cache: { at: number; value: UpiSettings } | null = null;

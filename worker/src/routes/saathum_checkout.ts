@@ -15,6 +15,7 @@ import { emailFor } from "../lib/identity";
 import { escapeHtml } from "../cal/emails";
 import { enqueueEmail } from "../lib/email_outbox";
 import { policy as hdfcPolicy, UUID } from "../lib/hdfc_sms_smoke";
+import { MCC_RE, MERCHANT_REF_RE, readUpiSettings } from "../lib/upi_settings";
 import { sha256Hex } from "../lib/payments/types";
 import { bookability } from "../lib/listing_schedule";
 import {
@@ -230,9 +231,19 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
   const config = await readConfig(env);
   const p = await hdfcPolicy(env);
   const canPay = p.enabled && status === "awaiting_payment";
+  // [SAATHUM-UPI-MCC-1 2026-09-29] A merchant VPA (SmartHub Vyapar) must carry its
+  // merchant code + the static-QR reference, exactly as the bank's QR does. Applied only
+  // when the saved merchant fields belong to the VPA checkout is actually using.
+  const saved = await readUpiSettings(env);
+  const merchant: Record<string, string> = {};
+  if (saved.vpa?.trim() === p.vpa) {
+    if (saved.merchant_code && MCC_RE.test(saved.merchant_code)) merchant.mc = saved.merchant_code;
+    if (merchant.mc && saved.merchant_ref && MERCHANT_REF_RE.test(saved.merchant_ref)) merchant.tr = saved.merchant_ref;
+  }
   const upiUrl = canPay
     ? `upi://pay?${new URLSearchParams({
       pa: p.vpa, pn: p.payee_name, // [SAATHUM-UPI-SETTINGS] admin-set VPA
+      ...merchant,
       am: (row.amount_paise / 100).toFixed(2), cu: "INR",
       // [SAATHUM-UPI-P2P-1 2026-09-29] No `tr` (merchant transaction ref): the payee is a
       // personal VPA (e.g. …@pthdfc), and UPI apps such as ICICI iMobile refuse a P2P request
