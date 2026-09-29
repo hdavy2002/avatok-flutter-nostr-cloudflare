@@ -22,7 +22,9 @@
     "shipped": "2026-09-28",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": ["autoRefundsEnabled"],
+    "flags": [
+      "autoRefundsEnabled"
+    ],
     "success": [
       {
         "event": "auto_refund_suppressed",
@@ -146,7 +148,10 @@
       {
         "event": "auth_whatsapp_verify",
         "property": "outcome",
-        "in": ["signed_in", "needs_email"],
+        "in": [
+          "signed_in",
+          "needs_email"
+        ],
         "min_events": 1,
         "note": "A correct code being accepted, either path: signed_in (number already a verified account phone) or needs_email (new number, proof issued). wrong_code/expired alone would only prove people are typing codes, not that a correct one ever succeeds."
       },
@@ -7765,25 +7770,53 @@
     "shipped": "2026-09-28",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": ["saathumLiveLinkNotifyEnabled"],
+    "flags": [
+      "saathumLiveLinkNotifyEnabled"
+    ],
     "success": [
       {
         "event": "whatsapp_event_notify",
         "property": "trigger",
-        "in": ["link_saved", "late_buyer"],
+        "in": [
+          "link_saved",
+          "late_buyer"
+        ],
         "note": "Every live-link/video-ready WhatsApp enqueue (bulk admin-save or the single late-buyer send) is now tagged with which path queued it. Absent entirely — with whatsapp_event_notify still firing untagged — means this build didn't ship, since the property is unconditional on every call site."
       },
       {
         "event": "saathum_live_link_emails",
         "property": "trigger",
-        "in": ["link_saved", "late_buyer"],
+        "in": [
+          "link_saved",
+          "late_buyer"
+        ],
         "note": "The new live-link email fired at least once, tagged by which path queued it. Requires saathumLiveLinkNotifyEnabled=true (default false) AND an admin saving a live link, or a buyer confirming while one is already set — will not appear until the owner turns the flag on after the watch page ships."
       },
       {
         "event": "saathum_watch_access",
         "property": "outcome",
-        "in": ["ok", "not_booked", "no_stream"],
+        "in": [
+          "ok",
+          "not_booked",
+          "no_stream"
+        ],
         "note": "GET /api/saathum/watch/:listingId was actually called and returned one of the three documented outcomes — proves the entitlement gate (requireVerifiedWhatsApp + confirmed-checkout check) runs end to end. Will not appear until the (not-yet-built) watch page calls this endpoint."
+      }
+    ]
+  },
+  "SAATHUM-UPI-3LAYER": {
+    "description": "[SAATHUM-UPI-3LAYER 2026-09-29] Saathum UPI payment confirmation in three layers: unique per-checkout amount (checkout pays total minus 1..199 paise), UTR-less auto-match of HDFC SMS receipts (Google Messages watcher + Android SMS forwarder/companion both post to /api/sms/incoming; third-party forwarder at /api/sms/forward/:token), and a manual admin review queue at /admin/verify. Buyer screens: pay, waiting-for-bank (3 min), received, verifying, not-found. Telemetry: saathum_checkout_confirmed{via} (via names the layer that confirmed), saathum_checkout_paid_claimed, saathum_admin_payment_confirm/reject, saathum_amount_pool_exhausted.",
+    "shipped": "2026-09-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_checkout_confirmed",
+        "property": "via",
+        "exists": true,
+        "min_events": 1,
+        "note": "A Saathum checkout was confirmed; via says which layer did it (sms auto-match, buyer UTR, or admin). Absent once buyers are paying means no layer is confirming."
       }
     ]
   }
