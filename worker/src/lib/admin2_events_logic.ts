@@ -8,7 +8,6 @@
 // is the authority for "is this show over"); nothing here changes either.
 import { endMsSql, eventWindow, scheduleState } from "./listing_schedule";
 import { startsMsSql } from "./me_dashboard_data";
-import { MIN_PRICE_TOKENS_PER_HOUR } from "./session_pricing";
 import { EVENT_TYPES, type EventType, isRitual } from "./event_types";
 
 export type EventTab = "upcoming" | "live" | "past" | "drafts" | "cancelled";
@@ -81,8 +80,10 @@ export const LIMITS = {
   capacityMax: 100_000,
 } as const;
 
-/** The ₹ floor every live_event price must clear (lib/session_pricing.ts). */
-export const MIN_PRICE_RUPEES = MIN_PRICE_TOKENS_PER_HOUR;
+/** [SAATHUM-MIN-PRICE-1 2026-09-29, owner decision] Saathum admin events may be priced at any
+ *  whole rupee from ₹1 (e.g. ₹1 test events). The old ₹49 floor (MIN_PRICE_TOKENS_PER_HOUR)
+ *  protected creators from the flat session fee; Saathum sells its own events directly. */
+export const MIN_PRICE_RUPEES = 1;
 
 export const DEITY_SUGGESTIONS = [
   "Ganesha", "Shiva", "Vishnu", "Lakshmi", "Durga", "Hanuman", "Krishna", "Rama", "Saraswati",

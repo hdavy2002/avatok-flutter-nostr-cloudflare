@@ -282,7 +282,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     if (form.title.trim().length < 3) e.title = 'Give the event a title.';
     if (!form.category) e.category = 'Pick a category.';
     if (form.youtube_url.trim() && !looksLikeYoutube(form.youtube_url)) e.youtube_url = 'That is not a YouTube link.';
-    const min = meta?.min_price_rupees ?? 49;
+    const min = meta?.min_price_rupees ?? 1;
     if (form.price_rupees !== '' && (!Number.isInteger(Number(form.price_rupees)) || Number(form.price_rupees) < min)) e.price_rupees = `Price must be a whole number, at least ₹${min}.`;
     setErrors(e);
     const first = Object.keys(e)[0] as keyof FormState | undefined;
@@ -451,7 +451,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     setBusy('article'); setBanner(null);
     const t0 = performance.now();
     try {
-      const fill = await fillFromArticle(a, { categories: meta?.categories ?? [], minPrice: meta?.min_price_rupees ?? 49 });
+      const fill = await fillFromArticle(a, { categories: meta?.categories ?? [], minPrice: meta?.min_price_rupees ?? 1 });
       setForm((s) => ({ ...s, ...fill }));
       setErrors({});
       let coverOk = false;
@@ -516,7 +516,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const usingAi = !form.cover_url && !!ev?.ai_poster_url;
   const blockers = detail?.blockers ?? [];
   const posterPlan = detail?.poster_plan;
-  const minPrice = meta?.min_price_rupees ?? 49;
+  const minPrice = meta?.min_price_rupees ?? 1;
   const disabled = isClosed || busy !== null;
   const ytId = detail?.youtube?.video_id;
 
