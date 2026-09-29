@@ -16,7 +16,8 @@
 /** Menu label for /marketplace — renamed for the puja/havan catalogue. */
 export const MARKETPLACE_LABEL = 'Our Pujas';
 /** Primary header button (brief §5.1). */
-export const BOOK_CTA = { href: '/marketplace', label: 'Book a puja' };
+// [WEB-HEADER-CTA-1 2026-09-29] OWNER DECISION: header button reads "Book now" (was "Book a puja").
+export const BOOK_CTA = { href: '/marketplace', label: 'Book now' };
 
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Menu per the Puja & Havan
 // brief §5.1: Pujas · Havans · By intention · How it works · About. Footer keeps
