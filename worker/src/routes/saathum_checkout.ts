@@ -125,8 +125,14 @@ async function computeBookable(env: Env, row: ListingRow, snapshot: ListingSnaps
   // bookability() so this is the one that wins.
   const { state } = await streamStateForListing(env, row.id);
   if (state === "ended") return { ok: false, reason: EVENT_ENDED_MESSAGE };
-  const b = bookability(row, Date.now());
-  if (!b.ok) return { ok: false, reason: b.reason };
+  // [SAATHUM-LIVE-BOOKING-1 2026-09-29] Owner: while the YouTube stream is LIVE anyone
+  // can still book, pay and be sent straight to the stream. The schedule's
+  // late-booking cut-off (bookability "starting" → booking_closed) must not apply —
+  // the stream state, not the clock, decides. Capacity still applies below.
+  if (state !== "live") {
+    const b = bookability(row, Date.now());
+    if (!b.ok) return { ok: false, reason: b.message ?? b.reason };
+  }
   const capacity = snapshot.visibility === "private" ? 1 : row.capacity;
   if (capacity != null) {
     const taken = await seatsTaken(env, row.id);
