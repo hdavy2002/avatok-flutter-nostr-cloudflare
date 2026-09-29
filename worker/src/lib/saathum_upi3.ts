@@ -127,14 +127,23 @@ export const sourceLastSeen = (r: Pick<SourceHealthRow, "last_heartbeat_at" | "l
 // ---------------------------------------------------------------------------
 // Cron sweeps
 // ---------------------------------------------------------------------------
-/** ADMIN_ALERT_WHATSAPP: E.164 digits (with or without +). null when not configured. */
-export function adminAlertNumber(env: Env): string | null {
-  const raw = String(env.ADMIN_ALERT_WHATSAPP ?? "").replace(/[^\d]/g, "");
+/** KV key (TOKENS namespace) holding the owner's alert WhatsApp number.
+ * [SAATHUM-ALERT-NUMBER-1 2026-09-29] The avatok-api Worker is at Cloudflare's
+ * 128 text-binding limit, so the number cannot be added as a secret. KV is
+ * server-only (never exposed via /api/config). Env var still wins if present. */
+export const ADMIN_ALERT_WHATSAPP_KV = "admin_alert_whatsapp:v1";
+
+/** ADMIN_ALERT_WHATSAPP (env) or KV admin_alert_whatsapp:v1: E.164 digits (with or without +). null when not configured. */
+export async function adminAlertNumber(env: Env): Promise<string | null> {
+  let raw = String(env.ADMIN_ALERT_WHATSAPP ?? "").replace(/[^\d]/g, "");
+  if (raw.length < 10) {
+    try { raw = String((await env.TOKENS?.get(ADMIN_ALERT_WHATSAPP_KV)) ?? "").replace(/[^\d]/g, ""); } catch { raw = ""; }
+  }
   return raw.length >= 10 ? raw : null;
 }
 
 async function alert(env: Env, text: string): Promise<boolean> {
-  const to = adminAlertNumber(env);
+  const to = await adminAlertNumber(env);
   if (!to) return false;
   const r = await sendWhatsAppText(env, to, text);
   if (!r.ok) await trackException(env, new Error(`admin_alert_failed:${r.reason}`), { route: "saathum_upi3.alert", handled: true, app_name: APP });
@@ -154,7 +163,7 @@ const paise = (n: number) => `Rs. ${(n / 100).toFixed(2)}`;
 
 /** One WhatsApp per review_pending item older than 10 min (claimed atomically before sending). */
 export async function alertStaleReviews(env: Env, now = Date.now()): Promise<number> {
-  if (!adminAlertNumber(env)) return 0;
+  if (!(await adminAlertNumber(env))) return 0;
   const db = metaDb(env);
   const rows = await db.prepare(
     `SELECT c.checkout_id, c.amount_paise, c.reason_code, l.title
@@ -181,14 +190,18 @@ export async function checkSourceHealth(env: Env, now = Date.now()): Promise<{ s
   const configured = new Map<string, SmsSource>();
   if (env.HDFC_SMS_DEVICE_ID && env.HDFC_SMS_DEVICE_SECRET) configured.set(env.HDFC_SMS_DEVICE_ID, "companion");
   if (env.HDFC_SMS_WATCHER_DEVICE_ID && env.HDFC_SMS_WATCHER_DEVICE_SECRET) configured.set(env.HDFC_SMS_WATCHER_DEVICE_ID, "watcher");
-  // A configured source that has never called in gets a 15-minute grace, then alerts.
+  // [SAATHUM-ALERT-NUMBER-1 2026-09-29] A configured source that has NEVER called in is shown as
+  // "Never reported in" on /admin/verify but does not alert: the legacy companion stays configured
+  // while retired, and the watcher is configured before it is paired. Alerts start once it has
+  // been seen at least once and then goes quiet.
   for (const [id, source] of configured) {
-    await db.prepare(`INSERT OR IGNORE INTO sms_source_health (device_id,source,last_heartbeat_at,updated_at) VALUES (?1,?2,?3,?3)`).bind(id, source, now).run();
+    await db.prepare(`INSERT OR IGNORE INTO sms_source_health (device_id,source,last_heartbeat_at,updated_at) VALUES (?1,?2,NULL,?3)`).bind(id, source, now).run();
   }
   const rows = await db.prepare(`SELECT device_id,source,last_heartbeat_at,last_sms_at,last_error,alerted_at,stale_alert_open FROM sms_source_health`).all<SourceHealthRow>();
   let stale = 0, recovered = 0;
   for (const r of rows.results ?? []) {
     if (!configured.has(r.device_id)) continue; // retired device: ignore
+    if (r.last_heartbeat_at == null && r.last_sms_at == null) continue; // never seen: no alert
     const seen = sourceLastSeen(r);
     const silentMs = now - seen;
     const name = r.source === "watcher" ? "Google Messages watcher" : "SMS companion app";

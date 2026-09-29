@@ -526,6 +526,21 @@ describe('cron alerts', () => {
     expect(f.sql.prepare('SELECT stale_alert_open FROM sms_source_health WHERE device_id=?').get('watcher-1')?.stale_alert_open).toBe(0);
   });
 
+  it('[SAATHUM-ALERT-NUMBER-1] configured sources that never reported in do not alert', async () => {
+    now += 3 * 60 * MIN;
+    expect(await checkSourceHealth(f.env, now)).toEqual({ stale: 0, recovered: 0 });
+    expect(H.waTexts).toHaveLength(0);
+  });
+
+  it('[SAATHUM-ALERT-NUMBER-1] alert number falls back to KV admin_alert_whatsapp:v1 when the env var is unset', async () => {
+    delete (f.env as any).ADMIN_ALERT_WHATSAPP;
+    (f.env as any).TOKENS = { get: async (k: string) => (k === 'admin_alert_whatsapp:v1' ? '+91 78170 58560' : null) };
+    await heartbeat('watcher-1', WATCHER_SECRET);
+    now += 20 * MIN;
+    expect((await checkSourceHealth(f.env, now)).stale).toBe(1);
+    expect(H.waTexts[0].to).toBe('917817058560');
+  });
+
   it('review_pending older than 10 min alerts the admin exactly once per item', async () => {
     const fresh = insertCheckout({ amount_paise: 19999, status: 'review_pending', reason_code: 'awaiting_bank', paid_claimed_at: now - 5 * MIN });
     const old = insertCheckout({ amount_paise: 19998, status: 'review_pending', reason_code: 'awaiting_bank', paid_claimed_at: now - 20 * MIN });
