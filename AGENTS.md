@@ -269,7 +269,12 @@ Rules:
 1. **Never type `Saa Thum`, `SAA THUM`, `Saathum`, `सा थम`, `saathum.com`, any
    `*.saathum.com` host, or any `@saathum.com` address in new code or copy.** Use
    `BRAND.name`, `BRAND.nameUpper`, `BRAND.webOrigin`, `brandUrl('/path')`,
-   `BRAND.emails.support`, etc. A reviewer sends back any diff that adds a literal.
+   `BRAND.emails.support`, etc. **Enforced:** `scripts/check_brand_literals.py` runs in
+   `typecheck.yml` and fails on any NEW literal (baseline `tool/brand_literals_baseline.json`
+   is leftover debt — fix the code, never grow the baseline). i18n tokens: `{brand}`
+   (= nameCompact), `{brandCompactUpper}`, `{brandDomain}`, `{brandSupportEmail}` — see
+   `shared/i18n/README.md`. wrangler vars (worker + consumers `EMAIL_FROM_DEFAULT`) are
+   synced from brand.json by `gen_brand.py`.
 2. **Need a brand value that is not there yet** (a new mailbox, a social handle, a
    subdomain)? Add it to `Specs/brand.json` and the generator — never a local constant.
 3. **Never hand-edit a mirror** (`web/src/lib/brand.ts`, `worker/src/lib/brand.ts`,

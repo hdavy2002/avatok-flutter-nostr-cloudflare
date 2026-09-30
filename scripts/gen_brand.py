@@ -34,6 +34,7 @@ TS_TARGETS = [
 ]
 DART_TARGET = ROOT / "app" / "lib" / "core" / "brand.dart"
 WRANGLER_TARGET = ROOT / "worker" / "wrangler.toml"
+CONSUMERS_WRANGLER = ROOT / "consumers" / "wrangler.toml"
 
 REQUIRED = ["name", "nameUpper", "nameCompact", "slug", "nameHindi", "slogan",
             "domain", "hosts", "emails", "emailFromName", "playPackageId"]
@@ -183,6 +184,18 @@ def sync_wrangler(text: str, b: dict) -> str:
     return prod + rest
 
 
+def sync_consumers_wrangler(text: str, b: dict) -> str:
+    """[SAATHUM-BRAND-CENTRAL-GUARD-1] consumers/wrangler.toml production block only:
+    EMAIL_FROM_DEFAULT = "<emailFromName> Support <noreply mailbox>". Staging untouched."""
+    m = re.search(r"^\[env\.", text, re.M)
+    cut = m.start() if m else len(text)
+    prod, rest = text[:cut], text[cut:]
+    value = f'{b["emailFromName"]} Support <{b["emails"]["noreply"]}>'
+    prod = re.sub(r'^(EMAIL_FROM_DEFAULT\s*=\s*")[^"]*(")',
+                  lambda mm: mm.group(1) + value + mm.group(2), prod, flags=re.M)
+    return prod + rest
+
+
 def main() -> int:
     check = "--check" in sys.argv[1:]
     b = load()
@@ -190,6 +203,8 @@ def main() -> int:
     outputs[DART_TARGET] = render_dart(b)
     if WRANGLER_TARGET.exists():
         outputs[WRANGLER_TARGET] = sync_wrangler(WRANGLER_TARGET.read_text(encoding="utf-8"), b)
+    if CONSUMERS_WRANGLER.exists():
+        outputs[CONSUMERS_WRANGLER] = sync_consumers_wrangler(CONSUMERS_WRANGLER.read_text(encoding="utf-8"), b)
     stale = []
     for path, text in outputs.items():
         current = path.read_text(encoding="utf-8") if path.exists() else None

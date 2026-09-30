@@ -8014,5 +8014,69 @@
         "note": "latency_ms median drops versus SAATHUM-PREETI-1 (was ~9.5s to first word)."
       }
     ]
+  },
+  "SAATHUM-BRAND-CENTRAL-WORKER-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-WORKER-1 2026-09-30] Worker + consumers read customer-visible brand name, domain, hosts and mailboxes from BRAND (worker/src/lib/brand.ts); gen_brand.py syncs worker wrangler prod vars. Output byte-identical today. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-WORKER-2": {
+    "description": "[SAATHUM-BRAND-CENTRAL-WORKER-2 2026-09-30] Worker tests derive brand expectations from BRAND so a rename does not break CI. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-WEB-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-WEB-1 2026-09-30] Website (Astro) reads brand from BRAND; built HTML identical to before apart from whitespace in two pages. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-WEB-2": {
+    "description": "[SAATHUM-BRAND-CENTRAL-WEB-2 2026-09-30] Web build check scripts derive brand from Specs/brand.json via web/scripts/brand.mjs. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-WEB-3": {
+    "description": "[SAATHUM-BRAND-CENTRAL-WEB-3 2026-09-30] Help markdown uses {{brand.*}} tokens (remarkBrand + fillBrandTokens), contact script reads data-support-email, web/public files use %BRAND_*% tokens substituted postbuild. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-I18N-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-I18N-1 2026-09-30] i18n source catalogs use {brand}/{brandDomain}/{brandSupportEmail}/{brandCompactUpper} tokens filled from BRAND/Brand in web t() and Flutter UiLocaleController. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-APP-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-APP-1 2026-09-30] Flutter app reads hosts, Play package id and 'Saathum number' wording from Brand (app/lib/core/brand.dart). Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
+  },
+  "SAATHUM-BRAND-CENTRAL-GUARD-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-GUARD-1 2026-09-30] scripts/check_brand_literals.py (baselined) fails CI on new hand-typed brand names/domains; gen_brand.py also syncs consumers EMAIL_FROM_DEFAULT. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "Refactor with byte-identical customer-visible output; nothing new to observe."
   }
 }

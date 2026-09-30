@@ -125,6 +125,8 @@ jobs:
         run: python3 tool/check_ship_readiness.py --check all
       - name: Brand mirrors match Specs/brand.json -- run locally with `python3 scripts/gen_brand.py --check`
         run: python3 scripts/gen_brand.py --check
+      - name: No new hand-typed brand name/domain -- run locally with `python3 scripts/check_brand_literals.py --list`
+        run: python3 scripts/check_brand_literals.py
 
   # [AVAILABILITY-1] Compile the same Astro/React client before production deploy.
   availability-web:

@@ -43,17 +43,17 @@ Never hand-edit a mirror. `typecheck.yml` runs `gen_brand.py --check` on every P
 ## Rollout
 
 1. ✅ **[SAATHUM-BRAND-CENTRAL-1]** brand.json + generator + mirrors + CI check. No behaviour change.
-2. **[SAATHUM-BRAND-CENTRAL-WORKER-1]** worker + consumers: URLs, emails, WhatsApp text → BRAND.
+2. ✅ **[SAATHUM-BRAND-CENTRAL-WORKER-1/-2]** worker + consumers: URLs, emails, WhatsApp text → BRAND.
    wrangler vars (`WEB_BASE_URL`, `BLOSSOM_BASE_URL`, `CLERK_*`, `WALLET_RETURN_URL`)
    generated from brand.json too, so wrangler.toml is not a second place to edit.
-3. **[SAATHUM-BRAND-CENTRAL-WEB-1]** website: layouts, header/footer, SEO, `org.ts`, `config.ts`,
+3. ✅ **[SAATHUM-BRAND-CENTRAL-WEB-1/-2/-3]** website: layouts, header/footer, SEO, `org.ts`, `config.ts`,
    legal pages, `astro.config.mjs site:` → BRAND.
-4. **[SAATHUM-BRAND-CENTRAL-I18N-1]** i18n: literal name → `{brand}`.
-5. **[SAATHUM-BRAND-CENTRAL-APP-1]** Flutter: `config.dart` hosts + visible strings → `Brand`.
-6. **[SAATHUM-BRAND-CENTRAL-GUARD-1]** CI guard `scripts/check_brand_literals.py`: fails on a
+4. ✅ **[SAATHUM-BRAND-CENTRAL-I18N-1]** i18n: literal name → `{brand}`.
+5. ✅ **[SAATHUM-BRAND-CENTRAL-APP-1]** Flutter: `config.dart` hosts + visible strings → `Brand`.
+6. ✅ **[SAATHUM-BRAND-CENTRAL-GUARD-1]** CI guard `scripts/check_brand_literals.py`: fails on a
    literal `Saa Thum` / `saathum.com` / `@saathum.com` outside brand.json, mirrors,
    migrations and docs. Baselined like the design guard; debt only shrinks.
-7. Test: preview build with `name: "Test Brand"`, click through site, emails, app.
+7. ✅ Test (2026-09-30): preview build with `name: "Test Brand"`, click through site, emails, app.
 
 Steps 2–5 are independent (parallel agents, one worktree each); 6 after they land.
 
@@ -68,3 +68,23 @@ Steps 2–5 are independent (parallel agents, one worktree each); 6 after they l
 7. Play Store listing name + website link.
 8. Logo artwork (name is drawn inside images).
 9. Re-read legal pages.
+
+## Status 2026-09-30 — all steps done
+
+- Dummy rename ("Test Brand" / testbrand.example) verified: worker + consumers bundles contain zero old-brand
+  strings; the website build + every check passes and dist has zero old-brand text outside code comments.
+- Where the brand now comes from: TS `BRAND` (web/worker/consumers), Dart `Brand`, i18n tokens `{brand}`
+  (= nameCompact) `{brandCompactUpper}` `{brandDomain}` `{brandSupportEmail}`, help markdown `{{brand.name}}`
+  etc. (remarkBrand + fillBrandTokens), web/public `%BRAND_*%` (postbuild brandify-public.mjs), web check
+  scripts `web/scripts/brand.mjs`, wrangler vars synced by gen_brand.py (worker prod vars + api route,
+  consumers EMAIL_FROM_DEFAULT).
+- Guard: `scripts/check_brand_literals.py` + `tool/brand_literals_baseline.json` (leftover comments/ids).
+
+## Rename-day procedure (code side)
+
+1. Edit `Specs/brand.json`; run `python3 scripts/gen_brand.py`; commit.
+2. Deploy worker, consumers, website; ship the app.
+3. Then the external checklist above (DNS, Clerk, email, 301s, Search Console, gateway, Play, logo).
+Notes: Astro's content cache (`web/node_modules/.astro/data-store.json`) can serve stale help pages
+locally — delete it before a local build (CI starts clean). Help-page `data-i18n` hash keys change with the
+name. Preeti keeps her own admin brand override (`brand_settings` in D1) — set it to match, or clear it.
