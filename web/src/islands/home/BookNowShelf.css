@@ -136,3 +136,12 @@
 .folk-site .bn-section a.bn-ib--wa { color: #fff; }
 .folk-site .bn-section a.bn-ib--bell { color: #5a2d12; }
 .folk-site .bn-section a.bn-more-btn { color: #3a1d0e; }
+
+/* [SAATHUM-FREEVID-CARD-1 2026-10-01] Free video card: hovering the photo shows a play
+   button + "Watch for free" (always visible on touch screens, which have no hover). */
+.bn-watch-hover { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: #140a0666; opacity: 0; transition: opacity .18s ease; pointer-events: none; }
+.bn-card:hover .bn-watch-hover, .bn-art--watch:focus-visible .bn-watch-hover { opacity: 1; }
+.bn-watch-hover-btn { display: inline-flex; align-items: center; gap: 10px; padding: 12px 20px; border-radius: 999px; background: #d7261e; color: #fff; font-size: 16px; font-weight: 900; letter-spacing: .04em; box-shadow: 0 4px 14px #0007; }
+.bn-watch-hover-btn svg { width: 22px; height: 22px; }
+@media (hover: none) { .bn-watch-hover { opacity: 1; background: transparent; align-items: center; } }
+@media (prefers-reduced-motion: reduce) { .bn-watch-hover { transition: none; } }

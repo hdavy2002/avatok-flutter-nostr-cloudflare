@@ -55,15 +55,19 @@ export async function hydrateFreeWatch(env: Env, rows: any[]): Promise<void> {
   const ids = rows.map((r) => String(r?.id ?? "")).filter(Boolean);
   if (!ids.length) return;
   const free = new Set<string>();
+  const withVideo = new Set<string>(); // [SAATHUM-FREEVID-CARD-1] free AND a video saved = watchable now
   await withNewColumns(env, "hydrateFreeWatch",
     async () => {
       const ph = ids.map((_, i) => `?${i + 1}`).join(",");
-      const rs = await env.DB_META.prepare(`SELECT id FROM listings WHERE free_watch=1 AND id IN (${ph})`).bind(...ids).all<{ id: string }>();
-      for (const r of rs.results ?? []) free.add(String(r.id));
+      const rs = await env.DB_META.prepare(
+        `SELECT l.id, EXISTS(SELECT 1 FROM event_videos v WHERE v.listing_id=l.id AND v.youtube_video_id<>'') AS has_video
+           FROM listings l WHERE l.free_watch=1 AND l.id IN (${ph})`,
+      ).bind(...ids).all<{ id: string; has_video: number }>();
+      for (const r of rs.results ?? []) { free.add(String(r.id)); if (Number(r.has_video) === 1) withVideo.add(String(r.id)); }
     },
     async () => undefined,
   );
-  for (const r of rows) if (r) r.free_watch = free.has(String(r.id)) ? 1 : 0;
+  for (const r of rows) if (r) { r.free_watch = free.has(String(r.id)) ? 1 : 0; r.free_video = withVideo.has(String(r.id)) ? 1 : 0; }
 }
 
 /** The crop saved on an event's video, or null (also null when the columns are not migrated yet). */

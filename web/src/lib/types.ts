@@ -154,6 +154,8 @@ export interface Card {
   /** [SAATHUM-FREEVID-WEB-1] Free event: anyone signed in can watch its YouTube video.
    *  Optional — absent (an older worker) means paid. */
   free_watch?: boolean | 0 | 1;
+  /** [SAATHUM-FREEVID-CARD-1] Free event whose video is saved — watchable right now. */
+  free_video?: boolean | 0 | 1;
   /** [LIST-CONTENT-2] Cap on units-per-booking a single buyer may take at once. */
   max_per_booking?: number;
   /** [LIST-TRUST-1] Creator's typical reply latency in minutes, backs the JALDI

@@ -12,6 +12,7 @@
 //    ../../lib/eventTypes.ts — never hardcode "havan"/"puja" text here.
 //  - Telemetry is the caller's: pass `onAction` (homepage → home_booknow_click,
 //    marketplace → marketplace_card_click).
+import { FREE_WATCH_PARAM } from '../../lib/authRedirect'; // [SAATHUM-FREEVID-CARD-1]
 import { useState, type MouseEvent } from 'react';
 import type { Card } from '../../lib/types';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
@@ -50,6 +51,8 @@ export interface Item {
   price: number | null;
   /** [SAATHUM-FREEVID-WEB-1] Free event: anyone signed in can watch — no booking, no price. */
   freeWatch?: boolean;
+  /** [SAATHUM-FREEVID-CARD-1] Free AND its video is saved: watchable now (anytime). */
+  freeNow?: boolean;
   prasad: boolean;
   /** [SAATHUM-CHECKOUT §Owner decisions 1] renamed from "7-day replay". */
   videoDownload: boolean;
@@ -120,7 +123,10 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
   const liveNow = state === 'live' || c.live;
   // [SAATHUM-LIVE-FAST-1 2026-09-29] A card whose YouTube stream is live stays in the
   // feed after its start time — that is exactly when people should see and book it.
-  if (!liveNow && !card.is_live_stream && (c.startsAt == null || c.startsAt <= now)) return null;
+  // [SAATHUM-FREEVID-CARD-1] A free event with its video saved is watchable anytime, so it
+  // also stays after its start time (until it ends).
+  const freeNowEarly = Boolean(card.free_watch) && Boolean(card.free_video);
+  if (!liveNow && !card.is_live_stream && !freeNowEarly && (c.startsAt == null || c.startsAt <= now)) return null;
   const attrsEarly = (card.attrs ?? null) as Record<string, unknown> | null;
   // [SAATHUM-EVENT-FIELDS-1] The admin links the article explicitly; title matching is the fallback.
   const linkedSlug = typeof attrsEarly?.guide_slug === 'string' ? (attrsEarly.guide_slug as string) : '';
@@ -134,7 +140,13 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
   // [SAATHUM-FREEVID-WEB-1] A free event has no checkout (the server refuses one):
   // its "Watch free" button opens the event page, where the sign-in + player live.
   const freeWatch = Boolean(card.free_watch);
-  const bookHref = freeWatch ? href : href + '/checkout';
+  // [SAATHUM-FREEVID-CARD-1] Owner: clicking a free video card signs the visitor in with
+  // email and brings him straight back to the event page, where the player starts. The
+  // sign-in page bounces an already-signed-in visitor straight on, so one link serves both
+  // (and it is the same on the server-rendered card and in the browser).
+  const freeNow = freeWatch && Boolean(card.free_video);
+  const watchHref = `/sign-in?redirect_url=${encodeURIComponent(`${href}?${FREE_WATCH_PARAM}=1`)}`;
+  const bookHref = freeNow ? watchHref : freeWatch ? href : href + '/checkout';
   const rawPoster = c.poster ?? c.aiPoster?.url ?? null;
   const { image, srcSet } = rawPoster
     ? listingImage(rawPoster)
@@ -170,6 +182,7 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
     booked: sp.booked,
     price: freeWatch ? 0 : c.price,
     freeWatch,
+    freeNow,
     // Saa Thum couriers prasad (incl. international) by default; a listing can opt out via attrs.
     prasad: attrBool(attrs, ['prasad_courier', 'prasad_delivery', 'prasad'], true),
     // [SAATHUM-CHECKOUT §Data] video_download replaces replay; either legacy
@@ -325,12 +338,13 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
     const sel = typeof window !== 'undefined' ? window.getSelection() : null;
     if (sel && !sel.isCollapsed && sel.toString().trim()) return;
     track('card');
-    if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(it.href, '_blank', 'noopener');
-    else window.location.assign(it.href);
+    const dest = it.freeNow ? it.bookHref : it.href; // [SAATHUM-FREEVID-CARD-1]
+    if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(dest, '_blank', 'noopener');
+    else window.location.assign(dest);
   };
   return (
     <article className="bn-card bn-card--click" data-listing-id={it.id} onClick={openCard}>
-      <a className="bn-art" href={it.href} tabIndex={-1} aria-hidden="true" onClick={() => track('art')}>
+      <a className={it.freeNow ? 'bn-art bn-art--watch' : 'bn-art'} href={it.freeNow ? it.bookHref : it.href} tabIndex={-1} aria-hidden="true" onClick={() => track(it.freeNow ? 'art_watch_free' : 'art')}>
         {it.image
           ? <img src={it.image} srcSet={it.imageSrcSet ?? undefined} sizes="(min-width: 1400px) 25vw, (min-width: 641px) 46vw, 92vw" alt="" loading="lazy" decoding="async" />
           : <span className="bn-art-empty" />}
@@ -344,6 +358,8 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
             {it.isLiveStream && <span className="bn-pill bn-pill--live"><i />LIVE</span>}
             {it.visibility === 'private'
               ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
+              : it.freeNow && !it.isLiveStream
+                ? <span className="bn-pill bn-pill--live"><i />Free · watch now</span>
               : it.mode === 'live'
                 ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Happening now' : 'Open to all'}</span>
                 : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
@@ -354,12 +370,16 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           {/* [SAATHUM-LIVE-CARD-1 2026-09-29] Owner: a card whose YouTube stream is
               live must SAY so — the countdown gives way to a live-streaming banner. */}
           {it.isLiveStream && <span className="bn-cd-label bn-cd-label--stream"><i />Live streaming now</span>}
-          {!it.isLiveStream && !it.liveNow && it.startsAt != null && <>
+          {/* [SAATHUM-FREEVID-CARD-1] A free video is watchable now: say so instead of a countdown. */}
+          {!it.isLiveStream && it.freeNow && <span className="bn-cd-label bn-cd-label--stream"><i />Watch free now</span>}
+          {!it.isLiveStream && !it.freeNow && !it.liveNow && it.startsAt != null && <>
             <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
           </>}
           {!it.isLiveStream && it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now</span>}
         </span>
+        {/* [SAATHUM-FREEVID-CARD-1] Hover: big play button + "Watch for free". */}
+        {it.freeNow && <span className="bn-watch-hover"><span className="bn-watch-hover-btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>Watch for free</span></span>}
       </a>
       <div className="bn-body">
         <h3 className="bn-title"><a href={it.href} onClick={() => track('title')}>{it.title}</a></h3>
@@ -407,7 +427,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book')}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} title={it.freeNow ? 'Watch for free' : undefined} onClick={() => track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book')}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">

@@ -8286,5 +8286,21 @@
         "note": "A free video plays before its scheduled start."
       }
     ]
+  },
+  "SAATHUM-FREEVID-CARD-1": {
+    "description": "[SAATHUM-FREEVID-CARD-1 2026-10-01] Free video cards say 'Watch free now', hover shows 'Watch for free', click goes to email sign-in then back to the playing event page.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "property": "free",
+        "equals": true,
+        "min_events": 1,
+        "note": "A signed-out visitor clicks a free card, signs in, and the video plays."
+      }
+    ]
   }
 }
