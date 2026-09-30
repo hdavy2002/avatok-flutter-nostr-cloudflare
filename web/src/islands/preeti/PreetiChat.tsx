@@ -26,6 +26,7 @@ function hasClerkSessionHint(): boolean {
   }
 }
 import { ApiError } from '../../lib/apiClient';
+import { cfImage } from '../../lib/config';
 import { capture, captureException } from '../../lib/analytics';
 import { apiMessage, getPreetiConfig, identifyPreeti, openPreetiSession, streamPreetiChat } from '../../lib/preetiApi';
 import type { PageCtx, PageKind, PreetiCard, PreetiPublicConfig } from '../../lib/preetiTypes';
@@ -84,7 +85,11 @@ function Avatar({ cfg, size }: { cfg: PreetiPublicConfig; size: number }) {
   return (
     <span className="pt-avatar" style={{ width: size, height: size }}>
       {cfg.avatar_url && !bad ? (
-        <img src={cfg.avatar_url} alt="" width={size} height={size} onError={() => setBad(true)} decoding="async" />
+        // [WEB-PERF-2 2026-09-30] The admin-uploaded avatar is the raw upload
+        // (a 1.7 MB PNG). Served as-is it held the page's `load` event back
+        // ~15 s on mobile data, and with it every "load later" task. Ask the
+        // image service for a small AVIF at 2x the drawn size (~7 KB).
+        <img src={cfImage(cfg.avatar_url, { width: size * 2, quality: 70 })} alt="" width={size} height={size} onError={() => setBad(true)} decoding="async" />
       ) : (
         <span className="pt-avatar-initial" aria-hidden="true">{initial}</span>
       )}
