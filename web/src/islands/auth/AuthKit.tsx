@@ -19,6 +19,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { markReady } from '../../lib/performance';
+import { BRAND } from '../../lib/brand';
 
 export type FieldErrors = Record<string, string | undefined>;
 
@@ -93,7 +94,7 @@ export function Wordmark({ href = '/' }: { href?: string }) {
   const {t:uiT}=useUiTranslation("web-auth");
 
   return (
-    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d","Saa Thum home")}>
+    <a className="auth-wordmark" href={href} aria-label={uiT("web-auth.394186beed5b531d",`${BRAND.name} home`)}>
       <span className="wm-ava">ava</span>
       <span className="wm-tok">TOK</span>
     </a>

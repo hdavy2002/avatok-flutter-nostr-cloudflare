@@ -12,10 +12,11 @@
 // automatically expands past 10,000 listings/creators without a code change.
 import type { APIRoute } from 'astro';
 import { API_BASE } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 export const prerender = false;
 
-const SITE = 'https://saathum.com';
+const SITE = BRAND.webOrigin;
 
 const PAGE_SIZE = 10_000;
 

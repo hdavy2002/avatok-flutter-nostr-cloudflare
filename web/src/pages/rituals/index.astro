@@ -13,6 +13,7 @@ import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 import { fetchPricing, rupees } from '../../lib/pricing';
 import PreetiMount from '../../components/PreetiMount.astro';
+import { BRAND, brandUrl } from '../../lib/brand';
 // [PRICING-1] Build-time price; lib/pricingClient.ts refreshes it live.
 const pricingNow = await fetchPricing();
 const havanFrom = pricingNow.havan_from ? rupees(pricingNow.havan_from) : '';
@@ -20,7 +21,7 @@ const havanArt = ritualBySlug('ganapati-havan')!;
 const gangaArt = ritualBySlug('ganga-puja')!;
 const havanCount = rituals.filter(r => r.type === 'havan').length;
 const pujaCount = rituals.filter(r => r.type === 'puja').length;
-const pageTitle = 'The Puja & Havan Guide — Meaning, Benefits & How to Take Part · Saa Thum';
+const pageTitle = `The Puja & Havan Guide — Meaning, Benefits & How to Take Part · ${BRAND.name}`;
 const pageDescription = `Explore ${havanCount} havans and ${pujaCount} pujas: the deity, the blessings devotees seek, who each ritual is for, the best time, and how to take part from anywhere with prasad sent to your door.`;
 const content: PublicContent = {
   kind: 'page',
@@ -31,7 +32,7 @@ const content: PublicContent = {
   visibility: 'public',
   image: { url: havanArt.image, alt: havanArt.imageAlt, revision: 'ritual-guide-v1' },
 };
-const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':'https://saathum.com/rituals/#collection', url:'https://saathum.com/rituals/', name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:'https://saathum.com'+havanArt.image, isPartOf:{'@id':'https://saathum.com/#website'}, mainEntity:{'@type':'ItemList', numberOfItems:rituals.length, itemListElement:rituals.map((ritual,index)=>({'@type':'ListItem',position:index+1,url:'https://saathum.com'+ritual.href,name:ritual.title}))} };
+const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':brandUrl('/rituals/#collection'), url:brandUrl('/rituals/'), name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:BRAND.webOrigin+havanArt.image, isPartOf:{'@id':brandUrl('/#website')}, mainEntity:{'@type':'ItemList', numberOfItems:rituals.length, itemListElement:rituals.map((ritual,index)=>({'@type':'ListItem',position:index+1,url:BRAND.webOrigin+ritual.href,name:ritual.title}))} };
 ---
 <Base content={content}>
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(collection)} />
@@ -50,7 +51,7 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
         <div class="idea-stamp">Joy. Peace.<br />Prosperity.</div>
       </div>
     </section>
-    <section class="idea-shell idea-intro" aria-label="About this guide"><div style="grid-column:1/-1"><h2>A havan for every hope</h2><p>For thousands of years, families have turned to havans and pujas to begin something new, to give thanks, to pray for someone they love, or simply to invite peace into the home. This guide explains each ritual Saa Thum performs — who the deity is and why, the story behind it, the blessings devotees traditionally seek, who it suits, and the most auspicious time. Every ritual is performed by the experienced pujari of a peaceful Himalayan temple, and filmed for you by our crew. We work only with positive temples, and every ritual we perform is benefic and joyful. Blessings described are those sought in tradition; we never promise outcomes.</p></div></section>
+    <section class="idea-shell idea-intro" aria-label="About this guide"><div style="grid-column:1/-1"><h2>A havan for every hope</h2><p>For thousands of years, families have turned to havans and pujas to begin something new, to give thanks, to pray for someone they love, or simply to invite peace into the home. This guide explains each ritual {BRAND.name} performs — who the deity is and why, the story behind it, the blessings devotees traditionally seek, who it suits, and the most auspicious time. Every ritual is performed by the experienced pujari of a peaceful Himalayan temple, and filmed for you by our crew. We work only with positive temples, and every ritual we perform is benefic and joyful. Blessings described are those sought in tradition; we never promise outcomes.</p></div></section>
     <TruckBorder kind="lotus" />
     <section class="idea-shell idea-intro" aria-label="Havan, puja and joining together">
       <div><span class="idea-format live">Havan</span><p>A fire ritual, open to everyone. Offerings of ghee, grains and herbs go into one sacred fire with each mantra, on behalf of devotees everywhere. Open havans start from <span data-saathum-price="havan" data-saathum-type="havan">{havanFrom}</span>.</p></div>

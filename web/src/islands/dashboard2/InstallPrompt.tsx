@@ -15,6 +15,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Download, Share, SquarePlus, X } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { Button } from '../../components/ui/button';
+import { BRAND } from '../../lib/brand';
 
 const DISMISS_KEY = 'dash2_pwa_dismissed_at';
 const DISMISS_FOR_MS = 30 * 24 * 60 * 60 * 1000; // ask again after 30 days
@@ -115,7 +116,7 @@ export default function InstallPrompt() {
       {mode !== 'none' && (
         <motion.aside
           role="dialog"
-          aria-label="Add Saa Thum to your home screen"
+          aria-label={`Add ${BRAND.name} to your home screen`}
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
@@ -135,7 +136,7 @@ export default function InstallPrompt() {
             <div className="flex items-start gap-3 pr-8">
               <img src="/icons/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl shadow-[var(--dash-shadow,none)]" />
               <div className="min-w-0">
-                <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Add Saa Thum to your home screen</h2>
+                <h2 className="font-dash text-[15.5px] font-bold leading-snug text-grand-teal">Add {BRAND.name} to your home screen</h2>
                 <p className="mt-1 text-[13px] font-semibold text-muted-foreground">Open your pujas in one tap, full screen, like an app.</p>
               </div>
             </div>

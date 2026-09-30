@@ -19,6 +19,7 @@ import DashToaster from '../islands/dashboard2/DashToaster.tsx';
 import type { AdminKey } from '../islands/admin2/nav';
 import { publicImage } from '../lib/config';
 import '../styles/saathum-tokens.css';
+import { BRAND } from '../lib/brand';
 
 export interface Props {
   /** Page title (tab) and default heading. */
@@ -37,7 +38,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' });
 ---
 
-<Base title={`${title} · Saa Thum Admin`} chrome={false} noindex={true} indiaLandingLanguage={false}>
+<Base title={`${title} · ${BRAND.name} Admin`} chrome={false} noindex={true} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="hsl(42, 100%, 95%)" />
@@ -84,7 +85,7 @@ const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fi
             <img src="/diya-logo.png" alt="" width="56" height="56" class="mx-auto h-14 w-14 object-contain" />
             <h2 class="mt-4 font-dash text-[22px] font-bold text-grand-teal">You don't have admin access</h2>
             <p class="mt-2 text-[15px] font-semibold leading-relaxed text-muted-foreground">
-              This area is for the Saa Thum team. If you should have access, ask the owner to add your account.
+              This area is for the {BRAND.name} team. If you should have access, ask the owner to add your account.
             </p>
             <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href="/dashboard" class="inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 font-dashbody text-sm font-bold text-primary-foreground no-underline shadow-sm hover:bg-primary/90">Go to my dashboard</a>

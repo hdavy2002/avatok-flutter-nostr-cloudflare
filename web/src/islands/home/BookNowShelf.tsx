@@ -25,6 +25,7 @@ import type { EventType } from '../../lib/eventTypes';
 // [MKT-V2-1] The card itself lives in BookCard.tsx, shared with /marketplace.
 import { BookCard, norm, toItem, type GuideLink, type Item } from './BookCard';
 import './BookNowShelf.css';
+import { BRAND } from '../../lib/brand';
 
 export type { GuideLink } from './BookCard';
 
@@ -73,7 +74,7 @@ export default function BookNowShelf({ guides, samples, exploreHref = '/marketpl
   const [items, setItems] = useState<Item[]>([]);
   const [sample, setSample] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://saathum.com';
+  const origin = typeof window !== 'undefined' ? window.location.origin : BRAND.webOrigin;
 
   useEffect(() => {
     const ctrl = new AbortController();

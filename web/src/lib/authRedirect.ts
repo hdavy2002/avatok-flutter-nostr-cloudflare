@@ -7,6 +7,7 @@
 // Only same-origin targets are honoured; anything else falls back to
 // /dashboard, so this can never be used as an open redirect.
 
+import { BRAND } from './brand';
 export const DEFAULT_LANDING = '/dashboard';
 
 /** Pages that must never be a post-login target (loops / dead ends). */
@@ -18,7 +19,7 @@ export function safeSameOriginPath(raw: string | null | undefined, origin?: stri
   const value = raw.trim();
   if (!value) return null;
   try {
-    const base = origin ?? (typeof location !== 'undefined' ? location.origin : 'https://saathum.com');
+    const base = origin ?? (typeof location !== 'undefined' ? location.origin : BRAND.webOrigin);
     // Reject protocol-relative and backslash tricks before URL parsing normalises them.
     if (value.startsWith('//') || value.startsWith('/\\') || value.startsWith('\\')) return null;
     const u = new URL(value, base);

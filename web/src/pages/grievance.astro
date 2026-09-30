@@ -20,6 +20,7 @@
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 const toc = [
   { id: 'commitment', label: 'Our commitment' },
@@ -38,7 +39,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   titleHtml="Grievance <em>Redressal</em>"
   eyebrow="Legal"
   lead="If you have a concern, complaint or grievance about our services, we are here to help. Here is who to contact, how to escalate, and how quickly we respond."
-  description="Saa Thum's Grievance Redressal Mechanism — contact Customer Support first, escalate to our Nodal Officer, with acknowledgement within 48 hours and resolution within 7–10 working days."
+  description={`${BRAND.name}'s Grievance Redressal Mechanism — contact Customer Support first, escalate to our Nodal Officer, with acknowledgement within 48 hours and resolution within 7–10 working days.`}
   image="/og/terms.png"
   updated="2026-09-29"
   helpHref="/help/account-and-safety/report-a-problem"
@@ -46,13 +47,13 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   toc={toc}
   railCard={{
     title: 'Start with support',
-    html: 'Most concerns are solved at Level 1. Email support (@) saathum.com and we reply within 48 hours. <a href="/contact">Contact form</a>',
+    html: `Most concerns are solved at Level 1. Email support (@) ${BRAND.domain} and we reply within 48 hours. <a href="/contact">Contact form</a>`,
     image: { src: '/assets/saathum-how-it-works/link.webp', width: 384, height: 640 },
   }}
 >
   <h2 id="commitment"><span class="lg-n">1.</span>Our commitment</h2>
   <p>
-    At Saa Thum, we are committed to providing a seamless and trustworthy experience. If you have
+    At {BRAND.name}, we are committed to providing a seamless and trustworthy experience. If you have
     any concerns, complaints or grievances related to our services, we are here to assist you. You
     may reach out to our Grievance Redressal Officers through the escalation levels below.
   </p>
@@ -71,12 +72,12 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
         <tr>
           <td><strong>Level 1 (L1)</strong></td>
           <td>Customer Support</td>
-          <td>support (@) saathum.com</td>
+          <td>support (@) {BRAND.domain}</td>
         </tr>
         <tr>
           <td><strong>Level 2 (L2)</strong></td>
           <td>Depika Singh, Nodal Officer</td>
-          <td>grievance (@) saathum.com</td>
+          <td>grievance (@) {BRAND.domain}</td>
         </tr>
       </tbody>
     </table>
@@ -87,7 +88,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     For general queries, order-related concerns, refunds, payments, delivery issues or service
     complaints, please contact:
   </p>
-  <p><strong>Email:</strong> support (@) saathum.com</p>
+  <p><strong>Email:</strong> support (@) {BRAND.domain}</p>
   <p>
     Our support team will acknowledge your complaint within <strong>48 hours</strong> and aim to
     resolve it at the earliest. You can also reach us through our <a href="/contact">contact form</a>.
@@ -101,7 +102,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   <ul>
     <li><strong>Name:</strong> Depika Singh</li>
     <li><strong>Designation:</strong> Nodal Officer</li>
-    <li><strong>Email:</strong> grievance (@) saathum.com</li>
+    <li><strong>Email:</strong> grievance (@) {BRAND.domain}</li>
   </ul>
   <p>
     The Nodal Officer will review the matter and ensure an appropriate resolution within a
@@ -134,6 +135,6 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   <h2 id="thanks"><span class="lg-n">7.</span>Thank you</h2>
   <p>
     We value your trust and are committed to resolving your concerns fairly, transparently and
-    promptly. Thank you for being a part of Saa Thum.
+    promptly. Thank you for being a part of {BRAND.name}.
   </p>
 </LegalFolk>

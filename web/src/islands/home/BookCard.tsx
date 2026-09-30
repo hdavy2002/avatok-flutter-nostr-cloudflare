@@ -20,6 +20,7 @@ import { whatsappShareHref } from '../../lib/shareText';
 import { cfImage, publicImage } from '../../lib/config';
 import { copyFor, eventTypeOf, socialProof, collectiveSankalpLabels, takesPersonalSankalp, type EventType, type EventTypeCopy } from '../../lib/eventTypes';
 import './BookNowShelf.css';
+import { BRAND } from '../../lib/brand';
 
 /** A ritual article: title, href and a RAW /assets image path (the card calls publicImage). */
 export interface GuideLink { title: string; href: string; image: string }
@@ -194,7 +195,7 @@ function gcalHref(it: Item, origin: string): string {
   const f = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const q = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `${it.title} — Saa Thum`,
+    text: `${it.title} — ${BRAND.name}`,
     dates: `${f(start)}/${f(end)}`,
     details: `Details: ${origin}${it.href}`,
   });

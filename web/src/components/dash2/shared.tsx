@@ -13,6 +13,7 @@ import { captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import './dash2.css';
+import { BRAND } from '../../lib/brand';
 
 // ─────────────────────────── wire types ───────────────────────────
 export interface Listing {
@@ -156,7 +157,7 @@ export function errorMessage(e: unknown): string {
     if (e.status >= 500) return 'Our server had a problem. Please try again.';
     return 'Something went wrong. Please try again.';
   }
-  return 'Could not reach Saa Thum. Check your connection and try again.';
+  return `Could not reach ${BRAND.name}. Check your connection and try again.`;
 }
 
 // ─────────────────────────── formatting (IST) ───────────────────────────

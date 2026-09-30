@@ -32,6 +32,7 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import { HOW_IT_WORKS_SEO } from '../lib/seo/catalog';
 import '../styles/saathum-folk.css';
 import '../styles/how-it-works.css';
+import { BRAND } from '../lib/brand';
 
 const A = '/assets/saathum-how-it-works/';
 // Die-cut stickers: every one is shown at <= 230px, so a 640px variant covers 2x.
@@ -215,7 +216,7 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
           <article class="hw-after-card">
             <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/></g></svg>
             <h3>Need a hand?</h3>
-            <p>Our <a href="/help">help centre</a> answers the common questions, or write to us at <b>support (@) saathum.com</b>. A person replies within a day.</p>
+            <p>Our <a href="/help">help centre</a> answers the common questions, or write to us at <b>support (@) {BRAND.domain}</b>. A person replies within a day.</p>
           </article>
         </div>
       </section>
@@ -242,7 +243,7 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
         </div>
       </section>
 
-      <p class="hw-note">Rituals are performed with devotion by the pujaris of the temples we work with. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+      <p class="hw-note">Rituals are performed with devotion by the pujaris of the temples we work with. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>

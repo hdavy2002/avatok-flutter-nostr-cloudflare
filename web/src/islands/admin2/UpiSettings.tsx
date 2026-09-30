@@ -18,6 +18,7 @@ import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { istDateTime, errMessage } from './adminApi';
 import { ErrorBox, ListSkeleton, adminCall } from './peopleKit';
+import { BRAND } from '../../lib/brand';
 
 type Status = {
   saved: { vpa: string | null; payee_name: string | null; updated_at: number | null; updated_by: string | null };
@@ -65,7 +66,7 @@ export default function UpiSettings() {
   useEffect(() => {
     let live = true;
     if (!previewOk) { setQr(null); return; }
-    const url = `upi://pay?${new URLSearchParams({ pa: previewVpa, pn: payee.trim() || 'Saa Thum', cu: 'INR', tn: 'Saa Thum booking' })}`;
+    const url = `upi://pay?${new URLSearchParams({ pa: previewVpa, pn: payee.trim() || BRAND.name, cu: 'INR', tn: `${BRAND.name} booking` })}`;
     QRCode.toDataURL(url, { width: 480, margin: 1, errorCorrectionLevel: 'M' })
       .then((d: string) => { if (live) setQr(d); })
       .catch((e: unknown) => captureException(e, { where: 'admin2_upi_qr' }));
@@ -119,7 +120,7 @@ export default function UpiSettings() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="upi-payee" className="text-[14px] font-bold">Name customers see in their UPI app</Label>
-              <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder="Saa Thum" className="text-[17px] font-bold" />
+              <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder={BRAND.name} className="text-[17px] font-bold" />
             </div>
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[14px] font-semibold leading-relaxed text-amber-900">
               This UPI ID must pay into the <b>same HDFC account</b> the SMS phone is watching. Payments are confirmed only when that

@@ -4,8 +4,9 @@
 export const prerender = false;
 import Admin2 from '../../../layouts/Admin2.astro';
 import Users from '../../../islands/admin2/Users.tsx';
+import { BRAND } from '../../../lib/brand';
 ---
 
-<Admin2 title="Users" active="customers" subtitle="Everyone with a Saa Thum account: what they booked, what they spent, and account actions.">
+<Admin2 title="Users" active="customers" subtitle={`Everyone with a ${BRAND.name} account: what they booked, what they spent, and account actions.`}>
   <Users client:load />
 </Admin2>

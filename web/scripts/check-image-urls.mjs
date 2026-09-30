@@ -5,7 +5,9 @@ import ts from 'typescript';
 import { configSource } from './config-source.mjs';
 const source = configSource()
   .replace("import publicImageManifest from './publicImageManifest.json';", 'const publicImageManifest = {};')
-  .replaceAll('import.meta.env.', '({}).');
+  .replaceAll('import.meta.env.', '({}).')
+  // [SAATHUM-BRAND-CENTRAL-WEB-1] config.ts imports BRAND; inline it (data: modules cannot resolve './brand').
+  .replace("import { BRAND } from './brand';", await readFile(new URL('../src/lib/brand.ts', import.meta.url), 'utf8'));
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
 const { cfImage, publicImage, publicImageSrcSet } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 assert.match(publicImage('/auth/horn-ok-please.png'), /^\/cdn-cgi\/image\//);

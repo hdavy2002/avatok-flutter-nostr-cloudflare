@@ -45,6 +45,7 @@ const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import PreetiMount from '../components/PreetiMount.astro';
+import { BRAND } from '../lib/brand';
 ---
 <Base content={HOME_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
@@ -144,7 +145,7 @@ import PreetiMount from '../components/PreetiMount.astro';
         <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 
-      <p class="grand-booking-note">Saa Thum performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+      <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>

@@ -1,3 +1,4 @@
+import { BRAND, brandUrl } from '../../lib/brand';
 export type UpiPlatform = 'android' | 'ios' | 'desktop';
 
 // iOS routes: Google Pay India docs and PayU's UPI Intent S2S contract.
@@ -14,7 +15,7 @@ export function upiPlatform(userAgent: string, touchPoints = 0): UpiPlatform {
   return 'desktop';
 }
 
-export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform, fallbackUrl = 'https://saathum.com/test/upi'): string {
+export function upiAppHref(app: UpiApp, upiUrl: string, platform: UpiPlatform, fallbackUrl = brandUrl('/test/upi')): string {
   // Keep the server's complete encoded payment query, including payee and amount.
   const query = new URL(upiUrl).search;
   if (platform === 'android') {

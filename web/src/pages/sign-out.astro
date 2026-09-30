@@ -16,13 +16,14 @@ export const prerender = false;
 
 import Base from '../layouts/Base.astro';
 import SignOutIsland from '../islands/auth/SignOutIsland.tsx';
+import { BRAND } from '../lib/brand';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
 <Base
-  title="Signing out · Saa Thum"
-  description="Signing you out of Saa Thum."
+  title={`Signing out · ${BRAND.name}`}
+  description={`Signing you out of ${BRAND.name}.`}
   chrome={false}
   noindex
 >

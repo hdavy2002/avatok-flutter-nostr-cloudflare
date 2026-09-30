@@ -31,6 +31,7 @@
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 const linkImg = publicImage('/assets/saathum-how-it-works/link.webp', { width: 320, fit: 'scale-down' });
 const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
@@ -41,10 +42,10 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
   title="Contact us"
   titleHtml="Contact <em>us</em>"
   eyebrow="Talk to a human"
-  lead="Questions, feedback, press, partnerships, or a problem to report? Your message goes straight to the Saa Thum support team."
-  description="Get in touch with Saa Thum — support, press, partnerships, or to report something that isn't right."
+  lead={`Questions, feedback, press, partnerships, or a problem to report? Your message goes straight to the ${BRAND.name} support team.`}
+  description={`Get in touch with ${BRAND.name} — support, press, partnerships, or to report something that isn't right.`}
   image="/og/contact.png"
-  metaPill="support (@) saathum.com"
+  metaPill={`support (@) ${BRAND.domain}`}
   sticker={{
     src: '/assets/saathum-legal/contact-welcome.png',
     width: 790,
@@ -56,7 +57,7 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
   <section class="lg-contact lg-wrap">
     <div class="lg-contact-inner">
       <form id="contact-form" class="lg-cform" novalidate>
-        <p class="lg-intro">You can always email us directly at support (@) saathum.com, or use the form below. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>
+        <p class="lg-intro">You can always email us directly at support (@) {BRAND.domain}, or use the form below. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>
         <label class="lg-honeypot" aria-hidden="true"><span>Company website</span><input type="text" name="company" tabindex="-1" autocomplete="off" /></label>
         <div class="lg-row">
           <label><span>Your name</span><input id="c-name" type="text" name="name" autocomplete="name" required maxlength="120" /></label>
@@ -82,11 +83,11 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFFIeuYrBZzXkZT6" data-theme="light" data-size="flexible"></div>
         <button type="submit" class="lg-btn">Send message <span aria-hidden="true">→</span></button>
         <p class="lg-cstatus" id="contact-status" role="status" aria-live="polite"></p>
-        <p class="lg-delivery-note">Every form submission is delivered through Brevo to <strong>support@saathum.com</strong>.</p>
+        <p class="lg-delivery-note">Every form submission is delivered through Brevo to <strong>{BRAND.emails.support}</strong>.</p>
       </form>
       <aside class="lg-side">
         <div class="lg-side-card lg-side-card--red">
-          <div><span class="lg-tag">Email</span><h3>Write to us directly</h3><p><strong>support (@) saathum.com</strong></p><p>Your message goes straight to the Saa Thum support team.</p></div>
+          <div><span class="lg-tag">Email</span><h3>Write to us directly</h3><p><strong>support (@) {BRAND.domain}</strong></p><p>Your message goes straight to the {BRAND.name} support team.</p></div>
           <img src={linkImg} alt="" aria-hidden="true" width="384" height="640" loading="lazy" decoding="async" />
         </div>
         <div class="lg-side-card lg-side-card--terra">

@@ -40,6 +40,7 @@ import {
 } from '../../components/help/helpSkin';
 import '../../styles/saathum-folk.css';
 import '../../styles/help-skin.css';
+import { BRAND } from '../../lib/brand';
 
 const tree = await getHelpTree();
 const allEntries = tree.flatMap((s) => s.entries);
@@ -108,7 +109,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
       <section class="hs-hero" aria-labelledby="help-title">
         <div class="hs-hero-inner">
           <div>
-            <p class="hs-eyebrow">Saa Thum help centre</p>
+            <p class="hs-eyebrow">{BRAND.name} help centre</p>
             <h1 id="help-title">Namaste. What can we <em>clear up</em> for you?</h1>
             <p class="hs-hero-lead">Sankalp, gotra, prasad, refunds, your video. Short answers, in plain words, written by the team that performs your puja.</p>
             <HelpSearch id="hero" />
@@ -171,7 +172,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
                 </article>
               ))}
             </div>
-            <p class="hs-faq-note">Answers describe how Saa Thum works today; anything about a ritual's benefits is what devotees traditionally seek, never a promise.</p>
+            <p class="hs-faq-note">Answers describe how {BRAND.name} works today; anything about a ritual's benefits is what devotees traditionally seek, never a promise.</p>
           </div>
         </section>
       )}
@@ -203,14 +204,14 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
             <a class="hs-btn" href="/contact">Write to the team <span aria-hidden="true">→</span></a>
           </div>
           <ul class="hs-ways" aria-label="Ways to reach us">
-            <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) saathum.com</code></span></div></li>
+            <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
             <li><Fragment set:html={markSvg(MARK_SEARCH, '')} /><div><b>Contact form</b><span>Prefer a form? Use our <a href="/contact">contact page</a>; it reaches the same team.</span></div></li>
-            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>', '')} /><div><b>Grievance Redressal</b><span>Not resolved by support? Our Nodal Officer: <code>grievance (@) saathum.com</code></span></div></li>
+            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>', '')} /><div><b>Grievance Redressal</b><span>Not resolved by support? Our Nodal Officer: <code>grievance (@) {BRAND.domain}</code></span></div></li>
           </ul>
         </div>
       </section>
 
-      <p class="grand-booking-note">Saa Thum performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+      <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>

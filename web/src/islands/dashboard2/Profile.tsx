@@ -38,6 +38,7 @@ import { DASH_LOGOUT } from './nav';
 import { WhatsAppNumberInput } from '../auth/WhatsAppNumberInput';
 import { DEFAULT_COUNTRY, findCountry, toE164 } from '../../lib/countries';
 import { currentSubscription, disablePush, enablePush, IOS_INSTALL_HINT, pushSupport } from './webPush'; // [DASH2-PUSH]
+import { BRAND } from '../../lib/brand';
 
 /* ── types ──────────────────────────────────────────────────────────────── */
 
@@ -533,7 +534,7 @@ function PhoneCard({ profile, onPhone }: { profile: Profile; onPhone: (p: Profil
   const [open, setOpen] = useState(false);
   const has = !!profile.phone?.e164_masked;
   return (
-    <ProfileCard id="phone" icon={<Phone className="h-5 w-5" />} title="WhatsApp number" description="Every Saathum account needs a verified WhatsApp number — used to sign in and for booking updates.">
+    <ProfileCard id="phone" icon={<Phone className="h-5 w-5" />} title="WhatsApp number" description={`Every ${BRAND.nameCompact} account needs a verified WhatsApp number — used to sign in and for booking updates.`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <span className="font-dash text-[18px] font-bold tracking-[0.06em] text-foreground">{has ? profile.phone.e164_masked : 'No WhatsApp number yet'}</span>

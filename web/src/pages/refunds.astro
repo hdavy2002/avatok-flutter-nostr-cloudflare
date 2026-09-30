@@ -26,6 +26,7 @@
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 const toc = [
   { id: 'price', label: 'What you see is what you pay' },
@@ -46,7 +47,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   titleHtml="Refunds &amp; <em>Cancellations</em>"
   eyebrow="Legal"
   lead="What you see is what you pay. Cancel with enough notice — 24 hours for a havan or puja, 3 days for a satsang, sermon or meditation — and we refund you in full."
-  description="How cancellations and refunds work on Saa Thum — the notice period for each event type, why it exists, and how to request a refund with your UPI transaction number."
+  description={`How cancellations and refunds work on ${BRAND.name} — the notice period for each event type, why it exists, and how to request a refund with your UPI transaction number.`}
   image="/og/refunds.png"
   updated="2026-09-30"
   helpHref="/help/billing/refunds"
@@ -61,7 +62,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
 >
   <p>
     This policy explains how cancellations and refunds work for the pujas, havans, satsangs,
-    sermons and meditation sessions you book on Saa Thum. It sits alongside our
+    sermons and meditation sessions you book on {BRAND.name}. It sits alongside our
     <a href="/terms">Terms of Service</a>.
   </p>
 
@@ -123,7 +124,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   <h2 id="request"><span class="lg-n">3.</span>How to request a refund</h2>
   <p>
     Refunds are not automatic — you need to send us a request. Email
-    support (@) saathum.com or use our
+    support (@) {BRAND.domain} or use our
     <a href="/contact">contact form</a> and include:
   </p>
   <ol>
@@ -184,7 +185,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   <h2 id="disputes"><span class="lg-n">9.</span>Wrong or duplicate payments</h2>
   <p>
     If you think you were charged by mistake or paid twice, email
-    support (@) saathum.com with the 12-digit UPI transaction
+    support (@) {BRAND.domain} with the 12-digit UPI transaction
     number for each payment. Please contact us before raising a dispute with your bank — it's
     faster, and we'll sort it out directly.
   </p>

@@ -22,6 +22,7 @@ import ChadhavaOffer from '../../islands/eventpage/ChadhavaOffer.tsx';
 import LiveOverlay from '../../islands/eventpage/LiveOverlay.tsx';
 import type { CoverMedia, Listing } from '../../lib/types';
 import './eventpage.css';
+import { BRAND } from '../../lib/brand';
 
 interface Props { listing: Listing }
 const { listing } = Astro.props;
@@ -163,7 +164,7 @@ function gcalHref(): string {
   const f = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const q = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `${listing.title} — Saa Thum`,
+    text: `${listing.title} — ${BRAND.name}`,
     dates: `${f(start)}/${f(end)}`,
     details: `Details: ${origin}${canonicalHref}`,
   });
@@ -359,7 +360,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             {guide && <a href={guide.href} style="font:800 14px Nunito, sans-serif;color:var(--ep-red)">Read the full story →</a>}
           </>
         ) : (
-          <p>{listing.description || `${listing.title}, performed at a Himalayan temple by its own pujari, with the video filmed and sent to you by Saa Thum.`}</p>
+          <p>{listing.description || `${listing.title}, performed at a Himalayan temple by its own pujari, with the video filmed and sent to you by ${BRAND.name}.`}</p>
         )}
       </div>
 
@@ -372,7 +373,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
               <div><span>🙏</span>{b}</div>
             ))}
           </div>
-          <p style="margin-top:12px;font-size:13px;color:var(--ep-sub)">Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+          <p style="margin-top:12px;font-size:13px;color:var(--ep-sub)">Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
         </div>
       )}
 

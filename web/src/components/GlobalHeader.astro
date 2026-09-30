@@ -2,6 +2,7 @@
 import { publicImage } from '../lib/config';
 import GlobalLocaleControls from './GlobalLocaleControls.astro';
 import '../styles/global-home.css';
+import { BRAND } from '../lib/brand';
 interface Props { sticky?: boolean; design?: 'original' | 'disco'; homePath?: string; }
 const { sticky = true, design = 'original', homePath = '/' } = Astro.props;
 const links = [
@@ -25,7 +26,7 @@ const links = [
 <header class:list={['avh', 'global-header', design === 'disco' && 'disco-header', sticky && 'global-header--sticky']}>
   {design === 'original' && <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>}
   <div class="global-header__bar">
-    <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href={homePath} aria-label="Saa Thum global home">{design === 'disco' ? <><span>ava</span><span>TOK</span></> : <img src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 480, fit: 'scale-down' })} alt="Saa Thum" width="168" height="57" />}</a>
+    <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href={homePath} aria-label={`${BRAND.name} global home`}>{design === 'disco' ? <><span>ava</span><span>TOK</span></> : <img src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 480, fit: 'scale-down' })} alt={BRAND.name} width="168" height="57" />}</a>
     <nav data-india-i18n-attr="aria-label:web-common.eb814be3ca3b78c0" class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
     <div class="global-header__actions">
       <GlobalLocaleControls />

@@ -68,6 +68,7 @@ import { publicImage, publicImageSrcSet } from '../lib/config';
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import '../styles/saathum-folk.css';
 import '../styles/legal-folk.css';
+import { BRAND } from '../lib/brand';
 
 const {
   title,
@@ -101,7 +102,7 @@ const content: PublicContent = {
   summary: description,
   visibility: 'public',
   modifiedAt: updated ? new Date(updated).toISOString() : undefined,
-  image: image ? { url: image, alt: `${title} — Saa Thum` } : undefined,
+  image: image ? { url: image, alt: `${title} — ${BRAND.name}` } : undefined,
 };
 
 const stickerSrc = publicImage(sticker.src, { width: 720, fit: 'scale-down' });
@@ -175,7 +176,7 @@ const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { wi
               <img src={namasteSrc} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
               <div>
                 <h2 id="ask-title">Still have a question? <span>We are a namaste away.</span></h2>
-                <p>Write to support (@) saathum.com, or read the plain-English version of every policy in the Help centre.</p>
+                <p>Write to support (@) {BRAND.domain}, or read the plain-English version of every policy in the Help centre.</p>
               </div>
               <div class="lg-ask-actions">
                 <a class="lg-btn lg-btn--paper" href="/contact">Contact us</a>

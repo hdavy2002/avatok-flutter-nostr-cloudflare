@@ -18,6 +18,7 @@ import { capture, captureException } from '../../lib/analytics';
 import { SUPPORT_EMAIL, bookingRef, payableRupees, rupees, whenLabel } from './payFormat';
 import type { Checkout } from './types';
 import type { EventType } from '../../lib/eventTypes';
+import { BRAND } from '../../lib/brand';
 
 const POLL_WAIT_MS = 3000;
 const POLL_REVIEW_MS = 20000;
@@ -191,7 +192,7 @@ export function PayStep({
           Email <a href={mailto}>{SUPPORT_EMAIL}</a><br />
           Please quote booking ID <b>{ref}</b>.
         </div>
-        <a className="sthc-btn sthc-btn--ghost" href="/">Back to Saathum</a>
+        <a className="sthc-btn sthc-btn--ghost" href="/">Back to {BRAND.nameCompact}</a>
       </div>
     );
   }

@@ -3,6 +3,7 @@ import { scheduleStateOf } from '../card';
 import { copyFor, takesPersonalSankalp } from '../eventTypes';
 import { listingPath, creatorPath } from '../urls';
 import type { ContentState, PublicContent } from './types';
+import { BRAND } from '../brand';
 
 function timestampIso(value: unknown): string | undefined {
   const number = Number(value);
@@ -147,7 +148,7 @@ export function creatorContent(creator: Creator, image?: { url: string; alt: str
     key: creator.id ?? creator.handle,
     canonicalPath: path,
     title: creator.name ? `${creator.name} (@${creator.handle})` : `@${creator.handle}`,
-    summary: creator.bio ?? `See public listings from @${creator.handle} on ${'Saa Thum'}.`,
+    summary: creator.bio ?? `See public listings from @${creator.handle} on ${BRAND.name}.`,
     visibility: discovery?.indexable === false ? 'unlisted' : 'public',
     modifiedAt: timestampIso(discovery?.updated_at),
     image,

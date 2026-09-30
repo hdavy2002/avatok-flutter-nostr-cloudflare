@@ -1,10 +1,11 @@
 import { createElement as h } from 'react';
 import type { OgRecord } from './types';
+import { BRAND } from '../../brand';
 
 const labels: Record<OgRecord['kind'], string> = {
-  home: 'SACRED RITUALS, BROUGHT HOME', page: 'SAA THUM', collection: 'EXPLORE SAA THUM',
+  home: 'SACRED RITUALS, BROUGHT HOME', page: BRAND.nameUpper, collection: `EXPLORE ${BRAND.nameUpper}`,
   article: 'RITUAL STORIES & GUIDES', help: 'HERE TO HELP', listing: 'PUJAS & HAVANS',
-  creator: 'MEET THE ORGANISER', agent: 'EXPLORE SAA THUM',
+  creator: 'MEET THE ORGANISER', agent: `EXPLORE ${BRAND.nameUpper}`,
 };
 
 /** Titles are text nodes, never HTML. Hard limits keep pathological records inside the card. */
@@ -30,7 +31,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
     padding: 40, border: '12px solid #b94427',
   } },
     h('div', { style: { display: 'flex', flexDirection: 'column', width: 600, paddingRight: 34 } },
-      h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, 'Saa Thum'),
+      h('div', { style: { display: 'flex', fontSize: 40, color: '#ab3421' } }, BRAND.name),
       h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginTop: 12 } }, 'TAKE PART FROM ANYWHERE'),
       h('div', { style: { display: 'flex', flex: 1, alignItems: 'center' } },
         h('div', { style: { display: 'flex', fontSize: size, lineHeight: 1.2, color: '#304d35', maxHeight: 300, overflow: 'hidden' } }, hook),
@@ -40,7 +41,7 @@ function adTemplate(record: OgRecord, artwork: string, ad: NonNullable<OgRecord[
           display: 'flex', alignItems: 'center', backgroundColor: '#b94427', color: '#fff8e8',
           fontSize: 30, padding: '16px 30px', borderRadius: 999,
         } }, price ? `Book · ${price}` : 'Book now'),
-        h('div', { style: { display: 'flex', marginLeft: 22, fontSize: 21, color: '#ab3421' } }, 'saathum.com'),
+        h('div', { style: { display: 'flex', marginLeft: 22, fontSize: 21, color: '#ab3421' } }, BRAND.domain),
       ),
     ),
     h('div', { style: { display: 'flex', flex: 1, backgroundColor: '#f4dbad', borderRadius: '240px 240px 18px 18px', overflow: 'hidden', border: '5px solid #d39f53' } },
@@ -59,11 +60,11 @@ export function ogTemplate(record: OgRecord, artwork: string) {
     padding: 44, border: '12px solid #b94427',
   } },
     h('div', { style: { display: 'flex', flexDirection: 'column', width: 620, paddingRight: 36 } },
-      h('div', { style: { display: 'flex', fontSize: 46, color: '#ab3421', marginBottom: 26 } }, 'Saa Thum'),
+      h('div', { style: { display: 'flex', fontSize: 46, color: '#ab3421', marginBottom: 26 } }, BRAND.name),
       h('div', { style: { display: 'flex', fontSize: 17, letterSpacing: 2, color: '#9b4b24', marginBottom: 22 } }, labels[record.kind]),
       h('div', { style: { display: 'flex', fontSize: title.length > 74 ? 40 : 49, lineHeight: 1.18, letterSpacing: -1, overflow: 'hidden', maxHeight: 245 } }, title),
       description ? h('div', { style: { display: 'flex', fontSize: 21, lineHeight: 1.4, marginTop: 20, maxHeight: 92, overflow: 'hidden', color: '#5a614d' } }, description) : null,
-      h('div', { style: { display: 'flex', marginTop: 'auto', paddingTop: 20, fontSize: 19, color: '#ab3421' } }, 'saathum.com'),
+      h('div', { style: { display: 'flex', marginTop: 'auto', paddingTop: 20, fontSize: 19, color: '#ab3421' } }, BRAND.domain),
     ),
     h('div', { style: { display: 'flex', flex: 1, marginTop: 10, marginBottom: 10, backgroundColor: '#f4dbad', borderRadius: '180px 180px 14px 14px', overflow: 'hidden', border: '4px solid #d39f53' } },
       h('img', { src: artwork, width: 444, height: 498, style: { width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' } }),

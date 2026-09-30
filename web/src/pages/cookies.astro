@@ -18,6 +18,7 @@
 //  - Emails stay plain text "support (@) saathum.com", never mailto.
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
+import { BRAND } from '../lib/brand';
 
 const toc = [
   { id: 'what', label: 'What are cookies?' },
@@ -33,8 +34,8 @@ const toc = [
   title="Cookie Policy"
   titleHtml="Cookie <em>Policy</em>"
   eyebrow="Legal"
-  lead="How Saa Thum uses cookies and similar technologies, and how to control them."
-  description="The cookies and similar technologies Saa Thum uses, what each one is for, and how to turn them off."
+  lead={`How ${BRAND.name} uses cookies and similar technologies, and how to control them.`}
+  description={`The cookies and similar technologies ${BRAND.name} uses, what each one is for, and how to turn them off.`}
   image="/og/cookies.png"
   updated="2026-08-28"
   sticker={{ src: '/assets/saathum-editorial-stickers-v2/cookies-sticker-v2.png', width: 1374, height: 1145, alt: 'A brass mithai box with sweets, a lotus and a cup — the cookies page.' }}
@@ -47,8 +48,8 @@ const toc = [
   }}
 >
   <p>
-    This Cookie Policy explains how <strong>Saa Thum</strong> uses cookies and similar technologies
-    on the Saa Thum Services. It supplements our <a href="/privacy">Privacy Policy</a>.
+    This Cookie Policy explains how <strong>{BRAND.name}</strong> uses cookies and similar technologies
+    on the {BRAND.name} Services. It supplements our <a href="/privacy">Privacy Policy</a>.
   </p>
 
   <h2 id="what"><span class="lg-n">1.</span>What are cookies?</h2>
@@ -89,6 +90,6 @@ const toc = [
 
   <h2 id="contact"><span class="lg-n">6.</span>Contact</h2>
   <p>
-    Questions about cookies? Email support (@) saathum.com or visit our <a href="/contact">contact page</a>.
+    Questions about cookies? Email support (@) {BRAND.domain} or visit our <a href="/contact">contact page</a>.
   </p>
 </LegalFolk>

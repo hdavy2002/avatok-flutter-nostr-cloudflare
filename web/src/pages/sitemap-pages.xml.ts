@@ -35,10 +35,11 @@ import { rituals } from '../lib/ritualGuides';
 // non-draft help article, appended in GET() since collection reads are async.
 import { getHelpEntries, helpUrl } from '../lib/help';
 import { isArchivedPath } from '../lib/archivedPages';
+import { BRAND } from '../lib/brand';
 
 export const prerender = true;
 
-const SITE = 'https://saathum.com';
+const SITE = BRAND.webOrigin;
 
 /** [path, changefreq, priority] */
 // [WEB-SEO-REBRAND-1 2026-09-27] Rebuilt from a scan of every page on the live

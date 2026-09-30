@@ -8,6 +8,7 @@ import { capture } from '../../lib/analytics';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { UpiSmokeController } from './upiSmokeController';
 import type { SmokeDependencies, SmokeSnapshot } from './upiSmokeController';
+import { BRAND } from '../../lib/brand';
 
 const initial: SmokeSnapshot = {current:null,intent:null,busy:false,message:'',authRequired:false,timedOut:false};
 const date = (ms: number) => new Date(ms).toLocaleString();
@@ -87,7 +88,7 @@ export function UpiSmokeCheckoutView({deps, resumeFromUrl = true}: {deps: SmokeD
     !intent.claim_submitted ? 'After paying, enter the transaction reference from your UPI app.' :
     'Reference saved. Waiting for matching bank evidence.';
   return <section className="ph-no-capture ph-mask" data-ph-no-capture style={{width:'min(100%, 560px)',background:'#fff',border:'2px solid #171717',borderRadius:24,padding:28,fontFamily:'Nunito, sans-serif'}}>
-    <p>Saa Thum internal test · administrators only</p>
+    <p>{BRAND.name} internal test · administrators only</p>
     <h1>UPI payment smoke test</h1>
     <p>₹1 internal payment test. This does not create a booking.</p>
     {message && <p role="alert">{message}</p>}

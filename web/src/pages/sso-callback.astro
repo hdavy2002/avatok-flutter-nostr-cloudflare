@@ -12,17 +12,18 @@ export const prerender = false;
 import Base from '../layouts/Base.astro';
 import SsoCallbackIsland from '../islands/auth/SsoCallbackIsland.tsx';
 import '../styles/auth.css';
+import { BRAND } from '../lib/brand';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
-<Base title="Signing you in · Saa Thum" description="Completing sign-in." chrome={false} noindex={true}>
+<Base title={`Signing you in · ${BRAND.name}`} description="Completing sign-in." chrome={false} noindex={true}>
   <div class="auth">
     <div class="auth-shell">
       <main class="auth-main">
         <div class="auth-card">
           <header class="auth-head">
-            <a data-india-i18n-attr="aria-label:web-sso-callback.394186beed5b531d" class="auth-wordmark" href="/" aria-label="Saa Thum home">
+            <a data-india-i18n-attr="aria-label:web-sso-callback.394186beed5b531d" class="auth-wordmark" href="/" aria-label={`${BRAND.name} home`}>
               <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
             </a>
           </header>

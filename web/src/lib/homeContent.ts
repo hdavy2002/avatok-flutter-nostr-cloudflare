@@ -1,4 +1,5 @@
 import type { PublicContent } from './seo/types';
+import { BRAND } from './brand';
 
 export const HOME_HERO = {
   // [WEB-REFRAME-1 2026-09-29] OWNER: reframe around Himalayan temple havans (plan option A).
@@ -7,7 +8,7 @@ export const HOME_HERO = {
   // [WEB-HERO-PHOTO-1 2026-09-29] OWNER copy.
   titleLineOne: 'Your Puja,',
   titleLineTwo: 'in the Peaceful Himalayas.',
-  lead: 'Living abroad or unable to travel? Saa Thum arranges puja and havan in your name at peaceful Himalayan temples, where people have come to pray for generations — helping you stay connected to your faith from home.',
+  lead: `Living abroad or unable to travel? ${BRAND.name} arranges puja and havan in your name at peaceful Himalayan temples, where people have come to pray for generations — helping you stay connected to your faith from home.`,
   proof: 'One sankalp for every devotee · Filmed at the temple · Prasad at your door.',
 } as const;
 
@@ -15,7 +16,7 @@ export const HOME_SEO: PublicContent = {
   kind: 'home',
   key: 'home',
   canonicalPath: '/',
-  title: 'Himalayan Temple Havans in Your Name | Saa Thum',
+  title: `Himalayan Temple Havans in Your Name | ${BRAND.name}`,
   summary: 'Living abroad or unable to travel? We arrange puja and havan in your name at peaceful Himalayan temples, so you stay connected to your faith.',
   visibility: 'public',
   image: {

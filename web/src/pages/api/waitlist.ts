@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { sendMail } from '../../lib/sendMail';
 import { ORG } from '../../lib/org';
+import { BRAND } from '../../lib/brand';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
 // edge. POST /api/waitlist adds the email to Brevo (list via BREVO_LIST_ID) and
@@ -45,7 +46,7 @@ function welcomeHtml(): string {
 async function sendWelcome(env: Record<string, string | undefined>, email: string) {
   const sender = {
     name: env.BREVO_SENDER_NAME || `${ORG.name} Support`,
-    email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com',
+    email: env.BREVO_SENDER_EMAIL || BRAND.emails.hello,
   };
   try {
     const out = await sendMail(
@@ -54,7 +55,7 @@ async function sendWelcome(env: Record<string, string | undefined>, email: strin
         subject: `You're on the ${ORG.name} waitlist 🎉`,
         html: welcomeHtml(),
         from: sender,
-        replyTo: { email: 'hello@saathum.com', name: ORG.name },
+        replyTo: { email: BRAND.emails.hello, name: ORG.name },
       },
       env,
     );

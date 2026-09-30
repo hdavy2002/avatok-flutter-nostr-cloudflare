@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
 import { API_BASE } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 export const prerender = false;
-const SITE = 'https://saathum.com';
+const SITE = BRAND.webOrigin;
 const DIRECTORY_PAGE_SIZE = 100;
 
 export const GET: APIRoute = async () => {

@@ -8,6 +8,7 @@
 import { cfImage } from './config';
 import type { Creator, Listing } from './types';
 import { scheduleStateOf } from './card';
+import { BRAND, brandUrl } from './brand';
 
 /** The shape Base.astro consumes, plus optional extra tags for the head slot. */
 export interface OgMeta {
@@ -19,7 +20,7 @@ export interface OgMeta {
   extra: Array<{ property?: string; name?: string; content: string }>;
 }
 
-const SITE = 'saathum.com';
+const SITE = BRAND.domain;
 const OG_IMG_WIDTH = 1200;
 
 function clampDesc(text: string | null | undefined, fallback: string): string {
@@ -176,11 +177,11 @@ export function listingJsonLd(listing: Listing, canonicalUrl: string): Record<st
  *  shape from a page it landed on directly. */
 export function listingBreadcrumbLd(listing: Listing, canonicalUrl: string): Record<string, unknown> {
   const items: Array<{ name: string; item: string }> = [
-    { name: 'Saa Thum', item: 'https://saathum.com/' },
-    { name: 'Marketplace', item: 'https://saathum.com/marketplace' },
+    { name: BRAND.name, item: brandUrl('/') },
+    { name: 'Marketplace', item: brandUrl('/marketplace') },
   ];
   if (listing.creator?.handle) {
-    items.push({ name: listing.creator.name ?? `@${listing.creator.handle}`, item: `https://saathum.com/${listing.creator.handle}` });
+    items.push({ name: listing.creator.name ?? `@${listing.creator.handle}`, item: `${BRAND.webOrigin}/${listing.creator.handle}` });
   }
   items.push({ name: listing.title, item: canonicalUrl });
   return {

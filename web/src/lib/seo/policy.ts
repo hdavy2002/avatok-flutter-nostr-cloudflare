@@ -1,5 +1,6 @@
 import { isArchivedPath } from '../archivedPages';
 import type { PublicContent } from './types';
+import { BRAND } from '../brand';
 
 export interface RoutePolicy {
   indexable: boolean;
@@ -44,9 +45,9 @@ export function canonicalUrl(pathname: string): string {
   // (and the sitemap) must name the URL that answers 200, not the one that
   // redirects — otherwise Google sees canonical -> redirect -> canonical.
   if (path === '/rituals' || path.startsWith('/rituals/')) {
-    return new URL(path + '/', 'https://saathum.com').toString();
+    return new URL(path + '/', BRAND.webOrigin).toString();
   }
-  return new URL(path === '/' ? '/' : path, 'https://saathum.com').toString();
+  return new URL(path === '/' ? '/' : path, BRAND.webOrigin).toString();
 }
 
 export function resolveRoutePolicy(

@@ -15,6 +15,7 @@ import { cfImage } from '../../../lib/config';
 import { getListing, ApiError } from '../../../lib/apiClient';
 import type { CoverMedia, Listing } from '../../../lib/types';
 import { SaathumCheckout } from '../../../islands/saathum-checkout/SaathumCheckout.tsx';
+import { BRAND } from '../../../lib/brand';
 
 const { id } = Astro.params;
 
@@ -77,8 +78,8 @@ const backHref = `/book/${encodeURIComponent(listing.id)}`;
 
 <Base
   headerAuth="static"
-  title={`Checkout · ${listing.title} · saathum.com`}
-  description={`Complete your booking for ${listing.title} on saathum.com.`}
+  title={`Checkout · ${listing.title} · ${BRAND.domain}`}
+  description={`Complete your booking for ${listing.title} on ${BRAND.domain}.`}
   navStatic={true}
   noindex={true}
 >

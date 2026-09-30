@@ -33,6 +33,7 @@ import { EVENT_TYPE_COPY, type EventType } from '../../lib/eventTypes';
 import { festivalEndMs, festivalStartMs, festivalTerms, upcomingFestivals, type Festival } from '../../lib/festivals';
 import { BookCard, INTENTION_LABELS, guideFor, norm, toItem, type GuideLink, type Item } from '../home/BookCard';
 import './MarketplaceV2.css';
+import { BRAND } from '../../lib/brand';
 
 export interface DeityLink { name: string; image: string }
 
@@ -305,7 +306,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
   const [reload, setReload] = useState(0);
   const allRef = useRef<HTMLElement | null>(null);
   const didInitialScroll = useRef(false);
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://saathum.com';
+  const origin = typeof window !== 'undefined' ? window.location.origin : BRAND.webOrigin;
 
   // Seed from the URL once.
   useEffect(() => {

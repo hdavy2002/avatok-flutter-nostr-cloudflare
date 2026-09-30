@@ -15,6 +15,7 @@ import { ogImagePath } from './og/revision';
 import { publicArtRevision } from './og/public-art';
 import type { OgRecord, OgResolveResult } from './og/types';
 import type { LegacySeoInput, PublicContent, ResolvedSeo } from './types';
+import { BRAND } from '../brand';
 
 const DEFAULT_DESCRIPTION = ORG.description;
 
@@ -193,7 +194,7 @@ export async function resolveOgRecord(kind: string, key: string): Promise<OgReso
       if (!ritual) return { status: 'not-found' };
       return publicContentRecord({
         kind: 'article', key: ritual.slug, canonicalPath: ritual.href,
-        title: `${ritual.title} — Meaning, Story, Benefits & How to Take Part · Saa Thum`,
+        title: `${ritual.title} — Meaning, Story, Benefits & How to Take Part · ${BRAND.name}`,
         summary: `${ritual.description} Why it is offered to ${ritual.deity}, the story behind it, who it is for, and how to take part from anywhere.`,
         visibility: 'public', publishedAt: '2026-09-25', modifiedAt: '2026-09-25',
         image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },

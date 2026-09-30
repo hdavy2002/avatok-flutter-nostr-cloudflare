@@ -23,6 +23,7 @@
 // from the JSON-LD output by `orgJsonLd()` below — it never emits `null`,
 // an empty string, or a placeholder into the graph.
 
+import { BRAND, brandUrl } from './brand';
 export interface PostalAddress {
   /** Public address for the legal entity. */
   locality: string;
@@ -90,14 +91,14 @@ export interface OrgConstants {
 }
 
 export const ORG: OrgConstants = {
-  name: 'Saa Thum',
-  alternateNames: ['Saathum', 'saathum.com', 'सा थम'],
+  name: BRAND.name,
+  alternateNames: [BRAND.nameCompact, BRAND.domain, BRAND.nameHindi],
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
-  url: 'https://saathum.com/',
+  url: brandUrl('/'),
   // [BRAND-LOGO-1 2026-09-27] Square diya mark for Google's Organization logo.
   logo: {
-    url: 'https://saathum.com/assets/saathum-logo/favicon-512.png',
+    url: brandUrl('/assets/saathum-logo/favicon-512.png'),
     width: 512,
     height: 512,
   },
@@ -105,7 +106,7 @@ export const ORG: OrgConstants = {
   // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.
   description:
     // [WEB-REFRAME-1 2026-09-29] OWNER: Himalayan temple havans, positive temples only, supporting mountain pujaris.
-    'Saa Thum (saathum.com) is an online havan and puja service. Our crew travels to remote, peaceful Himalayan temples in Uttarakhand and Himachal, where the temple\'s own pujari performs havans and pujas with a sankalp in your name and gotra. We live stream when the mountain network allows, always send the full video, and courier dry prasad from the temple. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and every booking supports the pujaris and villages who keep them alive.',
+    `${BRAND.name} (${BRAND.domain}) is an online havan and puja service. Our crew travels to remote, peaceful Himalayan temples in Uttarakhand and Himachal, where the temple's own pujari performs havans and pujas with a sankalp in your name and gotra. We live stream when the mountain network allows, always send the full video, and courier dry prasad from the temple. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and every booking supports the pujaris and villages who keep them alive.`,
   slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',
@@ -114,7 +115,7 @@ export const ORG: OrgConstants = {
   // and are not renamed as part of this sweep. Point this at a saathum.com
   // mailbox once one exists and is verified (see
   // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md).
-  email: 'support@saathum.com',
+  email: BRAND.emails.support,
   address: {
     locality: 'Dehradun',
     region: 'Uttarakhand',
@@ -154,7 +155,7 @@ export const ORG: OrgConstants = {
   },
   languages: ['en'],
   contactUrl: '/contact',
-  searchUrlTemplate: 'https://saathum.com/marketplace?q={search_term_string}',
+  searchUrlTemplate: brandUrl('/marketplace?q={search_term_string}'),
 };
 
 /** Filters `ORG.sameAs` down to the profiles that are actually set. */
@@ -213,7 +214,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'An online havan and puja service at saathum.com, based in Dehradun, Uttarakhand — its crew travels to positive Himalayan temples where local pujaris perform havans in the devotee\'s name, filmed for families in India and abroad.',
+      `An online havan and puja service at ${BRAND.domain}, based in Dehradun, Uttarakhand — its crew travels to positive Himalayan temples where local pujaris perform havans in the devotee's name, filmed for families in India and abroad.`,
     knowsAbout: ['havan', 'puja', 'sankalp', 'Himalayan temples', 'Uttarakhand temples', 'online havan', 'puja video', 'prasad delivery'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
@@ -250,7 +251,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     '@id': websiteId,
     url: ORG.url,
     name: ORG.name,
-    alternateName: 'saathum.com',
+    alternateName: BRAND.domain,
     // The WebSite is one stable entity; a page-specific description belongs
     // on WebPage/Article, never on the site node.
     description: ORG.description,

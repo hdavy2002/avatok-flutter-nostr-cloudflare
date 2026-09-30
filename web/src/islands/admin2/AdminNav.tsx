@@ -31,6 +31,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
 import { ADMIN_NAV, ADMIN_PHONE_TABS, ADMIN_VIEW_SITE, ADMIN_LOGOUT, type AdminKey } from './nav';
 import { ApiError, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
+import { BRAND } from '../../lib/brand';
 
 interface Who { name: string; email: string | null; photo: string | null }
 
@@ -100,9 +101,9 @@ function AdminBadge({ className }: { className?: string }) {
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <a href="/admin" className="flex items-center gap-2.5 no-underline" aria-label="Saa Thum admin home">
+    <a href="/admin" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} admin home`}>
       <img src="/diya-logo.png" alt="" width={36} height={36} className="h-9 w-9 object-contain" />
-      {!compact && <span className="font-dash text-[20px] font-bold tracking-[0.02em] text-grand-teal">Saa Thum</span>}
+      {!compact && <span className="font-dash text-[20px] font-bold tracking-[0.02em] text-grand-teal">{BRAND.name}</span>}
       {!compact && <AdminBadge />}
     </a>
   );
@@ -249,7 +250,7 @@ function MoreSheet({ active, who }: { active: AdminKey; who: Who | null }) {
       <SheetContent side="bottom" className="rounded-t-2xl pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
         <SheetHeader className="text-left">
           <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal">More <AdminBadge /></SheetTitle>
-          <SheetDescription>{who?.email ?? 'Saa Thum admin'}</SheetDescription>
+          <SheetDescription>{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
         </SheetHeader>
         <nav aria-label="More admin pages" className="mt-4 flex flex-col gap-1">
           {rest.map((it) => {

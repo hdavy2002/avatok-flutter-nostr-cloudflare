@@ -52,6 +52,7 @@ import {
   DURATION_PRESETS, TIME_SLOTS, dateOfYmd, eventsPath, istTodayYmd, looksLikeYoutube, saveYoutube, statusMeta,
   templeLabel, templesPath, timeLabel, uploadCover, ymdOf, type Blocker, type EventDetailResponse, type EventsMeta, type TempleRow,
 } from './eventsApi';
+import { BRAND } from '../../lib/brand';
 
 /* ── form model ─────────────────────────────────────────────────────────── */
 
@@ -117,7 +118,7 @@ const INTENTIONS_FALLBACK = [
 
 const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
-  duration_min: '60', price_rupees: '', capacity: '', performed_by: 'Saa Thum', youtube_url: '',
+  duration_min: '60', price_rupees: '', capacity: '', performed_by: BRAND.name, youtube_url: '',
   location: '', intention: '', collective_sankalp: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
   video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
   event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '', temple_id: '',
@@ -1025,7 +1026,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             </Field>
             {(form.seo_title || detail?.event.seo?.title) && (
               <div className="rounded-lg border border-border/70 bg-background p-3" aria-label="Google preview">
-                <p className="text-[12px] font-semibold text-muted-foreground">saathum.com › book</p>
+                <p className="text-[12px] font-semibold text-muted-foreground">{BRAND.domain} › book</p>
                 <p className="text-[17px] font-semibold leading-snug text-grand-teal">{form.seo_title || detail?.event.seo?.title}</p>
                 <p className="text-[13px] leading-snug text-muted-foreground">{form.seo_description || detail?.event.seo?.description}</p>
               </div>

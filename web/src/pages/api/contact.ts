@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { sendMail } from '../../lib/sendMail';
 import { ORG } from '../../lib/org';
+import { BRAND } from '../../lib/brand';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
 // edge. Receives the /contact form and sends the message to support@saathum.com via
@@ -41,7 +42,7 @@ const esc = (s: string) =>
 //      Turnstile tokens are single-use, which also stops maths-token replay.
 // Both secrets are Pages production secrets on the avatok-app project.
 const CAPTCHA_TTL_MS = 20 * 60 * 1000;
-const TURNSTILE_HOSTS = new Set(['saathum.com', 'www.saathum.com', 'avatok-app.pages.dev']);
+const TURNSTILE_HOSTS = new Set([BRAND.domain, `www.${BRAND.domain}`, 'avatok-app.pages.dev']);
 
 const b64url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -146,7 +147,7 @@ export const POST: APIRoute = async (context) => {
   // [WEB-CONTACT-GUARD-1] Fail closed: no secrets = no mail.
   if (!env.CONTACT_CAPTCHA_SECRET || !env.TURNSTILE_SECRET_KEY) {
     console.error(JSON.stringify({ event: 'contact_guard_not_configured', captcha: !!env.CONTACT_CAPTCHA_SECRET, turnstile: !!env.TURNSTILE_SECRET_KEY }));
-    return json({ ok: false, error: 'The form is unavailable right now. Please email support (@) saathum.com directly.' }, 503);
+    return json({ ok: false, error: `The form is unavailable right now. Please email support (@) ${BRAND.domain} directly.` }, 503);
   }
   if (!(await checkMaths(env.CONTACT_CAPTCHA_SECRET, body.captcha_token, body.captcha_answer))) {
     console.warn(JSON.stringify({ event: 'contact_maths_rejected' }));
@@ -159,7 +160,7 @@ export const POST: APIRoute = async (context) => {
   if (!env.BREVO_API_KEY && !env.CF_EMAIL_API_TOKEN) {
     // Don't fail silently in a way that loses the message; surface a clear error.
     return json(
-      { ok: false, error: 'Email is not configured yet. Please email support@saathum.com directly.' },
+      { ok: false, error: `Email is not configured yet. Please email ${BRAND.emails.support} directly.` },
       503,
     );
   }
@@ -184,17 +185,17 @@ export const POST: APIRoute = async (context) => {
       <p><strong>Message:</strong></p>
       <p style="white-space:pre-wrap;border-left:3px solid #007d7f;padding-left:12px">${esc(message)}</p>
       <hr style="margin:20px 0;border:none;border-top:1px solid #ddd">
-      <p style="color:#777;font-size:13px">Sent from the saathum.com contact form.</p>
+      <p style="color:#777;font-size:13px">Sent from the ${BRAND.domain} contact form.</p>
     </div>`;
 
   try {
     const out = await sendMail(
       {
-        to: 'support@saathum.com',
+        to: BRAND.emails.support,
         subject: subjectLine,
         html: htmlContent,
         text: textContent,
-        from: { name: env.BREVO_SENDER_NAME || `${ORG.name} Support`, email: env.BREVO_SENDER_EMAIL || 'hello@saathum.com' },
+        from: { name: env.BREVO_SENDER_NAME || `${ORG.name} Support`, email: env.BREVO_SENDER_EMAIL || BRAND.emails.hello },
         replyTo: { email, name },
         tags: ['website-contact'],
       },

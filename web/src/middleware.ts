@@ -1,4 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
+import { BRAND } from './lib/brand';
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] OWNER DECISION: the old avaTOK / creator-marketplace
 // pages below were DELETED from src/pages. Their URLs answer 410 Gone (not 404) so
@@ -31,7 +32,7 @@ const GONE_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Page removed · Saa Thum</title>
+<title>Page removed · ${BRAND.name}</title>
 <link rel="icon" href="/assets/saathum-logo/favicon-32.png" type="image/png" sizes="32x32">
 <style>
   body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fdf1d3;color:#2b1a12;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
@@ -42,7 +43,7 @@ const GONE_HTML = `<!doctype html>
 </style></head>
 <body><main>
 <h1>This page has been removed</h1>
-<p>Explore the havans and pujas you can join on Saa Thum.</p>
+<p>Explore the havans and pujas you can join on ${BRAND.name}.</p>
 <a href="/marketplace">Explore</a>
 </main></body></html>`;
 

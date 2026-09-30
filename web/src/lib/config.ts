@@ -1,4 +1,5 @@
 import publicImageManifest from './publicImageManifest.json';
+import { BRAND } from './brand';
 // Runtime config for the web client. PUBLIC_* vars are inlined into the browser
 // bundle by Astro/Vite. The API base is the SAME Worker the Flutter app calls
 // (MASTER-PROMPT §3/§4) — never a new backend.
@@ -41,7 +42,7 @@ export interface ImageOptions { width?: number; quality?: number; fit?: string; 
 const imageHost = (host: string) =>
   // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com replaced blossom.avatok.ai
   // (stored URLs migrated). A leftover old-host URL is simply served untransformed.
-  host === 'saathum.com' || host.endsWith('.saathum.com');
+  host === BRAND.domain || host.endsWith(`.${BRAND.domain}`);
 const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
 const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
 function imageParams(opts: ImageOptions): string {
@@ -78,13 +79,13 @@ export const SHARE_IMAGE = { width: 1200, height: 630 } as const;
 export function shareImage(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
   try {
-    const u = new URL(path, 'https://saathum.com');
+    const u = new URL(path, BRAND.webOrigin);
     if (u.protocol !== 'https:' || !imageHost(u.hostname) || u.username || u.password || u.search || u.hash) return undefined;
     let source = u.pathname;
     const transformed = source.match(/^\/cdn-cgi\/image\/[^/]+(\/.+)$/);
     if (transformed) source = transformed[1];
     if (privateImagePath(source) || /\.(?:svg|gif)$/i.test(source)) return undefined;
-    if (u.hostname === 'saathum.com') source = (publicImageManifest as Record<string, string>)[source] ?? source;
+    if (u.hostname === BRAND.domain) source = (publicImageManifest as Record<string, string>)[source] ?? source;
     return `${u.origin}/cdn-cgi/image/format=jpeg,quality=80,width=${SHARE_IMAGE.width},height=${SHARE_IMAGE.height},fit=cover,gravity=0.5x0.35${source}`;
   } catch { return undefined; }
 }
@@ -95,12 +96,12 @@ export function publicImage(path: string, opts: ImageOptions = {}): string {
   if (!path || import.meta.env.DEV || import.meta.env.PUBLIC_DISABLE_IMAGE_TRANSFORMS === '1') return path;
   try {
     const absolute = /^[a-z][a-z0-9+.-]*:|^\/\//i.test(path);
-    const u = new URL(path, 'https://saathum.com');
+    const u = new URL(path, BRAND.webOrigin);
     if (!['https:', 'http:'].includes(u.protocol) || !imageHost(u.hostname) || u.username || u.password) return path;
     if (u.search || u.hash || privateImagePath(u.pathname) || !rasterPath(u.pathname)) return path;
     if (u.pathname.startsWith('/cdn-cgi/image/')) return path;
     const origin = absolute ? u.origin : '';
-    const source = (!absolute || u.hostname === 'saathum.com') ? (publicImageManifest as Record<string, string>)[u.pathname] ?? u.pathname : u.pathname;
+    const source = (!absolute || u.hostname === BRAND.domain) ? (publicImageManifest as Record<string, string>)[u.pathname] ?? u.pathname : u.pathname;
     return `${origin}/cdn-cgi/image/${imageParams(opts)}${source}`;
   } catch { return path; }
 }

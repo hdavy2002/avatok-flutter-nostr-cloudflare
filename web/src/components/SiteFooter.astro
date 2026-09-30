@@ -35,6 +35,7 @@ import { publicImage } from '../lib/config';
 // covers it. Terms/Privacy stay duplicated in the COMPANY column too — fine.
 import TruckBorder from './TruckBorder.astro';
 import GlobalFooter from './GlobalFooter.astro';
+import { BRAND } from '../lib/brand';
 
 export interface Props { folk?: boolean; variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
 // [SAATHUM-CHROME-1 2026-09-23] OWNER DECISION: the landing-page footer is the
@@ -137,10 +138,10 @@ const chromeKey = (value: string) => ({
           two-span wordmark (AC-03: consistent branding in header, drawer AND
           footer). Reuses this file's own Comfortaa heading face and the
           existing #fdf1d3 ink already used one line below. */}
-      <a class="bf-logo" href="/" aria-label="Saa Thum home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
+      <a class="bf-logo" href="/" aria-label={`${BRAND.name} home`} data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
         {/* [BRAND-LOGO-1 2026-09-27] Horizontal Saa Thum logo replaces the
             diya + text lockup, matching the header. */}
-        <img class="bf-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 560, fit: 'scale-down' })} alt="Saa Thum" width="212" height="72" />
+        <img class="bf-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 560, fit: 'scale-down' })} alt={BRAND.name} width="212" height="72" />
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched
@@ -201,7 +202,7 @@ const chromeKey = (value: string) => ({
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{folk ? 'Made in India with Love ❤️ and cutting chai.' : variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'GOOD VIBES ONLY, NO EVIL EYE · USE DIPPER AT NIGHT'}</span>
-      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n={folk ? undefined : "web-common.15da1f1c2e9b5f56"}>SAA THUM ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Performed with devotion in India.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
+      <span>© {year}{' '}<ui-copy style="display:contents" data-i18n={folk ? undefined : "web-common.15da1f1c2e9b5f56"}>{BRAND.nameUpper} ·</ui-copy>{' '}<span data-india-i18n={!folk && indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{folk ? 'Performed with devotion in India.' : variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 

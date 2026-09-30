@@ -10,6 +10,7 @@ import { capture } from '../../lib/analytics';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { UpiCustomerTestController } from './upiCustomerTestController';
 import type { CustomerDependencies, CustomerSnapshot, InvitationHandle } from './upiCustomerTestController';
+import { BRAND } from '../../lib/brand';
 
 const initial: CustomerSnapshot={current:null,busy:false,message:'',authRequired:false,timedOut:false};
 const date=(ms:number)=>new Date(ms).toLocaleString();
@@ -168,7 +169,7 @@ export function CustomerSession({identity,isLoaded,isSignedIn,deps,invitation,si
     <h1>Invited customer booking test</h1>
     <p><strong>This charges a real ₹1. The booking is a test only and does not reserve a real consultation.</strong></p>
     {!isLoaded || mountedIdentity!==identity ? <p>Loading account…</p> : !isSignedIn ? <>
-      <p>Sign in with your normal Saa Thum account to use your private invitation.</p>
+      <p>Sign in with your normal {BRAND.name} account to use your private invitation.</p>
       {signIn}
       <p>If signing in opens a new page, reopen your original invitation link afterward.</p>
     </> : <UpiCustomerTestCheckoutView key={identity} deps={deps} invitation={invitation} signIn={signIn}/>}

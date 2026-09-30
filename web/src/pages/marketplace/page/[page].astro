@@ -3,6 +3,7 @@ import Base from '../../../layouts/Base.astro';
 import { API_BASE } from '../../../lib/config';
 import { listingPath } from '../../../lib/urls';
 import type { PublicContent } from '../../../lib/seo/types';
+import { BRAND } from '../../../lib/brand';
 
 export const prerender = false;
 
@@ -34,7 +35,7 @@ const canonicalPath = `/marketplace/page/${page}`;
 const content: PublicContent = {
   kind: 'page', key: `marketplace/page/${page}`, canonicalPath,
   title: `Ritual directory — page ${page}`,
-  summary: `Browse public pujas and havans on Saa Thum, page ${page}. Open any ritual to see its details, priest, schedule and current price.`,
+  summary: `Browse public pujas and havans on ${BRAND.name}, page ${page}. Open any ritual to see its details, priest, schedule and current price.`,
   visibility: 'public',
   breadcrumbs: [
     { name: 'Marketplace', path: '/marketplace' },

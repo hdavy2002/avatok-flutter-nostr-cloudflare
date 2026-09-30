@@ -11,10 +11,11 @@
 import type { APIRoute } from 'astro';
 import { API_BASE } from '../lib/config';
 import { listingPath } from '../lib/urls';
+import { BRAND } from '../lib/brand';
 
 export const prerender = false;
 
-const SITE = 'https://saathum.com';
+const SITE = BRAND.webOrigin;
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');

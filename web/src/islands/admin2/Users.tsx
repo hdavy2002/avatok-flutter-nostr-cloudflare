@@ -30,6 +30,7 @@ import {
   CopyValue, DateField, Empty, ErrorBox, ExportButton, FilterBar, ListSkeleton, LoadMore, SearchBox, StatusPill, TD, TH, Tile,
   adminCall, dayMs, formatPaise, phoneText, usePaged, useUrlFilters,
 } from './peopleKit';
+import { BRAND } from '../../lib/brand';
 
 /* ── types ──────────────────────────────────────────────────────────────── */
 
@@ -588,7 +589,7 @@ function Actions({ uid, email, name, blocked, onDone }: {
             <Button variant="outline" onClick={() => setDialog('signout')}><LogOut /> Reset login (sign out all devices)</Button>
           </TooltipTrigger>
           <TooltipContent className="max-w-[280px] text-left leading-snug">
-            Saa Thum has no passwords: people sign in with an email code or Google. This ends every session, so they must sign in again.
+            {BRAND.name} has no passwords: people sign in with an email code or Google. This ends every session, so they must sign in again.
           </TooltipContent>
         </Tooltip>
         <Button variant="destructive" onClick={() => setDialog('delete')}><Trash2 /> Delete user</Button>
@@ -626,7 +627,7 @@ function Actions({ uid, email, name, blocked, onDone }: {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Unblock {who}?</AlertDialogTitle>
-            <AlertDialogDescription>They will be able to sign in and use Saa Thum again.</AlertDialogDescription>
+            <AlertDialogDescription>They will be able to sign in and use {BRAND.name} again.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
@@ -642,7 +643,7 @@ function Actions({ uid, email, name, blocked, onDone }: {
           <AlertDialogHeader>
             <AlertDialogTitle>Sign {who} out of every device?</AlertDialogTitle>
             <AlertDialogDescription>
-              Saa Thum has no passwords, so there is nothing to reset. This ends all their sign-ins on phones and browsers; they sign in again with an email code or Google. It can take up to a minute to take effect.
+              {BRAND.name} has no passwords, so there is nothing to reset. This ends all their sign-ins on phones and browsers; they sign in again with an email code or Google. It can take up to a minute to take effect.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

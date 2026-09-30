@@ -19,6 +19,7 @@ export interface Props {
 }
 
 import { ORG } from '../lib/org';
+import { BRAND } from '../lib/brand';
 
 const { variant = 'full', heading } = Astro.props;
 ---
@@ -30,7 +31,7 @@ const { variant = 'full', heading } = Astro.props;
     org.ts) only when an Indian company is actually registered. */}
 <div class="note" id={heading ? undefined : 'status'}>
   <p>
-    <strong>Who we are.</strong> Saa Thum (saathum.com) is run by a small team in
+    <strong>Who we are.</strong> {BRAND.name} ({BRAND.domain}) is run by a small team in
     Dehradun, Uttarakhand, India. Our crew travels to positive Himalayan temples, where
     the temple's own pujari performs pujas and havans for families anywhere in the
     world, who receive the video afterwards.
@@ -38,7 +39,7 @@ const { variant = 'full', heading } = Astro.props;
   {variant !== 'short' && (
     <p style="margin-top:12px">
       <strong>Contact.</strong> {ORG.email.replace('@', ' (@) ')} (support and billing) ·
-      hello (@) saathum.com (general enquiries) · privacy (@) saathum.com (privacy).
+      hello (@) {BRAND.domain} (general enquiries) · privacy (@) {BRAND.domain} (privacy).
     </p>
   )}
 </div>

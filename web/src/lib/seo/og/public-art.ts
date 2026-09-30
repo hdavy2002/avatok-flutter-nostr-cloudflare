@@ -1,7 +1,8 @@
 import manifest from '../../publicImageManifest.json';
+import { BRAND } from '../../brand';
 
-const ORIGIN = 'https://saathum.com';
-const BLOSSOM_ORIGIN = 'https://media.saathum.com';
+const ORIGIN: string = BRAND.webOrigin;
+const BLOSSOM_ORIGIN: string = BRAND.mediaOrigin;
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 2500;
 const MAX_REDIRECTS = 2;

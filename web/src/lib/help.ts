@@ -8,6 +8,7 @@
 // every caller.
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
+import { BRAND } from './brand';
 
 export type HelpSectionId =
   | 'getting-started'
@@ -30,7 +31,7 @@ export const SECTIONS: Record<
   'getting-started': {
     label: 'Getting started',
     order: 1,
-    blurb: 'What Saa Thum is, how to sign up, and choosing between a puja and a havan.',
+    blurb: `What ${BRAND.name} is, how to sign up, and choosing between a puja and a havan.`,
     tone: 'cream',
   },
   'booking-and-paying': {

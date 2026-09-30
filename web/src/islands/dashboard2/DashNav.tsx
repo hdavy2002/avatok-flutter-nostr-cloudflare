@@ -28,6 +28,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { Skeleton } from '../../components/ui/skeleton';
 import { DASH_NAV, DASH_LOGOUT, type DashKey } from './nav';
+import { BRAND } from '../../lib/brand';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
 const GUEST_HANDLE_KEY = 'saathum_guest_handle';
@@ -120,9 +121,9 @@ function UserAvatar({ who, size = 'h-10 w-10' }: { who: Who | null; size?: strin
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <a href="/" className="flex items-center gap-2.5 no-underline" aria-label="Saa Thum home">
+    <a href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} home`}>
       <img src="/diya-logo.png" alt="" width={36} height={36} className="h-9 w-9 object-contain" />
-      {!compact && <span className="font-dash text-[20px] font-bold tracking-[0.02em] text-grand-teal">Saa Thum</span>}
+      {!compact && <span className="font-dash text-[20px] font-bold tracking-[0.02em] text-grand-teal">{BRAND.name}</span>}
     </a>
   );
 }

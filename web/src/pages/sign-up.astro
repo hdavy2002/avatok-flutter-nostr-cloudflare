@@ -14,6 +14,7 @@ import SiteHeader from '../components/SiteHeader.astro';
 import SignUpIsland from '../islands/auth/SignUpIsland.tsx';
 import { clerkFapiHost, publicImage } from '../lib/config';
 import '../styles/auth.css';
+import { BRAND } from '../lib/brand';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
@@ -21,8 +22,8 @@ const clerkHost = clerkFapiHost();
 ---
 
 <Base
-  title="Create account · Saa Thum"
-  description="Join Saa Thum — book 1:1 consultations and live events, or host your own and get paid."
+  title={`Create account · ${BRAND.name}`}
+  description={`Join ${BRAND.name} — book 1:1 consultations and live events, or host your own and get paid.`}
   chrome={false}
 >
   <Fragment slot="head">

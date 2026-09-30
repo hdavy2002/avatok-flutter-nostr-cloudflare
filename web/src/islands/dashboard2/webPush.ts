@@ -4,6 +4,7 @@
 // (/api/me/push/*, routes/me_push.ts). Telemetry: dash2_push_subscribe {ok, platform}.
 import { capture, captureException } from '../../lib/analytics';
 import { meApi } from './accountApi';
+import { BRAND } from '../../lib/brand';
 
 export type PushPlatform = 'ios' | 'android' | 'desktop';
 export type PushSupport =
@@ -12,7 +13,7 @@ export type PushSupport =
   | 'ios_needs_install'
   | 'unsupported';
 
-export const IOS_INSTALL_HINT = 'Install Saa Thum to your home screen to get notifications';
+export const IOS_INSTALL_HINT = `Install ${BRAND.name} to your home screen to get notifications`;
 
 function isIos(): boolean {
   const ua = navigator.userAgent;

@@ -28,6 +28,7 @@
 export const prerender = true;
 import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
 
 const toc = [
   { id: 'faith', label: 'Faith and tradition' },
@@ -38,7 +39,7 @@ const toc = [
   { id: 'advice', label: 'Not a substitute for professional advice' },
   { id: 'traditions', label: 'Traditions and information' },
   { id: 'delivery', label: 'Videos, prasad and offerings' },
-  { id: 'agreement', label: 'Using Saa Thum means you agree' },
+  { id: 'agreement', label: `Using ${BRAND.name} means you agree` },
   { id: 'changes', label: 'Changes to our services and terms' },
   { id: 'liability', label: 'Limits of our responsibility' },
   { id: 'refunds', label: 'Refunds and cancellations' },
@@ -51,8 +52,8 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   title="Disclaimer"
   titleHtml="<em>Disclaimer</em>"
   eyebrow="Legal"
-  lead="Saa Thum performs only positive, peaceful rituals — havans, pujas, satsangs and meditation for blessings, gratitude and wellbeing, as per Hindu tradition. The results rest with your faith. Please read what we do, what we never do, and what we can and can't promise."
-  description="Saa Thum's disclaimer — only positive rituals, no animal sacrifice or black magic, outcomes are a matter of faith and not guaranteed, and how our terms, changes and refunds work."
+  lead={`${BRAND.name} performs only positive, peaceful rituals — havans, pujas, satsangs and meditation for blessings, gratitude and wellbeing, as per Hindu tradition. The results rest with your faith. Please read what we do, what we never do, and what we can and can't promise.`}
+  description={`${BRAND.name}'s disclaimer — only positive rituals, no animal sacrifice or black magic, outcomes are a matter of faith and not guaranteed, and how our terms, changes and refunds work.`}
   image="/og/terms.png"
   updated="2026-09-29"
   sticker={{ src: '/assets/saathum-booking-stickers/sankalp-thali.png', width: 1024, height: 1024, alt: 'A brass puja thali with a kalash, coconut, kumkum and a sankalp scroll — the disclaimer page.' }}
@@ -66,13 +67,13 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
 >
   <p>
     Please read this disclaimer before you book a havan, puja, satsang, sermon or meditation
-    session on Saa Thum. It sits alongside our <a href="/terms">Terms of Service</a>,
+    session on {BRAND.name}. It sits alongside our <a href="/terms">Terms of Service</a>,
     <a href="/privacy">Privacy Policy</a> and <a href="/refunds">Refund Policy</a>.
   </p>
 
   <h2 id="faith"><span class="lg-n">1.</span>Faith and tradition</h2>
   <p>
-    Saa Thum makes spiritual and devotional practices possible as per Hindu tradition. Every
+    {BRAND.name} makes spiritual and devotional practices possible as per Hindu tradition. Every
     havan, puja, satsang, sermon and meditation session, every chadhava offering and every prasad
     we send is provided for <strong>religious and cultural purposes only</strong>.
   </p>
@@ -86,7 +87,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     Everything we perform is sattvic, peaceful and positive — prayers for blessings, peace,
     good health, prosperity, protection of the family, gratitude, new beginnings and the memory of
     loved ones. Our offerings are pure: ghee, havan samagri, grains, flowers, fruits, sweets,
-    incense and holy water. <strong>Saa Thum never performs, arranges or promotes:</strong>
+    incense and holy water. <strong>{BRAND.name} never performs, arranges or promotes:</strong>
   </p>
   <ul>
     <li><strong>Animal sacrifice (bali) of any kind</strong>, or any ritual that hurts, kills or harms an animal.</li>
@@ -103,7 +104,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     We apply the same rule to the temples we work with. Our crew performs rituals only at peaceful
     Himalayan temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle mountain
     Devis. We do not work with temples known for animal sacrifice or fear-based practices, and we
-    focus on gentle, sattvic traditions rather than rituals for fierce forms. Saa Thum does not run
+    focus on gentle, sattvic traditions rather than rituals for fierce forms. {BRAND.name} does not run
     or manage these temples; their pujaris perform the rituals.
   </p>
 
@@ -113,7 +114,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
       <p>
         We never sell a ritual through fear. We will never tell you that something terrible will
         happen unless you book, and we never ask you to pay to "remove" a dosha, a curse or evil
-        eye. Every havan and puja on Saa Thum is an act of prayer, gratitude and hope.
+        eye. Every havan and puja on {BRAND.name} is an act of prayer, gratitude and hope.
       </p>
     </div>
     <img src={lotusImg} alt="" aria-hidden="true" width="1254" height="1254" />
@@ -135,7 +136,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
 
   <h2 id="respect"><span class="lg-n">4.</span>Respect for all</h2>
   <p>
-    Saa Thum is open to every devotee, whatever their caste, gender, language, region or
+    {BRAND.name} is open to every devotee, whatever their caste, gender, language, region or
     background, in India and around the world. We respect every faith and tradition, and we never
     speak against any religion or community. We ask the same respect from everyone who uses our
     services.
@@ -143,7 +144,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
 
   <h2 id="no-guarantee"><span class="lg-n">5.</span>No guaranteed results</h2>
   <p>
-    Saa Thum does not guarantee any specific result or outcome from any havan, puja, sankalp,
+    {BRAND.name} does not guarantee any specific result or outcome from any havan, puja, sankalp,
     offering, satsang, sermon or meditation session. The benefits we describe on our event pages
     and in our <a href="/rituals/">Puja &amp; Havan Guide</a> come from the scriptures, traditional
     beliefs and long-standing practices — and they may vary from person to person.
@@ -152,7 +153,7 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     <div>
       <span class="lg-tag">What we never claim</span>
       <p>
-        Saa Thum does <strong>not</strong> claim to cure any illness or medical condition, to
+        {BRAND.name} does <strong>not</strong> claim to cure any illness or medical condition, to
         predict the future, to remove black magic, evil eye or curses, or to produce any
         supernatural result.
       </p>
@@ -187,9 +188,9 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
     <li><strong>Chadhava offerings</strong> — offerings you choose are offered on your behalf at the ritual and are not returned or sent to you.</li>
   </ul>
 
-  <h2 id="agreement"><span class="lg-n">9.</span>Using Saa Thum means you agree</h2>
+  <h2 id="agreement"><span class="lg-n">9.</span>Using {BRAND.name} means you agree</h2>
   <p>
-    By visiting saathum.com, signing up, booking an event or otherwise using our services, you
+    By visiting {BRAND.domain}, signing up, booking an event or otherwise using our services, you
     confirm that you have read, understood and agree to be bound by our
     <a href="/terms">Terms of Service</a>, <a href="/privacy">Privacy Policy</a> and this
     disclaimer.
@@ -208,14 +209,14 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   </p>
   <p>
     We may also set limits on certain features or restrict your access to part or all of the
-    services. Please check these pages from time to time. If you keep using Saa Thum after a change
+    services. Please check these pages from time to time. If you keep using {BRAND.name} after a change
     is posted, it means you accept that change.
   </p>
 
   <h2 id="liability"><span class="lg-n">11.</span>Limits of our responsibility</h2>
   <p>
     Any decision you make in your life, business, health or relationships is yours. To the fullest
-    extent the law allows, Saa Thum and its team are not responsible for any decision you make, or
+    extent the law allows, {BRAND.name} and its team are not responsible for any decision you make, or
     any outcome you expect, because of a ritual, a sankalp or anything you read on our site. Where
     something goes wrong with a booking, our responsibility is limited to what our
     <a href="/refunds">Refund Policy</a> and applicable law provide. Nothing in this disclaimer
@@ -243,6 +244,6 @@ const lotusImg = publicImage('/assets/saathum-bright/lotus.png', { width: 320, f
   <h2 id="contact"><span class="lg-n">13.</span>Contact us</h2>
   <p>
     For any question about this disclaimer, a refund or a cancellation, email
-    support (@) saathum.com or use our <a href="/contact">contact form</a>.
+    support (@) {BRAND.domain} or use our <a href="/contact">contact form</a>.
   </p>
 </LegalFolk>

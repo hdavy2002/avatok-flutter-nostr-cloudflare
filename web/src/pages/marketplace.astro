@@ -34,6 +34,7 @@ import { MARKETPLACE_SEO } from '../lib/seo/catalog';
 import '../styles/saathum-folk.css';
 import '../islands/home/BookNowShelf.css';
 import '../islands/marketplace/MarketplaceV2.css';
+import { BRAND } from '../lib/brand';
 
 const params = Astro.url.searchParams;
 const q = (params.get('q') ?? '').trim().slice(0, 80);
@@ -81,7 +82,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       <section class="mk-hero" aria-labelledby="mk-title">
         <div class="mk-hero-inner">
           <div class="mk-hero-copy">
-            <p class="mk-eyebrow">SAA THUM MARKETPLACE<span id="mk-hero-count"></span></p>
+            <p class="mk-eyebrow">{BRAND.nameUpper} MARKETPLACE<span id="mk-hero-count"></span></p>
             <h1 id="mk-title">Find your puja, havan or satsang. <em>Book it in a minute.</em></h1>
             <p class="mk-lead">Performed by temple priests<span id="mk-hero-cities"></span>. One sankalp for every devotee, prasad at your door.</p>
             <form class="mk-search" action="/marketplace" method="get" role="search" aria-label="Search events">
@@ -144,7 +145,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
         </ul>
       </section>
 
-      <p class="grand-booking-note">Saa Thum performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.</p>
+      <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>

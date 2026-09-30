@@ -22,6 +22,7 @@
 //   "email.sending.error.email.too_big" (NOT the Workers-binding E_* codes).
 //   Total message size limit is 5 MiB including base64 attachments.
 
+import { BRAND } from './brand';
 export interface MailEnv {
   CF_ACCOUNT_ID?: string;
   CF_EMAIL_API_TOKEN?: string;
@@ -59,8 +60,8 @@ export type MailResult =
 // unset in the Pages dashboard. Do not set the dashboard values to saathum.com
 // until it is onboarded in Cloudflare Email Sending AND verified as a Brevo
 // sender — see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
-const DEFAULT_SENDER_NAME = 'Saa Thum Support';
-const DEFAULT_SENDER_EMAIL = 'hello@saathum.com';
+const DEFAULT_SENDER_NAME = `${BRAND.name} Support`;
+const DEFAULT_SENDER_EMAIL = BRAND.emails.hello;
 
 function defaultSender(env: MailEnv): { name: string; email: string } {
   return {

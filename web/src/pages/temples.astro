@@ -26,6 +26,7 @@ import { TEMPLES_SEO } from '../lib/seo/catalog';
 import { TEMPLE_REGIONS, TEMPLE_COUNT, TEMPLE_PHOTO_CREDITS, templePhotoPath } from '../lib/temples';
 import '../styles/saathum-folk.css';
 import '../styles/temples.css';
+import { BRAND } from '../lib/brand';
 
 const A = '/assets/saathum-how-it-works/';
 const sticker = (name: string, width = 420) => publicImage(`${A}${name}.webp`, { width, fit: 'scale-down' });
@@ -58,12 +59,12 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
           <div class="tp-hero-copy">
             <p class="tp-eyebrow">Our temples</p>
             <h1 id="page-title">The temples we work with, <em>from Haridwar to the high Himalaya.</em></h1>
-            <p class="tp-lead">Saa Thum works with the priests of old, well-loved temples across Uttarakhand and Himachal. Many are small village shrines that most pilgrims never reach. We go there for you, with a camera, so you can take part from home.</p>
+            <p class="tp-lead">{BRAND.name} works with the priests of old, well-loved temples across Uttarakhand and Himachal. Many are small village shrines that most pilgrims never reach. We go there for you, with a camera, so you can take part from home.</p>
             <div class="tp-pills"><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_COUNT} temples</span><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_REGIONS.length} regions</span><span class="tp-pill"><span class="tp-dot"></span>Uttarakhand &amp; Himachal</span></div>
             <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">See all temples <span aria-hidden="true">↓</span></a></div>
           </div>
           <div class="tp-hero-art">
-            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt="The Saa Thum crew filming a havan at a Himalayan temple, a family praying beside the pujari with snow peaks behind." width="1536" height="1024" fetchpriority="high" decoding="async" />
+            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt={`The ${BRAND.name} crew filming a havan at a Himalayan temple, a family praying beside the pujari with snow peaks behind.`} width="1536" height="1024" fetchpriority="high" decoding="async" />
           </div>
         </div>
       </section>
@@ -128,7 +129,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
               </div>
             </div>
           ))}
-          <p class="tp-dir-note">We add temples as our team builds a relationship with each temple's priests. If you have a family temple in the hills you would like us to visit, write to us at support (@) saathum.com.</p>
+          <p class="tp-dir-note">We add temples as our team builds a relationship with each temple's priests. If you have a family temple in the hills you would like us to visit, write to us at support (@) {BRAND.domain}.</p>
         </div>
       </section>
 
@@ -194,7 +195,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
           <details><summary>Can I get my charawa back or refunded?</summary><p>No. Charawa is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded.</p></details>
         </div>
       </section>
-      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. Saa Thum is not the temple's management and makes no claims of guaranteed outcomes.</p>
+      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. {BRAND.name} is not the temple's management and makes no claims of guaranteed outcomes.</p>
         {TEMPLE_PHOTO_CREDITS.length > 0 && (
           <p class="tp-credits">Photo credits (Wikimedia Commons): {TEMPLE_PHOTO_CREDITS.map((tm, i) => (
             <span>{i > 0 ? ' · ' : ''}{tm.name}: <a href={tm.credit!.url} rel="noopener" target="_blank">{tm.credit!.by}</a>, {tm.credit!.license}</span>
@@ -208,7 +209,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
           <img src={IMG.namaste} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
           <div>
             <h2 id="ask-title">Sit at a Himalayan temple, <span>from your living room.</span></h2>
-            <p>Join a havan with families from around the world, or write to us at support (@) saathum.com with a question.</p>
+            <p>Join a havan with families from around the world, or write to us at support (@) {BRAND.domain} with a question.</p>
           </div>
           <div class="tp-ask-actions"><a class="tp-btn tp-btn--paper" href="/marketplace">Join a havan</a><a class="tp-btn tp-btn--paper" href="/how-it-works">How it works</a></div>
         </div>
