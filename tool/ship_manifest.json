@@ -8094,5 +8094,37 @@
         "note": "Anonymous chat is refused before any Gemini call; no $ai_generation without clerk_uid."
       }
     ]
+  },
+  "SAATHUM-PREETI-LEADGATE-1": {
+    "description": "[SAATHUM-PREETI-LEADGATE-1 2026-09-30] Preeti lead gate: anonymous visitors can open the chat again; without email + WhatsApp on file the reply is a fixed ask (no Gemini call), then identify + answer_pending; transcript email after 30 minutes idle; no automatic handover links. Supersedes SAATHUM-PREETI-SIGNIN-1. Dark behind preetiEnabled.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "preetiEnabled"
+    ],
+    "success": [
+      {
+        "event": "preeti_identity_asked",
+        "property": "page_kind",
+        "equals": "home",
+        "min_events": 1,
+        "note": "An anonymous visitor without email + WhatsApp was answered with the fixed ask (no $ai_generation for that turn)."
+      },
+      {
+        "event": "preeti_identified",
+        "property": "source",
+        "equals": "form",
+        "min_events": 1,
+        "note": "A visitor submitted email + WhatsApp through the inline form."
+      },
+      {
+        "event": "preeti_transcript_emailed",
+        "property": "messages",
+        "gt": 0,
+        "min_events": 1,
+        "note": "The idle-30-minute transcript email was queued to the visitor's email."
+      }
+    ]
   }
 }

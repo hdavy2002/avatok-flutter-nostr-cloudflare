@@ -7,24 +7,31 @@ import { track, trackException } from "../../hooks";
 import { currentBrand, fillPlaceholders, scrubFormerNames } from "./brand_runtime";
 import { resolveArticleCard, resolveEventCard, ritualIndex } from "./cards";
 import type { PageCtx, PreetiCard, PreetiStreamEvent } from "./contracts";
-import { OVER_BUDGET_REPLY } from "./core_rules";
+import { OVER_BUDGET_REPLY, OVER_BUDGET_REPLY_HI } from "./core_rules";
+import { IDENTITY_ASK_MODEL, identityAskText, looksHinglish } from "./leadgate";
 import { StreamFilter, type FilterOut } from "./filter";
 import { costMicroUsd, groundNotes, preetiModel, recordGeneration, runModelTurn, shouldGround } from "./gemini";
 import { buildSystemPrompt } from "./prompt";
 import { budgetState, recordSpend } from "./spend";
 import {
-  activePrompt, createConversation, getAgentConfig, getConv, getPromptBody, insertMessage, modelHistory, updateConversation, type ConvRow,
+  activePrompt, createConversation, getAgentConfig, getConv, getPromptBody, insertMessage, modelHistory, pendingVisitorMessages, updateConversation, type ConvRow,
 } from "./store";
 import { handoverUrl, type ToolCtx } from "./tools";
 import { ensurePreetiStore } from "./knowledge";
 
 const APP = "saathum";
 export const MAX_MESSAGE_CHARS = 2000;
-const FALLBACK_TEXT = "Sorry, I could not answer that just now. Please try asking again, or tap “Talk to a human” and our team will help you on WhatsApp.";
+const FALLBACK_TEXT = "Sorry, I could not answer that just now. Please try asking again in a moment 🙏";
 
 export interface TurnArgs {
   conversationId: string; message: string; page: PageCtx; uid?: string | null; visitorId?: string | null;
   promptOverrideId?: string; isTest?: boolean;
+  /** [SAATHUM-PREETI-LEADGATE-1] anonymous visitor: no email + WhatsApp on file -> fixed ask, no model call. */
+  requireIdentity?: boolean;
+  /** answer the unanswered visitor message(s) already stored (after identification); `message` is ignored. */
+  answerPending?: boolean;
+  /** the route created the conversation for this message: emit the `session` event first. */
+  announceSession?: boolean;
 }
 type Send = (ev: PreetiStreamEvent) => Promise<void>;
 
@@ -44,8 +51,35 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   if (!conv && isTest) conv = await createConversation(env, { id: a.conversationId || undefined, visitorId: a.visitorId ?? "admin-test", page: page.path, isTest: true, uid: null });
   if (!conv) { await send({ type: "error", code: "not_found", message: "Conversation not found." }); return { conv: null }; }
 
-  const message = String(a.message ?? "").trim().slice(0, MAX_MESSAGE_CHARS);
+  let message = String(a.message ?? "").trim().slice(0, MAX_MESSAGE_CHARS);
+  let historyBefore: number | undefined;
+  if (a.answerPending) {
+    const pending = await pendingVisitorMessages(env, conv.id);
+    if (!pending.length) { await send({ type: "error", code: "nothing_pending", message: "Nothing to answer." }); return { conv }; }
+    message = pending.map((p) => p.text).join("\n").slice(0, MAX_MESSAGE_CHARS * 2);
+    historyBefore = pending[0].id;
+  }
   if (!message) { await send({ type: "error", code: "empty", message: "Empty message." }); return { conv }; }
+
+  // [SAATHUM-PREETI-LEADGATE-1] Anonymous visitor without email + WhatsApp: store the message, answer with the fixed
+  // ask (no Gemini call, no spend), then tell the widget to show its form.
+  if (a.requireIdentity && !isTest && !(conv.email && conv.e164)) {
+    if (!a.answerPending) {
+      await insertMessage(env, conv.id, { role: "visitor", text: message });
+      await updateConversation(env, conv.id, { last_page: page.path });
+      const ask = identityAskText(message);
+      await send({ type: "delta", text: ask });
+      const askId = await insertMessage(env, conv.id, { role: "preeti", text: ask, model: IDENTITY_ASK_MODEL });
+      await send({ type: "identity_required" });
+      await send({ type: "done", message_id: askId });
+      await track(env, "anon", "preeti_identity_asked", APP, { conversation_id: conv.id, lang: looksHinglish(message) ? "hi" : "en", page_kind: page.kind });
+      await track(env, "anon", "preeti_turn", APP, { conversation_id: conv.id, outcome: "identity_asked", is_test: false, latency_ms: Date.now() - t0 }, traceId);
+    } else {
+      await send({ type: "identity_required" });
+      await send({ type: "done", message_id: 0 });
+    }
+    return { conv };
+  }
 
   // [SAATHUM-PREETI-FAST-2] Every read below is independent; run them together instead of ~10 serial
   // D1/KV round trips (≈4s of silence before the first word on 2026-09-30).
@@ -53,7 +87,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   const convRow = conv;
   const [cfg, rawHistory, budget, model0, persona, articles] = await Promise.all([
     getAgentConfig(env),
-    modelHistory(env, convRow.id, 20), // history BEFORE saving this turn
+    modelHistory(env, convRow.id, 20, historyBefore), // history BEFORE saving this turn
     budgetState(env),
     preetiModel(env),
     a.promptOverrideId
@@ -65,7 +99,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   // Saving the visitor turn runs alongside the model call; awaited before Preeti's reply is stored,
   // so message ids keep conversation order.
   const saved = Promise.all([
-    insertMessage(env, convRow.id, { role: "visitor", text: message }),
+    a.answerPending ? Promise.resolve(0) : insertMessage(env, convRow.id, { role: "visitor", text: message }),
     updateConversation(env, convRow.id, { last_page: page.path }),
   ]);
 
@@ -73,7 +107,6 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   const finishFixed = async (text: string, code: string) => {
     await saved;
     await send({ type: "delta", text });
-    await send({ type: "handover", url: support });
     const id = await insertMessage(env, conv!.id, { role: "preeti", text, blocked: false });
     await send({ type: "done", message_id: id });
     await track(env, uid ?? "anon", "preeti_turn", APP, { conversation_id: conv!.id, outcome: code, is_test: isTest, latency_ms: Date.now() - t0 }, traceId);
@@ -81,7 +114,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
 
   // Budget gate BEFORE any Gemini call.
   if (budget.over) {
-    await finishFixed(fillPlaceholders(OVER_BUDGET_REPLY, brand, cfg.name), "over_budget");
+    await finishFixed(fillPlaceholders(looksHinglish(message) ? OVER_BUDGET_REPLY_HI : OVER_BUDGET_REPLY, brand, cfg.name), "over_budget");
     return { conv };
   }
   if (!(env.GEMINI_API_KEY ?? "").trim()) {
@@ -160,11 +193,8 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
     return { conv };
   }
 
+  // [SAATHUM-PREETI-LEADGATE-1] The handover link appears ONLY when the model called handover_to_human (customer asked for a human).
   if (handover || toolCtx.handoverUrl) await send({ type: "handover", url: toolCtx.handoverUrl ?? support });
-  else if (filter.meta?.mood === "angry" && !blocked) {
-    // Angry customer: offer the human hand-off link without auto-notifying ops (the model can call the tool itself).
-    await send({ type: "handover", url: support });
-  }
 
   const cost = costMicroUsd(model, usage);
   for (const r of toolRows) await insertMessage(env, conv.id, { role: "tool", text: "", tool_name: r.name, tool_summary: r.summary });
@@ -211,6 +241,7 @@ export async function streamPreetiTurn(env: Env, ctx: ExecutionContext | undefin
   const turn = (async () => {
     let convId = a.conversationId;
     try {
+      if (a.announceSession) await send({ type: "session", conversation_id: a.conversationId });
       const r = await runTurn(env, a, send);
       convId = r.conv?.id ?? convId;
     } catch (e) {

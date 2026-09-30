@@ -42,6 +42,9 @@ export type PreetiStreamEvent =
   | { type: "card"; card: PreetiCard }
   | { type: "handover"; url: string }
   | { type: "done"; message_id: number }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string }
+  // [SAATHUM-PREETI-LEADGATE-1]
+  | { type: "identity_required" }                        // anonymous visitor must share email + WhatsApp before Preeti answers
+  | { type: "session"; conversation_id: string };        // server created the conversation on the first message
 // Wire format: SSE, one `data: <json PreetiStreamEvent>\n\n` per event.
 

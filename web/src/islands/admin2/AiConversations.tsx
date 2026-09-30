@@ -145,6 +145,7 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
         <div className="min-w-0 flex-1">
           <p className="truncate font-dashbody text-[16px] font-extrabold text-foreground">{who(c)}</p>
           <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
+          {c.email && <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</p>}
         </div>
         {wa && (
           <Button asChild size="sm" variant="outline">
@@ -274,7 +275,7 @@ export default function AiConversations() {
       <div className="grid gap-2 border-b border-border/60 p-3">
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Name, phone, UTR or text" aria-label="Search conversations" className="pl-9" />
+          <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email, UTR or text" aria-label="Search conversations" className="pl-9" />
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filters">
           {BADGES.map((b) => <Chip key={b.key} active={badge === b.key} onClick={() => setBadge(badge === b.key ? '' : b.key)}>{b.label}</Chip>)}
@@ -303,6 +304,7 @@ export default function AiConversations() {
                       <span className="shrink-0 text-[12px] font-semibold text-muted-foreground">{rowTime(c.last_message_at)}</span>
                     </span>
                     {c.name && c.e164 && <span className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.e164}</span>}
+                    {c.email && <span className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</span>}
                     <span className="truncate text-[13.5px] font-semibold text-muted-foreground">{c.last_text || '…'}</span>
                     <span className="flex flex-wrap items-center gap-1">
                       {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant} className="px-2 py-0 text-[11px]">{badgeMeta(b).label}</Badge>)}

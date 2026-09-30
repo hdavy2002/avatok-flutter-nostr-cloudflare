@@ -111,7 +111,8 @@ export async function getPromptBody(env: Env, id: string): Promise<string | null
 // Conversations
 // ---------------------------------------------------------------------------
 export interface ConvRow {
-  id: string; uid: string | null; visitor_id: string; name: string | null; e164: string | null;
+  id: string; uid: string | null; visitor_id: string; name: string | null; e164: string | null; email: string | null;
+  transcript_sent_through_id: number | null; transcript_sent_at: number | null;
   first_page: string | null; last_page: string | null; lead_score: number; badges: string[];
   status: "open" | "resolved" | "needs_human"; admin_note: string | null; is_test: number; message_count: number;
   lookup_locked_until: number | null; created_at: number; last_message_at: number;
@@ -120,7 +121,7 @@ export interface ConvRow {
 function toConv(r: any): ConvRow {
   let badges: string[] = [];
   try { const b = JSON.parse(r.badges_json ?? "[]"); if (Array.isArray(b)) badges = b.map(String); } catch { badges = []; }
-  return { ...r, lead_score: Number(r.lead_score ?? 0), badges, is_test: Number(r.is_test ?? 0), message_count: Number(r.message_count ?? 0) };
+  return { ...r, email: r.email ?? null, transcript_sent_through_id: r.transcript_sent_through_id ?? null, transcript_sent_at: r.transcript_sent_at ?? null, lead_score: Number(r.lead_score ?? 0), badges, is_test: Number(r.is_test ?? 0), message_count: Number(r.message_count ?? 0) };
 }
 
 export async function getConv(env: Env, id: string): Promise<ConvRow | null> {
@@ -129,14 +130,14 @@ export async function getConv(env: Env, id: string): Promise<ConvRow | null> {
 }
 
 export async function createConversation(env: Env, a: {
-  id?: string; uid?: string | null; visitorId: string; name?: string | null; e164?: string | null; page?: string | null; isTest?: boolean;
+  id?: string; uid?: string | null; visitorId: string; name?: string | null; e164?: string | null; email?: string | null; page?: string | null; isTest?: boolean;
 }): Promise<ConvRow> {
   const id = a.id ?? crypto.randomUUID();
   const now = Date.now();
   await env.DB_META.prepare(
-    `INSERT OR IGNORE INTO ai_conversations (id, uid, visitor_id, name, e164, first_page, last_page, is_test, created_at, last_message_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?6,?7,?8,?8)`,
-  ).bind(id, a.uid ?? null, a.visitorId, a.name ?? null, a.e164 ?? null, a.page ?? null, a.isTest ? 1 : 0, now).run();
+    `INSERT OR IGNORE INTO ai_conversations (id, uid, visitor_id, name, e164, email, first_page, last_page, is_test, created_at, last_message_at)
+     VALUES (?1,?2,?3,?4,?5,?9,?6,?6,?7,?8,?8)`,
+  ).bind(id, a.uid ?? null, a.visitorId, a.name ?? null, a.e164 ?? null, a.page ?? null, a.isTest ? 1 : 0, now, a.email ?? null).run();
   return (await getConv(env, id))!;
 }
 
@@ -167,13 +168,13 @@ export async function latestConvForUid(env: Env, uid: string): Promise<ConvRow |
  * a secret only that browser holds, so this is not a leak. Phone numbers never link conversations.
  */
 export async function conversationForUser(env: Env, a: {
-  uid: string; visitorId: string; name: string | null; e164: string | null; page: string;
-}): Promise<ConvRow> {
+  uid: string; visitorId: string; name: string | null; e164: string | null; email?: string | null; page: string;
+}): Promise<ConvRow & { identity_changed?: boolean }> {
   let main = await latestConvForUid(env, a.uid);
   const anon = await latestConvForVisitor(env, a.visitorId);
   if (!main && anon) {
-    await env.DB_META.prepare("UPDATE ai_conversations SET uid=?2, name=COALESCE(?3,name), e164=COALESCE(?4,e164) WHERE id=?1")
-      .bind(anon.id, a.uid, a.name, a.e164).run();
+    await env.DB_META.prepare("UPDATE ai_conversations SET uid=?2, name=COALESCE(?3,name), e164=COALESCE(?4,e164), email=COALESCE(?5,email) WHERE id=?1")
+      .bind(anon.id, a.uid, a.name, a.e164, a.email ?? null).run();
     main = (await getConv(env, anon.id))!;
   } else if (main && anon && anon.id !== main.id) {
     await env.DB_META.prepare("UPDATE ai_messages SET conversation_id=?1 WHERE conversation_id=?2").bind(main.id, anon.id).run();
@@ -184,17 +185,21 @@ export async function conversationForUser(env: Env, a: {
     ).bind(main.id, anon.message_count, anon.lead_score, JSON.stringify(badges), anon.last_message_at).run();
     await env.DB_META.prepare("DELETE FROM ai_conversations WHERE id=?1").bind(anon.id).run();
   }
-  if (!main) main = await createConversation(env, { uid: a.uid, visitorId: a.visitorId, name: a.name, e164: a.e164, page: a.page });
+  if (!main) main = await createConversation(env, { uid: a.uid, visitorId: a.visitorId, name: a.name, e164: a.e164, email: a.email, page: a.page });
   // Profile facts win over what an anonymous visit typed.
-  if ((a.name && a.name !== main.name) || (a.e164 && a.e164 !== main.e164)) {
-    await env.DB_META.prepare("UPDATE ai_conversations SET name=COALESCE(?2,name), e164=COALESCE(?3,e164) WHERE id=?1").bind(main.id, a.name, a.e164).run();
+  let changed = false;
+  if ((a.name && a.name !== main.name) || (a.e164 && a.e164 !== main.e164) || (a.email && a.email !== main.email)) {
+    changed = !!((a.e164 && a.e164 !== main.e164) || (a.email && a.email !== main.email));
+    await env.DB_META.prepare("UPDATE ai_conversations SET name=COALESCE(?2,name), e164=COALESCE(?3,e164), email=COALESCE(?4,email) WHERE id=?1")
+      .bind(main.id, a.name, a.e164, a.email ?? null).run();
     main = (await getConv(env, main.id))!;
   }
-  return main;
+  return { ...main, identity_changed: changed };
 }
 
-export async function setIdentity(env: Env, id: string, name: string, e164: string): Promise<void> {
-  await env.DB_META.prepare("UPDATE ai_conversations SET name=?2, e164=?3 WHERE id=?1").bind(id, name.slice(0, 60), e164).run();
+export async function setIdentity(env: Env, id: string, a: { name?: string | null; email: string; e164: string }): Promise<void> {
+  await env.DB_META.prepare("UPDATE ai_conversations SET name=COALESCE(?2,name), email=?3, e164=?4 WHERE id=?1")
+    .bind(id, a.name ? a.name.slice(0, 60) : null, a.email.slice(0, 254), a.e164).run();
 }
 
 export async function updateConversation(env: Env, id: string, patch: { status?: "open" | "resolved" | "needs_human"; admin_note?: string | null; badges?: string[]; lead_score?: number; last_page?: string }): Promise<void> {
@@ -246,11 +251,23 @@ export async function publicHistory(env: Env, conversationId: string, limit = 30
   return (rs?.results ?? []).reverse().map((r) => ({ id: Number(r.id), role: r.role, text: String(r.text ?? ""), cards: parseCards(r.cards_json), at: Number(r.created_at) }));
 }
 
-/** Last N turns for the model (no tool rows). */
-export async function modelHistory(env: Env, conversationId: string, limit = 20): Promise<{ role: "visitor" | "preeti"; text: string }[]> {
+/** Visitor messages not yet answered by a real reply (the fixed identity ask does not count as an answer). */
+export async function pendingVisitorMessages(env: Env, conversationId: string): Promise<{ id: number; text: string }[]> {
   const rs = await env.DB_META.prepare(
-    `SELECT role, text FROM ai_messages WHERE conversation_id=?1 AND role IN ('visitor','preeti') AND blocked=0 AND text<>'' ORDER BY id DESC LIMIT ?2`,
-  ).bind(conversationId, limit).all<{ role: "visitor" | "preeti"; text: string }>().catch(() => null);
+    `SELECT id, text FROM ai_messages WHERE conversation_id=?1 AND role='visitor' AND blocked=0 AND text<>''
+        AND id > COALESCE((SELECT MAX(id) FROM ai_messages WHERE conversation_id=?1 AND role='preeti' AND COALESCE(model,'')<>'identity_ask'), 0)
+      ORDER BY id ASC LIMIT 10`,
+  ).bind(conversationId).all<{ id: number; text: string }>();
+  return (rs.results ?? []).map((r) => ({ id: Number(r.id), text: String(r.text) }));
+}
+
+/** Last N turns for the model (no tool rows). */
+export async function modelHistory(env: Env, conversationId: string, limit = 20, beforeId?: number): Promise<{ role: "visitor" | "preeti"; text: string }[]> {
+  // [SAATHUM-PREETI-LEADGATE-1] The fixed identity-ask reply is never model context; beforeId excludes pending turns.
+  const rs = await env.DB_META.prepare(
+    `SELECT role, text FROM ai_messages WHERE conversation_id=?1 AND role IN ('visitor','preeti') AND blocked=0 AND text<>''
+        AND COALESCE(model,'')<>'identity_ask' AND id<?3 ORDER BY id DESC LIMIT ?2`,
+  ).bind(conversationId, limit, beforeId ?? Number.MAX_SAFE_INTEGER).all<{ role: "visitor" | "preeti"; text: string }>().catch(() => null);
   return (rs?.results ?? []).reverse();
 }
 
@@ -260,7 +277,7 @@ function badgesOf(raw: unknown): string[] {
 
 function toRow(r: any): AdminAiConversationRow {
   return {
-    id: r.id, name: r.name ?? null, e164: r.e164 ?? null, uid: r.uid ?? null,
+    id: r.id, name: r.name ?? null, e164: r.e164 ?? null, email: r.email ?? null, uid: r.uid ?? null,
     visitor_label: r.name ? String(r.name) : `Visitor ${String(r.visitor_id ?? "").slice(0, 6)}`,
     last_text: String(r.last_text ?? "").slice(0, 140), last_message_at: Number(r.last_message_at), badges: badgesOf(r.badges_json),
     status: r.status, lead_score: Number(r.lead_score ?? 0), message_count: Number(r.message_count ?? 0),
@@ -276,7 +293,7 @@ export async function listConversations(env: Env, o: { q?: string; badge?: strin
   if (o.q?.trim()) {
     const like = `%${o.q.trim().replace(/[%_\\]/g, "").slice(0, 60)}%`;
     const p = add(like);
-    where.push(`(c.name LIKE ${p} OR c.e164 LIKE ${p} OR c.visitor_id LIKE ${p} OR c.id LIKE ${p})`);
+    where.push(`(c.name LIKE ${p} OR c.e164 LIKE ${p} OR c.email LIKE ${p} OR c.visitor_id LIKE ${p} OR c.id LIKE ${p})`);
   }
   if (o.cursor) {
     const [ts, id] = o.cursor.split("|");

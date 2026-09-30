@@ -31,7 +31,7 @@ export interface AdminAiKnowledgeDoc { url: string; kind: 'article' | 'page'; ti
 export interface AdminAiIncident { id: string; listing_id: string | null; listing_title: string | null; message: string; starts_at: number; expires_at: number | null; source: string; created_at: number }
 export type ConvStatus = 'open' | 'resolved' | 'needs_human';
 export interface AdminAiConversationRow {
-  id: string; name: string | null; e164: string | null; uid: string | null; visitor_label: string;
+  id: string; name: string | null; e164: string | null; email: string | null; uid: string | null; visitor_label: string;
   last_text: string; last_message_at: number; badges: string[]; status: ConvStatus; lead_score: number; message_count: number;
 }
 export interface AdminAiMessage { id: number; role: 'visitor' | 'preeti' | 'tool' | 'admin_note' | 'system'; text: string; cards: PreetiCard[]; tool_name: string | null; tool_summary: string | null; blocked: boolean; created_at: number }

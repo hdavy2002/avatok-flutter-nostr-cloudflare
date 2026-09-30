@@ -18,7 +18,6 @@ export function lsSet(key: string, value: string): void {
 export const KEY_VISITOR = 'preeti_visitor_v1';
 export const KEY_CONVERSATION = 'preeti_conversation_v1';
 export const KEY_BUBBLE = 'preeti_bubble_pos_v1';
-export const KEY_SKIP = 'preeti_identity_skip_v1';
 
 export function newId(): string {
   const c = globalThis.crypto;

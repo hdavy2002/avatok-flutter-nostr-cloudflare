@@ -43,7 +43,10 @@ export type PreetiStreamEvent =
   | { type: "card"; card: PreetiCard }
   | { type: "handover"; url: string }
   | { type: "done"; message_id: number }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string }
+  // [SAATHUM-PREETI-LEADGATE-1]
+  | { type: "identity_required" }                        // anonymous visitor must share email + WhatsApp before Preeti answers
+  | { type: "session"; conversation_id: string };        // server created the conversation on the first message
 // Wire format: SSE, one `data: <json PreetiStreamEvent>\n\n` per event.
 
 export interface BrandRuntime {
@@ -65,7 +68,7 @@ export interface AdminAiFile { id: string; file_name: string; mime: string; size
 export interface AdminAiKnowledgeDoc { url: string; kind: "article" | "page"; title: string | null; status: string; synced_at: number | null; error: string | null }
 export interface AdminAiIncident { id: string; listing_id: string | null; listing_title: string | null; message: string; starts_at: number; expires_at: number | null; source: string; created_at: number }
 export interface AdminAiConversationRow {
-  id: string; name: string | null; e164: string | null; uid: string | null; visitor_label: string;
+  id: string; name: string | null; e164: string | null; email: string | null; uid: string | null; visitor_label: string;
   last_text: string; last_message_at: number; badges: string[]; status: "open" | "resolved" | "needs_human"; lead_score: number; message_count: number;
 }
 export interface AdminAiMessage { id: number; role: "visitor" | "preeti" | "tool" | "admin_note" | "system"; text: string; cards: PreetiCard[]; tool_name: string | null; tool_summary: string | null; blocked: boolean; created_at: number }

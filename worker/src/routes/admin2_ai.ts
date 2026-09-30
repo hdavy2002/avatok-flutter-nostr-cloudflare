@@ -478,16 +478,16 @@ export async function adminAiIncidentDelete(req: Request, env: Env, id: string):
 // Conversations (inbox)
 // ---------------------------------------------------------------------------
 const CONV_SELECT = `
-  SELECT c.id, c.uid, c.visitor_id, c.name, c.e164, c.first_page, c.last_page, c.lead_score, c.badges_json, c.status,
+  SELECT c.id, c.uid, c.visitor_id, c.name, c.e164, c.email, c.first_page, c.last_page, c.lead_score, c.badges_json, c.status,
          c.admin_note, c.message_count, c.last_message_at,
          (SELECT m.text FROM ai_messages m WHERE m.conversation_id=c.id AND m.role IN ('visitor','preeti') ORDER BY m.id DESC LIMIT 1) AS last_text
     FROM ai_conversations c`;
 
 function convRow(r: any): AdminAiConversationRow & { first_page: string | null; last_page: string | null; admin_note: string | null } {
-  const label = r.name || r.e164 || `Visitor ${String(r.visitor_id ?? "").slice(-4)}`;
+  const label = r.name || r.e164 || r.email || `Visitor ${String(r.visitor_id ?? "").slice(-4)}`;
   const status = r.status === "resolved" || r.status === "needs_human" ? r.status : "open";
   return {
-    id: String(r.id), name: r.name ?? null, e164: r.e164 ?? null, uid: r.uid ?? null, visitor_label: String(label),
+    id: String(r.id), name: r.name ?? null, e164: r.e164 ?? null, email: r.email ?? null, uid: r.uid ?? null, visitor_label: String(label),
     last_text: String(r.last_text ?? "").slice(0, 160), last_message_at: Number(r.last_message_at ?? 0),
     badges: parseJson<string[]>(r.badges_json, []), status, lead_score: Number(r.lead_score ?? 0),
     message_count: Number(r.message_count ?? 0),
@@ -518,7 +518,7 @@ export async function adminAiConversationsList(req: Request, env: Env): Promise<
     const like = bind(likeOf(q));
     const digits = q.replace(/\D/g, "");
     const phone = digits.length >= 4 ? ` OR c.e164 LIKE ${bind(likeOf(digits))}` : "";
-    where.push(`(c.name LIKE ${like} ESCAPE '\\' OR c.id=${bind(q)}${phone}
+    where.push(`(c.name LIKE ${like} ESCAPE '\\' OR c.email LIKE ${like} ESCAPE '\\' OR c.id=${bind(q)}${phone}
       OR EXISTS (SELECT 1 FROM ai_messages m WHERE m.conversation_id=c.id AND m.role IN ('visitor','preeti') AND m.text LIKE ${like} ESCAPE '\\'))`);
   }
   if (cursor) {

@@ -59,7 +59,7 @@ export const TOOL_DECLARATIONS = [
   },
   {
     name: "handover_to_human",
-    description: "Connect the customer to the human support team on WhatsApp. Use when they ask for a person, are angry or upset, have a payment/refund problem, or you cannot resolve it.",
+    description: "Connect the customer to the human support team on WhatsApp. Use ONLY when the customer clearly asks for a person/agent/human/call, or insists on it after you offered help. Never for anger alone, errors, or on your own.",
     parameters: { type: "OBJECT", properties: {
       reason: { type: "STRING", description: "Short reason (angry, payment_issue, asked_for_human, refund, unsure, other)." },
       summary: { type: "STRING", description: "2-3 sentence summary of what the customer needs, for the human." },
@@ -164,7 +164,7 @@ async function lookupFailed(ctx: ToolCtx, utrHash: string | null): Promise<void>
 async function checkBooking(ctx: ToolCtx, a: any) {
   const db = ctx.env.DB_META; const now = Date.now();
   const fresh = await getConv(ctx.env, ctx.conv.id);
-  if ((fresh?.lookup_locked_until ?? 0) > now) return { ok: false, locked: true, message: "Lookups are paused for this chat for a while. Please connect the customer to the human team." };
+  if ((fresh?.lookup_locked_until ?? 0) > now) return { ok: false, locked: true, message: "Lookups are paused for this chat for a while. Tell the customer you cannot check this right now." };
 
   const utr = String(a?.utr ?? "").replace(/\s+/g, "");
   const last4 = String(a?.last4 ?? "").replace(/\D/g, "").slice(-4);
@@ -203,7 +203,7 @@ async function checkBooking(ctx: ToolCtx, a: any) {
   }
   if (!row || !allowed) {
     await lookupFailed(ctx, utrHash);
-    return { ok: false, message: "No booking matches those details. Do not say which detail was wrong. Suggest re-checking, or hand over to the human team." };
+    return { ok: false, message: "No booking matches those details. Do not say which detail was wrong. Suggest re-checking the details." };
   }
   await db.prepare("INSERT INTO ai_booking_lookups (conversation_id, utr_hash, ok, created_at) VALUES (?1,?2,1,?3)").bind(ctx.conv.id, utrHash, now).run();
   const sent = await db.prepare("SELECT 1 x FROM whatsapp_outbox WHERE checkout_id=?1 AND status='sent' LIMIT 1").bind(row.checkout_id).first().catch(() => null);
@@ -277,6 +277,6 @@ export async function runTool(ctx: ToolCtx, name: string, args: any): Promise<un
     }
   } catch (e) {
     await trackException(ctx.env, e, { route: `preeti.tool.${name}`, handled: true, app_name: APP, extra: { conversation_id: ctx.conv.id } });
-    return { error: "tool_failed", message: "Could not read this right now. Say you could not confirm it and offer the human team." };
+    return { error: "tool_failed", message: "Could not read this right now. Say you could not confirm it." };
   }
 }

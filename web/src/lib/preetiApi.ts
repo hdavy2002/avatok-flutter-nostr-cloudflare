@@ -21,10 +21,22 @@ export function openPreetiSession(
 export function identifyPreeti(body: {
   conversation_id: string;
   visitor_id: string;
-  name: string;
+  email: string;
   whatsapp: string;
-}): Promise<{ ok: boolean; name: string; e164: string }> {
+  name?: string;
+}): Promise<{ ok: boolean; e164: string; email: string }> {
   return request('/api/preeti/identify', { method: 'POST', body, timeoutMs: 15000 });
+}
+
+/** A 400 from /identify: which field failed and the server's message (null for any other error). */
+export function identifyFieldError(e: unknown): { field: 'email' | 'whatsapp'; message: string } | null {
+  if (!(e instanceof ApiError) || e.status !== 400) return null;
+  const b = e.body;
+  const o = b && typeof b === 'object' ? (b as { error?: unknown; field?: unknown }) : {};
+  const email = o.error === 'invalid_email' || o.field === 'email';
+  const phone = o.error === 'invalid_phone' || o.field === 'whatsapp' || o.field === 'phone';
+  if (!email && !phone) return null;
+  return { field: email ? 'email' : 'whatsapp', message: apiMessage(e) ?? (email ? 'Please check your email address.' : 'Please check your WhatsApp number.') };
 }
 
 /** Human-readable server message from a failed call, when the body carries one. */
@@ -44,6 +56,8 @@ export interface ChatArgs {
   visitor_id: string;
   message: string;
   page: PageCtx;
+  /** [SAATHUM-PREETI-LEADGATE-1] true + empty message: answer the questions already asked. */
+  answer_pending?: boolean;
 }
 
 /**

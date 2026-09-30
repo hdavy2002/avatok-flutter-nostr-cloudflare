@@ -54,14 +54,12 @@ body:has(.d2-player-pseudo-fs) .pt-root { display: none; }
 .pt-btn:hover { transform: translate(-1px,-1px); box-shadow: var(--zine-shadowSm); }
 .pt-btn:active { transform: translate(1px,1px); box-shadow: var(--zine-shadowPressed); }
 .pt-btn--primary { background: var(--pt-saffron); }
-.pt-btn--human { background: var(--pt-card); min-height: 44px; font-size: 13px; }
 .pt-btn--wa { background: var(--zine-mint); margin-top: 8px; display: flex; }
 .pt-btn--disabled { background: var(--zine-paper2); color: var(--zine-inkMute); box-shadow: none; cursor: not-allowed; }
 .pt-btn--disabled:hover, .pt-btn--disabled:active { transform: none; box-shadow: none; }
 .pt-btn:disabled { opacity: .6; cursor: not-allowed; }
 .pt-link { background: none; border: 0; padding: 12px 6px; min-height: 44px; font: 700 13px/1 'Nunito', sans-serif; letter-spacing: .03em;
   color: var(--zine-inkSoft); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-@media (max-width: 420px) { .pt-btn--human { flex: 1 1 100%; order: 3; } }
 
 /* ---- thread ---- */
 .pt-thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -108,6 +106,7 @@ body:has(.d2-player-pseudo-fs) .pt-root { display: none; }
 .pt-input::placeholder { color: var(--zine-placeholder); }
 .pt-phone-row { display: flex; gap: 6px; }
 .pt-input--code { flex: 0 0 42%; padding-right: 4px; }
+.pt-input--bad { border-color: var(--zine-coral); }
 .pt-identity-err { margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--zine-coral); }
 .pt-identity-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 

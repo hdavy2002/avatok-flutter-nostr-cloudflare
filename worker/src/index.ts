@@ -95,6 +95,7 @@ import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
 import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
 import { runPreetiDailyMaintenance } from "./lib/preeti/knowledge"; // [SAATHUM-PREETI-1]
 import { runPreetiChatMaintenance } from "./lib/preeti/maintenance"; // [SAATHUM-PREETI-1]
+import { runPreetiTranscriptEmails } from "./lib/preeti/transcripts"; // [SAATHUM-PREETI-LEADGATE-1]
 // [SAATHUM-UPI-3LAYER 2026-09-29] Admin review queue + cron sweeps for the 3-layer UPI confirmation.
 import { smsForwarderIncoming, adminForwarderCaptures } from "./routes/sms_forwarder";
 import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumCheckoutReject } from "./routes/saathum_payment_review";
@@ -564,6 +565,9 @@ export default {
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_daily_maintenance", handled: true, app_name: "saathum" })); console.error("[preeti-daily] failed:", String(e)); }),
         runPreetiChatMaintenance(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_chat_maintenance", handled: true, app_name: "saathum" })); console.error("[preeti-chat-maint] failed:", String(e)); }),
+        // [SAATHUM-PREETI-LEADGATE-1 2026-09-30] Email the chat transcript once a conversation has been idle 30 min.
+        runPreetiTranscriptEmails(env)
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_transcript_emails", handled: true, app_name: "saathum" })); console.error("[preeti-transcripts] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
       ]),

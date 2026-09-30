@@ -28,22 +28,23 @@ function hasClerkSessionHint(): boolean {
 import { ApiError } from '../../lib/apiClient';
 import { cfImage } from '../../lib/config';
 import { capture, captureException } from '../../lib/analytics';
-import { apiMessage, getPreetiConfig, identifyPreeti, openPreetiSession, streamPreetiChat } from '../../lib/preetiApi';
+import { getPreetiConfig, identifyFieldError, identifyPreeti, openPreetiSession, streamPreetiChat } from '../../lib/preetiApi';
 import type { PageCtx, PageKind, PreetiCard, PreetiPublicConfig } from '../../lib/preetiTypes';
 import { CardView } from './Cards';
 import { IdentityCard } from './IdentityCard';
+import type { IdentityError } from './IdentityCard';
 import { RichText } from './richText';
 import { BUBBLE, EDGE, useBubble } from './useBubble';
-import { KEY_CONVERSATION, KEY_SKIP, getVisitorId, lsGet, lsSet } from './storage';
+import { KEY_CONVERSATION, getVisitorId, lsGet, lsSet } from './storage';
 import './preeti.css';
 
 const MAX_CHARS = 2000;
 const COUNTER_AT = 1800;
 const PANEL_W = 380;
 const PANEL_H = 560;
-const SIGNIN_TEXT = 'Mujhse baat karne ke liye kripya apne WhatsApp number se sign in karein 🙏 Isse chat surakshit rehti hai aur main aapki baat yaad rakh paungi.';
 const RATE_TEXT = 'Thoda ruk kar phir likhiye 🙏';
-const BUSY_TEXT = 'Abhi main thodi busy hoon. Kripya hamari team ko WhatsApp kariye, wo turant madad karenge 🙏';
+const ERROR_TEXT = 'Kuch gadbad ho gayi, kripya dobara try karein 🙏';
+const OVER_BUDGET_TEXT = 'Main abhi thodi der ke break par hoon, kripya thodi der baad try karein 🙏';
 const LANGS = ['Hinglish', 'हिंदी', 'English'];
 
 interface ChatMsg {
@@ -73,12 +74,6 @@ function useMedia(query: string): boolean {
   return m;
 }
 
-function whatsappUrl(cfg: PreetiPublicConfig, conversationId: string): string {
-  const digits = cfg.support_whatsapp_e164.replace(/\D/g, '');
-  const text = `Hi, I was chatting with ${cfg.agent_name} on ${cfg.brand_name}. Ref: ${conversationId}`;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-}
-
 function Avatar({ cfg, size }: { cfg: PreetiPublicConfig; size: number }) {
   const [bad, setBad] = useState(false);
   const initial = (cfg.agent_name || '?').trim().charAt(0).toUpperCase();
@@ -105,7 +100,6 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [needsIdentity, setNeedsIdentity] = useState(false);
-  const [needsSignin, setNeedsSignin] = useState(false); // [SAATHUM-PREETI-SIGNIN-1]
   const [sessionState, setSessionState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -116,6 +110,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
   const seq = useRef(0);
   const nid = () => `m${++seq.current}`;
   const visitorRef = useRef('');
+  const convRef = useRef(''); // '' until the server creates the conversation on the first message
   const signedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const bubbleRef = useRef<HTMLButtonElement>(null);
@@ -155,7 +150,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
   const startSession = useCallback(async (c: PreetiPublicConfig) => {
     setSessionState('loading');
     visitorRef.current = getVisitorId();
-    const saved = lsGet(KEY_CONVERSATION) ?? undefined;
+    const saved = lsGet(KEY_CONVERSATION) || undefined;
     const body = { visitor_id: visitorRef.current, ...(saved ? { conversation_id: saved } : {}), page };
     try {
       let token = hasClerkSessionHint()
@@ -172,31 +167,23 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
           signedRef.current = false;
         } else throw e;
       }
-      if (sess.needs_signin) {
-        // [SAATHUM-PREETI-SIGNIN-1] Only signed-in visitors with a verified WhatsApp may chat.
-        setNeedsSignin(true);
-        setNeedsIdentity(false);
-        setMessages([{ id: nid(), role: 'preeti', text: c.welcome_text, cards: [] }]);
-        setSessionState('ready');
-        return;
-      }
-      setNeedsSignin(false);
-      lsSet(KEY_CONVERSATION, sess.conversation_id);
+      convRef.current = sess.conversation_id;
+      if (sess.conversation_id) lsSet(KEY_CONVERSATION, sess.conversation_id);
       setConvId(sess.conversation_id);
-      const skipped = lsGet(KEY_SKIP) === sess.conversation_id;
-      setNeedsIdentity(sess.needs_identity && !skipped);
       const hist: ChatMsg[] = sess.history.map((h) => ({ id: `h${h.id}`, role: h.role, text: h.text, cards: h.cards ?? [] }));
       if (hist.length === 0) {
         const first: ChatMsg[] = [{ id: nid(), role: 'preeti', text: c.welcome_text, cards: [] }];
-        if (c.over_budget) first.push({ id: nid(), role: 'preeti', text: BUSY_TEXT, cards: [], handoverUrl: whatsappUrl(c, sess.conversation_id) });
+        if (c.over_budget) first.push({ id: nid(), role: 'preeti', text: OVER_BUDGET_TEXT, cards: [] });
         setMessages(first);
       } else {
         setMessages(hist);
       }
+      // A returning visitor who already asked something but never shared details sees the form again.
+      setNeedsIdentity(sess.needs_identity && hist.some((h) => h.role === 'visitor'));
       setSessionState('ready');
     } catch (e) {
       captureException(e, { surface: 'preeti_session' });
-      setMessages([{ id: nid(), role: 'preeti', text: BUSY_TEXT, cards: [], handoverUrl: whatsappUrl(c, visitorRef.current) }]);
+      setMessages([{ id: nid(), role: 'preeti', text: ERROR_TEXT, cards: [] }]);
       setSessionState('failed');
     }
   }, [kind, pageRef]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -264,43 +251,60 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
   // ---- sending ----
   const appendMsg = (m: Omit<ChatMsg, 'id'>) => setMessages((ms) => [...ms, { ...m, id: nid() }]);
 
-  const send = useCallback(async (raw: string) => {
-    const text = raw.trim();
-    if (!cfg || !convId || !text || text.length > MAX_CHARS || busy) return;
+  /** Stream one chat turn. text=null means answer_pending: answer what the visitor already asked. */
+  const runChat = useCallback(async (text: string | null) => {
+    if (!cfg || busy) return;
     const pid = nid();
-    setMessages((ms) => [...ms, { id: nid(), role: 'visitor', text, cards: [] }, { id: pid, role: 'preeti', text: '', cards: [] }]);
-    setDraft('');
+    setMessages((ms) => (text === null
+      ? [...ms, { id: pid, role: 'preeti', text: '', cards: [] }]
+      : [...ms, { id: nid(), role: 'visitor', text, cards: [] }, { id: pid, role: 'preeti', text: '', cards: [] }]));
+    if (text !== null) {
+      setDraft('');
+      capture('preeti_message_sent', { length: text.length, page_kind: kind });
+    }
     setBusy(true);
     setTyping(true);
     stick.current = true;
-    capture('preeti_message_sent', { length: text.length, page_kind: kind });
     const patch = (fn: (m: ChatMsg) => ChatMsg) => setMessages((ms) => ms.map((m) => (m.id === pid ? fn(m) : m)));
-    const handover = (url: string, t: string) => appendMsg({ role: 'preeti', text: t, cards: [], handoverUrl: url });
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let finalText = '';
     try {
       const auth = signedRef.current ? await loadClerk().then((m) => m.getActiveToken()).catch(() => null) : null;
       await streamPreetiChat(
-        { conversation_id: convId, visitor_id: visitorRef.current, message: text, page },
+        {
+          conversation_id: convRef.current,
+          visitor_id: visitorRef.current,
+          message: text ?? '',
+          page,
+          ...(text === null ? { answer_pending: true } : {}),
+        },
         {
           auth,
           signal: ctrl.signal,
           onEvent: (ev) => {
-            if (ev.type === 'delta') {
+            if (ev.type === 'session') {
+              convRef.current = ev.conversation_id;
+              setConvId(ev.conversation_id);
+              lsSet(KEY_CONVERSATION, ev.conversation_id);
+            } else if (ev.type === 'delta') {
               setTyping(false);
               finalText += ev.text;
               patch((m) => ({ ...m, text: m.text + ev.text }));
             } else if (ev.type === 'card') {
               setTyping(false);
               patch((m) => ({ ...m, cards: [...m.cards, ev.card] }));
+            } else if (ev.type === 'identity_required') {
+              setTyping(false);
+              setNeedsIdentity(true);
             } else if (ev.type === 'handover') {
-              handover(ev.url, 'Aap seedha hamari team se WhatsApp par baat kar sakte hain.');
+              appendMsg({ role: 'preeti', text: 'Aap seedha hamari team se WhatsApp par baat kar sakte hain.', cards: [], handoverUrl: ev.url });
             } else if (ev.type === 'error') {
               if (ev.code === 'rate_limited') appendMsg({ role: 'preeti', text: RATE_TEXT, cards: [] });
+              else if (ev.code === 'over_budget') appendMsg({ role: 'preeti', text: OVER_BUDGET_TEXT, cards: [] });
               else {
-                if (ev.code !== 'over_budget') captureException(new Error(`preeti_stream_error:${ev.code}`), { surface: 'preeti_chat', code: ev.code });
-                handover(whatsappUrl(cfg, convId), BUSY_TEXT);
+                captureException(new Error(`preeti_stream_error:${ev.code}`), { surface: 'preeti_chat', code: ev.code });
+                appendMsg({ role: 'preeti', text: ERROR_TEXT, cards: [] });
               }
             }
           },
@@ -309,10 +313,9 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
         if (e instanceof ApiError && e.status === 429) appendMsg({ role: 'preeti', text: RATE_TEXT, cards: [] });
-        else if (e instanceof ApiError && e.status === 401) { patch((m) => ({ ...m, text: SIGNIN_TEXT })); setNeedsSignin(true); }
         else {
           captureException(e, { surface: 'preeti_chat' });
-          handover(whatsappUrl(cfg, convId), BUSY_TEXT);
+          appendMsg({ role: 'preeti', text: ERROR_TEXT, cards: [] });
         }
       }
     } finally {
@@ -322,27 +325,29 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
       if (finalText) setAnnounce(finalText.replace(/\*\*/g, ''));
       abortRef.current = null;
     }
-  }, [cfg, convId, busy, kind, pageRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg, busy, kind, pageRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submitIdentity = useCallback(async (name: string, whatsapp: string): Promise<string | null> => {
-    if (!convId) return 'Please try again in a moment.';
+  const send = useCallback(async (raw: string) => {
+    const text = raw.trim();
+    if (!text || text.length > MAX_CHARS || sessionState !== 'ready' || needsIdentity) return;
+    await runChat(text);
+  }, [runChat, sessionState, needsIdentity]);
+
+  const submitIdentity = useCallback(async (email: string, whatsapp: string): Promise<IdentityError | null> => {
+    if (!convRef.current) return { field: 'form', message: 'Please try again in a moment.' };
     try {
-      await identifyPreeti({ conversation_id: convId, visitor_id: visitorRef.current, name, whatsapp });
-      capture('preeti_identified', { page_kind: kind, country_code: whatsapp.startsWith('+91') ? '+91' : 'intl' });
-      setNeedsIdentity(false);
-      appendMsg({ role: 'preeti', text: `Dhanyavaad, ${name} 🙏 Ab bataiye, main aapki kaise madad kar sakti hoon?`, cards: [] });
-      return null;
+      await identifyPreeti({ conversation_id: convRef.current, visitor_id: visitorRef.current, email, whatsapp });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 400) return apiMessage(e) ?? 'Please check your WhatsApp number.';
+      const fe = identifyFieldError(e);
+      if (fe) return fe;
       captureException(e, { surface: 'preeti_identify' });
-      return 'Something went wrong. You can skip for now and continue chatting.';
+      return { field: 'form', message: 'Something went wrong. Please try again.' };
     }
-  }, [convId, kind]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function skipIdentity() {
-    if (convId) lsSet(KEY_SKIP, convId);
+    capture('preeti_identified', { page_kind: kind, source: 'form', country_code: whatsapp.startsWith('+91') ? '+91' : 'intl' });
     setNeedsIdentity(false);
-  }
+    void runChat(null);
+    return null;
+  }, [kind, runChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function trackHandover(source: string) {
     capture('preeti_handover', { source, page_kind: kind });
@@ -352,11 +357,8 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
 
   const hasVisitorMsg = messages.some((m) => m.role === 'visitor');
   const overBudget = cfg.over_budget;
-  const canType = sessionState === 'ready' && !overBudget && !needsSignin;
-  const signInHref = typeof window === 'undefined' ? '/sign-in' : `/sign-in?redirect_url=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  const canType = sessionState === 'ready' && !overBudget && !needsIdentity;
   const qr = cfg.quick_replies[kind === 'other' ? 'home' : kind] ?? [];
-  const ref = convId ?? visitorRef.current;
-  const humanUrl = whatsappUrl(cfg, ref);
 
   // desktop panel placement: beside the bubble, on whichever side has room
   const { vp } = bubble;
@@ -405,15 +407,6 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
               <h2 id="pt-title" className="pt-name">{cfg.agent_name}</h2>
               <p className="pt-sub">{`${cfg.brand_name} AI helper`}</p>
             </div>
-            <a
-              className="pt-btn pt-btn--human"
-              href={humanUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => trackHandover('header')}
-            >
-              Talk to a human
-            </a>
             <button type="button" className="pt-close" aria-label="Close chat" onClick={closePanel}>
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" /></svg>
             </button>
@@ -461,23 +454,17 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
               </div>
             )}
 
-            {sessionState === 'ready' && needsSignin && (
-              <div className="pt-identity">
-                <p className="pt-identity-help">{SIGNIN_TEXT}</p>
-                <a className="pt-chip pt-chip--q" href={signInHref} onClick={() => capture('preeti_signin_clicked', { page_kind: kind })}>Sign in with WhatsApp to chat</a>
-              </div>
-            )}
-            {sessionState === 'ready' && !needsSignin && !hasVisitorMsg && !overBudget && (
+            {sessionState === 'ready'  && !hasVisitorMsg && !overBudget && (
               <div className="pt-chips" role="group" aria-label="Choose a language">
                 {LANGS.map((l) => (
                   <button key={l} type="button" className="pt-chip" onClick={() => void send(l)}>{l}</button>
                 ))}
               </div>
             )}
-            {sessionState === 'ready' && !needsSignin && needsIdentity && !overBudget && (
-              <IdentityCard onSubmit={submitIdentity} onSkip={skipIdentity} />
+            {sessionState === 'ready'  && needsIdentity && !overBudget && (
+              <IdentityCard onSubmit={submitIdentity} />
             )}
-            {sessionState === 'ready' && !needsSignin && !hasVisitorMsg && !overBudget && qr.length > 0 && (
+            {sessionState === 'ready'  && !hasVisitorMsg && !overBudget && qr.length > 0 && (
               <div className="pt-chips" role="group" aria-label="Suggested questions">
                 {qr.map((q) => (
                   <button key={q} type="button" className="pt-chip pt-chip--q" onClick={() => void send(q)}>{q}</button>
