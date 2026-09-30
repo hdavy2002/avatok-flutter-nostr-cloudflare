@@ -8174,5 +8174,21 @@
         "note": "Uncached /api/listings/<id> time-to-first-byte falls from ~0.8-1.4 s to ~0.3-0.5 s (curl); api_error rate for GET /api/listings/:id unchanged."
       }
     ]
+  },
+  "SAATHUM-PREETI-EXEC-1": {
+    "description": "[SAATHUM-PREETI-EXEC-1 2026-09-30] Preeti presents as a support executive: no 'AI helper' label/wording, natural human tone; still never claims to be human when sincerely asked.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Replies no longer contain 'AI helper'."
+      }
+    ]
   }
 }

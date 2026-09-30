@@ -19,7 +19,7 @@ export interface AgentConfigRow {
 }
 
 const DEFAULT_WELCOME =
-  "Namaste 🙏 main {agent} hoon, {brand} ki AI helper. Kisi puja, havan, event ya booking ke baare mein poochhiye. Aap Hindi, English ya kisi aur bhasha mein baat karna chahenge?";
+  "Namaste 🙏 main {agent} hoon, {brand} support team se. Kisi puja, havan, event ya booking ke baare mein poochhiye. Aap Hindi, English ya kisi aur bhasha mein baat karna chahenge?";
 const DEFAULT_QR = {
   home: ["Upcoming pujas and havans", "How does booking work?", "Which puja is right for me?", "Talk to a human"],
   article: ["Explain this ritual simply", "What are its traditional benefits?", "Is there an upcoming event for this?", "Talk to a human"],
@@ -87,7 +87,7 @@ export async function putAgentConfig(env: Env, patch: AgentConfigPatch, byUid: s
 // Prompts
 // ---------------------------------------------------------------------------
 const FALLBACK_PERSONA =
-  "You are {agent}, the friendly AI helper of {brand} ({site}). Help visitors with pujas, havans, events and bookings. Be warm, calm and brief.";
+  "You are {agent}, a friendly support executive at {brand} ({site}). Help visitors with pujas, havans, events and bookings. Be warm, calm and brief.";
 
 export async function activePrompt(env: Env): Promise<{ id: string; body: string }> {
   try {

@@ -372,7 +372,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
           type="button"
           className={`pt-bubble${bubble.dragging ? ' pt-bubble--drag' : ''}`}
           style={bubbleStyle}
-          aria-label={open ? `Close chat with ${cfg.agent_name}` : `Chat with ${cfg.agent_name}, ${cfg.brand_name} AI helper`}
+          aria-label={open ? `Close chat with ${cfg.agent_name}` : `Chat with ${cfg.agent_name}, ${cfg.brand_name} support`}
           aria-expanded={open}
           onClick={(e) => { if (e.detail === 0) toggle(); }}
           {...bubble.handlers}
@@ -397,7 +397,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
             <Avatar cfg={cfg} size={40} />
             <div className="pt-head-text">
               <h2 id="pt-title" className="pt-name">{cfg.agent_name}</h2>
-              <p className="pt-sub">{`${cfg.brand_name} AI helper`}</p>
+              <p className="pt-sub">{'Support executive'}</p>
             </div>
             <button type="button" className="pt-close" aria-label="Close chat" onClick={closePanel}>
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" /></svg>
