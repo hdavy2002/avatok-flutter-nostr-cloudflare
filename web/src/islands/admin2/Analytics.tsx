@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   IndianRupee, Ticket, Users, UserPlus, ReceiptIndianRupee, Undo2, Hourglass, CalendarDays, Radio,
-  ArrowUpRight, ArrowDownRight, Minus, RefreshCw, ArrowRight, Plus, CalendarRange, type LucideIcon,
+  ArrowUpRight, ArrowDownRight, Minus, RefreshCw, ArrowRight, Plus, CalendarRange, Eye, MonitorPlay, type LucideIcon,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -50,6 +50,11 @@ interface AnalyticsData {
   next_events: NextEvent[];
   recent_payments: { id: string; uid: string; customer: string | null; listing_id: string; event_title: string | null; amount_paise: number; status: string; at: number }[];
   open_refunds: { id: string; uid: string; customer: string | null; event_title: string | null; amount_paise: number; requested_at: number; reason: string | null }[];
+  /** [SAATHUM-FREEVID-ADMIN-1] Absent on an older API — the section is hidden then. */
+  video_views?: {
+    viewers: Pair; plays: Pair;
+    by_event: { listing_id: string; title: string | null; free: boolean; viewers: number; plays: number }[];
+  };
 }
 
 /* ── range (URL-synced) ─────────────────────────────────────────────────── */
@@ -475,6 +480,48 @@ export default function Analytics() {
                 </div>
               )}
           </Panel>
+
+          {d.video_views && (
+            <Panel title="Video views" action={<SeeAll href="/admin/events">All events</SeeAll>}>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
+                <Kpi icon={Eye} label="Viewers" value={fmtCount(d.video_views.viewers.cur)}
+                  delta={<Delta {...d.video_views.viewers} vs={vs} />} hint="People who watched a video" href="/admin/events" />
+                <Kpi icon={MonitorPlay} label="Plays" value={fmtCount(d.video_views.plays.cur)}
+                  delta={<Delta {...d.video_views.plays} vs={vs} />} hint="Times play was pressed" href="/admin/events" />
+              </div>
+              {d.video_views.by_event.length === 0
+                ? <div className="mt-4"><Empty>Nobody watched a video in this period.</Empty></div>
+                : (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[420px] text-left text-[14px]">
+                      <thead>
+                        <tr className="text-[12px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
+                          <th className="w-8 px-2 py-2">#</th>
+                          <th className="px-2 py-2">Event</th>
+                          <th className="px-2 py-2 text-right">Viewers</th>
+                          <th className="px-2 py-2 text-right">Plays</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d.video_views.by_event.map((e, i) => (
+                          <tr key={e.listing_id} className="border-t border-border/40 transition-colors hover:bg-muted">
+                            <td className="px-2 py-2.5 font-bold tabular-nums text-muted-foreground">{i + 1}</td>
+                            <td className="max-w-0 px-2 py-2.5">
+                              <a href={`/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex items-center gap-2 no-underline">
+                                <span className="truncate font-bold text-foreground hover:underline">{e.title ?? e.listing_id}</span>
+                                {e.free && <Badge variant="accent" className="shrink-0">FREE</Badge>}
+                              </a>
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.viewers)}</td>
+                            <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.plays)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+            </Panel>
+          )}
 
           <div className="grid gap-6 xl:grid-cols-3">
             <Panel title="Next events" action={<SeeAll href="/admin/events" />}>

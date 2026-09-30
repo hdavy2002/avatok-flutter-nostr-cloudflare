@@ -5,6 +5,7 @@ import { API_BASE } from '../../lib/env';
 import { fileNameHeader } from '../../lib/uploadHeaders';
 import type { EventType } from '../../lib/eventTypes';
 import { ApiError, adminApi, adminToken } from './adminApi';
+import type { VideoCrop } from '../../components/dash2/crop';
 
 export type EventTab = 'upcoming' | 'live' | 'past' | 'drafts' | 'cancelled';
 export const EVENT_TABS: { key: EventTab; label: string }[] = [
@@ -25,6 +26,8 @@ export interface EventRow {
   starts_at: number | null;
   duration_min: number | null;
   price_paise: number;
+  /** [SAATHUM-FREEVID-ADMIN-1] Free event: anyone signed in can watch. Absent on an older API. */
+  free_watch?: boolean;
   capacity: number | null;
   seats_booked: number;
   pending_payments: number;
@@ -92,7 +95,7 @@ export interface EventDetail extends EventRow {
 
 export interface EventDetailResponse {
   event: EventDetail;
-  youtube: { video_id: string; url: string } | null;
+  youtube: { video_id: string; url: string; crop?: VideoCrop | null } | null;
   blockers: Blocker[];
   publishable: boolean;
   poster_plan: PosterPlan;
@@ -160,9 +163,27 @@ export async function uploadCover(file: File): Promise<string> {
   return body.url;
 }
 
-/** The existing admin YouTube route (me_dashboard.ts adminEventVideo). url:'' clears. */
-export function saveYoutube(id: string, url: string) {
-  return adminApi<{ ok: boolean; youtube_video_id: string | null }>(`/api/admin/listings/${encodeURIComponent(id)}/youtube`, { method: 'PUT', body: { url } });
+/** The YouTube 11-char id inside any accepted link (watch?v=, youtu.be/, /live/, /embed/, /shorts/) or a bare id; null if none. */
+export function youtubeIdOf(v: string): string | null {
+  const s = v.trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  let u: URL;
+  try { u = new URL(s); } catch { return null; }
+  const id = /(^|\.)youtu\.be$/.test(u.hostname)
+    ? u.pathname.split('/')[1] ?? ''
+    : /(^|\.)youtube(-nocookie)?\.com$/.test(u.hostname)
+      ? (u.searchParams.get('v') ?? u.pathname.match(/^\/(?:live|embed|shorts|v)\/([^/?#]+)/)?.[1] ?? '')
+      : '';
+  return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}
+
+/** The existing admin YouTube route (me_dashboard.ts adminEventVideo). url:'' clears.
+ *  [SAATHUM-FREEVID-ADMIN-1] crop: VideoCrop = set, null = clear (whole video), undefined = leave unchanged. */
+export function saveYoutube(id: string, url: string, crop?: VideoCrop | null) {
+  return adminApi<{ ok: boolean; youtube_video_id: string | null }>(`/api/admin/listings/${encodeURIComponent(id)}/youtube`, {
+    method: 'PUT',
+    body: crop === undefined ? { url } : { url, crop },
+  });
 }
 
 export const DURATION_PRESETS = [30, 45, 60, 90, 120, 180, 240];

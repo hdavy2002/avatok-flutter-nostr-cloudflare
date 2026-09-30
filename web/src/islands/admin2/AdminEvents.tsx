@@ -216,7 +216,7 @@ function EventCard({ ev }: { ev: EventRow }) {
             <a href={`/admin/events/${encodeURIComponent(ev.id)}`} className="min-w-0 font-dash text-[16px] font-bold leading-snug text-grand-teal no-underline hover:underline sm:text-[17px]">
               <span className="line-clamp-2">{ev.title || 'Untitled event'}</span>
             </a>
-            <span className="shrink-0 font-dash text-[16px] font-bold tabular-nums text-foreground">{formatPaise(ev.price_paise)}</span>
+            <span className="shrink-0 font-dash text-[16px] font-bold tabular-nums text-foreground">{ev.free_watch ? 'Free' : formatPaise(ev.price_paise)}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-muted-foreground">
             <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />{fmtIstDateTime(ev.starts_at)}</span>
@@ -226,6 +226,7 @@ function EventCard({ ev }: { ev: EventRow }) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant={st.variant}>{st.label}</Badge>
+            {ev.free_watch && <Badge variant="accent">FREE</Badge>}
             {(ev.category_label || ev.category) && <Badge variant="outline">{ev.category_label ?? ev.category}</Badge>}
             {ev.deity && <Badge variant="muted">{ev.deity}</Badge>}
             <span

@@ -39,6 +39,8 @@ import { Calendar } from '../../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
+import { toCrop, cropAspect, type VideoCrop } from '../../components/dash2/crop';
+import VideoCropEditor from './VideoCropEditor';
 import { ToggleGroup, ToggleGroupItem } from '../../components/ui/toggle-group';
 import { articleBySlug, articleCover, articleGroups, fillFromArticle } from './articlePrefill';
 import {
@@ -50,7 +52,7 @@ import { fmtDuration, fmtIstDateTime, listingImage, youtubeThumb, ErrorState, Sh
 import { ApiError, adminApi, errMessage, formatPaise } from './adminApi';
 import {
   DURATION_PRESETS, TIME_SLOTS, dateOfYmd, eventsPath, istTodayYmd, looksLikeYoutube, saveYoutube, statusMeta,
-  templeLabel, templesPath, timeLabel, uploadCover, ymdOf, type Blocker, type EventDetailResponse, type EventsMeta, type TempleRow,
+  templeLabel, templesPath, timeLabel, uploadCover, ymdOf, youtubeIdOf, type Blocker, type EventDetailResponse, type EventsMeta, type TempleRow,
 } from './eventsApi';
 import { BRAND } from '../../lib/brand';
 
@@ -70,6 +72,10 @@ interface FormState {
   capacity: string;
   performed_by: string;
   youtube_url: string;
+  /** [SAATHUM-FREEVID-ADMIN-1] Crop box as "x,y,w,h" (fractions of the 16:9 frame); '' = whole video. A string so the form's plain compare sees changes. */
+  youtube_crop: string;
+  /** [SAATHUM-FREEVID-ADMIN-1] Free event: anyone signed in can watch; no price. */
+  free_watch: boolean;
   // [SAATHUM-EVENT-FIELDS-1]
   location: string;
   intention: string;
@@ -118,11 +124,17 @@ const INTENTIONS_FALLBACK = [
 
 const EMPTY: FormState = {
   title: '', category: '', deity: '', blurb: '', description: '', cover_url: '', start_date: '', start_time: '06:00',
-  duration_min: '60', price_rupees: '', capacity: '', performed_by: BRAND.name, youtube_url: '',
+  duration_min: '60', price_rupees: '', capacity: '', performed_by: BRAND.name, youtube_url: '', youtube_crop: '', free_watch: false,
   location: '', intention: '', collective_sankalp: '', prasad_courier: true, guide_slug: '', seo_title: '', seo_description: '',
   video_download: true, visibility: 'public', prasad_price_rupees: '99', video_download_url: '', booked_boost: '',
   event_type: 'havan', performer_photo_url: '', rating_display: '', review_count_boost: '', temple_id: '',
 };
+
+const cropToForm = (c: VideoCrop | null): string => (c ? `${c.x},${c.y},${c.w},${c.h}` : '');
+function cropFromForm(s: string): VideoCrop | null {
+  const [x, y, w, h] = s.split(',').map(Number);
+  return s ? toCrop({ x, y, w, h }) : null;
+}
 
 function fromDetail(d: EventDetailResponse): FormState {
   const e = d.event;
@@ -140,6 +152,8 @@ function fromDetail(d: EventDetailResponse): FormState {
     capacity: e.capacity ? String(e.capacity) : '',
     performed_by: e.performed_by ?? '',
     youtube_url: d.youtube?.url ?? '',
+    youtube_crop: cropToForm(toCrop(d.youtube?.crop)),
+    free_watch: e.free_watch ?? false,
     location: e.location ?? '',
     intention: e.intention ?? '',
     collective_sankalp: (e.collective_sankalp ?? []).join(','),
@@ -176,11 +190,11 @@ function bodyOf(f: FormState, base: FormState | null): Record<string, unknown> {
     else { out.start_date = ''; out.start_time = ''; }
   }
   if (changed('duration_min')) out.duration_min = f.duration_min === '' ? null : Number(f.duration_min);
-  if (changed('price_rupees') && f.price_rupees !== '') out.price_rupees = Number(f.price_rupees);
+  if (changed('price_rupees') && f.price_rupees !== '' && !f.free_watch) out.price_rupees = Number(f.price_rupees);
   if (changed('capacity')) out.capacity = f.capacity === '' ? null : Number(f.capacity);
   if (changed('performed_by')) out.performed_by = f.performed_by;
   for (const k of ['location', 'intention', 'guide_slug', 'seo_title', 'seo_description'] as const) if (changed(k)) out[k] = f[k].trim();
-  for (const k of ['prasad_courier', 'video_download', 'visibility'] as const) if (changed(k)) out[k] = f[k];
+  for (const k of ['prasad_courier', 'video_download', 'visibility', 'free_watch'] as const) if (changed(k)) out[k] = f[k];
   if (changed('prasad_price_rupees')) out.prasad_price_rupees = f.prasad_price_rupees === '' ? null : Number(f.prasad_price_rupees);
   if (changed('video_download_url')) out.video_download_url = f.video_download_url.trim() || null;
   if (changed('booked_boost')) out.booked_boost = f.booked_boost.trim() === '' ? null : Number(f.booked_boost);
@@ -328,7 +342,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     if (!form.category) e.category = 'Pick a category.';
     if (form.youtube_url.trim() && !looksLikeYoutube(form.youtube_url)) e.youtube_url = 'That is not a YouTube link.';
     const min = meta?.min_price_rupees ?? 1;
-    if (form.price_rupees !== '' && (!Number.isInteger(Number(form.price_rupees)) || Number(form.price_rupees) < min)) e.price_rupees = `Price must be a whole number, at least ₹${min}.`;
+    if (!form.free_watch && form.price_rupees !== '' && (!Number.isInteger(Number(form.price_rupees)) || Number(form.price_rupees) < min)) e.price_rupees = `Price must be a whole number, at least ₹${min}.`;
     setErrors(e);
     const first = Object.keys(e)[0] as keyof FormState | undefined;
     if (first) { focusField(first); return false; }
@@ -340,6 +354,9 @@ export default function EventForm({ eventId }: { eventId?: string }) {
     if (!precheck()) return null;
     let currentId = id;
     const ytChanged = (base?.youtube_url ?? '') !== form.youtube_url.trim();
+    // [SAATHUM-FREEVID-ADMIN-1] Read the crop before applyDetail() below resets the form from the server copy.
+    const cropNow = form.youtube_url.trim() ? cropFromForm(form.youtube_crop) : null;
+    const cropChanged = (base?.youtube_crop ?? '') !== cropToForm(cropNow);
     try {
       if (!currentId) {
         const r = await adminApi<EventDetailResponse & { id: string }>(eventsPath(), { method: 'POST', body: bodyOf(form, null) });
@@ -348,15 +365,16 @@ export default function EventForm({ eventId }: { eventId?: string }) {
         window.history.replaceState(null, '', `/admin/events/${encodeURIComponent(r.id)}`);
         applyDetail(r, form.youtube_url);
         capture('admin2_event_saved', { action: 'create', ok: true, listing_id: r.id });
-      } else if (dirtyKeys.some((k) => k !== 'youtube_url')) {
+      } else if (dirtyKeys.some((k) => k !== 'youtube_url' && k !== 'youtube_crop')) {
         const r = await adminApi<EventDetailResponse>(eventsPath(currentId), { method: 'PUT', body: bodyOf(form, base) });
         applyDetail(r, form.youtube_url);
         if (action !== 'publish') capture('admin2_event_saved', { action: 'update', ok: true, listing_id: currentId, fields: dirtyKeys.join(',') });
       }
-      if (ytChanged && currentId) {
-        await saveYoutube(currentId, form.youtube_url.trim());
-        setBase((b) => (b ? { ...b, youtube_url: form.youtube_url.trim() } : b));
+      if ((ytChanged || cropChanged) && currentId) {
+        await saveYoutube(currentId, form.youtube_url.trim(), cropNow);
+        setBase((b) => (b ? { ...b, youtube_url: form.youtube_url.trim(), youtube_crop: cropToForm(cropNow) } : b));
         capture('admin2_event_saved', { action: 'youtube', ok: true, listing_id: currentId, cleared: !form.youtube_url.trim() });
+        if (cropChanged) capture('admin2_video_crop_saved', { listing_id: currentId, cleared: cropNow === null, aspect: Math.round(cropAspect(cropNow) * 100) / 100 });
         const d = await adminApi<EventDetailResponse>(eventsPath(currentId));
         applyDetail(d);
       }
@@ -569,6 +587,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const minPrice = meta?.min_price_rupees ?? 1;
   const disabled = isClosed || busy !== null;
   const ytId = detail?.youtube?.video_id;
+  const formYtId = youtubeIdOf(form.youtube_url);
 
   // [SAATHUM-EVENT-TYPES 2026-09-27] Live preview for the "Social proof" section. The admin
   // API doesn't expose a real rating/review count yet, so this previews the admin-set numbers
@@ -965,7 +984,18 @@ export default function EventForm({ eventId }: { eventId?: string }) {
           </Section>
 
           <Section title="Price and seats">
+            {/* [SAATHUM-FREEVID-ADMIN-1] Free event: no price, no booking; signed-in (email) viewers watch. */}
+            <ToggleRow id="ev-free" label="Free event — anyone signed in can watch"
+              hint="No payment or booking. Viewers only sign in with their email — no WhatsApp check."
+              checked={form.free_watch} disabled={disabled}
+              onChange={(v) => { set('free_watch', v); capture('admin2_event_free_toggled', { free: v, listing_id: id ?? null }); }} />
             <div className="grid gap-4 sm:grid-cols-2">
+              {form.free_watch ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label className="font-bold">Price</Label>
+                  <p className="flex h-10 items-center rounded-md border border-dashed border-border bg-muted px-3 text-[15px] font-bold text-foreground">Free — no price</p>
+                </div>
+              ) : (
               <Field label="Price (₹)" htmlFor="ev-price" error={errors.price_rupees} hint={`Per booking. At least ₹${minPrice}.`}>
                 <div className="relative">
                   <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -973,6 +1003,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                     value={form.price_rupees} disabled={disabled} onChange={(e) => set('price_rupees', e.target.value)} placeholder="501" aria-invalid={!!errors.price_rupees} />
                 </div>
               </Field>
+              )}
               <Field label="Capacity" htmlFor="ev-cap" error={errors.capacity} hint={form.visibility === 'private' ? 'Private events are locked to 1 seat.' : 'Optional. Empty = no limit.'}>
                 <div className="relative">
                   <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -983,7 +1014,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             </div>
           </Section>
 
-          <Section title="YouTube live link" subtitle="Create an UNLISTED live stream on YouTube and paste its link. The same video serves the live event and its replay; only people who paid can see it.">
+          <Section title="YouTube live link" subtitle="Create an UNLISTED live stream on YouTube and paste its link. The same video serves the live event and its replay; only people who paid can see it (a free event: anyone signed in).">
             <Field label="Unlisted YouTube link" htmlFor="ev-yt" error={errors.youtube_url}>
               <Input id="ev-yt" ref={(el) => { refs.current.youtube_url = el; }} inputMode="url" value={form.youtube_url} disabled={disabled}
                 onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://youtube.com/live/…" aria-invalid={!!errors.youtube_url} />
@@ -993,6 +1024,11 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                 <img src={youtubeThumb(ytId)} alt="Video thumbnail" className="aspect-video w-40 rounded-md border border-border/70 object-cover" />
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-accent"><MonitorPlay className="h-4 w-4" /> Linked · id {ytId}</span>
               </div>
+            )}
+            {formYtId && (
+              <VideoCropEditor videoId={formYtId} title={form.title} disabled={disabled}
+                value={cropFromForm(form.youtube_crop)} saved={cropFromForm(base?.youtube_crop ?? '')}
+                onChange={(c) => set('youtube_crop', cropToForm(c))} />
             )}
           </Section>
 
@@ -1078,7 +1114,7 @@ export default function EventForm({ eventId }: { eventId?: string }) {
             <div className="dash-surface rounded-xl border border-border/70 bg-card p-4 text-[14px] font-semibold">
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
                 <dt className="text-muted-foreground">Starts</dt><dd className="text-foreground">{fmtIstDateTime(ev.starts_at)}</dd>
-                <dt className="text-muted-foreground">Price</dt><dd className="text-foreground">{formatPaise(ev.price_paise)}</dd>
+                <dt className="text-muted-foreground">Price</dt><dd className="text-foreground">{ev.free_watch ? 'Free' : formatPaise(ev.price_paise)}</dd>
                 <dt className="text-muted-foreground">Booked</dt><dd className="text-foreground">{ev.seats_booked}{ev.capacity ? ` of ${ev.capacity}` : ''}{ev.pending_payments ? ` · ${ev.pending_payments} paying` : ''}</dd>
                 <dt className="text-muted-foreground">Video</dt><dd className="text-foreground">{ev.youtube_set ? 'Linked' : 'Not linked yet'}</dd>
               </dl>
