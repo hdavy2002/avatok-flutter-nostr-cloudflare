@@ -53,7 +53,63 @@ export function isGonePath(pathname: string): boolean {
   return GONE_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
+// [WEB-PERF-4 2026-09-30] Edge cache for the public SSR pages.
+//
+// /book/<id>, /book/<id>/checkout and /marketplace already answer
+// `Cache-Control: public, max-age=60, stale-while-revalidate=300` and render the
+// SAME document for every visitor (auth lives in the islands) — but a Pages
+// Function response is never stored by Cloudflare's CDN on its own, so every
+// visit re-ran the SSR and its API call: 1.7-3.5 s to first byte on an event
+// page. This stores the finished HTML in the colo's Cache API for as long as
+// the page's own max-age says (60 s), so all but the first visitor per minute
+// per colo get it in tens of milliseconds. `x-edge-cache: HIT|MISS` shows which.
+//
+// Only 200s with a public, non-zero max-age and no Set-Cookie are stored, so a
+// page that ever starts varying per user must drop `public` from its header.
+const EDGE_CACHE_PATH = /^\/(?:book\/[^/]+(?:\/checkout)?|marketplace)\/?$/;
+const BUILD_ID = (import.meta.env.PUBLIC_RELEASE_SHA as string | undefined) || 'dev';
+type EdgeCache = { match(k: Request): Promise<Response | undefined>; put(k: Request, r: Response): Promise<void> };
+
+function edgeCache(): EdgeCache | null {
+  try {
+    return ((globalThis as unknown as { caches?: { default?: EdgeCache } }).caches?.default) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheable(res: Response): boolean {
+  if (res.status !== 200 || res.headers.has('set-cookie')) return false;
+  const cc = res.headers.get('cache-control') ?? '';
+  const maxAge = /(?:^|,)\s*max-age=(\d+)/.exec(cc);
+  return /\bpublic\b/.test(cc) && !/no-store|private/.test(cc) && !!maxAge && Number(maxAge[1]) > 0;
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
+  const cache = context.request.method === 'GET' && EDGE_CACHE_PATH.test(context.url.pathname) ? edgeCache() : null;
+  if (cache) {
+    // Keyed by build: a cached page from the previous deploy would point at
+    // /_astro/ asset hashes the new deploy no longer serves.
+    const keyUrl = new URL(context.url.toString());
+    keyUrl.searchParams.set('__build', BUILD_ID);
+    const key = new Request(keyUrl.toString(), { method: 'GET' });
+    try {
+      const hit = await cache.match(key);
+      if (hit) {
+        const out = new Response(hit.body, hit);
+        out.headers.set('x-edge-cache', 'HIT');
+        return out;
+      }
+    } catch { /* cache unavailable — render normally */ }
+    const res = await next();
+    if (!cacheable(res)) return res;
+    const put = cache.put(key, res.clone()).catch(() => { /* best-effort */ });
+    const ctx = (context.locals as { runtime?: { ctx?: { waitUntil(p: Promise<unknown>): void } } }).runtime?.ctx;
+    if (ctx) ctx.waitUntil(put);
+    const out = new Response(res.body, res);
+    out.headers.set('x-edge-cache', 'MISS');
+    return out;
+  }
   if (isGonePath(context.url.pathname)) {
     return new Response(GONE_HTML, {
       status: 410,

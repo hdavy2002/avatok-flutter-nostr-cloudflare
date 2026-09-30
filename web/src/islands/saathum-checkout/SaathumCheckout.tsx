@@ -15,6 +15,7 @@ import { useUser } from '@clerk/clerk-react';
 import { ClerkIsland, getActiveToken, getActiveTokenWaited } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { getPhoneStatus } from '../auth/passwordless';
+import { hasClerkSessionHint } from '../../lib/sessionHint';
 import { captureException } from '../../lib/analytics';
 import { ApiError } from '../../lib/apiClient';
 import { createCheckout, getCheckout, getCheckoutConfig, getQuote } from './api';
@@ -59,6 +60,23 @@ function storedCheckoutId(listingId: string): string | null {
 function storeCheckoutId(listingId: string, id: string) {
   try { window.sessionStorage.setItem(`sthc:checkout_id:${listingId}`, id); } catch { /* best-effort */ }
 }
+// [WEB-PERF-4 2026-09-30] Remember "this account's WhatsApp is verified" on the
+// device, keyed by the Clerk user id (the value IS the uid, so another account
+// on the same browser never inherits it). A returning signed-in buyer skips
+// straight to the Sankalp step while the server check runs in the background;
+// if the server disagrees (or it is a different account) we step back to the
+// WhatsApp gate. The server still enforces verification at checkout creation —
+// this only removes the wait and the flash.
+const WA_OK_KEY = 'sthc:wa_verified_uid';
+function readWaOk(): string | null {
+  try { return window.localStorage.getItem(WA_OK_KEY); } catch { return null; }
+}
+function writeWaOk(uid: string | null) {
+  try {
+    if (uid) window.localStorage.setItem(WA_OK_KEY, uid);
+    else window.localStorage.removeItem(WA_OK_KEY);
+  } catch { /* best-effort */ }
+}
 function clearRequestKey(listingId: string) {
   try { window.sessionStorage.removeItem(`sthc:request_key:${listingId}`); } catch { /* best-effort */ }
 }
@@ -87,6 +105,19 @@ function Inner({ listingId }: { listingId: string }) {
   // (either way). Until then a signed-in buyer sees "Checking your account…", never the
   // WhatsApp form — a verified buyer must not be shown it even for a second.
   const [gateDone, setGateDone] = useState(false);
+  // [WEB-PERF-4] Session cookie present = probably signed in. Read after
+  // hydration (the server render cannot see it) so SSR and client agree.
+  const [sessionHint, setSessionHint] = useState(false);
+  const optimisticUid = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasClerkSessionHint()) return;
+    setSessionHint(true);
+    const uid = readWaOk();
+    if (uid) {
+      optimisticUid.current = uid;
+      setStep((s) => (s === 'you' ? 'sankalp' : s));
+    }
+  }, []);
 
   // ── config (public, no auth) ──────────────────────────────────────────
   useEffect(() => {
@@ -134,24 +165,40 @@ function Inner({ listingId }: { listingId: string }) {
     // Waited token: right after Clerk loads the session token can be momentarily
     // null; the plain getter made the gate give up and leave a verified buyer on
     // the WhatsApp form.
+    // [WEB-PERF-4] A remembered "verified" for a DIFFERENT account is void.
+    if (optimisticUid.current && optimisticUid.current !== user.id) {
+      optimisticUid.current = null;
+      writeWaOk(null);
+      setStep((s) => (s === 'sankalp' ? 'you' : s));
+    }
     const t = await getActiveTokenWaited().catch(() => null);
     if (!t) { setGateDone(true); return; }
     setToken(t);
+    // [WEB-PERF-4] Phone status and profile prefill are independent — fetch
+    // them together instead of one after the other.
+    const profileP = getProfile(t).then(
+      (profile) => {
+        setSankalp((s) => (s.name ? s : sankalpFromProfile(profile)));
+        setAddress((a) => a ?? addressFromProfile(profile));
+      },
+      (e) => captureException(e, { where: 'saathum_checkout_profile_prefill' }),
+    );
     try {
       const status = await getPhoneStatus();
-      if (status.verified) advancePastYou();
+      if (status.verified) {
+        writeWaOk(user.id);
+        advancePastYou();
+      } else {
+        writeWaOk(null);
+        if (optimisticUid.current) setStep((s) => (s === 'sankalp' ? 'you' : s));
+        optimisticUid.current = null;
+      }
     } catch (e) {
       captureException(e, { where: 'saathum_checkout_phone_status' });
     } finally {
       setGateDone(true);
     }
-    try {
-      const profile = await getProfile(t);
-      setSankalp((s) => (s.name ? s : sankalpFromProfile(profile)));
-      setAddress((a) => a ?? addressFromProfile(profile));
-    } catch (e) {
-      captureException(e, { where: 'saathum_checkout_profile_prefill' });
-    }
+    await profileP;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -283,10 +330,12 @@ function Inner({ listingId }: { listingId: string }) {
   return (
     <div className="sthc">
       <div className="sthc-step-col">
-        {step === 'you' && user && (!resumeDone || !gateDone) && (
+        {/* [WEB-PERF-4] Signed-in (cookie) but Clerk not loaded yet: show the
+            checking card, NOT the WhatsApp form — that was the flash. */}
+        {step === 'you' && ((user && (!resumeDone || !gateDone)) || (!userLoaded && sessionHint)) && (
           <div className="sthc-card"><p role="status">Checking your account…</p></div>
         )}
-        {step === 'you' && (!user || (resumeDone && gateDone)) && (
+        {step === 'you' && !(!userLoaded && sessionHint) && (!user || (resumeDone && gateDone)) && (
           <YouStep
             signedIn={Boolean(user)}
             listingId={listingId}

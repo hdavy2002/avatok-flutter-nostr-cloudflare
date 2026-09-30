@@ -75,7 +75,10 @@ export const INTENTION_LABELS: Record<string, string> = {
 };
 const IST = 'Asia/Kolkata';
 /** Retina-friendly srcset widths for the listing photo (owner rule: images must cache). */
-const IMG_WIDTHS = [480, 720, 960] as const;
+// [WEB-PERF-4 2026-09-30] Must be values of IMAGE_WIDTHS (lib/config.ts): cfImage
+// rounds UP, so 480/720/960 were really served as 640/900/1280 while labelled
+// 480w/720w/960w — a phone picked the 1280px q70 file (~180 KB) for every card.
+const IMG_WIDTHS = [420, 640, 900, 1280] as const;
 
 export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -103,8 +106,8 @@ function attrBool(attrs: Record<string, unknown> | null | undefined, keys: strin
  *  Cloudflare image transform so it caches instead of reloading on every visit. */
 function listingImage(raw: string | null): { image: string | null; srcSet: string | null } {
   if (!raw) return { image: null, srcSet: null };
-  const image = cfImage(raw, { width: 900, quality: 70 });
-  const srcSet = IMG_WIDTHS.map((w) => `${cfImage(raw, { width: w, quality: 70 })} ${w}w`).join(', ');
+  const image = cfImage(raw, { width: 900 });
+  const srcSet = IMG_WIDTHS.map((w) => `${cfImage(raw, { width: w })} ${w}w`).join(', ');
   return { image, srcSet };
 }
 

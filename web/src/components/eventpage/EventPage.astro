@@ -94,11 +94,14 @@ const galleryImages = [...new Set([heroImage, ...rawImages].filter((u): u is str
 const showThumbs = galleryImages.length >= 2;
 // [SAATHUM-EVENT-TYPES] Every listing photo goes through Cloudflare image
 // transformations (cache-friendly, responsive) — see lib/config.ts cfImage().
-const HERO_WIDTHS = [640, 960, 1400] as const;
+// [WEB-PERF-4 2026-09-30] Must be values of IMAGE_WIDTHS: cfImage rounds UP to
+// the next bounded width, so 960/1400 were really served as 1280/1600 while
+// labelled 960w/1400w — phones picked the 1600px file for a ~1080px slot.
+const HERO_WIDTHS = [640, 900, 1280, 1600] as const;
 const heroSrcSet = heroImage
   ? HERO_WIDTHS.map((w) => `${cfImage(heroImage, { width: w, fit: 'cover' })} ${w}w`).join(', ')
   : null;
-const heroSrc = heroImage ? cfImage(heroImage, { width: 1400, fit: 'cover' }) : null;
+const heroSrc = heroImage ? cfImage(heroImage, { width: 1280, fit: 'cover' }) : null;
 
 const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
 function toMs(t?: number | null): number | null { if (t == null) return null; return t < 1e12 ? t * 1000 : t; }
