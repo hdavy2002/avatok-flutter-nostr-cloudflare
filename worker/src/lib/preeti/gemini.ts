@@ -71,14 +71,32 @@ function usageOf(j: any): Usage {
   };
 }
 
-async function post(env: Env, model: string, method: string, body: unknown, query = ""): Promise<Response> {
+// [SAATHUM-PREETI-FAST-1] Preeti answers support questions; deep reasoning only adds seconds of
+// silence before the first word. Gemini 3 Flash: thinkingLevel "minimal"; if the API ever rejects
+// that level, fall back to "low" once for the life of the isolate.
+let minimalThinkingOk = true;
+function preetiThinking(model: string): Record<string, unknown> {
+  return model.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: minimalThinkingOk ? "minimal" : "low" } } : thinkingCfg(model);
+}
+
+async function post(env: Env, model: string, method: string, body: any, query = "", signal?: AbortSignal): Promise<Response> {
   let last: Response | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const r = await geminiFetch(env, `${GLA}/v1beta/models/${encodeURIComponent(model)}:${method}${query}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key(env) },
       body: JSON.stringify(body),
+      signal,
     });
+    if (r.status === 400 && minimalThinkingOk && body?.generationConfig?.thinkingConfig?.thinkingLevel === "minimal") {
+      const t = await r.text().catch(() => "");
+      if (/thinking/i.test(t)) {
+        minimalThinkingOk = false;
+        body.generationConfig.thinkingConfig = { thinkingLevel: "low" };
+        continue;
+      }
+      return new Response(t, { status: r.status, headers: r.headers });
+    }
     if (r.ok || (r.status !== 429 && r.status < 500)) return r;
     last = r;
     await new Promise((res) => setTimeout(res, 400));
@@ -91,15 +109,18 @@ async function failText(r: Response): Promise<string> {
 }
 
 /** Step 1 — grounded notes from the File Search store. Never throws to the caller's turn (returns "" on failure). */
+/** [SAATHUM-PREETI-FAST-1] Knowledge lookup gets this long; slower -> answer without notes. */
+export const GROUND_TIMEOUT_MS = 3500;
+
 export async function groundNotes(env: Env, model: string, store: string, question: string, recent: string): Promise<{ notes: string; usage: Usage }> {
   const body = {
     systemInstruction: { parts: [{ text: "You retrieve facts from the knowledge base for a customer-support assistant of a Hindu puja/havan booking site. Answer ONLY from the retrieved documents, in at most 180 words, plain text, listing the relevant facts (rituals, meanings, policies, how things work). If nothing relevant is found reply exactly NO_NOTES. Never invent dates, prices or availability." }] },
     contents: [{ role: "user", parts: [{ text: `${recent ? `Earlier in chat: ${recent}\n\n` : ""}Question: ${question}` }] }],
     tools: [{ fileSearch: { fileSearchStoreNames: [store] } }],
-    generationConfig: { maxOutputTokens: 600, temperature: 0.2, ...thinkingCfg(model) },
+    generationConfig: { maxOutputTokens: 350, temperature: 0.2, ...preetiThinking(model) },
     safetySettings: SAFETY,
   };
-  const r = await post(env, model, "generateContent", body);
+  const r = await post(env, model, "generateContent", body, "", AbortSignal.timeout(GROUND_TIMEOUT_MS));
   if (!r.ok) throw new Error(await failText(r));
   const j: any = await r.json();
   const text = (j?.candidates?.[0]?.content?.parts ?? []).filter((p: Part) => !p.thought).map((p: Part) => p.text ?? "").join("").trim();
@@ -111,6 +132,11 @@ export function shouldGround(message: string): boolean {
   if (t.length < 6) return false;
   if (/^[\d\s+\-]+$/.test(t)) return false;
   if (t.length < 25 && /^(hi+|hello+|hey+|namaste|namaskar|ok(ay)?|thanks?|thank you|dhanyavad|shukriya|bye|haan|nahi|yes|no)\b/i.test(t)) return false;
+  // [SAATHUM-PREETI-FAST-1] Live facts (dates, prices, bookings, payments) always come from tools, never
+  // from the knowledge base — skip the lookup and its seconds of silence for those questions.
+  if (/\d{12}/.test(t)) return false;
+  if (/\b(utr|upi|payment|paid|pay|booking|booked|book|confirm\w*|refund\w*|cancel\w*|kab|kitne|kitna|price|cost|fee|rs|inr|live|link|status|next|upcoming|agla|agle|schedule|date|time|seat\w*|ticket\w*)\b|₹/i.test(t)
+    && !/\b(what is|meaning|benefit\w*|significance|kya hai|kya hota|kyun|why|mantra|history)\b/i.test(t)) return false;
   return true;
 }
 
@@ -193,7 +219,7 @@ export async function runModelTurn(t: TurnInput): Promise<TurnResult> {
       contents,
       tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
       toolConfig: { functionCallingConfig: { mode: finalRound ? "NONE" : "AUTO" } },
-      generationConfig: { maxOutputTokens: 900, temperature: 0.7, ...thinkingCfg(model) },
+      generationConfig: { maxOutputTokens: 900, temperature: 0.7, ...preetiThinking(model) },
       safetySettings: SAFETY,
     };
     const res = await streamOnce(env, model, body, t.onText);

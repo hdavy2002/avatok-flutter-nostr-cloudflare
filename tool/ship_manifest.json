@@ -7982,5 +7982,21 @@
         "note": "Page-speed telemetry arrives after the deferred SDK start. Success is median lcp_ms on '/' (effective_type=4g) lower than the week before 2026-09-30, and telemetry_start_ms under ~8000."
       }
     ]
+  },
+  "SAATHUM-PREETI-FAST-1": {
+    "description": "[SAATHUM-PREETI-FAST-1 2026-09-30] Faster first word: Gemini thinkingLevel minimal (fallback low), knowledge lookup capped at 3.5s and skipped for live-fact questions.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "latency_ms median drops versus SAATHUM-PREETI-1 (was ~9.5s to first word)."
+      }
+    ]
   }
 }

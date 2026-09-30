@@ -112,7 +112,9 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
         const g = await groundNotes(env, model, store, message, recent);
         notes = scrubFormerNames(g.notes, brand); groundUsage.inTok = g.usage.inTok; groundUsage.outTok = g.usage.outTok; grounded = !!notes;
       } catch (e) {
-        await trackException(env, e, { route: "preeti.ground", handled: true, app_name: APP, extra: { conversation_id: conv.id } });
+        // A timeout is expected under load: answer without notes, no exception noise.
+        const timedOut = (e as Error)?.name === "TimeoutError" || (e as Error)?.name === "AbortError";
+        if (!timedOut) await trackException(env, e, { route: "preeti.ground", handled: true, app_name: APP, extra: { conversation_id: conv.id } });
       }
     }
 
