@@ -8190,5 +8190,75 @@
         "note": "Replies no longer contain 'AI helper'."
       }
     ]
+  },
+  "SAATHUM-FREEVID-BASE-1": {
+    "description": "[SAATHUM-FREEVID-BASE-1 2026-10-01] Video crop helpers, YouTubeGuardedPlayer crop prop, free/crop/views migrations.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "min_events": 1,
+        "note": "A cropped player plays on the web."
+      }
+    ]
+  },
+  "SAATHUM-FREEVID-API-1": {
+    "description": "[SAATHUM-FREEVID-API-1 2026-10-01] Free events (email sign-in, no WhatsApp), crop saved with YouTube link, view recording + admin video-view analytics.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_view",
+        "min_events": 1,
+        "note": "Server records a view when a signed-in viewer presses Play."
+      }
+    ]
+  },
+  "SAATHUM-FREEVID-ADMIN-1": {
+    "description": "[SAATHUM-FREEVID-ADMIN-1 2026-10-01] Admin event form: Free toggle + YouTube crop editor; Analytics video views.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_video_crop_saved",
+        "min_events": 1,
+        "note": "Admin saves a crop."
+      }
+    ]
+  },
+  "SAATHUM-FREEVID-WEB-1": {
+    "description": "[SAATHUM-FREEVID-WEB-1 2026-10-01] Public: free events watchable after email sign-in, cropped players, view tracking.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "min_events": 1,
+        "note": "Viewer presses Play on a free or paid event."
+      }
+    ]
+  },
+  "SAATHUM-DASH-LOGO-1": {
+    "description": "[SAATHUM-DASH-LOGO-1 2026-10-01] Dashboard + admin sidebars show the lotus emblem only.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$pageview",
+        "min_events": 1,
+        "note": "Visual-only change; dashboard pages load."
+      }
+    ]
   }
 }

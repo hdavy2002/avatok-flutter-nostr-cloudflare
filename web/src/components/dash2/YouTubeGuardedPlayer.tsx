@@ -13,10 +13,11 @@
 //  - Before the first play and after the end we paint our own poster over the frame,
 //    so YouTube's title card and end-screen grid are never even visible.
 //  - Never renders a link to youtube.com.
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Maximize, Minimize, Pause, Play, Square, Volume2, VolumeX, Loader2, VideoOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { youtubeThumb } from './shared';
+import { cropAspect, cropInnerStyle, isFullFrame, type VideoCrop } from './crop';
 
 // ─────────────────────────── minimal YT typings ───────────────────────────
 interface YTPlayer {
@@ -82,15 +83,18 @@ export interface YouTubeGuardedPlayerProps {
   className?: string;
   onPlay?: (info: { isLive: boolean }) => void;
   onError?: (code: number) => void;
+  /** [SAATHUM-FREEVID-BASE-1] Show only this part of the 16:9 frame (fractions). null/absent = whole frame. */
+  crop?: VideoCrop | null;
 }
 
 type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
 type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
 
 export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuardedPlayerProps>(function YouTubeGuardedPlayer(
-  { videoId, title, poster, autoPlay = false, className, onPlay, onError },
+  { videoId, title, poster, autoPlay = false, className, onPlay, onError, crop },
   ref,
 ) {
+  const cropped = !isFullFrame(crop);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -334,14 +338,21 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
         className,
       )}
     >
-      <div className="d2-player-frame relative aspect-video w-full">
-        {/* YouTube mounts its iframe in here. */}
-        <div ref={hostRef} className="absolute inset-0" />
+      <div
+        className={cn('d2-player-frame relative w-full overflow-hidden', cropped ? 'd2-player-frame--cropped' : 'aspect-video')}
+        style={cropped ? ({ aspectRatio: String(cropAspect(crop)), '--d2-crop-ar': String(cropAspect(crop)) } as CSSProperties) : undefined}
+      >
+        {/* YouTube mounts its iframe in here. [SAATHUM-FREEVID-BASE-1] With a crop, this
+            host is the FULL 16:9 picture scaled up and shifted so only the crop box sits
+            inside the frame's overflow:hidden. The shield/controls stay on the frame. */}
+        <div style={cropInnerStyle(crop)}><div ref={hostRef} className="absolute inset-0" /></div>
 
         {/* Our poster: hides YouTube's title card before play and its end-screen grid after. */}
         {showPoster && (
           <div className="absolute inset-0 z-[5]">
-            <img src={posterSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+            {cropped
+              ? <img src={posterSrc} alt="" className="object-cover" style={cropInnerStyle(crop)} draggable={false} />
+              : <img src={posterSrc} alt="" className="h-full w-full object-cover" draggable={false} />}
             <div className="absolute inset-0 bg-gradient-to-t from-scrim/85 via-scrim/25 to-scrim/10" />
           </div>
         )}
