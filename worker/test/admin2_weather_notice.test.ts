@@ -1,5 +1,6 @@
 // [SAATHUM-WEATHER-NOTICE-1 2026-09-29] Real-SQLite tests for POST /api/admin/v2/events/:id/weather-delay:
 // admin auth, confirmed buyers only, unverified numbers skipped, one message per buyer per day.
+import { BRAND } from "../src/lib/brand";
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
@@ -85,7 +86,7 @@ describe('weather-delay notice', () => {
     expect(rows[0].message).toContain('(SAA-11111111)');
     expect(rows[0].message.toLowerCase()).not.toContain('youtube');
     expect(H.emails[0].subject).toBe('An update on your Kedar Havan video');
-    expect(H.emails[0].from).toContain('Saa Thum Support');
+    expect(H.emails[0].from).toContain(`${BRAND.name} Support`);
   });
 
   it('a second click the same day sends nothing more', async () => {

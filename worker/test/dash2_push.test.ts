@@ -1,4 +1,5 @@
 // [DASH2-PUSH 2026-09-26] Web Push crypto (RFC 8291 / RFC 8292) and reminder window/dedup rules.
+import { BRAND } from "../src/lib/brand";
 import { describe, it, expect } from "vitest";
 import {
   encryptPayload, vapidJwt, b64urlDecode, b64urlEncode, importEcPrivateKey, validSubscriptionKeys,
@@ -67,14 +68,14 @@ describe("VAPID JWT (RFC 8292)", () => {
     const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]) as CryptoKeyPair;
     const pub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey) as ArrayBuffer);
     const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey) as JsonWebKey;
-    const keys = { publicKey: b64urlEncode(pub), privateKey: jwk.d!, subject: "mailto:support@saathum.com" };
+    const keys = { publicKey: b64urlEncode(pub), privateKey: jwk.d!, subject: `mailto:${BRAND.emails.support}` };
     const now = 1_790_000_000;
     const jwt = await vapidJwt("https://fcm.googleapis.com/fcm/send/abc123", keys, now);
     const [h, c, s] = jwt.split(".");
     expect(JSON.parse(new TextDecoder().decode(b64urlDecode(h)))).toEqual({ typ: "JWT", alg: "ES256" });
     const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(c)));
     expect(claims.aud).toBe("https://fcm.googleapis.com");
-    expect(claims.sub).toBe("mailto:support@saathum.com");
+    expect(claims.sub).toBe(`mailto:${BRAND.emails.support}`);
     expect(claims.exp).toBeGreaterThan(now);
     expect(claims.exp - now).toBeLessThanOrEqual(24 * 3600);
     const sig = b64urlDecode(s);
@@ -182,7 +183,7 @@ describe("dedup (push_sent)", () => {
     const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]) as CryptoKeyPair;
     const pub = b64urlEncode(await crypto.subtle.exportKey("raw", pair.publicKey) as ArrayBuffer);
     const d = (await crypto.subtle.exportKey("jwk", pair.privateKey) as JsonWebKey).d!;
-    const env = { DB_META: f.db, VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: d, VAPID_SUBJECT: "mailto:support@saathum.com" } as never;
+    const env = { DB_META: f.db, VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: d, VAPID_SUBJECT: `mailto:${BRAND.emails.support}` } as never;
     const r1 = await runPushReminders(env, NOW);
     expect(r1.scanned).toBe(2);
     expect([...f.sent].sort()).toEqual(["L1|u1|t15", "L1|u2|t15"]);
