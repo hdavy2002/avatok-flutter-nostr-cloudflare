@@ -1,7 +1,7 @@
 // [ADMIN2-EVENTS 2026-09-26] Types + helpers for the Admin 2 Events screens.
 // Worker: worker/src/routes/admin2_events.ts (GET/POST/PUT /api/admin/v2/events…).
 // Money on the wire is integer paise (price_paise) except the form's price_rupees.
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 import { fileNameHeader } from '../../lib/uploadHeaders';
 import type { EventType } from '../../lib/eventTypes';
 import { ApiError, adminApi, adminToken } from './adminApi';

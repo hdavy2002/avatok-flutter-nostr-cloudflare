@@ -1,7 +1,7 @@
 // [SAATHUM-PREETI-1 2026-09-30] Typed calls for the Admin 2 "AI assistant" screens.
 // Worker: worker/src/routes/admin2_ai.ts. Wire shapes mirror worker/src/lib/preeti/contracts.ts
 // (declared locally so this island has no cross-agent import dependency).
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 import { fileNameHeader } from '../../lib/uploadHeaders';
 import { ApiError, adminToken } from './adminApi';
 import { adminCall } from './peopleKit';

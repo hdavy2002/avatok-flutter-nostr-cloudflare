@@ -11,7 +11,7 @@
 //
 // Wording is always "starting from ₹X": checkout adds prasad delivery, GST,
 // offerings, chadhava and other options, so this is a floor, not a total.
-import { API_BASE } from './config';
+import { API_BASE } from './env';
 
 export type Pricing = {
   currency: 'INR';

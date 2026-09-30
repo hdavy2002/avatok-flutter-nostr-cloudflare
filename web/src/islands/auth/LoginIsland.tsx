@@ -37,7 +37,7 @@ import { UiText } from "../../lib/i18n/react";
 import { useRef, useState } from 'react';
 import { useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
-import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, withTrace } from '../../lib/analytics';
 import { postLoginTarget } from '../../lib/authRedirect';
 import {

@@ -177,6 +177,18 @@ helper (one place, covers everything) · `cache_event` {store, result} ·
 (the marketplace grid hydrating on-visible: fire if not hydrated 10 s after
 scroll-into-view).
 
+**[WEB-PERF-1 2026-09-30] Load-later telemetry.** PostHog now starts after the
+window `load` event plus an idle slot (8 s ceiling), not two frames after the
+script runs — owner decision that every non-critical thing loads later, in the
+background, on public and signed-in pages alike. Nothing is dropped: calls
+queue in `lib/analytics.ts`, and uncaught errors before the SDK is up are
+buffered as `$exception` with `source` = `early_window_error` /
+`early_unhandled_rejection`.
+
+| Event | Props | Meaning |
+|---|---|---|
+| `web_page_speed` | `path`, `fcp_ms`, `lcp_ms`, `ttfb_ms`, `dom_ready_ms`, `load_ms`, `telemetry_start_ms`, `transfer_kb`, `effective_type` | One per page load, sent once the SDK is up. **The success value** for WEB-PERF-1: median `lcp_ms` on `path='/'` for `effective_type='4g'` should fall versus the week before 2026-09-30. `telemetry_start_ms` shows how long telemetry was held back (expect ~load + idle, never above ~8000). |
+
 ---
 
 ## 3. Android / iOS app (`app/`) — already wired; keep the contract

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 import { UPI_APPS, upiAppHref, upiPlatform } from './upiAppLinks';
 import type { UpiPlatform } from './upiAppLinks';
 import { initialPaymentState, paymentAmount, UpiPublicController } from './upiPublicController';

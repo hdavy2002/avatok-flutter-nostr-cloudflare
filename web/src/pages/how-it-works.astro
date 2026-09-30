@@ -52,7 +52,7 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
 <Base content={HOW_IT_WORKS_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
   <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>

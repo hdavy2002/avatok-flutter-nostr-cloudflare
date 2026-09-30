@@ -69,7 +69,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
     <!-- [MKT-SPEED-1] Open the API connection while the island JS downloads, so the
          listings fetch skips DNS + TLS setup. -->
     <link rel="preconnect" href={API_BASE} crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
   <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>

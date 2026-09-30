@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import { ClerkIsland } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { capture } from '../../lib/analytics';
-import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { UpiCustomerTestController } from './upiCustomerTestController';
 import type { CustomerDependencies, CustomerSnapshot, InvitationHandle } from './upiCustomerTestController';
 

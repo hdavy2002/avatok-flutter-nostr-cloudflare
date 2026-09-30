@@ -5,7 +5,7 @@
  * every non-2xx or network failure, so callers here don't duplicate that.
  */
 import { request } from '../../lib/apiClient';
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 import type { Address, ChadhavaSelection, Checkout, CheckoutConfig, Quote, Sankalp } from './types';
 
 export function getCheckoutConfig(listingId: string): Promise<CheckoutConfig> {

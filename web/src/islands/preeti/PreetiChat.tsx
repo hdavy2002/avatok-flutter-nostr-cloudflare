@@ -3,12 +3,28 @@
 //
 // Mounted lazily (client:idle) by components/PreetiMount.astro. Renders nothing
 // when the agent is disabled or the config fetch fails - it must never break the
-// host page. Auth: wrapped in <ClerkIsland> so the shared token bridge is live;
+// host page. Auth: a <ClerkIsland> is mounted beside the widget ONLY for a signed-in visitor (WEB-PERF-1);
 // the session call carries the Clerk bearer (lib/clerk.getActiveToken) when the
 // visitor is signed in, otherwise the conversation is keyed by visitor_id only.
-import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as RKeyboardEvent, ReactNode } from 'react';
-import { ClerkIsland, getActiveToken, getActiveTokenWaited } from '../../lib/clerk';
+// [WEB-PERF-1 2026-09-30] lib/clerk is NOT imported statically any more. It
+// drags in @clerk/clerk-react plus ~300 KB of clerk-js from the Clerk CDN, and
+// this widget mounts on the home, ritual and event pages for EVERY visitor.
+// Signed-out visitors never need it (their chat is keyed by visitor_id), so it
+// loads only when the Clerk session cookie says someone is signed in, and then
+// in the background after the widget has already rendered.
+const loadClerk = () => import('../../lib/clerk');
+const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
+/** Same cookie test the header uses (SiteHeader.astro) — no Clerk needed to ask. */
+function hasClerkSessionHint(): boolean {
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+    return Boolean(m && m[1] && m[1] !== '0');
+  } catch {
+    return false;
+  }
+}
 import { ApiError } from '../../lib/apiClient';
 import { capture, captureException } from '../../lib/analytics';
 import { apiMessage, getPreetiConfig, identifyPreeti, openPreetiSession, streamPreetiChat } from '../../lib/preetiApi';
@@ -135,7 +151,9 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
     const saved = lsGet(KEY_CONVERSATION) ?? undefined;
     const body = { visitor_id: visitorRef.current, ...(saved ? { conversation_id: saved } : {}), page };
     try {
-      let token = await getActiveTokenWaited(1500).catch(() => null);
+      let token = hasClerkSessionHint()
+        ? await loadClerk().then((m) => m.getActiveTokenWaited(4000)).catch(() => null)
+        : null;
       let sess;
       try {
         sess = await openPreetiSession(body, token);
@@ -246,7 +264,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
     abortRef.current = ctrl;
     let finalText = '';
     try {
-      const auth = signedRef.current ? await getActiveToken().catch(() => null) : null;
+      const auth = signedRef.current ? await loadClerk().then((m) => m.getActiveToken()).catch(() => null) : null;
       await streamPreetiChat(
         { conversation_id: convId, visitor_id: visitorRef.current, message: text, page },
         {
@@ -483,11 +501,20 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
 }
 
 export default function PreetiChat({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
+  // Decided once, on the client (this island is client-only via client:idle).
+  const [withClerk] = useState(() => typeof document !== 'undefined' && hasClerkSessionHint());
   return (
-    <Quiet>
-      <ClerkIsland>
+    <>
+      {withClerk && (
+        <Quiet>
+          <Suspense fallback={null}>
+            <LazyClerkIsland>{null}</LazyClerkIsland>
+          </Suspense>
+        </Quiet>
+      )}
+      <Quiet>
         <Widget kind={kind} pageRef={pageRef} />
-      </ClerkIsland>
-    </Quiet>
+      </Quiet>
+    </>
   );
 }

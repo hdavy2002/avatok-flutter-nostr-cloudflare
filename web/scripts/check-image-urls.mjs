@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
-const source = (await readFile(new URL('../src/lib/config.ts', import.meta.url), 'utf8'))
+import { configSource } from './config-source.mjs';
+const source = configSource()
   .replace("import publicImageManifest from './publicImageManifest.json';", 'const publicImageManifest = {};')
   .replaceAll('import.meta.env.', '({}).');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;

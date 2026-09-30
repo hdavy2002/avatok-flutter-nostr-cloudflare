@@ -2,7 +2,7 @@
 // (worker/src/routes/preeti.ts). JSON calls go through apiClient.request so they
 // get the shared api_error telemetry; the chat call is a raw fetch because it
 // must read a POST server-sent-events stream (EventSource cannot POST).
-import { API_BASE } from './config';
+import { API_BASE } from './env';
 import { ApiError, request } from './apiClient';
 import { apiError, captureException } from './analytics';
 import type { PageCtx, PreetiPublicConfig, PreetiSession, PreetiStreamEvent } from './preetiTypes';

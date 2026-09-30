@@ -47,7 +47,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
-import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, captureException, withTrace } from '../../lib/analytics';
 import {
   Field, Button, CheckRow, Divider, GoogleButton,

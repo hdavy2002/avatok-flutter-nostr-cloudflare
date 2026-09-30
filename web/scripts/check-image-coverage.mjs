@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import ts from 'typescript';
+import { configSource } from './config-source.mjs';
 import { validateBuiltImageSources } from './built-image-source.mjs';
 const web = resolve(new URL('..', import.meta.url).pathname);
 const manifest = JSON.parse(readFileSync(join(web, 'src/lib/publicImageManifest.json'), 'utf8'));
-const source = readFileSync(join(web, 'src/lib/config.ts'), 'utf8')
+const source = configSource()
   .replace("import publicImageManifest from './publicImageManifest.json';", `const publicImageManifest = ${JSON.stringify(manifest)};`)
   .replaceAll('import.meta.env.', '({}).');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;

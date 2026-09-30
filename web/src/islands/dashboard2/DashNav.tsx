@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
-import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, captureException } from '../../lib/analytics';
 import { getPhoneStatus, finishUrl } from '../auth/passwordless';
 import { signInUrlForHere } from '../../lib/authRedirect';

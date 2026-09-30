@@ -3,24 +3,11 @@ import publicImageManifest from './publicImageManifest.json';
 // bundle by Astro/Vite. The API base is the SAME Worker the Flutter app calls
 // (MASTER-PROMPT §3/§4) — never a new backend.
 
-/** Base URL for every API call. Defaults to prod; override via PUBLIC_API_BASE. */
-export const API_BASE: string = import.meta.env.PUBLIC_API_BASE ?? 'https://api.saathum.com';
-
-/** Clerk publishable key for web auth/session. May be undefined until set in env. */
-export const CLERK_PUBLISHABLE_KEY: string | undefined = import.meta.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-/**
- * Native-app store links for the "get the app to watch" CTAs. Env-driven so a
- * button only renders once its store listing is actually public — set
- * PUBLIC_PLAY_STORE_URL when the Android listing goes live (package
- * com.saathum.app) and PUBLIC_APP_STORE_URL when iOS ships. Until then the
- * CTA shows web-viewing only, with no dead store links.
- */
-export const PLAY_STORE_URL: string | undefined = import.meta.env.PUBLIC_PLAY_STORE_URL || undefined;
-export const APP_STORE_URL: string | undefined = import.meta.env.PUBLIC_APP_STORE_URL || undefined;
-
-/** True when at least one native app store listing is live and linkable. */
-export const HAS_NATIVE_APP: boolean = Boolean(PLAY_STORE_URL || APP_STORE_URL);
+// [WEB-PERF-1 2026-09-30] The plain values moved to ./env so light client
+// code stops pulling publicImageManifest.json into every page. Re-exported here
+// so every existing import keeps working.
+export { API_BASE, CLERK_PUBLISHABLE_KEY, PLAY_STORE_URL, APP_STORE_URL, HAS_NATIVE_APP } from './env';
+import { API_BASE, CLERK_PUBLISHABLE_KEY } from './env';
 
 /**
  * Frontend-API host for the configured Clerk instance, derived from the

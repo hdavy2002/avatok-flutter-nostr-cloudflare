@@ -7966,5 +7966,21 @@
         "note": "An admin test-chat turn completes with outcome=ok."
       }
     ]
+  },
+  "WEB-PERF-1": {
+    "description": "[WEB-PERF-1 2026-09-30] Owner decision: every non-critical thing on the website loads later, in the background, on public and signed-in pages. Google Fonts CSS no longer blocks first paint (preload + swap), PostHog starts after window load + idle (8s ceiling, early errors buffered), Preeti loads Clerk only for signed-in visitors, and API_BASE/Clerk key moved to lib/env.ts so the 80 KB image manifest leaves the shared chunk. Web-only; no flag.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "web_page_speed",
+        "property": "path",
+        "equals": "/",
+        "min_events": 1,
+        "note": "Page-speed telemetry arrives after the deferred SDK start. Success is median lcp_ms on '/' (effective_type=4g) lower than the week before 2026-09-30, and telemetry_start_ms under ~8000."
+      }
+    ]
   }
 }

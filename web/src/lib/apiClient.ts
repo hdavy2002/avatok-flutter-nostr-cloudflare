@@ -6,7 +6,7 @@
 //   - public reads need no auth.
 // Do NOT add a helper for an endpoint that isn't in §4.
 
-import { API_BASE } from './config';
+import { API_BASE } from './env';
 import { withDeadline } from './requestDeadline';
 import type { Card, CardPage, Creator, CreatorStats, CreatorTrustStats, Listing, ListingSlot, Review, ReviewEligibility, ReviewList } from './types';
 import { apiError, captureException } from './analytics';

@@ -5,7 +5,7 @@
 //
 //   <span data-saathum-price="havan" data-saathum-type="havan">₹111</span>   floor
 //   <span data-saathum-price="<slug>" data-saathum-type="havan|puja">…</span> one ritual
-import { API_BASE } from './config';
+import { API_BASE } from './env';
 import { captureException } from './analytics';
 
 type Pricing = { havan_from: number | null; puja_from: number | null; rituals: Record<string, number> };

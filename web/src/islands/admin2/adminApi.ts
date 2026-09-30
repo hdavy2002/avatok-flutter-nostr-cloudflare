@@ -9,7 +9,7 @@
 // - Money on the wire is integer paise: format with formatPaise().
 import { ApiError, request, type RequestOptions } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 
 export { ApiError };
 export {

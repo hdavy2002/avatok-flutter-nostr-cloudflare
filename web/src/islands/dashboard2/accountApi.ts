@@ -6,7 +6,7 @@
 // comes from getActiveTokenWaited(), which DashNav's ClerkBridge feeds.
 import { ApiError, request, type RequestOptions } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
-import { API_BASE } from '../../lib/config';
+import { API_BASE } from '../../lib/env';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
 

@@ -20,7 +20,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { MoreHorizontal } from 'lucide-react';
 import { ClerkIsland } from '../../lib/clerk';
-import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { captureException } from '../../lib/analytics';
 import { request } from '../../lib/apiClient';
 import { signInUrlForHere } from '../../lib/authRedirect';

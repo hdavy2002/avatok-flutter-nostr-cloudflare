@@ -45,7 +45,7 @@ import {
 } from '@clerk/clerk-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { CLERK_PUBLISHABLE_KEY } from './config';
+import { CLERK_PUBLISHABLE_KEY } from './env';
 import { request, ApiError } from './apiClient';
 import { capture, identify, reset as resetAnalytics } from './analytics';
 import type { GuestCreated } from './types';
