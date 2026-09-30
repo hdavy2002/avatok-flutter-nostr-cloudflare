@@ -9,9 +9,7 @@ const web = resolve(new URL('..', import.meta.url).pathname);
 const manifest = JSON.parse(readFileSync(join(web, 'src/lib/publicImageManifest.json'), 'utf8'));
 const source = configSource()
   .replace("import publicImageManifest from './publicImageManifest.json';", `const publicImageManifest = ${JSON.stringify(manifest)};`)
-  .replaceAll('import.meta.env.', '({}).')
-  // [SAATHUM-BRAND-CENTRAL-WEB-1] config.ts imports BRAND; inline it (data: modules cannot resolve './brand').
-  .replace("import { BRAND } from './brand';", readFileSync(join(web, 'src/lib/brand.ts'), 'utf8'));
+  .replaceAll('import.meta.env.', '({}).');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
 const { publicImage, cfImage, IMAGE_WIDTHS } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 function walk(dir) {

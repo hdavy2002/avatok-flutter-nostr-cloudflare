@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { BRAND, reEscape } from './brand.mjs';
 
 const require = createRequire(import.meta.url);
 const sharp = require('sharp');
@@ -27,12 +28,12 @@ async function text(value, size, colour) {
 }
 const fallback = await sharp(background).composite([
   { input: art, left: 724, top: 60 },
-  { input: await text('Saathum', 48, '#ab3421'), left: 56, top: 64 },
+  { input: await text(BRAND.nameCompact, 48, '#ab3421'), left: 56, top: 64 },
   { input: await text('SACRED RITUALS, SHARED LIVE', 19, '#9b4b24'), left: 56, top: 164 },
   { input: await text('Sacred rituals.', 49, '#304d35'), left: 56, top: 237 },
   { input: await text('Shared live.', 49, '#304d35'), left: 56, top: 309 },
   { input: await text('Wherever you are.', 24, '#5a614d'), left: 56, top: 411 },
-  { input: await text('saathum.com', 21, '#ab3421'), left: 56, top: 536 },
+  { input: await text(BRAND.domain, 21, '#ab3421'), left: 56, top: 536 },
 ]).png({ palette: true, colours: 192, dither: 0, compressionLevel: 9 }).toBuffer();
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');

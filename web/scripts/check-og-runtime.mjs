@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Miniflare } from 'miniflare';
+import { BRAND, reEscape } from './brand.mjs';
 
 const workerRoot = resolve('dist/_worker.js');
 const entry = resolve(workerRoot, 'index.js');
@@ -51,7 +52,7 @@ const runtime = new Miniflare({
 });
 
 try {
-  const response = await runtime.dispatchFetch('https://saathum.com/og/collection/help.png');
+  const response = await runtime.dispatchFetch(BRAND.webOrigin + '/og/collection/help.png');
   if (response.status !== 200) assert.fail(`OG endpoint returned ${response.status}: ${await response.text()}`);
   assert.equal(response.headers.get('content-type'), 'image/png');
   assert.equal(response.headers.get('x-seo-og-fallback'), null, 'OG endpoint silently returned its fallback image');
@@ -66,10 +67,10 @@ try {
 
   // [SEO-OG-ART-1] A ritual article must render its OWN picture, not the brand
   // hero. Before this check every article card shipped with X-SEO-OG-Fallback: art.
-  const article = await runtime.dispatchFetch('https://saathum.com/og/article/saraswati-havan.png');
+  const article = await runtime.dispatchFetch(BRAND.webOrigin + '/og/article/saraswati-havan.png');
   if (article.status !== 200) assert.fail(`Article OG endpoint returned ${article.status}: ${await article.text()}`);
   assert.equal(article.headers.get('x-seo-og-fallback'), null, 'Article OG card fell back instead of using the ritual artwork');
-  const home = await runtime.dispatchFetch('https://saathum.com/og/home/home.png');
+  const home = await runtime.dispatchFetch(BRAND.webOrigin + '/og/home/home.png');
   const [a, h] = [new Uint8Array(await article.arrayBuffer()), new Uint8Array(await home.arrayBuffer())];
   assert.notDeepEqual(a.subarray(0, 4096), h.subarray(0, 4096), 'Article card is byte-identical to the home card');
   console.log(`OG article artwork OK: ${a.byteLength} bytes (home ${h.byteLength}).`);

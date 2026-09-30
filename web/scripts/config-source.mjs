@@ -11,6 +11,7 @@ export function configSource() {
   const brand = read('brand.ts');
   const env = read('env.ts').replace("import { BRAND } from './brand';", brand);
   return read('config.ts')
+    .replace(/^import \{ BRAND \} from '\.\/brand';\n/m, '')
     .replace(/^export \{[^}]*\} from '\.\/env';\n/m, '')
     .replace(/^import \{[^}]*\} from '\.\/env';\n/m, env + '\n');
 }

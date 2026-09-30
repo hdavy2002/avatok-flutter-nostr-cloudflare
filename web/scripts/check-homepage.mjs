@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
+import { BRAND, reEscape } from './brand.mjs';
 
 function meta(page, key) {
   const tags = page.match(/<meta\b[^>]*>/g) || [];
@@ -26,7 +27,7 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, /<title[^>]*>Himalayan Temple Havans in Your Name \| Saa Thum/, 'Puja service page title'); // WEB-REFRAME-1
+assert.match(html, new RegExp('<title[^>]*>Himalayan Temple Havans in Your Name \\| ' + reEscape(BRAND.name)), 'Puja service page title'); // WEB-REFRAME-1
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert.match(visibleText, /Your Puja, in the Peaceful Himalayas\./, 'Brief H1'); // WEB-HERO-PHOTO-1
@@ -103,9 +104,9 @@ for (const href of ['/careers','/marketplace-terms','/consultation-terms','/acce
   assert(!footerHtml.includes('href="' + href + '"'), 'Archived page is hidden from the footer: ' + href);
 }
 assert.doesNotMatch(footerHtml, /<details\b/, 'Footer menus are visible, not collapsed');
-assert.match(visibleText, /Saa Thum performs pujas and havans for you\./, 'Service role is explained');
+assert.match(visibleText, new RegExp(reEscape(BRAND.name) + ' performs pujas and havans for you\\.'), 'Service role is explained');
 assert.match(visibleText, /You book and pay online; refunds follow our published policy\s*\./, 'Payment and refund explanation remains reachable');
-assert.match(visibleText, /Saa Thum makes no claims of guaranteed outcomes\./, 'Brief disclaimer present');
+assert.match(visibleText, new RegExp(reEscape(BRAND.name) + ' makes no claims of guaranteed outcomes\\.'), 'Brief disclaimer present');
 
 // [SAATHUM-GUIDE-1 2026-09-25] Owner replaced the sample listing cards with eight
 // havan KNOWLEDGE cards that open the Puja & Havan Guide — no prices, no fake slots.
@@ -147,7 +148,7 @@ assert.doesNotMatch(html, /\bcalculator-illustrated\b/, 'Earnings calculator rem
 assert.doesNotMatch(html, /<input\b[^>]*type="range"/, 'No calculator controls on the homepage (contracts.md §6)');
 assert.doesNotMatch(html, /id="ideas-catalogue"|id="how-saathum-works"|id="addon-ideas"|id="addon-calculator"|id="consultations"/, 'Retired creator anchors removed (contracts.md §5)');
 assert.doesNotMatch(html, /avatok-creator-constellation/, 'Retired creator hero art removed (A4.1, D10)');
-assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'Language picker hidden on Saa Thum (D9)');
+assert.equal((html.match(/data-india-language-select/g) || []).length, 0, `Language picker hidden on ${BRAND.name} (D9)`);
 assert.doesNotMatch(bodyHtml.replace(/<footer\b[\s\S]*?<\/footer>/i, ''), /\b1:1 video calls?\b|\bastrology\b|\btarot\b|\bpalmistry\b|\bkundli\b/i, 'No 1:1 consultation or astrology content in homepage content (D2, AC-17)');
 
 for (const key of ['web-landing.0528be3d426aff53', 'web-landing.92f4118799fbcf80', 'web-landing.d0082f5d7ac7dd8b', 'web-landing.721cb60fc48386d6', 'web-landing.c54a63bb77c61e9d', 'web-landing.b9d43bd06fbe8631']) {
@@ -211,10 +212,10 @@ const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'),'utf8');
 assert.match(sitemapIndexSource,/<sitemapindex/,'sitemap.xml is implemented as a sitemap index');
 assert(sitemapIndexSource.includes('/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
-assert(sitemap.includes('<loc>https://saathum.com/rituals/</loc>'), 'Guide is in the sitemap');
-assert(!sitemap.includes('https://saathum.com/ideas<'), 'Retired /ideas is out of the sitemap');
-assert(!sitemap.includes('https://saathum.com/blog/creator-ideas/'), 'Archived creator guides stay out of the sitemap');
-assert(!sitemap.includes('https://saathum.com/organisers'), '/organisers archived: not in sitemap');
+assert(sitemap.includes(`<loc>${BRAND.webOrigin}/rituals/</loc>`), 'Guide is in the sitemap');
+assert(!sitemap.includes(`${BRAND.webOrigin}/ideas<`), 'Retired /ideas is out of the sitemap');
+assert(!sitemap.includes(`${BRAND.webOrigin}/blog/creator-ideas/`), 'Archived creator guides stay out of the sitemap');
+assert(!sitemap.includes(`${BRAND.webOrigin}/organisers`), '/organisers archived: not in sitemap');
 const ritualImages = new Set();
 for (const href of ritualLinks) {
  const slug = href.split('/').pop();
@@ -235,7 +236,7 @@ for (const href of ritualLinks) {
  assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
  assert.equal(meta(article, 'og:type'), 'article');
  assert.match(article, /BreadcrumbList/);
- assert(sitemap.includes('https://saathum.com' + href + '/<'), 'Article in sitemap: ' + href);
+ assert(sitemap.includes(BRAND.webOrigin + href + '/<'), 'Article in sitemap: ' + href);
  // Artwork: one file per ritual at /assets/saathum-rituals/<slug>.png, landscape, unique.
  const file = resolve(root, 'assets/saathum-rituals', slug + '.png');
  assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
@@ -249,7 +250,7 @@ for (const href of ritualLinks) {
 console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), 'Himalayan Temple Havans in Your Name | Saa Thum', 'A4 og:title (WEB-REFRAME-1)');
+assert.equal(meta(html, 'og:title'), `Himalayan Temple Havans in Your Name | ${BRAND.name}`, 'A4 og:title (WEB-REFRAME-1)');
 assert.equal(meta(html, 'og:description'), 'Living abroad or unable to travel? We arrange puja and havan in your name at peaceful Himalayan temples, so you stay connected to your faith.', 'A4 og:description (WEB-HERO-PHOTO-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
@@ -257,13 +258,13 @@ const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
 // [WEB-OG-SHARE-1 2026-09-29] Owner decision: the share image is the homepage's own hero photo, 1200x630 JPEG.
 // (normalizeBuiltImages maps the built /cdn-cgi/image/.../_images/<hash> URL back to its source path.)
-assert.equal(ogImageUrl, 'https://saathum.com/assets/saathum-grand/hero-havan.jpg', 'Homepage shares its hero photo');
-assert.match(rawHtml, /property="og:image" content="https:\/\/saathum\.com\/cdn-cgi\/image\/format=jpeg,quality=80,width=1200,height=630,fit=cover,gravity=0\.5x0\.35\//, 'Share photo is a 1200x630 JPEG');
+assert.equal(ogImageUrl, BRAND.webOrigin + '/assets/saathum-grand/hero-havan.jpg', 'Homepage shares its hero photo');
+assert.match(rawHtml, new RegExp('property="og:image" content="' + reEscape(BRAND.webOrigin) + '/cdn-cgi/image/format=jpeg,quality=80,width=1200,height=630,fit=cover,gravity=0\\.5x0\\.35/'), 'Share photo is a 1200x630 JPEG');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
-assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/saathum\.com\/"/, 'Homepage canonical is the root URL');
-assert.equal(meta(html, 'og:url'), 'https://saathum.com/');
-assert.doesNotMatch(sitemap, /<loc>https:\/\/saathum\.com\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
+assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(BRAND.webOrigin + '/') + '"'), 'Homepage canonical is the root URL');
+assert.equal(meta(html, 'og:url'), BRAND.webOrigin + '/');
+assert.doesNotMatch(sitemap, new RegExp('<loc>' + reEscape(BRAND.webOrigin) + '/india(?:-next)?/?</loc>'), 'Retired and preview routes stay out of the sitemap');
 console.log('Homepage title, description, canonical and share image passed.');
 
 // [SHV2-S10] Attach the new /organisers contract check to THIS existing CI

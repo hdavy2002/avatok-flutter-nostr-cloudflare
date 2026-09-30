@@ -3,8 +3,9 @@
 // recrawl in hours instead of weeks. Run by hand AFTER a web deploy is live:
 //   node scripts/indexnow-ping.mjs
 // The key file public/a97b91804230a8c71e3bdf763cdfdef1.txt must stay deployed at the site root.
+import { BRAND } from './brand.mjs';
 const KEY = 'a97b91804230a8c71e3bdf763cdfdef1';
-const HOST = 'saathum.com';
+const HOST = BRAND.domain;
 const res = await fetch('https://' + HOST + '/sitemap-pages.xml', { headers: { 'cache-control': 'no-cache' } });
 if (!res.ok) throw new Error('sitemap-pages.xml ' + res.status);
 const urls = [...(await res.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
