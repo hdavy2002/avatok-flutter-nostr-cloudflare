@@ -1,5 +1,6 @@
 
 import '../../core/localization/ui_text.dart';
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -356,7 +357,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
   Future<void> _resolve() async {
     final q = _ctrl.text.trim();
     if (q.replaceAll(RegExp(r'[^\d]'), '').length < 4) {
-      setState(() => _error = 'Enter a full Saathum number');
+      setState(() => _error = 'Enter a full ${Brand.nameCompact} number');
       return;
     }
     setState(() { _resolving = true; _error = null; });

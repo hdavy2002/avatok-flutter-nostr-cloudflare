@@ -1,6 +1,7 @@
 
 import '../../core/localization/ui_text.dart';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -346,7 +347,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
           ),
           const SizedBox(height: Msg.s4),
           _benefit(PhosphorIcons.usersThree(PhosphorIconsStyle.regular),
-              'Unlimited staff seats', 'Add your whole team to the call menu — each with their own Saathum number, voice and greeting.'),
+              'Unlimited staff seats', 'Add your whole team to the call menu — each with their own ${Brand.nameCompact} number, voice and greeting.'),
           _benefit(PhosphorIcons.phoneCall(PhosphorIconsStyle.regular),
               'One business number', 'Callers reach a single team line; Ava answers 24/7 and warm-transfers to whoever is free.'),
           _benefit(PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
@@ -488,7 +489,7 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
     final role = _role.text.trim();
     final number = _number.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (name.isEmpty || role.isEmpty || number.isEmpty) {
-      setState(() => _error = 'Name, role and Saathum number are required');
+      setState(() => _error = 'Name, role and ${Brand.nameCompact} number are required');
       return;
     }
     setState(() { _saving = true; _error = null; });

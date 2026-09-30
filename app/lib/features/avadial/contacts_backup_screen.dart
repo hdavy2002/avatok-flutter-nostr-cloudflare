@@ -1,5 +1,6 @@
 
 import '../../core/localization/ui_text.dart';
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -423,7 +424,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                     'your saved copy keeps everything it already had — so a backup '
                     'from one phone can never wipe out another.'),
                 _bullet('Your AvaTOK contact book merges your phone contacts with the '
-                    'extra details you add in AvaTOK (Saathum number, emails, LinkedIn).'),
+                    'extra details you add in AvaTOK (${Brand.nameCompact} number, emails, LinkedIn).'),
                 _bullet('Backups are encrypted on AvaTOK\'s servers and restored with '
                     'your AvaTOK login — so a lost SIM or Google account can\'t lock '
                     'you out.'),

@@ -4,6 +4,7 @@ import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:io';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -1210,7 +1211,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
     final digits = q.replaceAll(RegExp(r'[^\d]'), '');
     final looksEmail = q.contains('@');
     if (digits.length < 4 && !looksEmail) {
-      setState(() => _error = 'Enter a Saathum number or email');
+      setState(() => _error = 'Enter a ${Brand.nameCompact} number or email');
       return;
     }
     setState(() { _resolving = true; _error = null; });

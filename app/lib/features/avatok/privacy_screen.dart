@@ -1,5 +1,6 @@
 
 import '../../core/localization/ui_text.dart';
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -129,8 +130,8 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
               const SizedBox(height: Msg.s5),
               UiText(UiMessage.m_who_can_add_me_372ec860c1, style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
-              _whoOption('everyone', 'Everyone', 'Anyone who searches your Saathum number or email'),
-              _whoOption('number_only', 'Only with my Saathum number', 'People must know your exact number'),
+              _whoOption('everyone', 'Everyone', 'Anyone who searches your ${Brand.nameCompact} number or email'),
+              _whoOption('number_only', 'Only with my ${Brand.nameCompact} number', 'People must know your exact number'),
               _whoOption('nobody', 'Nobody', 'You won’t appear in search or QR adds'),
               const SizedBox(height: Msg.s5),
               // [LASTSEEN-PRIVACY-1] WhatsApp-style last-seen visibility.

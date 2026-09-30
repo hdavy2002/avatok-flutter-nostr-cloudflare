@@ -1,6 +1,7 @@
 
 import '../../core/localization/ui_text.dart';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -538,7 +539,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
   List<Widget> _content() {
     final me = _me!;
     if (!me.featureOn) {
-      return [_infoCard('Not available', 'Saathum numbers aren’t available right now. Check back soon.')];
+      return [_infoCard('Not available', '${Brand.nameCompact} numbers aren’t available right now. Check back soon.')];
     }
     final widgets = <Widget>[];
     if (widget.gate) {

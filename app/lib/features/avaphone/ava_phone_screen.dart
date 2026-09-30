@@ -2,6 +2,7 @@
 import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -1203,7 +1204,7 @@ class _DialpadSheetState extends State<_DialpadSheet>
       AvaCallsDestinationState.avatok => (
           PhoneTheme.teal,
           PhosphorIcons.sealCheck(PhosphorIconsStyle.regular),
-          'Saathum number · free in-network call'
+          '${Brand.nameCompact} number · free in-network call'
         ),
       AvaCallsDestinationState.pstn => (
           PhoneTheme.callGreen,

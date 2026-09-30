@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/brand.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/api_auth.dart';
@@ -30,7 +31,7 @@ class VirtualNumbersApi {
   }
 
   Future<VirtualLine> createAvaTok(
-      {String? requestedNumber, String label = 'Saathum number'}) async {
+      {String? requestedNumber, String label = '${Brand.nameCompact} number'}) async {
     final response = await ApiAuth.postJson('$_base/virtual-lines/avatok', {
       if (requestedNumber != null && requestedNumber.trim().isNotEmpty)
         'requested_number': requestedNumber.trim(),

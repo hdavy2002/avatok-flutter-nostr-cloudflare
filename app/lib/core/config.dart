@@ -1,6 +1,7 @@
 /// App-wide configuration.
 library;
 
+import 'brand.dart';
 import 'feature_flags.dart';
 
 /// Clerk publishable key — public, ships in app. [STAGING-ISOLATION-1] Branches
@@ -100,7 +101,7 @@ const String kAppOnboardedUrl = 'https://$kSignalingHost/api/account/app-onboard
 const String kSignalingHost =
     // [SAATHUM-DEBRAND-1 2026-09-27] prod: api.saathum.com = the same Worker as
     // api.avatok.ai (both custom domains stay attached; older builds keep working).
-    kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : 'api.saathum.com';
+    kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : Brand.apiHost;
 
 /// Calls-worker host. [ENV-ISOLATION-1] These four URLs used to hardcode the PROD
 /// worker, so a staging APK minted RealtimeKit tokens against production and wrote
@@ -200,7 +201,7 @@ const String kDownloadUrl = 'https://avatok.ai/download';
 /// Download button only appears once the tester is signed into Play with an
 /// email registered in the selected Closed Alpha tester list.
 const String kClosedTestUrl =
-    'https://play.google.com/apps/testing/com.saathum.app';
+    'https://play.google.com/apps/testing/${Brand.playPackageId}';
 
 /// Device address-book sync + "who's on AvaTok" matching (NIP-98).
 const String kContactsSyncUrl = 'https://$kSignalingHost/api/contacts/sync';   // POST
@@ -243,7 +244,7 @@ const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    
 /// (worker/wrangler.toml [env.staging.vars]); this makes the client match.
 const String kBlossomBaseUrl = kAvatokEnv == 'staging'
     ? 'https://blossom-staging.avatok.ai'
-    : 'https://media.saathum.com'; // [SAATHUM-DEBRAND-1] same avatok-blobs bucket as blossom.avatok.ai
+    : Brand.mediaOrigin; // [SAATHUM-DEBRAND-1] same avatok-blobs bucket as blossom.avatok.ai
 
 /// DEPRECATED (Nostr removed). Kept as a harmless constant so legacy screens that
 /// still construct a NostrClient(kNostrRelayUrl) compile; the client is now a

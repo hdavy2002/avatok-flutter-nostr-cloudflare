@@ -1,5 +1,6 @@
 
 import '../../core/localization/ui_text.dart';
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -286,8 +287,8 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                             style: AvaDialTheme.value(size: 16, color: AvaDialTheme.text)),
                       ),
                 const SizedBox(height: 16),
-                _label('Saathum number'),
-                _field(_avatokCtrl, 'Their Saathum number or @handle',
+                _label('${Brand.nameCompact} number'),
+                _field(_avatokCtrl, 'Their ${Brand.nameCompact} number or @handle',
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.bold),
                     accent: AD.primaryBadge),
                 const SizedBox(height: 16),

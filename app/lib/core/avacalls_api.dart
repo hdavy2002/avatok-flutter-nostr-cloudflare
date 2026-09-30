@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'brand.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -281,7 +282,7 @@ class AvaCallsApi {
             countryIso2: '${j['country_iso2'] ?? ''}'.toUpperCase(),
             countryName: '${j['country_name'] ?? ''}',
             contact: contact,
-            message: 'Saathum number · free in-network call',
+            message: '${Brand.nameCompact} number · free in-network call',
           );
         }
         final country =
@@ -355,7 +356,7 @@ class AvaCallsApi {
             rawInput: raw,
             canonicalNumber: canonical,
             contact: hit,
-            message: 'Saathum number · free in-network call');
+            message: '${Brand.nameCompact} number · free in-network call');
       }
     } catch (_) {/* staged fallback is best effort */}
     return AvaCallsDestination(

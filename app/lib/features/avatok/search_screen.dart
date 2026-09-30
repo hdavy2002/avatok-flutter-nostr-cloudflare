@@ -3,6 +3,7 @@ import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -362,7 +363,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
-                          text: 'No matches.\nFind people by their full email address or Saathum number.'))),
+                          text: 'No matches.\nFind people by their full email address or ${Brand.nameCompact} number.'))),
                 if (_q.isEmpty && _device.isEmpty)
                   Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(

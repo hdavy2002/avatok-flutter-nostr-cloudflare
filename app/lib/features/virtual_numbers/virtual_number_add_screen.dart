@@ -1,6 +1,7 @@
 
 import '../../core/localization/ui_text.dart';
 
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -94,7 +95,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
                 'Get a DID virtual number',
                 'A provider number for PSTN calls, caller ID, voicemail and SMS where supported.'),
             const SizedBox(height: 10),
-            _choiceCard(1, PhosphorIcons.sparkle(PhosphorIconsStyle.regular), 'Create a free Saathum number',
+            _choiceCard(1, PhosphorIcons.sparkle(PhosphorIconsStyle.regular), 'Create a free ${Brand.nameCompact} number',
                 'In-network AvaTOK calls and messaging. It cannot receive carrier calls, SMS or OTPs.'),
             const SizedBox(height: 18),
             VirtualNumbersUi.sectionLabel('Line label'),

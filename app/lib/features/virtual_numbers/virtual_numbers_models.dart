@@ -1,3 +1,4 @@
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ui/avatok_dark.dart';
@@ -140,7 +141,7 @@ class VirtualLine {
   bool can(String capability) => capabilities[capability] == true;
   bool get isDid => kind == VirtualLineKind.did;
   bool get isActive => status == VirtualLineStatus.active;
-  String get typeLabel => isDid ? 'DID number' : 'Saathum number';
+  String get typeLabel => isDid ? 'DID number' : '${Brand.nameCompact} number';
   String get statusLabel => switch (status) {
         VirtualLineStatus.active => 'Active',
         VirtualLineStatus.provisioning => 'Setting up',

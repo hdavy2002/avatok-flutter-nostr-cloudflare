@@ -1,5 +1,6 @@
 
 import '../../core/localization/ui_text.dart';
+import '../../core/brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -191,7 +192,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         Center(child: Text(_displayName, style: ADText.appTitle())),
         const SizedBox(height: Msg.s4),
         if (_number.isNotEmpty)
-          _box('Saathum number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
+          _box('${Brand.nameCompact} number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: Row(children: [
             Expanded(
               // [DIALPAD-BIZ-CALLS] Tapping the number drops it into the dialpad,
@@ -216,7 +217,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           ]))
         else
           // No shared Saathum number — show a friendly note, never the raw user_… id.
-          _box('Saathum number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
+          _box('${Brand.nameCompact} number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: UiText(UiMessage.m_this_contact_hasn_t_shared_1f9b530200,
                   style: ADText.preview(c: AD.textSecondary))),
         if (_email.isNotEmpty) ...[
