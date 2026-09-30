@@ -11,6 +11,7 @@
 // Dedupe: one message per buyer per event per IST day, on BOTH channels (WhatsApp: outbox UNIQUE key with a
 // day-based url_hash; email: outboxKey includes the day and an existing row is skipped). Registered by one
 // spread line in routes/admin2.ts ADMIN2_ROUTES. No migration: whatsapp_outbox.kind has no CHECK constraint.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import type { Admin2RouteDef } from "./admin2";
@@ -92,13 +93,13 @@ export async function adminWeatherDelaySend(req: Request, env: Env, id: string):
     <h2 style="margin:0 0 12px">An update on your video 🙏</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
     <p style="margin:0 0 8px">${escapeHtml(text)}</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum Support</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name} Support</p>
   </div>`;
       const r = await enqueueEmail(env, {
         to, subject: `An update on your ${title} video`, html,
         kind: "saathum_weather_delay", orderId: b.commercial_order_id, recipientId: b.uid,
         messageVersion: "saathum-weather-delay.v1", outboxKey,
-        from: "Saa Thum Support <noreply@saathum.com>",
+        from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
       });
       if (r.status !== "unavailable" && r.status !== "failed") emails++;
     } catch (err) {

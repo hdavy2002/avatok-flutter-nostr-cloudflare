@@ -4,6 +4,7 @@
 // Specs/SPEC-2026-09-26-SAATHUM-CHECKOUT.md for the HTTP contract this file
 // implements, and worker/migrations/2026-09-26-saathum-checkout.sql for why
 // payment matching here does NOT reuse hdfc_sms_smoke_intents (amount cap).
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { requireUser, isFail, requireVerifiedWhatsApp } from "../authz"; // [WA-LOGIN-1]
 import { metaDb } from "../db/shard";
@@ -259,12 +260,12 @@ async function checkoutEnvelope(env: Env, row: CheckoutRowDb) {
       // personal VPA (e.g. …@pthdfc), and UPI apps such as ICICI iMobile refuse a P2P request
       // carrying merchant fields ("Request Restricted — incorrect merchant details").
       // Matching is by the unique amount, so tr was never needed.
-      tn: "Saa Thum booking",
+      tn: `${BRAND.name} booking`,
     })}`
     : null;
   return {
     checkout_id: row.checkout_id,
-    listing: { id: row.listing_id, title: listing?.title ?? "Saa Thum booking", starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null), refund_window_hours: refundWindowHours(eventType),
+    listing: { id: row.listing_id, title: listing?.title ?? `${BRAND.name} booking`, starts_at: listing?.starts_at ?? null, duration_min: listing?.duration_min ?? null, cover_url: typeof cover[0] === "string" ? cover[0] : (typeof (cover[0] as any)?.url === "string" ? (cover[0] as any).url : null), refund_window_hours: refundWindowHours(eventType),
       // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] null when the event has no temple.
       temple: await templeForListing(env, row.listing_id) },
     status,
@@ -589,7 +590,7 @@ export async function saathumCheckoutReceiptPdf(req: Request, env: Env, id: stri
   const pdf = await renderSaathumReceiptPdf({
     receiptNo: row.receipt_no, issuedAt: row.confirmed_at ?? row.created_at,
     billedTo: { name: sankalp.name || null, email, address: address ? [address.line1, address.line2, `${address.city}, ${address.state} ${address.pincode}`].filter(Boolean) as string[] : [] },
-    item: { title: listing?.title ?? "Saa Thum booking", startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
+    item: { title: listing?.title ?? `${BRAND.name} booking`, startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
     ...receiptMoney(quote, row), // [SAATHUM-UPI-3LAYER 2026-09-29] collected amount + rounding-discount line
     paidAt: row.confirmed_at, utr: row.utr, paymentId: row.checkout_id, orderId: row.commercial_order_id,
   });
@@ -882,20 +883,20 @@ async function sendSaathumRejectedEmail(env: Env, checkoutId: string): Promise<v
     emailFor(env, row.uid).catch(() => null),
   ]);
   if (!to) return;
-  const title = listing?.title ?? "Saa Thum booking";
+  const title = listing?.title ?? `${BRAND.name} booking`;
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
     <h2 style="margin:0 0 12px">We couldn’t find your payment yet</h2>
     <p style="margin:0 0 8px;font-weight:600">${escapeHtml(title)}</p>
     <p style="margin:0 0 8px">Namaste. We’re sorry — we weren’t able to match a payment to this booking, so it isn’t confirmed yet.</p>
-    <p style="margin:0 0 8px">If money has left your account, please don’t worry. Simply write to <a href="mailto:support@saathum.com">support@saathum.com</a> with either:</p>
+    <p style="margin:0 0 8px">If money has left your account, please don’t worry. Simply write to <a href="mailto:${BRAND.emails.support}">${BRAND.emails.support}</a> with either:</p>
     <ul style="margin:0 0 8px;padding-left:20px">
       <li>the <b>12-digit UPI transaction ID (UTR)</b> — you’ll find it in your UPI app’s payment history or in your bank SMS, or</li>
       <li>a <b>screenshot</b> of the payment.</li>
     </ul>
     <p style="margin:0 0 8px">Please mention booking ID <b>${bookingRef(checkoutId)}</b>. We’ll check it and set it right quickly.</p>
-    <p style="margin:0 0 8px">With warm regards,<br>Team Saa Thum</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+    <p style="margin:0 0 8px">With warm regards,<br>Team ${BRAND.name}</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name}</p>
   </div>`;
   await enqueueEmail(env, {
     to, subject: `About your payment for ${title}`, html,
@@ -952,7 +953,7 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
   const pdf = await renderSaathumReceiptPdf({
     receiptNo: row.receipt_no ?? checkoutId, issuedAt: row.confirmed_at ?? Date.now(),
     billedTo: { name: sankalp.name || null, email: to, address: address ? [address.line1, address.line2, `${address.city}, ${address.state} ${address.pincode}`].filter(Boolean) as string[] : [] },
-    item: { title: listing?.title ?? "Saa Thum booking", startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
+    item: { title: listing?.title ?? `${BRAND.name} booking`, startsAt: listing?.starts_at ?? null, durationMin: listing?.duration_min ?? null },
     ...receiptMoney(quote, row), // [SAATHUM-UPI-3LAYER 2026-09-29]
     paidAt: row.confirmed_at, utr: row.utr, paymentId: row.checkout_id, orderId: row.commercial_order_id,
   });
@@ -963,15 +964,15 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
     <h2 style="margin:0 0 12px">Booking confirmed</h2>
-    <p style="margin:0 0 8px;font-weight:600">${escapeHtml(listing?.title ?? "Saa Thum booking")}</p>
+    <p style="margin:0 0 8px;font-weight:600">${escapeHtml(listing?.title ?? `${BRAND.name} booking`)}</p>
     ${whenIst ? `<p style="margin:0 0 8px">${escapeHtml(whenIst)} IST</p>` : ""}
     <p style="margin:0 0 8px">When the ${escapeHtml(emailCopy.noun)} finishes, we'll email you the video to download.</p>
     ${prasadNote}
     <p style="margin:20px 0 0;color:#999;font-size:12px">Your payment receipt is attached. Receipt no. ${escapeHtml(row.receipt_no ?? "")}</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name}</p>
   </div>`;
   const result = await enqueueEmail(env, {
-    to, subject: `Booking confirmed — ${listing?.title ?? "Saa Thum"}`, html,
+    to, subject: `Booking confirmed — ${listing?.title ?? BRAND.name}`, html,
     kind: "saathum_checkout_confirmation", orderId: row.commercial_order_id, recipientId: row.uid,
     messageVersion: "saathum-checkout-confirmation.v1",
     attachments: [{ name: `${row.receipt_no ?? "receipt"}.pdf`, content: pdfBase64 }],
@@ -990,7 +991,7 @@ async function sendSaathumConfirmationEmail(env: Env, checkoutId: string): Promi
 // so a slow/duplicate cron tick can never double-send. One failed send is
 // tracked and skipped; it never stops the loop or the rest of the tick.
 // ---------------------------------------------------------------------------
-const DASHBOARD_MY_EVENTS_URL = "https://saathum.com/dashboard/my-events";
+const DASHBOARD_MY_EVENTS_URL = `${BRAND.webOrigin}/dashboard/my-events`;
 
 async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<boolean> {
   const db = metaDb(env);
@@ -1012,7 +1013,7 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
     ? new Date(listing.starts_at < 100_000_000_000 ? listing.starts_at * 1000 : listing.starts_at)
       .toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })
     : null;
-  const title = listing?.title ?? "Saa Thum booking";
+  const title = listing?.title ?? `${BRAND.name} booking`;
   // [SAATHUM-SHARED-SANKALP-1 2026-09-30] A public havan/puja no longer takes a personal
   // sankalp — only a one-family ritual may say "your sankalp".
   const readyLine = ritual && takesPersonalSankalp(listingAttrsForCopy)
@@ -1028,7 +1029,7 @@ async function sendSaathumReminderEmail(env: Env, checkoutId: string): Promise<b
     <p style="margin:0 0 8px">${readyLine}</p>
     <p style="margin:0 0 8px">If you like, light a lamp at home at the same time and pray with your family. We'll email you the video when the ${escapeHtml(reminderCopy.noun)} finishes.</p>
     <p style="margin:20px 0"><a href="${DASHBOARD_MY_EVENTS_URL}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">View my booking</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name}</p>
   </div>`;
   const result = await enqueueEmail(env, {
     to, subject: `Starting in 30 minutes: ${title}`, html,
@@ -1047,7 +1048,7 @@ export async function sendSaathumVideoReadyEmails(env: Env, listingId: string, u
   const db = metaDb(env);
   const listing = await db.prepare(`SELECT title,attrs FROM listings WHERE id=?1`).bind(listingId).first<{ title: string; attrs: string | null }>();
   const noun = eventTypeCopy(eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}))).noun;
-  const title = listing?.title ?? "Saa Thum booking";
+  const title = listing?.title ?? `${BRAND.name} booking`;
   const rows = await db.prepare(
     `SELECT checkout_id, uid, commercial_order_id FROM saathum_checkouts WHERE listing_id=?1 AND status='confirmed' LIMIT 2000`,
   ).bind(listingId).all<{ checkout_id: string; uid: string; commercial_order_id: string | null }>();
@@ -1064,7 +1065,7 @@ export async function sendSaathumVideoReadyEmails(env: Env, listingId: string, u
     <p style="margin:0 0 8px">The ${escapeHtml(noun)} is complete. Download the video to keep, and share it with your family.</p>
     <p style="margin:20px 0"><a href="${escapeHtml(url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Download the video</a></p>
     <p style="margin:0 0 8px">It also stays under <a href="${DASHBOARD_MY_EVENTS_URL}">My events</a>.</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name}</p>
   </div>`;
       const r = await enqueueEmail(env, {
         to, subject: `Your video is ready: ${title}`, html,
@@ -1101,7 +1102,7 @@ async function enqueueLiveLinkEmailsForBuyers(
   const listing = await db.prepare(`SELECT title,attrs,starts_at FROM listings WHERE id=?1`).bind(listingId)
     .first<{ title: string; attrs: string | null; starts_at: number | null }>();
   const noun = eventTypeCopy(eventTypeOf(parseJsonSafe<Record<string, unknown>>(listing?.attrs ?? null, {}))).noun;
-  const title = listing?.title ?? "Saa Thum booking";
+  const title = listing?.title ?? `${BRAND.name} booking`;
   const watch = saathumWatchUrl(env, listingId);
   const startsAt = listing?.starts_at ?? null;
   const alreadyStarted = startsAt != null && Date.now() >= startsAt;
@@ -1122,7 +1123,7 @@ async function enqueueLiveLinkEmailsForBuyers(
     <p style="margin:0 0 8px">${escapeHtml(whenLine)}</p>
     <p style="margin:20px 0"><a href="${escapeHtml(watch)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Watch</a></p>
     <p style="margin:0 0 8px;color:#999;font-size:12px">This link is only for your booking — please don't share it.</p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name}</p>
   </div>`;
       const r = await enqueueEmail(env, {
         to, subject, html,

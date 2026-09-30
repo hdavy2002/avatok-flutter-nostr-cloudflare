@@ -5,6 +5,7 @@
 // that mints the room token + room_ws URL and arms the DO clock
 // (`schedule`) for a commercial booking. WP1's prejoin route and WP4/WP6
 // (web/app waiting-room UIs) all consume this.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { signSessionToken, sessionOp } from "../routes/live";
 import { readConfig, type PlatformConfig } from "../routes/config";
@@ -36,7 +37,7 @@ export interface WaitingRoomGrant {
 
 /** Same env-driven host selection as `routes/media.ts` (privateMediaReadUrl). */
 function apiHost(env: Env): string {
-  return env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : "api.saathum.com"; // [SAATHUM-DEBRAND-1 2026-09-27]
+  return env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : BRAND.apiHost; // [SAATHUM-DEBRAND-1 2026-09-27]
 }
 
 /**

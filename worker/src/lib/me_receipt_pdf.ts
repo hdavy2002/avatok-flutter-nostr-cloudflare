@@ -2,6 +2,7 @@
 // a payment receipt, NOT a tax invoice; issuer "Saathum"; no GSTIN).
 // Standard Helvetica only: WinAnsi has no ₹ glyph, so amounts print as "Rs." and any
 // character Helvetica cannot draw is dropped (winAnsiSafe) rather than crashing pdf-lib.
+import { BRAND } from "./brand";
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import { formatIst, formatRupeesAscii, winAnsiSafe } from "./me_dashboard_logic";
 
@@ -23,8 +24,8 @@ export type ReceiptInput = {
 export async function renderReceiptPdf(r: ReceiptInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Payment receipt ${r.receiptNo}`);
-  doc.setAuthor("Saathum");
-  doc.setCreator("Saathum");
+  doc.setAuthor(BRAND.nameCompact);
+  doc.setCreator(BRAND.nameCompact);
   const page = doc.addPage([595.28, 841.89]); // A4
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -48,10 +49,10 @@ export async function renderReceiptPdf(r: ReceiptInput): Promise<Uint8Array> {
   };
 
   // Header
-  text("Saathum", L, y, 22, bold);
+  text(BRAND.nameCompact, L, y, 22, bold);
   right("Payment receipt", y + 2, 16, bold);
   y -= 18;
-  text("support@saathum.com", L, y, 10, font, muted);
+  text(BRAND.emails.support, L, y, 10, font, muted);
   right(`Receipt no. ${r.receiptNo}`, y, 10, font, muted);
   y -= 14;
   right(`Date ${formatIst(r.issuedAt).replace(/,.*$/, "")}`, y, 10, font, muted);
@@ -60,13 +61,13 @@ export async function renderReceiptPdf(r: ReceiptInput): Promise<Uint8Array> {
   // Billed to
   text("BILLED TO", L, y, 8, bold, muted); y -= 15;
   const billed = [r.billedTo.name, r.billedTo.email, ...r.billedTo.address].filter((s): s is string => !!s && !!winAnsiSafe(s));
-  if (!billed.length) billed.push("Saathum customer");
+  if (!billed.length) billed.push(`${BRAND.nameCompact} customer`);
   for (const b of billed.slice(0, 7)) { text(b, L, y, 10); y -= 14; }
   y -= 12; rule(y); y -= 22;
 
   // Line item
   text("DESCRIPTION", L, y, 8, bold, muted); right("AMOUNT", y, 8, bold, muted); y -= 18;
-  const titleLines = wrap(r.item.title || "Saathum ritual booking", R - L - 140, 11, bold);
+  const titleLines = wrap(r.item.title || `${BRAND.nameCompact} ritual booking`, R - L - 140, 11, bold);
   for (const [i, t] of titleLines.entries()) { text(t, L, y, 11, bold); if (i === 0) right(formatRupeesAscii(r.amountPaise), y, 11, bold); y -= 15; }
   if (r.item.startsAt) {
     const dur = r.item.durationMin ? ` (${r.item.durationMin} min)` : "";
@@ -106,7 +107,7 @@ export async function renderReceiptPdf(r: ReceiptInput): Promise<Uint8Array> {
   const foot = 72;
   page.drawLine({ start: { x: L, y: foot + 26 }, end: { x: R, y: foot + 26 }, thickness: 0.8, color: line });
   text("This is a payment receipt, not a tax invoice.", L, foot + 8, 9, bold, muted);
-  text("Issued by Saathum. Questions: support@saathum.com", L, foot - 6, 9, font, muted);
+  text(`Issued by ${BRAND.nameCompact}. Questions: ${BRAND.emails.support}`, L, foot - 6, 9, font, muted);
 
   return doc.save();
 }
@@ -143,8 +144,8 @@ const rupeesAscii = (n: number): string => {
 export async function renderSaathumReceiptPdf(r: SaathumReceiptInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Payment receipt ${r.receiptNo}`);
-  doc.setAuthor("Saathum");
-  doc.setCreator("Saathum");
+  doc.setAuthor(BRAND.nameCompact);
+  doc.setCreator(BRAND.nameCompact);
   const page = doc.addPage([595.28, 841.89]); // A4
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -158,10 +159,10 @@ export async function renderSaathumReceiptPdf(r: SaathumReceiptInput): Promise<U
   };
   const rule = (yy: number) => page.drawLine({ start: { x: L, y: yy }, end: { x: R, y: yy }, thickness: 0.8, color: line });
 
-  text("Saathum", L, y, 22, bold);
+  text(BRAND.nameCompact, L, y, 22, bold);
   right("Payment receipt", y + 2, 16, bold);
   y -= 18;
-  text("support@saathum.com", L, y, 10, font, muted);
+  text(BRAND.emails.support, L, y, 10, font, muted);
   right(`Receipt no. ${r.receiptNo}`, y, 10, font, muted);
   y -= 14;
   right(`Date ${formatIst(r.issuedAt).replace(/,.*$/, "")}`, y, 10, font, muted);
@@ -169,10 +170,10 @@ export async function renderSaathumReceiptPdf(r: SaathumReceiptInput): Promise<U
 
   text("BILLED TO", L, y, 8, bold, muted); y -= 15;
   const billed = [r.billedTo.name, r.billedTo.email, ...r.billedTo.address].filter((s): s is string => !!s && !!winAnsiSafe(s));
-  if (!billed.length) billed.push("Saathum customer");
+  if (!billed.length) billed.push(`${BRAND.nameCompact} customer`);
   for (const b of billed.slice(0, 7)) { text(b, L, y, 10); y -= 14; }
   y -= 8;
-  text(r.item.title || "Saathum ritual booking", L, y, 11, bold); y -= 14;
+  text(r.item.title || `${BRAND.nameCompact} ritual booking`, L, y, 11, bold); y -= 14;
   if (r.item.startsAt) {
     const dur = r.item.durationMin ? ` (${r.item.durationMin} min)` : "";
     text(`Live event: ${formatIst(r.item.startsAt)}${dur}`, L, y, 10, font, muted); y -= 14;
@@ -217,7 +218,7 @@ export async function renderSaathumReceiptPdf(r: SaathumReceiptInput): Promise<U
   const foot = 72;
   page.drawLine({ start: { x: L, y: foot + 26 }, end: { x: R, y: foot + 26 }, thickness: 0.8, color: line });
   text("This is a payment receipt, not a tax invoice.", L, foot + 8, 9, bold, muted);
-  text("Issued by Saathum. Questions: support@saathum.com", L, foot - 6, 9, font, muted);
+  text(`Issued by ${BRAND.nameCompact}. Questions: ${BRAND.emails.support}`, L, foot - 6, 9, font, muted);
 
   return doc.save();
 }

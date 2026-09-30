@@ -30,6 +30,7 @@
 //               15-store cascade, deletion queue, Clerk identity delete, ADMIN_UIDS guard).
 //   Refused for yourself and for any ADMIN_UIDS account: block, sign-out-all, delete.
 //   Every action writes admin_audit (DB_WALLET) and emits admin2_user_action {action, ok}.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 // Type-only: routes/admin2.ts imports this file, so a runtime import back would be circular.
 import type { Admin2RouteDef } from "./admin2";
@@ -535,7 +536,7 @@ export async function adminV2BlockUser(req: Request, env: Env, uid: string): Pro
   await audit(env, g.actor, "block", uid, { reason, clerk_ok: clerkOk, clerk_ids: ids.length, recorded });
   await tel(env, g.actor, "block", clerkOk, { target_uid: uid, has_reason: !!reason, clerk_ok: clerkOk });
   if (!clerkOk) {
-    return err(502, "clerk_failed", "Blocked on Saa Thum (their app and website requests are refused), but Clerk didn't confirm the sign-in ban. Try again.", { partial: true, status: "blocked" });
+    return err(502, "clerk_failed", `Blocked on ${BRAND.name} (their app and website requests are refused), but Clerk didn't confirm the sign-in ban. Try again.`, { partial: true, status: "blocked" });
   }
   return json({ ok: true, uid, status: "blocked", blocked_at: now, reason });
 }

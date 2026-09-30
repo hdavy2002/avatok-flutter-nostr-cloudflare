@@ -6,6 +6,7 @@
 // `live_event` listing. The five admin tabs are a VIEW over the listing status
 // machine (lib/listing_transitions.ts) plus the clock (lib/listing_schedule.ts
 // is the authority for "is this show over"); nothing here changes either.
+import { BRAND as BRAND_CONFIG } from "./brand";
 import { endMsSql, eventWindow, scheduleState } from "./listing_schedule";
 import { startsMsSql } from "./me_dashboard_data";
 import { EVENT_TYPES, type EventType, isRitual, COLLECTIVE_SANKALPS } from "./event_types";
@@ -442,7 +443,7 @@ export function enforceEventTypeRules(effectiveType: EventType, attrs: AttrPatch
 // on every save so they always match the current title/price/place.
 // ---------------------------------------------------------------------------
 
-const BRAND = "Saa Thum";
+const BRAND = BRAND_CONFIG.name;
 
 function cut(s: string, max: number): string {
   const t = s.replace(/\s+/g, " ").trim();

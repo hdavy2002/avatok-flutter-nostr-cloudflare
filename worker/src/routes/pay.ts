@@ -26,6 +26,7 @@
 // dispatches the refund to the correct adapter. Cashfree itself is untouched — the
 // argument defaults to "cashfree", so every existing Cashfree row and the dedicated
 // /api/pay/cashfree/* route keep behaving byte-for-byte as before.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
@@ -368,7 +369,7 @@ export async function payWebhook(req: Request, env: Env, gatewayId: string): Pro
     // pointing the buyer at their bookings list.
   }
 
-  const webBase = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
+  const webBase = String(env.WEB_BASE_URL ?? BRAND.webOrigin).replace(/\/+$/, "");
   const target = new URL(`${webBase}/pay/return`);
   target.searchParams.set("gateway", gatewayId);
   if (orderId) target.searchParams.set("order_id", orderId);

@@ -19,6 +19,7 @@
 // Triggers: T-15 reminder and go-live (cron, runPushReminders) and refund recorded
 // (notifyRefundPush, called from adminRecordRefund). Dedup table: push_sent
 // (migrations/2026-09-26-dash2-push-sent.sql).
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { scheduleState, toMs } from "./listing_schedule";
@@ -89,7 +90,7 @@ export interface VapidKeys { publicKey: string; privateKey: string; subject: str
 export function vapidFromEnv(env: PushEnv): VapidKeys | null {
   const publicKey = (env.VAPID_PUBLIC_KEY ?? "").trim();
   const privateKey = (env.VAPID_PRIVATE_KEY ?? "").trim();
-  const subject = (env.VAPID_SUBJECT ?? "").trim() || "mailto:support@saathum.com";
+  const subject = (env.VAPID_SUBJECT ?? "").trim() || `mailto:${BRAND.emails.support}`;
   if (!publicKey || !privateKey) return null;
   return { publicKey, privateKey, subject };
 }

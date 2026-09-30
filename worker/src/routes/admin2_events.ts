@@ -38,6 +38,7 @@
 //      'admin_cover'), or a generated AI poster is approved with approve_poster.
 //   4. cancel   -> refundOpenOrdersForListing() FIRST (the rule creator cancel and admin
 //                  reject use), then the status write through checkTransition().
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import type { Admin2RouteDef } from "./admin2";
@@ -477,7 +478,7 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
     category: patch.category,
     schedule_mode: "fixed_date",
     timezone: "Asia/Kolkata",
-    performed_by: patch.performed_by ?? "Saa Thum",
+    performed_by: patch.performed_by ?? BRAND.name,
   };
   for (const k of ["blurb", "description", "starts_at", "duration_min", "price"] as const) {
     if (patch[k] !== undefined && patch[k] !== null) createBody[k] = patch[k];

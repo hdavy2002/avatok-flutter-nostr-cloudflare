@@ -1,5 +1,6 @@
 // Two upload paths + AvaLibrary + ICE. Reads are served by blossom.avatok.ai
 // (public R2 bucket) — never through this Worker. Worker handles WRITES only.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex, CORS, decodeFileNameHeader } from "../util";
 import { mediaSession, moderationSession } from "../db/shard";
@@ -808,7 +809,7 @@ async function fallbackPrivateMediaUrl(env: Env, r2Key: string, expiresSec: numb
   const payload = `${exp}.${key}`;
   const sig = await hmacHex(privateMediaSigningSecret(env), payload);
   if (!sig) return null;
-  const host = env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : "api.saathum.com"; // [SAATHUM-DEBRAND-1 2026-09-27]
+  const host = env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : BRAND.apiHost; // [SAATHUM-DEBRAND-1 2026-09-27]
   return `https://${host}/api/media/private-read?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
 }
 

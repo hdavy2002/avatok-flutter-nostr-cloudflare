@@ -7,6 +7,7 @@
 //   POST /api/payout/request   → request a withdrawal { account_id, amount_coins }
 //   GET  /api/payout/status    → my recent requests
 //   POST /webhooks/wise        → Wise transfer state-change callback
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, requireStripeKyc, isFail } from "../authz";
@@ -38,9 +39,9 @@ async function payoutEmail(env: Env, uid: string, subject: string, lines: string
     const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
       <h2 style="margin:0 0 12px">${subject}</h2>
       ${lines.map((l) => `<p style="color:#444;margin:0 0 8px">${l}</p>`).join("")}
-      <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum payouts</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name} payouts</p>
     </div>`;
-    await env.Q_EMAIL.send({ to: email, subject: `Saa Thum payout — ${subject}`, html });
+    await env.Q_EMAIL.send({ to: email, subject: `${BRAND.name} payout — ${subject}`, html });
   } catch { /* never block payout flow on email */ }
 }
 

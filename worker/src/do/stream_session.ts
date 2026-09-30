@@ -17,6 +17,7 @@
 //     safety net.
 //
 // Instance naming: `live:<listingId>` (AvaLive) | `consult:<bookingId>`.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, decodeHeaderText } from "../util";
 import { endLiveOnHostNoReturn } from "../lib/live_grace";
@@ -45,7 +46,7 @@ export const ATTACH_MIME_OK =
 // Our own CDN/R2 public read host, both environments (wrangler.toml
 // BLOSSOM_BASE_URL) — an attachment descriptor pointing anywhere else is a
 // forged/foreign URL and must never be relayed as if we hosted it.
-const ATTACH_HOST_OK = /^(blossom(-staging)?\.avatok\.ai|media\.saathum\.com)$/i; // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com = same bucket
+const ATTACH_HOST_OK = new RegExp(`^(blossom(-staging)?\\.avatok\\.ai|${BRAND.mediaHost.replace(/\./g, "\\.")})$`, "i"); // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com = same bucket
 
 export interface ChatAttachment { url: string; name: string; size: number; mime: string }
 

@@ -9,6 +9,7 @@
 // Two entry points:
 //   orderContextFor()   — batch: order ref → listing title, for statement row labels.
 //   activityDetailFor() — one row, everything we know, for the tap-to-expand panel.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { metaDb } from "../db/shard";
 
@@ -90,8 +91,8 @@ function kindNoun(kind: string | null | undefined): string {
 function listingUrl(o: OrderRow): string | null {
   if (!o.listing_id) return null;
   return o.creator_handle && o.listing_slug
-    ? `https://saathum.com/${encodeURIComponent(o.creator_handle)}/${encodeURIComponent(o.listing_slug)}`
-    : `https://saathum.com/l/${encodeURIComponent(o.listing_id)}`;
+    ? `${BRAND.webOrigin}/${encodeURIComponent(o.creator_handle)}/${encodeURIComponent(o.listing_slug)}`
+    : `${BRAND.webOrigin}/l/${encodeURIComponent(o.listing_id)}`;
 }
 
 export type ActivityDetail = {
@@ -160,7 +161,7 @@ export async function activityDetailFor(
     timezone: order.listing_timezone ?? "Asia/Kolkata",
   } : null;
   detail.counterparty = iAmBuyer
-    ? { role: "creator", name: order.creator_name, handle: order.creator_handle, url: order.creator_handle ? `https://saathum.com/c/${encodeURIComponent(order.creator_handle)}` : null }
+    ? { role: "creator", name: order.creator_name, handle: order.creator_handle, url: order.creator_handle ? `${BRAND.webOrigin}/c/${encodeURIComponent(order.creator_handle)}` : null }
     : { role: "buyer", name: order.buyer_name, handle: order.buyer_handle, url: null };
 
   if (type === "refund") {

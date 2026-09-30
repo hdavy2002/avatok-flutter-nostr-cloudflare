@@ -1,4 +1,5 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
+import { BRAND } from "./brand";
 import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg, LivenessVerifyMsg } from "./types";
 import { handleMktAudio } from "./mkt_audio";
 import { handleLivenessVerify } from "./liveness_verify"; // LIVE-V2 P0 — async liveness-verify (dark; no live queue yet, see file header)
@@ -259,7 +260,7 @@ export default {
       if (row && row.calls > budget && !row.alerted) {
         await sendEmail({
           to: env.ALERT_EMAIL || "hdavy2005@gmail.com",
-          subject: `[Saa Thum] AI budget exceeded: ${row.calls} calls today (budget ${budget})`,
+          subject: `[${BRAND.name}] AI budget exceeded: ${row.calls} calls today (budget ${budget})`,
           html: `<p>Workers AI made <b>${row.calls}</b> model calls today (${day}), over the daily budget of ${budget}.</p>
                  <p>Total model time: ${(row.ms / 1000).toFixed(0)}s. Check the moderation/brain queues for a spike or abuse, and the ai_moderation / brain dashboards.</p>`,
         }, env);
@@ -309,7 +310,7 @@ export default {
 // (2026-09-11 provider-abstraction migration); kept in sync anyway so a revival
 // doesn't resurrect the old brand/domain.
 function parseSender(from?: string): { name: string; email: string } {
-  const def = { name: "Saa Thum Support", email: "noreply@saathum.com" };
+  const def = { name: `${BRAND.name} Support`, email: BRAND.emails.noreply };
   if (!from) return def;
   const m = from.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
   if (m) return { name: (m[1] || def.name).trim(), email: m[2].trim() };

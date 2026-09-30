@@ -8,6 +8,7 @@
 // HDFC_SMS_ACCOUNT_SUFFIX) + the buyer's 12-digit UTR. The VPA set here MUST
 // credit that same HDFC account, or the SMS never arrives and every checkout
 // ends in review. The admin screen says so.
+import { BRAND } from "./brand";
 import type { Env } from '../types';
 
 export const UPI_SETTINGS_KEY = 'upi_settings:v1';
@@ -42,8 +43,8 @@ export async function effectiveUpi(env: Env): Promise<EffectiveUpi> {
   const s = await readUpiSettings(env);
   const adminVpa = s.vpa?.trim() ?? '';
   if (VPA_RE.test(adminVpa)) {
-    return { vpa: adminVpa, payee_name: s.payee_name?.trim() || env.HDFC_UPI_PAYEE_NAME?.trim() || 'Saa Thum', source: 'admin' };
+    return { vpa: adminVpa, payee_name: s.payee_name?.trim() || env.HDFC_UPI_PAYEE_NAME?.trim() || BRAND.name, source: 'admin' };
   }
   const envVpa = env.HDFC_UPI_VPA?.trim() ?? '';
-  return { vpa: envVpa, payee_name: env.HDFC_UPI_PAYEE_NAME?.trim() || 'Saa Thum', source: VPA_RE.test(envVpa) ? 'env' : 'none' };
+  return { vpa: envVpa, payee_name: env.HDFC_UPI_PAYEE_NAME?.trim() || BRAND.name, source: VPA_RE.test(envVpa) ? 'env' : 'none' };
 }

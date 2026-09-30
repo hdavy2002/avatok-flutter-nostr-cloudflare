@@ -22,6 +22,7 @@
 // excluded from reviewedContentHash so writing it never makes a review stale.
 // Writes use json_set on the stored row so they never clobber a concurrent
 // poster/admin write to other attrs keys.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { avaReason } from "./ava_reason";
 import { guardInput, guardOutput } from "./ai_gate";
@@ -51,7 +52,7 @@ export function acceptableHook(text: string): boolean {
 
 /** Deterministic floor — always valid, never invents anything. */
 export function rulesHook(row: Record<string, any>): string {
-  const title = clean(String(row.title ?? "")).replace(/\s*[·|—-]\s*Saathum$/i, "");
+  const title = clean(String(row.title ?? "")).replace(new RegExp(`\\s*[·|—-]\\s*${BRAND.nameCompact}$`, "i"), "");
   const short = title.length > 44 ? title.slice(0, 44).replace(/\s+\S*$/, "") : title;
   const hook = short ? `Join the ${short} live, from your home` : "Join a sacred havan live, from your home";
   return hook.length <= MAX_CHARS ? hook : "Join a sacred havan live, from your home";
@@ -59,7 +60,7 @@ export function rulesHook(row: Record<string, any>): string {
 
 function prompt(row: Record<string, any>): { system: string; user: string } {
   const system = [
-    "You write the one-line headline printed on a WhatsApp share image for Saathum, an Indian service where temple priests perform havans and pujas that devotees join live online.",
+    `You write the one-line headline printed on a WhatsApp share image for ${BRAND.nameCompact}, an Indian service where temple priests perform havans and pujas that devotees join live online.`,
     "Write ONE line, 5 to 11 words, max 70 characters, in warm devotional English (a single common Hindi word like 'ashirwad' or 'Maa' is fine).",
     "It must make a devotee want to join: name the deity or ritual, and the blessing people traditionally seek from it.",
     "Rules: no promises or guaranteed results, no fear or threats, no health cures, no numbers or prices, no dates, no emojis, no hashtags, no quotes.",

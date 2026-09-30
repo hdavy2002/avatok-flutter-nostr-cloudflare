@@ -6,6 +6,7 @@
 //
 // D1 reads use the Sessions API (one session per DB per request) → nearest
 // replica with read-after-write consistency within the request.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
@@ -2711,7 +2712,7 @@ export function normalizeHandle(h: string): string {
 // endpoint stays deprecated/410; the app's in-app identity is still the
 // Saathum number, unchanged by the above.
 export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
-  return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your Saathum number, phone, or email." }, 410);
+  return json({ deprecated: true, valid: false, available: false, reason: `Handles are retired. Use your ${BRAND.nameCompact} number, phone, or email.` }, 410);
 }
 
 // P11: real-name plausibility via gemini-2.5-flash-lite. Returns {plausible,reason}.

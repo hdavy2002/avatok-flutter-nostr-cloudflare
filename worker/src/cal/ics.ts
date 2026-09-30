@@ -3,6 +3,7 @@
 // over JOIN_LINK_SECRET, payload { b: bookingId, exp }. Short-lived display-only:
 // the /j/ page calls GET /api/join-info/:token for title/time/names; actually
 // joining still requires the app + Clerk auth.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 
 const b64u = (buf: ArrayBuffer | Uint8Array): string =>
@@ -37,7 +38,7 @@ export async function verifyJoinToken(env: Env, token: string): Promise<string |
 }
 
 // [SAATHUM-DEBRAND-1 2026-09-27] avatok.ai is a frozen placeholder; join links must open saathum.com.
-export function joinUrlFor(token: string): string { return `https://saathum.com/j/${token}`; }
+export function joinUrlFor(token: string): string { return `${BRAND.webOrigin}/j/${token}`; }
 
 // ---------------------------------------------------------------------------
 // [JOIN-LINK-1] v2 join tokens — the emailed link carries the customer's identity

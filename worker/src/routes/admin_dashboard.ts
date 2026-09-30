@@ -21,6 +21,7 @@
 //
 // All state-changing routes are `finance`+ or `super`; read routes need only
 // `requireAdmin`. The server is the real boundary (fail closed with 403).
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireAdmin } from "./admin_money";
@@ -517,7 +518,7 @@ async function dispatchAlert(env: Env, channels: string[], severity: string, mes
   if (channels.includes("email")) {
     try {
       const to = (env as any).ALERT_EMAIL || "hdavy2005@gmail.com";
-      await env.Q_EMAIL.send({ to, subject: `[Saa Thum Admin ${severity}] ${message}`, text: message, kind: "admin_alert" });
+      await env.Q_EMAIL.send({ to, subject: `[${BRAND.name} Admin ${severity}] ${message}`, text: message, kind: "admin_alert" });
     } catch { /* degrade */ }
   }
   // Slack webhook (optional; degrade if unset).

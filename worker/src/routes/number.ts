@@ -7,6 +7,7 @@
 // real phone as their network identity (card / QR / search). Numbers are unique;
 // the picker only ever offers available combinations. All gated by the
 // `numberFeatureEnabled` kill switch.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import { metaSession, metaDb } from "../db/shard";
@@ -646,7 +647,7 @@ export async function shareCardPut(req: Request, env: Env): Promise<Response> {
     plan: card.plan, has_email: !!card.email, has_number: !!card.number,
     has_name: !!(card.firstName || card.lastName),
   }, req);
-  return json({ ok: true, token: t, link: `https://saathum.com/add?t=${t}` });
+  return json({ ok: true, token: t, link: `${BRAND.webOrigin}/add?t=${t}` });
 }
 
 // GET /api/add?t=<token> — PUBLIC. Resolves a QR share token to the sharer's

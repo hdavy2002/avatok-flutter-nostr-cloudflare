@@ -8,6 +8,7 @@ script writes a read-only mirror of it for every surface that needs it:
     worker/src/lib/brand.ts     Cloudflare Worker (API, emails, WhatsApp text)
     consumers/src/brand.ts      queue consumers (email delivery etc.)
     app/lib/core/brand.dart     Flutter app
+    worker/wrangler.toml        production [vars] + api route (targeted line edits only)
 
 Usage:
     python3 scripts/gen_brand.py            # write the mirrors
@@ -19,6 +20,7 @@ hand edit to one is overwritten on the next run. Plain python3, no deps.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +33,7 @@ TS_TARGETS = [
     ROOT / "consumers" / "src" / "brand.ts",
 ]
 DART_TARGET = ROOT / "app" / "lib" / "core" / "brand.dart"
+WRANGLER_TARGET = ROOT / "worker" / "wrangler.toml"
 
 REQUIRED = ["name", "nameUpper", "nameCompact", "slug", "nameHindi", "slogan",
             "domain", "hosts", "emails", "emailFromName", "playPackageId"]
@@ -147,11 +150,46 @@ def render_dart(b: dict) -> str:
     return "\n".join(lines)
 
 
+def sync_wrangler(text: str, b: dict) -> str:
+    """[SAATHUM-BRAND-CENTRAL-WORKER-1] Rewrite ONLY the brand-derived values in the
+    top-level (production) block of worker/wrangler.toml. Everything from the first
+    `[env.` table onward (staging), every comment and the avatok.ai routes are left
+    byte-for-byte alone."""
+    h = b["hosts"]
+    m = re.search(r"^\[env\.", text, re.M)
+    cut = m.start() if m else len(text)
+    prod, rest = text[:cut], text[cut:]
+
+    def setval(src: str, key: str, value: str) -> str:
+        # KEY = "value"   (anything after the closing quote, e.g. a comment, is kept)
+        return re.sub(r'^(%s\s*=\s*")[^"]*(")' % re.escape(key),
+                      lambda mm: mm.group(1) + value + mm.group(2), src, flags=re.M)
+
+    def setorigin(src: str, key: str, origin: str) -> str:
+        # KEY = "https://host/path"  -> only the scheme+host part changes
+        return re.sub(r'^(%s\s*=\s*")https?://[^/"]+' % re.escape(key),
+                      lambda mm: mm.group(1) + origin, src, flags=re.M)
+
+    web = "https://" + b["domain"]
+    prod = setval(prod, "WEB_BASE_URL", web)
+    prod = setorigin(prod, "WALLET_RETURN_URL", web)
+    prod = setval(prod, "BLOSSOM_BASE_URL", "https://" + h["media"])
+    prod = setorigin(prod, "CLERK_JWKS_URL", "https://" + h["auth"])
+    prod = setval(prod, "CLERK_ISSUER", "https://" + h["auth"])
+    prod = setval(prod, "PLAY_PACKAGE_ID", b["playPackageId"])
+    # the brand's API route = the top-level `pattern = "..."` that is not an avatok.ai one
+    prod = re.sub(r'^(pattern\s*=\s*")(?![^"]*avatok\.ai")[^"]*(")',
+                  lambda mm: mm.group(1) + h["api"] + mm.group(2), prod, flags=re.M)
+    return prod + rest
+
+
 def main() -> int:
     check = "--check" in sys.argv[1:]
     b = load()
     outputs = {p: render_ts(b) for p in TS_TARGETS}
     outputs[DART_TARGET] = render_dart(b)
+    if WRANGLER_TARGET.exists():
+        outputs[WRANGLER_TARGET] = sync_wrangler(WRANGLER_TARGET.read_text(encoding="utf-8"), b)
     stale = []
     for path, text in outputs.items():
         current = path.read_text(encoding="utf-8") if path.exists() else None

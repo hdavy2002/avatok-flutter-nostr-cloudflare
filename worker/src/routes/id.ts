@@ -7,6 +7,7 @@
 //
 // Dual auth on all (NIP-98 + Clerk). Rekognition is flag-gated (src/aws/rekognition
 // .ts): unset AWS creds → 503 "verification unavailable", everything else still works.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { setVerifiedCache } from "../auth";
@@ -225,7 +226,7 @@ function sixDigitCode(): string {
 function emailOtpHtml(code: string): string {
   return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
     <h2 style="color:#0F1115;margin:0 0 8px">Verify your email</h2>
-    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in Saa Thum to finish setting up your account. It expires in 10 minutes.</p>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in ${BRAND.name} to finish setting up your account. It expires in 10 minutes.</p>
     <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
     <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email.</p>
   </div>`;
@@ -261,9 +262,9 @@ export async function idEmailStart(req: Request, env: Env): Promise<Response> {
   try {
     await env.Q_EMAIL.send({
       to: email,
-      subject: "Your Saa Thum verification code",
+      subject: `Your ${BRAND.name} verification code`,
       html: emailOtpHtml(code),
-      from: "Saa Thum Support <noreply@saathum.com>",
+      from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
     });
   } catch {
     metric(env, "email_otp_enqueue_error", [1]);
@@ -374,8 +375,8 @@ async function clerkPrimaryEmail(env: Env, uid: string): Promise<string | null> 
 
 function passwordOtpHtml(code: string): string {
   return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
-    <h2 style="color:#0F1115;margin:0 0 8px">Set your Saa Thum password</h2>
-    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in Saa Thum to set or change your password. It expires in 10 minutes.</p>
+    <h2 style="color:#0F1115;margin:0 0 8px">Set your ${BRAND.name} password</h2>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in ${BRAND.name} to set or change your password. It expires in 10 minutes.</p>
     <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
     <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email — your password won't change.</p>
   </div>`;
@@ -406,9 +407,9 @@ export async function idPasswordStart(req: Request, env: Env): Promise<Response>
   try {
     await env.Q_EMAIL.send({
       to: email,
-      subject: "Your Saa Thum password code",
+      subject: `Your ${BRAND.name} password code`,
       html: passwordOtpHtml(code),
-      from: "Saa Thum Support <noreply@saathum.com>",
+      from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
     });
   } catch {
     metric(env, "password_otp_enqueue_error", [1]);

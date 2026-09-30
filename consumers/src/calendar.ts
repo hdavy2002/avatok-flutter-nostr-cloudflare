@@ -15,6 +15,7 @@
 //    events for connected accounts (webhook channel is the fast path; this is
 //    the guarantee). Self-contained token refresh — reads the same
 //    gcal_accounts rows avatok-api writes.
+import { BRAND } from "./brand";
 import type { Env, EmailMsg } from "./types";
 import { notifyUser } from "./notify";
 
@@ -71,12 +72,12 @@ async function signJoinTokenV2(env: Env, c: {
 async function nameOf(env: Env, uid: string): Promise<string> {
   try {
     const r = await env.DB_META.prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
-    return r?.name || r?.handle || "a Saa Thum user";
-  } catch { return "a Saa Thum user"; }
+    return r?.name || r?.handle || `a ${BRAND.name} user`;
+  } catch { return `a ${BRAND.name} user`; }
 }
 
 function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; otherName: string; joinUrl: string }): { subject: string; html: string } {
-  const head = tier === "24h" ? "Tomorrow on Saa Thum" : "Starting within the hour";
+  const head = tier === "24h" ? `Tomorrow on ${BRAND.name}` : "Starting within the hour";
   const line = tier === "24h"
     ? `${new Date(o.start).toUTCString()} with ${o.otherName}.`
     : `Within 1 hour you have a session with ${o.otherName} — here is the link to join.`;
@@ -88,7 +89,7 @@ function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; ot
     <p style="margin:0 0 8px">${line}</p>
     <p style="margin:0 0 8px">${tier === "24h" ? "Your invite is ready whenever you need it." : "The same invite lives in your calendar attachment."}</p>
     <p style="margin:20px 0"><a href="${o.joinUrl}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${tier === "24h" ? "View booking" : "Join now"}</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum · times shown in UTC — the join page and app show your local time.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name} · times shown in UTC — the join page and app show your local time.</p>
   </div>`;
   return { subject, html };
 }
@@ -198,7 +199,7 @@ export async function bookingReminderLadder(env: Env, sendEmail: SendEmail): Pro
 }
 
 async function remind(env: Env, sendEmail: SendEmail, b: DueBooking, tier: "24h" | "60m", push: boolean): Promise<void> {
-  const title = b.title ?? "Your Saa Thum session";
+  const title = b.title ?? `Your ${BRAND.name} session`;
   // Commercial consultations resolve through the authenticated session
   // destination. Legacy calendar bookings keep their signed /j invitation;
   // that path is still required for genuinely old rows.
@@ -208,10 +209,10 @@ async function remind(env: Env, sendEmail: SendEmail, b: DueBooking, tier: "24h"
   // /session/:id he used to be sent stopped him at the email-code gate on the
   // way into a session he had already paid for.
   const creatorUrl = b.kind === "consult_1to1"
-    ? `https://saathum.com/session/${encodeURIComponent(b.id)}`
-    : `https://saathum.com/j/${await signJoinToken(env, b.id, b.starts_at + 86_400_000)}`;
+    ? `${BRAND.webOrigin}/session/${encodeURIComponent(b.id)}`
+    : `${BRAND.webOrigin}/j/${await signJoinToken(env, b.id, b.starts_at + 86_400_000)}`;
   const buyerUrl = b.kind === "consult_1to1" && b.listing_id
-    ? `https://saathum.com/j/${await signJoinTokenV2(env, {
+    ? `${BRAND.webOrigin}/j/${await signJoinTokenV2(env, {
       bookingId: b.id, listingId: b.listing_id, accountId: b.buyer_id,
       kind: "consult_1to1", expMs: b.starts_at + 86_400_000,
     })}`
@@ -314,10 +315,10 @@ async function liveTicketReminderSweep(
             // signing that link would break tap-to-join in the app. `joinUrl` is
             // what goes in the EMAIL: for a ticket holder it is his own signed
             // link, so the browser lets him in without a sign-in.
-            const roomUrl = `https://saathum.com/live/${encodeURIComponent(row.listing_id)}`;
+            const roomUrl = `${BRAND.webOrigin}/live/${encodeURIComponent(row.listing_id)}`;
             const joinUrl = uid === row.creator_id
               ? roomUrl
-              : `https://saathum.com/j/${await signJoinTokenV2(env, {
+              : `${BRAND.webOrigin}/j/${await signJoinTokenV2(env, {
                 bookingId: row.booking_id ?? null, listingId: row.listing_id, accountId: uid,
                 kind: "live_event", expMs: row.starts_at + 86_400_000,
               })}`;

@@ -12,6 +12,7 @@
 // NEVER throws: any failure is folded into a `PosterState` with
 // status:'failed' so a caller can always persist a terminal state instead of
 // leaving a listing stuck on "generating" forever.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { sha256Hex } from "../util";
 import { generateImage } from "../routes/ava_image";
@@ -184,7 +185,7 @@ export const POSTER_STYLE_VERSION = 5;
  *  overlay-lettering fallback that draws it in HTML when the model refuses to
  *  letter anything. If those three ever disagree, the watermark either goes
  *  missing or fails every poster for "extra text". */
-export const POSTER_WATERMARK = "saathum.com";
+export const POSTER_WATERMARK = BRAND.domain;
 
 export type PosterCopy = { title: string; tagline: string };
 

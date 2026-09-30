@@ -2,6 +2,7 @@
 // (Specs/PLAN-SAATHUM-UPI-3LAYER.md): unique-amount reservation, ingest-source health,
 // and the cron sweeps (persist review_pending, admin/stale-source WhatsApp alerts).
 // I/O lives here so lib/saathum_checkout_logic.ts stays pure.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { metaDb } from "../db/shard";
 import { track, trackException } from "../hooks";
@@ -177,7 +178,7 @@ export async function alertStaleReviews(env: Env, now = Date.now()): Promise<num
     const claim = await db.prepare(`UPDATE saathum_checkouts SET review_alerted_at=?2 WHERE checkout_id=?1 AND review_alerted_at IS NULL`).bind(row.checkout_id, now).run();
     if (Number((claim as any).meta?.changes ?? 0) !== 1) continue;
     const ok = await alert(env,
-      `Saathum payment needs manual review\n${row.title ?? "Booking"} - ${paise(row.amount_paise)}\nReason: ${row.reason_code ?? "awaiting_bank"}\nRef: ${row.checkout_id.slice(0, 8)}\nOpen the admin payments review queue.`);
+      `${BRAND.nameCompact} payment needs manual review\n${row.title ?? "Booking"} - ${paise(row.amount_paise)}\nReason: ${row.reason_code ?? "awaiting_bank"}\nRef: ${row.checkout_id.slice(0, 8)}\nOpen the admin payments review queue.`);
     if (ok) sent++;
     else await db.prepare(`UPDATE saathum_checkouts SET review_alerted_at=NULL WHERE checkout_id=?1`).bind(row.checkout_id).run();
   }
@@ -208,13 +209,13 @@ export async function checkSourceHealth(env: Env, now = Date.now()): Promise<{ s
     if (silentMs > SOURCE_STALE_MS) {
       const due = !r.stale_alert_open || now - Number(r.alerted_at ?? 0) >= SOURCE_REALERT_MS;
       if (!due) continue;
-      const ok = await alert(env, `Saathum UPI alert: the ${name} has been silent for ${Math.floor(silentMs / 60_000)} min. Payments may need manual review until it is back.`);
+      const ok = await alert(env, `${BRAND.nameCompact} UPI alert: the ${name} has been silent for ${Math.floor(silentMs / 60_000)} min. Payments may need manual review until it is back.`);
       if (ok) {
         await db.prepare(`UPDATE sms_source_health SET alerted_at=?2, stale_alert_open=1 WHERE device_id=?1`).bind(r.device_id, now).run();
         stale++;
       }
     } else if (r.stale_alert_open) {
-      const ok = await alert(env, `Saathum UPI: the ${name} is back online.`);
+      const ok = await alert(env, `${BRAND.nameCompact} UPI: the ${name} is back online.`);
       if (ok) {
         await db.prepare(`UPDATE sms_source_health SET stale_alert_open=0, alerted_at=NULL WHERE device_id=?1`).bind(r.device_id).run();
         recovered++;
@@ -264,7 +265,7 @@ export async function checkForwarderSilence(env: Env, now = Date.now()): Promise
   if (s.silent) {
     const due = !row?.stale_alert_open || now - Number(row.alerted_at ?? 0) >= FORWARDER_REALERT_MS;
     if (!due) return { silent: 0, recovered: 0 };
-    const ok = await alert(env, `Saathum UPI alert: the SMS forwarder app has sent nothing for 24 h, but the Google Messages watcher saw ${s.watcher_credits_24h} HDFC credit(s). Check the forwarder phone/app; payments may need manual review.`);
+    const ok = await alert(env, `${BRAND.nameCompact} UPI alert: the SMS forwarder app has sent nothing for 24 h, but the Google Messages watcher saw ${s.watcher_credits_24h} HDFC credit(s). Check the forwarder phone/app; payments may need manual review.`);
     if (!ok) return { silent: 0, recovered: 0 };
     await db.prepare(
       `INSERT INTO sms_source_health (device_id,source,alerted_at,stale_alert_open,updated_at) VALUES (?1,'forwarder',?2,1,?2)
@@ -272,7 +273,7 @@ export async function checkForwarderSilence(env: Env, now = Date.now()): Promise
     return { silent: 1, recovered: 0 };
   }
   if (row?.stale_alert_open) {
-    const ok = await alert(env, `Saathum UPI: the SMS forwarder app is sending again.`);
+    const ok = await alert(env, `${BRAND.nameCompact} UPI: the SMS forwarder app is sending again.`);
     if (ok) {
       await db.prepare(`UPDATE sms_source_health SET stale_alert_open=0, alerted_at=NULL WHERE device_id=?1`).bind(FORWARDER_DEVICE).run();
       return { silent: 0, recovered: 1 };

@@ -6,6 +6,7 @@
 //
 // Receipts: lib/me_receipt_pdf.ts. Pure rules (state, refund window, VPA, cursor):
 // lib/me_dashboard_logic.ts. SQL read models: lib/me_dashboard_data.ts.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -250,7 +251,7 @@ export async function meRefundRequest(req: Request, env: Env, id: string): Promi
   if (!p) return err(404, "not_found", "We couldn't find that payment.");
   // [AGENT-LIVE-1 M1/M6] agl_ orders move money only through the agent-live authority.
   if (p.id.startsWith("agl_") || (p.order_id ?? "").startsWith("agl_")) {
-    return err(409, "not_refundable_here", "This booking can't be refunded from the dashboard. Please contact support@saathum.com.");
+    return err(409, "not_refundable_here", `This booking can't be refunded from the dashboard. Please contact ${BRAND.emails.support}.`);
   }
   const now = Date.now();
   const ok = refundEligibility({ status: p.status, eventStartsAt: p.event_starts_at, eventType: p.event_type, now });
@@ -341,7 +342,7 @@ export async function meReceiptPdf(req: Request, env: Env, id: string): Promise<
   const pdf = await renderReceiptPdf({
     receiptNo: receipt.receipt_no, issuedAt: Number(receipt.created_at),
     billedTo: { name, email, address: [addr?.line1, addr?.line2, cityLine, addr?.country].filter(Boolean) as string[] },
-    item: { title: p.event_title ?? listing?.title ?? "Saathum booking", startsAt: p.event_starts_at, durationMin: listing?.duration_min ?? null },
+    item: { title: p.event_title ?? listing?.title ?? `${BRAND.nameCompact} booking`, startsAt: p.event_starts_at, durationMin: listing?.duration_min ?? null },
     amountPaise: Number(p.amount_paise), paidAt: p.paid_at, utr: p.utr, payerVpa: null,
     paymentId: p.id, orderId: p.order_id, status: stamp,
     refund: stamp === "REFUNDED" ? { amountPaise: p.refund_amount_paise, utr: p.refund_utr, at: p.refund_refunded_at } : null,

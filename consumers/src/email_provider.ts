@@ -1,3 +1,4 @@
+import { BRAND } from "./brand";
 import type { Env } from "./types";
 
 /**
@@ -49,7 +50,7 @@ export function resolvePolicy(env: Env): ProviderPolicy {
 
 /** Parses "Name <addr>" / a bare address; falls back to the account default. */
 export function parseSender(from: string | undefined, env: Env): { name: string; email: string } {
-  const fallback = { name: "Saa Thum Support", email: "noreply@saathum.com" };
+  const fallback = { name: `${BRAND.name} Support`, email: BRAND.emails.noreply };
   const configured = (env.EMAIL_FROM_DEFAULT ?? "").trim();
   const base = configured ? parseSenderString(configured, fallback) : fallback;
   if (!from) return base;

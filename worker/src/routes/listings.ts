@@ -29,6 +29,7 @@
 //   POST/DELETE /api/creators/:id/block  A4 buyer-side block
 //   PUT    /api/creators/me              A7 channel editor
 //   POST   /api/report                   A4 → user_reports pipeline
+import { BRAND } from "../lib/brand";
 import { ensureListingAdHook } from "../lib/listing_ad_hook";
 import type { Env } from "../types";
 import { json } from "../util";
@@ -201,7 +202,7 @@ async function maybeUid(req: Request, env: Env): Promise<string | null> {
 
 async function nameOf(env: Env, uid: string): Promise<string> {
   const r = await metaDb(env).prepare("SELECT display_name, handle FROM users WHERE uid=?1").bind(uid).first<any>();
-  return r?.display_name || r?.handle || "a Saa Thum organiser";
+  return r?.display_name || r?.handle || `a ${BRAND.name} organiser`;
 }
 
 function parseJson<T>(s: unknown, fallback: T): T {

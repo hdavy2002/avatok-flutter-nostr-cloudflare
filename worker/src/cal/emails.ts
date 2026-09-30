@@ -3,6 +3,7 @@
 // addresses resolved from Clerk (D1 stores only hashes). Phases 6/7 REUSE
 // these templates — no phase invents its own email path. Every sender is
 // best-effort: never blocks money/booking ops.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { clerkEmail } from "../ledger";
 import { buildIcs, icsB64 } from "./ics";
@@ -23,7 +24,7 @@ function shell(title: string, bodyHtml: string, cta?: { label: string; url: stri
     <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
     ${bodyHtml}
     ${cta ? `<p style="margin:20px 0"><a href="${escapeHtml(cta.url)}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${escapeHtml(cta.label)}</a></p>` : ""}
-    <p style="color:#999;font-size:12px;margin-top:20px">Saa Thum · times shown in UTC — the join page and app show your local time.</p>
+    <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name} · times shown in UTC — the join page and app show your local time.</p>
   </div>`;
 }
 
@@ -66,7 +67,7 @@ function webBase(env: Env): string {
   // is actually live and routable at that domain (a separate, larger cutover
   // than the email sender-domain onboarding — see
   // Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md §Web base URL).
-  return String(env.WEB_BASE_URL || "https://saathum.com").replace(/\/+$/, "");
+  return String(env.WEB_BASE_URL || BRAND.webOrigin).replace(/\/+$/, "");
 }
 
 /** The canonical room URL. Correct for the CREATOR (who is signed in on the app). */
@@ -273,7 +274,7 @@ export function reminderEmailHtml(tier: "24h" | "60m", o: { title: string; start
   if (tier === "24h") {
     return {
       subject: `Tomorrow: ${o.title}`,
-      html: shell("Tomorrow on Saa Thum", `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">${whenUtc(o.start)} with ${escapeHtml(o.otherName)}.</p><p style="margin:0 0 8px">Your invite is ready whenever you need it.</p>`, { label: "View booking", url: o.joinUrl }),
+      html: shell(`Tomorrow on ${BRAND.name}`, `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(o.title)}</p><p style="margin:0 0 8px">${whenUtc(o.start)} with ${escapeHtml(o.otherName)}.</p><p style="margin:0 0 8px">Your invite is ready whenever you need it.</p>`, { label: "View booking", url: o.joinUrl }),
     };
   }
   return {

@@ -26,6 +26,7 @@
 // same link is a no-op (INSERT OR IGNORE matches the existing row); a corrected
 // link hashes differently and queues a fresh message — same shape as the email
 // outbox key in sendSaathumVideoReadyEmails (routes/saathum_checkout.ts).
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { sha256Hex } from "../util";
 import { track, trackException } from "../hooks";
@@ -58,7 +59,7 @@ export type NotifyResult = { recipients: number; sent: number; skipped_no_phone:
  * saathum.com URL from env.
  */
 export function saathumWatchUrl(env: Env, listingId: string): string {
-  const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
+  const base = String(env.WEB_BASE_URL ?? BRAND.webOrigin).replace(/\/+$/, "");
   return `${base}/book/${encodeURIComponent(listingId)}`;
 }
 
@@ -91,7 +92,7 @@ async function enqueueWhatsAppForBuyers(
   const db = env.DB_META;
   const listing = await db.prepare("SELECT title, starts_at FROM listings WHERE id=?1")
     .bind(listingId).first<{ title: string; starts_at: number | null }>().catch(() => null);
-  const text = buildText(listing?.title ?? "Saa Thum booking", listing?.starts_at ?? null);
+  const text = buildText(listing?.title ?? `${BRAND.name} booking`, listing?.starts_at ?? null);
   const urlHash = (await sha256Hex(url)).slice(0, 16);
   const now = Date.now();
   let sent = 0, skipped = 0, failed = 0;
@@ -145,7 +146,7 @@ export async function sendSaathumLiveLinkWhatsApp(env: Env, listingId: string, u
   const watch = saathumWatchUrl(env, listingId);
   return enqueueWhatsAppNotifications(env, listingId, "live_link", url, "link_saved", (title, startsAtMs) => {
     const when = startsAtMs ? formatIst(startsAtMs) : "soon — check the event page for the exact time";
-    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
+    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— ${BRAND.name}`;
   });
 }
 
@@ -165,7 +166,7 @@ export async function sendSaathumLiveLinkWhatsAppForCheckout(
   const watch = saathumWatchUrl(env, listingId);
   return enqueueWhatsAppForBuyers(env, listingId, "live_link", url, "late_buyer", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
     const when = startsAtMs ? formatIst(startsAtMs) : "soon — check the event page for the exact time";
-    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— Saa Thum`;
+    return `🙏 ${title}\nThe live stream starts ${when}.\nWatch here: ${watch}\n\nThis link is only for your booking — please don't share it.\n— ${BRAND.name}`;
   });
 }
 
@@ -179,14 +180,14 @@ export async function sendSaathumLiveLinkWhatsAppForCheckout(
 export async function sendSaathumPaymentWhatsApp(
   env: Env, kind: "booking_confirmed" | "booking_rejected", listingId: string, checkoutId: string, uid: string,
 ): Promise<NotifyResult> {
-  const base = String(env.WEB_BASE_URL ?? "https://saathum.com").replace(/\/+$/, "");
+  const base = String(env.WEB_BASE_URL ?? BRAND.webOrigin).replace(/\/+$/, "");
   return enqueueWhatsAppForBuyers(env, listingId, kind, `payment:${kind}`, "payment", [{ checkout_id: checkoutId, uid }], (title, startsAtMs) => {
     if (kind === "booking_rejected") {
       // [SAATHUM-REJECT-COPY-1 2026-09-29] Owner: soft tone; ask for the 12-digit transaction ID or a screenshot.
-      return `🙏 Namaste. We're sorry — we couldn't find your payment for "${title}" yet, so this booking isn't confirmed.\n\nIf money has left your account, please don't worry. Just email support@saathum.com with the 12-digit UPI transaction ID (UTR) from your UPI app or bank SMS, or a screenshot of the payment, and quote booking ID ${bookingRef(checkoutId)}. We'll set it right quickly.\n— Saa Thum`;
+      return `🙏 Namaste. We're sorry — we couldn't find your payment for "${title}" yet, so this booking isn't confirmed.\n\nIf money has left your account, please don't worry. Just email ${BRAND.emails.support} with the 12-digit UPI transaction ID (UTR) from your UPI app or bank SMS, or a screenshot of the payment, and quote booking ID ${bookingRef(checkoutId)}. We'll set it right quickly.\n— ${BRAND.name}`;
     }
     const when = startsAtMs ? `\n${formatIst(startsAtMs)}` : "";
-    return `🙏 Payment received. Your booking is confirmed.\n${title}${when}\nYour receipt is in your email and under My events: ${base}/dashboard/my-events\n— Saa Thum`;
+    return `🙏 Payment received. Your booking is confirmed.\n${title}${when}\nYour receipt is in your email and under My events: ${base}/dashboard/my-events\n— ${BRAND.name}`;
   });
 }
 
@@ -198,7 +199,7 @@ export async function sendSaathumPaymentWhatsApp(
  */
 export function weatherDelayText(name: string, eventTitle: string, ref: string): string {
   const who = name.trim() || "friend";
-  return `Namaste ${who}. Snow and landslides have cut the network at the temple for ${eventTitle}. Your havan has been performed in your name, and our crew has the full video. We will send it to you as soon as they are back in the studio. Your prasad may also be a little late. Thank you for your patience. — Saa Thum (${ref})`;
+  return `Namaste ${who}. Snow and landslides have cut the network at the temple for ${eventTitle}. Your havan has been performed in your name, and our crew has the full video. We will send it to you as soon as they are back in the studio. Your prasad may also be a little late. Thank you for your patience. — ${BRAND.name} (${ref})`;
 }
 
 /**
@@ -240,7 +241,7 @@ export async function sendSaathumWeatherDelayWhatsApp(
  *  buyer. Unaffected by saathumLiveLinkNotifyEnabled — the download link is unchanged. */
 export function sendSaathumVideoReadyWhatsApp(env: Env, listingId: string, url: string): Promise<NotifyResult> {
   return enqueueWhatsAppNotifications(env, listingId, "video_ready", url, "link_saved", (title) => {
-    return `🙏 ${title}\nYour video is ready. Download it here: ${url}\n\nIt also stays under My events on saathum.com.\n— Saa Thum`;
+    return `🙏 ${title}\nYour video is ready. Download it here: ${url}\n\nIt also stays under My events on ${BRAND.domain}.\n— ${BRAND.name}`;
   });
 }
 

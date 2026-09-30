@@ -16,6 +16,7 @@
 // SERVER-AUTHORITATIVE for identity: the inviter's handle + email are resolved
 // server-side from the authenticated uid. The client only passes the recipient
 // (to_email / to_name) and an optional display name for the greeting.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -28,8 +29,8 @@ const APP = "avareferral";
 // saathum.com needs its own Universal Links / App Links association files
 // (apple-app-site-association, assetlinks.json) before this deep-links instead
 // of just opening a browser tab. See Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
-const DOWNLOAD_URL = "https://saathum.com/download";
-const INVITE_BASE = "https://saathum.com/i/"; // mirrors app kInviteBase
+const DOWNLOAD_URL = `${BRAND.webOrigin}/download`;
+const INVITE_BASE = `${BRAND.webOrigin}/i/`; // mirrors app kInviteBase
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,14 +48,14 @@ function inviteHtml(inviterName: string, link: string): string {
   const who = esc(inviterName);
   return `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-    <h2 style="margin:0 0 12px">${who} is inviting you to join Saa Thum 👋</h2>
-    <p style="margin:0 0 12px;line-height:1.5">Saa Thum is an AI-powered messenger. Ava, your in-chat
+    <h2 style="margin:0 0 12px">${who} is inviting you to join ${BRAND.name} 👋</h2>
+    <p style="margin:0 0 12px;line-height:1.5">${BRAND.name} is an AI-powered messenger. Ava, your in-chat
       assistant, watches for scams, can reply for you when you're away, and pulls up files mid-chat —
       and you can talk with up to 25 people at once.</p>
     <p style="margin:0 0 12px;line-height:1.5">${who} thought you'd like it. Tap below to join with their link:</p>
     <p style="margin:20px 0"><a href="${esc(link)}"
-      style="background:#08C4C4;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600">Join ${who} on Saa Thum</a></p>
-    <p style="color:#999;font-size:12px;margin-top:20px">Sent on behalf of ${who} via Saa Thum · reply to reach them directly.
+      style="background:#08C4C4;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600">Join ${who} on ${BRAND.name}</a></p>
+    <p style="color:#999;font-size:12px;margin-top:20px">Sent on behalf of ${who} via ${BRAND.name} · reply to reach them directly.
       Don't want these? Just ignore this email.</p>
   </div>`;
 }
@@ -93,13 +94,13 @@ export async function inviteEmail(req: Request, env: Env): Promise<Response> {
     if (email) replyTo = { email, name: inviterName };
   } catch { /* best-effort */ }
 
-  const subject = `${inviterName} is inviting you to join Saa Thum`;
+  const subject = `${inviterName} is inviting you to join ${BRAND.name}`;
   try {
     await env.Q_EMAIL.send({
       to: toEmail,
       subject,
       html: inviteHtml(inviterName, link),
-      from: `${inviterName} via Saa Thum <noreply@saathum.com>`,
+      from: `${inviterName} via ${BRAND.name} <${BRAND.emails.noreply}>`,
       ...(replyTo ? { replyTo } : {}),
     });
   } catch (e) {

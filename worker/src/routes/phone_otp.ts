@@ -39,6 +39,7 @@
 // unauthenticated WhatsApp-login send/verify + the account/phone/claim handoff
 // live in routes/whatsapp_auth.ts, which reuses this file's ledger, phoneTakenByOther
 // and the new verifiedAccountForPhone.
+import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -139,7 +140,7 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
     void track(env, ctx.uid, "phone_otp_send", APP, { outcome: "phone_taken", phone_masked: mask(e164) });
     return json({
       error: "phone_taken",
-      message: "This number is already linked to another Saa Thum account. Log in to that account, or use a different number.",
+      message: `This number is already linked to another ${BRAND.name} account. Log in to that account, or use a different number.`,
       field: "phone",
     }, 409);
   }
@@ -247,7 +248,7 @@ export async function phoneOtpVerify(req: Request, env: Env): Promise<Response> 
 
   // A race: someone else verified the same number between send and verify.
   if (await phoneTakenByOther(env, row.phone_hash, ctx.uid)) {
-    return json({ error: "phone_taken", message: "This number is already linked to another Saa Thum account.", field: "phone" }, 409);
+    return json({ error: "phone_taken", message: `This number is already linked to another ${BRAND.name} account.`, field: "phone" }, 409);
   }
 
   await db.batch([

@@ -22,6 +22,7 @@
 // phone_otp.session_id as  "wa:<salt>:<sha256(key|salt|e164|code)>". The plain code
 // never touches D1. Rows whose session_id has no "wa:" prefix are 2Factor sessions
 // and are still verified through 2Factor, so codes in flight during the switch work.
+import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { sha256Hex } from "../util";
 
@@ -123,8 +124,8 @@ export async function sendOtp(env: Env, e164: string, ttlMin: number): Promise<S
   if (provider === "wasender") {
     const code = sixDigits();
     const text =
-      `${code} is your Saa Thum verification code.\n\n` +
-      `It expires in ${ttlMin} minutes. Do not share this code with anyone — Saa Thum will never ask you for it.`;
+      `${code} is your ${BRAND.name} verification code.\n\n` +
+      `It expires in ${ttlMin} minutes. Do not share this code with anyone — ${BRAND.name} will never ask you for it.`;
     const r = await wasender(env, "/send-message", { method: "POST", body: JSON.stringify({ to: e164, text }) });
     if (r && r.status < 300 && r.body?.success === true) {
       const salt = randomSalt();
