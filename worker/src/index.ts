@@ -92,6 +92,9 @@ import {
   saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
+import { runPreetiDailyMaintenance } from "./lib/preeti/knowledge"; // [SAATHUM-PREETI-1]
+import { runPreetiChatMaintenance } from "./lib/preeti/maintenance"; // [SAATHUM-PREETI-1]
 // [SAATHUM-UPI-3LAYER 2026-09-29] Admin review queue + cron sweeps for the 3-layer UPI confirmation.
 import { smsForwarderIncoming, adminForwarderCaptures } from "./routes/sms_forwarder";
 import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumCheckoutReject } from "./routes/saathum_payment_review";
@@ -555,6 +558,12 @@ export default {
         checkSaathumStreamEnds(env)
           .then((r) => { if (r.checked) console.log("[saathum-stream-end-check]", JSON.stringify(r)); })
           .catch((e) => { console.error("[saathum-stream-end-check] failed:", String(e)); }),
+        // [SAATHUM-PREETI-1 2026-09-30] Preeti: knowledge sync (self-throttled to once per IST day) + chat
+        // retention purge / spend-alert re-check (same throttle). Both never throw out of the tick.
+        runPreetiDailyMaintenance(env)
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_daily_maintenance", handled: true, app_name: "saathum" })); console.error("[preeti-daily] failed:", String(e)); }),
+        runPreetiChatMaintenance(env)
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_chat_maintenance", handled: true, app_name: "saathum" })); console.error("[preeti-chat-maint] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
       ]),
@@ -587,6 +596,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // an early-return error path, which is exactly where these emits sit.
     const conferenceRoom = p.match(/^\/api\/conference-room\/([A-Za-z0-9_:.-]{1,96})\/(state|start|participant\/(?:reserve|join|leave)|migration\/(?:reserve|prepare|commit|abort|release)|billing\/(?:start|sponsor\/accept|tick)|host\/transfer|end)$/);
     if (conferenceRoom) return await conferenceRoomRoute(req, env, conferenceRoom[1], conferenceRoom[2], ctx);
+
+    // [SAATHUM-PREETI-1 2026-09-30] Preeti, the site AI agent — public chat API (flag preetiEnabled, default off).
+    if (p.startsWith("/api/preeti/")) return await preetiRoute(req, env, ctx, p);
 
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);

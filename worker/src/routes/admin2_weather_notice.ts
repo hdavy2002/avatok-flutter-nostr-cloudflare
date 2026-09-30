@@ -108,6 +108,25 @@ export async function adminWeatherDelaySend(req: Request, env: Env, id: string):
 
   const out = { recipients: ev.buyers.length, whatsapp_queued: wa.queued, skipped_no_phone: wa.skipped_no_phone, emails_queued: emails };
   await track(env, "system", "saathum_weather_delay_notice", APP, { listing_id: id, ...out });
+  // [SAATHUM-PREETI-1] Tell Preeti (the site AI agent) about the delay so she can answer buyers. One active
+  // weather_notice row per event; a repeat click while it is still active does not add another.
+  try {
+    const now = Date.now();
+    const active = await env.DB_META.prepare(
+      "SELECT 1 AS x FROM ai_incidents WHERE listing_id=?1 AND source='weather_notice' AND (expires_at IS NULL OR expires_at>?2) LIMIT 1",
+    ).bind(id, now).first();
+    if (!active) {
+      await env.DB_META.prepare(
+        "INSERT INTO ai_incidents (id, listing_id, message, starts_at, expires_at, source, created_by, created_at) VALUES (?1,?2,?3,?4,?5,'weather_notice','system',?4)",
+      ).bind(
+        `i_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, id,
+        `Snow and landslides have cut the network at the temple for ${title}. The havan is being performed as planned, and the crew will send the video as soon as they are back in the studio. The video and the prasad courier may be a little late.`.slice(0, 500),
+        now, now + 3 * 86_400_000,
+      ).run();
+    }
+  } catch (err) {
+    await trackException(env, err, { route: "admin2_weather_notice:ai_incident", handled: true, app_name: APP, extra: { listing_id: id } });
+  }
   return json(out);
 }
 

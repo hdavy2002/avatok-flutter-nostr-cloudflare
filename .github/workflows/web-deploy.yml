@@ -176,3 +176,25 @@ jobs:
             -H "Authorization: Bearer $POSTHOG_KEY" -H "Content-Type: application/json" \
             --data "$(jq -n --arg c "Web deploy ${GIT_SHA:0:7} — $SUBJECT" --arg d "$NOW" '{content:$c,date_marker:$d,scope:"project"}')" \
             -o /dev/null -w "PostHog annotation HTTP %{http_code}\n" || echo "annotation post failed (non-fatal)"
+
+      # [SAATHUM-PREETI-1] Tell the Worker to re-sync Preeti's site knowledge now that
+      # the new pages are live. Best-effort: never fails the deploy, and SKIPS LOUDLY
+      # when the PREETI_SYNC_TOKEN repo secret is absent. The API host is read from
+      # Specs/brand.json (apiOrigin if present, else hosts.api) - never typed here.
+      - name: Preeti knowledge sync
+        if: success()
+        continue-on-error: true
+        env:
+          PREETI_SYNC_TOKEN: ${{ secrets.PREETI_SYNC_TOKEN }}
+        run: |
+          if [ -z "$PREETI_SYNC_TOKEN" ]; then
+            echo "::warning::SKIPPED: PREETI_SYNC_TOKEN not set - Preeti knowledge NOT synced after this deploy"
+            echo "SKIPPED: PREETI_SYNC_TOKEN not set"
+            exit 0
+          fi
+          API=$(jq -r '.apiOrigin // .hosts.api // empty' Specs/brand.json)
+          if [ -z "$API" ]; then echo "::warning::SKIPPED: no API host in Specs/brand.json"; exit 0; fi
+          case "$API" in http*) ORIGIN="$API" ;; *) ORIGIN="https://$API" ;; esac
+          curl -fsS -X POST "$ORIGIN/api/preeti/internal/sync" \
+            -H "x-preeti-sync-token: $PREETI_SYNC_TOKEN" \
+            -o /dev/null -w "Preeti sync HTTP %{http_code}\n" || echo "::warning::Preeti sync call failed (non-fatal)"

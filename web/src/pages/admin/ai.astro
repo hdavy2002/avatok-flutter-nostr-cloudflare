@@ -1,0 +1,11 @@
+---
+// [SAATHUM-PREETI-1 2026-09-30] Admin 2 "AI assistant" — the site chat agent's identity,
+// behaviour, knowledge, incidents and conversations. Worker: routes/admin2_ai.ts.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import AiAssistant from '../../islands/admin2/AiAssistant.tsx';
+---
+
+<Admin2 title="AI assistant" active="ai" subtitle="Set up the site's AI helper, teach it, and read what visitors ask it.">
+  <AiAssistant client:load />
+</Admin2>

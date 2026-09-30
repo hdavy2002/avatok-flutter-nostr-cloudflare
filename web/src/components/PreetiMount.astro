@@ -1,0 +1,13 @@
+---
+// [SAATHUM-PREETI-1 2026-09-30] Mounts the Preeti chat widget lazily (client:idle).
+// `kind` = page kind; `pageRef` = ritual slug (article) or listing id (event).
+// (Not named `ref`: React reserves that prop name.)
+import PreetiChat from '../islands/preeti/PreetiChat';
+
+interface Props {
+  kind: 'home' | 'article' | 'event' | 'other';
+  pageRef?: string;
+}
+const { kind, pageRef } = Astro.props;
+---
+<PreetiChat client:idle kind={kind} pageRef={pageRef} />

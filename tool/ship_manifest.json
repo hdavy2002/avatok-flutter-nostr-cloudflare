@@ -7907,5 +7907,30 @@
     "flags": [],
     "success": [],
     "no_telemetry": "New constants files only; nothing imports them yet, so no runtime behaviour changes."
+  },
+  "SAATHUM-PREETI-1": {
+    "description": "[SAATHUM-PREETI-1 2026-09-30] Preeti, the site AI chat agent. Backend: /api/preeti/{config,session,identify,chat,internal/sync}, Gemini tool loop (File Search grounding then function calling), read-only tools (events, incidents, booking status, human handover), monthly rupee spend cap with WhatsApp alerts, 12-month retention. Dark behind flag preetiEnabled (default false) AND ai_agent_config.enabled. Web widget and admin pages ship in the same issue from other agents.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "preetiEnabled"
+    ],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "A real chat turn completed: outcome=ok with model set, input_tokens>0 and cost_micro_usd>0 (outcome blocked/partial_error/over_budget are failure values)."
+      },
+      {
+        "event": "$ai_generation",
+        "property": "$ai_span_name",
+        "equals": "preeti_turn",
+        "min_events": 1,
+        "note": "LLM Analytics row exists with $ai_input_tokens>0 for the Preeti span."
+      }
+    ]
   }
 }

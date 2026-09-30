@@ -44,6 +44,7 @@ const bookNowSamples = featuredHavans.filter(h => ['ganapati-havan', 'lakshmi-ha
 const search = (term: string) => '/marketplace?q=' + encodeURIComponent(term);
 // [SAATHUM-ARCHIVE-1 2026-09-25] Marketplace menu label (see lib/homeNavigation.ts).
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import PreetiMount from '../components/PreetiMount.astro';
 ---
 <Base content={HOME_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
@@ -158,4 +159,5 @@ import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
       });
     });
   </script>
+  <PreetiMount kind="home" />
 </Base>

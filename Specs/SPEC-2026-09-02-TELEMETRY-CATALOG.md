@@ -855,3 +855,23 @@ super-properties as every web event: `email`, `clerk_uid`, `trace_id`, …).
 | `dash2_replay_play` | `event_id, order_id, surface` | Past-event recording opened (`surface: 'dialog' \| 'drawer'`). |
 | `dash2_replay_error` | `event_id, code, ms_after_open?, surface?` | YouTube player error. `code` 101/150 = embedding disabled on the video (fix on YouTube), 100 = removed/private, 2 = bad id, -1 = the IFrame API failed to load (network/CSP). Also fires from the live/upcoming player with `surface: 'live' \| 'upcoming'`. |
 | `admin_youtube_link_saved` | `listing_id, cleared, ok, error?` | Client half of `dash2_video_link_set`: records the FAILED saves too (`ok: false`, `error: 'invalid_youtube_url'` …). |
+
+## Preeti — site AI agent, WORKER half (`[SAATHUM-PREETI-1]`, 2026-09-30)
+
+Emitted from `worker/src/routes/preeti.ts`, `worker/src/lib/preeti/*` with `hooks.track` (`app_name: 'saathum'`;
+uid = the signed-in Clerk uid, else `anon`, else `system` for cron). Failures go through `hooks.trackException`
+(`handled: true`, `route: 'preeti.*'`). Never a phone number, never a UTR (only `sha256` in `ai_booking_lookups`),
+never message text in PostHog.
+
+| Event | Props | Note |
+|---|---|---|
+| `preeti_turn` | `conversation_id, outcome, model, input_tokens, output_tokens, cost_micro_usd, tools, tool_rounds, grounded, cards, lead, mood, lang, page_kind, signed_in, is_test, handover, latency_ms` | **Success value: `outcome: 'ok'`** with tokens > 0. `outcome`: `ok` \| `blocked` (safety/empty -> fallback text) \| `partial_error` (Gemini failed after some text) \| `over_budget` (fixed WhatsApp-us reply, no Gemini call). `lead` 0-3, `mood` calm/upset/angry come from the hidden trailer. |
+| `$ai_generation` | `$ai_model, $ai_provider:'google', $ai_input_tokens, $ai_output_tokens, $ai_total_cost_usd, $ai_trace_id, $ai_span_name:'preeti_turn', $ai_latency, conversation_id, is_test` | LLM Analytics (mirrors `reception_room_cf.ts` `[AI-OBS-1]`). One per turn (grounding + answer tokens summed). |
+| `preeti_session` | `signed_in, restored, needs_identity, page_kind` | Widget opened / history restored. |
+| `preeti_identified` | `signed_in` | Anonymous visitor gave name + WhatsApp (number NOT logged). |
+| `preeti_handover` | `conversation_id, reason, signed_in, is_test` | Human hand-off requested; ops WhatsApp queued. |
+| `preeti_lookup_locked` | `conversation_id` | 3 failed `check_booking` lookups in 10 min -> locked 1 h. |
+| `preeti_rate_limited` | `signed_in` | 429 from the chat limits (30/visitor/h, 120/IP/h). |
+| `preeti_spend_alert` | `kind: '80' \| '100', sent, reason?` | Monthly cap alert to the ops WhatsApp (once per IST month per level). `sent:false` carries the failure `reason`. |
+| `preeti_retention_purge` | `day, messages_deleted, conversations_deleted` | Daily 12-month purge. |
+| `preeti_kb_sync` | `source:'deploy_hook', scanned, uploaded, unchanged, removed, failed` | `POST /api/preeti/internal/sync` finished. |

@@ -117,6 +117,9 @@ export interface PlatformConfig {
    * turned on once that build is verified in prod. The unrelated video-download flow
    * (sendSaathumVideoReadyWhatsApp / sendSaathumVideoReadyEmails) is NOT gated by this. */
   saathumLiveLinkNotifyEnabled: boolean;
+  /** [SAATHUM-PREETI-1 2026-09-30] Preeti, the site AI chat agent (/api/preeti/*). Default false; the widget
+   * shows only when this AND ai_agent_config.enabled are true. Flip with the owner, never on a deploy. */
+  preetiEnabled: boolean;
   /**
    * [PAY-CASHFREE-1] Inbound UPI through Cashfree. BOTH default false, and both are
    * additionally gated on real CASHFREE_* credentials being present — a half-configured
@@ -2101,6 +2104,8 @@ const DEFAULTS: PlatformConfig = {
   smsForwarderCaptureEnabled: false,
   // [WA-NOTIFY-2 2026-09-28] See the interface comment. OFF until the watch page exists.
   saathumLiveLinkNotifyEnabled: false,
+  // [SAATHUM-PREETI-1 2026-09-30] See the interface comment. OFF until the owner turns Preeti on.
+  preetiEnabled: false,
   // [PAY-CASHFREE-1] See the interface comment. Both OFF until the sandbox has been
   // exercised end to end and real credentials are configured.
   cashfreeEnabled: false,

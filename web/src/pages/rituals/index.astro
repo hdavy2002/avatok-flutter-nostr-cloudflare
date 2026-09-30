@@ -12,6 +12,7 @@ import { rituals, ritualCategories, ritualTypes, ritualBySlug } from '../../lib/
 import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 import { fetchPricing, rupees } from '../../lib/pricing';
+import PreetiMount from '../../components/PreetiMount.astro';
 // [PRICING-1] Build-time price; lib/pricingClient.ts refreshes it live.
 const pricingNow = await fetchPricing();
 const havanFrom = pricingNow.havan_from ? rupees(pricingNow.havan_from) : '';
@@ -90,4 +91,5 @@ const collection = { '@context':'https://schema.org', '@type':'CollectionPage', 
     import '../../lib/ritualGuidePage';
     import '../../lib/pricingClient';
   </script>
+  <PreetiMount kind="article" />
 </Base>

@@ -494,6 +494,11 @@ export interface Env {
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
   GEMINI_API_KEY?: string;
+  // [SAATHUM-PREETI-1 2026-09-30] Optional. The Worker is at the text-binding limit, so both also have a KV
+  // fallback: TOKENS key preeti_model:v1 (model id, default gemini-3-flash-preview) and preeti_sync_token:v1
+  // (shared secret for POST /api/preeti/internal/sync, header x-preeti-sync-token).
+  PREETI_MODEL?: string;
+  PREETI_SYNC_TOKEN?: string;
 
   // Dedicated Gemini key for the AI Receptionist Live (speech-to-speech) calls +
   // its summary call, so receptionist spend is isolated to its own Google Cloud

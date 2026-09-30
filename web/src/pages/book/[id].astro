@@ -21,6 +21,7 @@ import { listingContent } from '../../lib/seo/sources';
 import { listingOg } from '../../lib/og';
 import type { Listing } from '../../lib/types';
 import EventPage from '../../components/eventpage/EventPage.astro';
+import PreetiMount from '../../components/PreetiMount.astro';
 
 const { id } = Astro.params;
 
@@ -50,4 +51,5 @@ const eventContent = listingContent(listing, og.image ? { url: og.image, alt: li
 
 <Base content={eventContent}>
   <EventPage listing={listing} />
+  <PreetiMount kind="event" pageRef={listing.id} />
 </Base>

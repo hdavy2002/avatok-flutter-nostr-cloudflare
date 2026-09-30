@@ -16,6 +16,7 @@ import { fetchPricing, ritualPrice, rupees } from '../../lib/pricing';
 import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/creator-ideas.css';
 import '../../styles/creator-guide.css';
+import PreetiMount from '../../components/PreetiMount.astro';
 export function getStaticPaths() {
   return rituals.map(ritual => ({ params: { slug: ritual.slug }, props: { ritual } }));
 }
@@ -108,4 +109,5 @@ const story = storyFor(ritual.slug);
       article.querySelector('[data-ritual-book]')?.addEventListener('click', () => capture('ritual_article_book', { ritual: article.dataset.ritualArticle }));
     }
   </script>
+  <PreetiMount kind="article" pageRef={ritual.slug} />
 </Base>
