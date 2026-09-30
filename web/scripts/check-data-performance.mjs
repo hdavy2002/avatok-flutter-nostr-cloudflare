@@ -34,7 +34,7 @@ assert.equal(calledAfterAbort, false);
 // deadline is imposed on a payment/mutation merely because reads are bounded.
 const configURL = moduleURL(`export const API_BASE='https://api.invalid';`);
 const analyticsURL = moduleURL(`export const apiError=()=>{}; export const captureException=()=>{};`);
-const { request } = await import(await load('lib/apiClient.ts', { './config': configURL, './analytics': analyticsURL, './requestDeadline': deadlineURL }));
+const { request } = await import(await load('lib/apiClient.ts', { './config': configURL, './env': configURL, './analytics': analyticsURL, './requestDeadline': deadlineURL }));
 const originalFetch = globalThis.fetch;
 try {
   let received;
