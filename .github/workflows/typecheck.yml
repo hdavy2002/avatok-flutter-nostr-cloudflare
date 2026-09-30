@@ -123,6 +123,8 @@ jobs:
           fetch-depth: 0
       - name: Flags declared server-side + every shipped issue declares success -- run locally with `python3 tool/check_ship_readiness.py --check all`
         run: python3 tool/check_ship_readiness.py --check all
+      - name: Brand mirrors match Specs/brand.json -- run locally with `python3 scripts/gen_brand.py --check`
+        run: python3 scripts/gen_brand.py --check
 
   # [AVAILABILITY-1] Compile the same Astro/React client before production deploy.
   availability-web:

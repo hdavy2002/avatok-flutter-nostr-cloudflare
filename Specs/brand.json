@@ -1,0 +1,24 @@
+{
+  "_readme": "[SAATHUM-BRAND-CENTRAL-1 2026-09-30] SINGLE SOURCE for the public brand name and domain. Edit ONLY this file, then run `python3 scripts/gen_brand.py`. It rewrites web/src/lib/brand.ts, worker/src/lib/brand.ts, consumers/src/brand.ts and app/lib/core/brand.dart — never hand-edit those. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
+  "name": "Saa Thum",
+  "nameUpper": "SAA THUM",
+  "nameCompact": "Saathum",
+  "slug": "saathum",
+  "nameHindi": "सा थम",
+  "slogan": "Faith, brought home to you.",
+  "domain": "saathum.com",
+  "hosts": {
+    "api": "api.saathum.com",
+    "media": "media.saathum.com",
+    "auth": "clerk.saathum.com",
+    "mail": "mail.saathum.com"
+  },
+  "emails": {
+    "support": "support@saathum.com",
+    "noreply": "noreply@saathum.com",
+    "hello": "hello@saathum.com"
+  },
+  "emailFromName": "Saa Thum",
+  "_permanent": "Values below are NOT rebrandable: Google Play never lets a package id change. Listed here only so code reads them from one place.",
+  "playPackageId": "com.saathum.app"
+}

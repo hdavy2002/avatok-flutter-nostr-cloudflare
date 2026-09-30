@@ -306,6 +306,44 @@ the owner explicitly asks** (see the Git protocol section below).
 
 ---
 
+## 🏷️ BRAND NAME + DOMAIN COME FROM ONE FILE — `Specs/brand.json` (owner decision 2026-09-30)
+
+The owner may change the name (Saa Thum) and domain (saathum.com) later. When that
+day comes it must be ONE edit to `Specs/brand.json` + `python3 scripts/gen_brand.py`.
+**Every new page, feature, email, WhatsApp/SMS text, push notification, app screen,
+SEO tag and link inherits the brand automatically — you never type it.**
+
+| Surface | Use |
+|---|---|
+| Website (`web/`) | `import { BRAND, brandUrl, isBrandHost } from '<rel>/lib/brand'` |
+| Worker (`worker/`) | `import { BRAND, brandUrl } from '<rel>/lib/brand'` |
+| Consumers | `import { BRAND } from './brand'` |
+| Flutter (`app/`) | `import 'package:<app>/core/brand.dart';` → `Brand.name`, `Brand.url('/l/x')` |
+| i18n catalogs | `{brand}` placeholder, never the literal name |
+
+Rules:
+
+1. **Never type `Saa Thum`, `SAA THUM`, `Saathum`, `सा थम`, `saathum.com`, any
+   `*.saathum.com` host, or any `@saathum.com` address in new code or copy.** Use
+   `BRAND.name`, `BRAND.nameUpper`, `BRAND.webOrigin`, `brandUrl('/path')`,
+   `BRAND.emails.support`, etc. A reviewer sends back any diff that adds a literal.
+2. **Need a brand value that is not there yet** (a new mailbox, a social handle, a
+   subdomain)? Add it to `Specs/brand.json` and the generator — never a local constant.
+3. **Never hand-edit a mirror** (`web/src/lib/brand.ts`, `worker/src/lib/brand.ts`,
+   `consumers/src/brand.ts`, `app/lib/core/brand.dart`). `typecheck.yml` runs
+   `gen_brand.py --check`.
+4. **Do NOT rename internal identifiers** (`SaathumCheckout`, `saathum*Enabled` flags,
+   D1 tables, KV keys), the Play package `com.saathum.app` (permanent), or the
+   `SaathumApp/1` UA marker / `SaathumHost` JS channel (wire protocol with shipped
+   builds). Customers never see them.
+5. **Issue id `[SAATHUM-BRAND-1]` is ARCHIVED** — it is the 2026-09-20 rename. This
+   work is `[SAATHUM-BRAND-CENTRAL-*]`. Never reuse an old issue id.
+
+Migration of existing literals and the domain-switch-day checklist:
+`Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md`.
+
+---
+
 ## 💰 THE UNIT IS A **TOKEN**, AND 1 TOKEN = **₹1** (owner decision 2026-08-05)
 
 **Never write "coin" or "AvaCoin" again, and never print a `$` for a wallet

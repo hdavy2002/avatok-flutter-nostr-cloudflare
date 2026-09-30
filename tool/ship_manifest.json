@@ -7899,5 +7899,13 @@
         "note": "A public havan/puja checkout step fires with personal_sankalp=false (step=details)."
       }
     ]
+  },
+  "SAATHUM-BRAND-CENTRAL-1": {
+    "description": "[SAATHUM-BRAND-CENTRAL-1 2026-09-30] Step 1 of the brand/domain centralisation plan (Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md). Adds Specs/brand.json as the single source of the public brand name, domain, hosts and mailboxes, and scripts/gen_brand.py which writes committed mirrors web/src/lib/brand.ts, worker/src/lib/brand.ts, consumers/src/brand.ts and app/lib/core/brand.dart (with --check wired into typecheck.yml). Nothing imports the mirrors yet, so there is no behaviour change; later steps move each surface onto them.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [],
+    "no_telemetry": "New constants files only; nothing imports them yet, so no runtime behaviour changes."
   }
 }
