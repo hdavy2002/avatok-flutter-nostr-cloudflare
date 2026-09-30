@@ -36,6 +36,15 @@ export function clerkFapiHost(): string | undefined {
   }
 }
 
+/**
+ * [WEB-PERF-3 2026-09-30] Quality tiers. Photos keep the default 60. Flat
+ * illustrated ARTWORK (category tiles, folk art, havan cards, elephants) is
+ * visually identical at 45 and ~30% smaller (e.g. category tile 83 KB -> 56 KB
+ * at 640w). check-image-coverage.mjs accepts exactly these two values.
+ */
+export const PHOTO_QUALITY = 60;
+export const ARTWORK_QUALITY = 45;
+
 /** Bounded variants keep the image cache from fragmenting per CSS pixel. */
 export const IMAGE_WIDTHS = [48, 96, 160, 256, 420, 640, 900, 1280, 1600, 2048] as const;
 export interface ImageOptions { width?: number; quality?: number; fit?: string; format?: string }

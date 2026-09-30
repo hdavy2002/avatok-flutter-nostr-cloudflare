@@ -16,16 +16,8 @@ import type { KeyboardEvent as RKeyboardEvent, ReactNode } from 'react';
 // in the background after the widget has already rendered.
 const loadClerk = () => import('../../lib/clerk');
 const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
-/** Same cookie test the header uses (SiteHeader.astro) — no Clerk needed to ask. */
-function hasClerkSessionHint(): boolean {
-  try {
-    const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
-    return Boolean(m && m[1] && m[1] !== '0');
-  } catch {
-    return false;
-  }
-}
 import { ApiError } from '../../lib/apiClient';
+import { hasClerkSessionHint } from '../../lib/sessionHint';
 import { cfImage } from '../../lib/config';
 import { capture, captureException } from '../../lib/analytics';
 import { getPreetiConfig, identifyFieldError, identifyPreeti, openPreetiSession, streamPreetiChat } from '../../lib/preetiApi';

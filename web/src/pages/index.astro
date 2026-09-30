@@ -6,7 +6,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import FolkArtwork from '../components/FolkArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
-import { publicImage, publicImageSrcSet } from '../lib/config';
+import { ARTWORK_QUALITY, publicImage, publicImageSrcSet } from '../lib/config';
 import { HOME_HERO, HOME_SEO } from '../lib/homeContent';
 import '../styles/saathum-folk.css';
 import '../styles/home-hero.css';
@@ -123,7 +123,7 @@ import { BRAND } from '../lib/brand';
             {featuredHavans.map((havan, i) => <article class="grand-listing grand-havan" data-havan-index={i}>
               <div class="grand-listing-art-wrap">
                 <a class="grand-listing-art" href={havan.href} tabindex="-1" aria-hidden="true" data-home-cta={'havan-art-' + havan.slug}>
-                  <img src={publicImage(havan.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(havan.image, [420, 640, 900], { fit: 'scale-down' })} sizes="(max-width: 600px) 92vw, (max-width: 1100px) 46vw, 23vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" />
+                  <img src={publicImage(havan.image, { width: 900, fit: 'scale-down', quality: ARTWORK_QUALITY })} srcset={publicImageSrcSet(havan.image, [420, 640, 900], { fit: 'scale-down', quality: ARTWORK_QUALITY })} sizes="(max-width: 600px) 92vw, (max-width: 1100px) 46vw, 23vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" />
                 </a>
               </div>
               <div class="grand-listing-copy">
@@ -140,9 +140,9 @@ import { BRAND } from '../lib/brand';
 
 
       <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
-        <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+        <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
         <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Only positive Himalayan temples, only benefic rituals. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
-        <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down' })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+        <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 
       <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>

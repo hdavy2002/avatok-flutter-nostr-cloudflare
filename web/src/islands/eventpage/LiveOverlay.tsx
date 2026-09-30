@@ -25,9 +25,16 @@
 // right overlay. /api/saathum/watch/:id is the entitled call — it is only
 // ever made when a Clerk token exists, and only its response can put a video
 // id in the DOM.
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { IslandBoundary } from '../../components/IslandBoundary';
-import { ClerkIsland, getActiveTokenWaited } from '../../lib/clerk';
+import { hasClerkSessionHint } from '../../lib/sessionHint';
+// [WEB-PERF-3 2026-09-30] Owner decision: non-critical code loads later, in the
+// background. This island mounts on EVERY event page (client:load) and used to
+// wrap itself in <ClerkIsland>, so every visitor downloaded ~300 KB of Clerk
+// even though only a signed-in buyer (or admin preview) on a live/ended event
+// ever needs a token. Clerk now loads only in that case, lazily.
+const loadClerk = () => import('../../lib/clerk');
+const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
 import { ApiError } from '../../lib/apiClient';
 import { getLiveState, getWatch } from '../saathum-checkout/api';
 import { capture, captureException } from '../../lib/analytics';
@@ -39,7 +46,7 @@ type Phase =
   | { kind: 'ended_overlay'; buyer: boolean }
   | { kind: 'player'; videoId: string; preview?: boolean };
 
-function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; checkoutHref: string }) {
+function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: string; checkoutHref: string; onNeedAuth: () => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' });
   const shown = useRef<string | null>(null);
   const playerStarted = useRef(false);
@@ -73,7 +80,13 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
       // This island hydrates before Clerk has restored the session, so the plain
       // getActiveToken() said "signed out" and a PAYING buyer (or an admin preview)
       // got the "Book to watch" overlay / nothing instead of the player.
-      const token = await getActiveTokenWaited(5000).catch(() => null);
+      // [WEB-PERF-3] No session cookie = signed out: skip Clerk entirely.
+      let token: string | null = null;
+      if (hasClerkSessionHint()) {
+        onNeedAuth(); // mount the lazy ClerkIsland so the session can restore
+        token = await loadClerk().then((m) => m.getActiveTokenWaited(8000)).catch(() => null);
+      }
+      if (ctrl.signal.aborted) return;
       if (token) {
         try {
           const w = await getWatch(listingId, token, ctrl.signal, wantPreview);
@@ -205,11 +218,15 @@ function LiveOverlayInner({ listingId, checkoutHref }: { listingId: string; chec
 }
 
 export default function LiveOverlay({ listingId, checkoutHref }: { listingId: string; checkoutHref: string }) {
+  const [withClerk, setWithClerk] = useState(false);
   return (
     <IslandBoundary island="event-page-live-overlay">
-      <ClerkIsland>
-        <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} />
-      </ClerkIsland>
+      {withClerk && (
+        <Suspense fallback={null}>
+          <LazyClerkIsland>{null}</LazyClerkIsland>
+        </Suspense>
+      )}
+      <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} onNeedAuth={() => setWithClerk(true)} />
     </IslandBoundary>
   );
 }

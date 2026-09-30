@@ -1,5 +1,5 @@
 ---
-import { publicImage, publicImageSrcSet } from '../lib/config';
+import { ARTWORK_QUALITY, publicImage, publicImageSrcSet } from '../lib/config';
 
 interface Props {
   name: 'puja' | 'aarti' | 'bhajan' | 'satsang' | 'festival' | 'yoga';
@@ -14,7 +14,7 @@ const source = sourcePath ?? `/assets/saathum-booking/${kind}-${name}.png`;
 const [width, height] = kind === 'category' ? [1254, 1254] : [1536, 1024];
 ---
 <img class:list={['booking-artwork', kind === 'category' ? 'booking-artwork--category' : 'booking-artwork--listing']}
-  src={publicImage(source, { width: kind === 'category' ? 640 : 900, fit: 'cover' })}
-  srcset={publicImageSrcSet(source, [420, 640, 900, 1280], { fit: 'cover' })}
+  src={publicImage(source, { width: kind === 'category' ? 640 : 900, fit: 'cover', quality: ARTWORK_QUALITY })}
+  srcset={publicImageSrcSet(source, [420, 640, 900, 1280], { fit: 'cover', quality: ARTWORK_QUALITY })}
   sizes={sizes} alt={alt} width={width} height={height}
   loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : undefined} decoding="async" />

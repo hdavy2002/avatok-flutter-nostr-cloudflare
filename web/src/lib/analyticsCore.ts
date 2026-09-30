@@ -143,6 +143,21 @@ function loadEmail(uid: string): string | null {
  * wins; later calls just re-register the responsive super props (cheap,
  * covers a client-side route change that Base.astro's script re-runs).
  */
+const REPLAY_SAMPLE = 0.2;
+const REPLAY_KEY = 'saathum_replay_sampled';
+/** One roll per browser session, so a sampled visitor stays recorded page to page. */
+function replaySampledIn(): boolean {
+  try {
+    const kept = window.sessionStorage.getItem(REPLAY_KEY);
+    if (kept === '1' || kept === '0') return kept === '1';
+    const inSample = Math.random() < REPLAY_SAMPLE;
+    window.sessionStorage.setItem(REPLAY_KEY, inSample ? '1' : '0');
+    return inSample;
+  } catch {
+    return Math.random() < REPLAY_SAMPLE; // storage blocked: roll per page
+  }
+}
+
 export function initAnalytics(): void {
   if (!isBrowser) return;
   if (initialized) {
@@ -165,15 +180,21 @@ export function initAnalytics(): void {
     rageclick: !sensitivePage,
     capture_dead_clicks: !sensitivePage,
     capture_exceptions: !sensitivePage,
-    disable_session_recording: sensitivePage,
+    // [WEB-PERF-3 2026-09-30] Recording never starts on its own: the ~65 KB
+    // recorder script used to download for EVERY visitor and only then apply
+    // the project's 20% sampling. Now the dice are rolled here (REPLAY_SAMPLE,
+    // once per browser session) and only the sampled 20% ever fetch the
+    // recorder — see `loaded` below. Same 20% as catalog §1.2.
+    disable_session_recording: true,
+    // No surveys exist in the project (checked 2026-09-30, count 0). This stops
+    // surveys.js (~35 KB) downloading for every visitor. Turn back on here
+    // if a web survey is ever created.
+    disable_surveys: true,
     session_recording: {
       maskAllInputs: true,
       maskTextSelector: '*',
       blockClass: 'ph-no-capture',
     },
-    // Replay is enabled here; the 20% sampling from the catalog (§1.2) is set
-    // in the PostHog project settings (Session replay > sampling), same as
-    // the app's server-controlled rollout — no client-side dice roll needed.
     // Private invitation URLs must not be persisted by SDK referral tracking.
     persistence: sensitivePage ? 'memory' : 'localStorage+cookie',
     cross_subdomain_cookie: false,
@@ -185,6 +206,14 @@ export function initAnalytics(): void {
       if (sensitivePage) {
         try {
           ph.stopSessionRecording();
+        } catch {
+          /* best-effort */
+        }
+      } else if (replaySampledIn()) {
+        try {
+          // `sampling: true` = this client already sampled, so the project's
+          // own sample rate must not cut it down a second time (20% x 20%).
+          ph.startSessionRecording({ sampling: true });
         } catch {
           /* best-effort */
         }
@@ -270,6 +299,16 @@ export function captureException(err: unknown, props?: Properties): void {
   if (!isBrowser) return;
   try {
     posthog.captureException(err, scrubProps(props) ?? undefined);
+  } catch {
+    /* best-effort */
+  }
+  // [WEB-PERF-3] Replay is client-sampled now, so an unsampled visitor who hits
+  // a reported error would never be recorded. Start recording from here on so
+  // the rest of that session is watchable (catalog §1.2 "more on error").
+  try {
+    if (!isPrivacySensitivePath(window.location.pathname) && !posthog.sessionRecordingStarted()) {
+      posthog.startSessionRecording({ sampling: true });
+    }
   } catch {
     /* best-effort */
   }

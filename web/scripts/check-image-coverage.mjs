@@ -11,7 +11,7 @@ const source = configSource()
   .replace("import publicImageManifest from './publicImageManifest.json';", `const publicImageManifest = ${JSON.stringify(manifest)};`)
   .replaceAll('import.meta.env.', '({}).');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
-const { publicImage, cfImage, IMAGE_WIDTHS } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+const { publicImage, cfImage, IMAGE_WIDTHS, PHOTO_QUALITY, ARTWORK_QUALITY } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]);
 }
@@ -30,10 +30,11 @@ function check(url, file) {
     return;
   }
   // A transform of an external/private source is not ours to rewrite.
-  if (!eligible && !/format=avif,quality=60,/.test(transformed[1])) return;
+  if (!eligible && !/format=avif,quality=(?:60|45),/.test(transformed[1])) return;
   const params = Object.fromEntries(transformed[1].split(',').map(part => part.split('=')));
   assert.equal(params.format, 'avif', `${file}: browser format ${url}`);
-  assert.equal(params.quality, '60', `${file}: browser quality ${url}`);
+  // [WEB-PERF-3] Two named tiers only (lib/config.ts): photos 60, flat artwork 45.
+  assert.ok([String(PHOTO_QUALITY), String(ARTWORK_QUALITY)].includes(params.quality), `${file}: browser quality ${url}`);
   assert.ok(IMAGE_WIDTHS.includes(Number(params.width)), `${file}: unbounded browser image ${url}`);
 }
 function checkSrcset(value, file) {

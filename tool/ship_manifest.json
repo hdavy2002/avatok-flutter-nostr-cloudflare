@@ -8126,5 +8126,21 @@
         "note": "The idle-30-minute transcript email was queued to the visitor's email."
       }
     ]
+  },
+  "WEB-PERF-3": {
+    "description": "[WEB-PERF-3 2026-09-30] Event pages load Clerk only for a signed-in visitor on a live/ended event (lazy); PostHog replay is sampled 20% in the browser so the recorder downloads only for sampled visitors (plus from the first reported error); surveys disabled (project has none); flat artwork (category tiles, folk art, havan cards, elephants) served at AVIF q45 instead of q60. Web-only; no flag.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "web_page_speed",
+        "property": "path",
+        "equals": "/",
+        "min_events": 1,
+        "note": "Median transfer and lcp_ms on '/' and '/book/<id>' fall versus before 2026-09-30; saathum_live_player_started still fires for signed-in buyers on live events (Clerk still loads for them)."
+      }
+    ]
   }
 }

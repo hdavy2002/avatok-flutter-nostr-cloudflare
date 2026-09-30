@@ -35,6 +35,14 @@ Error tracking (uncaught + `captureException`), session replay (masked text and
 images, sample 20%, 100% on error), pageviews/screens, web vitals (web), logs
 sink for warn/error lines, LLM analytics where an LLM is called.
 
+**Web, since [WEB-PERF-3] 2026-09-30:** replay sampling is rolled in the browser
+(`REPLAY_SAMPLE = 0.2` in `web/src/lib/analyticsCore.ts`, once per browser
+session) so the recorder script downloads only for sampled visitors. An
+unsampled visitor who hits a reported `captureException` starts recording from
+that moment (the seconds before the error are not captured). Surveys are
+disabled on the web (`disable_surveys: true`) because the project has none —
+re-enable there before launching a web survey.
+
 ### 1.3 Person identity
 
 `identify(clerk_uid, {email, phone, handle, kyc_verified, account_kind})` at
