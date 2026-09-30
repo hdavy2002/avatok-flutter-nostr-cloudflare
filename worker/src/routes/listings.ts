@@ -870,6 +870,8 @@ function shapeCard(
     // [SAATHUM-FREEVID-API-1 2026-10-01] FREE event (anyone signed in can watch). hydrateFreeWatch()
     // sets r.free_watch; a site that did not hydrate reads false.
     free_watch: Number(r.free_watch ?? 0) === 1,
+    // [SAATHUM-FREEVID-CARD-1] free + video saved = the card says "Watch free now" (hydrateFreeWatch).
+    free_video: Number(r.free_video ?? 0) === 1,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
