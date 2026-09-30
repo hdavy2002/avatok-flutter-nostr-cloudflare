@@ -1,4 +1,4 @@
-# saathum.com — web is the public booking funnel. The authenticated app-only
+# %BRAND_DOMAIN% — web is the public booking funnel. The authenticated app-only
 # surfaces (creator dashboard, AvaVision, admin ops) stay reachable by URL but
 # are kept out of search. Per-page <meta name="robots" content="noindex"> is the
 # authoritative signal; these rules are a belt-and-suspenders for crawlers.
@@ -12,7 +12,7 @@
 # were ignored by every crawler. The intact default group follows.
 #
 # Why the AI crawlers below get an explicit Allow: discovery/search crawlers and
-# model-training crawlers serve different purposes. Saathum currently permits
+# model-training crawlers serve different purposes. %BRAND_NAME_COMPACT% currently permits
 # both, while private and transactional product surfaces remain excluded.
 # Permission is not a ranking, citation or recommendation guarantee.
 
@@ -114,4 +114,4 @@ Disallow: /dashboard
 Disallow: /admin
 Disallow: /vision
 
-Sitemap: https://saathum.com/sitemap.xml
+Sitemap: %BRAND_ORIGIN%/sitemap.xml

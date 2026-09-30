@@ -1,6 +1,6 @@
 ---
 title: "Choosing and booking a ritual"
-description: "How to find the right puja or havan on Saa Thum, what a ritual page tells you, and how booking works."
+description: "How to find the right puja or havan on {{brand.name}}, what a ritual page tells you, and how booking works."
 section: booking-and-paying
 order: 1
 updated: 2026-09-30
@@ -10,7 +10,7 @@ faq:
   - q: "How do I find a puja for a particular wish?"
     a: "Browse by intention on the home page — studies, a fresh start, prosperity, health and peace, love and family, or festival pujas — or search Our Pujas by deity or festival."
   - q: "Do I need the app to book?"
-    a: "No. You can choose, book, pay and watch right in your browser at saathum.com."
+    a: "No. You can choose, book, pay and watch right in your browser at {{brand.domain}}."
   - q: "Do I need to give my gotra or a wish?"
     a: "No. At a public havan or puja the pujari recites one sankalp for every devotee — the ritual page shows what it is for. You only give your name when you book."
 draft: false

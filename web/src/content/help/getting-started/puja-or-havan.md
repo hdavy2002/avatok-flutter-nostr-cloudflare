@@ -30,4 +30,4 @@ You don't need to know the right ritual in advance. On the [home page](/#experie
 
 Both are performed at the Himalayan temple named on the event page, by that temple's own pujari, and filmed by our crew. See [Our temples](/temples).
 
-Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; Saa Thum makes no claims of guaranteed outcomes.
+Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; {{brand.name}} makes no claims of guaranteed outcomes.

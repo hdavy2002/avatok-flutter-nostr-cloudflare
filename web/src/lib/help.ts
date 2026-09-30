@@ -9,6 +9,7 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import { BRAND } from './brand';
+import { fillBrandTokens, fillBrandTokensDeep } from './brandTokens';
 
 export type HelpSectionId =
   | 'getting-started'
@@ -66,7 +67,15 @@ export const SECTION_ORDER: HelpSectionId[] = (Object.keys(SECTIONS) as HelpSect
 
 /** Non-draft help entries, sorted by section order, then in-section order, then title. */
 export async function getHelpEntries(): Promise<HelpEntry[]> {
-  const entries = await getCollection('help', (entry) => !entry.data.draft);
+  // [SAATHUM-BRAND-CENTRAL-WEB-3] The single reader of the help collection: fill
+  // {{brand.*}} tokens in frontmatter and body so titles, descriptions, FAQ JSON-LD
+  // and the search index all show the current brand. (The rendered body is filled by
+  // lib/remarkBrand.mjs at markdown time.)
+  const entries = (await getCollection('help', (entry) => !entry.data.draft)).map((entry) => ({
+    ...entry,
+    data: fillBrandTokensDeep(entry.data),
+    body: entry.body === undefined ? entry.body : fillBrandTokens(entry.body),
+  }));
   return entries.sort((a, b) => {
     const sectionDiff = SECTIONS[a.data.section as HelpSectionId].order - SECTIONS[b.data.section as HelpSectionId].order;
     if (sectionDiff !== 0) return sectionDiff;

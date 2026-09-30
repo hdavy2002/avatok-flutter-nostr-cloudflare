@@ -1,6 +1,6 @@
 {
-  "name": "Saa Thum",
-  "short_name": "Saa Thum",
+  "name": "%BRAND_NAME%",
+  "short_name": "%BRAND_NAME%",
   "description": "Book pujas and havans, join them live and keep your receipts.",
   "id": "/dashboard",
   "start_url": "/dashboard",

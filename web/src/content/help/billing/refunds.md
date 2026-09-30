@@ -10,7 +10,7 @@ faq:
   - q: "Can I get a refund if I cancel?"
     a: "Yes — for a havan or puja, cancel at least 24 hours before the scheduled start; for a satsang, sermon or meditation, cancel at least 3 days before. Cancellations after that window are not refunded, and neither is missing the event."
   - q: "Is the refund automatic?"
-    a: "No. Email support (@) saathum.com or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
+    a: "No. Email support (@) {{brand.domain}} or use the contact form, and include your 12-digit UPI transaction number so we can locate your payment."
   - q: "Can I get a refund if I am not happy with the outcome of my puja, havan or session?"
     a: "No. The outcome of a puja, havan, satsang, sermon or meditation is a matter of faith and can't be promised or measured. Our pujaris and team perform every ritual sincerely and in full, so we don't give refunds because of how you feel about the result. If we could not perform your ritual, you get a full refund."
   - q: "Can I get my charawa back or refunded?"
@@ -41,7 +41,7 @@ Refunds are not automatic, and there are none for cancelling late or for missing
 
 ## Requesting a refund
 
-Refunds are not automatic. Email **support (@) saathum.com** or use the [contact form](/contact) with:
+Refunds are not automatic. Email **support (@) {{brand.domain}}** or use the [contact form](/contact) with:
 
 1. Your full name, and the email or phone number you booked with.
 2. The event and its scheduled date and time.
@@ -73,4 +73,4 @@ Many of our temples are high in the mountains. If snow, landslides or heavy rain
 
 ## Wrong or duplicate payments
 
-Email support (@) saathum.com with the UPI transaction number for each payment. Please contact us before raising a dispute with your bank — it's faster.
+Email support (@) {{brand.domain}} with the UPI transaction number for each payment. Please contact us before raising a dispute with your bank — it's faster.

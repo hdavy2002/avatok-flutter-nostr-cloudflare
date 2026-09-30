@@ -6,6 +6,7 @@ import tailwind from '@astrojs/tailwind';
 import publicImageCss from './scripts/public-image-css.mjs';
 import remarkUiCopy from './scripts/remark-ui-copy.mjs';
 import { BRAND } from './src/lib/brand.ts';
+import remarkBrand from './src/lib/remarkBrand.mjs';
 
 // [WEB-DEVSERVER-1 2026-08-26] Is this `astro dev`, as opposed to build/preview?
 // The `react-dom/server` → `.edge` alias below is REQUIRED for the Cloudflare
@@ -26,7 +27,7 @@ const isDev = process.argv.includes('dev');
 export default defineConfig({
   site: BRAND.webOrigin,
   output: 'static',
-  markdown: { remarkPlugins: [remarkUiCopy] },
+  markdown: { remarkPlugins: [remarkBrand, remarkUiCopy] },
   adapter: cloudflare({
     imageService: 'passthrough',
     // [SAATHUM-GUIDE-2 2026-09-25] The site sits at Cloudflare's 100-rule

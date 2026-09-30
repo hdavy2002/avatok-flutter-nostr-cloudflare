@@ -1,4 +1,4 @@
-/* Saa Thum service worker — [DASH2-PWA 2026-09-25]
+/* %BRAND_NAME% service worker — [DASH2-PWA 2026-09-25]
  *
  * Registered ONLY from Dashboard 2 pages (islands/dashboard2/InstallPrompt.tsx),
  * scope "/". Deliberately small and conservative:
@@ -130,7 +130,7 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch {
     try { data = { body: event.data ? event.data.text() : '' }; } catch { data = {}; }
   }
-  const title = typeof data.title === 'string' && data.title ? data.title : 'Saa Thum';
+  const title = typeof data.title === 'string' && data.title ? data.title : '%BRAND_NAME%';
   const url = typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/dashboard/my-events';
   event.waitUntil(self.registration.showNotification(title, {
     body: typeof data.body === 'string' ? data.body : '',

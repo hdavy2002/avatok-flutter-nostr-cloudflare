@@ -1,6 +1,6 @@
 ---
 title: "Our temples and our temple promise"
-description: "Which Himalayan temples Saa Thum works with, the temples we stay away from, and how a temple joins our list."
+description: "Which Himalayan temples {{brand.name}} works with, the temples we stay away from, and how a temple joins our list."
 section: getting-started
 order: 3
 updated: 2026-09-29

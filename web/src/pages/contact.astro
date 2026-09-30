@@ -56,7 +56,7 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
 >
   <section class="lg-contact lg-wrap">
     <div class="lg-contact-inner">
-      <form id="contact-form" class="lg-cform" novalidate>
+      <form id="contact-form" class="lg-cform" data-support-email={BRAND.emails.support} novalidate>
         <p class="lg-intro">You can always email us directly at support (@) {BRAND.domain}, or use the form below. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>
         <label class="lg-honeypot" aria-hidden="true"><span>Company website</span><input type="text" name="company" tabindex="-1" autocomplete="off" /></label>
         <div class="lg-row">
@@ -106,6 +106,7 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
 <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
   const form = document.getElementById('contact-form') as HTMLFormElement | null;
+  const supportEmail = form?.dataset.supportEmail ?? '';
   const statusEl = document.getElementById('contact-status');
   const mathsQ = document.getElementById('c-maths-q');
   const mathsInput = document.getElementById('c-maths') as HTMLInputElement | null;
@@ -173,11 +174,11 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
           statusEl.textContent = 'Thanks! Your message is on its way — we’ll be in touch.';
         } else {
           statusEl.className = 'lg-cstatus err';
-          statusEl.textContent = out.error || 'Could not send your message. Please email support@saathum.com.';
+          statusEl.textContent = out.error || `Could not send your message. Please email ${supportEmail}.`;
         }
       } catch {
         statusEl.className = 'lg-cstatus err';
-        statusEl.textContent = 'Network error. Please email support@saathum.com.';
+        statusEl.textContent = `Network error. Please email ${supportEmail}.`;
       } finally {
         btn.disabled = false;
         btn.textContent = prev;

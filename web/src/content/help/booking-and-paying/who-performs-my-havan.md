@@ -9,7 +9,7 @@ audience: buyer
 faq:
   - q: "Who performs my havan or puja?"
     a: "The temple's own pujari, a priest who has looked after that temple for years, often for generations. He recites the sankalp for every devotee at the altar."
-  - q: "What does the Saa Thum crew do?"
+  - q: "What does the {{brand.name}} crew do?"
     a: "Our crew travels to the temple, sets up the camera, live streams when the network allows, records the whole ritual, and packs and sends your prasad."
   - q: "Does my booking help the temple?"
     a: "Yes. A fair share of every booking goes to the temple, its pujari and his village, and helps them through the hard mountain winters."
@@ -30,4 +30,4 @@ Our small team travels deep into the mountains to each temple. We set up beside 
 
 The temples we work with are far from the pilgrim routes, and the people who keep them alive face hard winters with very little income. Many still carry food up to the sadhus meditating in the caves above. Your booking gives them a fair, steady income and a way to share their devotion with families everywhere.
 
-See the temples on [Our temples](/temples) and read how Saa Thum began on [About us](/about).
+See the temples on [Our temples](/temples) and read how {{brand.name}} began on [About us](/about).

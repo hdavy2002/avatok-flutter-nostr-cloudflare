@@ -144,7 +144,7 @@ async function resolvePublicPage(key: string): Promise<OgResolveResult> {
   const timer = setTimeout(() => controller.abort(), 2500);
   try {
     const response = await fetch(canonicalUrl(path), {
-      headers: { Accept: 'text/html', 'User-Agent': 'Saathum-OG-Renderer/1.0' },
+      headers: { Accept: 'text/html', 'User-Agent': `${BRAND.nameCompact}-OG-Renderer/1.0` },
       redirect: 'manual', signal: controller.signal,
     });
     if (response.status === 404 || response.status === 410 || response.status >= 300 && response.status < 400) return { status: 'not-found' };

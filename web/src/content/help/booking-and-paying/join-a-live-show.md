@@ -12,7 +12,7 @@ faq:
   - q: "Why is my video late?"
     a: "Landslides, snowstorms and heavy rain can cut the network in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio. We tell you about the delay on WhatsApp and by email."
   - q: "What if the ritual isn't performed?"
-    a: "You get a full refund. Email support (@) saathum.com with your 12-digit UPI transaction number and we'll refund you."
+    a: "You get a full refund. Email support (@) {{brand.domain}} with your 12-digit UPI transaction number and we'll refund you."
 draft: false
 ---
 
@@ -39,6 +39,6 @@ Bookings stay open for about **15 minutes** after the scheduled start. After tha
 
 ## If the ritual can't be performed
 
-If we can't perform a ritual, you get a full refund. Email support (@) saathum.com (or use the [contact form](/contact)) with your **12-digit UPI transaction number** so we can locate your payment, and we'll refund the UPI account you paid from. See [Refunds & Cancellations](/refunds).
+If we can't perform a ritual, you get a full refund. Email support (@) {{brand.domain}} (or use the [contact form](/contact)) with your **12-digit UPI transaction number** so we can locate your payment, and we'll refund the UPI account you paid from. See [Refunds & Cancellations](/refunds).
 
-If there's a problem with your video, email support (@) saathum.com with your booking details and we'll sort it out.
+If there's a problem with your video, email support (@) {{brand.domain}} with your booking details and we'll sort it out.

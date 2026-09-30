@@ -244,6 +244,23 @@ for (const file of helpHtmlFiles) {
   }
 }
 
+// [SAATHUM-BRAND-CENTRAL-WEB-3] Help articles use {{brand.*}} tokens in markdown/frontmatter; none may
+// reach the built site (HTML, search.json, browser bundles). The server data-store chunk under
+// _worker.js keeps the raw markdown by design and is never served.
+{
+  const leaks = [];
+  const scan = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '_worker.js' || entry.name === '_images' || entry.name === '_og-art') continue;
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) scan(p);
+      else if (/\.(html|json|js|txt|xml|webmanifest|css)$/.test(entry.name) && readFileSync(p, 'utf8').includes('{{brand')) leaks.push(p);
+    }
+  };
+  scan(root);
+  assert.deepEqual(leaks, [], 'Unfilled {{brand.*}} token reached dist: ' + leaks.join(', '));
+}
+
 console.log(
   `Help centre smoke checks passed: landing page OK, search.json ${searchDocs.length} entries ` +
     `(${(searchBytes / 1024).toFixed(1)} KB), ${helpHtmlFiles.length} built pages + ${policyHtmlFiles.length} policy pages checked ` +
