@@ -8158,5 +8158,21 @@
         "note": "ttfb_ms on /book/<id> and /marketplace drops to well under 500 ms for most loads (edge HIT); x-edge-cache: HIT on a repeat curl."
       }
     ]
+  },
+  "WORKER-PERF-1": {
+    "description": "[WORKER-PERF-1 2026-09-30] GET /api/listings/:id runs its ~15 independent D1 reads in two parallel waves instead of one after another; response shape and every fail-soft path unchanged. Feeds the SSR of every /book/<id> page.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "web_page_speed",
+        "property": "path",
+        "equals": "/",
+        "min_events": 1,
+        "note": "Uncached /api/listings/<id> time-to-first-byte falls from ~0.8-1.4 s to ~0.3-0.5 s (curl); api_error rate for GET /api/listings/:id unchanged."
+      }
+    ]
   }
 }

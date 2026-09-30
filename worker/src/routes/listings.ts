@@ -4104,15 +4104,22 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
 
 // GET /api/listings/:id — full details + creator card + reviews page 1.
 export async function getListing(req: Request, env: Env, id: string): Promise<Response> {
-  const uid = await maybeUid(req, env);
-  const r = await metaSession(env).prepare(`${CARD_SELECT} WHERE l.id=?1`).bind(id).first<any>();
+  // [WORKER-PERF-1 2026-09-30] This endpoint ran ~15 D1 reads ONE AFTER ANOTHER
+  // (0.8-1.4 s per call, and it feeds the SSR of every /book/<id> page). The reads
+  // are independent, so they now run in two parallel waves: (1) auth + the row +
+  // its discovery projection, (2) everything that needs the row. Every fail-soft
+  // try/catch and every response key is unchanged.
+  const [uid, r, discoveryRow] = await Promise.all([
+    maybeUid(req, env),
+    metaSession(env).prepare(`${CARD_SELECT} WHERE l.id=?1`).bind(id).first<any>(),
+    // Compute anonymous discovery from the same predicate used by both sitemaps.
+    // This safe projection never exposes attrs or moderation fields to readers.
+    metaSession(env).prepare(
+      `SELECT ${publicDiscoveryReasonSql("l", "?2")} AS reason, l.updated_at, l.publication_version
+         FROM listings l WHERE l.id=?1`,
+    ).bind(id, Date.now()).first<{ reason: string | null; updated_at: number; publication_version: number | null }>(),
+  ]);
   if (!r) return json({ error: "not found" }, 404);
-  // Compute anonymous discovery from the same predicate used by both sitemaps.
-  // This safe projection never exposes attrs or moderation fields to readers.
-  const discoveryRow = await metaSession(env).prepare(
-    `SELECT ${publicDiscoveryReasonSql("l", "?2")} AS reason, l.updated_at, l.publication_version
-       FROM listings l WHERE l.id=?1`,
-  ).bind(id, Date.now()).first<{ reason: string | null; updated_at: number; publication_version: number | null }>();
   if (!discoveryRow) return json({ error: "not found" }, 404);
   const isOwner = uid === r.creator_id;
   // Public details pages must only expose listings that have completed the
@@ -4129,116 +4136,136 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
     const wasPublic = closed && Number(discoveryRow.publication_version ?? 0) > 0;
     if (!wasPublic) return json({ error: "not found" }, 404);
   }
-  const promos = await promosForCards(env, [id]);
-  const cardStats = await cardStatsFor(env, [id]);
-  const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page
-  const card = shapeCard(r, promos, favs, cardStats, await maxPerBookingEnabled(env)); // [MAXBOOK-DARK-1]
-  const reviews = await metaSession(env).prepare(
-    `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
-       FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
-      WHERE rv.listing_id=?1 AND rv.status='approved' -- [REVIEW-MOD-1] moderated: see routes/reviews.ts
-      ORDER BY rv.created_at DESC LIMIT 20`,
-  ).bind(id).all();
-  const prof = await metaSession(env).prepare(
-    "SELECT rating_avg, rating_count, follower_count FROM creator_profiles WHERE user_id=?1",
-  ).bind(r.creator_id).first<any>();
-  let following = false, booked = false;
-  if (uid) {
-    following = !!(await metaDb(env).prepare("SELECT 1 FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(uid, r.creator_id).first());
-    booked = !!(await metaDb(env).prepare("SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed')").bind(id, uid).first());
-    // Commercial live tickets are account-bound entitlements, not rows in the
-    // legacy bookings table. Keep the detail CTA aligned with the same
-    // server admission authority used by the GetStream join route.
-    if (!booked && r.kind === "live_event") {
-      try {
-        booked = !!(await metaDb(env).prepare(
-          "SELECT 1 FROM commercial_entitlements WHERE kind='live_event' AND listing_id=?1 AND account_id=?2 AND role='viewer' AND state IN ('reserved','held','active','consumed')",
-        ).bind(id, uid).first());
-      } catch (_) {
-        // Before the commercial migration lands, fail closed and leave the
-        // normal checkout CTA visible rather than granting access.
+  const [promos, cardStats, favs, maxPerBooking, reviews, prof, viewerState, , category, creatorTrustStats, booked24h, temple] = await Promise.all([
+    promosForCards(env, [id]),
+    cardStatsFor(env, [id]),
+    favoritesFor(env, uid, [id]), // [UI-MKT-3] heart state on the detail page
+    maxPerBookingEnabled(env), // [MAXBOOK-DARK-1]
+    metaSession(env).prepare(
+      `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
+         FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
+        WHERE rv.listing_id=?1 AND rv.status='approved' -- [REVIEW-MOD-1] moderated: see routes/reviews.ts
+        ORDER BY rv.created_at DESC LIMIT 20`,
+    ).bind(id).all(),
+    metaSession(env).prepare(
+      "SELECT rating_avg, rating_count, follower_count FROM creator_profiles WHERE user_id=?1",
+    ).bind(r.creator_id).first<any>(),
+    (async () => {
+      let following = false, booked = false;
+      if (uid) {
+        const [f1, b1] = await Promise.all([
+          metaDb(env).prepare("SELECT 1 FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(uid, r.creator_id).first(),
+          metaDb(env).prepare("SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed')").bind(id, uid).first(),
+        ]);
+        following = !!f1;
+        booked = !!b1;
+        // Commercial live tickets are account-bound entitlements, not rows in the
+        // legacy bookings table. Keep the detail CTA aligned with the same
+        // server admission authority used by the GetStream join route.
+        if (!booked && r.kind === "live_event") {
+          try {
+            booked = !!(await metaDb(env).prepare(
+              "SELECT 1 FROM commercial_entitlements WHERE kind='live_event' AND listing_id=?1 AND account_id=?2 AND role='viewer' AND state IN ('reserved','held','active','consumed')",
+            ).bind(id, uid).first());
+          } catch (_) {
+            // Before the commercial migration lands, fail closed and leave the
+            // normal checkout CTA visible rather than granting access.
+          }
+        }
       }
-    }
-  }
-  // Creator analytics: log non-owner detail views (D1 dashboard + PostHog mirror).
-  if (!isOwner && ["published", "live"].includes(String(r.status))) {
-    const src = new URL(req.url).searchParams.get("src");
-    await recordView(env, req, {
-      kind: "listing", subjectId: id, creatorId: String(r.creator_id), viewerUid: uid,
-      app: APP, source: src, extra: { listing_kind: r.kind, price: Number(r.price), live: r.status === "live" },
-    });
-  }
-  // [MKT1-DETAIL] The buyer detail page renders one of five templates keyed on the
-  // listing's CATEGORY, not on `kind`. Three category-driven fields drive that choice:
-  //   detail_template — PINNED (§2.4). Resolve it at the listing's OWN cat_version via
-  //     resolveCategoryVersion, so the page renders with the template the listing was
-  //     BORN with, never "latest" (an admin re-templating a category in September must
-  //     not silently reshape a July listing's detail page).
-  //   intent + price_semantics — NOT behaviour-pinned. They rarely change and, unlike
-  //     the playbook, don't steer a paid negotiation, so read them from the LIVE
-  //     listing_categories row by id (matching how categories.ts surfaces them).
-  // agent_playbook is deliberately NOT surfaced: resolveCategoryVersion returns it, but
-  // it is the seller's negotiation mandate and is dropped here exactly as CAT_PUBLIC_COLS
-  // withholds it (categories.ts header). Defaults are the browse-card defaults so a
-  // pre-migration category (or a category the lookup can't resolve) still renders.
-  let intent = "SELL", detailTemplate = "sell", priceSemantics = "asking";
-  try {
-    const cat = String(r.category ?? "");
-    const resolved = await resolveCategoryVersion(env, cat, Number(r.cat_version ?? 1));
-    if (resolved?.detail_template) detailTemplate = String(resolved.detail_template);
-    const catLive = await metaSession(env).prepare(
-      "SELECT intent, price_semantics FROM listing_categories WHERE id=?1",
-    ).bind(cat).first<any>();
-    if (catLive?.intent) intent = String(catLive.intent);
-    if (catLive?.price_semantics) priceSemantics = String(catLive.price_semantics);
-  } catch { /* pre-migration: category columns/tables absent — keep the safe defaults */ }
-
-  // [LIST-CONTENT-2] TRUST §4.2 — `creator_stats` is a SEPARATE table from
-  // `creator_profiles` (the rating_avg/rating_count/follower_count already read into
-  // `prof` above). Read-only here; a cron/on-write refresh ([LIST-STATS-1], not this
-  // change) is what fills it. FAILS SOFT: the table may not be migrated/populated yet,
-  // and a missing trust row must never take down the detail page (same posture as
-  // cardStatsFor). Named `creator_trust_stats` in the response, NOT `creator_stats` —
-  // that key already exists below with a DIFFERENT shape (rating/follower numbers from
-  // creator_profiles), and rule J/§5 forbids changing an existing key's shape.
-  let creatorTrustStats: Record<string, unknown> | null = null;
-  try {
-    const cs = await metaSession(env).prepare(
-      `SELECT shows_hosted, hours_live, on_time_pct, cancel_rate, comeback_pct, avg_response_min,
-              sessions_done, sold_out_count, first_session_at, last_session_at, updated_at
-         FROM creator_stats WHERE creator_id=?1`,
-    ).bind(r.creator_id).first<any>();
-    if (cs) {
-      creatorTrustStats = {
-        shows_hosted: Number(cs.shows_hosted ?? 0),
-        hours_live: Number(cs.hours_live ?? 0),
-        on_time_pct: cs.on_time_pct != null ? Number(cs.on_time_pct) : null,
-        cancel_rate: cs.cancel_rate != null ? Number(cs.cancel_rate) : null,
-        comeback_pct: cs.comeback_pct != null ? Number(cs.comeback_pct) : null,
-        avg_response_min: cs.avg_response_min != null ? Number(cs.avg_response_min) : null,
-        sessions_done: Number(cs.sessions_done ?? 0),
-        sold_out_count: Number(cs.sold_out_count ?? 0),
-        first_session_at: cs.first_session_at ?? null,
-        last_session_at: cs.last_session_at ?? null,
-        updated_at: cs.updated_at ?? null,
-      };
-    }
-  } catch { /* creator_stats not migrated/populated yet — null, not an error */ }
-
-  // [LIST-CONTENT-2] spec item 4 — "booked_24h (count of entitlements/bookings for
-  // this listing in last 24h)". Reuses the exact table + state list cardStatsFor's
-  // seats_taken uses, so this number and the card's seats_taken agree on what counts
-  // as "booked". Same fail-soft posture: pre-migration ⇒ null, not a 500.
-  let booked24h: number | null = null;
-  try {
-    const row24 = await metaSession(env).prepare(
-      `SELECT COUNT(*) n FROM commercial_entitlements
-        WHERE listing_id=?1 AND role IN ('viewer','buyer')
-          AND state IN ('reserved','held','active','consumed')
-          AND created_at >= ?2`,
-    ).bind(id, Date.now() - 86_400_000).first<any>();
-    booked24h = Number(row24?.n ?? 0);
-  } catch { /* commercial migration not applied — no 24h count, not an error */ }
+      return { following, booked };
+    })(),
+    // Creator analytics: log non-owner detail views (D1 dashboard + PostHog mirror).
+    (async () => {
+      if (uid === r.creator_id || !["published", "live"].includes(String(r.status))) return;
+      const src = new URL(req.url).searchParams.get("src");
+      await recordView(env, req, {
+        kind: "listing", subjectId: id, creatorId: String(r.creator_id), viewerUid: uid,
+        app: APP, source: src, extra: { listing_kind: r.kind, price: Number(r.price), live: r.status === "live" },
+      });
+    })(),
+    // [MKT1-DETAIL] The buyer detail page renders one of five templates keyed on the
+    // listing's CATEGORY, not on `kind`. Three category-driven fields drive that choice:
+    //   detail_template — PINNED (§2.4). Resolve it at the listing's OWN cat_version via
+    //     resolveCategoryVersion, so the page renders with the template the listing was
+    //     BORN with, never "latest" (an admin re-templating a category in September must
+    //     not silently reshape a July listing's detail page).
+    //   intent + price_semantics — NOT behaviour-pinned. They rarely change and, unlike
+    //     the playbook, don't steer a paid negotiation, so read them from the LIVE
+    //     listing_categories row by id (matching how categories.ts surfaces them).
+    // agent_playbook is deliberately NOT surfaced: resolveCategoryVersion returns it, but
+    // it is the seller's negotiation mandate and is dropped here exactly as CAT_PUBLIC_COLS
+    // withholds it (categories.ts header). Defaults are the browse-card defaults so a
+    // pre-migration category (or a category the lookup can't resolve) still renders.
+    (async () => {
+      let intent = "SELL", detailTemplate = "sell", priceSemantics = "asking";
+      try {
+        const cat = String(r.category ?? "");
+        const [resolved, catLive] = await Promise.all([
+          resolveCategoryVersion(env, cat, Number(r.cat_version ?? 1)),
+          metaSession(env).prepare(
+            "SELECT intent, price_semantics FROM listing_categories WHERE id=?1",
+          ).bind(cat).first<any>(),
+        ]);
+        if (resolved?.detail_template) detailTemplate = String(resolved.detail_template);
+        if (catLive?.intent) intent = String(catLive.intent);
+        if (catLive?.price_semantics) priceSemantics = String(catLive.price_semantics);
+      } catch { /* pre-migration: category columns/tables absent — keep the safe defaults */ }
+      return { intent, detailTemplate, priceSemantics };
+    })(),
+    // [LIST-CONTENT-2] TRUST §4.2 — `creator_stats` is a SEPARATE table from
+    // `creator_profiles` (the rating_avg/rating_count/follower_count already read into
+    // `prof` above). Read-only here; a cron/on-write refresh ([LIST-STATS-1], not this
+    // change) is what fills it. FAILS SOFT: the table may not be migrated/populated yet,
+    // and a missing trust row must never take down the detail page (same posture as
+    // cardStatsFor). Named `creator_trust_stats` in the response, NOT `creator_stats` —
+    // that key already exists below with a DIFFERENT shape (rating/follower numbers from
+    // creator_profiles), and rule J/§5 forbids changing an existing key's shape.
+    (async (): Promise<Record<string, unknown> | null> => {
+      try {
+        const cs = await metaSession(env).prepare(
+          `SELECT shows_hosted, hours_live, on_time_pct, cancel_rate, comeback_pct, avg_response_min,
+                  sessions_done, sold_out_count, first_session_at, last_session_at, updated_at
+             FROM creator_stats WHERE creator_id=?1`,
+        ).bind(r.creator_id).first<any>();
+        if (!cs) return null;
+        return {
+          shows_hosted: Number(cs.shows_hosted ?? 0),
+          hours_live: Number(cs.hours_live ?? 0),
+          on_time_pct: cs.on_time_pct != null ? Number(cs.on_time_pct) : null,
+          cancel_rate: cs.cancel_rate != null ? Number(cs.cancel_rate) : null,
+          comeback_pct: cs.comeback_pct != null ? Number(cs.comeback_pct) : null,
+          avg_response_min: cs.avg_response_min != null ? Number(cs.avg_response_min) : null,
+          sessions_done: Number(cs.sessions_done ?? 0),
+          sold_out_count: Number(cs.sold_out_count ?? 0),
+          first_session_at: cs.first_session_at ?? null,
+          last_session_at: cs.last_session_at ?? null,
+          updated_at: cs.updated_at ?? null,
+        };
+      } catch { return null; /* creator_stats not migrated/populated yet — null, not an error */ }
+    })(),
+    // [LIST-CONTENT-2] spec item 4 — "booked_24h (count of entitlements/bookings for
+    // this listing in last 24h)". Reuses the exact table + state list cardStatsFor's
+    // seats_taken uses, so this number and the card's seats_taken agree on what counts
+    // as "booked". Same fail-soft posture: pre-migration => null, not a 500.
+    (async (): Promise<number | null> => {
+      try {
+        const row24 = await metaSession(env).prepare(
+          `SELECT COUNT(*) n FROM commercial_entitlements
+            WHERE listing_id=?1 AND role IN ('viewer','buyer')
+              AND state IN ('reserved','held','active','consumed')
+              AND created_at >= ?2`,
+        ).bind(id, Date.now() - 86_400_000).first<any>();
+        return Number(row24?.n ?? 0);
+      } catch { return null; /* commercial migration not applied — no 24h count, not an error */ }
+    })(),
+    // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] "Performed at <temple>" — null when none is set
+    // (or the temples migration has not run yet; templeForListing never throws).
+    templeForListing(env, id),
+  ]);
+  const card = shapeCard(r, promos, favs, cardStats, maxPerBooking);
+  const { following, booked } = viewerState;
+  const { intent, detailTemplate, priceSemantics } = category;
 
   // [LISTING-EXPIRY-1] The server's answer to "can I book this right now?", so the page
   // and the app hide the booking card with the same rule checkout enforces.
@@ -4252,7 +4279,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
       booking_closed_reason: sellable.ok ? null : sellable.reason,
       // [SAATHUM-TEMPLE-FIELD-1 2026-09-29] "Performed at <temple>" — null when none is set
       // (or the temples migration has not run yet; templeForListing never throws).
-      temple: await templeForListing(env, id),
+      temple,
     },
     creator_stats: { rating_avg: prof?.rating_avg ?? null, rating_count: prof?.rating_count ?? 0, follower_count: prof?.follower_count ?? 0 },
     // [LIST-CONTENT-2] new, additive keys — see the comments above for why the trust
