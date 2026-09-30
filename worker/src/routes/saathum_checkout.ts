@@ -11,7 +11,7 @@ import { metaDb } from "../db/shard";
 import { json } from "../util";
 import { rateLimit } from "../money";
 import { readConfig } from "./config";
-import { track, trackException } from "../hooks";
+import { track, trackException, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { escapeHtml } from "../cal/emails";
 import { enqueueEmail } from "../lib/email_outbox";
@@ -33,7 +33,8 @@ import { eventTypeOf, eventTypeCopy, isRitual, takesPersonalSankalp, collectiveS
 import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
 // [SAATHUM-WATCH-1 2026-09-28] The one shared definition of "is this event's
 // live stream live/ended/none" — see the file's own doc comment.
-import { computeStreamState, streamStateForListing } from "../lib/saathum_stream_state";
+import { computeStreamState, streamStateForListing, type SaathumStreamState } from "../lib/saathum_stream_state";
+import { freeWatchOf, cropOf, isPlayable, isReplay, recordVideoView, type ViewOutcome } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
 // [WA-NOTIFY-2 2026-09-28] Late-buyer live-link fan-out + the internal watch URL
 // builder, both shared with lib/whatsapp_notify.ts's own bulk/late-buyer WhatsApp path.
 import { sendSaathumLiveLinkWhatsAppForCheckout, saathumWatchUrl, formatIst, sendSaathumPaymentWhatsApp, bookingRef } from "../lib/whatsapp_notify";
@@ -340,6 +341,11 @@ export async function saathumCheckoutCreate(req: Request, env: Env): Promise<Res
 
   const row = await loadListingRow(env, b.listing_id);
   if (!row) return failure("not_found", 404);
+  // [SAATHUM-FREEVID-API-1 2026-10-01] A FREE event is never sold: no checkout, no booking.
+  if (await freeWatchOf(env, row.id)) {
+    void track(env, uid, "saathum_checkout_blocked_free", APP, { listing_id: row.id });
+    return failure("free_event", 409, { message: "This event is free — no booking needed. Sign in and watch." });
+  }
   const attrs = parseJsonSafe<Record<string, unknown>>(row.attrs, {});
   const snapshot = toSnapshot(row, attrs);
   // [SAATHUM-EVENT-TYPES 2026-09-27] Needed before sankalp validation: non-ritual
@@ -1207,13 +1213,42 @@ export async function runSaathumReminders(env: Env): Promise<{ scanned: number; 
 // YouTube url as a link the buyer could re-share — only the video id, for the
 // watch page's own (future) embedded player to use.
 // ---------------------------------------------------------------------------
-export async function saathumWatchGet(req: Request, env: Env, listingId: string): Promise<Response> {
+type WatchCtx = {
+  uid: string; free: boolean; preview: boolean; stream_state: SaathumStreamState; playable: boolean;
+  listing: { title: string; starts_at: number | null; duration_min: number | null; status: string };
+  video: { youtube_video_id: string; ended_at: number | null };
+};
+
+/** [SAATHUM-FREEVID-API-1] A FREE event is watchable without a booking only while it is on
+ *  the public shelf: published/live/completed and not a private (1-seat) event. A draft or
+ *  cancelled listing that happens to carry free_watch falls back to the paid rules. */
+const FREE_WATCH_STATUSES = new Set(["published", "live", "completed"]);
+
+/**
+ * Shared entitlement for GET /api/saathum/watch/:id and POST /api/saathum/watch/:id/view.
+ *   PAID  (unchanged, same order): requireUser -> requireVerifiedWhatsApp -> confirmed booking.
+ *   FREE  ([SAATHUM-FREEVID-API-1]): requireUser only — email sign-in; NO WhatsApp gate, NO booking.
+ * Returns a Response (the refusal) or the resolved context.
+ */
+async function resolveWatch(req: Request, env: Env, listingId: string): Promise<Response | WatchCtx> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return failure(auth.error, auth.status);
-  const waErr = await requireVerifiedWhatsApp(env, auth.uid);
-  if (waErr) return failure(waErr.error, waErr.status);
-  if (!listingId || listingId.length > 200) return failure("not_found", 404);
+  const validId = !!listingId && listingId.length <= 200;
   const db = metaDb(env);
+  let free = validId ? await freeWatchOf(env, listingId) : false;
+  let freeListing: WatchCtx["listing"] | null = null;
+  if (free) {
+    const row = await db.prepare(`SELECT title, starts_at, duration_min, status, attrs FROM listings WHERE id=?1`)
+      .bind(listingId).first<WatchCtx["listing"] & { attrs: string | null }>();
+    const priv = parseJsonSafe<Record<string, unknown>>(row?.attrs, {}).visibility === "private";
+    if (!row || priv || !FREE_WATCH_STATUSES.has(String(row.status))) free = false;
+    else freeListing = { title: row.title, starts_at: row.starts_at, duration_min: row.duration_min, status: row.status };
+  }
+  if (!free) {
+    const waErr = await requireVerifiedWhatsApp(env, auth.uid);
+    if (waErr) return failure(waErr.error, waErr.status);
+  }
+  if (!validId) return failure("not_found", 404);
   // [SAATHUM-LIVE-PREVIEW-1 2026-09-29] Owner request: test the live player on a
   // future-dated listing. `?preview=1` from an ADMIN_UIDS account skips the booking
   // check and the clock window and reports stream_state 'live' as long as a link is
@@ -1221,33 +1256,83 @@ export async function saathumWatchGet(req: Request, env: Env, listingId: string)
   // and the public live-state endpoint never sees it, so the page stays unchanged for
   // real visitors and no notification, cron or booking rule moves.
   const preview = new URL(req.url).searchParams.get("preview") === "1" && isAdminUid(env, auth.uid);
-  const booked = preview ? true : await db.prepare(
+  const booked = free || preview ? true : await db.prepare(
     `SELECT 1 FROM saathum_checkouts WHERE listing_id=?1 AND uid=?2 AND status='confirmed' LIMIT 1`,
   ).bind(listingId, auth.uid).first();
   if (!booked) {
     await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "not_booked" });
     return failure("not_booked", 403);
   }
-  const listing = await db.prepare(`SELECT title, starts_at, duration_min, status FROM listings WHERE id=?1`)
-    .bind(listingId).first<{ title: string; starts_at: number | null; duration_min: number | null; status: string }>();
+  const listing = freeListing ?? await db.prepare(`SELECT title, starts_at, duration_min, status FROM listings WHERE id=?1`)
+    .bind(listingId).first<WatchCtx["listing"]>();
   const video = await db.prepare(`SELECT youtube_video_id, ended_at FROM event_videos WHERE listing_id=?1`)
     .bind(listingId).first<{ youtube_video_id: string; ended_at: number | null }>();
   if (!listing || !video?.youtube_video_id) {
-    await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "no_stream" });
+    await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: "no_stream", free });
     return failure("no_stream", 404);
   }
   // [SAATHUM-WATCH-1 2026-09-28] Same state rule as /api/saathum/live-state — the
   // page uses this to decide whether to show the player, "ended", or neither.
-  const stream_state = preview ? "live" : computeStreamState({
+  const stream_state: SaathumStreamState = preview ? "live" : computeStreamState({
     hasVideo: true, endedAt: video.ended_at, listingStatus: listing.status,
     startsAt: listing.starts_at, durationMin: listing.duration_min, now: Date.now(),
   });
-  await track(env, auth.uid, "saathum_watch_access", APP, { listing_id: listingId, outcome: preview ? "admin_preview" : "ok", stream_state });
-  return json({
-    ok: true, listing_id: listingId, title: listing.title, starts_at: listing.starts_at,
-    status: listing.status, youtube_video_id: video.youtube_video_id, stream_state,
-    ...(preview ? { preview: true } : {}),
+  const playable = isPlayable({ free, hasVideo: true, state: stream_state, preview });
+  return { uid: auth.uid, free, preview, stream_state, playable, listing, video };
+}
+
+// ---------------------------------------------------------------------------
+// [WA-NOTIFY-2 2026-09-28] GET /api/saathum/watch/:listingId — entitlement check
+// for the internal watch page. PAID events: a signed-in, WhatsApp-verified account
+// (same requireVerifiedWhatsApp gate as checkout creation) AND a confirmed
+// saathum_checkouts row for this exact listing — otherwise 403 not_booked.
+// [SAATHUM-FREEVID-API-1 2026-10-01] FREE events (listings.free_watch=1): any signed-in
+// account, no WhatsApp, no booking; playable while live OR after it ended (replay).
+// A listing with no live link queued yet is 404 no_stream, so the page can tell
+// "you're not booked" apart from "the stream isn't up yet". Never returns the raw
+// YouTube url as a link the buyer could re-share — only the video id, for the
+// watch page's own embedded player to use.
+// ---------------------------------------------------------------------------
+export async function saathumWatchGet(req: Request, env: Env, listingId: string): Promise<Response> {
+  const w = await resolveWatch(req, env, listingId);
+  if (w instanceof Response) return w;
+  const crop = await cropOf(env, listingId);
+  await track(env, w.uid, "saathum_watch_access", APP, {
+    listing_id: listingId, outcome: w.preview ? "admin_preview" : "ok", stream_state: w.stream_state, free: w.free, playable: w.playable,
   });
+  return json({
+    ok: true, listing_id: listingId, title: w.listing.title, starts_at: w.listing.starts_at,
+    status: w.listing.status, youtube_video_id: w.video.youtube_video_id, stream_state: w.stream_state,
+    free: w.free, crop, playable: w.playable,
+    ...(w.preview ? { preview: true } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// [SAATHUM-FREEVID-API-1 2026-10-01] POST /api/saathum/watch/:listingId/view — the viewer
+// pressed Play. Same entitlement as the GET (free: signed in; paid: confirmed booking +
+// WhatsApp; admin ?preview=1 allowed but NOT counted). Upserts event_video_views and emits
+// PostHog `saathum_video_view` {listing_id, free, first_view, email}. The same uid+listing
+// within 60 s is acknowledged but not counted. Nothing playable -> 409 not_playable.
+// ---------------------------------------------------------------------------
+export async function saathumWatchView(req: Request, env: Env, listingId: string): Promise<Response> {
+  const w = await resolveWatch(req, env, listingId);
+  if (w instanceof Response) return w;
+  if (w.preview) return json({ ok: true, counted: false, preview: true });
+  if (!w.playable) return failure("not_playable", 409, { message: "There is nothing to watch yet." });
+  let out: ViewOutcome;
+  try {
+    out = await recordVideoView(metaDb(env), listingId, w.uid, Date.now());
+  } catch (e) {
+    await trackException(env, e, { uid: w.uid, route: "saathum:watch_view", handled: true, app_name: APP, extra: { listing_id: listingId } });
+    return failure("view_unavailable", 503, { message: "Could not record the view." });
+  }
+  if (!out.counted) return json({ ok: true, counted: false, throttled: true });
+  const email = await emailFor(env, w.uid).catch(() => null);
+  await trackUser(env, w.uid, email, "saathum_video_view", APP, {
+    listing_id: listingId, free: w.free, first_view: out.firstView, email,
+  });
+  return json({ ok: true, counted: true, first_view: out.firstView });
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,8 +1347,11 @@ export async function saathumWatchGet(req: Request, env: Env, listingId: string)
 export async function saathumLiveStateGet(req: Request, env: Env, listingId: string): Promise<Response> {
   if (!listingId || listingId.length > 200) return failure("not_found", 404);
   const { state, endedAt } = await streamStateForListing(env, listingId);
+  // [SAATHUM-FREEVID-API-1] `free` + `replay` (a free event's ended stream can still be watched).
+  // Still never a video id.
+  const free = await freeWatchOf(env, listingId);
   return json(
-    { listing_id: listingId, state, ...(endedAt != null ? { ended_at: endedAt } : {}) },
+    { listing_id: listingId, state, free, ...(isReplay(free, state) ? { replay: true } : {}), ...(endedAt != null ? { ended_at: endedAt } : {}) },
     200,
     { "cache-control": "public, max-age=30" },
   );

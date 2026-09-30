@@ -88,7 +88,7 @@ import { saathumChadhavaPublic } from "./routes/saathum_chadhava";
 import {
   saathumCheckoutConfig, saathumCheckoutQuote, saathumCheckoutCreate, saathumCheckoutGet,
   saathumCheckoutUtr, saathumCheckoutAddress, saathumMyCheckouts, saathumCheckoutReceiptPdf,
-  runSaathumReminders, saathumWatchGet, saathumLiveStateGet, // [WA-NOTIFY-2] [SAATHUM-WATCH-1]
+  runSaathumReminders, saathumWatchGet, saathumLiveStateGet, saathumWatchView, // [WA-NOTIFY-2] [SAATHUM-WATCH-1] [SAATHUM-FREEVID-API-1]
   saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
@@ -1059,6 +1059,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/saathum/my-checkouts" && req.method === "GET") return await saathumMyCheckouts(req, env);
       // [WA-NOTIFY-2 2026-09-28, SAATHUM-WATCH-1] Entitlement check backing the
       // embedded player on the listing detail page — see saathumWatchGet.
+      // [SAATHUM-FREEVID-API-1 2026-10-01] Viewer pressed Play — counts the view (see saathumWatchView).
+      if (p.startsWith("/api/saathum/watch/") && p.endsWith("/view") && req.method === "POST") {
+        return await saathumWatchView(req, env, decodeURIComponent(p.slice("/api/saathum/watch/".length, -"/view".length)));
+      }
       if (p.startsWith("/api/saathum/watch/") && req.method === "GET") {
         return await saathumWatchGet(req, env, decodeURIComponent(p.slice("/api/saathum/watch/".length)));
       }

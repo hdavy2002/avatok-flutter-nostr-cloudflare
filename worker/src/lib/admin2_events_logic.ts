@@ -145,6 +145,8 @@ export type EventPatch = {
   starts_at?: number | null;
   duration_min?: number | null;
   price?: number;
+  /** [SAATHUM-FREEVID-API-1] true = FREE event: price forced to 0, any signed-in viewer may watch. Written to listings.free_watch by the route, not via splitPatch. */
+  free_watch?: boolean;
   capacity?: number | null;
   cover_url?: string | null;
   performed_by?: string | null;
@@ -259,7 +261,15 @@ export function normalizeEventInput(
     }
   }
 
-  if (has(body, "price") || has(body, "price_rupees")) {
+  // [SAATHUM-FREEVID-API-1 2026-10-01] A FREE event (anyone signed in can watch) needs no
+  // price: the price is stored as 0 and whatever price came with the body is ignored.
+  if (has(body, "free_watch")) {
+    if (typeof body.free_watch !== "boolean") errors.push({ field: "free_watch", message: "free_watch must be true or false." });
+    else patch.free_watch = body.free_watch;
+  }
+  if (patch.free_watch === true) {
+    patch.price = 0;
+  } else if (has(body, "price") || has(body, "price_rupees")) {
     const raw = has(body, "price_rupees") ? body.price_rupees : body.price;
     const p = Number(raw);
     if (!Number.isInteger(p)) errors.push({ field: "price", message: "Price must be a whole number of rupees." });

@@ -100,6 +100,7 @@ import { promosFor, activePromoPct } from "../lib/listing_promos";
 // import from this file, so this direction is not a cycle.
 import { recomputeReviewAggregates } from "./reviews";
 import { eventVideoRowsFor, isLiveStreamCard } from "../lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
+import { hydrateFreeWatch } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
 import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
 
 const APP = "avaexplore";
@@ -866,6 +867,9 @@ function shapeCard(
     // RIGHT NOW (owner rule: event_videos row exists, not ended, now >=
     // starts_at-15min — worker/src/lib/saathum_stream_state.ts). Never a video id.
     is_live_stream: isLiveStreamCard(videoRows?.get(String(r.id)), r.status, r.starts_at, r.duration_min),
+    // [SAATHUM-FREEVID-API-1 2026-10-01] FREE event (anyone signed in can watch). hydrateFreeWatch()
+    // sets r.free_watch; a site that did not hydrate reads false.
+    free_watch: Number(r.free_watch ?? 0) === 1,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -2137,7 +2141,8 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   // which only checks a price it was actually sent), so submit is where an
   // unpriced or under-floor draft is finally caught rather than slipping
   // through to review.
-  if (Number(row.free_entry ?? 0) !== 1 && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
+  // [SAATHUM-FREEVID-API-1] a FREE-watch event (listings.free_watch, SELECT * above) is priced 0 by design.
+  if (Number(row.free_entry ?? 0) !== 1 && Number(row.free_watch ?? 0) !== 1 && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
     const priceErr = priceFloorError(row.price, false);
     if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
   }
@@ -3639,6 +3644,7 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
   const freeEntry = freeEntryAllowed(env, cfg, ctx.uid);
   // [MAXBOOK-DARK-1] `cfg` is already in hand here — same switch maxPerBookingEnabled() reads.
   const mpbOn = cfg.listingMaxPerBookingEnabled === true;
+  await hydrateFreeWatch(env, rows); // [SAATHUM-FREEVID-API-1]
   return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)), free_entry_allowed: freeEntry });
 }
 
@@ -3833,6 +3839,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
     cardStatsFor(env, pageIds),
     favoritesFor(env, uid, pageIds), // [UI-MKT-3] hydrate heart state per fetch
     eventVideoRowsFor(env, pageIds), // [SAATHUM-WATCH-1] tile LIVE badge, no N+1
+    hydrateFreeWatch(env, page), // [SAATHUM-FREEVID-API-1] free_watch onto the card rows
   ]);
   trackImpressions(env, req, uid, APP, "explore", pageIds);
 
@@ -3976,6 +3983,7 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
     favoritesFor(env, uid, rowIds), // [UI-MKT-3]
     maxPerBookingEnabled(env), // [MAXBOOK-DARK-1]
     eventVideoRowsFor(env, rowIds), // [SAATHUM-WATCH-1] tile LIVE badge, no N+1
+    hydrateFreeWatch(env, rows), // [SAATHUM-FREEVID-API-1] free_watch onto the card rows
   ]);
   trackImpressions(env, req, uid, APP, "live_now", rowIds);
   return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats, mpbOn, videoRows), joinable: true })) });
@@ -4087,6 +4095,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const videoRows = await eventVideoRowsFor(env, page.map((r) => String(r.id))); // [SAATHUM-WATCH-1]
+  await hydrateFreeWatch(env, page); // [SAATHUM-FREEVID-API-1]
   const g = geoOf(req);
   track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, section: isSection(section) ? section : null, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
@@ -4263,6 +4272,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
     // (or the temples migration has not run yet; templeForListing never throws).
     templeForListing(env, id),
   ]);
+  await hydrateFreeWatch(env, [r]); // [SAATHUM-FREEVID-API-1] single-listing payload (book/[id].astro SSR)
   const card = shapeCard(r, promos, favs, cardStats, maxPerBooking);
   const { following, booked } = viewerState;
   const { intent, detailTemplate, priceSemantics } = category;
@@ -4348,6 +4358,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   const promos = await promosForCards(env, lrows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, lrows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
+  await hydrateFreeWatch(env, lrows); // [SAATHUM-FREEVID-API-1]
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.listing_id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
@@ -4614,6 +4625,7 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
   const promos = await promosForCards(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
+  await hydrateFreeWatch(env, rows); // [SAATHUM-FREEVID-API-1]
   const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
   return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)) });
 }

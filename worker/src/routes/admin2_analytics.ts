@@ -33,6 +33,8 @@
 // in either import order.
 import type { Env } from "../types";
 import { json } from "../util";
+import { trackException } from "../hooks";
+import { isMissingColumnError, withNewColumns } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
 import {
   adminGuard, admin2Err, istDayStart, DAY_MS, OVERVIEW_NEXT_EVENTS_SQL, OVERVIEW_PENDING_SQL,
   OVERVIEW_REFUNDS_SQL, shapeOverviewEvent,
@@ -192,6 +194,66 @@ SELECT COUNT(DISTINCT h.uid || '|' || h.listing_id) AS started,
  WHERE h.listing_id<>'${SMOKE_LISTING_ID}' AND h.created_at>=?1 AND h.created_at<?2`;
 
 // ---------------------------------------------------------------------------
+// [SAATHUM-FREEVID-API-1 2026-10-01] Video views (table event_video_views, one row per
+// event+viewer, written by POST /api/saathum/watch/:id/view).
+//   viewers  = DISTINCT uid whose first_at falls in the window (a viewer is "new" once, per event).
+//   plays    = SUM(plays) of rows whose last_at falls in the window. APPROXIMATION: a row keeps only
+//              its lifetime play count and last play time, so a viewer who first played in the
+//              previous period and again in this one contributes ALL their plays to this period.
+//   by_event = top 20 events by viewers in the window (viewers, plays as above, per event).
+// Binds: ?1 prevFrom, ?2 from, ?3 to.
+// ---------------------------------------------------------------------------
+export const VIDEO_VIEWS_TOTALS_SQL = `
+SELECT COUNT(DISTINCT CASE WHEN first_at>=?2 AND first_at<?3 THEN uid END) AS viewers_cur,
+       COUNT(DISTINCT CASE WHEN first_at>=?1 AND first_at<?2 THEN uid END) AS viewers_prev,
+       COALESCE(SUM(CASE WHEN last_at>=?2 AND last_at<?3 THEN plays ELSE 0 END),0) AS plays_cur,
+       COALESCE(SUM(CASE WHEN last_at>=?1 AND last_at<?2 THEN plays ELSE 0 END),0) AS plays_prev
+  FROM event_video_views WHERE last_at>=?1 OR first_at>=?1`;
+/** Binds: ?1 from, ?2 to. `withFree` names l.free_watch (absent column -> fallback, free=0). */
+export const videoViewsByEventSql = (withFree: boolean) => `
+SELECT v.listing_id AS listing_id, l.title AS title, ${withFree ? "COALESCE(l.free_watch,0)" : "0"} AS free,
+       COUNT(DISTINCT CASE WHEN v.first_at>=?1 AND v.first_at<?2 THEN v.uid END) AS viewers,
+       COALESCE(SUM(CASE WHEN v.last_at>=?1 AND v.last_at<?2 THEN v.plays ELSE 0 END),0) AS plays
+  FROM event_video_views v LEFT JOIN listings l ON l.id=v.listing_id
+ WHERE (v.first_at>=?1 AND v.first_at<?2) OR (v.last_at>=?1 AND v.last_at<?2)
+ GROUP BY v.listing_id
+HAVING viewers>0
+ ORDER BY viewers DESC, plays DESC, v.listing_id ASC LIMIT 20`;
+
+export interface VideoViewsBlock {
+  viewers: { cur: number; prev: number }; plays: { cur: number; prev: number };
+  by_event: { listing_id: string; title: string | null; free: boolean; viewers: number; plays: number }[];
+  /** true when the views table is not migrated yet (numbers are zero, not "nobody watched"). */
+  unavailable?: true;
+}
+
+export function shapeVideoViews(totals: any | null, byEvent: any[]): VideoViewsBlock {
+  return {
+    viewers: pair(num(totals?.viewers_cur), num(totals?.viewers_prev)),
+    plays: pair(num(totals?.plays_cur), num(totals?.plays_prev)),
+    by_event: byEvent.map((r) => ({
+      listing_id: String(r.listing_id), title: r.title ?? null, free: Number(r.free) === 1, viewers: num(r.viewers), plays: num(r.plays),
+    })),
+  };
+}
+
+async function videoViewsBlock(env: Env, w: AnalyticsWindow): Promise<VideoViewsBlock> {
+  try {
+    const db = env.DB_META;
+    const totals = await db.prepare(VIDEO_VIEWS_TOTALS_SQL).bind(w.prevFrom, w.from, w.to).first<any>();
+    const byEvent = await withNewColumns(env, "admin2_analytics.video_views",
+      () => db.prepare(videoViewsByEventSql(true)).bind(w.from, w.to).all<any>(),
+      () => db.prepare(videoViewsByEventSql(false)).bind(w.from, w.to).all<any>());
+    return shapeVideoViews(totals, byEvent?.results ?? []);
+  } catch (e) {
+    // The rest of the page must still load. A missing table is expected until the owner
+    // applies 2026-10-01-freevid-views.sql; anything else is reported.
+    await trackException(env, e, { route: "admin2_analytics.video_views", handled: true, app_name: "saathum", extra: { missing_table: isMissingColumnError(e) } });
+    return { ...shapeVideoViews(null, []), unavailable: true };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Roll-up
 // ---------------------------------------------------------------------------
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : 0; };
@@ -301,7 +363,7 @@ export async function adminAnalytics(req: Request, env: Env): Promise<Response> 
   const today = istDayStart(w.now);
   const pay = buildAdminPaymentsQuery(w.now, { limit: 10 });
   const rq = buildAdminRefundsQuery({ status: "requested", limit: 6 });
-  const [money, daily, events, funnel, pend, openRf, next, recent, openRows] = await Promise.all([
+  const [money, daily, events, funnel, pend, openRf, next, recent, openRows, videoViews] = await Promise.all([
     db.prepare(ANALYTICS_MONEY_SQL).bind(w.prevFrom, w.from, w.to).all<any>(),
     db.prepare(ANALYTICS_DAILY_SQL).bind(w.prevFrom, w.to).all<any>(),
     db.prepare(ANALYTICS_EVENTS_SQL).bind(w.now, today, today + 14 * DAY_MS, w.now + 7 * DAY_MS).all<any>(),
@@ -311,6 +373,7 @@ export async function adminAnalytics(req: Request, env: Env): Promise<Response> 
     db.prepare(OVERVIEW_NEXT_EVENTS_SQL).bind(w.now).all<any>(),
     db.prepare(pay.sql).bind(...pay.binds).all<any>(),
     db.prepare(rq.sql).bind(...rq.binds).all<any>(),
+    videoViewsBlock(env, w), // [SAATHUM-FREEVID-API-1] never rejects
   ]);
   const out = rollUp(w, { money: money?.results ?? [], daily: daily?.results ?? [], events: events?.results ?? [], funnel });
   return json({
@@ -329,6 +392,7 @@ export async function adminAnalytics(req: Request, env: Env): Promise<Response> 
     by_category: out.by_category,
     top_events: out.top_events,
     funnel: out.funnel,
+    video_views: videoViews, // [SAATHUM-FREEVID-API-1]
     next_events: (next?.results ?? []).map(shapeOverviewEvent),
     recent_payments: (recent?.results ?? []).map((p: any) => ({
       id: String(p.id), uid: String(p.uid), customer: personName(p), listing_id: String(p.listing_id),

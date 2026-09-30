@@ -61,6 +61,8 @@ import {
 import { eventTypeOf, collectiveSankalpsOf, COLLECTIVE_SANKALPS } from "../lib/event_types";
 import { sendSaathumVideoReadyEmails } from "./saathum_checkout";
 import { sendSaathumVideoReadyWhatsApp } from "../lib/whatsapp_notify";
+import { withNewColumns } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
+import { cropFromRow } from "../lib/video_crop";
 import { createTemple, listTemples, normalizeTempleInput, parseTempleIdInput, setListingTemple, templeExists, templeForListing, TEMPLE_LIMITS } from "../lib/temples";
 
 const APP = "saathum";
@@ -173,13 +175,15 @@ function shapeRow(r: any, now: number) {
     schedule_state: scheduleState(row, now),
     stream_ended: streamEnded,
     youtube_set: !!r.youtube_video_id,
+    free_watch: Number(r.free_watch ?? 0) === 1, // [SAATHUM-FREEVID-API-1]
     poster_status: attrs.poster?.status ?? null,
     book_url: `/book/${encodeURIComponent(String(r.id))}`,
     updated_at: Number(r.updated_at ?? 0),
   };
 }
 
-const ROW_COLS = `l.id, l.title, l.category, c.label AS category_label, l.attrs, l.cover_media,
+/** [SAATHUM-FREEVID-API-1] `withFree` adds l.free_watch — omitted by the fallback while the column is not migrated. */
+const rowCols = (withFree: boolean) => `${withFree ? "l.free_watch, " : ""}l.id, l.title, l.category, c.label AS category_label, l.attrs, l.cover_media,
   ${startsMsSql("l")} AS starts_ms, l.duration_min, l.price, l.capacity, l.status, l.updated_at, l.creator_id,
   ${SEATS_SQL} AS seats_booked, ${PENDING_PAY_SQL} AS pending_payments, v.youtube_video_id, v.ended_at AS stream_ended_at`;
 
@@ -210,14 +214,16 @@ export async function adminEventsList(req: Request, env: Env): Promise<Response>
   binds.push(tab); const tabRef = `?${binds.length}`;
   const order = tab === "upcoming" || tab === "live" ? `starts_ms ASC, l.id ASC`
     : tab === "drafts" ? `l.updated_at DESC` : `starts_ms DESC, l.updated_at DESC`;
-  const rows = await env.DB_META.prepare(
-    `SELECT ${ROW_COLS}
+  const listSql = (withFree: boolean) => `SELECT ${rowCols(withFree)}
        FROM listings l
        LEFT JOIN listing_categories c ON c.id=l.category
        LEFT JOIN event_videos v ON v.listing_id=l.id
       WHERE ${whereSql} AND ${tabExpr}=${tabRef}
-      ORDER BY ${order} LIMIT 200`,
-  ).bind(...binds).all<any>();
+      ORDER BY ${order} LIMIT 200`;
+  // [SAATHUM-FREEVID-API-1] Falls back to the query without l.free_watch until the column exists.
+  const rows = await withNewColumns(env, "admin2_events.list",
+    () => env.DB_META.prepare(listSql(true)).bind(...binds).all<any>(),
+    () => env.DB_META.prepare(listSql(false)).bind(...binds).all<any>());
   return json({ now, tab, counts: countMap, items: (rows.results ?? []).map((r) => shapeRow(r, now)) });
 }
 
@@ -247,14 +253,18 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
   const now = Date.now();
   const row = await loadRow(env, id);
   if (!row || String(row.kind) !== "live_event") return null;
-  const listRow = await env.DB_META.prepare(
-    `SELECT ${ROW_COLS} FROM listings l
+  const detailSql = (withFree: boolean) => `SELECT ${rowCols(withFree)} FROM listings l
        LEFT JOIN listing_categories c ON c.id=l.category
        LEFT JOIN event_videos v ON v.listing_id=l.id
-      WHERE l.id=?3`,
-  ).bind(now, adminUid, id).first<any>();
-  const video = await env.DB_META.prepare("SELECT youtube_video_id, source_url FROM event_videos WHERE listing_id=?1")
-    .bind(id).first<{ youtube_video_id: string; source_url: string | null }>();
+      WHERE l.id=?3`;
+  const listRow = await withNewColumns(env, "admin2_events.detail",
+    () => env.DB_META.prepare(detailSql(true)).bind(now, adminUid, id).first<any>(),
+    () => env.DB_META.prepare(detailSql(false)).bind(now, adminUid, id).first<any>());
+  // [SAATHUM-FREEVID-API-1] The video row with its crop; without the crop columns, crop = null.
+  type VideoRow = { youtube_video_id: string; source_url: string | null; crop_x?: number | null; crop_y?: number | null; crop_w?: number | null; crop_h?: number | null };
+  const video = await withNewColumns<VideoRow | null>(env, "admin2_events.detail.video",
+    () => env.DB_META.prepare("SELECT youtube_video_id, source_url, crop_x, crop_y, crop_w, crop_h FROM event_videos WHERE listing_id=?1").bind(id).first<VideoRow>(),
+    () => env.DB_META.prepare("SELECT youtube_video_id, source_url FROM event_videos WHERE listing_id=?1").bind(id).first<VideoRow>());
   const attrs = attrsOf(row.attrs);
   const blockers = ["cancelled", "completed"].includes(String(row.status)) ? [] : await listingBlockers(env, row);
   const plan = posterPlan(attrs, row.cover_media);
@@ -295,6 +305,7 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       slug: row.slug ?? null,
       start_ist: startsMs ? msToIst(startsMs) : null,
       price_rupees: Number(row.price ?? 0),
+      free_watch: Number(row.free_watch ?? 0) === 1, // [SAATHUM-FREEVID-API-1] row is SELECT * — undefined (false) until migrated
       manual_cover_url: covers.find((c: any) => c && c.source !== "ai_poster")?.url ?? null,
       ai_poster_url: attrs.poster?.url ?? covers.find((c: any) => c && c.source === "ai_poster")?.url ?? null,
       poster: attrs.poster ? { status: attrs.poster.status ?? null, provider: attrs.poster.provider ?? null, url: attrs.poster.url ?? null, error: attrs.poster.error ?? null } : null,
@@ -302,7 +313,7 @@ async function detailPayload(env: Env, id: string, adminUid: string): Promise<Re
       created_by_you: row.creator_id === adminUid,
       created_at: Number(row.created_at ?? 0),
     },
-    youtube: video ? { video_id: video.youtube_video_id, url: video.source_url ?? `https://www.youtube.com/watch?v=${video.youtube_video_id}` } : null,
+    youtube: video ? { video_id: video.youtube_video_id, url: video.source_url ?? `https://www.youtube.com/watch?v=${video.youtube_video_id}`, crop: cropFromRow(video) } : null,
     blockers,
     publishable: blockers.length === 0 && plan.kind !== "needs_image",
     poster_plan: plan,
@@ -419,6 +430,31 @@ async function refreshSeo(env: Env, adminUid: string, id: string, patch: SeoPatc
   }
 }
 
+/**
+ * [SAATHUM-FREEVID-API-1 2026-10-01] listings.free_watch — the FREE-event switch (anyone signed in
+ * with an email may watch; no booking, no WhatsApp). Its own statement, so nothing else in an
+ * event save ever names the column: until the owner applies 2026-10-01-freevid-alters.sql a
+ * save that does not touch free_watch keeps working, and turning it ON answers 503
+ * free_watch_unavailable (logged) instead of pretending. Returns an error Response or null.
+ */
+async function writeFreeWatch(env: Env, adminUid: string, id: string, free: boolean): Promise<Response | null> {
+  const row = await loadRow(env, id);
+  if (!row) return err(404, "not_found", "No such event.");
+  const cur = Number(row.free_watch ?? 0) === 1;
+  if (cur === free) return null;
+  if (row.status === "cancelled" || row.status === "completed") return err(409, "listing_closed", `A ${row.status} event cannot be edited.`);
+  try {
+    await env.DB_META.prepare("UPDATE listings SET free_watch=?2, updated_at=?3 WHERE id=?1").bind(id, free ? 1 : 0, Date.now()).run();
+  } catch (e) {
+    await trackException(env, e, { uid: adminUid, route: "admin2_events.free_watch", handled: true, app_name: APP });
+    return err(503, "free_watch_unavailable", "The free-event switch could not be saved yet (database update pending). Nothing was changed.", { id });
+  }
+  await history(env, { listingId: id, actorId: adminUid, action: "admin_edit", prev: row.status, next: row.status, reason: JSON.stringify({ free_watch: { from: cur, to: free } }) });
+  await audit(env, adminUid, "listing_admin_edit", id, { status: row.status, changes: { free_watch: { from: cur, to: free } }, via: "admin2" });
+  safeTrack(env, adminUid, "admin2_event_free_watch_set", { listing_id: id, free_watch: free });
+  return null;
+}
+
 /** adminEditListing for the ADMIN_EDITABLE fields. Returns an error Response or null. */
 async function runAdminEdit(req: Request, env: Env, id: string, edit: Record<string, unknown>, exec: Exec): Promise<Response | null> {
   if (!Object.keys(edit).length) return null;
@@ -508,10 +544,14 @@ export async function adminEventCreate(req: Request, env: Env, exec: Exec): Prom
     const e = await runAdminEdit(req, env, id, later, exec);
     if (e) return e;
   }
+  if (patch.free_watch === true) {
+    const fw = await writeFreeWatch(env, a.uid, id, true);
+    if (fw) return fw;
+  }
   if (templeIn.present) await setListingTemple(env, id, templeIn.value);
   await refreshSeo(env, a.uid, id, split.seo);
   await history(env, { listingId: id, actorId: a.uid, action: "admin2_create", prev: null, next: "draft" });
-  safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category, event_type: patch.event_type ?? null });
+  safeTrack(env, a.uid, "admin2_event_created", { listing_id: id, category: patch.category, event_type: patch.event_type ?? null, free_watch: patch.free_watch === true });
   const out = await detailPayload(env, id, a.uid);
   return json({ ok: true, id, ...(out ?? {}) }, 201);
 }
@@ -529,6 +569,18 @@ export async function adminEventUpdate(req: Request, env: Env, id: string, exec:
   if (patch.category) {
     const cat = await env.DB_META.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(patch.category).first();
     if (!cat) return err(400, "invalid_event", "That category is not available — pick another one.", { field: "category" });
+  }
+  // [SAATHUM-FREEVID-API-1 2026-10-01] A free event always stores price 0; turning free OFF
+  // on an event that has no price needs one in the same save (else it would sell at ₹0).
+  const rowFree = Number(row.free_watch ?? 0) === 1;
+  const effectiveFree = patch.free_watch ?? rowFree;
+  if (effectiveFree && "price" in patch) patch.price = 0;
+  if (patch.free_watch === false && rowFree && patch.price === undefined && !(Number(row.price ?? 0) >= MIN_PRICE_RUPEES)) {
+    return err(400, "invalid_event", "Set a price before making this event paid.", { field: "price" });
+  }
+  if (patch.free_watch !== undefined) {
+    const fw = await writeFreeWatch(env, a.uid, id, patch.free_watch);
+    if (fw) return fw;
   }
   const { edit, cover, attrs: attrPatchRaw, seo } = splitPatch(patch as EventPatch);
   // [SAATHUM-CHADHAVA 2026-09-26] Private events are locked to 1 seat, server-side.

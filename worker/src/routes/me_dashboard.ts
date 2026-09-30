@@ -31,6 +31,7 @@ import {
 } from "../lib/me_dashboard_data";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
 import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
+import { cropOf, cropsFor, isMissingColumnError, parseCropField } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
 import { sendSaathumLiveLinkWhatsApp } from "../lib/whatsapp_notify";
 import { sendSaathumLiveLinkEmails } from "./saathum_checkout"; // [WA-NOTIFY-2]
 import {
@@ -138,6 +139,8 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
   const scope = new URL(req.url).searchParams.get("scope") === "past" ? "past" : "upcoming";
   const now = Date.now();
   const rs = await env.DB_META.prepare(EVENTS_SQL).bind(a.uid, now).all<any>();
+  // [SAATHUM-FREEVID-API-1] One batched crop lookup (empty until the crop columns are migrated).
+  const crops = await cropsFor(env, (rs.results ?? []).filter((r) => Number(r.paid) === 1 && r.youtube_video_id).map((r) => String(r.id)));
   const items = (rs.results ?? []).map((r) => {
     const paid = Number(r.paid) === 1;
     const streamEnded = r.stream_ended_at != null;
@@ -151,7 +154,10 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
       replay: { available: state === "ended" && (r.replay_state === "available" || (paid && !!r.youtube_video_id)) },
     };
     // Only to a seat holder (paid or free). Unpaid pending_payment rows never carry it.
-    if (paid && typeof r.youtube_video_id === "string" && r.youtube_video_id) item.youtube_video_id = r.youtube_video_id;
+    if (paid && typeof r.youtube_video_id === "string" && r.youtube_video_id) {
+      item.youtube_video_id = r.youtube_video_id;
+      item.crop = crops.get(String(r.id)) ?? null; // [SAATHUM-FREEVID-API-1] VideoCrop | null
+    }
     // [WEB-OLD-CHECKOUT-GONE-2 2026-09-27] No join_url any more: the old /live/<id> web room was deleted. A paid
     // seat joins through the event's YouTube video above; until the admin pastes it,
     // MyEvents shows "Your join link will appear here in a moment…".
@@ -752,10 +758,15 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   const db = env.DB_META;
   if (req.method === "GET") {
     const row = await db.prepare("SELECT youtube_video_id, source_url FROM event_videos WHERE listing_id=?1").bind(listingId).first<{ youtube_video_id: string; source_url: string | null }>();
-    return json(row ? { youtube_video_id: row.youtube_video_id, url: row.source_url ?? `https://www.youtube.com/watch?v=${row.youtube_video_id}` } : {});
+    // [SAATHUM-FREEVID-API-1] + the saved crop (null when none, or columns not migrated yet).
+    return json(row ? { youtube_video_id: row.youtube_video_id, url: row.source_url ?? `https://www.youtube.com/watch?v=${row.youtube_video_id}`, crop: await cropOf(env, listingId) } : {});
   }
   const b = await body(req, 2048);
   if (!b || typeof b.url !== "string") return err(400, "invalid_request", "Send {url}.", { field: "url" });
+  // [SAATHUM-FREEVID-API-1 2026-10-01] `crop` absent = keep the stored crop; null = clear; a
+  // bad box = 400 bad_crop (before any write).
+  const cropIn = parseCropField(b);
+  if ("error" in cropIn) return err(400, "bad_crop", "The crop box is not valid — x, y, w, h must be fractions of the frame (w and h at least 0.05, inside the frame).", { field: "crop" });
   const listing = await db.prepare("SELECT id, status, starts_at FROM listings WHERE id=?1")
     .bind(listingId).first<{ id: string; status: string; starts_at: number | null }>();
   if (!listing) return err(404, "not_found", "No such listing.");
@@ -763,7 +774,7 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   if (!url) {
     await db.prepare("DELETE FROM event_videos WHERE listing_id=?1").bind(listingId).run();
     await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: true });
-    return json({ ok: true, youtube_video_id: null });
+    return json({ ok: true, youtube_video_id: null, crop: null });
   }
   const id = parseYoutubeVideoId(url);
   if (!id) return err(400, "invalid_youtube_url", "Paste a YouTube video or live link (or the 11-character video id).", { field: "url" });
@@ -775,7 +786,22 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
   ).bind(listingId, id, url.slice(0, 500), Date.now(), admin.uid).run();
   // [SAATHUM-LIVE-ENDED-RESET-1 2026-09-29] ^ a NEW video id clears ended_at: "ended" belonged
   // to the old stream, and keeping it made a freshly linked stream show "has ended".
-  await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: false });
+  // [SAATHUM-FREEVID-API-1 2026-10-01] The crop is written on its own statement so the link
+  // save above never names the new columns (prod has none until the owner applies
+  // 2026-10-01-freevid-alters.sql). Absent = untouched (a NEW url keeps the old crop).
+  if (cropIn.present) {
+    const c = cropIn.crop;
+    try {
+      await db.prepare("UPDATE event_videos SET crop_x=?2, crop_y=?3, crop_w=?4, crop_h=?5 WHERE listing_id=?1")
+        .bind(listingId, c?.x ?? null, c?.y ?? null, c?.w ?? null, c?.h ?? null).run();
+    } catch (e) {
+      if (!isMissingColumnError(e)) throw e;
+      await trackException(env, e, { uid: admin.uid, route: "me_dashboard:video_crop", handled: true, app_name: APP, extra: { area: "dash2", step: "crop_columns_missing" } });
+      // Clearing a crop that cannot exist yet is a no-op; saving one is not — say so.
+      if (c) return err(503, "crop_unavailable", "The video link was saved, but the crop could not be stored yet (database update pending).", { youtube_video_id: id });
+    }
+  }
+  await tel(env, admin.uid, "dash2_video_link_set", { listing_id: listingId, cleared: false, crop: cropIn.present ? (cropIn.crop ? "set" : "cleared") : "unchanged" });
   // [WA-NOTIFY-1 2026-09-28] Owner decision: this is the admin's only place to enter
   // a live-stream link (it takes "a YouTube video or live link" — see the error
   // message above), so a save here WhatsApps every confirmed buyer that the stream
@@ -797,7 +823,7 @@ export async function adminEventVideo(req: Request, env: Env, listingId: string)
       trackException(env, e, { uid: admin.uid, route: "me_dashboard:live_link_email", handled: true, app_name: APP, extra: { area: "dash2" } }),
     );
   }
-  return json({ ok: true, youtube_video_id: id });
+  return json({ ok: true, youtube_video_id: id, crop: cropIn.present ? cropIn.crop : await cropOf(env, listingId) });
 }
 
 // ---------------------------------------------------------------------------
