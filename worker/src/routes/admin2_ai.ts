@@ -293,11 +293,16 @@ export async function adminAiTestChat(req: Request, env: Env, ctx?: ExecutionCon
   }
   let convId = b?.conversation_id ? str(b.conversation_id) : "";
   const now = Date.now();
-  if (convId) {
-    const c = await env.DB_META.prepare("SELECT id FROM ai_conversations WHERE id=?1 AND is_test=1").bind(convId).first();
-    if (!c) return err(404, "not_found", "Test conversation not found.");
-  } else {
-    convId = `t_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  // [SAATHUM-PREETI-TESTCHAT-1] The admin screen mints its own conversation id (a UUID) and reuses it
+  // until "New". An unknown id therefore means "start a test chat under this id", not 404. An id that
+  // belongs to a REAL (non-test) conversation is still refused, so a test can never write into one.
+  if (convId && !/^[A-Za-z0-9_-]{8,64}$/.test(convId)) return err(400, "invalid_conversation", "Bad conversation id.");
+  const existing = convId
+    ? await env.DB_META.prepare("SELECT id, is_test FROM ai_conversations WHERE id=?1").bind(convId).first<{ id: string; is_test: number }>()
+    : null;
+  if (existing && !Number(existing.is_test)) return err(404, "not_found", "Test conversation not found.");
+  if (!existing) {
+    if (!convId) convId = `t_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
     await env.DB_META.prepare(
       "INSERT INTO ai_conversations (id, uid, visitor_id, name, is_test, created_at, last_message_at) VALUES (?1,?2,?3,?4,1,?5,?5)",
     ).bind(convId, a.uid, `admin-test-${a.uid.slice(0, 8)}`, "Admin test", now).run();

@@ -7950,5 +7950,21 @@
         "note": "A real chat turn completed: outcome=ok with model set, input_tokens>0 and cost_micro_usd>0 (outcome blocked/partial_error/over_budget are failure values)."
       }
     ]
+  },
+  "SAATHUM-PREETI-TESTCHAT-1": {
+    "description": "[SAATHUM-PREETI-TESTCHAT-1 2026-09-30] Admin 2 test chat: an unknown client-minted conversation id starts a test chat (was 404 'Test conversation not found').",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "is_test",
+        "equals": true,
+        "min_events": 1,
+        "note": "An admin test-chat turn completes with outcome=ok."
+      }
+    ]
   }
 }
