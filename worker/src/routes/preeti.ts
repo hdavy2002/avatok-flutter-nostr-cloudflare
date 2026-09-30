@@ -94,10 +94,19 @@ async function postSession(req: Request, env: Env): Promise<Response> {
   if (!VISITOR_RE.test(visitorId)) return json({ error: "invalid_visitor" }, 400);
   const page = pageOf(b?.page);
   const uid = await optionalUid(req, env);
+  // [SAATHUM-PREETI-SIGNIN-1] Owner decision 2026-09-30: only signed-in visitors with a VERIFIED
+  // WhatsApp number may chat (bots were free to spend the AI budget). Nothing is written for anyone else.
+  const signinOnly = async (reason: string) => {
+    await track(env, uid ?? "anon", "preeti_session", APP, { signed_in: !!uid, needs_signin: true, reason, page_kind: page.kind });
+    const out: PreetiSession = { conversation_id: "", needs_identity: false, needs_signin: true, name: null, history: [] };
+    return json(out);
+  };
+  if (!uid) return await signinOnly("anonymous");
   let conv;
   let needsIdentity = false;
   if (uid) {
     const p = await profile(env, uid);
+    if (!p.e164) return await signinOnly("whatsapp_unverified");
     conv = await conversationForUser(env, { uid, visitorId, name: p.name, e164: p.e164, page: page.path });
   } else {
     const asked = b?.conversation_id ? await getConv(env, String(b.conversation_id)) : null;
@@ -151,6 +160,11 @@ async function postChat(req: Request, env: Env, ctx: ExecutionContext): Promise<
     ).bind(visitorId, hourAgo).first<{ n: number }>().catch(() => null),
   ]);
   if (!on) return json({ error: "disabled" }, 503);
+  // [SAATHUM-PREETI-SIGNIN-1] Signed in + verified WhatsApp, or no Gemini call at all.
+  if (!uid || !(await verifiedWhatsAppNumber(env, uid).catch(() => null))) {
+    await track(env, uid ?? "anon", "preeti_chat_refused", APP, { reason: uid ? "whatsapp_unverified" : "anonymous" });
+    return json({ error: "signin_required", message: "Please sign in with your WhatsApp number to chat." }, 401);
+  }
   if (!conv || conv.is_test) return json({ error: "not_found" }, 404);
   if (!ownsConversation(conv, uid, visitorId)) return json({ error: "forbidden" }, 403);
   if (Number(cnt?.n ?? 0) >= CHAT_PER_VISITOR_HOUR || (await ipLimited(env, req, "chat", CHAT_PER_IP_HOUR))) {

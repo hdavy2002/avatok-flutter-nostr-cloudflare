@@ -28,6 +28,7 @@ export interface PreetiMessageOut {
 export interface PreetiSession {
   conversation_id: string;
   needs_identity: boolean;       // anonymous + no name/e164 yet
+  needs_signin?: boolean;        // [SAATHUM-PREETI-SIGNIN-1] true -> not signed in with a verified WhatsApp; chat is refused
   name: string | null;
   history: PreetiMessageOut[];   // last 30, oldest first
 }

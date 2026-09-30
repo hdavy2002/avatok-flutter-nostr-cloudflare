@@ -40,6 +40,7 @@ const MAX_CHARS = 2000;
 const COUNTER_AT = 1800;
 const PANEL_W = 380;
 const PANEL_H = 560;
+const SIGNIN_TEXT = 'Mujhse baat karne ke liye kripya apne WhatsApp number se sign in karein 🙏 Isse chat surakshit rehti hai aur main aapki baat yaad rakh paungi.';
 const RATE_TEXT = 'Thoda ruk kar phir likhiye 🙏';
 const BUSY_TEXT = 'Abhi main thodi busy hoon. Kripya hamari team ko WhatsApp kariye, wo turant madad karenge 🙏';
 const LANGS = ['Hinglish', 'हिंदी', 'English'];
@@ -99,6 +100,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [needsIdentity, setNeedsIdentity] = useState(false);
+  const [needsSignin, setNeedsSignin] = useState(false); // [SAATHUM-PREETI-SIGNIN-1]
   const [sessionState, setSessionState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -165,6 +167,15 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
           signedRef.current = false;
         } else throw e;
       }
+      if (sess.needs_signin) {
+        // [SAATHUM-PREETI-SIGNIN-1] Only signed-in visitors with a verified WhatsApp may chat.
+        setNeedsSignin(true);
+        setNeedsIdentity(false);
+        setMessages([{ id: nid(), role: 'preeti', text: c.welcome_text, cards: [] }]);
+        setSessionState('ready');
+        return;
+      }
+      setNeedsSignin(false);
       lsSet(KEY_CONVERSATION, sess.conversation_id);
       setConvId(sess.conversation_id);
       const skipped = lsGet(KEY_SKIP) === sess.conversation_id;
@@ -293,6 +304,7 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
         if (e instanceof ApiError && e.status === 429) appendMsg({ role: 'preeti', text: RATE_TEXT, cards: [] });
+        else if (e instanceof ApiError && e.status === 401) { patch((m) => ({ ...m, text: SIGNIN_TEXT })); setNeedsSignin(true); }
         else {
           captureException(e, { surface: 'preeti_chat' });
           handover(whatsappUrl(cfg, convId), BUSY_TEXT);
@@ -335,7 +347,8 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
 
   const hasVisitorMsg = messages.some((m) => m.role === 'visitor');
   const overBudget = cfg.over_budget;
-  const canType = sessionState === 'ready' && !overBudget;
+  const canType = sessionState === 'ready' && !overBudget && !needsSignin;
+  const signInHref = typeof window === 'undefined' ? '/sign-in' : `/sign-in?redirect_url=${encodeURIComponent(window.location.pathname + window.location.search)}`;
   const qr = cfg.quick_replies[kind === 'other' ? 'home' : kind] ?? [];
   const ref = convId ?? visitorRef.current;
   const humanUrl = whatsappUrl(cfg, ref);
@@ -443,17 +456,23 @@ function Widget({ kind, pageRef }: { kind: PageKind; pageRef?: string }) {
               </div>
             )}
 
-            {sessionState === 'ready' && !hasVisitorMsg && !overBudget && (
+            {sessionState === 'ready' && needsSignin && (
+              <div className="pt-identity">
+                <p className="pt-identity-help">{SIGNIN_TEXT}</p>
+                <a className="pt-chip pt-chip--q" href={signInHref} onClick={() => capture('preeti_signin_clicked', { page_kind: kind })}>Sign in with WhatsApp to chat</a>
+              </div>
+            )}
+            {sessionState === 'ready' && !needsSignin && !hasVisitorMsg && !overBudget && (
               <div className="pt-chips" role="group" aria-label="Choose a language">
                 {LANGS.map((l) => (
                   <button key={l} type="button" className="pt-chip" onClick={() => void send(l)}>{l}</button>
                 ))}
               </div>
             )}
-            {sessionState === 'ready' && needsIdentity && !overBudget && (
+            {sessionState === 'ready' && !needsSignin && needsIdentity && !overBudget && (
               <IdentityCard onSubmit={submitIdentity} onSkip={skipIdentity} />
             )}
-            {sessionState === 'ready' && !hasVisitorMsg && !overBudget && qr.length > 0 && (
+            {sessionState === 'ready' && !needsSignin && !hasVisitorMsg && !overBudget && qr.length > 0 && (
               <div className="pt-chips" role="group" aria-label="Suggested questions">
                 {qr.map((q) => (
                   <button key={q} type="button" className="pt-chip pt-chip--q" onClick={() => void send(q)}>{q}</button>
