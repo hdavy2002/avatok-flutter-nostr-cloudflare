@@ -41,6 +41,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # [SAATHUM-BRAND-CENTRAL-GUARD-2] never deploy a hand-typed brand name/domain
+      - name: No new hand-typed brand name/domain
+        run: python3 scripts/check_brand_literals.py && python3 scripts/gen_brand.py --check
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

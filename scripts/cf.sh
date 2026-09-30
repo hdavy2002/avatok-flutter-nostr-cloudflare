@@ -106,6 +106,14 @@ if [[ "$DIR" == "catalogs" ]]; then
   exec python3 scripts/i18n/publish_catalogs.py
 fi
 
+# [SAATHUM-BRAND-CENTRAL-GUARD-2] No deploy may ship a hand-typed brand name/domain.
+if [[ " $* " == *" deploy "* && -f "$REPO_ROOT/scripts/check_brand_literals.py" ]]; then
+  if ! python3 "$REPO_ROOT/scripts/check_brand_literals.py"; then
+    echo "cf.sh: BLOCKED — new hand-typed brand name/domain. Use BRAND from Specs/brand.json (see CLAUDE.md)." >&2
+    exit 1
+  fi
+fi
+
 # --- run ------------------------------------------------------------------
 ENV_ARGS=()
 [[ "$TARGET" == "staging" ]] && ENV_ARGS=(--env staging)

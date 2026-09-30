@@ -269,8 +269,10 @@ Rules:
 1. **Never type `Saa Thum`, `SAA THUM`, `Saathum`, `सा थम`, `saathum.com`, any
    `*.saathum.com` host, or any `@saathum.com` address in new code or copy.** Use
    `BRAND.name`, `BRAND.nameUpper`, `BRAND.webOrigin`, `brandUrl('/path')`,
-   `BRAND.emails.support`, etc. **Enforced:** `scripts/check_brand_literals.py` runs in
-   `typecheck.yml` and fails on any NEW literal (baseline `tool/brand_literals_baseline.json`
+   `BRAND.emails.support`, etc. **Enforced at every exit** by `scripts/check_brand_literals.py`:
+   the shared pre-push hook (`scripts/hooks/install-brand-guard.sh`; blocks ANY push, wrapper or
+   raw `git push`), `git_safe_push.py`, `cf.sh … deploy`, `web-deploy.yml`, and `typecheck.yml`.
+   It fails on any NEW literal (baseline `tool/brand_literals_baseline.json`
    is leftover debt — fix the code, never grow the baseline). i18n tokens: `{brand}`
    (= nameCompact), `{brandCompactUpper}`, `{brandDomain}`, `{brandSupportEmail}` — see
    `shared/i18n/README.md`. wrangler vars (worker + consumers `EMAIL_FROM_DEFAULT`) are

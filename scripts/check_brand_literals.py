@@ -10,6 +10,7 @@ an allowlist: when it fails, USE BRAND — do not grow the baseline.
 
     python3 scripts/check_brand_literals.py              # check (CI)
     python3 scripts/check_brand_literals.py --list       # show every hit
+    python3 scripts/check_brand_literals.py --rev <sha>  # check a COMMIT (pre-push hook)
     python3 scripts/check_brand_literals.py --update-baseline   # ONLY after a
         deliberate cleanup that REDUCES counts, or a pure file move
 
@@ -36,8 +37,18 @@ EXCLUDE = [
 ]
 
 
+REV: str | None = None  # [SAATHUM-BRAND-CENTRAL-GUARD-2] --rev <sha>: read files from a commit
+
+
+def read_text(rel: str) -> str:
+    if REV is None:
+        return (ROOT / rel).read_text(encoding="utf-8")
+    out = subprocess.run(["git", "show", f"{REV}:{rel}"], cwd=ROOT, capture_output=True, check=True)
+    return out.stdout.decode("utf-8")
+
+
 def patterns() -> list[re.Pattern]:
-    b = json.loads(BRAND_JSON.read_text(encoding="utf-8"))
+    b = json.loads(read_text("Specs/brand.json"))
     words = {b["name"], b["nameUpper"], b["nameHindi"], b["nameCompact"]}
     pats = [re.compile(r"(?<![\w-])" + re.escape(w) + r"(?![\w-])") for w in sorted(words)]
     pats.append(re.compile(re.escape(b["domain"]), re.I))   # covers hosts, URLs, mailboxes
@@ -45,19 +56,40 @@ def patterns() -> list[re.Pattern]:
 
 
 def tracked_files() -> list[str]:
-    out = subprocess.run(["git", "ls-files", *SCAN_DIRS], cwd=ROOT, capture_output=True, text=True, check=True)
+    cmd = ["git", "ls-files", *SCAN_DIRS] if REV is None else ["git", "ls-tree", "-r", "--name-only", REV, "--", *SCAN_DIRS]
+    out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True)
     return [f for f in out.stdout.splitlines()
             if Path(f).suffix in EXTS and not any(p.search(f) for p in EXCLUDE)]
+
+
+def batch_read(files: list[str]) -> dict[str, bytes]:
+    """One `git cat-file --batch` for all files of REV (a per-file `git show` took ~10s)."""
+    req = "".join(f"{REV}:{f}\n" for f in files).encode("utf-8")
+    out = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT, input=req, capture_output=True, check=True).stdout
+    res: dict[str, bytes] = {}
+    pos = 0
+    for f in files:
+        nl = out.index(b"\n", pos)
+        header = out[pos:nl].split()
+        pos = nl + 1
+        if len(header) < 3 or header[1] == b"missing":
+            continue
+        size = int(header[2])
+        res[f] = out[pos:pos + size]
+        pos += size + 1
+    return res
 
 
 def scan() -> tuple[dict[str, int], dict[str, list[str]]]:
     pats = patterns()
     counts: dict[str, int] = {}
     hits: dict[str, list[str]] = {}
-    for f in tracked_files():
+    files = tracked_files()
+    blobs = batch_read(files) if REV is not None else {}
+    for f in files:
         try:
-            text = (ROOT / f).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, FileNotFoundError):
+            text = blobs[f].decode("utf-8") if REV is not None else read_text(f)
+        except (KeyError, UnicodeDecodeError, FileNotFoundError, subprocess.CalledProcessError):
             continue
         n = 0
         for i, line in enumerate(text.splitlines(), 1):
@@ -71,13 +103,22 @@ def scan() -> tuple[dict[str, int], dict[str, list[str]]]:
 
 
 def main() -> int:
+    global REV
     args = sys.argv[1:]
+    if "--rev" in args:
+        i = args.index("--rev")
+        if i + 1 >= len(args):
+            sys.exit("--rev needs a commit")
+        REV = args[i + 1]
     counts, hits = scan()
     if "--update-baseline" in args:
         BASELINE.write_text(json.dumps(dict(sorted(counts.items())), indent=2) + "\n", encoding="utf-8")
         print(f"brand-literals: baseline written ({sum(counts.values())} in {len(counts)} files)")
         return 0
-    base = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
+    try:
+        base = json.loads(read_text("tool/brand_literals_baseline.json"))
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        base = {}
     grown = {f: (base.get(f, 0), n) for f, n in counts.items() if n > base.get(f, 0)}
     if "--list" in args:
         for f in sorted(hits):

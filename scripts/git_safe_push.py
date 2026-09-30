@@ -249,6 +249,14 @@ def main():
             print(f"\n--dry-run: would push {len(commits)} commit(s) to {remote}/{branch}. Nothing done.")
             return
 
+        # [SAATHUM-BRAND-CENTRAL-GUARD-2] refuse to publish hand-typed brand names/domains
+        guard = os.path.join("scripts", "check_brand_literals.py")
+        if os.path.exists(guard):
+            g = subprocess.run([sys.executable, guard, "--rev", "HEAD"])
+            if g.returncode != 0:
+                sys.exit("BLOCKED: new hand-typed brand name/domain (see above). Use BRAND / Brand / "
+                         "{brand} from Specs/brand.json, commit the fix, then push again.")
+
         env = dict(os.environ, ALLOW_PUSH="1")  # this wrapper is the sanctioned deliberate path
         print(f"\nPushing {branch} -> {remote}/{branch} ...")
         res = subprocess.run(["git", "push", remote, branch], env=env)

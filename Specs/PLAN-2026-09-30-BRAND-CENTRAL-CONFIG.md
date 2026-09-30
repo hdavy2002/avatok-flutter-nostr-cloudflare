@@ -79,6 +79,9 @@ Steps 2–5 are independent (parallel agents, one worktree each); 6 after they l
   scripts `web/scripts/brand.mjs`, wrangler vars synced by gen_brand.py (worker prod vars + api route,
   consumers EMAIL_FROM_DEFAULT).
 - Guard: `scripts/check_brand_literals.py` + `tool/brand_literals_baseline.json` (leftover comments/ids).
+  [SAATHUM-BRAND-CENTRAL-GUARD-2] It runs where agents cannot skip it: shared pre-push hook on the Mac
+  (`bash scripts/hooks/install-brand-guard.sh`, checks the pushed commit via `--rev`), `git_safe_push.py`,
+  `scripts/cf.sh … deploy`, `web-deploy.yml` (before build), and `typecheck.yml` on PRs.
 
 ## Rename-day procedure (code side)
 
