@@ -84,6 +84,8 @@ export interface LiveState {
   free?: boolean;
   /** [SAATHUM-FREEVID-WEB-1] Free event that has ended but still has a video to replay. */
   replay?: boolean;
+  /** [SAATHUM-FREEVID-ANYTIME-1] Free event with a saved video — watchable anytime. */
+  available?: boolean;
 }
 export function getLiveState(listingId: string, signal?: AbortSignal): Promise<LiveState> {
   return request<LiveState>(`/api/saathum/live-state/${encodeURIComponent(listingId)}`, { signal });

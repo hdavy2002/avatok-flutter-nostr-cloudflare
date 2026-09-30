@@ -48,7 +48,7 @@ describe("free / paid playable decision", () => {
   it("free: playable live and after the end (replay), not before", () => {
     expect(isPlayable({ free: true, hasVideo: true, state: "live" })).toBe(true);
     expect(isPlayable({ free: true, hasVideo: true, state: "ended" })).toBe(true);
-    expect(isPlayable({ free: true, hasVideo: true, state: "none" })).toBe(false);
+    expect(isPlayable({ free: true, hasVideo: true, state: "none" })).toBe(true); // [SAATHUM-FREEVID-ANYTIME-1] free plays anytime
   });
   it("paid: live only — an ended paid event keeps today's no-player rule", () => {
     expect(isPlayable({ free: false, hasVideo: true, state: "live" })).toBe(true);

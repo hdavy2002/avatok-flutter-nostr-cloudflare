@@ -1350,8 +1350,13 @@ export async function saathumLiveStateGet(req: Request, env: Env, listingId: str
   // [SAATHUM-FREEVID-API-1] `free` + `replay` (a free event's ended stream can still be watched).
   // Still never a video id.
   const free = await freeWatchOf(env, listingId);
+  // [SAATHUM-FREEVID-ANYTIME-1] A free event with a saved video is watchable anytime, so the
+  // page can offer "Watch free" before the start time. A boolean only — never the id.
+  const available = free
+    ? !!(await metaDb(env).prepare(`SELECT 1 FROM event_videos WHERE listing_id=?1 AND youtube_video_id<>'' LIMIT 1`).bind(listingId).first())
+    : false;
   return json(
-    { listing_id: listingId, state, free, ...(isReplay(free, state) ? { replay: true } : {}), ...(endedAt != null ? { ended_at: endedAt } : {}) },
+    { listing_id: listingId, state, free, ...(available ? { available: true } : {}), ...(isReplay(free, state) ? { replay: true } : {}), ...(endedAt != null ? { ended_at: endedAt } : {}) },
     200,
     { "cache-control": "public, max-age=30" },
   );

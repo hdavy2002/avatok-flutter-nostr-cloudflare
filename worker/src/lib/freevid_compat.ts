@@ -117,7 +117,9 @@ export type WatchStreamState = "none" | "live" | "ended";
 export function isPlayable(a: { free: boolean; hasVideo: boolean; state: WatchStreamState; preview?: boolean }): boolean {
   if (!a.hasVideo) return false;
   if (a.preview) return true;
-  return a.free ? a.state === "live" || a.state === "ended" : a.state === "live";
+  // [SAATHUM-FREEVID-ANYTIME-1 2026-10-01] Owner: a FREE video plays ANYTIME once its link
+  // is saved — before, during and after the scheduled time. Paid: live only (unchanged).
+  return a.free ? true : a.state === "live";
 }
 
 /** Whether a free listing's ended stream should be advertised as a replay on live-state. */

@@ -63,6 +63,7 @@ type Authed = 'unknown' | 'in' | 'out';
 function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { listingId: string; checkoutHref: string; freeWatch: boolean; onNeedAuth: () => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' });
   const [isFree, setIsFree] = useState(freeWatch);
+  const [isReplay, setIsReplay] = useState(false);
   const [authed, setAuthed] = useState<Authed>('unknown');
   const tokenRef = useRef<string | null>(null);
   const shown = useRef<string | null>(null);
@@ -76,11 +77,13 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
       let publicState: 'none' | 'live' | 'ended';
       let free = freeWatch;
       let replay = false;
+      let available = false; // [SAATHUM-FREEVID-ANYTIME-1] free + video saved = watchable anytime
       try {
         const ls = await getLiveState(listingId, ctrl.signal);
         publicState = ls.state;
         free = free || Boolean(ls.free);
         replay = Boolean(ls.replay);
+        available = Boolean(ls.available);
         setIsFree(free);
       } catch (err) {
         if (ctrl.signal.aborted) return;
@@ -92,14 +95,16 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
       // for anyone else the param changes nothing (not_booked -> falls through below).
       const wantPreview = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('preview') === 'live';
-      if (publicState === 'none' && !wantPreview) { setPhase({ kind: 'hidden' }); return; }
+      const freeAvail = free && available;
+      setIsReplay(replay);
+      if (publicState === 'none' && !wantPreview && !freeAvail) { setPhase({ kind: 'hidden' }); return; }
       // [SAATHUM-LIVE-FAST-1 2026-09-29] Paint the public overlay IMMEDIATELY, then
       // upgrade to the player if the entitled read says so. Waiting for Clerk first
       // (up to 5s) left the page looking not-live for seconds.
       const publicPhase = (): Phase => (publicState === 'live'
         ? { kind: 'live_overlay' }
-        : free && replay ? { kind: 'replay_overlay' } : { kind: 'ended_overlay', buyer: false });
-      if (publicState !== 'none') setPhase(publicPhase());
+        : free && (replay || freeAvail) ? { kind: 'replay_overlay' } : { kind: 'ended_overlay', buyer: false });
+      if (publicState !== 'none' || freeAvail) setPhase(publicPhase());
 
       // Only ever call the entitled endpoint when a session token exists —
       // a signed-out visitor never triggers it.
@@ -127,7 +132,7 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
               if (w.preview) capture('saathum_live_admin_preview', { listing_id: listingId });
               return;
             }
-            if (publicState !== 'none') setPhase(publicPhase());
+            if (publicState !== 'none' || freeAvail) setPhase(publicPhase());
             return;
           }
           if (w.stream_state === 'live' && w.youtube_video_id) {
@@ -149,7 +154,7 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
           // public-visitor overlay below, which is the correct experience.
         }
       }
-      if (publicState === 'none') { setPhase({ kind: 'hidden' }); return; } // preview refused
+      if (publicState === 'none' && !freeAvail) { setPhase({ kind: 'hidden' }); return; } // preview refused
       setPhase(publicPhase());
     })();
     return () => ctrl.abort();
@@ -263,7 +268,7 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
       <div className="ep-live-cover ep-live-cover--dim">
         {live
           ? <span className="ep-pill ep-pill--live"><i />LIVE NOW</span>
-          : <span className="ep-pill ep-pill--soft">Replay available</span>}
+          : <span className="ep-pill ep-pill--soft">{isReplay ? 'Replay available' : 'Free to watch'}</span>}
         {showCta && (
           <a
             className="ep-btn ep-btn--book ep-live-cta"
