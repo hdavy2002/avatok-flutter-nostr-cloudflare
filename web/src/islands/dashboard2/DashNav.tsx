@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Skeleton } from '../../components/ui/skeleton';
 import { DASH_NAV, DASH_LOGOUT, type DashKey } from './nav';
 import { BRAND } from '../../lib/brand';
+import { publicImage } from '../../lib/config';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
 const GUEST_HANDLE_KEY = 'saathum_guest_handle';
@@ -122,8 +123,8 @@ function UserAvatar({ who, size = 'h-10 w-10' }: { who: Who | null; size?: strin
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <a href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} home`}>
-      <img src="/diya-logo.png" alt="" width={36} height={36} className="h-9 w-9 object-contain" />
-      {!compact && <span className="font-dash text-[20px] font-bold tracking-[0.02em] text-grand-teal">{BRAND.name}</span>}
+      {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
+      <img src={publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
     </a>
   );
 }
