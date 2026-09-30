@@ -54,11 +54,13 @@ export interface EventItem {
   youtube_video_id?: string;
   /** [SAATHUM-FREEVID-WEB-1] The admin's crop box for the YouTube video (null/absent = whole frame). */
   youtube_crop?: VideoCrop | null;
+  /** [SAATHUM-FREEVID-API-1] What the worker actually sends on /api/me/events. */
+  crop?: VideoCrop | null;
 }
 
 /** [SAATHUM-FREEVID-WEB-1] The crop to hand YouTubeGuardedPlayer for a dashboard event. */
 export function eventCrop(item: EventItem): VideoCrop | null {
-  return toCrop(item.youtube_crop);
+  return toCrop(item.crop ?? item.youtube_crop);
 }
 
 /** [SAATHUM-FREEVID-WEB-1] First Play of a dashboard player: PostHog `saathum_video_play`
