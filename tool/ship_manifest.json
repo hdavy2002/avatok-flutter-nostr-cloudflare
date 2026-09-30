@@ -7998,5 +7998,21 @@
         "note": "latency_ms median drops versus SAATHUM-PREETI-1 (was ~9.5s to first word)."
       }
     ]
+  },
+  "SAATHUM-PREETI-FAST-2": {
+    "description": "[SAATHUM-PREETI-FAST-2 2026-09-30] Preeti: parallel D1/KV setup reads in chat route + turn, visitor-turn save alongside the model call, knowledge lookup cap 2.5s.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "latency_ms median drops versus SAATHUM-PREETI-1 (was ~9.5s to first word)."
+      }
+    ]
   }
 }

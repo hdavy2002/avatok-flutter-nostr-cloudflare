@@ -44,17 +44,34 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   if (!conv && isTest) conv = await createConversation(env, { id: a.conversationId || undefined, visitorId: a.visitorId ?? "admin-test", page: page.path, isTest: true, uid: null });
   if (!conv) { await send({ type: "error", code: "not_found", message: "Conversation not found." }); return { conv: null }; }
 
-  const [cfg, brand] = await Promise.all([getAgentConfig(env), currentBrand(env)]);
   const message = String(a.message ?? "").trim().slice(0, MAX_MESSAGE_CHARS);
   if (!message) { await send({ type: "error", code: "empty", message: "Empty message." }); return { conv }; }
 
-  // History BEFORE saving this turn, former names scrubbed.
-  const history = (await modelHistory(env, conv.id, 20)).map((h) => ({ role: h.role, text: scrubFormerNames(h.text, brand) }));
-  await insertMessage(env, conv.id, { role: "visitor", text: message });
-  await updateConversation(env, conv.id, { last_page: page.path });
+  // [SAATHUM-PREETI-FAST-2] Every read below is independent; run them together instead of ~10 serial
+  // D1/KV round trips (≈4s of silence before the first word on 2026-09-30).
+  const brand = await currentBrand(env); // in-isolate cache: normally instant
+  const convRow = conv;
+  const [cfg, rawHistory, budget, model0, persona, articles] = await Promise.all([
+    getAgentConfig(env),
+    modelHistory(env, convRow.id, 20), // history BEFORE saving this turn
+    budgetState(env),
+    preetiModel(env),
+    a.promptOverrideId
+      ? getPromptBody(env, a.promptOverrideId).then(async (b) => b ?? (await activePrompt(env)).body)
+      : activePrompt(env).then((p) => p.body),
+    ritualIndex(brand),
+  ]);
+  const history = rawHistory.map((h) => ({ role: h.role, text: scrubFormerNames(h.text, brand) }));
+  // Saving the visitor turn runs alongside the model call; awaited before Preeti's reply is stored,
+  // so message ids keep conversation order.
+  const saved = Promise.all([
+    insertMessage(env, convRow.id, { role: "visitor", text: message }),
+    updateConversation(env, convRow.id, { last_page: page.path }),
+  ]);
 
   const support = handoverUrl(cfg, brand, cfg.name, conv.id);
   const finishFixed = async (text: string, code: string) => {
+    await saved;
     await send({ type: "delta", text });
     await send({ type: "handover", url: support });
     const id = await insertMessage(env, conv!.id, { role: "preeti", text, blocked: false });
@@ -63,12 +80,12 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   };
 
   // Budget gate BEFORE any Gemini call.
-  const budget = await budgetState(env);
   if (budget.over) {
     await finishFixed(fillPlaceholders(OVER_BUDGET_REPLY, brand, cfg.name), "over_budget");
     return { conv };
   }
   if (!(env.GEMINI_API_KEY ?? "").trim()) {
+    await saved;
     await send({ type: "error", code: "ai_unavailable", message: "The assistant is unavailable right now." });
     return { conv };
   }
@@ -95,9 +112,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   let usage = { inTok: 0, outTok: 0 }; let blocked = false; let model = "";
   let toolsUsed: string[] = []; let rounds = 0; let grounded = false; let failed: string | null = null;
   try {
-    model = await preetiModel(env);
-    const persona = a.promptOverrideId ? (await getPromptBody(env, a.promptOverrideId)) ?? (await activePrompt(env)).body : (await activePrompt(env)).body;
-    const articles = await ritualIndex(brand);
+    model = model0;
     const system = buildSystemPrompt({
       brand, agentName: cfg.name, persona, page, signedIn: !!uid,
       firstName: conv.name ? conv.name.trim().split(/\s+/)[0] : null, hasPhone: !!conv.e164, now: Date.now(), articles,
@@ -131,6 +146,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   }
   emit(filter.finish());
   await chain;
+  await saved;
 
   let text = filter.clean.trim();
   if (!text) {

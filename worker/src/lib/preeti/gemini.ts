@@ -110,7 +110,7 @@ async function failText(r: Response): Promise<string> {
 
 /** Step 1 — grounded notes from the File Search store. Never throws to the caller's turn (returns "" on failure). */
 /** [SAATHUM-PREETI-FAST-1] Knowledge lookup gets this long; slower -> answer without notes. */
-export const GROUND_TIMEOUT_MS = 3500;
+export const GROUND_TIMEOUT_MS = 2500;
 
 export async function groundNotes(env: Env, model: string, store: string, question: string, recent: string): Promise<{ notes: string; usage: Usage }> {
   const body = {

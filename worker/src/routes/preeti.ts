@@ -66,7 +66,8 @@ async function ipLimited(env: Env, req: Request, bucket: string, max: number): P
   try {
     const n = Number((await env.TOKENS.get(k)) ?? 0);
     if (n >= max) return true;
-    await env.TOKENS.put(k, String(n + 1), { expirationTtl: 3700 });
+    // [SAATHUM-PREETI-FAST-2] The counter write need not block the reply.
+    void env.TOKENS.put(k, String(n + 1), { expirationTtl: 3700 }).catch((e) => trackException(env, e, { route: "preeti.ratelimit.put", handled: true, app_name: APP }));
   } catch (e) {
     await trackException(env, e, { route: "preeti.ratelimit", handled: true, app_name: APP }); // fail open
   }
@@ -132,24 +133,26 @@ async function postIdentify(req: Request, env: Env): Promise<Response> {
 }
 
 async function postChat(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const { on } = await enabled(env);
-  if (!on) return json({ error: "disabled" }, 503);
   const b = await body(req);
   const visitorId = String(b?.visitor_id ?? "");
   const message = typeof b?.message === "string" ? b.message : "";
   if (!VISITOR_RE.test(visitorId) || !b?.conversation_id || !message.trim()) return json({ error: "invalid_request" }, 400);
   if (message.length > MAX_MESSAGE_CHARS) return json({ error: "too_long", max: MAX_MESSAGE_CHARS }, 400);
 
-  const uid = await optionalUid(req, env);
-  const conv = await getConv(env, String(b.conversation_id));
+  // [SAATHUM-PREETI-FAST-2] Independent checks run together, not one round trip after another.
+  const hourAgo = Date.now() - 3600_000;
+  const [{ on }, uid, conv, cnt] = await Promise.all([
+    enabled(env),
+    optionalUid(req, env),
+    getConv(env, String(b.conversation_id)),
+    env.DB_META.prepare(
+      `SELECT COUNT(*) n FROM ai_messages m JOIN ai_conversations c ON c.id=m.conversation_id
+        WHERE c.visitor_id=?1 AND m.role='visitor' AND m.created_at>?2`,
+    ).bind(visitorId, hourAgo).first<{ n: number }>().catch(() => null),
+  ]);
+  if (!on) return json({ error: "disabled" }, 503);
   if (!conv || conv.is_test) return json({ error: "not_found" }, 404);
   if (!ownsConversation(conv, uid, visitorId)) return json({ error: "forbidden" }, 403);
-
-  const hourAgo = Date.now() - 3600_000;
-  const cnt = await env.DB_META.prepare(
-    `SELECT COUNT(*) n FROM ai_messages m JOIN ai_conversations c ON c.id=m.conversation_id
-      WHERE c.visitor_id=?1 AND m.role='visitor' AND m.created_at>?2`,
-  ).bind(visitorId, hourAgo).first<{ n: number }>().catch(() => null);
   if (Number(cnt?.n ?? 0) >= CHAT_PER_VISITOR_HOUR || (await ipLimited(env, req, "chat", CHAT_PER_IP_HOUR))) {
     await track(env, uid ?? "anon", "preeti_rate_limited", APP, { signed_in: !!uid });
     return json({ error: "rate_limited" }, 429);
