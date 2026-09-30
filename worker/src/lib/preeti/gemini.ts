@@ -17,6 +17,7 @@
 // gemini-3-flash-preview. Gemini 3 needs the model's own function-call parts (thought signatures) echoed back
 // verbatim, so this loop keeps the raw `parts` of every tool round and replays them.
 import type { Env } from "../../types";
+import { geminiFetch } from "../gemini_egress"; // [SAATHUM-PREETI-EGRESS-1]
 import { thinkingCfg } from "../../util";
 import { track } from "../../hooks";
 import { CORE_REMINDER } from "./core_rules";
@@ -73,7 +74,7 @@ function usageOf(j: any): Usage {
 async function post(env: Env, model: string, method: string, body: unknown, query = ""): Promise<Response> {
   let last: Response | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await fetch(`${GLA}/v1beta/models/${encodeURIComponent(model)}:${method}${query}`, {
+    const r = await geminiFetch(env, `${GLA}/v1beta/models/${encodeURIComponent(model)}:${method}${query}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key(env) },
       body: JSON.stringify(body),

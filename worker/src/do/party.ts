@@ -131,6 +131,22 @@ export class PartyDO {
       const live = this.broadcast(JSON.stringify({ ...body, from: body.from ?? "server", ts: Date.now() }), null);
       return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
     }
+    // [SAATHUM-PREETI-EGRESS-1] Transparent proxy for Gemini API calls made via lib/gemini_egress.ts.
+    // This instance was created with locationHint 'wnam', so the request leaves from the US.
+    if (url.pathname.endsWith("/gemini-egress")) {
+      const target = url.searchParams.get("u") || "";
+      let t: URL;
+      try { t = new URL(target); } catch { return new Response("bad target", { status: 400 }); }
+      if (t.protocol !== "https:" || t.hostname !== "generativelanguage.googleapis.com") return new Response("forbidden", { status: 403 });
+      const fwd = new Headers();
+      for (const [k, v] of req.headers) {
+        const lk = k.toLowerCase();
+        if (lk === "content-type" || lk === "x-goog-api-key" || lk.startsWith("x-goog-upload-")) fwd.set(k, v);
+      }
+      const hasBody = req.method !== "GET" && req.method !== "HEAD";
+      const res = await fetch(t.toString(), { method: req.method, headers: fwd, body: hasBody ? await req.arrayBuffer() : undefined }); // buffered: runtime sets Content-Length
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+    }
     // Gemini multi-speaker TTS render, run FROM THIS DO. The caller pins the DO to
     // a US region (locationHint 'wnam'/'enam') so this outbound request egresses
     // from the US — where the preview TTS model actually returns audio. From

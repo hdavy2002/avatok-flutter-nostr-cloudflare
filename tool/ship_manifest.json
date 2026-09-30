@@ -7932,5 +7932,23 @@
         "note": "LLM Analytics row exists with $ai_input_tokens>0 for the Preeti span."
       }
     ]
+  },
+  "SAATHUM-PREETI-EGRESS-1": {
+    "description": "[SAATHUM-PREETI-EGRESS-1 2026-09-30] Gemini API calls (Preeti chat + File Search sync) go through a US-pinned PartyDO (lib/gemini_egress.ts) because some Cloudflare colos got 400 'User location is not supported'.",
+    "shipped": "2026-09-30",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "preetiEnabled"
+    ],
+    "success": [
+      {
+        "event": "preeti_turn",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "A real chat turn completed: outcome=ok with model set, input_tokens>0 and cost_micro_usd>0 (outcome blocked/partial_error/over_budget are failure values)."
+      }
+    ]
   }
 }

@@ -12,6 +12,7 @@
 // currentBrand(env) (brand_runtime.ts, Agent A).
 
 import type { Env } from "../../types";
+import { geminiFetch } from "../gemini_egress"; // [SAATHUM-PREETI-EGRESS-1]
 import { sha256Hex } from "../../util";
 import * as hooks from "../../hooks";
 import { currentBrand, scrubFormerNames } from "./brand_runtime";
@@ -61,7 +62,7 @@ export async function ensurePreetiStore(env: Env): Promise<string> {
     await d1Run(env, "UPDATE ai_agent_config SET store_name=? WHERE id=1 AND store_name IS NULL", kv).catch(() => null);
     return kv;
   }
-  const res = await fetch(`${GLA}/v1beta/fileSearchStores`, {
+  const res = await geminiFetch(env, `${GLA}/v1beta/fileSearchStores`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey(env) },
     body: JSON.stringify({ displayName: STORE_DISPLAY_NAME, embedding_model: EMBED_MODEL }),
@@ -83,7 +84,7 @@ async function pollOperation(env: Env, opName: string, tries = 4): Promise<strin
   // Returns the document resource name, or "" if indexing has not finished yet.
   if (!opName) return "";
   for (let i = 0; i < tries; i++) {
-    const res = await fetch(`${GLA}/v1beta/${opName}`, { headers: { "x-goog-api-key": apiKey(env) } });
+    const res = await geminiFetch(env, `${GLA}/v1beta/${opName}`, { headers: { "x-goog-api-key": apiKey(env) } });
     if (!res.ok) throw new Error(`operation poll ${res.status}: ${await errText(res)}`);
     const op: any = await res.json().catch(() => ({}));
     if (op?.error) throw new Error(`indexing failed: ${String(op.error.message || "").slice(0, 200)}`);
@@ -105,7 +106,7 @@ async function uploadDoc(
   const customMetadata = Object.entries(meta)
     .filter(([, v]) => v)
     .map(([k, v]) => ({ key: k, stringValue: v.slice(0, 250) }));
-  const start = await fetch(`${GLA}/upload/v1beta/${store}:uploadToFileSearchStore`, {
+  const start = await geminiFetch(env, `${GLA}/upload/v1beta/${store}:uploadToFileSearchStore`, {
     method: "POST",
     headers: {
       "x-goog-api-key": key,
@@ -120,7 +121,7 @@ async function uploadDoc(
   if (!start.ok) throw new Error(`upload start ${start.status}: ${await errText(start)}`);
   const up = start.headers.get("x-goog-upload-url");
   if (!up) throw new Error("upload start: no upload url");
-  const fin = await fetch(up, {
+  const fin = await geminiFetch(env, up, {
     method: "POST",
     headers: {
       "x-goog-api-key": key,
@@ -138,7 +139,7 @@ async function uploadDoc(
 
 async function deleteDocByName(env: Env, docName: string): Promise<void> {
   if (!docName) return;
-  const res = await fetch(`${GLA}/v1beta/${docName}?force=true`, {
+  const res = await geminiFetch(env, `${GLA}/v1beta/${docName}?force=true`, {
     method: "DELETE", headers: { "x-goog-api-key": apiKey(env) },
   });
   if (!res.ok && res.status !== 404) throw new Error(`doc delete ${res.status}: ${await errText(res)}`);
@@ -150,7 +151,7 @@ async function deleteDocsByDisplayPrefix(env: Env, store: string, prefix: string
   let token = "";
   for (let page = 0; page < 10; page++) {
     const url = `${GLA}/v1beta/${store}/documents?pageSize=20${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`;
-    const res = await fetch(url, { headers: { "x-goog-api-key": apiKey(env) } });
+    const res = await geminiFetch(env, url, { headers: { "x-goog-api-key": apiKey(env) } });
     if (!res.ok) throw new Error(`doc list ${res.status}: ${await errText(res)}`);
     const j: any = await res.json().catch(() => ({}));
     for (const d of j?.documents || []) {
