@@ -1,4 +1,5 @@
 import { manifest, getCatalog, getCompatibleCachedCatalog } from './catalogClient';
+import { BRAND_TOKENS, expandBrand } from './brandTokens';
 import registry from '../../../../shared/i18n/locales.json';
 export const locales = registry;
 export type UiLocale = typeof locales[number];
@@ -34,7 +35,7 @@ export function setDomNamespaces(values:string[]) {domNamespaces.clear();domName
 // stream renaming an English string under an existing key without regenerating the catalog).
 // A real translation in `messages[key]` (non-`en` locale) still wins first; otherwise the live
 // fallback must beat the possibly-stale catalog, so callers never see reverted copy after hydration.
-export function t(key:string,fallback:string,params:Record<string,string|number>={}) {return (messages[key]??(fallback||(sources[key]??''))).replace(/\{([a-zA-Z0-9_]+)\}/g,(token,name)=>Object.hasOwn(params,name)?String(params[name]):token);}
+export function t(key:string,fallback:string,params:Record<string,string|number>={}) {return (messages[key]??(fallback||(sources[key]??''))).replace(/\{([a-zA-Z0-9_]+)\}/g,(token,name)=>Object.hasOwn(params,name)?String(params[name]):Object.hasOwn(BRAND_TOKENS,name)?BRAND_TOKENS[name]:token);}
 function notify(){revision++;listeners.forEach(fn=>fn());}
 export async function setUiLocale(requested:string,persist=true) {
  const chosen=locales.find(value=>value.code===requested)||locales.find(value=>value.code==='en')!;
@@ -83,4 +84,4 @@ let refreshQueued=false;
 export function refreshLocale(){if(refreshQueued)return;refreshQueued=true;queueMicrotask(()=>{refreshQueued=false;if(!restored&&!pendingLocale)void restoreLocale();else void setUiLocale(pendingLocale||locale,false);});}
 export function setLocaleAccount(id:string|null) {if(id===account)return;const wasGuest=account===null;account=id;if(wasGuest&&id)try{if(localStorage.getItem(key())===null){const guest=localStorage.getItem('saathum.ui.locale.guest');if(guest&&locales.some(item=>item.code===guest))localStorage.setItem(key(),guest);}}catch {}epoch++;pendingLocale=null;restored=false;messages={};sources={};locale='en';status='source';notify();void restoreLocale();}
 
-export function translateKnownSource(value:string) {const key=Object.keys(sources).find(key=>sources[key]===value&&key in messages);return key?t(key,value):value;}
+export function translateKnownSource(value:string) {const key=Object.keys(sources).find(key=>expandBrand(sources[key])===value&&key in messages);return key?t(key,value):value;}

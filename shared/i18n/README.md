@@ -25,3 +25,16 @@ Required paid configuration (separate per GitHub environment): secret `UI_TRANSL
 Publication is separately opt-in (`publish`). Incomplete coverage for any registered locale/namespace is refused unless `acknowledge_partial` explicitly accepts reduced coverage; this can replace a richer prior release and must be reviewed. Required environment secrets: `UI_CATALOG_R2_ACCESS_KEY_ID`, `UI_CATALOG_R2_SECRET_ACCESS_KEY`, with write access limited to the selected catalog bucket; variable `CLOUDFLARE_ACCOUNT_ID`. The existing production GitHub environment approval gate applies. Publisher independently revalidates source hashes, complete keys, placeholders and the entire release content hash, writes immutable objects conditionally, verifies each object, then updates current source-compatibility pointers and atomically replaces the short-lived global manifest pointer last. No Worker/app build or deployment is triggered. Publication never copies staging data into production. Clients continue to source fallback until a release is explicitly published and the Worker route deployed.
 
 Runtime visual/font review, actual Google credentials/billing/capability, R2 publication, cache HIT measurements, native offline behavior and translation completeness are not established by source changes or CI unit tests alone.
+
+## Reserved brand tokens (SAATHUM-BRAND-CENTRAL-I18N-1)
+
+Source and reviewed copy never contains the literal brand name, domain or support mailbox. It carries these reserved placeholders instead; every client fills them from `Specs/brand.json` (via `BRAND` / `Brand`) inside its shared lookup, so callers never pass them:
+
+| Token | Filled with | Renders today |
+|---|---|---|
+| `{brand}` | `nameCompact` | Saathum |
+| `{brandCompactUpper}` | `nameCompact` upper-cased | SAATHUM |
+| `{brandDomain}` | `domain` | saathum.com |
+| `{brandSupportEmail}` | `emails.support` | support@saathum.com |
+
+Other mailboxes are written `name@{brandDomain}` (e.g. `privacy@{brandDomain}`). `{brand}` is the compact one-word form because that is what the catalogs always showed; `BRAND.name` ("Saa Thum") is not a catalog token. Fillers: `web/src/lib/i18n/brandTokens.ts` (used by `t()`), `app/lib/core/localization/brand_tokens.dart` (used by `UiLocaleController.text`). Tokens are normal placeholders: `protect()` masks them from machine translation and `validateMessages` rejects a translation that drops one or an unknown `{brand*}` name. Reviewed translations must keep the token in `source` and `text`; a new brand form needs a new reserved token in `generate_catalogs.mjs` plus both fillers. A test fails if a literal brand appears in `source/*.json`. Never add `{brand*}` names as caller params.

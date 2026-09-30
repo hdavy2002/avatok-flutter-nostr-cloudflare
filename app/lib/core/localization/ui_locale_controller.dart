@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../identity/identity.dart';
 import '../account_storage.dart';
 import '../analytics.dart';
+import 'brand_tokens.dart';
 import 'ui_catalog_repository.dart';
 import 'ui_locales.dart';
 import 'ui_messages.dart';
@@ -120,7 +121,8 @@ class UiLocaleController extends ChangeNotifier {
         'locale': selected.code, 'release': release, 'message_key': key,
       }));
     }
-    var value = translated ?? uiSourceMessages[key]!;
+    // Reserved brand tokens ({brand}, ...) are filled from Brand before caller params.
+    var value = expandUiBrandTokens(translated ?? uiSourceMessages[key]!);
     for (final entry in params.entries) {
       value = value.replaceAll('{${entry.key}}', entry.value.toString());
     }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'brand_tokens.dart';
 import 'ui_locale_controller.dart';
 import 'ui_messages.dart';
 import 'ui_font_policy.dart';
@@ -48,7 +49,8 @@ class UiLocaleScope extends InheritedNotifier<UiLocaleController> {
 /// For app-owned menu/registry metadata and known auth UI errors only.
 /// Never call this on names, messages, listing descriptions or other user data.
 final _authoredUiKeys = <String, UiMessage>{
-  for (final key in UiMessage.values) uiSourceMessages[key.name]!: key,
+  for (final key in UiMessage.values)
+    expandUiBrandTokens(uiSourceMessages[key.name]!): key,
 };
 String authoredUiCopy(String source) {
   final key = _authoredUiKeys[source];

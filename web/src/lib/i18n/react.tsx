@@ -1,11 +1,12 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { BRAND_TOKENS } from './brandTokens';
 import { translateKnownSource, getRevision, getLocale, subscribe, t, registerNamespace, refreshLocale, locales, setUiLocale } from './localeStore';
 export function useTranslation(namespace='common') {
   const revision=useSyncExternalStore(subscribe,getRevision,()=>0);
   // SSR and the first hydration pass use authored source even if another island restored a locale.
   const hydrated=revision!==0;
   const locale=hydrated?getLocale():'en';
-  const sourceT=(_key:string,fallback:string,params:Record<string,string|number>={})=>fallback.replace(/\{([a-zA-Z0-9_]+)\}/g,(token,name)=>Object.hasOwn(params,name)?String(params[name]):token);
+  const sourceT=(_key:string,fallback:string,params:Record<string,string|number>={})=>fallback.replace(/\{([a-zA-Z0-9_]+)\}/g,(token,name)=>Object.hasOwn(params,name)?String(params[name]):Object.hasOwn(BRAND_TOKENS,name)?BRAND_TOKENS[name]:token);
   useEffect(()=>{const unregister=registerNamespace(namespace);refreshLocale();return unregister;},[namespace]);
   return {t:hydrated?t:sourceT,locale,source:hydrated?translateKnownSource:(value:string)=>value,number:(value:number,options?:Intl.NumberFormatOptions)=>new Intl.NumberFormat(locale,options).format(value)};
 }

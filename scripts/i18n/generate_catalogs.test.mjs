@@ -14,6 +14,20 @@ test('protected placeholders, URLs and brands cannot be removed by provider', ()
   assert.equal(sourceHash({ b: 'B', a: 'A' }), sourceHash({ a: 'A', b: 'B' }));
 });
 
+test('reserved brand tokens survive translation and sources carry no literal brand', async () => {
+  const p = protect('Share your {brand} link at {brandDomain} or {brandSupportEmail}');
+  assert.equal(p.restore(p.masked), 'Share your {brand} link at {brandDomain} or {brandSupportEmail}');
+  assert.throws(() => validateMessages({ x: 'Go live from the {brand} app' }, { x: 'Go live from the Saathum app' }));
+  assert.throws(() => validateMessages({ x: 'The {brandBogus} app' }, { x: 'The {brandBogus} app' }), /Unknown brand token/);
+  validateMessages({ x: '{brand} number' }, { x: '{brand} नंबर' });
+  const { readdir, readFile: rf } = await import('node:fs/promises');
+  const dir = new URL('../../shared/i18n/source/', import.meta.url);
+  for (const name of await readdir(dir)) {
+    const messages = JSON.parse(await rf(new URL(name, dir), 'utf8'));
+    for (const [key, text] of Object.entries(messages)) assert.doesNotMatch(text, /saa ?thum|सा थम/i, `${name}:${key} carries a literal brand; use {brand}/{brandDomain}/{brandSupportEmail}`);
+  }
+});
+
 test('source changes invalidate seeds; missing Indian languages stay absent; paid work is opt-in', async () => {
   const root = await mkdtemp(join(tmpdir(), 'ui-catalog-test-'));
   try {

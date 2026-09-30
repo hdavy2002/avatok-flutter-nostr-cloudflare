@@ -29,9 +29,15 @@ function signature(text) {
   const controls = text.match(/\{\s*[\w.]+\s*,\s*(?:plural|selectordinal|select|number|date|time)(?:\s*,\s*[^{}]*)?|(?:=\d+|zero|one|two|few|many|other)\s*\{|offset:\s*\d+|[{}#]/g) || [];
   return canonical({ protectedTokens, controls });
 }
+// [SAATHUM-BRAND-CENTRAL-I18N-1] Reserved brand tokens. Clients fill them from BRAND / Brand at
+// render time (web/src/lib/i18n/brandTokens.ts, app/lib/core/localization/brand_tokens.dart).
+// They are ordinary {placeholders}: protect() masks them so machine translation cannot mutate them.
+export const RESERVED_BRAND_TOKENS = ['brand', 'brandCompactUpper', 'brandDomain', 'brandSupportEmail'];
+const brandTokenPattern = /\{(brand[A-Za-z]*)\}/g;
 export function validateMessages(source, messages, complete = true) {
   if (!messages || typeof messages !== 'object' || Array.isArray(messages) || (complete && !Object.keys(messages).length)) throw new Error('Invalid message map');
   for (const [key, text] of Object.entries(messages)) {
+    for (const [, name] of text.matchAll?.(brandTokenPattern) ?? []) if (!RESERVED_BRAND_TOKENS.includes(name)) throw new Error(`Unknown brand token {${name}}: ${key}`);
     if (!Object.hasOwn(source, key) || ['__proto__', 'constructor', 'prototype'].includes(key) || !key.length || key.length > 200 || typeof text !== 'string' || !text.trim() || text.length > 16000) throw new Error(`Invalid message: ${key}`);
     if (signature(source[key]) !== signature(text)) throw new Error(`Changed placeholders/markup/brands: ${key}`);
   }
