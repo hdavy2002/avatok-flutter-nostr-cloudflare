@@ -34,6 +34,8 @@
   transition: transform .2s ease, box-shadow .2s ease;
 }
 .bn-card:hover { transform: translateY(-4px) rotate(-.3deg); box-shadow: 0 2px 0 #0000000d, 0 26px 46px #5a2c0f5c, 0 6px 14px #5a2c0f33; }
+/* [CARD-CLICK-1] The whole card opens the event page (see BookCard openCard). */
+.bn-card--click { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .bn-card, .bn-card:hover { transition: none; transform: none; } }
 
 .bn-art { position: relative; display: block; aspect-ratio: 4 / 3; color: #fff; text-decoration: none; background: #3a2418; }

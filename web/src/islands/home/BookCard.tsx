@@ -12,7 +12,7 @@
 //    ../../lib/eventTypes.ts — never hardcode "havan"/"puja" text here.
 //  - Telemetry is the caller's: pass `onAction` (homepage → home_booknow_click,
 //    marketplace → marketplace_card_click).
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { Card } from '../../lib/types';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
 import { payAndJoinPath } from '../../lib/urls';
@@ -306,8 +306,24 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
   const track = (action: string) => { onAction?.(action); };
   const copy = copyFor({ event_type: it.eventType });
   const ticks = ticksFor(it, copy);
+  // [CARD-CLICK-1 2026-10-01] Owner: a click ANYWHERE on the card that is not
+  // already a link/button opens the event page (it.href), where the customer can
+  // read more and book. Real links and buttons (Book now, Read benefits, reviews,
+  // remind, WhatsApp, the "i" tooltips) keep their own behaviour. The title link
+  // stays the keyboard/screen-reader route, so the card itself takes no tab stop.
+  const openCard = (e: MouseEvent<HTMLElement>) => {
+    if (e.defaultPrevented || e.button !== 0) return;
+    const target = e.target as Element | null;
+    if (target?.closest('a, button, input, select, textarea, label, summary, [role="button"], .bn-tip')) return;
+    // Don't hijack someone selecting text on the card.
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+    track('card');
+    if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(it.href, '_blank', 'noopener');
+    else window.location.assign(it.href);
+  };
   return (
-    <article className="bn-card" data-listing-id={it.id}>
+    <article className="bn-card bn-card--click" data-listing-id={it.id} onClick={openCard}>
       <a className="bn-art" href={it.href} tabIndex={-1} aria-hidden="true" onClick={() => track('art')}>
         {it.image
           ? <img src={it.image} srcSet={it.imageSrcSet ?? undefined} sizes="(min-width: 1400px) 25vw, (min-width: 641px) 46vw, 92vw" alt="" loading="lazy" decoding="async" />
