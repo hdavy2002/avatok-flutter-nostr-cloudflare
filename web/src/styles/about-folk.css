@@ -33,20 +33,20 @@
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-btn--paper { background: var(--paper); color: var(--teal); border: 2px solid var(--paper); }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-btn--paper:hover { background: #fff; }
 
-/* about — sticker left, story right */
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-about { padding-block: 30px 48px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-about-inner { display: grid; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); gap: clamp(28px, 4vw, 64px); align-items: start; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-art { position: sticky; top: 18px; display: grid; place-items: center; padding: 18px 10px 10px; margin: 0; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-art::before { content: ""; position: absolute; inset: 6% 4%; border-radius: 50%; background: radial-gradient(closest-side, #f6b93b55, #f6b93b00 75%); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-art img { position: relative; width: min(100%, 460px); height: auto; filter: drop-shadow(0 14px 18px #17343c33); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-art figcaption { position: relative; margin-top: 14px; font-size: 16px; font-weight: 700; color: var(--quiet); text-align: center; letter-spacing: .04em; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-story { background: #fff; border: 5px solid #fff; border-radius: 22px; box-shadow: 0 10px 26px #17343c1a; padding: clamp(24px, 3vw, 46px) clamp(20px, 3.4vw, 54px) clamp(30px, 3vw, 50px); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-story h1 { margin-top: 12px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-lead { margin-top: 18px; font-size: clamp(20px, 1.4vw, 23px); line-height: 1.45; color: #2b4046; max-width: 30em; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-story-meta { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 22px; padding-bottom: 26px; border-bottom: 1px solid var(--gold-hair); }
+/* [WEB-ABOUT-BLOG-1 2026-09-30] about — blog article: intro, wide sticker-border
+   hero photo, story card. Rules = design/about-page/saathum-about-blog-mock.src.html. */
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-about { padding-block: 34px 48px; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-col { max-width: 900px; margin-inline: auto; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-intro h1 { margin-top: 12px; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-lead { margin-top: 18px; font-size: clamp(20px, 1.4vw, 23px); line-height: 1.45; color: #2b4046; max-width: 34em; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-story-meta { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 22px; }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--marigold); color: var(--ink); border-radius: 999px; padding: 8px 16px; font-size: 16px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose { margin-top: 26px; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero { max-width: 1180px; margin: 34px auto 0; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame { background: #fff; padding: clamp(8px, 1vw, 14px); border-radius: 26px; box-shadow: 0 14px 34px #17343c2e, 0 0 0 1px #17343c0d; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 50% 32%; border-radius: 16px; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero figcaption { margin-top: 14px; font-size: 16px; font-weight: 700; color: var(--quiet); text-align: center; letter-spacing: .02em; }
+.folk-site[data-design="saathum-reference-v5"] .ab .ab-story { max-width: 900px; margin: 34px auto 0; background: #fff; border: 5px solid #fff; border-radius: 22px; box-shadow: 0 10px 26px #17343c1a; padding: clamp(26px, 3vw, 48px) clamp(20px, 3.8vw, 58px) clamp(30px, 3vw, 50px); }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose > * + * { margin-top: 18px; }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose p, .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose li { font-size: 19px; line-height: 1.6; color: var(--body); max-width: 68ch; }
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose strong { color: var(--ink); }
@@ -80,16 +80,16 @@
 .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-actions { display: flex; flex-wrap: wrap; gap: 14px; }
 
 @media (max-width: 1100px) {
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-about-inner { grid-template-columns: 1fr; gap: 22px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-art { position: static; max-width: 420px; margin: 0 auto; width: 100%; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-art img { width: min(100%, 340px); }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-inner { grid-template-columns: 130px 1fr; }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .folk-site[data-design="saathum-reference-v5"] .ab { --gutter: 16px; font-size: 18px; }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose p, .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose li { font-size: 18px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-story { border-radius: 16px; }
+  .folk-site[data-design="saathum-reference-v5"] .ab .ab-story { border-radius: 16px; margin-top: 26px; }
+  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero { margin-top: 26px; margin-inline: -4px; }
+  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame { border-radius: 18px; }
+  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame img { aspect-ratio: 4 / 3; object-position: 50% 0; border-radius: 12px; }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-quote { grid-template-columns: 1fr; }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-quote img { width: 84px; justify-self: center; order: -1; }
   .folk-site[data-design="saathum-reference-v5"] .ab .ab-where { grid-template-columns: 1fr; }
