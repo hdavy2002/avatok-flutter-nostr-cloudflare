@@ -55,8 +55,8 @@ cd /Users/davy/Documents/websites/avaTOK-2-Flutter
 git fetch -q origin
 git worktree add -b issue/<issue-id-lowercase> ../wt-<issue-id-lowercase> origin/main
 cd ../wt-<issue-id-lowercase>
-ln -s ../avaTOK-2-Flutter/web/node_modules web/node_modules        # only if you need web tooling
-ln -s ../avaTOK-2-Flutter/worker/node_modules worker/node_modules  # only if you need worker tooling
+ln -s ../../avaTOK-2-Flutter/web/node_modules web/node_modules        # only if you need web tooling
+ln -s ../../avaTOK-2-Flutter/worker/node_modules worker/node_modules  # only if you need worker tooling
 ```
 
 Do ALL edits, commits (`scripts/git_safe_commit.py` with explicit paths) and checks
