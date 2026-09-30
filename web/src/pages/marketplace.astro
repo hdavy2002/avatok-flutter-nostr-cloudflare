@@ -35,6 +35,9 @@ import '../styles/saathum-folk.css';
 import '../islands/home/BookNowShelf.css';
 import '../islands/marketplace/MarketplaceV2.css';
 import { BRAND } from '../lib/brand';
+import { loadMarketplaceCards } from '../lib/marketplaceCards';
+import { withDeadline } from '../lib/requestDeadline';
+import type { Card } from '../lib/types';
 
 const params = Astro.url.searchParams;
 const q = (params.get('q') ?? '').trim().slice(0, 80);
@@ -61,6 +64,26 @@ const intentions = [
 const typeOptions = [['', 'All categories'], ['havan', 'Havan'], ['puja', 'Puja'], ['satsang', 'Satsang'], ['sermon', 'Sermon'], ['meditation', 'Meditation'], ['festival', 'Festival specials']];
 const whenOptions = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'This weekend'], ['month', 'This month']];
 const trending = ['Lakshmi', 'Navratri', 'Ganesh', 'Mahamrityunjaya', 'Satyanarayan', 'Exams'];
+
+// [MKT-SSR-1 2026-09-30] Fetch the listings HERE so the "Upcoming events" grid is in
+// the HTML. Before this the island had to download + boot and only then start the
+// fetch (0.7 s median, 1.6 s p90 on top), and on slow phones the section sat empty
+// long enough that the owner scrolled past it. Server → api is Cloudflare-internal
+// and fast; if it is not (deadline) or it fails, the island falls back to its
+// client fetch with placeholder cards, exactly as before. Never blocks the page long.
+const SSR_DEADLINE_MS = 1500;
+let initialCards: Card[] | undefined;
+let serverMs: number | undefined;
+{
+  const t0 = Date.now();
+  try {
+    initialCards = await withDeadline((signal) => loadMarketplaceCards(signal), SSR_DEADLINE_MS);
+  } catch (err) {
+    console.warn('[MKT-SSR-1] server listing fetch failed; island will fetch', err instanceof Error ? err.message : String(err));
+  }
+  serverMs = Date.now() - t0;
+}
+const serverNow = Date.now();
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 ---
@@ -111,7 +134,9 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       <!-- ②–⑨ Data-driven sections (tabs, live strip, rails, deities, festivals,
            temples, all events, empty state). The intention band is static and
            slotted in between. -->
-      <MarketplaceV2 client:load guides={guides} deities={deities}>
+      <MarketplaceV2 client:load guides={guides} deities={deities}
+        initialCards={initialCards} serverNow={serverNow} serverMs={serverMs}
+        initialSearch={Astro.url.search} origin={Astro.url.origin}>
         <section slot="intentions" class="grand-experiences mk-intent" aria-labelledby="mk-intent-title">
           <div class="grand-section-heading"><h2 id="mk-intent-title"><span aria-hidden="true">✽</span> Not sure which ritual? Start with your wish. <span aria-hidden="true">✽</span></h2></div>
           <div class="grand-category-grid">

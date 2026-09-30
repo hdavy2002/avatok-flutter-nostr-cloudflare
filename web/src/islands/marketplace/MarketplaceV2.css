@@ -180,7 +180,33 @@
 .folk-site[data-design="saathum-reference-v5"] .mk-when button { border-top: 0; border-bottom: 0; border-left: 0; background: transparent; font: inherit; cursor: pointer; }
 .folk-site[data-design="saathum-reference-v5"] .mk-qchip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 2px solid var(--grand-teal); background: #e6f1f0; color: var(--grand-teal); font: 900 14px Nunito, sans-serif; cursor: pointer; }
 .folk-site[data-design="saathum-reference-v5"] .mk-two-inner--one { grid-template-columns: 1fr; }
-.folk-site[data-design="saathum-reference-v5"] .mk-loading { padding: 30px 0; text-align: center; font: 800 17px Nunito, sans-serif; color: #6b4a2b; }
+/* [MKT-SSR-1] Placeholder cards while the island fetches (server fetch failed). Same
+   grid and card frame as the real ones, roughly the real height, so nothing jumps. */
+.folk-site[data-design="saathum-reference-v5"] .mk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel, .folk-site[data-design="saathum-reference-v5"] .mk-skel:hover { transform: none; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-art { aspect-ratio: 4 / 3; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 22px; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-art,
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-line,
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-box,
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-btn {
+  display: block; border-radius: 10px;
+  background: linear-gradient(90deg, #f3e6cf 0%, #fbf3e3 50%, #f3e6cf 100%) 0 0 / 200% 100%;
+  animation: mk-skel-sheen 1.4s ease-in-out infinite;
+}
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-art { border-radius: 12px 12px 0 0; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-line { height: 14px; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-line--title { height: 26px; width: 70%; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-line--short { width: 40%; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-box { height: 64px; }
+.folk-site[data-design="saathum-reference-v5"] .mk-skel-btn { height: 46px; margin-top: 18px; }
+@keyframes mk-skel-sheen { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .folk-site[data-design="saathum-reference-v5"] .mk-skel-art,
+  .folk-site[data-design="saathum-reference-v5"] .mk-skel-line,
+  .folk-site[data-design="saathum-reference-v5"] .mk-skel-box,
+  .folk-site[data-design="saathum-reference-v5"] .mk-skel-btn { animation: none; }
+}
 .folk-site[data-design="saathum-reference-v5"] .mk-all .bn-more-btn { border: 0; cursor: pointer; font-family: Nunito, sans-serif; }
 .folk-site[data-design="saathum-reference-v5"] .mk-retry { border: 0; cursor: pointer; }
 .folk-site[data-design="saathum-reference-v5"] .mk-search-btn:focus-visible, .folk-site[data-design="saathum-reference-v5"] .mk-type:focus-visible, .folk-site[data-design="saathum-reference-v5"] .mk-when button:focus-visible, .folk-site[data-design="saathum-reference-v5"] .mk-tab:focus-visible, .folk-site[data-design="saathum-reference-v5"] .mk-deity:focus-visible, .folk-site[data-design="saathum-reference-v5"] .mk-qchip:focus-visible { outline: 3px solid #F6B93B; outline-offset: 2px; }

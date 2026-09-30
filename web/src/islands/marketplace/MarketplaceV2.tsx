@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Card } from '../../lib/types';
-import { getExplore, getLiveNow } from '../../lib/apiClient';
+import { loadMarketplaceCards } from '../../lib/marketplaceCards';
 import { capture, captureException } from '../../lib/analytics';
 import { publicImage } from '../../lib/config';
 import { EVENT_TYPE_COPY, type EventType } from '../../lib/eventTypes';
@@ -44,6 +44,21 @@ interface Props {
   deities: DeityLink[];
   /** Astro-rendered intention band (named slot). */
   intentions?: ReactNode;
+  /**
+   * [MKT-SSR-1] Raw cards the server already fetched, so the grid is in the HTML
+   * and the visitor never waits on the island + a second round trip. Absent when
+   * the server fetch failed or timed out — the island then fetches as before.
+   */
+  initialCards?: Card[];
+  /** [MKT-SSR-1] The server's clock at render. Seeds `now` so the countdowns the
+   *  server printed hydrate identically; the 1 s ticker takes over after mount. */
+  serverNow?: number;
+  /** [MKT-SSR-1] How long the server fetch took (ms), for marketplace_loaded. */
+  serverMs?: number;
+  /** [MKT-SSR-1] The request's `?query`, so the server renders the same filtered view. */
+  initialSearch?: string;
+  /** [MKT-SSR-1] Request origin, so share links match on server and client. */
+  origin?: string;
 }
 
 // ---------------------------------------------------------------- filters
@@ -280,10 +295,9 @@ function readSnapshot(): Card[] | null {
 function writeSnapshot(cards: Card[]): void {
   try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), cards })); } catch { /* storage full or blocked */ }
 }
-function itemsFrom(cards: Card[], guides: GuideLink[]): Item[] {
+function itemsFrom(cards: Card[], guides: GuideLink[], t: number = Date.now()): Item[] {
   const out: Item[] = [];
   const seen = new Set<string>();
-  const t = Date.now();
   for (const card of cards) {
     const it = toItem(card, guides, t);
     if (!it || seen.has(it.id)) continue;
@@ -296,17 +310,20 @@ function itemsFrom(cards: Card[], guides: GuideLink[]): Item[] {
 // ---------------------------------------------------------------- component
 type Status = 'loading' | 'ready' | 'error';
 
-export default function MarketplaceV2({ guides, deities, intentions }: Props) {
-  const [filters, setFilters] = useState<Filters>(EMPTY);
-  const [items, setItems] = useState<Item[]>([]);
-  const [status, setStatus] = useState<Status>('loading');
+export default function MarketplaceV2({ guides, deities, intentions, initialCards, serverNow, serverMs, initialSearch, origin: originProp }: Props) {
+  // [MKT-SSR-1] Every initial value below is computed from props only (never from
+  // window or the client clock), so the first client render matches the server
+  // HTML exactly and hydration keeps the cards on screen.
+  const [filters, setFilters] = useState<Filters>(() => readFilters(initialSearch ?? ''));
+  const [items, setItems] = useState<Item[]>(() => (initialCards ? itemsFrom(initialCards, guides, serverNow) : []));
+  const [status, setStatus] = useState<Status>(() => (initialCards ? 'ready' : 'loading'));
   const [shown, setShown] = useState(PAGE);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow ?? Date.now());
   const [mounted, setMounted] = useState(false);
   const [reload, setReload] = useState(0);
   const allRef = useRef<HTMLElement | null>(null);
   const didInitialScroll = useRef(false);
-  const origin = typeof window !== 'undefined' ? window.location.origin : BRAND.webOrigin;
+  const origin = originProp ?? (typeof window !== 'undefined' ? window.location.origin : BRAND.webOrigin);
 
   // Seed from the URL once.
   useEffect(() => {
@@ -319,6 +336,30 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
   // Load listings: /api/explore (≤ 3 × 30) + /api/explore/live-now.
   // [MKT-SPEED-1] Paint the last snapshot first (if any), then revalidate.
   useEffect(() => {
+    // [MKT-SSR-1] The server already delivered the cards: nothing to fetch on the
+    // first run. Refresh the snapshot (for any later client-only fallback) and
+    // report the load. "Try again" (reload > 0) still fetches below.
+    if (initialCards && reload === 0) {
+      writeSnapshot(initialCards);
+      // The HTML may be up to a minute old (edge cache): re-derive against the
+      // device clock so anything that ended in the meantime drops out.
+      const fresh = itemsFrom(initialCards, guides);
+      setItems(fresh);
+      setNow(Date.now());
+      const f = readFilters(window.location.search);
+      capture('marketplace_loaded', {
+        count: fresh.length,
+        live_count: fresh.filter((i) => i.liveNow).length,
+        ms: 0,
+        server_ms: serverMs ?? null,
+        source: 'ssr',
+        from_snapshot: false,
+        q: f.q || null,
+        type: f.type || null,
+      });
+      if (f.q) capture('marketplace_search', { q: f.q, source: 'url' });
+      return;
+    }
     const ctrl = new AbortController();
     const t0 = performance.now();
     const snap = readSnapshot();
@@ -332,21 +373,9 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
       capture('cache_event', { store: 'marketplace_cards', result: snap ? 'stale' : 'miss' });
     }
     (async () => {
-      const liveP = getLiveNow(ctrl.signal).catch((err) => {
-        if (!ctrl.signal.aborted) captureException(err, { surface: 'marketplace', endpoint: '/api/explore/live-now' });
-        return { listings: [] as Card[] };
-      });
       try {
-        const cards: Card[] = [];
-        let cursor: string | undefined;
-        for (let page = 0; page < 3; page++) {
-          const res = await getExplore({ limit: 30, cursor }, ctrl.signal);
-          cards.push(...(res.listings ?? []));
-          cursor = (res as { cursor?: string | null }).cursor ?? undefined;
-          if (!cursor) break;
-        }
-        const live = await liveP;
-        cards.push(...(live.listings ?? []));
+        const cards = await loadMarketplaceCards(ctrl.signal,
+          (err) => captureException(err, { surface: 'marketplace', endpoint: '/api/explore/live-now' }));
         const collected = itemsFrom(cards, guides);
         setItems(collected);
         setStatus('ready');
@@ -356,6 +385,7 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
           count: collected.length,
           live_count: collected.filter((i) => i.liveNow).length,
           ms: Math.round(performance.now() - t0),
+          source: 'client',
           from_snapshot: !!(fromSnap && fromSnap.length),
           q: f.q || null,
           type: f.type || null,
@@ -614,7 +644,27 @@ export default function MarketplaceV2({ guides, deities, intentions }: Props) {
         <div className="bn-inner">
           <div className="bn-head"><h2 id="mk-all-title"><span aria-hidden="true">✽</span> {searching ? 'Your results' : 'Upcoming events'}</h2><p>Soonest first. Use the filters to narrow it down.</p></div>
 
-          {status === 'loading' && <p className="mk-loading" role="status">Loading events…</p>}
+          {/* [MKT-SSR-1] Only reached when the server could not deliver the cards.
+              Card-sized placeholders hold the space so the section is visibly
+              there and nothing below jumps when the real cards arrive. */}
+          {status === 'loading' && (
+            <div className="bn-grid mk-grid mk-skel-grid" role="status" aria-live="polite">
+              <span className="mk-sr">Loading events…</span>
+              {[0, 1, 2].map((n) => (
+                <div key={n} className="bn-card mk-skel" aria-hidden="true">
+                  <div className="mk-skel-art" />
+                  <div className="mk-skel-body">
+                    <i className="mk-skel-line mk-skel-line--title" />
+                    <i className="mk-skel-line mk-skel-line--short" />
+                    <i className="mk-skel-line" />
+                    <i className="mk-skel-line" />
+                    <i className="mk-skel-box" />
+                    <i className="mk-skel-btn" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {ready && items.length > 0 && (
             <div className="mk-toolbar" role="region" aria-label="Filter events">
