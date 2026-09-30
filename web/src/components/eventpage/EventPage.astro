@@ -155,6 +155,13 @@ const social = socialProof(attrs, {
   ratingCount: listing.rating_count ?? 0,
 });
 const price = listing.effective_price ?? listing.price ?? null;
+// [SAATHUM-FREEVID-WEB-1 2026-10-01] FREE event: anyone signed in with an email can watch
+// the video (live or replay) — no booking, no checkout, no WhatsApp step. The worker sends
+// `free_watch` on the listing; absent = paid, so an older worker changes nothing here.
+const freeWatch = Boolean(listing.free_watch);
+// The marker tells the sign-in page to come straight back (see lib/authRedirect.ts).
+const freeSignInHref = `/sign-in?redirect_url=${encodeURIComponent(`/book/${listing.id}?freewatch=1`)}`;
+const freeWatchable = freeWatch && scheduleState !== 'cancelled' && scheduleState !== 'expired';
 
 const origin = Astro.url.origin;
 const canonicalHref = listingPath({ id: listing.id, handle: listing.creator?.handle ?? null, slug: listing.slug ?? null });
@@ -269,7 +276,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             island renders nothing on the server, so it has zero size and the
             IntersectionObserver behind client:visible never fired: the overlay
             and the paid-buyer player never mounted for anyone. */}
-        <LiveOverlay client:load listingId={listing.id} checkoutHref={checkoutHref} />
+        <LiveOverlay client:load listingId={listing.id} checkoutHref={checkoutHref} freeWatch={freeWatch} />
       </div>
       {showThumbs && (
         <div class="ep-thumbs">
@@ -325,7 +332,9 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
 
         <div class="ep-col-cta">
           <div class="ep-price">
-            {price != null ? (
+            {freeWatch ? (
+              <div><small>Open to all</small><b>Free</b></div>
+            ) : price != null ? (
               <div><small>Starting from</small><b>₹{price.toLocaleString('en-IN')}</b></div>
             ) : <div />}
             <div class="ep-icons">
@@ -335,7 +344,9 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
               <a class="ep-ib ep-ib--wa" href={waHref()} target="_blank" rel="noopener" title="Share" aria-label="Share on WhatsApp" data-ep-action="whatsapp" data-ep-listing-id={listing.id}>✆</a>
             </div>
           </div>
-          {bookable ? (
+          {freeWatchable ? (
+            <a class="ep-btn ep-btn--book" href={freeSignInHref} data-ep-action="watch-free" data-ep-listing-id={listing.id}>Watch free →</a>
+          ) : bookable && !freeWatch ? (
             <a class="ep-btn ep-btn--book" href={checkoutHref} data-ep-action="book" data-ep-listing-id={listing.id}>{copy.cta} →</a>
           ) : (
             <span class="ep-btn ep-btn--book" aria-disabled="true">Booking closed</span>
@@ -343,9 +354,15 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
           <a class="ep-btn ep-btn--ghost" href={readMoreHref} data-ep-action="benefits" data-ep-listing-id={listing.id}>{copy.readMore}</a>
           <div class="ep-fine">{copy.footer(performedByRaw, refundWindowText)}</div>
           <div class="ep-trust">
-            <div><span>🔒</span>UPI payment</div>
-            {prasadCourier && <div><span>📦</span>Prasad ships same day</div>}
-            <div><span>🧾</span>PDF receipt</div>
+            {freeWatch ? (
+              <div><span>🔒</span>Free · sign in with your email</div>
+            ) : (
+              <>
+                <div><span>🔒</span>UPI payment</div>
+                {prasadCourier && <div><span>📦</span>Prasad ships same day</div>}
+                <div><span>🧾</span>PDF receipt</div>
+              </>
+            )}
           </div>
         </div>
       </div>

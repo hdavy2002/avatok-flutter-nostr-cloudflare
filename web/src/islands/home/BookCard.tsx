@@ -48,6 +48,8 @@ export interface Item {
   ratingCount: number;
   booked: number;
   price: number | null;
+  /** [SAATHUM-FREEVID-WEB-1] Free event: anyone signed in can watch — no booking, no price. */
+  freeWatch?: boolean;
   prasad: boolean;
   /** [SAATHUM-CHECKOUT §Owner decisions 1] renamed from "7-day replay". */
   videoDownload: boolean;
@@ -129,7 +131,10 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
   // /book/<id> event page (not the old /l/<id> listing detail) — that page is
   // the marketing surface now. "Book now" goes one step further, to checkout.
   const href = payAndJoinPath(c.id);
-  const bookHref = href + '/checkout';
+  // [SAATHUM-FREEVID-WEB-1] A free event has no checkout (the server refuses one):
+  // its "Watch free" button opens the event page, where the sign-in + player live.
+  const freeWatch = Boolean(card.free_watch);
+  const bookHref = freeWatch ? href : href + '/checkout';
   const rawPoster = c.poster ?? c.aiPoster?.url ?? null;
   const { image, srcSet } = rawPoster
     ? listingImage(rawPoster)
@@ -163,7 +168,8 @@ export function toItem(card: Card, guides: GuideLink[], now: number): Item | nul
     ratingAvg: sp.rating,
     ratingCount: sp.reviews,
     booked: sp.booked,
-    price: c.price,
+    price: freeWatch ? 0 : c.price,
+    freeWatch,
     // Saa Thum couriers prasad (incl. international) by default; a listing can opt out via attrs.
     prasad: attrBool(attrs, ['prasad_courier', 'prasad_delivery', 'prasad'], true),
     // [SAATHUM-CHECKOUT §Data] video_download replaces replay; either legacy
@@ -209,7 +215,7 @@ function waHref(it: Item, origin: string): string {
   // [WEB-WA-SHARE-2] Readable pitch in the message body — see lib/shareText.ts.
   return whatsappShareHref({
     title: it.title, url: `${origin}${it.href}`, startsAt: it.startsAt, place: it.location,
-    price: it.price, ritual: copyFor({ event_type: it.eventType }).ritual, personalSankalp: !!it.personalSankalp,
+    price: it.price, free: !!it.freeWatch, ritual: copyFor({ event_type: it.eventType }).ritual, personalSankalp: !!it.personalSankalp,
   });
 }
 
@@ -401,7 +407,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track(it.isLiveStream ? 'book_live' : 'book')}>{it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={() => track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book')}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">

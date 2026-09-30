@@ -23,7 +23,7 @@ import { Label } from '../../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { toast } from '../../components/ui/sonner';
 import {
-  authedBlob, authedRequest, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtAddressOneLine, fmtDuration,
+  authedBlob, authedRequest, eventCrop, trackDashboardPlay, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtAddressOneLine, fmtDuration,
   fmtIstDateTime, listingImage, putSaathumCheckoutAddress, Shimmer, type EventItem, type EventsResponse,
   type SaathumAddress, type SaathumCheckoutSummary,
 } from '../../components/dash2/shared';
@@ -348,6 +348,8 @@ function LiveSpotlight({
               videoId={vid}
               title={item.listing.title}
               poster={img}
+              crop={eventCrop(item)}
+              onPlay={() => trackDashboardPlay(item)}
               className="shadow-[var(--dash-shadow-lg,none)]"
               onError={(code) => capture('dash2_replay_error', { event_id: item.listing.id, code, surface: 'live' })}
             />
@@ -449,6 +451,8 @@ function UpcomingCard({
                 videoId={vid}
                 title={item.listing.title}
                 poster={img}
+                crop={eventCrop(item)}
+                onPlay={() => trackDashboardPlay(item)}
                 onError={(code) => capture('dash2_replay_error', { event_id: item.listing.id, code, surface: 'upcoming' })}
               />
             )}

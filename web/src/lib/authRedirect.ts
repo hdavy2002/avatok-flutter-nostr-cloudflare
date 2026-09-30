@@ -53,3 +53,33 @@ export function signInUrlForHere(): string {
   if (typeof location === 'undefined') return '/sign-in';
   return `/sign-in?redirect_url=${encodeURIComponent(location.pathname + location.search)}`;
 }
+
+// [SAATHUM-FREEVID-WEB-1 2026-10-01] FREE EVENTS. Owner decision: a free event is
+// watchable by anyone signed in with an email — NO WhatsApp verification (that stays
+// for paid events). Every email/Google sign-in normally ends at the phone/WhatsApp
+// gate (`/sign-up?finish=1`, see finishUrl in islands/auth/passwordless.ts). A visitor
+// who starts sign-in from a free event's "Watch free" button carries this marker in the
+// return path, and ONLY then does the sign-in page skip that hop and go straight back.
+// The marker is a routing hint, not a permission: the server still decides who may
+// watch (free: signed in; paid: booking + verified WhatsApp), and account bootstrap
+// still refuses an unverified phone wherever it is called.
+export const FREE_WATCH_PARAM = 'freewatch';
+
+/** Sign-in URL for a free event page: returns here, and skips the WhatsApp gate. */
+export function signInUrlForFreeWatch(): string {
+  if (typeof location === 'undefined') return '/sign-in';
+  const q = new URLSearchParams(location.search);
+  q.set(FREE_WATCH_PARAM, '1');
+  const back = `${location.pathname}?${q.toString()}`;
+  return `/sign-in?redirect_url=${encodeURIComponent(back)}`;
+}
+
+/** True when the post-login target is a free-event page (an /book/<id> path with the marker). */
+export function isFreeWatchTarget(target: string): boolean {
+  try {
+    const u = new URL(target, typeof location !== 'undefined' ? location.origin : BRAND.webOrigin);
+    return /^\/book\/[^/]+\/?$/.test(u.pathname) && u.searchParams.get(FREE_WATCH_PARAM) === '1';
+  } catch {
+    return false;
+  }
+}

@@ -86,6 +86,17 @@
 .d2-player:fullscreen .d2-player-frame { width: 100%; max-height: 100vh; }
 .d2-player .d2-player-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
+/* [SAATHUM-FREEVID-WEB-1 2026-10-01] Cropped frames keep the crop's own aspect ratio in
+ * fullscreen / pseudo-fullscreen (width:100% + max-height alone would stretch the picture). */
+.d2-player:fullscreen .d2-player-frame--cropped {
+  height: auto; max-height: 100vh; aspect-ratio: var(--d2-crop-ar, 1.7778);
+  width: min(100vw, calc(100vh * var(--d2-crop-ar, 1.7778)));
+}
+.d2-player-pseudo-fs .d2-player-frame--cropped {
+  height: auto; max-height: 100dvh; aspect-ratio: var(--d2-crop-ar, 1.7778);
+  width: min(100vw, calc(100dvh * var(--d2-crop-ar, 1.7778)));
+}
+
 .d2-player input[type='range'] { accent-color: hsl(var(--primary, 3 69% 46%)); }
 
 @media (prefers-reduced-motion: reduce) {

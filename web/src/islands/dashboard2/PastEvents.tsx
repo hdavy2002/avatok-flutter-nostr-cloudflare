@@ -15,7 +15,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
 import {
-  authedRequest, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtDuration, fmtIstDate, fmtIstDateTime,
+  authedRequest, eventCrop, trackDashboardPlay, EmptyState, ErrorState, errorMessage, fetchMyCheckoutsSafe, fmtDuration, fmtIstDate, fmtIstDateTime,
   listingImage, Shimmer, useIsPhone, youtubeThumb, type EventItem, type EventsResponse, type SaathumCheckoutSummary,
 } from '../../components/dash2/shared';
 import { YouTubeGuardedPlayer } from '../../components/dash2/YouTubeGuardedPlayer';
@@ -121,6 +121,8 @@ function PlayerBody({ item, onError }: { item: EventItem; onError: (code: number
         title={item.listing.title}
         poster={item.listing.image_url ? listingImage(item.listing.image_url, 1280) : null}
         autoPlay
+        crop={eventCrop(item)}
+        onPlay={() => trackDashboardPlay(item)}
         onError={onError}
       />
       <p className="text-[13px] font-semibold text-muted-foreground">

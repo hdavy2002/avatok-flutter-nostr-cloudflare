@@ -39,7 +39,7 @@ import { useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, withTrace } from '../../lib/analytics';
-import { postLoginTarget } from '../../lib/authRedirect';
+import { postLoginTarget, isFreeWatchTarget } from '../../lib/authRedirect';
 import {
   Field, Button, Divider, GoogleButton, CodeStep,
   validateEmail, useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
@@ -70,6 +70,15 @@ function nextUrl(): string {
   return postLoginTarget();
 }
 
+/** [SAATHUM-FREEVID-WEB-1] Where a finished sign-in goes. Normally through the phone /
+ *  WhatsApp gate (finishUrl); a visitor who came from a FREE event's "Watch free" button
+ *  (marker in the return path, lib/authRedirect.ts) goes straight back — free events
+ *  need only an email sign-in. */
+function afterSignInUrl(): string {
+  const next = nextUrl();
+  return isFreeWatchTarget(next) ? next : finishUrl(next);
+}
+
 function Inner() {
   const {t:uiT}=useUiTranslation("web-auth");
 
@@ -90,7 +99,7 @@ function Inner() {
   // (Google keeps its own button below, unaffected by this choice).
   // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default; a pending
   // WhatsApp proof (needs_email hand-off) reopens on email.
-  const [method, setMethodState] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
+  const [method, setMethodState] = useState<'email' | 'whatsapp'>(() => (readWaProof() || isFreeWatchTarget(nextUrl()) ? 'email' : 'whatsapp'));
   const [waStage, setWaStage] = useState<'number' | 'code' | 'needs_email'>('number');
   const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
   const [waNational, setWaNational] = useState('');
@@ -190,7 +199,7 @@ function Inner() {
       // needs_email hand-off, attach the verified number now — the person is
       // never asked for a second WhatsApp code.
       await claimPendingWaProof();
-      location.href = finishUrl(nextUrl());
+      location.href = afterSignInUrl();
     } catch (err) {
       finishingRef.current = false;
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
@@ -227,7 +236,7 @@ function Inner() {
     setFormError(null);
     try {
       capture('login_method_chosen', { method: 'google', surface: 'sign_in' });
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(nextUrl())); // [WEB-PHONE-OTP-1]
+      await continueWithGoogle(signIn as unknown as PwlSignIn, afterSignInUrl()); // [WEB-PHONE-OTP-1]
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }
@@ -263,7 +272,7 @@ function Inner() {
       if (r.status === 'signed_in') {
         finishingRef.current = true;
         await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, r.ticket);
-        location.href = finishUrl(nextUrl());
+        location.href = afterSignInUrl();
         return;
       }
       // needs_email: a brand-new number. Keep the proof for after the email

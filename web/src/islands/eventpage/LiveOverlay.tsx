@@ -25,6 +25,15 @@
 // right overlay. /api/saathum/watch/:id is the entitled call — it is only
 // ever made when a Clerk token exists, and only its response can put a video
 // id in the DOM.
+//
+// [SAATHUM-FREEVID-WEB-1 2026-10-01] FREE events (listing.free_watch / live-state `free`):
+// anyone signed in with an email may watch — no booking, no checkout, no WhatsApp.
+//  - signed out: the overlay and the panel button say "Sign in to watch free" and go to
+//    the email sign-in, which returns here and skips the WhatsApp gate (signInUrlForFreeWatch).
+//  - signed in: the entitled watch call returns `playable` (live OR ended replay) and the
+//    player shows with the admin's crop.
+//  - the panel's "Watch free" button never starts checkout.
+// Paid events behave as before; the player just gets the crop too.
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { hasClerkSessionHint } from '../../lib/sessionHint';
@@ -36,7 +45,9 @@ import { hasClerkSessionHint } from '../../lib/sessionHint';
 const loadClerk = () => import('../../lib/clerk');
 const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
 import { ApiError } from '../../lib/apiClient';
-import { getLiveState, getWatch } from '../saathum-checkout/api';
+import { getLiveState, getWatch, postWatchViewOnce } from '../saathum-checkout/api';
+import { signInUrlForFreeWatch } from '../../lib/authRedirect';
+import { toCrop, type VideoCrop } from '../../components/dash2/crop';
 import { capture, captureException } from '../../lib/analytics';
 import { YouTubeGuardedPlayer } from '../../components/dash2/YouTubeGuardedPlayer';
 
@@ -44,20 +55,33 @@ type Phase =
   | { kind: 'hidden' }
   | { kind: 'live_overlay' }
   | { kind: 'ended_overlay'; buyer: boolean }
-  | { kind: 'player'; videoId: string; preview?: boolean };
+  | { kind: 'replay_overlay' } // free event, ended, video available to signed-in viewers
+  | { kind: 'player'; videoId: string; preview?: boolean; crop: VideoCrop | null };
 
-function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: string; checkoutHref: string; onNeedAuth: () => void }) {
+type Authed = 'unknown' | 'in' | 'out';
+
+function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { listingId: string; checkoutHref: string; freeWatch: boolean; onNeedAuth: () => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' });
+  const [isFree, setIsFree] = useState(freeWatch);
+  const [authed, setAuthed] = useState<Authed>('unknown');
+  const tokenRef = useRef<string | null>(null);
   const shown = useRef<string | null>(null);
   const playerStarted = useRef(false);
 
   useEffect(() => {
     const ctrl = new AbortController();
+    // Hint only (cookie, no Clerk load): lets the free-event button read "Sign in to watch free".
+    setAuthed(hasClerkSessionHint() ? 'in' : 'out');
     (async () => {
       let publicState: 'none' | 'live' | 'ended';
+      let free = freeWatch;
+      let replay = false;
       try {
         const ls = await getLiveState(listingId, ctrl.signal);
         publicState = ls.state;
+        free = free || Boolean(ls.free);
+        replay = Boolean(ls.replay);
+        setIsFree(free);
       } catch (err) {
         if (ctrl.signal.aborted) return;
         captureException(err, { surface: 'saathum_live_overlay', listing_id: listingId });
@@ -72,7 +96,10 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
       // [SAATHUM-LIVE-FAST-1 2026-09-29] Paint the public overlay IMMEDIATELY, then
       // upgrade to the player if the entitled read says so. Waiting for Clerk first
       // (up to 5s) left the page looking not-live for seconds.
-      if (publicState !== 'none') setPhase(publicState === 'live' ? { kind: 'live_overlay' } : { kind: 'ended_overlay', buyer: false });
+      const publicPhase = (): Phase => (publicState === 'live'
+        ? { kind: 'live_overlay' }
+        : free && replay ? { kind: 'replay_overlay' } : { kind: 'ended_overlay', buyer: false });
+      if (publicState !== 'none') setPhase(publicPhase());
 
       // Only ever call the entitled endpoint when a session token exists —
       // a signed-out visitor never triggers it.
@@ -87,12 +114,24 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
         token = await loadClerk().then((m) => m.getActiveTokenWaited(8000)).catch(() => null);
       }
       if (ctrl.signal.aborted) return;
+      tokenRef.current = token;
+      setAuthed(token ? 'in' : 'out');
       if (token) {
         try {
           const w = await getWatch(listingId, token, ctrl.signal, wantPreview);
           if (ctrl.signal.aborted) return;
+          // [SAATHUM-FREEVID-WEB-1] Free: the server says when the player may show (live or replay).
+          if (free || w.free) {
+            if (w.playable && w.youtube_video_id) {
+              setPhase({ kind: 'player', videoId: w.youtube_video_id, preview: !!w.preview, crop: toCrop(w.crop) });
+              if (w.preview) capture('saathum_live_admin_preview', { listing_id: listingId });
+              return;
+            }
+            if (publicState !== 'none') setPhase(publicPhase());
+            return;
+          }
           if (w.stream_state === 'live' && w.youtube_video_id) {
-            setPhase({ kind: 'player', videoId: w.youtube_video_id, preview: !!w.preview });
+            setPhase({ kind: 'player', videoId: w.youtube_video_id, preview: !!w.preview, crop: toCrop(w.crop) });
             if (w.preview) capture('saathum_live_admin_preview', { listing_id: listingId });
             return;
           }
@@ -111,14 +150,32 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
         }
       }
       if (publicState === 'none') { setPhase({ kind: 'hidden' }); return; } // preview refused
-      setPhase(publicState === 'live' ? { kind: 'live_overlay' } : { kind: 'ended_overlay', buyer: false });
+      setPhase(publicPhase());
     })();
     return () => ctrl.abort();
   }, [listingId]);
 
+  // [SAATHUM-FREEVID-WEB-1] The panel's "Watch free" button (server-rendered, never checkout):
+  // signed out it reads "Sign in to watch free" and follows its href to the email sign-in;
+  // signed in it just brings the video into view instead of navigating away.
+  useEffect(() => {
+    if (!isFree) return;
+    const btn = document.querySelector<HTMLAnchorElement>('a[data-ep-action="watch-free"]');
+    if (!btn) return;
+    btn.textContent = authed === 'out' ? 'Sign in to watch free →' : 'Watch free →';
+    const onClick = (e: MouseEvent) => {
+      capture('saathum_watch_free_click', { listing_id: listingId, signed_in: authed !== 'out' });
+      if (authed === 'out') return; // href = /sign-in?redirect_url=…&freewatch=1
+      e.preventDefault();
+      document.querySelector('.ep-art')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    btn.addEventListener('click', onClick);
+    return () => btn.removeEventListener('click', onClick);
+  }, [isFree, authed, listingId]);
+
   useEffect(() => {
     if (phase.kind === 'hidden') return;
-    const key = phase.kind === 'player' ? 'live' : phase.kind === 'live_overlay' ? 'live' : 'ended';
+    const key = phase.kind === 'player' ? 'live' : phase.kind === 'live_overlay' ? 'live' : phase.kind === 'replay_overlay' ? 'replay' : 'ended';
     if (shown.current === key) return;
     shown.current = key;
     capture('saathum_live_overlay_shown', { listing_id: listingId, state: key });
@@ -138,7 +195,7 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
   // "Booking closed", reusing its exact classes/attrs (no new styles).
   useEffect(() => {
     if (phase.kind !== 'ended_overlay') return;
-    const btn = document.querySelector<HTMLAnchorElement>('a[data-ep-action="book"]');
+    const btn = document.querySelector<HTMLAnchorElement>('a[data-ep-action="book"], a[data-ep-action="watch-free"]');
     if (!btn) return;
     const span = document.createElement('span');
     span.className = btn.className;
@@ -153,6 +210,7 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
   useEffect(() => {
     // Also while the player is showing (admin preview, or a buyer booking for another family).
     if (phase.kind !== 'live_overlay' && phase.kind !== 'player') return;
+    if (isFree) return; // a free event has no booking to reopen
     const closed = document.querySelector<HTMLElement>('span.ep-btn--book[aria-disabled="true"]');
     if (!closed) return;
     const a = document.createElement('a');
@@ -162,7 +220,7 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
     a.setAttribute('data-ep-listing-id', listingId);
     a.textContent = 'Book & watch live →';
     closed.replaceWith(a);
-  }, [phase, checkoutHref, listingId]);
+  }, [phase, checkoutHref, listingId, isFree]);
 
   if (phase.kind === 'hidden') return null;
 
@@ -179,7 +237,16 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
           title="Live stream"
           autoPlay
           className="ep-live-guarded"
-          onPlay={() => capture('saathum_live_player_play', { listing_id: listingId, preview: !!phase.preview })}
+          crop={phase.crop}
+          onPlay={() => {
+            capture('saathum_live_player_play', { listing_id: listingId, preview: !!phase.preview });
+            // [SAATHUM-FREEVID-WEB-1] First Play only (the player reports it once): one
+            // PostHog event + one server view count per listing per page load. An admin's
+            // preview is neither tracked nor counted.
+            if (phase.preview) return;
+            capture('saathum_video_play', { listing_id: listingId, free: isFree, surface: 'event_page' });
+            if (tokenRef.current) postWatchViewOnce(listingId, tokenRef.current);
+          }}
           onError={(code) => capture('saathum_live_player_error', { listing_id: listingId, code })}
         />
         {phase.preview && <span className="ep-pill ep-pill--soft ep-live-preview-tag">Admin preview</span>}
@@ -187,17 +254,25 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
     );
   }
 
-  if (phase.kind === 'live_overlay') {
+  if (phase.kind === 'live_overlay' || phase.kind === 'replay_overlay') {
+    const live = phase.kind === 'live_overlay';
+    // [SAATHUM-FREEVID-WEB-1] Free event: only a signed-out visitor gets a button (to the
+    // email sign-in); a signed-in one is waiting for the player, so no button flashes.
+    const showCta = !isFree || authed === 'out';
     return (
       <div className="ep-live-cover ep-live-cover--dim">
-        <span className="ep-pill ep-pill--live"><i />LIVE NOW</span>
-        <a
-          className="ep-btn ep-btn--book ep-live-cta"
-          href={checkoutHref}
-          onClick={() => capture('saathum_live_overlay_book_click', { listing_id: listingId })}
-        >
-          Book to watch →
-        </a>
+        {live
+          ? <span className="ep-pill ep-pill--live"><i />LIVE NOW</span>
+          : <span className="ep-pill ep-pill--soft">Replay available</span>}
+        {showCta && (
+          <a
+            className="ep-btn ep-btn--book ep-live-cta"
+            href={isFree ? signInUrlForFreeWatch() : checkoutHref}
+            onClick={() => capture('saathum_live_overlay_book_click', { listing_id: listingId, free: isFree })}
+          >
+            {isFree ? 'Sign in to watch free →' : 'Book to watch →'}
+          </a>
+        )}
       </div>
     );
   }
@@ -217,7 +292,7 @@ function LiveOverlayInner({ listingId, checkoutHref, onNeedAuth }: { listingId: 
   );
 }
 
-export default function LiveOverlay({ listingId, checkoutHref }: { listingId: string; checkoutHref: string }) {
+export default function LiveOverlay({ listingId, checkoutHref, freeWatch = false }: { listingId: string; checkoutHref: string; freeWatch?: boolean }) {
   const [withClerk, setWithClerk] = useState(false);
   return (
     <IslandBoundary island="event-page-live-overlay">
@@ -226,7 +301,7 @@ export default function LiveOverlay({ listingId, checkoutHref }: { listingId: st
           <LazyClerkIsland>{null}</LazyClerkIsland>
         </Suspense>
       )}
-      <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} onNeedAuth={() => setWithClerk(true)} />
+      <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} freeWatch={freeWatch} onNeedAuth={() => setWithClerk(true)} />
     </IslandBoundary>
   );
 }

@@ -9,7 +9,9 @@ import { AlertTriangle, RotateCw } from 'lucide-react';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { request, ApiError, type RequestOptions } from '../../lib/apiClient';
 import { cfImage, API_BASE } from '../../lib/config';
-import { captureException } from '../../lib/analytics';
+import { capture, captureException } from '../../lib/analytics';
+import { postWatchViewOnce } from '../../islands/saathum-checkout/api';
+import { toCrop, type VideoCrop } from './crop';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import './dash2.css';
@@ -19,6 +21,8 @@ import { BRAND } from '../../lib/brand';
 export interface Listing {
   id: string;
   title: string;
+  /** [SAATHUM-FREEVID-WEB-1] Free event (optional — absent = paid). */
+  free_watch?: boolean | 0 | 1;
   description?: string | null;
   category: string;
   category_label?: string | null;
@@ -48,7 +52,25 @@ export interface EventItem {
   sankalp?: { name?: string; gotra?: string; wish?: string; family?: string[] };
   replay: { available: boolean; until?: number };
   youtube_video_id?: string;
+  /** [SAATHUM-FREEVID-WEB-1] The admin's crop box for the YouTube video (null/absent = whole frame). */
+  youtube_crop?: VideoCrop | null;
 }
+
+/** [SAATHUM-FREEVID-WEB-1] The crop to hand YouTubeGuardedPlayer for a dashboard event. */
+export function eventCrop(item: EventItem): VideoCrop | null {
+  return toCrop(item.youtube_crop);
+}
+
+/** [SAATHUM-FREEVID-WEB-1] First Play of a dashboard player: PostHog `saathum_video_play`
+ *  plus one server view count per listing per page load. Never throws into playback. */
+export function trackDashboardPlay(item: EventItem): void {
+  const listingId = item.listing.id;
+  capture('saathum_video_play', { listing_id: listingId, free: Boolean(item.listing.free_watch), surface: 'dashboard' });
+  void getActiveTokenWaited()
+    .then((token) => { if (token) postWatchViewOnce(listingId, token); })
+    .catch((err) => captureException(err, { surface: 'dashboard_watch_view', listing_id: listingId }));
+}
+
 export interface EventsResponse { now: number; items: EventItem[] }
 
 // ─────────────────────────── Saa Thum checkout (SAATHUM-DASH-DOWNLOAD) ───────────────────────────

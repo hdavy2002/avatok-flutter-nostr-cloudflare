@@ -221,7 +221,7 @@ function matchesWhen(it: Item, when: string, now: number): boolean {
 
 function matchesPrice(it: Item, price: string): boolean {
   if (!price) return true;
-  const p = it.price;
+  const p = it.freeWatch ? 0 : it.price;
   if (p == null) return false;
   if (price === 'free') return p === 0;
   if (price === 'under200') return p < 200;

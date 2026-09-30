@@ -200,5 +200,26 @@
 .d2-player:fullscreen .d2-player-frame { width: 100%; height: auto; aspect-ratio: 16/9; max-height: 100vh; }
 .ep-art .d2-player img { position: static; }
 
+/* [SAATHUM-FREEVID-WEB-1 2026-10-01] CROPPED video. The admin's crop box gives the frame
+ * its own aspect ratio (inline aspect-ratio + --d2-crop-ar). The hero is a fixed-shape box,
+ * so the cropped picture is fitted INSIDE it (contain), centred on black — never stretched
+ * to fill. cqw/cqh are the hero cover's own width/height (it is a size container). */
+.ep-live-cover--player { container-type: size; }
+.ep-live-cover--player .ep-live-guarded { display: flex; align-items: center; justify-content: center; background: #000; }
+.ep-live-cover--player .d2-player-frame--cropped {
+  flex: 0 0 auto; height: auto; max-width: 100%; max-height: 100%;
+  width: min(100cqw, calc(100cqh * var(--d2-crop-ar, 1.7778)));
+  aspect-ratio: var(--d2-crop-ar, 1.7778);
+}
+/* Fullscreen / pseudo-fullscreen: fit the crop's aspect into the screen, centred on black. */
+.d2-player:fullscreen .d2-player-frame--cropped {
+  height: auto; max-height: 100vh; aspect-ratio: var(--d2-crop-ar, 1.7778);
+  width: min(100vw, calc(100vh * var(--d2-crop-ar, 1.7778)));
+}
+.d2-player-pseudo-fs .d2-player-frame--cropped {
+  height: auto; max-height: 100dvh; aspect-ratio: var(--d2-crop-ar, 1.7778);
+  width: min(100vw, calc(100dvh * var(--d2-crop-ar, 1.7778)));
+}
+
 /* [SAATHUM-LIVE-FAST-1] the overlay CTA is a button, not a full-width bar */
 .ep-live-cover .ep-btn.ep-live-cta { display: inline-flex; width: auto !important; flex: 0 0 auto; align-self: center; max-width: calc(100% - 32px); }
