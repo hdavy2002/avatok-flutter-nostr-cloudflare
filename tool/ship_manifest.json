@@ -8201,7 +8201,9 @@
       {
         "event": "saathum_video_play",
         "min_events": 1,
-        "note": "A cropped player plays on the web."
+        "note": "A cropped player plays on the web.",
+        "property": "listing_id",
+        "exists": true
       }
     ]
   },
@@ -8215,7 +8217,9 @@
       {
         "event": "saathum_video_view",
         "min_events": 1,
-        "note": "Server records a view when a signed-in viewer presses Play."
+        "note": "Server records a view when a signed-in viewer presses Play.",
+        "property": "listing_id",
+        "exists": true
       }
     ]
   },
@@ -8229,7 +8233,9 @@
       {
         "event": "admin2_video_crop_saved",
         "min_events": 1,
-        "note": "Admin saves a crop."
+        "note": "Admin saves a crop.",
+        "property": "listing_id",
+        "exists": true
       }
     ]
   },
@@ -8243,7 +8249,9 @@
       {
         "event": "saathum_video_play",
         "min_events": 1,
-        "note": "Viewer presses Play on a free or paid event."
+        "note": "Viewer presses Play on a free or paid event.",
+        "property": "listing_id",
+        "exists": true
       }
     ]
   },
@@ -8257,7 +8265,9 @@
       {
         "event": "$pageview",
         "min_events": 1,
-        "note": "Visual-only change; dashboard pages load."
+        "note": "Visual-only change; dashboard pages load.",
+        "property": "$current_url",
+        "exists": true
       }
     ]
   }
