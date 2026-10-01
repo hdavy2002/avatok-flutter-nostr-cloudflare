@@ -8998,5 +8998,19 @@
         "exists": true
       }
     ]
+  },
+  "AUMFE-GUIDE-BRAIN-2": {
+    "description": "[AUMFE-GUIDE-BRAIN-2 2026-10-01] Pandit ji chat SSE response carries CORS headers (browser fetch failed without them).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "pandit_chat_turn",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }

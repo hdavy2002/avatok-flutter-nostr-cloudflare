@@ -4,7 +4,7 @@
 // Profile, consent and memories are edited through the EXISTING /api/me/astro-profile, /api/me/memory-consent and
 // /api/me/memories routes (routes/agent_memory.ts); nothing is duplicated here.
 import type { Env } from "../types";
-import { json } from "../util";
+import { CORS, json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
@@ -92,6 +92,8 @@ function sseResponse(env: Env, uid: string, conversationId: string | null, text:
     finally { await chain; await writer.close().catch(() => undefined); } // client already gone: nothing left to tell it
   })();
   return new Response(readable, {
-    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },
+    // [AUMFE-GUIDE-BRAIN-2] A streamed Response does not go through util.json(), so it needs CORS itself or the browser
+    // reports "Failed to fetch" on every chat turn.
+    headers: { ...CORS, "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },
   });
 }
