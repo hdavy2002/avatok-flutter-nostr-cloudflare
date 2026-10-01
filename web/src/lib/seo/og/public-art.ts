@@ -3,6 +3,8 @@ import { BRAND } from '../../brand';
 
 const ORIGIN: string = BRAND.webOrigin;
 const BLOSSOM_ORIGIN: string = BRAND.mediaOrigin;
+// [SAATHUM-DOMAIN-LEGACY-1] stored image URLs from before a domain switch.
+const LEGACY_MEDIA_ORIGINS: readonly string[] = BRAND.legacyMediaHosts.map((h) => `https://${h}`);
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 2500;
 const MAX_REDIRECTS = 2;
@@ -30,7 +32,7 @@ export function approvedArtUrl(value: string): URL | null {
   try {
     if (!value || value.length > 2048 || /[\\\u0000-\u0020]/.test(value)) return null;
     const url = new URL(value, ORIGIN);
-    if (![ORIGIN, BLOSSOM_ORIGIN].includes(url.origin) || url.username || url.password || url.search || url.hash) return null;
+    if (![ORIGIN, BLOSSOM_ORIGIN, ...LEGACY_MEDIA_ORIGINS].includes(url.origin) || url.username || url.password || url.search || url.hash) return null;
     const path = unwrapTransform(url.pathname);
     if (!path) return null;
     if (/%|\/\.|(?:^|\/)(?:api|private|private-read|verification)(?:\/|$)/i.test(path)) return null;

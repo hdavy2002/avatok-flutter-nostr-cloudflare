@@ -42,6 +42,7 @@ import { postAvaMessage } from "./ava_thread"; // I1 disclosure notice — same 
 // file (ava_ambient uses postAvaReaction below) is benign: both sides only
 // touch each other's exports at request time, never during module init.
 import { ambientScan } from "../lib/ava_ambient";
+import { BRAND } from "../lib/brand"; // [SAATHUM-DOMAIN-LEGACY-1]
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -2640,7 +2641,8 @@ function isOwnPublicUrl(env: Env, u: string): boolean {
     const url = new URL(u);
     if (url.protocol !== "https:") return false;
     const base = new URL((env as any).BLOSSOM_BASE_URL || "https://blossom.avatok.ai");
-    return url.host === base.host;
+    // [SAATHUM-DOMAIN-LEGACY-1] a stored avatar URL may carry a legacy media host.
+    return url.host === base.host || BRAND.legacyMediaHosts.includes(url.host.toLowerCase());
   } catch {
     return false;
   }

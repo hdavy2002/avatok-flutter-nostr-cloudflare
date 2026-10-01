@@ -8641,5 +8641,13 @@
         "note": "Owner saved a product (with the New arrival / Bestseller flags). Absent while the shop admin is in use means product saving is failing."
       }
     ]
+  },
+  "SAATHUM-DOMAIN-LEGACY-1": {
+      "description": "[SAATHUM-DOMAIN-LEGACY-1] brand.json legacyDomains (empty today): generator keeps api.<legacy> Worker routes, legacy media hosts accepted for stored URLs, web-deploy derives Clerk key/API base from brand.json.",
+      "shipped": "2026-10-01",
+      "two_sided": false,
+      "min_devices_on_build": 0,
+      "flags": [],
+      "no_telemetry": "Pure build/config plumbing with legacyDomains = [] — every generated file, route and host check is byte-identical or behaves identically to before (gen_brand --check passes on the unchanged wrangler.toml; the derived Clerk key reproduces pk_live_Y2xlcmsuc2FhdGh1bS5jb20k exactly). No new event, flag or response shape. Check: after the next web deploy, the sign-in page still loads Clerk."
   }
 }

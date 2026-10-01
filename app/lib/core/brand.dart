@@ -16,6 +16,10 @@ abstract final class Brand {
   static const String mediaOrigin = 'https://media.saathum.com';
   static const String authHost = 'clerk.saathum.com';
   static const String mailHost = 'mail.saathum.com';
+  /// Former domains. Their api./media. hosts stay attached forever.
+  static const List<String> legacyDomains = <String>[];
+  static const List<String> legacyMediaHosts = <String>[];
+  static const List<String> legacyApiHosts = <String>[];
   static const String supportEmail = 'support@saathum.com';
   static const String noreplyEmail = 'noreply@saathum.com';
   static const String helloEmail = 'hello@saathum.com';
@@ -25,4 +29,17 @@ abstract final class Brand {
   /// Absolute URL on the public website.
   static String url([String path = '/']) =>
       webOrigin + (path.startsWith('/') ? path : '/$path');
+
+  /// True for the brand domain and any subdomain of it.
+  static bool isBrandHost(String host) {
+    final h = host.toLowerCase();
+    return h == domain || h.endsWith('.$domain');
+  }
+
+  /// True for the brand domain, any legacy domain, and subdomains of either.
+  static bool isBrandOrLegacyHost(String host) {
+    final h = host.toLowerCase();
+    if (isBrandHost(h)) return true;
+    return legacyDomains.any((d) => h == d || h.endsWith('.$d'));
+  }
 }

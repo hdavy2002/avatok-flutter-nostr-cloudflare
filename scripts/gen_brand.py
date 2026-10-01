@@ -66,8 +66,21 @@ def dart(s: str) -> str:
     return "'" + s.replace("\\", "\\\\").replace("'", "\\'").replace("$", "\\$") + "'"
 
 
+def legacy_domains(b: dict) -> list:
+    return list(b.get("legacyDomains", []))
+
+
+def ts_list(items: list) -> str:
+    return "[" + ", ".join(js(i) for i in items) + "] as readonly string[]"
+
+
+def dart_list(items: list) -> str:
+    return "<String>[" + ", ".join(dart(i) for i in items) + "]"
+
+
 def render_ts(b: dict) -> str:
     h, e = b["hosts"], b["emails"]
+    legacy = legacy_domains(b)
     lines = ["/**"] + [f" * {l}" for l in HEADER.splitlines()] + [" */", ""]
     lines += [
         "export const BRAND = {",
@@ -92,6 +105,10 @@ def render_ts(b: dict) -> str:
         f"  authHost: {js(h['auth'])},",
         f"  authOrigin: {js('https://' + h['auth'])},",
         f"  mailHost: {js(h['mail'])},",
+        "  /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */",
+        f"  legacyDomains: {ts_list(legacy)},",
+        f"  legacyMediaHosts: {ts_list(['media.' + d for d in legacy])},",
+        f"  legacyApiHosts: {ts_list(['api.' + d for d in legacy])},",
         "  emails: {",
         f"    support: {js(e['support'])},",
         f"    noreply: {js(e['noreply'])},",
@@ -113,12 +130,20 @@ def render_ts(b: dict) -> str:
         "  return h === BRAND.domain || h.endsWith(`.${BRAND.domain}`);",
         "}",
         "",
+        "/** True for the brand domain, any legacy domain, and any subdomain of either. */",
+        "export function isBrandOrLegacyHost(host: string): boolean {",
+        "  const h = host.toLowerCase();",
+        "  if (isBrandHost(h)) return true;",
+        "  return BRAND.legacyDomains.some((d) => h === d || h.endsWith(`.${d}`));",
+        "}",
+        "",
     ]
     return "\n".join(lines)
 
 
 def render_dart(b: dict) -> str:
     h, e = b["hosts"], b["emails"]
+    legacy = legacy_domains(b)
     lines = [f"// {l}" for l in HEADER.splitlines()] + [""]
     lines += [
         "/// Public brand name and domain. See Specs/brand.json.",
@@ -136,6 +161,10 @@ def render_dart(b: dict) -> str:
         f"  static const String mediaOrigin = {dart('https://' + h['media'])};",
         f"  static const String authHost = {dart(h['auth'])};",
         f"  static const String mailHost = {dart(h['mail'])};",
+        "  /// Former domains. Their api./media. hosts stay attached forever.",
+        f"  static const List<String> legacyDomains = {dart_list(legacy)};",
+        f"  static const List<String> legacyMediaHosts = {dart_list(['media.' + d for d in legacy])};",
+        f"  static const List<String> legacyApiHosts = {dart_list(['api.' + d for d in legacy])};",
         f"  static const String supportEmail = {dart(e['support'])};",
         f"  static const String noreplyEmail = {dart(e['noreply'])};",
         f"  static const String helloEmail = {dart(e['hello'])};",
@@ -145,6 +174,19 @@ def render_dart(b: dict) -> str:
         "  /// Absolute URL on the public website.",
         "  static String url([String path = '/']) =>",
         "      webOrigin + (path.startsWith('/') ? path : '/$path');",
+        "",
+        "  /// True for the brand domain and any subdomain of it.",
+        "  static bool isBrandHost(String host) {",
+        "    final h = host.toLowerCase();",
+        "    return h == domain || h.endsWith('.$domain');",
+        "  }",
+        "",
+        "  /// True for the brand domain, any legacy domain, and subdomains of either.",
+        "  static bool isBrandOrLegacyHost(String host) {",
+        "    final h = host.toLowerCase();",
+        "    if (isBrandHost(h)) return true;",
+        "    return legacyDomains.any((d) => h == d || h.endsWith('.$d'));",
+        "  }",
         "}",
         "",
     ]
@@ -178,9 +220,28 @@ def sync_wrangler(text: str, b: dict) -> str:
     prod = setorigin(prod, "CLERK_JWKS_URL", "https://" + h["auth"])
     prod = setval(prod, "CLERK_ISSUER", "https://" + h["auth"])
     prod = setval(prod, "PLAY_PACKAGE_ID", b["playPackageId"])
-    # the brand's API route = the top-level `pattern = "..."` that is not an avatok.ai one
-    prod = re.sub(r'^(pattern\s*=\s*")(?![^"]*avatok\.ai")[^"]*(")',
-                  lambda mm: mm.group(1) + h["api"] + mm.group(2), prod, flags=re.M)
+    # [SAATHUM-DOMAIN-LEGACY-1] The brand's API routes = every non-avatok.ai
+    # `[[routes]] pattern = "..." custom_domain = true` block in the prod section:
+    # one for the current api host AND one api.<legacy> per legacy domain (those stay
+    # attached forever). The first such block is replaced by the full generated set,
+    # any further ones (previous generator runs) are dropped, so this is idempotent.
+    hosts = [h["api"]] + ["api." + d for d in legacy_domains(b)]
+    generated = "\n".join(
+        f'[[routes]]\npattern = "{x}"\ncustom_domain = true\n' for x in hosts)
+    route_re = re.compile(
+        r'\[\[routes\]\]\npattern = "(?![^"]*avatok\.ai")[^"]*"\ncustom_domain = true\n'
+        r'(?:\n(?=\[\[routes\]\]\npattern = "(?![^"]*avatok\.ai")))?')
+    seen = []
+
+    def route_sub(mm):
+        if seen:
+            return ""
+        seen.append(1)
+        return generated
+
+    prod = route_re.sub(route_sub, prod)
+    if not seen:
+        sys.exit("gen_brand: worker/wrangler.toml prod block has no brand [[routes]] block to rewrite")
     return prod + rest
 
 

@@ -46,7 +46,15 @@ export const ATTACH_MIME_OK =
 // Our own CDN/R2 public read host, both environments (wrangler.toml
 // BLOSSOM_BASE_URL) — an attachment descriptor pointing anywhere else is a
 // forged/foreign URL and must never be relayed as if we hosted it.
-const ATTACH_HOST_OK = new RegExp(`^(blossom(-staging)?\\.avatok\\.ai|${BRAND.mediaHost.replace(/\./g, "\\.")})$`, "i"); // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com = same bucket
+// [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com = same bucket.
+// [SAATHUM-DOMAIN-LEGACY-1] Legacy media hosts stay valid forever: an attachment
+// uploaded before a domain switch carries the old media host in its stored URL.
+const ATTACH_HOST_OK = new RegExp(
+  `^(blossom(-staging)?\\.avatok\\.ai|${[BRAND.mediaHost, ...BRAND.legacyMediaHosts]
+    .map((h) => h.replace(/\./g, "\\."))
+    .join("|")})$`,
+  "i",
+);
 
 export interface ChatAttachment { url: string; name: string; size: number; mime: string }
 

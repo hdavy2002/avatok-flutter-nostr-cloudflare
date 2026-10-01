@@ -25,6 +25,10 @@ export const BRAND = {
   authHost: "clerk.saathum.com",
   authOrigin: "https://clerk.saathum.com",
   mailHost: "mail.saathum.com",
+  /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */
+  legacyDomains: [] as readonly string[],
+  legacyMediaHosts: [] as readonly string[],
+  legacyApiHosts: [] as readonly string[],
   emails: {
     support: "support@saathum.com",
     noreply: "noreply@saathum.com",
@@ -44,4 +48,11 @@ export function brandUrl(path = '/'): string {
 export function isBrandHost(host: string): boolean {
   const h = host.toLowerCase();
   return h === BRAND.domain || h.endsWith(`.${BRAND.domain}`);
+}
+
+/** True for the brand domain, any legacy domain, and any subdomain of either. */
+export function isBrandOrLegacyHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (isBrandHost(h)) return true;
+  return BRAND.legacyDomains.some((d) => h === d || h.endsWith(`.${d}`));
 }

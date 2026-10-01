@@ -13,6 +13,8 @@
     "auth": "clerk.saathum.com",
     "mail": "mail.saathum.com"
   },
+  "_legacyDomains": "Former domains, kept after a domain switch. On switch day the old domain moves here (e.g. [\"saathum.com\"]). The api. and media. hosts of every legacy domain stay attached to the Worker/storage FOREVER — installed app builds, links in old emails and image URLs stored in the database all point at them. The website on a legacy domain is a frozen archive. Leave [] until a switch happens.",
+  "legacyDomains": [],
   "emails": {
     "support": "support@saathum.com",
     "noreply": "noreply@saathum.com",

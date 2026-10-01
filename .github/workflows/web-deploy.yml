@@ -56,6 +56,20 @@ jobs:
         working-directory: web
         run: npm ci
 
+      # [SAATHUM-DOMAIN-LEGACY-1] The Clerk publishable key is a public value that is
+      # just "pk_live_" + base64("<clerk host>$"), and the API base is the brand api
+      # host — both come from Specs/brand.json so a domain switch needs no workflow
+      # edit. (Clerk's frontend API host must be the one whose key this encodes.)
+      - name: Derive brand build vars
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import base64, json
+          b = json.load(open("Specs/brand.json", encoding="utf-8"))
+          h = b["hosts"]
+          print("PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_" + base64.b64encode((h["auth"] + "$").encode()).decode())
+          print("PUBLIC_API_BASE=https://" + h["api"])
+          PY
+
       - name: Build
         working-directory: web
         # PUBLIC_* vars are inlined into the browser bundle by Astro at BUILD
@@ -77,8 +91,9 @@ jobs:
         # CLERK_JWKS_URL in worker/wrangler.toml. If those ever change, change
         # this too or web sign-in silently stops being accepted by the API.
         env:
-          PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuc2FhdGh1bS5jb20k
-          PUBLIC_API_BASE: https://api.saathum.com   # [SAATHUM-DEBRAND-1] same Worker, Saa Thum hostname
+          # [SAATHUM-DOMAIN-LEGACY-1] PUBLIC_CLERK_PUBLISHABLE_KEY and PUBLIC_API_BASE
+          # are no longer typed here: the "Derive brand build vars" step above writes
+          # them to $GITHUB_ENV from Specs/brand.json (hosts.auth / hosts.api).
           # [WEB-POSTHOG-1] `release` super property on every web event, so an
           # issue/error can be filtered by exactly which deploy produced it —
           # same idea as the app's git-SHA `release` prop (analytics.dart).

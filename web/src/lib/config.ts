@@ -51,7 +51,10 @@ export interface ImageOptions { width?: number; quality?: number; fit?: string; 
 const imageHost = (host: string) =>
   // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com replaced blossom.avatok.ai
   // (stored URLs migrated). A leftover old-host URL is simply served untransformed.
-  host === BRAND.domain || host.endsWith(`.${BRAND.domain}`);
+  // [SAATHUM-DOMAIN-LEGACY-1] Stored URLs written before a domain switch point at the
+  // legacy media./api. hosts, which stay attached forever — they are still our images.
+  host === BRAND.domain || host.endsWith(`.${BRAND.domain}`) ||
+  BRAND.legacyMediaHosts.includes(host) || BRAND.legacyApiHosts.includes(host);
 const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
 const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
 function imageParams(opts: ImageOptions): string {
