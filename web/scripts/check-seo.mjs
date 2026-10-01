@@ -78,6 +78,10 @@ const dynamicCoverage = new Map([
   // [SAATHUM-EVENT-PAGE 2026-09-26] /book/<id> event page: listingContent() canonical is the
   // listing URL (/l/<id> or /<handle>/<slug>), which sitemap-listings.xml already enumerates.
   ['src/pages/book/[id].astro', 'sitemap-listings.xml'],
+  // [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] /free-videos hub is listed in sitemap-pages.xml; each
+  // /watch/<id> page is linked from that hub (crawlable), so the hub is its coverage.
+  ['src/pages/free-videos.astro', 'sitemap-pages.xml'],
+  ['src/pages/watch/[id].astro', 'sitemap-pages.xml'],
 ]);
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
