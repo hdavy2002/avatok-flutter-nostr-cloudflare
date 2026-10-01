@@ -2069,6 +2069,19 @@ export interface PlatformConfig {
   // [AUMFE-POD-CORE-1] Minutes between partner order-status polls (the partner has no webhooks). NUMERIC -> MUST
   // also appear in `numericKeys` below or `flags.sh set shopPodPollMinutes=30` 400s `bad type`.
   shopPodPollMinutes: number;
+  // [AUMFE-VOICE-RUNTIME-1] Master switch for the voice guides (Gemini Live). While false only uids in
+  // AGENT_ADMIN_UIDS can open a call (owner testing). Boolean -> NOT in numericKeys.
+  voiceAgentsEnabled: boolean;
+  // [AUMFE-VOICE-RUNTIME-1] Gemini Live model id for the voice guides (Developer API, BidiGenerateContent).
+  // STRING -> NOT in numericKeys; declared in stringKeys below.
+  voiceAgentModel: string;
+  // [AUMFE-VOICE-RUNTIME-1] Hard cap on one call, seconds. NUMERIC -> MUST also appear in `numericKeys` below.
+  voiceAgentMaxSeconds: number;
+  // [AUMFE-VOICE-RUNTIME-1] Free seconds at the start of each call before metering counts cost. NUMERIC -> numericKeys.
+  voiceAgentFreeSeconds: number;
+  // [AUMFE-VOICE-RUNTIME-1] Price per minute in paise after the free seconds (wave 2 only reports it, never charges).
+  // NUMERIC -> numericKeys.
+  voiceAgentPricePerMinPaise: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -2793,6 +2806,12 @@ const DEFAULTS: PlatformConfig = {
   shopPodProvider: "manual",
   shopPodAutoSend: false,
   shopPodPollMinutes: 30,
+  // [AUMFE-VOICE-RUNTIME-1] voice guides — dark until the owner flips it (admins can test meanwhile).
+  voiceAgentsEnabled: false,
+  voiceAgentModel: "gemini-3.8-live",
+  voiceAgentMaxSeconds: 900,
+  voiceAgentFreeSeconds: 180,
+  voiceAgentPricePerMinPaise: 2000,
 };
 
 /**
@@ -3087,6 +3106,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "agentPlatformMaxConcurrent", "agentMinPricePerMin",
     // [AUMFE-POD-CORE-1] numeric — must be here or `flags.sh set shopPodPollMinutes=30` 400s `bad type`.
     "shopPodPollMinutes",
+    // [AUMFE-VOICE-RUNTIME-1] numeric — must be here or `flags.sh set voiceAgentMaxSeconds=600` 400s `bad type`.
+    "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3095,6 +3116,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "agentLiveModel", "agentBackendModel", "agentSlotMinutes",
     // [AUMFE-POD-CORE-1] 'manual' | 'printrove' — string config.
     "shopPodProvider",
+    // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
+    "voiceAgentModel",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

@@ -286,6 +286,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
 import { avaLiveToken, avaLiveHeartbeat, avaLiveClose } from "./routes/ava_live"; // fast online voice + [AVABRAIN-VOICE-BILL-1] lease lifecycle
+import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun, avaGenuiAction } from "./routes/ava_apps"; // AvaApps (Composio)
 import { avaGenuiThumb } from "./routes/genui_thumb"; // GenUI preview-thumbnail proxy
@@ -352,6 +353,7 @@ export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-us
 export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaign SQLite-backed DO (call_fsm state, pacing; dark behind campaignDialerEnabled)
 export { AgentSeatAuthorityDO } from "./do/agent_seat_authority"; // [AGENT-LIVE-1] single global seat/capacity authority (WS-B)
 export { AgentLiveRoom } from "./do/agent_live_room"; // [AGENT-LIVE-1] per-booking live room DO bridging browser <-> OpenAI gpt-live-1 (WS-E1)
+export { VoiceSessionDO } from "./do/voice_session"; // [AUMFE-VOICE-RUNTIME-1] voice guides — browser <-> Gemini Live relay
 // [DYNW-CORE-1] Dynamic Workers capability entrypoints. Top-level exports are
 // REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
 // and pass them into sandboxed child Workers. Dark behind dynamicWorkersEnabled.
@@ -832,6 +834,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       return env.AGENT_VOICE_ROOMS.get(env.AGENT_VOICE_ROOMS.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
     }
 
+    // [AUMFE-VOICE-RUNTIME-1] voice guides: single-use ticket -> VoiceSessionDO (Gemini Live relay).
+    if (p === "/api/voice/ws" && req.headers.get("Upgrade") === "websocket") return await voiceWs(req, env, continentHint(req));
+
     try {
       // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
       // [MSG-CTX-WAITUNTIL-1] ctx threaded through so post-response work (archive/
@@ -958,6 +963,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/gemini" && req.method === "POST") return await avaGemini(req, env);          // P2
       if (p === "/api/ava/gemini/stream" && req.method === "POST") return await avaGeminiStream(req, env); // P2 streaming
       if (p === "/api/ava/live/token" && req.method === "POST") return await avaLiveToken(req, env);   // fast online voice call
+      // [AUMFE-VOICE-RUNTIME-1] voice guides REST: agent list + ticket mint (the WebSocket is routed above).
+      if (p === "/api/voice/agents" && req.method === "GET") return await voiceAgentsList(req, env);
+      if (p === "/api/voice/ticket" && req.method === "POST") return await voiceTicket(req, env);
       // [AVABRAIN-VOICE-BILL-1] session-lease heartbeat/close — see routes/ava_live.ts
       // header + worker/src/lib/voice_billing.ts. No-ops while avaBrainVoiceBillingEnabled is off.
       if (p === "/api/ava/live/heartbeat" && req.method === "POST") return await avaLiveHeartbeat(req, env);

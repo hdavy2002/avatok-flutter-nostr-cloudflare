@@ -554,6 +554,12 @@ class_name = "AgentSeatAuthorityDO"
 name = "AGENT_LIVE_ROOMS"
 class_name = "AgentLiveRoom"
 
+# [AUMFE-VOICE-RUNTIME-1] voice guide call (browser <-> Gemini Live relay), one per call.
+# DARK behind voiceAgentsEnabled (routes/config.ts). Specs/SPEC-2026-10-01-VOICE-AGENTS.md.
+[[durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSessionDO"
+
 # [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
 # Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
 # `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
@@ -682,6 +688,11 @@ new_sqlite_classes = ["MessengerCallBillingDO"]
 [[migrations]]
 tag = "v24"
 new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]
+
+# [AUMFE-VOICE-RUNTIME-1] Voice guide call DO (stores nothing; SQLite-backed class like the other recent DOs).
+[[migrations]]
+tag = "v25"
+new_sqlite_classes = ["VoiceSessionDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -1074,6 +1085,12 @@ class_name = "AgentSeatAuthorityDO"
 name = "AGENT_LIVE_ROOMS"
 class_name = "AgentLiveRoom"
 
+# [AUMFE-VOICE-RUNTIME-1] voice guide call (browser <-> Gemini Live relay), one per call.
+# DARK behind voiceAgentsEnabled (routes/config.ts). Specs/SPEC-2026-10-01-VOICE-AGENTS.md.
+[[env.staging.durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSessionDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -1175,3 +1192,8 @@ new_sqlite_classes = ["MessengerCallBillingDO"]
 [[env.staging.migrations]]
 tag = "v24"
 new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]
+
+# [AUMFE-VOICE-RUNTIME-1] Voice guide call DO (stores nothing; SQLite-backed class like the other recent DOs).
+[[env.staging.migrations]]
+tag = "v25"
+new_sqlite_classes = ["VoiceSessionDO"]

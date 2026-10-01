@@ -8879,5 +8879,23 @@
         "note": "Emitted by the voice runtime for every tool call (astrology tools included). ok=false means the tool returned an error (no birth details, AstrologyAPI down or unconfigured)."
       }
     ]
+  },
+  "AUMFE-VOICE-RUNTIME-1": {
+    "description": "[AUMFE-VOICE-RUNTIME-1 2026-10-01] Voice guide runtime: POST /api/voice/ticket + GET /api/voice/ws -> VoiceSessionDO relays the browser to Gemini Live (worker/src/do/voice_session.ts, routes/voice.ts), registry + shared memory tools (lib/voice_agents). Dark behind voiceAgentsEnabled; AGENT_ADMIN_UIDS can test meanwhile. Billing is 'test' (metered, never charged).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "voiceAgentsEnabled"
+    ],
+    "success": [
+      {
+        "event": "voice_session_ended",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "A real call connected to Gemini Live, the guide spoke (first audio arrived) and the call ended by customer/time_up/idle rather than error/server. ok=false means Gemini rejected the setup (model id, NON_BLOCKING tools), the browser never sent mic audio, or the call died before the first agent audio; read voice_gemini_closed (code/reason) and $exception rows with app_name aumfe_voice."
+      }
+    ]
   }
 }
