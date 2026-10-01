@@ -1,4 +1,4 @@
-// [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Saa Thum Shop orders (Hindu T-shirts, print-on-demand): create, UPI payment,
+// [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Shop orders (Hindu T-shirts, print-on-demand): create, UPI payment,
 // receipt, my-orders, problem report. Contract: Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §4.2/§4.3.
 //
 // The payment side deliberately MIRRORS routes/saathum_checkout.ts (event bookings) -- same unique-amount reservation,

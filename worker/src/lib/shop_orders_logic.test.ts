@@ -20,7 +20,7 @@ const base = (over: Partial<ShopOrderRow> = {}): ShopOrderRow => ({
   eta_text: null, sent_to_printer_at: null, shipped_at: null, delivered_at: null, cancel_reason: null, refund_utr: null, refunded_at: null,
   problem_json: null, created_at: 1_000_000, updated_at: 1_000_000, ...over,
 });
-const ctx = (over: Record<string, unknown> = {}) => ({ now: 1_000_000 + MIN, canPay: true, vpa: 'shop@bank', payeeName: 'Saa Thum', merchant: {}, note: 'Saa Thum shop order', reportWindowHours: 48, ...over });
+const ctx = (over: Record<string, unknown> = {}) => ({ now: 1_000_000 + MIN, canPay: true, vpa: 'shop@bank', payeeName: 'Test Payee', merchant: {}, note: 'shop order', reportWindowHours: 48, ...over });
 
 describe('ids', () => {
   it('order id is shp_ + 20 hex and the order number is SHP- + 8 upper hex of it', () => {
@@ -105,12 +105,12 @@ describe('receipt money', () => {
 
 describe('UPI link + envelope', () => {
   it('builds a upi:// link with the exact amount and the shop note', () => {
-    const u = new URL(shopUpiUri({ vpa: 'shop@bank', payeeName: 'Saa Thum', amountPaise: 117_750, note: 'Saa Thum shop order', merchant: { mc: '5699' } }));
+    const u = new URL(shopUpiUri({ vpa: 'shop@bank', payeeName: 'Test Payee', amountPaise: 117_750, note: 'shop order', merchant: { mc: '5699' } }));
     expect(u.protocol).toBe('upi:');
     expect(u.searchParams.get('pa')).toBe('shop@bank');
     expect(u.searchParams.get('am')).toBe('1177.50');
     expect(u.searchParams.get('cu')).toBe('INR');
-    expect(u.searchParams.get('tn')).toBe('Saa Thum shop order');
+    expect(u.searchParams.get('tn')).toBe('shop order');
     expect(u.searchParams.get('mc')).toBe('5699');
   });
   it('envelope has exactly the spec §4.2 shape', () => {

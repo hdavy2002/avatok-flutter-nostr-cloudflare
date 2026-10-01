@@ -1,4 +1,4 @@
-// [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Pure rules for Saa Thum Shop orders (Specs/SPEC-2026-10-01-SAATHUM-SHOP.md
+// [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Pure rules for Shop orders (Specs/SPEC-2026-10-01-SAATHUM-SHOP.md
 // §2, §4.2, §4.5): ids, external status/step mapping, the admin fulfilment transition table, the UPI deep link,
 // receipt money split and the ShopOrder wire envelope. NO I/O -- everything is passed in so it is unit-testable.
 // Payment-status rules are REUSED from the event checkout (lib/saathum_checkout_logic.ts), never copied.
