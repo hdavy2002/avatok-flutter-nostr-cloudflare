@@ -152,6 +152,14 @@ const listProducts = guarded("admin2.shop.products.list", async (req, env) => {
   return json({ items: shown.map((p) => adminProduct(p, cmap, promoted.get(p.id) ?? [])), counts }, 200, noStore);
 });
 
+// [SAATHUM-SHOP-API-CATALOG-1] Single product, full admin view (the edit modal loads it).
+const getProduct = guarded("admin2.shop.products.get", async (_req, env, _a, [id]) => {
+  const row = await loadProduct(env, id);
+  if (!row) return err(404, "not_found", "No such product.");
+  const [cols, promoted] = await Promise.all([allCollections(env), promotedMap(env)]);
+  return json({ product: adminProduct(row, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), promoted.get(id) ?? []) }, 200, noStore);
+});
+
 const createProduct = guarded("admin2.shop.products.create", async (req, env, a) => {
   const b = await readBody(req);
   if (!b) return err(400, "invalid_request", "Send the product as JSON.");
@@ -686,6 +694,7 @@ const re = (suffix: string) => new RegExp(`^${BASE}/${suffix}$`);
 export const ADMIN2_SHOP_CATALOG_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: `${BASE}/products`, handler: listProducts },
   { method: "POST", path: `${BASE}/products`, handler: createProduct },
+  { method: "GET", path: re(`products/${ID}`), handler: getProduct },
   { method: "PUT", path: re(`products/${ID}`), handler: updateProduct },
   { method: "DELETE", path: re(`products/${ID}`), handler: archiveProduct },
   { method: "POST", path: re(`products/${ID}/restore`), handler: restoreProduct },
