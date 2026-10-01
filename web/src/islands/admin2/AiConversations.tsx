@@ -73,7 +73,7 @@ function CardRow({ c }: { c: AdminAiCard }) {
     );
   }
   // Pandit ji's product / puja cards: title, price, wear days.
-  const price = c.price_rupees ?? c.price;
+  const price = c.price_inr ?? c.price_rupees ?? c.price;
   const days = Array.isArray(c.wear_days) ? c.wear_days.join(', ') : c.wear_days || c.wear_day || '';
   const bits = [price != null ? `₹${price}` : '', days ? `wear: ${days}` : ''].filter(Boolean).join(' · ');
   const inner = (
