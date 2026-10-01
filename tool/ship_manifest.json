@@ -9012,5 +9012,19 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-PANDIT-LANG-1": {
+    "description": "[AUMFE-PANDIT-LANG-1 2026-10-02] Pandit ji language menu is sent with each message; the model must reply only in the picked language (even after short replies).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "pandit_language_picked",
+        "property": "lang",
+        "exists": true
+      }
+    ]
   }
 }

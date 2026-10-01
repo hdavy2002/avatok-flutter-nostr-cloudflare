@@ -45,7 +45,7 @@ export const deleteMemory = (id: string) => authed<{ ok: boolean }>(`/api/me/mem
  * Throws ApiError on a non-2xx response; an aborted fetch rejects with an AbortError (caller treats it as Stop).
  */
 export async function streamChat(
-  args: { conversation_id?: string; text: string },
+  args: { conversation_id?: string; text: string; lang?: string },
   opts: { signal?: AbortSignal; onEvent: (ev: PanditStreamEvent) => void },
 ): Promise<void> {
   const auth = await authToken();

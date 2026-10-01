@@ -45,21 +45,25 @@ function useAuthGuest(): AuthView {
 }
 const useAuthView = CLERK_PUBLISHABLE_KEY ? useAuthClerk : useAuthGuest;
 
-/* ── languages: a hint only — the model answers in the language the person writes ───────── */
+/* ── languages: the picked one is sent with every message and Pandit ji answers only in it ([AUMFE-PANDIT-LANG-1]) ── */
 
-const LANGS: { label: string; speech: string; placeholder: string }[] = [
-  { label: 'हिन्दी', speech: 'hi-IN', placeholder: 'पंडित जी से पूछिए…' },
-  { label: 'English', speech: 'en-IN', placeholder: 'Ask Pandit ji…' },
-  { label: 'Hinglish', speech: 'hi-IN', placeholder: 'Pandit ji se poochhiye…' },
-  { label: 'தமிழ்', speech: 'ta-IN', placeholder: 'பண்டிட் ஜியிடம் கேளுங்கள்…' },
-  { label: 'తెలుగు', speech: 'te-IN', placeholder: 'పండిట్ జీని అడగండి…' },
-  { label: 'বাংলা', speech: 'bn-IN', placeholder: 'পণ্ডিত জিকে জিজ্ঞাসা করুন…' },
-  { label: 'मराठी', speech: 'mr-IN', placeholder: 'पंडित जींना विचारा…' },
-  { label: 'ગુજરાતી', speech: 'gu-IN', placeholder: 'પંડિત જીને પૂછો…' },
-  { label: 'ಕನ್ನಡ', speech: 'kn-IN', placeholder: 'ಪಂಡಿತ್ ಜಿಯನ್ನು ಕೇಳಿ…' },
+const LANGS: { code: string; label: string; speech: string; placeholder: string }[] = [
+  { code: 'hi', label: 'हिन्दी', speech: 'hi-IN', placeholder: 'पंडित जी से पूछिए…' },
+  { code: 'en', label: 'English', speech: 'en-IN', placeholder: 'Ask Pandit ji…' },
+  { code: 'hinglish', label: 'Hinglish', speech: 'hi-IN', placeholder: 'Pandit ji se poochhiye…' },
+  { code: 'ta', label: 'தமிழ்', speech: 'ta-IN', placeholder: 'பண்டிட் ஜியிடம் கேளுங்கள்…' },
+  { code: 'te', label: 'తెలుగు', speech: 'te-IN', placeholder: 'పండిట్ జీని అడగండి…' },
+  { code: 'bn', label: 'বাংলা', speech: 'bn-IN', placeholder: 'পণ্ডিত জিকে জিজ্ঞাসা করুন…' },
+  { code: 'mr', label: 'मराठी', speech: 'mr-IN', placeholder: 'पंडित जींना विचारा…' },
+  { code: 'gu', label: 'ગુજરાતી', speech: 'gu-IN', placeholder: 'પંડિત જીને પૂછો…' },
+  { code: 'kn', label: 'ಕನ್ನಡ', speech: 'kn-IN', placeholder: 'ಪಂಡಿತ್ ಜಿಯನ್ನು ಕೇಳಿ…' },
 ];
 const LANG_KEY = 'pandit_lang';
-const QUICK = ['Aaj ka shubh rang', 'Meri kundli samjhaiye', 'Puja suggest kijiye'];
+const QUICK_BY_LANG: Record<string, string[]> = {
+  en: ["Today's auspicious colour", 'Explain my birth chart', 'Suggest a puja for me'],
+  hi: ['आज का शुभ रंग', 'मेरी कुंडली समझाइए', 'पूजा सुझाइए'],
+};
+const QUICK_DEFAULT = ['Aaj ka shubh rang', 'Meri kundli samjhaiye', 'Puja suggest kijiye'];
 
 function LangButton({ idx, onPick }: { idx: number; onPick: (i: number) => void }) {
   const [open, setOpen] = useState(false);
@@ -80,7 +84,7 @@ function LangButton({ idx, onPick }: { idx: number; onPick: (i: number) => void 
           {LANGS.map((l, i) => (
             <button key={l.label} type="button" aria-pressed={i === idx} onClick={() => { onPick(i); setOpen(false); }}>{l.label}</button>
           ))}
-          <p>Just write in your language — Pandit ji replies in it.</p>
+          <p>Pandit ji will reply in the language you pick here.</p>
         </div>
       )}
     </div>
@@ -108,6 +112,8 @@ function Pandit() {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [langIdx, setLangIdx] = useState(1);
+  // Only an explicit pick is sent; until then Pandit ji follows whatever language the person writes in.
+  const [langPicked, setLangPicked] = useState(false);
   const [listening, setListening] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -124,7 +130,8 @@ function Pandit() {
   useEffect(() => {
     capture('pandit_page_view', { surface: 'pandit' });
     const saved = Number(lsGet(LANG_KEY));
-    if (Number.isInteger(saved) && saved >= 0 && saved < LANGS.length) setLangIdx(saved);
+    const raw = lsGet(LANG_KEY);
+    if (raw !== null && raw !== '' && Number.isInteger(saved) && saved >= 0 && saved < LANGS.length) { setLangIdx(saved); setLangPicked(true); }
     try {
       const ask = new URLSearchParams(location.search).get('ask');
       if (ask) setDraft(ask.slice(0, 500));
@@ -201,7 +208,7 @@ function Pandit() {
     const t0 = nowMs();
     let gotFirst = false;
     try {
-      await streamChat({ conversation_id: convId, text }, {
+      await streamChat({ conversation_id: convId, text, lang: langPicked ? LANGS[langIdx].code : undefined }, {
         signal: ac.signal,
         onEvent: (ev) => {
           if (ev.type === 'meta') setConvId(ev.conversation_id);
@@ -279,7 +286,7 @@ function Pandit() {
     setConvId(undefined); setMessages([]); shownCards.current = new Set();
   }
 
-  function pickLang(i: number) { setLangIdx(i); lsSet(LANG_KEY, String(i)); }
+  function pickLang(i: number) { setLangIdx(i); setLangPicked(true); lsSet(LANG_KEY, String(i)); capture('pandit_language_picked', { lang: LANGS[i].code }); }
 
   function listen() {
     if (listening) { recRef.current?.stop(); return; }
@@ -419,7 +426,7 @@ function Pandit() {
 
             <div className="pd-composer">
               <div className="pd-quick">
-                {QUICK.map((q) => <button key={q} type="button" disabled={streaming} onClick={() => void send(q)}>{q}</button>)}
+                {((langPicked ? QUICK_BY_LANG[LANGS[langIdx].code] : undefined) ?? QUICK_DEFAULT).map((q) => <button key={q} type="button" disabled={streaming} onClick={() => void send(q)}>{q}</button>)}
               </div>
               <form className="pd-input-row" onSubmit={onSubmit}>
                 <label className="pd-input-label">

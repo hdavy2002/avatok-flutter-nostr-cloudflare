@@ -9,6 +9,7 @@ import { requireUser, isFail } from "../authz";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { contactFor } from "../lib/identity";
+import { chatLang } from "../lib/guides/personas";
 import { getProfile, listMemories } from "../lib/agent_memory";
 import { readConfig } from "./config";
 import { canUsePandit } from "../lib/guides/access";
@@ -41,13 +42,13 @@ export async function guidesRoute(req: Request, env: Env, p: string): Promise<Re
     void track(env, uid, "pandit_chat_blocked", APP, { reason: "disabled" });
     return json({ error: "pandit_disabled" }, 403);
   }
-  let body: { conversation_id?: unknown; text?: unknown };
+  let body: { conversation_id?: unknown; text?: unknown; lang?: unknown };
   try { body = (await req.json()) as typeof body; } catch { return json({ error: "bad_json" }, 400); }
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return json({ error: "text_required" }, 400);
   if (text.length > MAX_USER_CHARS) return json({ error: "text_too_long" }, 400);
   const conversationId = typeof body.conversation_id === "string" && body.conversation_id ? body.conversation_id : null;
-  return sseResponse(env, uid, conversationId, text);
+  return sseResponse(env, uid, conversationId, text, chatLang(body.lang)); // [AUMFE-PANDIT-LANG-1]
 }
 
 async function stateResponse(env: Env, uid: string, enabled: boolean, canUse: boolean): Promise<Response> {
@@ -81,14 +82,14 @@ async function stateResponse(env: Env, uid: string, enabled: boolean, canUse: bo
   }
 }
 
-function sseResponse(env: Env, uid: string, conversationId: string | null, text: string): Response {
+function sseResponse(env: Env, uid: string, conversationId: string | null, text: string, lang: string | null): Response {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
   const enc = new TextEncoder();
   let chain: Promise<unknown> = Promise.resolve();
   const emit = (e: ChatEvent) => { chain = chain.then(() => writer.write(enc.encode(`data: ${JSON.stringify(e)}\n\n`))).catch(() => undefined); };
   void (async () => {
-    try { await runPanditTurn(env, { uid, conversationId, text, emit }); }
+    try { await runPanditTurn(env, { uid, conversationId, text, lang, emit }); }
     finally { await chain; await writer.close().catch(() => undefined); } // client already gone: nothing left to tell it
   })();
   return new Response(readable, {

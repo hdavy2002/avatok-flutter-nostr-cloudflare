@@ -202,7 +202,7 @@ export const SPEND_CAP_MESSAGE = "Pandit ji is resting for now. Please try again
  * Run one customer message end to end. `emit` receives wire events in order. Never throws: failures become an `error`
  * event (and a PostHog exception). `done` is emitted before the after-turn memory extraction so the customer is not kept waiting.
  */
-export async function runPanditTurn(env: Env, a: { uid: string; conversationId?: string | null; text: string; emit: (e: ChatEvent) => void }): Promise<void> {
+export async function runPanditTurn(env: Env, a: { uid: string; conversationId?: string | null; text: string; lang?: string | null; emit: (e: ChatEvent) => void }): Promise<void> {
   const { uid, emit } = a;
   const text = a.text.trim().slice(0, MAX_USER_CHARS);
   let conversationId = "";
@@ -223,7 +223,7 @@ export async function runPanditTurn(env: Env, a: { uid: string; conversationId?:
     await insertRow(env, conversationId, { role: ROLE_CUSTOMER, text });
 
     const briefing = await buildBriefing(env, uid, AGENT_ID);
-    const system = PANDIT.systemPrompt({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null });
+    const system = PANDIT.systemPrompt({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null });
     const tools: VoiceTool[] = [...sharedGuideTools(), ...memoryTools];
     const decls = tools.map((t) => t.decl);
     const model = await preetiModel(env);
