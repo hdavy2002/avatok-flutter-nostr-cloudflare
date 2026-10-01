@@ -2,6 +2,20 @@
 
 ---
 
+## 🌐 DEPLOY TARGET IS aumfe.com (owner decision 2026-10-01)
+
+The brand is now **Aum Fe** at **aumfe.com** (formerly Saa Thum / saathum.com).
+The public site still answers on saathum.com today, but **every deploy from now on
+targets aumfe.com** — web, worker routes, email senders, links, SEO and any new
+host. Never point a new deploy, route, Pages custom domain or DNS change at
+saathum.com. `Specs/brand.json` already says `aumfe.com`; saathum.com is listed in
+`legacyDomains` and is a frozen archive: never link it to aumfe.com and never
+mention Saa Thum on aumfe.com (owner wants the move hidden from partners).
+Keep the `api.` / `media.` hosts of saathum.com attached so old app builds and
+stored image URLs keep working.
+
+---
+
 ## 🚨 PRODUCTION ONLY — AI READ THIS FIRST (owner decision 2026-09-28)
 
 **The owner is not a developer and will never type a deploy command. You handle all
