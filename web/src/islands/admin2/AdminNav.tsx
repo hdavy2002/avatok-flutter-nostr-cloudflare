@@ -15,7 +15,7 @@
  *   640–1023 72px icon rail with tooltips
  *   <640px   top bar + fixed bottom tab bar (5 tabs + "More" sheet)
  */
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { MoreHorizontal } from 'lucide-react';
@@ -30,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Skeleton } from '../../components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
 import { ADMIN_NAV, ADMIN_PHONE_TABS, ADMIN_VIEW_SITE, ADMIN_LOGOUT, type AdminKey } from './nav';
-import { ApiError, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
+import { ApiError, adminApi, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
 import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
 
@@ -100,6 +100,45 @@ function AdminBadge({ className }: { className?: string }) {
   );
 }
 
+/** [SAATHUM-SHOP-ADMIN-1] Group heading ("SHOP"), styled like the mockup's `.sh-side h3` — chandan-brown small caps. */
+function GroupHeading({ label, className }: { label: string; className?: string }) {
+  return (
+    <div role="presentation" className={cn('mt-4 px-3 pb-1 font-dashbody text-[12px] font-black uppercase leading-none tracking-[0.12em] text-[#9a5a26]', className)}>
+      {label}
+    </div>
+  );
+}
+
+/** Gold "N to print" pill (mockup `.sh-side a .new`) on the Shop → Orders entry. */
+function PrintBadge({ n, className }: { n: number; className?: string }) {
+  if (!n) return null;
+  return (
+    <span className={cn('relative ml-auto rounded-full bg-[#F6B93B] px-[7px] py-[3px] font-dashbody text-[11px] font-black leading-none text-[#3a1a0a]', className)}>
+      {n} to print
+    </span>
+  );
+}
+
+/** Paid shop orders waiting to be placed with the printer. Shop screens announce it themselves
+ * (`shop-admin:to-print`); every other admin page asks GET /api/admin/v2/shop/kpis once. */
+function useToPrint(ready: boolean, active: AdminKey): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<number>).detail; if (typeof d === 'number') setN(d); };
+    window.addEventListener('shop-admin:to-print', on);
+    return () => window.removeEventListener('shop-admin:to-print', on);
+  }, []);
+  useEffect(() => {
+    if (!ready || active.startsWith('shop-')) return;
+    let off = false;
+    adminApi<{ to_print?: number }>('/api/admin/v2/shop/kpis')
+      .then((k) => { if (!off && typeof k.to_print === 'number') setN(k.to_print); })
+      .catch((e) => captureException(e, { where: 'admin2_nav_shop_badge' }));
+    return () => { off = true; };
+  }, [ready, active]);
+  return n;
+}
+
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <a href="/admin" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} admin home`}>
@@ -110,7 +149,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function Sidebar({ active, who, ready }: { active: AdminKey; who: Who | null; ready: boolean }) {
+function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who | null; ready: boolean; toPrint: number }) {
   const reduce = useReducedMotion();
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col overflow-y-auto border-r border-border/50 bg-card px-4 py-5 lg:flex">
@@ -134,12 +173,14 @@ function Sidebar({ active, who, ready }: { active: AdminKey; who: Who | null; re
       </div>
 
       <nav aria-label="Admin" className="mt-6 flex flex-1 flex-col gap-1">
-        {ADMIN_NAV.map((it) => {
+        {ADMIN_NAV.map((it, idx) => {
           const on = it.key === active;
           const Icon = it.icon;
+          const heading = it.group && ADMIN_NAV[idx - 1]?.group !== it.group ? it.group : null;
           return (
+            <Fragment key={it.key}>
+            {heading && <GroupHeading label={heading} />}
             <a
-              key={it.key}
               href={it.href}
               aria-current={on ? 'page' : undefined}
               className={cn(
@@ -159,7 +200,9 @@ function Sidebar({ active, who, ready }: { active: AdminKey; who: Who | null; re
               {on && <span aria-hidden className="absolute -left-4 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
               <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={2.2} />
               <span className="relative">{it.label}</span>
+              {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
             </a>
+            </Fragment>
           );
         })}
       </nav>
@@ -184,11 +227,11 @@ function Sidebar({ active, who, ready }: { active: AdminKey; who: Who | null; re
   );
 }
 
-function Rail({ active }: { active: AdminKey }) {
+function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
   const items = [
-    ...ADMIN_NAV.map((i) => ({ key: i.key as string, label: i.label, href: i.href, icon: i.icon, tail: false, first: false })),
-    { key: 'site', label: ADMIN_VIEW_SITE.label, href: ADMIN_VIEW_SITE.href, icon: ADMIN_VIEW_SITE.icon, tail: true, first: true },
-    { key: 'logout', label: ADMIN_LOGOUT.label, href: ADMIN_LOGOUT.href, icon: ADMIN_LOGOUT.icon, tail: true, first: false },
+    ...ADMIN_NAV.map((i, idx) => ({ key: i.key as string, label: i.label, href: i.href, icon: i.icon, tail: false, first: false, divider: !!i.group && ADMIN_NAV[idx - 1]?.group !== i.group })),
+    { key: 'site', label: ADMIN_VIEW_SITE.label, href: ADMIN_VIEW_SITE.href, icon: ADMIN_VIEW_SITE.icon, tail: true, first: true, divider: false },
+    { key: 'logout', label: ADMIN_LOGOUT.label, href: ADMIN_LOGOUT.href, icon: ADMIN_LOGOUT.icon, tail: true, first: false, divider: false },
   ];
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w,72px)] flex-col items-center overflow-y-auto border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
@@ -200,7 +243,9 @@ function Rail({ active }: { active: AdminKey }) {
             const on = it.key === active;
             const Icon = it.icon;
             return (
-              <Tooltip key={it.key}>
+              <Fragment key={it.key}>
+              {it.divider && <div aria-hidden className="my-1 h-px w-8 bg-border/70" />}
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <a
                     href={it.href}
@@ -216,10 +261,14 @@ function Rail({ active }: { active: AdminKey }) {
                   >
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
                     {on && <span aria-hidden className="absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
+                    {it.key === 'shop-orders' && toPrint > 0 && (
+                      <span aria-hidden className="absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-[#F6B93B] px-1 text-center font-dashbody text-[10px] font-black leading-[18px] text-[#3a1a0a]">{toPrint}</span>
+                    )}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent side="right">{it.label}</TooltipContent>
+                <TooltipContent side="right">{it.key === 'shop-orders' && toPrint > 0 ? `${it.label} · ${toPrint} to print` : it.label}</TooltipContent>
               </Tooltip>
+              </Fragment>
             );
           })}
         </nav>
@@ -228,7 +277,7 @@ function Rail({ active }: { active: AdminKey }) {
   );
 }
 
-function MoreSheet({ active, who }: { active: AdminKey; who: Who | null }) {
+function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
   const rest = ADMIN_NAV.filter((i) => !ADMIN_PHONE_TABS.includes(i.key));
   const on = rest.some((i) => i.key === active);
   const row = 'flex min-h-[52px] items-center gap-3 rounded-xl px-3 text-[16px] font-bold no-underline transition-colors';
@@ -254,14 +303,19 @@ function MoreSheet({ active, who }: { active: AdminKey; who: Who | null }) {
           <SheetDescription>{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
         </SheetHeader>
         <nav aria-label="More admin pages" className="mt-4 flex flex-col gap-1">
-          {rest.map((it) => {
+          {rest.map((it, idx) => {
             const Icon = it.icon;
             const cur = it.key === active;
+            const heading = it.group && rest[idx - 1]?.group !== it.group ? it.group : null;
             return (
-              <a key={it.key} href={it.href} aria-current={cur ? 'page' : undefined}
-                className={cn(row, cur ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted')}>
-                <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
-              </a>
+              <Fragment key={it.key}>
+                {heading && <GroupHeading label={heading} className="mt-3" />}
+                <a href={it.href} aria-current={cur ? 'page' : undefined}
+                  className={cn(row, cur ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted')}>
+                  <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
+                  {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
+                </a>
+              </Fragment>
             );
           })}
           <div className="my-2 h-px bg-border/60" aria-hidden />
@@ -277,7 +331,7 @@ function MoreSheet({ active, who }: { active: AdminKey; who: Who | null }) {
   );
 }
 
-function PhoneBars({ active, who }: { active: AdminKey; who: Who | null }) {
+function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
   const reduce = useReducedMotion();
   const tabs = ADMIN_NAV.filter((i) => ADMIN_PHONE_TABS.includes(i.key));
   return (
@@ -324,18 +378,19 @@ function PhoneBars({ active, who }: { active: AdminKey; who: Who | null }) {
             </a>
           );
         })}
-        <MoreSheet active={active} who={who} />
+        <MoreSheet active={active} who={who} toPrint={toPrint} />
       </nav>
     </>
   );
 }
 
 function Shell({ active, guard }: { active: AdminKey; guard: { ready: boolean; who: Who | null } }) {
+  const toPrint = useToPrint(guard.ready, active);
   return (
     <>
-      <Sidebar active={active} who={guard.who} ready={guard.ready} />
-      <Rail active={active} />
-      <PhoneBars active={active} who={guard.who} />
+      <Sidebar active={active} who={guard.who} ready={guard.ready} toPrint={toPrint} />
+      <Rail active={active} toPrint={toPrint} />
+      <PhoneBars active={active} who={guard.who} toPrint={toPrint} />
     </>
   );
 }

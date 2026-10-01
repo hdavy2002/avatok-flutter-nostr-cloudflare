@@ -1,0 +1,10 @@
+---
+// [SAATHUM-SHOP-ADMIN-1 2026-10-01] /admin/shop — Orders: tabs, table, per-status actions, detail drawer.
+export const prerender = false;
+import ShopLayout from '../../../islands/admin2/shop/ShopLayout.astro';
+import ShopAdmin from '../../../islands/admin2/shop/ShopAdmin.tsx';
+---
+
+<ShopLayout active="shop-orders" tab="Orders">
+  <ShopAdmin client:load page="orders" />
+</ShopLayout>

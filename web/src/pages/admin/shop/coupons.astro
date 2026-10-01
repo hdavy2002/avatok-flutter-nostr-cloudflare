@@ -1,0 +1,10 @@
+---
+// [SAATHUM-SHOP-ADMIN-1 2026-10-01] /admin/shop/coupons — Coupons.
+export const prerender = false;
+import ShopLayout from '../../../islands/admin2/shop/ShopLayout.astro';
+import ShopAdmin from '../../../islands/admin2/shop/ShopAdmin.tsx';
+---
+
+<ShopLayout active="shop-coupons" tab="Coupons">
+  <ShopAdmin client:load page="coupons" />
+</ShopLayout>

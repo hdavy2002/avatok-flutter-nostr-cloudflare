@@ -1,0 +1,24 @@
+---
+// [SAATHUM-SHOP-ADMIN-1 2026-10-01] Shared frame of the six /admin/shop screens: the real Admin2
+// shell with the mockup's title row ("Shop" + subtitle + red "+ Add product"). The button lives
+// in the layout's actions slot and tells the ShopAdmin island to open the product modal.
+import Admin2 from '../../../layouts/Admin2.astro';
+import type { AdminKey } from '../nav';
+import './shopAdmin.css';
+
+export interface Props { active: AdminKey; tab: string }
+const { active, tab } = Astro.props;
+---
+
+<Admin2 title={`Shop · ${tab}`} heading="Shop" subtitle="Orders, products, categories and where each product is promoted." active={active}>
+  <Fragment slot="actions">
+    <div class="shop-admin"><button type="button" class="sh-btn sh-btn--red" id="shop-add-product">+ Add product</button></div>
+  </Fragment>
+  <slot />
+</Admin2>
+
+<script>
+  document.getElementById('shop-add-product')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('shop-admin:add-product'));
+  });
+</script>
