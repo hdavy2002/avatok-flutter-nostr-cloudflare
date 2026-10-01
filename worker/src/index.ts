@@ -102,6 +102,7 @@ import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumChecko
 import { runSaathumPaymentSweeps } from "./lib/saathum_upi3";
 import { checkSaathumStreamEnds } from "./lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
 import { freeVideosRoute, refreshFreeVideoLive } from "./routes/free_videos"; // [SAATHUM-FREEVIDEOS-API-1]
+import { shopRoute } from "./routes/shop"; // [SAATHUM-SHOP-API-CATALOG-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1055,6 +1056,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/whoami" || p.startsWith("/api/admin/v2/")) { const r = await admin2Route(req, env, p); if (r) return r; }
       // [SAATHUM-FREEVIDEOS-API-1 2026-10-01] Free videos (public list/card, signed-in watch + view).
       if (p === "/api/free-videos" || p.startsWith("/api/free-videos/")) { const r = await freeVideosRoute(req, env, p); if (r) return r; }
+      // [SAATHUM-SHOP-API-CATALOG-1 2026-10-01] Shop (T-shirts): public catalogue, quote; orders delegated to shop_orders.ts.
+      if (p.startsWith("/api/shop/")) { const r = await shopRoute(req, env, p); if (r) return r; }
       // [SAATHUM-CHECKOUT-API 2026-09-26] Saa Thum event checkout. NOT behind
       // hdfcSmsRailEnabled (that kill switch only covers the /api/pay/hdfc-sms/*
       // and /api/sms/* smoke-harness family) — Saa Thum keeps its own payment
