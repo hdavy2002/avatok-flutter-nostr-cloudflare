@@ -25,7 +25,10 @@ const GONE_EXACT = new Set([
 ]);
 const GONE_PREFIXES = [
   '/archive/', '/vision/', '/agent/', '/talk/', '/consult/', '/session/',
-  '/live/', '/watch/', '/j/', '/c/',
+  // [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] '/watch/' was removed from this list: /watch/<id> is
+  // now the Free videos watch page (pages/watch/[id].astro). The old avaTOK watch URLs were
+  // /watch/<listing uuid>; they now 404 (the page looks the id up) instead of 410.
+  '/live/', '/j/', '/c/',
 ];
 
 const GONE_HTML = `<!doctype html>
@@ -66,7 +69,8 @@ export function isGonePath(pathname: string): boolean {
 //
 // Only 200s with a public, non-zero max-age and no Set-Cookie are stored, so a
 // page that ever starts varying per user must drop `public` from its header.
-const EDGE_CACHE_PATH = /^\/(?:book\/[^/]+(?:\/checkout)?|marketplace)\/?$/;
+// [SAATHUM-FREEVIDEOS-WEB-1] /watch/<id> (free video page) is the same document for everyone too.
+const EDGE_CACHE_PATH = /^\/(?:book\/[^/]+(?:\/checkout)?|watch\/[^/]+|marketplace)\/?$/;
 const BUILD_ID = (import.meta.env.PUBLIC_RELEASE_SHA as string | undefined) || 'dev';
 type EdgeCache = { match(k: Request): Promise<Response | undefined>; put(k: Request, r: Response): Promise<void> };
 

@@ -1,0 +1,71 @@
+---
+// [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] /free-videos — all published free videos (satsang,
+// meditation, sermon, bhajan, aarti, festival) as a card grid with category filter chips.
+// Spec: Specs/SPEC-2026-10-01-FREE-VIDEOS.md. Same folk shell as /marketplace.
+//
+// NOTE FOR AI:
+//  - SSR (prerender = false): the first page of cards is fetched here so it is in the HTML;
+//    ?category=<key> pre-selects a chip (unknown keys are ignored). The island refetches on a
+//    chip click. Cards never carry the YouTube id; watching needs an email sign-in.
+//  - Zero videos -> a plain "coming soon" line (this page is linked from the row, which is
+//    hidden when there are none, so it is rarely reached empty).
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import FreeVideosPage from '../islands/freevideos/FreeVideosPage';
+import { FREE_VIDEO_CATEGORIES, getFreeVideos, type FreeVideoCardData } from '../islands/freevideos/api';
+import { API_BASE, publicImage } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import { withDeadline } from '../lib/requestDeadline';
+import { BRAND } from '../lib/brand';
+import type { PublicContent } from '../lib/seo/types';
+import '../styles/saathum-folk.css';
+import '../islands/home/BookNowShelf.css';
+import '../islands/freevideos/freevideos.css';
+
+const requested = (Astro.url.searchParams.get('category') ?? '').trim().toLowerCase();
+const category = FREE_VIDEO_CATEGORIES.some((c) => c.key === requested) ? requested : '';
+
+let initial: FreeVideoCardData[] = [];
+try {
+  initial = await withDeadline((signal) => getFreeVideos({ limit: 48, category: category || undefined }, signal), 1500);
+} catch (err) {
+  // The island falls back to showing the empty/"try again" state; never block the page on this.
+  console.warn('[FREEVIDEOS-WEB-1] server free-videos fetch failed', err instanceof Error ? err.message : String(err));
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const content: PublicContent = {
+  kind: 'collection',
+  key: 'free-videos',
+  canonicalPath: '/free-videos',
+  title: `Free videos: satsang, bhajan, aarti and more · ${BRAND.name}`,
+  summary: 'Watch satsang, meditation, sermons, bhajans, aarti and festival videos free. Sign in with just your email and press play.',
+  visibility: 'public',
+  image: { url: '/assets/saathum-grand/hero.png', alt: `Free videos on ${BRAND.name}.` },
+};
+---
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preconnect" href={API_BASE} crossorigin />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content">
+      <section class="fv-page" aria-labelledby="fv-page-title">
+        <div class="fv-page-head">
+          <h1 id="fv-page-title">Free videos</h1>
+          <p class="fv-lead">Satsang, meditation, sermons, bhajans, aarti and festival videos. Watch free, you only need to sign in with your email.</p>
+        </div>
+        <FreeVideosPage client:load initial={initial} initialCategory={category} />
+      </section>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

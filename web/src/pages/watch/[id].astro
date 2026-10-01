@@ -1,0 +1,63 @@
+---
+// [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] /watch/<id> — the simple watch page of ONE free video
+// (Specs/SPEC-2026-10-01-FREE-VIDEOS.md). Not an event: no price, booking, date or reviews.
+//
+// NOTE FOR AI:
+//  - SSR from the PUBLIC card (GET /api/free-videos/:id): title, description, category, cover.
+//    That response never carries the YouTube id, and neither does this HTML — the id only
+//    comes from the signed-in watch call made by the FreeVideoWatch island.
+//  - Missing / unpublished -> 404 (same plain response as pages/book/[id].astro).
+//  - Same document for every visitor (auth lives in the island), so it carries a public
+//    60 s cache header and middleware.ts stores it at the edge like /book/<id>.
+//  - /watch/ used to be a 410 prefix in middleware.ts; it was removed for this page.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import FreeVideoWatch from '../../islands/freevideos/FreeVideoWatch';
+import { getFreeVideo } from '../../islands/freevideos/api';
+import { ApiError } from '../../lib/apiClient';
+import { BRAND } from '../../lib/brand';
+import type { PublicContent } from '../../lib/seo/types';
+
+const { id } = Astro.params;
+
+let video: Awaited<ReturnType<typeof getFreeVideo>> | null = null;
+try {
+  video = await getFreeVideo(id!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) video = null;
+  else throw e;
+}
+if (!video) {
+  return new Response('Video not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const summary = (video.description || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  || `Watch ${video.title} free on ${BRAND.name}. Sign in with just your email.`;
+const content: PublicContent = {
+  kind: 'page',
+  key: `/watch/${video.id}`,
+  canonicalPath: `/watch/${video.id}`,
+  title: `${video.title} · Free video · ${BRAND.name}`,
+  summary,
+  visibility: 'public',
+  image: video.cover_url ? { url: video.cover_url, alt: video.title } : undefined,
+  breadcrumbs: [
+    { name: 'Home', path: '/' },
+    { name: 'Free videos', path: '/free-videos' },
+    { name: video.title, path: `/watch/${video.id}` },
+  ],
+};
+---
+<Base content={content}>
+  <main class="ep-page fv-watch-page" id="main-content" data-free-video-id={video.id}>
+    <div class="ep-inner">
+      <nav class="fv-crumb" aria-label="Breadcrumb">
+        <a href="/">Home</a> › <a href="/free-videos">Free videos</a> › {video.category_label}
+      </nav>
+      <FreeVideoWatch client:load video={video} />
+    </div>
+  </main>
+</Base>

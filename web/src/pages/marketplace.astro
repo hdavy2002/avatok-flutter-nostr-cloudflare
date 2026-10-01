@@ -27,6 +27,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import MarketplaceV2 from '../islands/marketplace/MarketplaceV2';
+import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
 import { API_BASE, publicImage } from '../lib/config';
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import { rituals, ritualBySlug } from '../lib/ritualGuides';
@@ -137,6 +138,9 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       <MarketplaceV2 client:load guides={guides} deities={deities}
         initialCards={initialCards} serverNow={serverNow} serverMs={serverMs}
         initialSearch={Astro.url.search} origin={Astro.url.origin}>
+        <!-- [SAATHUM-FREEVIDEOS-WEB-1] "Free videos" row: its own section right after the Upcoming
+             events grid (MarketplaceV2 renders this slot there). client:visible = loads when scrolled to. -->
+        <FreeVideosRow slot="afterEvents" client:visible surface="marketplace" />
         <section slot="intentions" class="grand-experiences mk-intent" aria-labelledby="mk-intent-title">
           <div class="grand-section-heading"><h2 id="mk-intent-title"><span aria-hidden="true">✽</span> Not sure which ritual? Start with your wish. <span aria-hidden="true">✽</span></h2></div>
           <div class="grand-category-grid">

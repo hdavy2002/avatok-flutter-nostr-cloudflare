@@ -32,6 +32,8 @@ const categories = [
 import { featuredHavans, ritualCategoryShort, rituals } from '../lib/ritualGuides';
 // [SAATHUM-BOOKNOW-1 2026-09-26] "Book now" shelf — real upcoming listings, hidden when there are none.
 import BookNowShelf from '../islands/home/BookNowShelf';
+// [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] "Free videos" row, right after the events shelf.
+import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
 // Raw /assets paths on purpose: a /cdn-cgi/image URL inside serialized island props
 // (HTML-escaped JSON) trips the built-image-source deploy check. The island calls publicImage().
 // [WEB-HERO-PHOTO-1] Full-bleed hero photo (design/temple-crew/havan3.png).
@@ -111,6 +113,11 @@ import { BRAND } from '../lib/brand';
       <!-- NOTE FOR AI: [SAATHUM-BOOKNOW-1] up to 4 real bookable listings (live/1:1) from /api/explore.
            Renders NOTHING when none are listed. Add ?booknow=preview to see sample cards. -->
       <BookNowShelf client:idle guides={bookNowGuides} samples={bookNowSamples} exploreHref="/marketplace" />
+
+      <!-- NOTE FOR AI: [SAATHUM-FREEVIDEOS-WEB-1] the "Free videos" row — its own section under the
+           paid events. Loads in the background (client:idle) and renders NOTHING when no free video
+           is published. Components: islands/freevideos/. -->
+      <FreeVideosRow client:idle surface="home" />
 
       <section class="grand-moments" id="home-events" aria-labelledby="grand-moments-title" data-home-section="havans">
         <!-- NOTE FOR AI: knowledge cards, NOT bookable listings. Each opens the ritual's

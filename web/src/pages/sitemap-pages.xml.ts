@@ -51,6 +51,7 @@ const SITE = BRAND.webOrigin;
 const ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
+  ['/free-videos', 'daily', '0.7'], // [SAATHUM-FREEVIDEOS-WEB-1]
   ['/rituals/', 'weekly', '0.9'],
   ...rituals.map(ritual => [ritual.href, 'monthly', '0.8'] as [string, string, string]),
   ['/how-it-works', 'monthly', '0.8'],

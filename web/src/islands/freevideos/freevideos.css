@@ -1,0 +1,57 @@
+/* [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] Free videos. The cards, sections, pills and buttons are the
+   EXISTING event styles (islands/home/BookNowShelf.css `bn-*`, components/eventpage/eventpage.css
+   `ep-*`) — this file only adds the few pieces those do not have (filter chips, the watch page's
+   text block, the "Free video" badge colour). No existing rule is changed. Smallest font: 14px. */
+
+/* "Free video" badge on the card photo: same shape as .bn-type-badge, calm green. */
+.bn-type-badge.fv-badge { background: #1e8a4c; color: #fff; }
+.fv-btns { margin-top: auto; display: grid; grid-template-columns: 1fr; }
+.fv-card .bn-desc { min-height: 2.9em; }
+.folk-site .bn-section .fv-btns a.bn-btn--book { color: #fff; }
+
+/* ── /free-videos page ── */
+.fv-page { position: relative; padding: 40px clamp(16px, 7vw, 140px) 56px; color: #5a1f14; background: linear-gradient(160deg, #f8ead0 0%, #eed7ad 100%); border-bottom: 3px solid #d1ae70; }
+.fv-page-inner { position: relative; max-width: 1840px; margin: auto; }
+.fv-page h1 { margin: 0 0 6px; font-family: Comfortaa, sans-serif; font-weight: 600; font-size: clamp(28px, 3vw, 42px); line-height: 1.15; color: #5a1f14; }
+.fv-page .fv-lead { margin: 0 0 22px; font: 700 16px/1.45 Nunito, sans-serif; color: #6b4a2b; max-width: 720px; }
+.fv-page-head { position: relative; max-width: 1840px; margin: 0 auto; }
+.fv-chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; }
+.fv-chip { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; background: #fffaf0; border: 2px solid #173f3f; color: #173f3f; font: 900 15.5px Nunito, sans-serif; letter-spacing: .03em; text-decoration: none; }
+.fv-chip--on { background: #173f3f; color: #fff; }
+.folk-site .fv-page a.fv-chip { color: #173f3f; }
+.folk-site .fv-page a.fv-chip--on { color: #fff; }
+.fv-grid--loading { opacity: .55; transition: opacity .15s; }
+.fv-empty { margin: 8px 0 0; padding: 22px; border-radius: 16px; background: #fffdf8; border: 1px dashed #d8c3a0; font: 700 17px/1.5 Nunito, sans-serif; color: #5a2d12; text-align: center; }
+
+/* ── /watch/<id> page ── */
+.fv-crumb { max-width: 1100px; margin: 0 auto 14px; font: 700 14px Nunito, sans-serif; color: #6b4a2b; }
+.fv-crumb a { color: #6b4a2b; text-decoration: none; }
+.fv-crumb a:hover { text-decoration: underline; }
+.fv-info { max-width: 1100px; margin: 26px auto 0; position: relative; }
+.fv-cat { display: inline-flex; padding: 6px 14px; border-radius: 999px; background: #fffaf0; border: 1px solid #e3cfa9; color: #5a2d12; font: 900 14px Nunito, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.fv-title { margin: 12px 0 8px; font-family: Comfortaa, sans-serif; font-weight: 600; font-size: clamp(26px, 3vw, 38px); line-height: 1.2; color: #173f3f; }
+.fv-desc { margin: 0 0 18px; font: 500 18px/1.55 Nunito, sans-serif; color: #3c4a4c; max-width: 820px; white-space: pre-line; }
+.fv-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fv-actions .fv-watch-btn { width: auto; min-width: 220px; padding-left: 30px; padding-right: 30px; }
+.fv-share { width: 52px; height: 52px; border-radius: 14px; }
+.fv-share svg { width: 26px; height: 26px; }
+.folk-site .fv-info a.fv-watch-btn { color: #fff; }
+.fv-info .ep-fine { text-align: left; font-size: 14px; }
+
+.fv-more { max-width: 1100px; margin: 44px auto 0; position: relative; }
+.fv-more-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.fv-more-head h2 { margin: 0; font: 600 clamp(22px, 2.4vw, 30px)/1.2 Comfortaa, sans-serif; color: #5a1f14; }
+.fv-more-all { font: 900 16px Nunito, sans-serif; color: #173f3f; text-decoration: none; }
+.fv-more-all:hover { text-decoration: underline; }
+.fv-more .bn-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fv-more .bn-grid--1 { grid-template-columns: minmax(0, 460px); }
+.fv-more .bn-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (max-width: 900px) { .fv-more .bn-grid, .fv-more .bn-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .fv-page { padding: 30px 16px 40px; }
+  .fv-info, .fv-more { padding: 0 16px; }
+  .fv-crumb { padding: 0 16px; }
+  .fv-actions .fv-watch-btn { flex: 1 1 auto; min-width: 0; }
+  .fv-more .bn-grid, .fv-more .bn-grid--1, .fv-more .bn-grid--2 { grid-template-columns: 1fr; gap: 20px; }
+}

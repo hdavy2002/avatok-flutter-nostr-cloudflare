@@ -74,11 +74,21 @@ export function signInUrlForFreeWatch(): string {
   return `/sign-in?redirect_url=${encodeURIComponent(back)}`;
 }
 
-/** True when the post-login target is a free-event page (an /book/<id> path with the marker). */
+/** [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] Sign-in URL for a given page path (e.g. `/watch/fv_x`):
+ *  returns there with the free-watch marker, so the visitor lands back and the video plays. */
+export function signInUrlForFreeWatchPath(path: string): string {
+  const [pathname, search = ''] = path.split('?');
+  const q = new URLSearchParams(search);
+  q.set(FREE_WATCH_PARAM, '1');
+  return `/sign-in?redirect_url=${encodeURIComponent(`${pathname}?${q.toString()}`)}`;
+}
+
+/** True when the post-login target is a free-watch page: an /book/<id> (free event) or
+ *  /watch/<id> (free video) path carrying the marker. */
 export function isFreeWatchTarget(target: string): boolean {
   try {
     const u = new URL(target, typeof location !== 'undefined' ? location.origin : BRAND.webOrigin);
-    return /^\/book\/[^/]+\/?$/.test(u.pathname) && u.searchParams.get(FREE_WATCH_PARAM) === '1';
+    return /^\/(?:book|watch)\/[^/]+\/?$/.test(u.pathname) && u.searchParams.get(FREE_WATCH_PARAM) === '1';
   } catch {
     return false;
   }

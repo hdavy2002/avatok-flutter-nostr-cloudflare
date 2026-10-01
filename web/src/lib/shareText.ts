@@ -53,3 +53,15 @@ export function whatsappShareText(i: ShareInput): string {
 export function whatsappShareHref(i: ShareInput): string {
   return 'https://wa.me/?text=' + encodeURIComponent(whatsappShareText(i));
 }
+
+// [SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] A free video is not an event: no date, price or booking,
+// so it gets its own message instead of whatsappShareText's "Book your place".
+export function whatsappShareVideoText(i: { title: string; url: string; categoryLabel?: string | null }): string {
+  const title = i.title.replace(/\s+/g, ' ').trim();
+  const kind = i.categoryLabel ? `${i.categoryLabel} · Free video` : 'Free video';
+  return `*${title}*\n${kind}\n\nWatch free: ${i.url}`;
+}
+
+export function whatsappShareVideoHref(i: { title: string; url: string; categoryLabel?: string | null }): string {
+  return 'https://wa.me/?text=' + encodeURIComponent(whatsappShareVideoText(i));
+}

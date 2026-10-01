@@ -44,6 +44,8 @@ interface Props {
   deities: DeityLink[];
   /** Astro-rendered intention band (named slot). */
   intentions?: ReactNode;
+  /** [SAATHUM-FREEVIDEOS-WEB-1] Astro-rendered "Free videos" row (named slot), shown right after the Upcoming events grid. */
+  afterEvents?: ReactNode;
   /**
    * [MKT-SSR-1] Raw cards the server already fetched, so the grid is in the HTML
    * and the visitor never waits on the island + a second round trip. Absent when
@@ -310,7 +312,7 @@ function itemsFrom(cards: Card[], guides: GuideLink[], t: number = Date.now()): 
 // ---------------------------------------------------------------- component
 type Status = 'loading' | 'ready' | 'error';
 
-export default function MarketplaceV2({ guides, deities, intentions, initialCards, serverNow, serverMs, initialSearch, origin: originProp }: Props) {
+export default function MarketplaceV2({ guides, deities, intentions, afterEvents, initialCards, serverNow, serverMs, initialSearch, origin: originProp }: Props) {
   // [MKT-SSR-1] Every initial value below is computed from props only (never from
   // window or the client clock), so the first client render matches the server
   // HTML exactly and hydration keeps the cards on screen.
@@ -731,6 +733,9 @@ export default function MarketplaceV2({ guides, deities, intentions, initialCard
           {(status === 'error' || (ready && results.length === 0)) && emptyState}
         </div>
       </section>
+
+      {/* [SAATHUM-FREEVIDEOS-WEB-1] Free videos row — its own section under the events grid. */}
+      {afterEvents}
 
       {/* ⑤ BROWSE BY DEITY */}
       {deities.length > 0 && (
