@@ -3,32 +3,26 @@
 // Deliberately NOT web/scripts/check-homepage.mjs: that script asserts the opposite of
 // what this build wants (no noindex, live sign-up links). Run AFTER postprocess-dist.mjs.
 //
-// Usage: node check-frozen-build.mjs <path-to-dist-dir> [--new-origin=https://...]
+// Usage: node check-frozen-build.mjs <path-to-dist-dir>
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 import {
-  BANNER_FONT_SIZE_PX,
   KEEP_PAGES,
   REDIRECT_LIMITS,
   REDIRECT_PREFIXES,
+  REDIRECT_TARGET,
   functionalRedirectRules,
   isDynamicRule,
   loadBrand,
-  loadOldBrandName,
-  resolveNewBrandName,
-  resolveNewOrigin,
 } from './freeze-config.mjs';
-import { BANNER_ID, distHasPath, urlPathForFile } from './postprocess-dist.mjs';
+import { distHasPath } from './postprocess-dist.mjs';
 
 const distDir = process.argv[2];
 if (!distDir || distDir.startsWith('--') || !existsSync(distDir)) {
-  console.error('Usage: node check-frozen-build.mjs <path-to-dist-dir> [--new-origin=https://...]');
+  console.error('Usage: node check-frozen-build.mjs <path-to-dist-dir>');
   process.exit(1);
 }
-const newOrigin = resolveNewOrigin();
-const newBrand = resolveNewBrandName();
-const oldBrand = loadOldBrandName();
 const brand = loadBrand();
 
 let failures = 0;
@@ -78,7 +72,7 @@ check(existsSync(robotsPath) && /^Disallow:\s*\/\s*$/m.test(readFileSync(robotsP
 const crawlerFiles = allFiles.map(rel).filter((f) => /^(llms.*\.txt|sitemap.*\.xml|[a-f0-9]{32}\.txt)$/.test(f));
 check(crawlerFiles.length === 0, `no llms*.txt / sitemap*.xml / IndexNow key file${crawlerFiles.length ? ` (found: ${crawlerFiles.join(', ')})` : ''}`);
 
-// 3. Every HTML page: noindex, canonical, banner.
+// 3. Every HTML page: noindex, no canonical, no banner, no JSON-LD.
 let bad = 0;
 const bump = (f, why) => {
   bad++;
@@ -87,25 +81,13 @@ const bump = (f, why) => {
 };
 for (const file of htmlFiles) {
   const html = readFileSync(file, 'utf8');
-  const path = urlPathForFile(distDir, file);
-  const expected = `${newOrigin}${path}`;
   const robots = [...html.matchAll(/<meta\s+name="robots"[^>]*>/gi)].map((m) => m[0]);
   if (robots.length !== 1 || !/content="noindex"/i.test(robots[0])) bump(file, `robots meta must be exactly one noindex tag (found ${robots.length})`);
-  const canon = [...html.matchAll(/<link\b[^>]*\brel="canonical"[^>]*>/gi)].map((m) => m[0]);
-  if (canon.length !== 1 || !canon[0].includes(`href="${expected}"`)) bump(file, `canonical must be ${expected} (found ${canon.join(' ') || 'none'})`);
-  const banner = html.match(new RegExp(`<div id="${BANNER_ID}"[^>]*>([\\s\\S]*?)</div>`));
-  if (!banner) bump(file, 'banner missing');
-  else {
-    if (!banner[1].includes(oldBrand) || !banner[1].includes(`>${newBrand}</a>`) || !banner[1].includes(`href="${expected}"`)) {
-      bump(file, 'banner must name the old brand and link the new brand to the same path on the new origin');
-    }
-    const size = Number(/font:[^;"]*?(\d+(?:\.\d+)?)px/.exec(banner[0])?.[1]);
-    if (!(size >= 14) || size !== BANNER_FONT_SIZE_PX) bump(file, `banner font size must be ${BANNER_FONT_SIZE_PX}px (>= 14), found ${size}`);
-    if (!/<body\b[^>]*>\s*<div id="frozen-banner"/i.test(html)) bump(file, 'banner is not the first element in <body>');
-  }
+  if (/<link\b[^>]*\brel=["']?canonical/i.test(html)) bump(file, 'canonical link present (the archive must have none)');
+  if (/frozen-banner/i.test(html)) bump(file, 'banner element (frozen-banner) present');
   if (/application\/ld\+json/i.test(html)) bump(file, 'JSON-LD structured data survived');
 }
-check(bad === 0, `all ${htmlFiles.length} HTML pages carry noindex + canonical + banner`);
+check(bad === 0, `all ${htmlFiles.length} HTML pages carry noindex, no canonical, no banner`);
 
 // 4. Internal links: nothing points at a path that is not in dist.
 const hasPath = distHasPath(distDir);
@@ -145,32 +127,49 @@ for (const file of allFiles) {
 check(hits === 0, 'no built file references the API host, Clerk, Turnstile or the Preeti widget');
 failures += hits;
 
-// 6. _redirects carries the functional rules and stays inside Cloudflare's limits.
+// 5b. NO TRACE of the new site anywhere (owner requirement 2026-10-01): partners must not be
+// able to link the archive to the live site. Any html/txt/xml/js/json/_redirects/_headers file.
+const TRACE_EXT = new Set(['.html', '.txt', '.xml', '.js', '.mjs', '.json', '.webmanifest', '.map']);
+const TRACE = /aumfe|\baum\s+fe/i;
+let traces = 0;
+for (const file of allFiles) {
+  const name = rel(file);
+  if (!TRACE_EXT.has(extname(file)) && name !== '_redirects' && name !== '_headers') continue;
+  if (TRACE.test(readFileSync(file, 'utf8'))) {
+    traces++;
+    console.error(`[FAIL] ${name} contains a trace of the new site ("aumfe" / "Aum Fe")`);
+  }
+}
+check(traces === 0, 'no built file mentions the new site (aumfe / Aum Fe)');
+failures += traces;
+
+// 6. _redirects: every functional rule 302s to "/", nothing points off-site, limits respected.
 const redirectsPath = join(distDir, '_redirects');
 check(existsSync(redirectsPath), 'dist/_redirects exists');
 if (existsSync(redirectsPath)) {
   const lines = readFileSync(redirectsPath, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const rules = lines.map((l) => l.split(/\s+/));
-  const { statics, dynamics } = functionalRedirectRules(newOrigin);
+  const { statics, dynamics } = functionalRedirectRules();
   let missing = 0;
   for (const [src, dest] of [...statics, ...dynamics]) {
-    if (!rules.some((r) => r[0] === src && r[1] === dest && (r[2] ?? '302') === '301')) {
+    if (!rules.some((r) => r[0] === src && r[1] === dest && r[2] === '302')) {
       missing++;
-      console.error(`[FAIL] _redirects is missing: ${src} ${dest} 301`);
+      console.error(`[FAIL] _redirects is missing: ${src} ${dest} 302`);
     }
   }
-  check(missing === 0, `_redirects has all ${statics.length + dynamics.length} functional rules (301 -> ${newOrigin})`);
+  check(missing === 0, `_redirects has all ${statics.length + dynamics.length} functional rules (302 -> ${REDIRECT_TARGET})`);
   failures += missing;
   for (const must of ['/j/*', '/l/*', '/book/*', '/checkout/*', '/dashboard/*', '/sign-in/*', '/sign-up/*', '/sso-callback/*', '/watch/*', '/shop/*', '/explore/*', '/marketplace/*', '/admin/*', '/live/*', '/session/*', '/c/*', '/saathum/*', '/e/*']) {
-    check(rules.some((r) => r[0] === must && r[1] === `${newOrigin}${must.replace('*', ':splat')}`), `_redirects: ${must} -> ${newOrigin}${must.replace('*', ':splat')}`);
+    check(rules.some((r) => r[0] === must && r[1] === REDIRECT_TARGET && r[2] === '302'), `_redirects: ${must} -> ${REDIRECT_TARGET} (302)`);
   }
+  const offSite = rules.filter((r) => !r[1] || !r[1].startsWith('/') || r[1].startsWith('//'));
+  check(offSite.length === 0, `_redirects: no rule points off-site${offSite.length ? ` (${offSite.map((r) => r.join(' ')).join('; ')})` : ''}`);
+  failures += offSite.length;
   const nDyn = rules.filter((r) => isDynamicRule(r[0])).length;
   const nStat = rules.length - nDyn;
   check(nDyn <= REDIRECT_LIMITS.dynamic && nStat <= REDIRECT_LIMITS.static, `_redirects within Pages limits (${nStat}/${REDIRECT_LIMITS.static} static, ${nDyn}/${REDIRECT_LIMITS.dynamic} dynamic)`);
-  // Static rules must precede dynamic ones.
   const firstDyn = rules.findIndex((r) => isDynamicRule(r[0]));
   check(firstDyn === -1 || rules.slice(firstDyn).every((r) => isDynamicRule(r[0])), '_redirects lists static rules before dynamic rules');
-  // No redirect may point at a deleted route on THIS host.
   const localDead = rules.filter((r) => r[1].startsWith('/') && !hasPath(r[1]));
   check(localDead.length === 0, `_redirects has no rule whose local target is missing${localDead.length ? ` (${localDead.map((r) => r.join(' ')).join('; ')})` : ''}`);
 }

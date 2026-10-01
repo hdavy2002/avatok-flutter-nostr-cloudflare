@@ -9,22 +9,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  BANNER_ID,
-  applyNoindexAndCanonical,
-  bannerHtml,
-  canonicalUrl,
-  injectBanner,
-  processHtml,
-  rewriteLinks,
-  stripThirdParty,
-  urlPathForFile,
-} from './postprocess-dist.mjs';
-import { REDIRECT_PREFIXES, functionalRedirectRules, resolveNewOrigin, loadOldBrandName } from './freeze-config.mjs';
+import { applyNoindex, processHtml, rewriteLinks, stripThirdParty, urlPathForFile } from './postprocess-dist.mjs';
+import { REDIRECT_PREFIXES, REDIRECT_TARGET, functionalRedirectRules, loadBrand } from './freeze-config.mjs';
 import { buildRedirects } from './prepare-source.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const ORIGIN = 'https://new.example';
 
 // --- urlPathForFile / canonicalUrl ---------------------------------------------
 assert.equal(urlPathForFile('/d', '/d/index.html'), '/');
@@ -32,55 +21,24 @@ assert.equal(urlPathForFile('/d', '/d/about/index.html'), '/about');
 assert.equal(urlPathForFile('/d', '/d/help/a/b/index.html'), '/help/a/b');
 assert.equal(urlPathForFile('/d', '/d/404.html'), '/');
 assert.equal(urlPathForFile('/d', '/d/offline.html'), '/offline');
-assert.equal(canonicalUrl(ORIGIN, '/'), `${ORIGIN}/`);
-assert.equal(canonicalUrl(ORIGIN, '/about'), `${ORIGIN}/about`);
-console.log('urlPathForFile / canonicalUrl: OK');
+console.log('urlPathForFile: OK');
 
-// --- resolveNewOrigin ----------------------------------------------------------------
-assert.equal(resolveNewOrigin(['node', 'x'], {}).startsWith('https://'), true);
-assert.equal(resolveNewOrigin(['node', 'x', '--new-origin=https://a.test/'], {}), 'https://a.test');
-assert.equal(resolveNewOrigin(['node', 'x'], { NEW_ORIGIN: 'https://b.test' }), 'https://b.test');
-assert.throws(() => resolveNewOrigin(['node', 'x'], { NEW_ORIGIN: 'http://insecure.test' }));
-assert.throws(() => resolveNewOrigin(['node', 'x'], { NEW_ORIGIN: 'https://a.test/path' }));
-console.log('resolveNewOrigin: OK');
-
-// --- applyNoindexAndCanonical ------------------------------------------------------------
+// --- applyNoindex ---------------------------------------------------------------------
 {
   const html =
     '<html><head><link rel="canonical" href="https://old.test/x">' +
     '<meta name="robots" content="index, follow, max-snippet:-1">' +
     '<link rel="sitemap" type="application/xml" href="/sitemap.xml">' +
-    '<meta property="og:url" content="https://old.test/x">' +
     '<script type="application/ld+json">{"@type":"Organization"}</script>' +
     '<title>t</title></head><body></body></html>';
-  const out = applyNoindexAndCanonical(html, `${ORIGIN}/x`);
+  const out = applyNoindex(html);
   assert.equal((out.match(/<meta name="robots"/g) ?? []).length, 1);
   assert.match(out, /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(out, /index, follow/);
-  assert.equal((out.match(/rel="canonical"/g) ?? []).length, 1);
-  assert.match(out, /<link rel="canonical" href="https:\/\/new\.example\/x">/);
-  assert.match(out, /og:url" content="https:\/\/new\.example\/x"/);
-  assert.doesNotMatch(out, /sitemap|ld\+json/);
-  // a page with neither tag still gets both
-  const bare = applyNoindexAndCanonical('<head><title>x</title></head>', `${ORIGIN}/`);
-  assert.match(bare, /noindex/);
-  assert.match(bare, /rel="canonical" href="https:\/\/new\.example\/"/);
+  assert.doesNotMatch(out, /canonical|sitemap|ld\+json|frozen-banner/);
+  assert.match(applyNoindex('<head><title>x</title></head>'), /noindex/);
 }
-console.log('applyNoindexAndCanonical: OK');
-
-// --- banner -------------------------------------------------------------------------------------
-{
-  const banner = bannerHtml({ oldBrand: 'Old <Brand>', newBrand: 'new.example', href: `${ORIGIN}/about` });
-  assert.match(banner, /Old &lt;Brand&gt; is now at <a href="https:\/\/new\.example\/about"[^>]*>new\.example<\/a>/);
-  const size = Number(/font:[^;"]*?(\d+)px/.exec(banner)[1]);
-  assert.ok(size >= 14, 'banner font is at least 14px');
-  const html = '<html><head></head><body class="x"><main>hi</main></body></html>';
-  const once = injectBanner(html, banner);
-  assert.match(once, /<body class="x">\s*<div id="frozen-banner"/);
-  assert.equal(injectBanner(once, banner), once, 'injecting twice changes nothing');
-  assert.equal(BANNER_ID, 'frozen-banner');
-}
-console.log('banner: OK');
+console.log('applyNoindex: OK');
 
 // --- rewriteLinks -------------------------------------------------------------------------------------
 {
@@ -96,17 +54,19 @@ console.log('banner: OK');
     '<a href="//cdn.example/x">Proto-relative</a>' +
     '<a href="#top">Top</a>' +
     '<a href="/cdn-cgi/image/w=1/x.png">Img</a>';
-  const { html: out, toNew, disabled } = rewriteLinks(html, hasPath, ORIGIN);
-  assert.equal(toNew, 3);
-  assert.equal(disabled, 1);
+  const { html: out, disabled } = rewriteLinks(html, hasPath);
+  assert.equal(disabled, 4);
   assert.match(out, /<a href="\/about">About<\/a>/, 'kept page untouched');
-  assert.match(out, /href="https:\/\/new\.example\/marketplace\?group=x&amp;y=1"/, 'query preserved');
-  assert.match(out, /href="https:\/\/new\.example\/sign-in"/);
-  assert.match(out, /href="https:\/\/new\.example\/dashboard\/wallet"/);
-  assert.match(out, /<span class="frozen-disabled-link">Careers<\/span>/, 'deleted, not redirected -> inert');
+  assert.match(out, /<span class="frozen-disabled-link">Explore<\/span>/);
+  assert.match(out, /<span class="frozen-disabled-link">Log in<\/span>/);
+  assert.match(out, /<span class="frozen-disabled-link">Wallet<\/span>/);
+  assert.match(out, /<span class="frozen-disabled-link">Careers<\/span>/);
+  assert.doesNotMatch(out, /href="[^"]*(marketplace|sign-in|dashboard|careers)/);
   assert.match(out, /href="https:\/\/example\.com\/x"/);
   assert.match(out, /href="\/\/cdn\.example\/x"/);
   assert.match(out, /href="\/cdn-cgi\/image\/w=1\/x\.png"/);
+  const p = processHtml('<html><head></head><body><a href="/shop">Shop</a></body></html>', { hasPath });
+  assert.doesNotMatch(p.html, /<a |canonical|frozen-banner/);
 }
 console.log('rewriteLinks: OK');
 
@@ -126,25 +86,28 @@ console.log('stripThirdParty: OK');
 {
   const existing =
     '# comment\n/videos /marketplace 301\n/coming-soon / 301\n/humphrey/* /saathum/:splat 301\n' +
-    '/rituals/lalita-havan/* /rituals/ 301\n/j /elsewhere 301\n';
-  const { text, staticCount, dynamicCount } = buildRedirects(existing, ORIGIN);
+    '/rituals/lalita-havan/* /rituals/ 301\n/j /elsewhere 301\n/off /x https://elsewhere.test/y 301\n/off2 https://elsewhere.test/y 301\n';
+  const { text, staticCount, dynamicCount } = buildRedirects(existing);
+  assert.doesNotMatch(text, /https?:|elsewhere|aumfe/i, 'nothing points off-site');
   const rules = text.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split(' '));
   const find = (src) => rules.find((r) => r[0] === src);
   for (const p of REDIRECT_PREFIXES) {
-    assert.deepEqual(find(`/${p}`), [`/${p}`, `${ORIGIN}/${p}`, '301']);
-    assert.deepEqual(find(`/${p}/*`), [`/${p}/*`, `${ORIGIN}/${p}/:splat`, '301']);
+    assert.deepEqual(find(`/${p}`), [`/${p}`, '/', '302']);
+    assert.deepEqual(find(`/${p}/*`), [`/${p}/*`, '/', '302']);
   }
   for (const must of ['j', 'l', 'book', 'checkout', 'dashboard', 'sign-in', 'sign-up', 'sso-callback', 'watch', 'shop', 'explore', 'marketplace', 'admin', 'live', 'session', 'c', 'saathum', 'e']) {
     assert.ok(REDIRECT_PREFIXES.includes(must), `${must} is redirected`);
   }
-  assert.deepEqual(find('/videos'), ['/videos', `${ORIGIN}/marketplace`, '301'], 'retired URL retargeted to the live site');
+  assert.deepEqual(find('/videos'), ['/videos', '/', '301'], 'retired URL to a dead route lands on /');
   assert.deepEqual(find('/coming-soon'), ['/coming-soon', '/', '301'], 'local target kept');
-  assert.deepEqual(find('/humphrey/*'), ['/humphrey/*', `${ORIGIN}/saathum/:splat`, '301']);
-  assert.deepEqual(find('/j'), ['/j', `${ORIGIN}/j`, '301'], 'functional rule wins over an existing rule for the same source');
+  assert.deepEqual(find('/humphrey/*'), ['/humphrey/*', '/', '301']);
+  assert.deepEqual(find('/j'), ['/j', '/', '302'], 'functional rule wins over an existing rule for the same source');
+  assert.equal(find('/off2'), undefined, 'off-site rule dropped');
   const firstDynamic = rules.findIndex((r) => r[0].includes('*'));
   assert.ok(rules.slice(firstDynamic).every((r) => r[0].includes('*')), 'static rules precede dynamic rules');
   assert.ok(staticCount <= 2000 && dynamicCount <= 100);
-  assert.equal(functionalRedirectRules(ORIGIN).dynamics.length, REDIRECT_PREFIXES.length);
+  assert.equal(functionalRedirectRules().dynamics.length, REDIRECT_PREFIXES.length);
+  assert.equal(REDIRECT_TARGET, '/');
 }
 console.log('buildRedirects: OK');
 
@@ -169,25 +132,47 @@ console.log('buildRedirects: OK');
     }
     writeFileSync(join(dist, 'help', 'search.json'), '[]');
     writeFileSync(join(dist, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-    const { text } = buildRedirects('', 'https://example.org');
+    const { text } = buildRedirects('');
     writeFileSync(join(dist, '_redirects'), text);
-    const env = { ...process.env, NEW_ORIGIN: 'https://example.org', NEW_BRAND_NAME: 'example.org' };
+    const env = { ...process.env };
     const run = (script) => spawnSync('node', [join(here, script), dist], { env, encoding: 'utf8' });
 
     const pp = run('postprocess-dist.mjs');
     assert.equal(pp.status, 0, pp.stderr);
     const ok = run('check-frozen-build.mjs');
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-    assert.match(readFileSync(join(dist, 'about', 'index.html'), 'utf8'), new RegExp(`${loadOldBrandName()} is now at <a href="https://example.org/about"`));
+    assert.doesNotMatch(readFileSync(join(dist, 'about', 'index.html'), 'utf8'), /canonical|frozen-banner/);
 
     // forbidden reference -> check fails
-    writeFileSync(join(dist, '_astro_x.js'), 'fetch("https://api.saathum.com/api/x")');
+    writeFileSync(join(dist, '_astro_x.js'), `fetch("https://${loadBrand().hosts.api}/api/x")`);
     assert.equal(run('check-frozen-build.mjs').status, 1, 'API host in a built file must fail the check');
     rmSync(join(dist, '_astro_x.js'));
-    // a page without the banner -> check fails
+    // a canonical, a banner, or any trace of the new site -> check fails
     const p = join(dist, 'terms', 'index.html');
-    writeFileSync(p, readFileSync(p, 'utf8').replace(/<div id="frozen-banner"[\s\S]*?<\/div>/, ''));
-    assert.equal(run('check-frozen-build.mjs').status, 1, 'missing banner must fail the check');
+    const good = readFileSync(p, 'utf8');
+    for (const [label, bad] of [
+      ['canonical', good.replace('</head>', '<link rel="canonical" href="/terms"></head>')],
+      ['banner', good.replace('<body>', '<body><div id="frozen-banner">x</div>')],
+      ['aumfe in html', good.replace('<main>', '<main>see AumFe.com')],
+      ['Aum Fe in html', good.replace('<main>', '<main>Aum Fe')],
+    ]) {
+      writeFileSync(p, bad);
+      assert.equal(run('check-frozen-build.mjs').status, 1, `${label} must fail the check`);
+    }
+    writeFileSync(p, good);
+    for (const f of ['x.js', 'x.json', 'x.txt', 'x.xml']) {
+      writeFileSync(join(dist, f), 'https://aumfe.com/');
+      assert.equal(run('check-frozen-build.mjs').status, 1, `aumfe in ${f} must fail the check`);
+      rmSync(join(dist, f));
+    }
+    const redirects = readFileSync(join(dist, '_redirects'), 'utf8');
+    writeFileSync(join(dist, '_headers'), '/*\n  Link: <https://AUMFE.com/>; rel=x\n');
+    assert.equal(run('check-frozen-build.mjs').status, 1, 'aumfe in _headers must fail the check');
+    rmSync(join(dist, '_headers'));
+    writeFileSync(join(dist, '_redirects'), redirects + '/zz https://other.test/ 302\n');
+    assert.equal(run('check-frozen-build.mjs').status, 1, 'an off-site redirect must fail the check');
+    writeFileSync(join(dist, '_redirects'), redirects);
+    assert.equal(run('check-frozen-build.mjs').status, 0, 'restored dist passes again');
     // a deleted route that came back -> check fails
     mkdirSync(join(dist, 'dashboard'), { recursive: true });
     writeFileSync(join(dist, 'dashboard', 'index.html'), pages['index.html']);

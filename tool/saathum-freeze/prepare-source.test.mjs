@@ -15,7 +15,6 @@ import { KILL_SWITCH_SW, ROBOTS_TXT, noopIsland, patchContactPage } from './prep
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoWeb = join(here, '..', '..', 'web');
-const ORIGIN = 'https://new.example';
 
 // --- patchContactPage -----------------------------------------------------------
 {
@@ -23,12 +22,13 @@ const ORIGIN = 'https://new.example';
     '---\nconst a = 1;\n---\n<Layout>\n<form id="contact-form" class="x">\n<input name="a">\n</form>\n</Layout>\n\n' +
     '<script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>\n' +
     "<script>\nfetch('/api/contact');\n</script>\n";
-  const out = patchContactPage(src, ORIGIN);
+  const out = patchContactPage(src);
   assert.doesNotMatch(out, /<form|turnstile|challenges|fetch|<input/i);
-  assert.match(out, /<a href="https:\/\/new\.example\/contact">/);
+  assert.match(out, /The contact form is switched off at the moment\. You can email us at support \(@\) \{BRAND\.domain\}\. For anything about your data, see our <a href="\/privacy">Privacy Policy<\/a>\./);
+  assert.doesNotMatch(out, /https?:|aumfe|new site/i);
   assert.match(out, /<Layout>[\s\S]*lg-cform[\s\S]*<\/Layout>/);
-  assert.throws(() => patchContactPage('<p>nothing</p>', ORIGIN), /drifted/);
-  assert.throws(() => patchContactPage('<form id="contact-form"></form>', ORIGIN), /drifted/);
+  assert.throws(() => patchContactPage('<p>nothing</p>'), /drifted/);
+  assert.throws(() => patchContactPage('<form id="contact-form"></form>'), /drifted/);
 }
 console.log('patchContactPage: OK');
 
@@ -58,7 +58,7 @@ console.log('stubs / robots / service worker: OK');
       cpSync(join(repoWeb, 'package.json'), join(web, 'public', name));
     }
 
-    const res = spawnSync('node', [join(here, 'prepare-source.mjs'), web], { env: { ...process.env, NEW_ORIGIN: ORIGIN }, encoding: 'utf8' });
+    const res = spawnSync('node', [join(here, 'prepare-source.mjs'), web], { env: { ...process.env }, encoding: 'utf8' });
     assert.equal(res.status, 0, res.stdout + res.stderr);
 
     const left = [];
@@ -87,7 +87,7 @@ console.log('stubs / robots / service worker: OK');
     assert.doesNotMatch(read('astro.config.mjs'), /@astrojs\/cloudflare|clerk/i);
     assert.match(read('astro.config.mjs'), /output: 'static'/);
     assert.match(read('public/robots.txt'), /Disallow: \/$/m);
-    assert.match(read('public/_redirects'), new RegExp(`^/j/\\* ${ORIGIN}/j/:splat 301$`, 'm'));
+    assert.match(read('public/_redirects'), /^\/j\/\* \/ 302$/m);
     assert.match(read('public/_headers'), /X-Robots-Tag: noindex/);
     assert.match(read('public/sw.js'), /unregister/);
     for (const gone of ['llms.txt', 'sitemap.xml', 'a97b91804230a8c71e3bdf763cdfdef1.txt']) {

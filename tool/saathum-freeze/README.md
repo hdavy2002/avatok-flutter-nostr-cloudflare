@@ -5,9 +5,11 @@ Issue id: `[SAATHUM-FREEZE-1]`. Sister lane of `tool/avatok-freeze/` (which froz
 
 The live site (Astro, `web/`, Cloudflare Pages project `avatok-app`) is moving to a new domain.
 The old domain moves to a NEW Pages project, **`saathum-frozen`**, holding a static, noindexed
-archive of today's public information pages, still in the old brand, with a banner and
-canonical links pointing at the new origin. Functional links people still hold (emails,
-WhatsApp messages) are 301-redirected to the same path on the new origin.
+archive of today's public information pages, still in the old brand. The archive holds NO trace
+of the new site (owner requirement 2026-10-01: partners must not be able to link the two sites):
+no banner, no canonical, no off-site link or redirect, and the check fails on any mention of it.
+Functional links people still hold (emails, WhatsApp messages) are 302-redirected to the archive
+home `/`.
 
 Nothing here deploys by itself. `.github/workflows/saathum-freeze.yml` is `workflow_dispatch`
 only (no push trigger), and its `publish` input defaults to false.
@@ -16,23 +18,17 @@ only (no push trigger), and its `publish` input defaults to false.
 
 | File | Job |
 |---|---|
-| `freeze-config.mjs` | The one place for: default target origin, banner wording/size, kept pages, redirect prefixes. |
+| `freeze-config.mjs` | The one place for: kept pages, redirect prefixes. |
 | `prepare-source.mjs` | Mutates a THROWAWAY checkout of `web/` before `astro build` (see below). |
-| `postprocess-dist.mjs` | Rewrites the BUILT html: noindex, canonical, banner, link repointing. |
+| `postprocess-dist.mjs` | Rewrites the BUILT html: noindex, canonical removal, dead links made inert. |
 | `check-frozen-build.mjs` | Fails the job if anything slipped through. |
 | `*.test.mjs` | Zero-dependency tests: `node tool/saathum-freeze/postprocess-dist.test.mjs` and `node tool/saathum-freeze/prepare-source.test.mjs`. |
 | `wrangler.toml` | Pages project `saathum-frozen`, no bindings. |
 
 ## Configuration (change it in one place)
 
-* **Target origin** — `DEFAULT_NEW_ORIGIN` in `freeze-config.mjs`. Override per run with
-  `--new-origin=https://...` or env `NEW_ORIGIN` (the workflow's `new_origin` input; blank = default).
-  Nothing else hardcodes it.
-* **New brand name** — `DEFAULT_NEW_BRAND_NAME` in `freeze-config.mjs` (placeholder, the name is not
-  final). It is only the visible link text in the banner. Override with env `NEW_BRAND_NAME`.
-* **Banner sentence** — `BANNER_TEMPLATE` (`{old} is now at {link}`) and `BANNER_FONT_SIZE_PX` (16;
-  the check fails below 14). `{old}` is the OLD brand name, read from `Specs/brand.json` at build time —
-  it is never typed in this folder.
+* **No new origin.** There is no `NEW_ORIGIN` / `NEW_BRAND_NAME` / `new_origin` input any more. Do not
+  add one: the archive must never name the new site.
 
 ## What is kept (17 source pages -> 78 built HTML files)
 
@@ -91,18 +87,15 @@ Everything else under `web/src/pages`:
 ## Every page gets (postprocess, no page source redesigned)
 
 * `<meta name="robots" content="noindex">` (only one robots tag; whatever the page asked for is replaced).
-* `<link rel="canonical" href="NEW_ORIGIN<same path>">`; `og:url` follows; the `rel=sitemap` link and all
-  JSON-LD are removed.
-* A thin banner as the first element of `<body>`: "<old brand> is now at <a href=NEW_ORIGIN+same path>NEW_BRAND_NAME</a>",
-  16px system font, inline-styled, so no stylesheet is touched.
-* Links in the built html: a link to a path that is not in the archive is rewritten to `NEW_ORIGIN + path` when the
-  new site serves that path (the redirect list below), else made an inert `<span>`. A run on today's tree repointed
-  about 1,150 links (header Log in / Sign up / Dashboard, Marketplace, Shop, ...) and needed no inert spans.
+* No canonical link (removed), no banner, no JSON-LD, no `rel=sitemap` link.
+* Links in the built html: a link to a path that is not in the archive becomes an inert
+  `<span class="frozen-disabled-link">` with the same text. Never a link to another site.
+* Contact page: "The contact form is switched off at the moment. You can email us at support (@) <domain>.
+  For anything about your data, see our Privacy Policy." (`<domain>` comes from the archived `brand.ts`.)
 
 ## `_redirects` (written by prepare-source, verified by the check)
 
-For each prefix `P` below: `/P` and `/P/` (static) plus `/P/*` -> `NEW_ORIGIN/P/:splat` (dynamic), all 301.
-Cloudflare Pages keeps the incoming query string on a redirect whose destination has none.
+For each prefix `P` below: `/P` and `/P/` (static) plus `/P/*` (dynamic), all `302 -> /` (the archive home).
 
 `j`, `l`, `e`, `book` (incl. `/book/<id>/checkout`), `checkout`, `dashboard`, `sign-in`, `sign-up`, `sign-out`,
 `sso-callback`, `forgot-password`, `watch`, `free-videos`, `shop`, `explore`, `marketplace`, `admin`, `live`,
@@ -112,8 +105,8 @@ Not redirected on purpose: `/og/*` (static images that stay here), `/api/*` (web
 redirect would be wrong), `/blog/*` and the other pages that already answered 410.
 
 The existing `web/public/_redirects` rules are carried over (retired URLs such as `/creator-resources`,
-`/rituals/<removed havan>`, `/tokens`); any whose target is a route now served only by the new site are
-retargeted to the new origin (`/videos` -> `NEW_ORIGIN/marketplace`, `/humphrey/*` -> `NEW_ORIGIN/saathum/:splat`).
+`/rituals/<removed havan>`, `/tokens`); any whose target is a route that is gone from the archive now lands
+on `/`, and any with an off-site target is dropped. Nothing may point off-site.
 
 Pages limits are 2,000 static + 100 dynamic rules; today's file has 73 static + 31 dynamic. Static rules are
 written first (Cloudflare requires it). The check enforces both limits.
@@ -125,7 +118,6 @@ CI does the real build:
 ```
 Actions -> "Freeze saathum.com (Cloudflare Pages)" -> Run workflow
   ref         = the commit that is live today (required)
-  new_origin  = blank for the default
   pricing_api = optional, see above
   publish     = false to only build + verify; true to deploy to saathum-frozen
 ```
@@ -148,6 +140,6 @@ BRAND_JSON=$S/Specs/brand.json node tool/saathum-freeze/check-frozen-build.mjs $
 ## When the freeze script breaks
 
 It fails loudly instead of building something wrong: `prepare-source.mjs` stops if a patched file no longer
-matches (the message names the file), and the check fails on any API host, Clerk, Turnstile, Preeti, missing
-banner/noindex/canonical, deleted route or dangling internal link. Fix the pattern or the list in this folder;
+matches (the message names the file), and the check fails on any API host, Clerk, Turnstile, Preeti, any canonical or banner, any mention of the new site, missing
+noindex, deleted route or dangling internal link. Fix the pattern or the list in this folder;
 never loosen the check.

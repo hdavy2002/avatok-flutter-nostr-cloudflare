@@ -4,14 +4,13 @@
 // information pages (see KEEP_PAGES in freeze-config.mjs), swaps every island
 // that talks to the API / Clerk for an empty component, cuts the API host out
 // of the build, neutralises the contact form, writes a disallow-all robots.txt
-// and a `_redirects` that sends every functional link to the new origin.
+// and a `_redirects` that 302s every functional link to the archive home `/`.
 //
 // Run this ONLY against a throwaway checkout (a fresh CI checkout, or a COPY of
 // web/ in a scratch dir). It deletes files and rewrites astro.config.mjs and
 // several src files. NEVER point it at the real web/ of a working tree.
 //
-// Usage: node prepare-source.mjs <path-to-web-dir> [--new-origin=https://...]
-//        (NEW_ORIGIN may also come from the environment.)
+// Usage: node prepare-source.mjs <path-to-web-dir>
 
 import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -21,7 +20,7 @@ import {
   functionalRedirectRules,
   isDynamicRule,
   isRedirectedPath,
-  resolveNewOrigin,
+  REDIRECT_TARGET,
 } from './freeze-config.mjs';
 
 const TAG = '[saathum-freeze]';
@@ -30,9 +29,13 @@ const TAG = '[saathum-freeze]';
 // Pure helpers (unit-tested in prepare-source.test.mjs)
 // ---------------------------------------------------------------------------
 
-/** Merge web/public/_redirects with the functional rules; returns file text + counts. */
-export function buildRedirects(existingText, newOrigin) {
-  const { statics, dynamics } = functionalRedirectRules(newOrigin);
+/**
+ * Merge web/public/_redirects with the functional rules; returns file text + counts.
+ * Nothing may point off-site: an old rule whose target is a dead route lands on "/", and an old
+ * rule with an absolute (off-site) target is dropped.
+ */
+export function buildRedirects(existingText) {
+  const { statics, dynamics } = functionalRedirectRules();
   const seen = new Set([...statics, ...dynamics].map(([src]) => src));
   const keptStatic = [];
   const keptDynamic = [];
@@ -43,30 +46,29 @@ export function buildRedirects(existingText, newOrigin) {
     if (parts.length < 2) continue;
     const [src, destRaw, code = '301'] = parts;
     if (seen.has(src)) continue; // already covered by a functional rule above
+    if (!/^\d{3}!?$/.test(code)) continue; // malformed line: dropped
+    if (!src.startsWith('/') || !destRaw.startsWith('/') || destRaw.startsWith('//')) continue; // off-site: dropped
     seen.add(src);
-    // A retired URL that used to land on a route which is gone from the archive
-    // (e.g. /videos -> /marketplace) now lands on the live site instead.
-    const dest = destRaw.startsWith('/') && isRedirectedPath(destRaw) ? `${newOrigin}${destRaw}` : destRaw;
+    const dest = isRedirectedPath(destRaw) ? REDIRECT_TARGET : destRaw;
     (isDynamicRule(src) ? keptDynamic : keptStatic).push([src, dest, code]);
   }
   const all = {
-    statics: [...statics.map(([s, d]) => [s, d, '301']), ...keptStatic],
-    dynamics: [...dynamics.map(([s, d]) => [s, d, '301']), ...keptDynamic],
+    statics: [...statics.map(([s, d]) => [s, d, '302']), ...keptStatic],
+    dynamics: [...dynamics.map(([s, d]) => [s, d, '302']), ...keptDynamic],
   };
   if (all.statics.length > REDIRECT_LIMITS.static) throw new Error(`_redirects: ${all.statics.length} static rules > ${REDIRECT_LIMITS.static}`);
   if (all.dynamics.length > REDIRECT_LIMITS.dynamic) throw new Error(`_redirects: ${all.dynamics.length} dynamic rules > ${REDIRECT_LIMITS.dynamic}`);
   const fmt = (rules) => rules.map(([s, d, c]) => `${s} ${d} ${c}`).join('\n');
   const text =
     `# [SAATHUM-FREEZE-1] Frozen archive. Every functional path from old emails / WhatsApp /\n` +
-    `# bookmarks is sent to the SAME path on the new origin. Pages keeps the incoming query\n` +
-    `# string on a redirect whose destination has none. Static rules first, then dynamic\n` +
-    `# (Cloudflare requires that order). Limits: ${REDIRECT_LIMITS.static} static / ${REDIRECT_LIMITS.dynamic} dynamic.\n\n` +
+    `# bookmarks is sent to the archive home page. Nothing points off-site. Static rules first,\n` +
+    `# then dynamic (Cloudflare requires that order). Limits: ${REDIRECT_LIMITS.static} static / ${REDIRECT_LIMITS.dynamic} dynamic.\n\n` +
     `${fmt(all.statics)}\n\n${fmt(all.dynamics)}\n`;
   return { text, staticCount: all.statics.length, dynamicCount: all.dynamics.length };
 }
 
 export const ROBOTS_TXT =
-  `# Frozen archive of the previous site. It moved; keep this copy out of search and out of\n` +
+  `# Frozen archive of the previous site. Keep this copy out of search and out of\n` +
   `# AI-crawler answers entirely.\nUser-agent: *\nDisallow: /\n`;
 
 // A kill-switch service worker. The old site registered /sw.js for dashboard users; this
@@ -88,24 +90,23 @@ export const noopIsland = (name) =>
   `// eslint-disable-next-line @typescript-eslint/no-unused-vars\n` +
   `export default function ${name}(_props?: unknown) {\n  return null;\n}\n`;
 
-export function contactNotice(newOrigin) {
+export function contactNotice() {
   return (
     `<div class="lg-cform">\n` +
-    `        <p class="lg-intro">This is an archived copy of the {BRAND.name} website, so the contact form is switched off. ` +
-    `You can still email us at support (@) {BRAND.domain}, or use the contact page on our new site: ` +
-    `<a href="${newOrigin}/contact">${newOrigin}/contact</a>. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>\n` +
+    `        <p class="lg-intro">The contact form is switched off at the moment. You can email us at support (@) {BRAND.domain}. ` +
+    `For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>\n` +
     `      </div>`
   );
 }
 
 /** Rewrite contact.astro: form -> notice, Turnstile + fetch script removed. Throws if the page drifted. */
-export function patchContactPage(src, newOrigin) {
+export function patchContactPage(src) {
   const formRe = /<form id="contact-form"[\s\S]*?<\/form>/;
   if (!formRe.test(src)) throw new Error('contact.astro: <form id="contact-form"> not found — page drifted, update prepare-source.mjs');
   const scriptAt = src.indexOf('<script is:inline src="https://challenges.cloudflare.com');
   if (scriptAt === -1) throw new Error('contact.astro: Turnstile <script> not found — page drifted, update prepare-source.mjs');
   const withoutScripts = src.slice(0, scriptAt).trimEnd() + '\n';
-  return withoutScripts.replace(formRe, contactNotice(newOrigin));
+  return withoutScripts.replace(formRe, contactNotice());
 }
 
 // ---------------------------------------------------------------------------
@@ -148,11 +149,10 @@ function patchFile(path, fn, label) {
 function main() {
   const webDir = process.argv[2];
   if (!webDir || webDir.startsWith('--') || !existsSync(join(webDir, 'astro.config.mjs'))) {
-    console.error('Usage: node prepare-source.mjs <path-to-web-dir> [--new-origin=https://...]');
+    console.error('Usage: node prepare-source.mjs <path-to-web-dir>');
     console.error('(expected a saathum web/ checkout — astro.config.mjs not found there)');
     process.exit(1);
   }
-  const newOrigin = resolveNewOrigin();
   const src = join(webDir, 'src');
   const pagesDir = join(src, 'pages');
 
@@ -251,7 +251,7 @@ function main() {
   );
 
   // 4. Contact page: no form, no Turnstile, no fetch.
-  patchFile(join(src, 'pages', 'contact.astro'), (s) => patchContactPage(s, newOrigin), 'pages/contact.astro (form neutralised)');
+  patchFile(join(src, 'pages', 'contact.astro'), (s) => patchContactPage(s), 'pages/contact.astro (form neutralised)');
 
   // 5. public/: robots, crawler feeds, IndexNow key, service worker, redirects, headers.
   const pub = join(webDir, 'public');
@@ -264,9 +264,9 @@ function main() {
   }
   writeFileSync(join(pub, 'sw.js'), KILL_SWITCH_SW);
   const redirectsPath = join(pub, '_redirects');
-  const built = buildRedirects(existsSync(redirectsPath) ? readFileSync(redirectsPath, 'utf8') : '', newOrigin);
+  const built = buildRedirects(existsSync(redirectsPath) ? readFileSync(redirectsPath, 'utf8') : '');
   writeFileSync(redirectsPath, built.text);
-  console.log(`${TAG} public/_redirects: ${built.staticCount} static + ${built.dynamicCount} dynamic rules -> ${newOrigin}`);
+  console.log(`${TAG} public/_redirects: ${built.staticCount} static + ${built.dynamicCount} dynamic rules -> /`);
   const headersPath = join(pub, '_headers');
   const headers = existsSync(headersPath) ? readFileSync(headersPath, 'utf8') : '';
   writeFileSync(headersPath, `${headers.trimEnd()}\n\n# [SAATHUM-FREEZE-1] belt and braces next to the per-page meta tag\n/*\n  X-Robots-Tag: noindex\n`);

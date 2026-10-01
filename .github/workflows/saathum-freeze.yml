@@ -8,10 +8,11 @@
 # Puja & Havan guide, help centre, contact with the form switched off, legal pages),
 # swaps every island that talks to the API / Clerk / the chat backend for an empty
 # component, drops the Cloudflare adapter and writes a disallow-all robots.txt plus a
-# `_redirects` that 301s every functional path (/j/*, /l/*, /book/*, /dashboard*, ...)
-# to the same path on the new origin. tool/saathum-freeze/postprocess-dist.mjs then
-# stamps noindex + a canonical to the new origin + a "we moved" banner on every built
-# page, and check-frozen-build.mjs fails the job if anything slipped through.
+# `_redirects` that 302s every functional path (/j/*, /l/*, /book/*, /dashboard*, ...)
+# to the archive home "/". The archive holds NO trace of the new site (no banner, no
+# canonical, no off-site link or redirect). tool/saathum-freeze/postprocess-dist.mjs stamps
+# noindex and makes dead links inert, and check-frozen-build.mjs fails the job if anything
+# slipped through (including any mention of the new site).
 #
 # See tool/saathum-freeze/README.md for the full design, the kept/removed route lists
 # and the redirect list.
@@ -32,11 +33,6 @@ on:
         description: Commit (SHA, tag or branch) whose web/ is snapshotted — build from the commit that is live today
         type: string
         required: true
-      new_origin:
-        description: Origin the archive points visitors at (blank = the default in tool/saathum-freeze/freeze-config.mjs)
-        type: string
-        required: false
-        default: ''
       pricing_api:
         description: Optional API origin read ONCE at build time to bake today's "starting from" prices into the HTML (blank = built-in fallback price). Never reaches the built site.
         type: string
@@ -99,8 +95,6 @@ jobs:
       # throwaway CI checkout that is discarded at the end of the job — see the warning
       # at the top of prepare-source.mjs.
       - name: Prepare frozen source (keep public pages only, strip API/auth, write redirects)
-        env:
-          NEW_ORIGIN: ${{ inputs.new_origin }}
         run: node tool/saathum-freeze/prepare-source.mjs web
 
       - name: Install dependencies
@@ -117,14 +111,10 @@ jobs:
           FREEZE_PRICING_API: ${{ inputs.pricing_api }}
         run: npm run build      # prebuild (tokens, images) + astro build + brandify-public
 
-      - name: Postprocess built HTML (noindex, canonical, banner, repoint links)
-        env:
-          NEW_ORIGIN: ${{ inputs.new_origin }}
+      - name: Postprocess built HTML (noindex, drop canonical, inert dead links)
         run: node tool/saathum-freeze/postprocess-dist.mjs web/dist
 
       - name: Check frozen build
-        env:
-          NEW_ORIGIN: ${{ inputs.new_origin }}
         run: node tool/saathum-freeze/check-frozen-build.mjs web/dist
 
       - name: Save verified frozen artifact
