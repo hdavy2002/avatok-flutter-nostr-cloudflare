@@ -8318,5 +8318,21 @@
         "note": "Free video plays on first load of the event page."
       }
     ]
+  },
+  "SAATHUM-FREEVID-HERO-1": {
+    "description": "[SAATHUM-FREEVID-HERO-1 2026-10-01] Free video hero: whole photo is a 'click to watch free' button with a live/free pill; panel button greys to 'Watching now' while playing.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_live_overlay_book_click",
+        "property": "surface",
+        "equals": "hero",
+        "min_events": 1,
+        "note": "Visitors click the hero to watch."
+      }
+    ]
   }
 }

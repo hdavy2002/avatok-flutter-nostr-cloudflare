@@ -232,6 +232,21 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, freeVideo, onNee
     closed.replaceWith(a);
   }, [phase, checkoutHref, listingId, isFree]);
 
+  // [SAATHUM-FREEVID-HERO-1 2026-10-01] Owner: once the free video is playing on this page,
+  // the panel's "Watch free" button is pointless — grey it out (same disabled style the
+  // page already uses for "Booking closed"/"Event ended").
+  useEffect(() => {
+    if (phase.kind !== 'player' || !isFree) return;
+    const btn = document.querySelector<HTMLAnchorElement>('a[data-ep-action="watch-free"]');
+    if (!btn) return;
+    const span = document.createElement('span');
+    span.className = btn.className;
+    span.setAttribute('aria-disabled', 'true');
+    span.setAttribute('data-ep-action', 'watch-free-playing');
+    span.textContent = 'Watching now';
+    btn.replaceWith(span);
+  }, [phase, isFree]);
+
   if (phase.kind === 'hidden') return null;
 
   if (phase.kind === 'player') {
@@ -261,6 +276,31 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, freeVideo, onNee
         />
         {phase.preview && <span className="ep-pill ep-pill--soft ep-live-preview-tag">Admin preview</span>}
       </div>
+    );
+  }
+
+  if ((phase.kind === 'live_overlay' || phase.kind === 'replay_overlay') && isFree) {
+    // [SAATHUM-FREEVID-HERO-1 2026-10-01] Owner: someone landing straight on the event link
+    // must see on the photo itself that the video is on and that one click watches it.
+    // The whole photo is the button: signed out -> email sign-in (returns here and plays);
+    // signed in -> the player is already loading, so the click just reloads into it.
+    const live = phase.kind === 'live_overlay';
+    const href = authed === 'out' ? signInUrlForFreeWatch() : (typeof window !== 'undefined' ? window.location.pathname + '?freewatch=1' : '#');
+    return (
+      <a
+        className="ep-live-cover ep-live-cover--dim ep-live-watch"
+        href={href}
+        aria-label="Watch this video for free"
+        onClick={() => capture('saathum_live_overlay_book_click', { listing_id: listingId, free: true, surface: 'hero' })}
+      >
+        {live
+          ? <span className="ep-pill ep-pill--live"><i />LIVE NOW · FREE</span>
+          : <span className="ep-pill ep-pill--live"><i />{isReplay ? 'Replay · free' : 'Free · watch now'}</span>}
+        <span className="ep-live-watch-play" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
+        </span>
+        <span className="ep-live-watch-text">{authed === 'out' ? 'Click to watch free — sign in with your email' : 'Click to watch free'}</span>
+      </a>
     );
   }
 

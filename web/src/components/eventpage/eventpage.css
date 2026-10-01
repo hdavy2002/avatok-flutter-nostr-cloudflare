@@ -223,3 +223,12 @@
 
 /* [SAATHUM-LIVE-FAST-1] the overlay CTA is a button, not a full-width bar */
 .ep-live-cover .ep-btn.ep-live-cta { display: inline-flex; width: auto !important; flex: 0 0 auto; align-self: center; max-width: calc(100% - 32px); }
+
+/* [SAATHUM-FREEVID-HERO-1 2026-10-01] Free video: the whole hero photo is a "watch" button. */
+a.ep-live-watch { text-decoration: none; color: #fff; cursor: pointer; }
+.ep-live-watch-play { display: flex; align-items: center; justify-content: center; width: 88px; height: 88px; border-radius: 50%; background: #d7261e; color: #fff; box-shadow: 0 6px 22px #0008; transition: transform .18s ease; }
+.ep-live-watch-play svg { width: 40px; height: 40px; margin-left: 4px; }
+a.ep-live-watch:hover .ep-live-watch-play, a.ep-live-watch:focus-visible .ep-live-watch-play { transform: scale(1.08); }
+.ep-live-watch-text { font-size: 18px; font-weight: 900; letter-spacing: .02em; text-shadow: 0 2px 8px #000a; padding: 0 16px; }
+@media (max-width: 640px) { .ep-live-watch-play { width: 68px; height: 68px; } .ep-live-watch-play svg { width: 30px; height: 30px; } .ep-live-watch-text { font-size: 16px; } }
+@media (prefers-reduced-motion: reduce) { .ep-live-watch-play { transition: none; } }
