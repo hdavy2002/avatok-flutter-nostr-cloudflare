@@ -141,11 +141,20 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: npm ci
+      # [AUMFE-BRAND-SWITCH-1] Clerk key + API base come from Specs/brand.json, exactly
+      # like web-deploy.yml, so a domain switch needs no edit here.
+      - name: Derive brand build vars
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import base64, json
+          b = json.load(open("Specs/brand.json", encoding="utf-8"))
+          h = b["hosts"]
+          print("PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_" + base64.b64encode((h["auth"] + "$").encode()).decode())
+          print("PUBLIC_API_BASE=https://" + h["api"])
+          PY
       - name: Build web without deploying
         working-directory: web
         env:
-          PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuc2FhdGh1bS5jb20k
-          PUBLIC_API_BASE: https://api.saathum.com
           PUBLIC_RELEASE_SHA: ${{ github.sha }}
         run: npm run build
       - name: Check public homepage and help before deployment

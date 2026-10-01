@@ -1,26 +1,30 @@
 {
   "_readme": "[SAATHUM-BRAND-CENTRAL-1 2026-09-30] SINGLE SOURCE for the public brand name and domain. Edit ONLY this file, then run `python3 scripts/gen_brand.py`. It rewrites web/src/lib/brand.ts, worker/src/lib/brand.ts, consumers/src/brand.ts and app/lib/core/brand.dart — never hand-edit those. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
-  "name": "Saa Thum",
-  "nameUpper": "SAA THUM",
-  "nameCompact": "Saathum",
-  "slug": "saathum",
-  "nameHindi": "सा थम",
+  "name": "Aum Fe",
+  "nameUpper": "AUM FE",
+  "nameCompact": "Aum Fe",
+  "slug": "aumfe",
+  "nameHindi": "ॐ फ़े",
   "slogan": "Faith, brought home to you.",
-  "domain": "saathum.com",
+  "_previousNames": "Earlier public names, for the one help article that explains the rename. Never type an old name in code or copy — read it from here.",
+  "previousNames": ["Saa Thum"],
+  "nameMeaningShort": "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
+  "nameMeaningLong": "Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.",
+  "domain": "aumfe.com",
   "hosts": {
-    "api": "api.saathum.com",
-    "media": "media.saathum.com",
-    "auth": "clerk.saathum.com",
-    "mail": "mail.saathum.com"
+    "api": "api.aumfe.com",
+    "media": "media.aumfe.com",
+    "auth": "clerk.aumfe.com",
+    "mail": "mail.aumfe.com"
   },
   "_legacyDomains": "Former domains, kept after a domain switch. On switch day the old domain moves here (e.g. [\"saathum.com\"]). The api. and media. hosts of every legacy domain stay attached to the Worker/storage FOREVER — installed app builds, links in old emails and image URLs stored in the database all point at them. The website on a legacy domain is a frozen archive. Leave [] until a switch happens.",
-  "legacyDomains": [],
+  "legacyDomains": ["saathum.com"],
   "emails": {
-    "support": "support@saathum.com",
-    "noreply": "noreply@saathum.com",
-    "hello": "hello@saathum.com"
+    "support": "support@aumfe.com",
+    "noreply": "noreply@aumfe.com",
+    "hello": "hello@aumfe.com"
   },
-  "emailFromName": "Saa Thum",
+  "emailFromName": "Aum Fe",
   "_permanent": "Values below are NOT rebrandable: Google Play never lets a package id change. Listed here only so code reads them from one place.",
   "playPackageId": "com.saathum.app"
 }

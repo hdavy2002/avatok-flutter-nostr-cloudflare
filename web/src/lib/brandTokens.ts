@@ -11,6 +11,10 @@ const VALUES: Record<string, string> = {
   domain: BRAND.domain,
   webOrigin: BRAND.webOrigin,
   supportEmail: BRAND.emails.support,
+  nameHindi: BRAND.nameHindi,
+  nameMeaningShort: BRAND.nameMeaningShort,
+  nameMeaningLong: BRAND.nameMeaningLong,
+  previousName: BRAND.previousNames[0] ?? '',
 };
 
 const TOKEN = /\{\{brand\.(\w+)\}\}/g;

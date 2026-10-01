@@ -92,7 +92,7 @@ export interface OrgConstants {
 
 export const ORG: OrgConstants = {
   name: BRAND.name,
-  alternateNames: [BRAND.nameCompact, BRAND.domain, BRAND.nameHindi],
+  alternateNames: [BRAND.name.replace(/\s+/g, ''), BRAND.domain, BRAND.nameHindi],
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
   url: brandUrl('/'),

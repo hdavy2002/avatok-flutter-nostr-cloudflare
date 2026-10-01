@@ -3,26 +3,29 @@
 
 /// Public brand name and domain. See Specs/brand.json.
 abstract final class Brand {
-  static const String name = 'Saa Thum';
-  static const String nameUpper = 'SAA THUM';
-  static const String nameCompact = 'Saathum';
-  static const String slug = 'saathum';
-  static const String nameHindi = 'सा थम';
+  static const String name = 'Aum Fe';
+  static const String nameUpper = 'AUM FE';
+  static const String nameCompact = 'Aum Fe';
+  static const String slug = 'aumfe';
+  static const String nameHindi = 'ॐ फ़े';
   static const String slogan = 'Faith, brought home to you.';
-  static const String domain = 'saathum.com';
-  static const String webOrigin = 'https://saathum.com';
-  static const String apiHost = 'api.saathum.com';
-  static const String mediaHost = 'media.saathum.com';
-  static const String mediaOrigin = 'https://media.saathum.com';
-  static const String authHost = 'clerk.saathum.com';
-  static const String mailHost = 'mail.saathum.com';
+  static const List<String> previousNames = <String>['Saa Thum'];
+  static const String nameMeaningShort = 'Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.';
+  static const String nameMeaningLong = 'Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.';
+  static const String domain = 'aumfe.com';
+  static const String webOrigin = 'https://aumfe.com';
+  static const String apiHost = 'api.aumfe.com';
+  static const String mediaHost = 'media.aumfe.com';
+  static const String mediaOrigin = 'https://media.aumfe.com';
+  static const String authHost = 'clerk.aumfe.com';
+  static const String mailHost = 'mail.aumfe.com';
   /// Former domains. Their api./media. hosts stay attached forever.
-  static const List<String> legacyDomains = <String>[];
-  static const List<String> legacyMediaHosts = <String>[];
-  static const List<String> legacyApiHosts = <String>[];
-  static const String supportEmail = 'support@saathum.com';
-  static const String noreplyEmail = 'noreply@saathum.com';
-  static const String helloEmail = 'hello@saathum.com';
+  static const List<String> legacyDomains = <String>['saathum.com'];
+  static const List<String> legacyMediaHosts = <String>['media.saathum.com'];
+  static const List<String> legacyApiHosts = <String>['api.saathum.com'];
+  static const String supportEmail = 'support@aumfe.com';
+  static const String noreplyEmail = 'noreply@aumfe.com';
+  static const String helloEmail = 'hello@aumfe.com';
   /// PERMANENT — a Play package id can never change.
   static const String playPackageId = 'com.saathum.app';
 

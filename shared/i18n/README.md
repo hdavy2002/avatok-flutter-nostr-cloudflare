@@ -32,9 +32,9 @@ Source and reviewed copy never contains the literal brand name, domain or suppor
 
 | Token | Filled with | Renders today |
 |---|---|---|
-| `{brand}` | `nameCompact` | Saathum |
-| `{brandCompactUpper}` | `nameCompact` upper-cased | SAATHUM |
-| `{brandDomain}` | `domain` | saathum.com |
-| `{brandSupportEmail}` | `emails.support` | support@saathum.com |
+| `{brand}` | `nameCompact` | Aum Fe |
+| `{brandCompactUpper}` | `nameCompact` upper-cased | AUM FE |
+| `{brandDomain}` | `domain` | aumfe.com |
+| `{brandSupportEmail}` | `emails.support` | support@aumfe.com |
 
-Other mailboxes are written `name@{brandDomain}` (e.g. `privacy@{brandDomain}`). `{brand}` is the compact one-word form because that is what the catalogs always showed; `BRAND.name` ("Saa Thum") is not a catalog token. Fillers: `web/src/lib/i18n/brandTokens.ts` (used by `t()`), `app/lib/core/localization/brand_tokens.dart` (used by `UiLocaleController.text`). Tokens are normal placeholders: `protect()` masks them from machine translation and `validateMessages` rejects a translation that drops one or an unknown `{brand*}` name. Reviewed translations must keep the token in `source` and `text`; a new brand form needs a new reserved token in `generate_catalogs.mjs` plus both fillers. A test fails if a literal brand appears in `source/*.json`. Never add `{brand*}` names as caller params.
+Other mailboxes are written `name@{brandDomain}` (e.g. `privacy@{brandDomain}`). `{brand}` is `nameCompact`, which is set to the same spaced display name as `BRAND.name` ("Aum Fe") so customers always see the space. Fillers: `web/src/lib/i18n/brandTokens.ts` (used by `t()`), `app/lib/core/localization/brand_tokens.dart` (used by `UiLocaleController.text`). Tokens are normal placeholders: `protect()` masks them from machine translation and `validateMessages` rejects a translation that drops one or an unknown `{brand*}` name. Reviewed translations must keep the token in `source` and `text`; a new brand form needs a new reserved token in `generate_catalogs.mjs` plus both fillers. A test fails if a literal brand appears in `source/*.json`. Never add `{brand*}` names as caller params.

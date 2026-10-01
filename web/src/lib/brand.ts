@@ -5,36 +5,42 @@
 
 export const BRAND = {
   /** How the name is written in sentences. */
-  name: "Saa Thum",
+  name: "Aum Fe",
   /** Headings / logo text. */
-  nameUpper: "SAA THUM",
-  /** One word, capitalised (alternate spelling for SEO). */
-  nameCompact: "Saathum",
+  nameUpper: "AUM FE",
+  /** Display name used inside customer-visible sentences ({brand} i18n token). Same as name unless the brand wants a variant. */
+  nameCompact: "Aum Fe",
   /** Lowercase, no spaces — hashtags, file names, UA markers. */
-  slug: "saathum",
-  nameHindi: "सा थम",
+  slug: "aumfe",
+  nameHindi: "ॐ फ़े",
   slogan: "Faith, brought home to you.",
+  /** Earlier public names — only for the help article that explains the rename. */
+  previousNames: ["Saa Thum"] as readonly string[],
+  /** One-sentence meaning of the name (front page). */
+  nameMeaningShort: "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
+  /** Full story of the name (About page, help). */
+  nameMeaningLong: "Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.",
   /** Bare host, no scheme. */
-  domain: "saathum.com",
+  domain: "aumfe.com",
   /** https://<domain> — no trailing slash. */
-  webOrigin: "https://saathum.com",
-  apiHost: "api.saathum.com",
-  apiOrigin: "https://api.saathum.com",
-  mediaHost: "media.saathum.com",
-  mediaOrigin: "https://media.saathum.com",
-  authHost: "clerk.saathum.com",
-  authOrigin: "https://clerk.saathum.com",
-  mailHost: "mail.saathum.com",
+  webOrigin: "https://aumfe.com",
+  apiHost: "api.aumfe.com",
+  apiOrigin: "https://api.aumfe.com",
+  mediaHost: "media.aumfe.com",
+  mediaOrigin: "https://media.aumfe.com",
+  authHost: "clerk.aumfe.com",
+  authOrigin: "https://clerk.aumfe.com",
+  mailHost: "mail.aumfe.com",
   /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */
-  legacyDomains: [] as readonly string[],
-  legacyMediaHosts: [] as readonly string[],
-  legacyApiHosts: [] as readonly string[],
+  legacyDomains: ["saathum.com"] as readonly string[],
+  legacyMediaHosts: ["media.saathum.com"] as readonly string[],
+  legacyApiHosts: ["api.saathum.com"] as readonly string[],
   emails: {
-    support: "support@saathum.com",
-    noreply: "noreply@saathum.com",
-    hello: "hello@saathum.com",
+    support: "support@aumfe.com",
+    noreply: "noreply@aumfe.com",
+    hello: "hello@aumfe.com",
   },
-  emailFromName: "Saa Thum",
+  emailFromName: "Aum Fe",
   /** PERMANENT — a Play package id can never change. */
   playPackageId: "com.saathum.app",
 } as const;
