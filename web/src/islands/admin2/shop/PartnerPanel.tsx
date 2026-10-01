@@ -114,7 +114,7 @@ export default function PartnerPanel() {
           <div className="pp-panel"><h2>Printrove account</h2>
             <label className="pp-lbl">Login email<input className="pp-fld" disabled placeholder={printrove?.configured ? 'Saved on the server' : 'Not added yet'} /></label>
             <label className="pp-lbl" style={{ marginTop: 12 }}>Password<input className="pp-fld" type="password" disabled placeholder={printrove?.configured ? '••••••••••' : 'Not added yet'} /></label>
-            <p className="pp-small">Kept only on the server as secrets (PRINTROVE_EMAIL, PRINTROVE_PASSWORD). Never shown on the website.</p>
+            <p className="pp-small">Kept only on the server as a secret (PRINTROVE_LOGIN). Never shown on the website.</p>
           </div>
         </div>
         <div>

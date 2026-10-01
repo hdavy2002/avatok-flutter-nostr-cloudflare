@@ -197,6 +197,9 @@ export const PRINT_SPECS = {
     polo: { front: [4, 4], back: [14, 16], label: 'Polo T-shirt' },
     crop_top: { front: [12, 10], back: [12, 10], label: 'Crop top' },
     crop_hoodie: { front: [10.6, 10.6], back: [10.6, 10.6], label: 'Crop hoodie' },
+    oversized_tee: { front: [15.6, 19.6], back: [15.6, 19.6], label: 'Oversized T-shirt' },
+    full_sleeve_tee: { front: [15.6, 19.6], back: [15.6, 19.6], label: 'Full sleeve T-shirt' },
+    vneck_tee: { front: [16, 20], back: [16, 20], label: 'V-neck T-shirt' },
   },
 } as const;
 export type SpecKind = keyof typeof PRINT_SPECS.areas;
