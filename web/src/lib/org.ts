@@ -106,7 +106,7 @@ export const ORG: OrgConstants = {
   // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.
   description:
     // [WEB-REFRAME-1 2026-09-29] OWNER: Himalayan temple havans, positive temples only, supporting mountain pujaris.
-    `${BRAND.name} (${BRAND.domain}) is an online havan and puja service. Our crew travels to remote, peaceful Himalayan temples in Uttarakhand and Himachal, where the temple's own pujari performs havans and pujas with a sankalp in your name and gotra. We live stream when the mountain network allows, always send the full video, and courier dry prasad from the temple. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and every booking supports the pujaris and villages who keep them alive.`,
+    `${BRAND.name} (${BRAND.domain}) arranges havans and pujas online, performed in your name at remote Himalayan temples in Uttarakhand and Himachal. Each ritual is led by the temple's own pujari while our travelling crew films it: streamed live when the mountain network holds, and always recorded in full for you to watch or download. Dry prasad is couriered from the temple. We partner only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and each booking helps the pujaris and villages who care for them.`,
   slogan: 'Faith, brought home to you.',
   foundersDescription: '',
   foundingDate: '2025',

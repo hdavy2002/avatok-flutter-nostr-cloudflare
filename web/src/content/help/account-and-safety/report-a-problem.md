@@ -1,6 +1,6 @@
 ---
-title: "Report a problem on {{brand.name}}"
-description: "How to report a problem with a ritual, a booking or a payment on {{brand.name}} — what to include and who reads it."
+title: "Reporting a problem to {{brand.name}}"
+description: "How to tell {{brand.name}} about a problem with a ritual, a booking or a payment, which details to include, and who reviews your report and replies."
 section: account-and-safety
 order: 3
 updated: 2026-09-29
@@ -18,7 +18,7 @@ draft: false
 
 ## Reporting is one tap away
 
-Inside the app, reporting and blocking a user, listing or piece of content is built into the report tool right where you see it — use that first if you can, it gets your report to the right place fastest. Violations of our [Terms of Service](/terms) can lead to content removal, feature limits, or account suspension or termination depending on severity.
+In the app, the report tool sits right beside any user, listing or piece of content, and lets you report or block it on the spot — start there when you can, as it routes your report to the right people fastest. Violations of our [Terms of Service](/terms) can lead to content removal, feature limits, or account suspension or termination depending on severity.
 
 ## Reporting a problem with a ritual
 

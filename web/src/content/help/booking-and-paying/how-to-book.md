@@ -1,50 +1,50 @@
 ---
-title: "Choosing and booking a ritual"
-description: "How to find the right puja or havan on {{brand.name}}, what a ritual page tells you, and how booking works."
+title: "How to choose and book a havan or puja"
+description: "Finding the right havan or puja on {{brand.name}}, what each ritual page shows you, and what happens step by step when you book your place online, from anywhere."
 section: booking-and-paying
 order: 1
-updated: 2026-09-30
-keywords: ["book a puja", "book havan", "how to book", "puja booking", "find a puja", "puja kaise book kare"]
+updated: 2026-10-01
+keywords: ["book a puja", "book havan", "how to book", "puja booking", "find a puja", "puja kaise book kare", "book havan online"]
 audience: buyer
 faq:
-  - q: "How do I find a puja for a particular wish?"
-    a: "Browse by intention on the home page — studies, a fresh start, prosperity, health and peace, love and family, or festival pujas — or search Our Pujas by deity or festival."
-  - q: "Do I need the app to book?"
-    a: "No. You can choose, book, pay and watch right in your browser at {{brand.domain}}."
-  - q: "Do I need to give my gotra or a wish?"
-    a: "No. At a public havan or puja the pujari recites one sankalp for every devotee — the ritual page shows what it is for. You only give your name when you book."
+  - q: "How can I find a puja for a specific wish?"
+    a: "Browse by intention on the home page — studies, new beginnings, prosperity, health and calm, family, or festival pujas — or search Our Pujas by deity or festival."
+  - q: "Is the app needed to book?"
+    a: "No. Choosing, booking, paying and watching all work in your browser at {{brand.domain}}."
+  - q: "Must I give my gotra or a wish?"
+    a: "No. At a public havan or puja the pujari says one sankalp on behalf of every devotee, and the ritual page shows what it is for. All you give when booking is your name."
 draft: false
 ---
 
-<!-- rebrand: reviewed -->
+<!-- rebrand: reviewed. [AUMFE-COPY-SEO-1 2026-10-01] Reworded. -->
 
-## Finding your ritual
+## Find a ritual
 
-Start on [Our Pujas](/marketplace), or browse by intention on the [home page](/#experiences). You can also search by deity (Ganesha, Lakshmi, Shiva…) or by festival (Diwali, Navratri, Shravan).
+Begin at [Our Pujas](/marketplace), or explore by intention from the [home page](/#experiences). Searching by deity (Ganesha, Lakshmi, Shiva…) or by festival (Diwali, Navratri, Shravan) works too.
 
-## What a ritual page tells you
+## What you see on a ritual page
 
-Each ritual page shows the deity, the Himalayan temple where it is performed, the next date and time (in IST, with your own local time alongside), the price, and what's included — by default:
+Every ritual page lists the deity, the Himalayan temple where it happens, the next date and time (in IST, with your local time beside it), the price, and what comes with it — by default:
 
-- A sankalp recited for every devotee — the page shows what it is for (for example good health or peace for departed souls)
-- A video of the ritual to download
-- Closing aarti and blessing
-- Prasad delivery (optional add-on)
+- A sankalp said for every devotee — the page explains its purpose (for example good health, or peace for departed souls)
+- A downloadable video of the ritual
+- The closing aarti and blessing
+- Prasad delivery (an optional add-on)
 
-It also explains what families traditionally perform the ritual for, the best time, and what to keep ready at home.
+You will also read what families traditionally perform the ritual for, the best time to hold it, and what to keep ready at home.
 
-## Booking your place
+## Reserving your place
 
-Tap **Book my place**. You'll share:
+Press **Book my place** and share:
 
-- **Your full name**, for your booking and receipt
-- **A prasad delivery address**, if you'd like prasad
+- **Your full name**, used for the booking and the receipt
+- **A delivery address for prasad**, if you want prasad
 
-You don't need a gotra or a wish. At a public havan or puja the pujari recites the event's sankalp for every devotee who joins.
+A gotra or wish is not needed. At a public havan or puja, the pujari says the event's sankalp for every devotee taking part.
 
-You see the full price before you pay. Once payment goes through, you get a confirmation email, and we email you the video when the ritual finishes.
+The full price is shown before you pay. When the payment succeeds, a confirmation email follows, and the video comes by email once the ritual is over.
 
-## Next
+## Read next
 
 - [Getting your ritual video](/help/booking-and-paying/join-a-live-show)
 - [Your sankalp, video and prasad](/help/booking-and-paying/sankalp-replay-and-prasad)

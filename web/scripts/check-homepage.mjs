@@ -27,12 +27,12 @@ const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 // --- Owner-approved compact reference homepage (2026-09-22) ---
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 // [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service copy (text-only; design identity checks below unchanged).
-assert.match(html, new RegExp('<title[^>]*>Himalayan Temple Havans in Your Name \\| ' + reEscape(BRAND.name)), 'Puja service page title'); // WEB-REFRAME-1
+assert.match(html, new RegExp('<title[^>]*>Havan &amp; Puja in Your Name at Himalayan Temples \\| ' + reEscape(BRAND.name)), 'Puja service page title'); // AUMFE-COPY-SEO-1
 // Headline spans and line breaks are presentational; compare readable text.
 const visibleText = bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-assert.match(visibleText, /Your Puja, in the Peaceful Himalayas\./, 'Brief H1'); // WEB-HERO-PHOTO-1
-assert.match(visibleText, /HIMALAYAN TEMPLE HAVANS/, 'Hero eyebrow'); // WEB-REFRAME-1
-for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'HOW DOES IT WORK?', 'Only joy, only blessings.']) {
+assert.match(visibleText, /A puja in your name, at a quiet Himalayan temple\./, 'Brief H1'); // AUMFE-COPY-SEO-1
+assert.match(visibleText, /HAVANS AT HIMALAYAN TEMPLES/, 'Hero eyebrow'); // AUMFE-COPY-SEO-1
+for (const heading of ['What are you praying for today?', 'Havans offered in your name', 'FROM BOOKING TO BLESSING', 'Gentle temples, gentle prayers.']) { // AUMFE-COPY-SEO-1
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
 assert.match(html, /data-design="reference-v5"/, 'Approved grand booking design identity');
@@ -250,8 +250,8 @@ for (const href of ritualLinks) {
 console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, sharing and unique artwork.');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
-assert.equal(meta(html, 'og:title'), `Himalayan Temple Havans in Your Name | ${BRAND.name}`, 'A4 og:title (WEB-REFRAME-1)');
-assert.equal(meta(html, 'og:description'), 'Living abroad or unable to travel? We arrange puja and havan in your name at peaceful Himalayan temples, so you stay connected to your faith.', 'A4 og:description (WEB-HERO-PHOTO-1)');
+assert.equal(meta(html, 'og:title'), `Havan &#38; Puja in Your Name at Himalayan Temples | ${BRAND.name}`, 'A4 og:title (AUMFE-COPY-SEO-1)');
+assert.equal(meta(html, 'og:description'), 'Book a havan online, performed by the pujari of a peaceful Himalayan temple. Watch the video from anywhere and get dry prasad by courier. Made for NRIs.', 'A4 og:description (AUMFE-COPY-SEO-1)');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');

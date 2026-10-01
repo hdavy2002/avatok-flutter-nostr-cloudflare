@@ -85,7 +85,7 @@ try {
     await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
     assert.equal(geometry.broken, 0, name + ': all artwork loads');
-    assert.match(geometry.heading, /Your Puja,\s+in the Peaceful Himalayas/); // WEB-HERO-PHOTO-1
+    assert.match(geometry.heading, /A puja in your name,\s+at a quiet Himalayan temple/); // AUMFE-COPY-SEO-1
     assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': Comfortaa headings');
     assert.match(await page.locator('.folk-site').first().evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': Nunito body');
     assert(await page.locator('[data-grand-artwork="hero"]').isVisible(), name + ': grand hero is visible');

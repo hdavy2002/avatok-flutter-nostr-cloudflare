@@ -1,33 +1,33 @@
 ---
-title: "Puja or havan?"
-description: "The difference between a puja and a havan, how long each takes, and how to choose the right ritual for what you're hoping for."
+title: "Puja or havan: which should I book?"
+description: "How a puja differs from a havan, roughly how long each one lasts, and how to pick the right ritual online for the blessing you are hoping for."
 section: getting-started
 order: 2
-updated: 2026-09-29
+updated: 2026-10-01
 keywords: ["puja vs havan", "havan kya hai", "difference between puja and havan", "which puja", "havan online", "puja online"]
 audience: buyer
 faq:
-  - q: "Which is better, a puja or a havan?"
-    a: "Neither is better — they suit different moments. A puja is lighter and lovely for daily or festival worship; a havan is chosen for bigger intentions and life events."
-  - q: "How long does each take?"
-    a: "A puja usually takes 20–60 minutes. A havan usually takes 60–120 minutes or more."
+  - q: "Is a puja or a havan better?"
+    a: "Neither is better; they suit different occasions. A puja is simpler and well suited to daily or festival worship, while families choose a havan for bigger intentions and life events."
+  - q: "How long does each one last?"
+    a: "Most pujas take 20–60 minutes. Most havans take 60–120 minutes, sometimes longer."
 draft: false
 ---
 
-<!-- rebrand: reviewed -->
+<!-- rebrand: reviewed. [AUMFE-COPY-SEO-1 2026-10-01] Reworded. -->
 
-## Puja
+## What a puja is
 
-Offerings of lamp, flowers and prayer. A puja usually takes **20–60 minutes**. It is lighter, and lovely for daily worship or a festival.
+A puja honours the deity with a lamp, flowers and prayer. Most last **20–60 minutes**. It is the simpler of the two, and well suited to everyday worship or a festival.
 
-## Havan
+## What a havan is
 
-Offerings into a sacred fire, with Vedic mantras. A havan usually takes **60–120 minutes or more**. Families choose a havan for bigger intentions and life events — a new home, a new business, a wedding, a naming.
+A havan offers ghee and samagri into a sacred fire while Vedic mantras are chanted. Most last **60–120 minutes, sometimes longer**. Families tend to choose a havan for larger intentions and life events — moving into a new home, opening a business, a wedding or a naming ceremony.
 
-## Choosing by what you're hoping for
+## Picking by the blessing you hope for
 
-You don't need to know the right ritual in advance. On the [home page](/#experiences) you can browse by intention — success in studies, a fresh start, prosperity, health and peace, love and family, or festival pujas — and each ritual page explains what families traditionally perform it for, who it's for and the best time to book.
+You don't have to know the right ritual beforehand. The [home page](/#experiences) lets you browse by intention — studies, new beginnings, prosperity, health and calm, family, or festival pujas — and every ritual page explains what families traditionally offer it for, who it suits and when it is best held.
 
-Both are performed at the Himalayan temple named on the event page, by that temple's own pujari, and filmed by our crew. See [Our temples](/temples).
+Either way, the ritual takes place at the Himalayan temple named on the event page, performed by the pujari who serves there and filmed by our crew. See [Our temples](/temples).
 
 Every ritual we perform is benefic. Benefits described are those traditionally sought by devotees; {{brand.name}} makes no claims of guaranteed outcomes.

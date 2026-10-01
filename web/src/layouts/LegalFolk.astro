@@ -38,6 +38,8 @@
 export interface Props {
   /** Plain-text page title, used as the SEO fallback and as the h1 text when titleHtml is omitted. */
   title: string;
+  /** [AUMFE-COPY-SEO-1] Optional search <title> (the h1 keeps `title`). */
+  seoTitle?: string;
   /** Optional HTML for the h1 (e.g. with an <em> highlight), rendered via set:html. Defaults to `title`. */
   titleHtml?: string;
   eyebrow: string;
@@ -72,6 +74,7 @@ import { BRAND } from '../lib/brand';
 
 const {
   title,
+  seoTitle,
   titleHtml,
   eyebrow,
   lead,
@@ -98,7 +101,8 @@ const content: PublicContent = {
   kind: 'page',
   key: Astro.url.pathname,
   canonicalPath: Astro.url.pathname,
-  title,
+  // [AUMFE-COPY-SEO-1] seoTitle lets a page give search its own <title> without touching the h1.
+  title: seoTitle ?? title,
   summary: description,
   visibility: 'public',
   modifiedAt: updated ? new Date(updated).toISOString() : undefined,

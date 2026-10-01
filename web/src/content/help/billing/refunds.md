@@ -1,6 +1,6 @@
 ---
-title: "Refunds and cancellations"
-description: "How to cancel a puja, havan, satsang, sermon or meditation and request a refund with your 12-digit UPI transaction number."
+title: "Cancelling a booking and getting a refund"
+description: "Cancelling a puja, havan, satsang, sermon or meditation, and claiming your refund using the 12-digit UPI transaction number from your payment."
 section: billing
 order: 1
 updated: 2026-09-30
@@ -26,7 +26,7 @@ draft: false
 
 ## The full policy
 
-This page is the plain-English version. The binding policy is [Refunds & Cancellations](/refunds); always defer to that page if anything here seems to disagree with it.
+What follows is the plain-English summary. The binding policy lives at [Refunds & Cancellations](/refunds); if the two ever seem to differ, that page is the one that applies.
 
 ## What you see is what you pay
 

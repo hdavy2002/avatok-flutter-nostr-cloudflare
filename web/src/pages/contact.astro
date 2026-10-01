@@ -40,10 +40,11 @@ const privacyImg = publicImage('/assets/editorial-stickers-v2/privacy-sticker-v2
 
 <LegalFolk
   title="Contact us"
+  seoTitle="Contact Us — Help With a Havan or Puja Booking"
   titleHtml="Contact <em>us</em>"
   eyebrow="Talk to a human"
-  lead={`Questions, feedback, press, partnerships, or a problem to report? Your message goes straight to the ${BRAND.name} support team.`}
-  description={`Get in touch with ${BRAND.name} — support, press, partnerships, or to report something that isn't right.`}
+  lead={`A question about a booking, some feedback, a press or partnership idea, or something to report? Your note lands directly with the ${BRAND.name} support team.`}
+  description={`Write to the ${BRAND.name} team about a havan or puja booking, your ritual video or prasad, press and partnerships, or anything on the site that does not look right.`}
   image="/og/contact.png"
   metaPill={`support (@) ${BRAND.domain}`}
   sticker={{
@@ -57,7 +58,7 @@ const privacyImg = publicImage('/assets/editorial-stickers-v2/privacy-sticker-v2
   <section class="lg-contact lg-wrap">
     <div class="lg-contact-inner">
       <form id="contact-form" class="lg-cform" data-support-email={BRAND.emails.support} novalidate>
-        <p class="lg-intro">You can always email us directly at support (@) {BRAND.domain}, or use the form below. For anything about your data, see our <a href="/privacy">Privacy Policy</a>.</p>
+        <p class="lg-intro">Prefer email? Write to support (@) {BRAND.domain} at any time, or fill in the form below. Questions about your personal data are answered in our <a href="/privacy">Privacy Policy</a>.</p>
         <label class="lg-honeypot" aria-hidden="true"><span>Company website</span><input type="text" name="company" tabindex="-1" autocomplete="off" /></label>
         <div class="lg-row">
           <label><span>Your name</span><input id="c-name" type="text" name="name" autocomplete="name" required maxlength="120" /></label>

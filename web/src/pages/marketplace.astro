@@ -55,12 +55,12 @@ const deities = [
 const heroImage = ritualBySlug('lakshmi-havan')?.image ?? '/assets/grand/hero.png';
 // Same six intention tiles as the homepage; each searches the marketplace.
 const intentions = [
-  { name: 'puja', label: 'Success in studies', term: 'Studies' },
-  { name: 'festival', label: 'A fresh start', term: 'Fresh start' },
-  { name: 'aarti', label: 'Prosperity', term: 'Prosperity' },
-  { name: 'yoga', label: 'Health & peace', term: 'Health' },
-  { name: 'satsang', label: 'Love & family', term: 'Family' },
-  { name: 'bhajan', label: 'Festival pujas', term: 'Festival' },
+  { name: 'puja', label: 'Blessings for studies', term: 'Studies' },
+  { name: 'festival', label: 'New beginnings', term: 'Fresh start' },
+  { name: 'aarti', label: 'Abundance at home', term: 'Prosperity' },
+  { name: 'yoga', label: 'Health & calm', term: 'Health' },
+  { name: 'satsang', label: 'Family harmony', term: 'Family' },
+  { name: 'bhajan', label: 'Pujas for festivals', term: 'Festival' },
 ] as const;
 const typeOptions = [['', 'All categories'], ['havan', 'Havan'], ['puja', 'Puja'], ['satsang', 'Satsang'], ['sermon', 'Sermon'], ['meditation', 'Meditation'], ['festival', 'Festival specials']];
 const whenOptions = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'This weekend'], ['month', 'This month']];
@@ -107,8 +107,8 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
         <div class="mk-hero-inner">
           <div class="mk-hero-copy">
             <p class="mk-eyebrow">{BRAND.nameUpper} MARKETPLACE<span id="mk-hero-count"></span></p>
-            <h1 id="mk-title">Find your puja, havan or satsang. <em>Book it in a minute.</em></h1>
-            <p class="mk-lead">Performed by temple priests<span id="mk-hero-cities"></span>. One sankalp for every devotee, prasad at your door.</p>
+            <h1 id="mk-title">Search havans, pujas and satsangs. <em>Booked in about a minute.</em></h1>
+            <p class="mk-lead">Led by the priests of Himalayan temples<span id="mk-hero-cities"></span>. A shared sankalp for all who join, and prasad couriered home.</p>
             <form class="mk-search" action="/marketplace" method="get" role="search" aria-label="Search events">
               <label class="mk-field mk-field--q">
                 <span>What are you looking for?</span>
@@ -142,7 +142,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
              events grid (MarketplaceV2 renders this slot there). client:visible = loads when scrolled to. -->
         <FreeVideosRow slot="afterEvents" client:visible surface="marketplace" />
         <section slot="intentions" class="grand-experiences mk-intent" aria-labelledby="mk-intent-title">
-          <div class="grand-section-heading"><h2 id="mk-intent-title"><span aria-hidden="true">✽</span> Not sure which ritual? Start with your wish. <span aria-hidden="true">✽</span></h2></div>
+          <div class="grand-section-heading"><h2 id="mk-intent-title"><span aria-hidden="true">✽</span> Unsure which ritual fits? Begin with your prayer. <span aria-hidden="true">✽</span></h2></div>
           <div class="grand-category-grid">
             {intentions.map(c => <a class="grand-category" href={'/marketplace?q=' + encodeURIComponent(c.term) + '#all-events'}>
               <BookingArtwork kind="category" name={c.name} alt="" sizes="(max-width: 600px) 46vw, (max-width: 1100px) 30vw, 15vw" />
@@ -156,21 +156,21 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       <!-- ⑩ HOW BOOKING WORKS + PROMISES -->
       <section class="grand-moments mk-how" aria-labelledby="mk-how-title">
         <div class="grand-moments-inner">
-          <div class="grand-section-heading"><h2 id="mk-how-title"><span aria-hidden="true">✽</span> Booking takes a minute</h2></div>
+          <div class="grand-section-heading"><h2 id="mk-how-title"><span aria-hidden="true">✽</span> Book in about a minute</h2></div>
           <ol class="mk-steps">
-            <li><FolkIcon kind="search" /><span class="mk-step-n">01</span><b>Choose</b><span>Pick a havan, puja or satsang and a date that suits you.</span></li>
-            <li><FolkIcon kind="ticket" /><span class="mk-step-n">02</span><b>Book &amp; pay</b><span>Just your name. Pay by UPI — what you see is what you pay.</span></li>
-            <li><FolkIcon kind="live" /><span class="mk-step-n">03</span><b>Get the video</b><span>We email it to you when it finishes. Prasad follows by courier.</span></li>
+            <li><FolkIcon kind="search" /><span class="mk-step-n">01</span><b>Choose</b><span>Find a havan, puja or satsang on a date that works for you.</span></li>
+            <li><FolkIcon kind="ticket" /><span class="mk-step-n">02</span><b>Book &amp; pay</b><span>Only your name is needed. Pay with UPI — the price shown is the price paid.</span></li>
+            <li><FolkIcon kind="live" /><span class="mk-step-n">03</span><b>Receive the video</b><span>It reaches your inbox once the ritual ends. Prasad comes by courier.</span></li>
           </ol>
         </div>
       </section>
 
       <section class="mk-promise" aria-label="What every booking includes">
         <ul>
-          <li><FolkIcon kind="ticket" /><b>One sankalp for everyone</b><span>The pujari recites the event's sankalp for every devotee who joins.</span></li>
-          <li><FolkIcon kind="live" /><b>Video to keep</b><span>Download it on any phone, anywhere in the world.</span></li>
-          <li><FolkIcon kind="puja" /><b>Prasad at your door</b><span>Couriered in India and abroad.</span></li>
-          <li><FolkIcon kind="search" /><b>Free cancellation</b><span>Up to 24 hrs before (3 days for satsang, sermon &amp; meditation) — see our <a href="/refunds">refund policy</a>.</span></li>
+          <li><FolkIcon kind="ticket" /><b>A shared sankalp</b><span>The pujari says the event's sankalp on behalf of each devotee taking part.</span></li>
+          <li><FolkIcon kind="live" /><b>A video that is yours</b><span>Save it to any phone, in any country.</span></li>
+          <li><FolkIcon kind="puja" /><b>Prasad delivered</b><span>Sent by courier within India and overseas.</span></li>
+          <li><FolkIcon kind="search" /><b>Cancel at no cost</b><span>Until 24 hrs before (3 days for satsang, sermon &amp; meditation) — see our <a href="/refunds">refund policy</a>.</span></li>
         </ul>
       </section>
 

@@ -1,44 +1,44 @@
 ---
-title: "Getting your ritual video"
-description: "How you receive the video of the puja or havan you booked, what the ritual's status means, and what happens if it can't be performed."
+title: "How you receive your puja or havan video"
+description: "How the video of your booked puja or havan reaches you, what each ritual status means, and what happens if a ritual cannot go ahead as planned."
 section: booking-and-paying
 order: 3
-updated: 2026-09-29
+updated: 2026-10-01
 keywords: ["puja video", "havan video", "download video", "missed puja", "puja not performed", "refund", "video kab milega"]
 audience: buyer
 faq:
-  - q: "How do I see my puja or havan?"
-    a: "Our crew films your ritual at the temple and live streams it when the mountain network allows. When it finishes, we email you the full video to download. It also sits under My events."
+  - q: "How can I watch my puja or havan?"
+    a: "Our crew films the ritual at the temple and streams it live when the mountain network allows. Once it ends, the full video is emailed to you to download, and it also appears under My events."
   - q: "Why is my video late?"
-    a: "Landslides, snowstorms and heavy rain can cut the network in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio. We tell you about the delay on WhatsApp and by email."
-  - q: "What if the ritual isn't performed?"
-    a: "You get a full refund. Email support (@) {{brand.domain}} with your 12-digit UPI transaction number and we'll refund you."
+    a: "In the mountains, landslides, snowstorms and heavy rain can knock out the network. Our crew films the entire ritual regardless and uploads it once they are back at the studio. We let you know about the delay on WhatsApp and by email."
+  - q: "What if the ritual doesn't take place?"
+    a: "You receive a full refund. Email support (@) {{brand.domain}} with your 12-digit UPI transaction number and we will refund you."
 draft: false
 ---
 
-<!-- rebrand: reviewed -->
+<!-- rebrand: reviewed. [AUMFE-COPY-SEO-1 2026-10-01] Reworded. -->
 
-## Your video
+## Your ritual video
 
-Our crew films your ritual at the temple and live streams it when the mountain network allows. When it finishes, we email you the full video to download. You'll also find it under **My events**, and you can download it anytime.
+Our crew films the ritual at the temple and streams it live whenever the mountain network allows. When it ends, the complete video is emailed to you to download. It is also kept under **My events**, ready to download at any time.
 
-If snow, a landslide or heavy rain cuts the network, the video may take longer. We tell you on WhatsApp and by email, and upload it as soon as our crew is back in the studio.
+If snow, a landslide or heavy rain takes the network down, the video can take longer. We tell you on WhatsApp and by email, and upload it as soon as our crew is back at the studio.
 
-On the day, light a lamp at home if you like and sit quietly at the scheduled time — the sankalp is recited at the altar for every devotee whether or not you are watching.
+On the day, you may light a lamp at home and sit quietly at the scheduled time — the sankalp is said at the altar for every devotee whether or not you are watching.
 
-## What the ritual's status means
+## What each ritual status means
 
-Every page reads the ritual's status from the same clock, checkout included:
+Every page, checkout included, reads the ritual's status from the same clock:
 
-- **Upcoming** — before the scheduled start.
-- **In progress** — the temple's pujari is performing the ritual.
-- **Completed** — the ritual is done; your video follows by email.
-- **Cancelled** — the ritual was cancelled; request your full refund with your UPI transaction number.
+- **Upcoming** — the scheduled start has not arrived yet.
+- **In progress** — the temple's pujari is performing the ritual now.
+- **Completed** — the ritual has finished; your video will follow by email.
+- **Cancelled** — the ritual did not go ahead; request your full refund with your UPI transaction number.
 
-Bookings stay open for about **15 minutes** after the scheduled start. After that, checkout says booking has closed.
+Booking stays open for roughly **15 minutes** after the scheduled start. After that, checkout shows that booking has closed.
 
-## If the ritual can't be performed
+## If a ritual cannot go ahead
 
-If we can't perform a ritual, you get a full refund. Email support (@) {{brand.domain}} (or use the [contact form](/contact)) with your **12-digit UPI transaction number** so we can locate your payment, and we'll refund the UPI account you paid from. See [Refunds & Cancellations](/refunds).
+If we are unable to perform a ritual, you receive a full refund. Email support (@) {{brand.domain}} (or use the [contact form](/contact)) with your **12-digit UPI transaction number** so we can find your payment, and we will refund the UPI account you paid from. See [Refunds & Cancellations](/refunds).
 
-If there's a problem with your video, email support (@) {{brand.domain}} with your booking details and we'll sort it out.
+For any problem with your video, email support (@) {{brand.domain}} with your booking details and we will put it right.

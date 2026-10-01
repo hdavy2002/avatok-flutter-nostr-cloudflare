@@ -1,43 +1,43 @@
 ---
-title: "What is {{brand.name}}?"
-description: "{{brand.name}} performs havans and pujas for you at peaceful Himalayan temples, filmed by our crew, with prasad sent to your door."
+title: "What does {{brand.name}} do?"
+description: "{{brand.name}} arranges havans and pujas in your name at quiet Himalayan temples: the temple pujari performs them, our crew films them, and prasad can follow."
 section: getting-started
 order: 1
-updated: 2026-09-29
-keywords: ["{{brand.slug}}", "what is {{brand.slug}}", "{{brand.slug}} kya hai", "himalayan temple havan", "online havan", "puja in my name", "havan uttarakhand", "puja video"]
+updated: 2026-10-01
+keywords: ["{{brand.slug}}", "what is {{brand.slug}}", "{{brand.slug}} kya hai", "himalayan temple havan", "online havan", "puja in my name", "havan uttarakhand", "puja video", "puja for nri"]
 audience: buyer
 faq:
-  - q: "What exactly is {{brand.name}}?"
-    a: "{{brand.name}} performs havans and pujas for you at remote, peaceful Himalayan temples. You choose a ritual and book with your name; our crew travels to the temple, the temple's own pujari performs it, and we film it for you. We send you the video, and dry prasad to your door if you'd like."
-  - q: "What can I book on {{brand.name}}?"
-    a: "Havans and pujas only — positive, benefic rituals for studies, a fresh start, prosperity, health, family, peace and festivals, at temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis."
-  - q: "Do I need to be there in person?"
-    a: "No. The ritual is performed in full, with its sankalp recited for every devotee, whether or not you watch. We live stream when the mountain network allows, and we always send you the full video to keep."
+  - q: "What does {{brand.name}} actually do?"
+    a: "{{brand.name}} arranges havans and pujas for you at remote, peaceful temples in the Himalayas. You pick a ritual and book in your name; our crew travels to the temple, the pujari who serves there performs it, and we film the whole thing. You receive the video, plus dry prasad at your door if you want it."
+  - q: "Which rituals can I book?"
+    a: "Only havans and pujas — positive, benefic rituals for studies, new beginnings, prosperity, health, family, peace and festivals, held at temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis."
+  - q: "Do I have to attend in person?"
+    a: "No. Each ritual is performed in full, with its sankalp said for every devotee, whether you watch or not. We stream live when the mountain network allows, and you always get the complete video to keep."
 draft: false
 ---
 
-<!-- [WEB-REFRAME-1 2026-09-29] Rewritten around the Himalayan temple story. -->
+<!-- [WEB-REFRAME-1 2026-09-29] Himalayan temple story. [AUMFE-COPY-SEO-1 2026-10-01] Reworded. -->
 
-{{brand.name}} takes your havan or puja deep into the Himalayas. Our small crew travels to remote, peaceful mountain temples that ordinary pilgrimage never reaches, and the temple's own pujari performs your ritual in your name.
+{{brand.name}} carries your havan or puja high into the Himalayas. A small crew of ours journeys to quiet mountain temples far off the usual pilgrim trail, and the pujari who serves each temple performs the ritual in your name.
 
-## How it works
+## The four steps
 
-1. **Choose your ritual.** Pick a havan or puja by what you're hoping for, by deity, or by festival under [Explore](/marketplace). Each event names the temple where it is performed.
-2. **Book with your name.** Each havan or puja has its own sankalp, which the pujari recites at the altar for every devotee.
-3. **We go to the temple.** Our crew films the ritual and live streams it when the mountain network allows.
-4. **Receive your video and prasad.** We email you the full video, and dry prasad from the temple follows by courier if you chose it.
+1. **Pick a ritual.** Under [Explore](/marketplace), search by what you are praying for, by deity, or by festival. Every event names the temple where it will be held.
+2. **Book in your name.** Every havan or puja carries its own sankalp, which the pujari recites at the altar on behalf of each devotee.
+3. **We travel to the temple.** Our crew films the ritual and streams it live whenever the mountain network allows.
+4. **Get your video and prasad.** The full video arrives by email, and dry prasad from the temple follows by courier if you added it.
 
-## Why the mountains
+## Why the Himalayas
 
-Across Uttarakhand and Himachal there are small temples kept alive by a pujari and his village, far from the pilgrim routes. The families who look after them face hard winters and very little income, and many still feed the sadhus meditating in the caves above. Every booking gives them a fair, steady income and a way to share their devotion with families everywhere. Read how it began on [About us](/about).
+Throughout Uttarakhand and Himachal, small temples survive far from the pilgrim routes, looked after by a pujari and his village. These families live through hard winters on very little, and many still take food up to the sadhus meditating in the caves above. Each booking gives them a fair, steady income and a way to share their devotion with families everywhere. The story of how we started is on [About us](/about).
 
-## Only positive temples, only positive rituals
+## Positive temples and benefic rituals only
 
-We work only with positive temples: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. We stay away from temples known for animal sacrifice, fear or dark practices, and every ritual we perform is benefic. We never tell you something bad will happen if you don't book. See [Our temples and our temple promise](/help/getting-started/our-temples-and-our-promise).
+Every temple we work with is a positive one: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. Temples associated with animal sacrifice, fear or dark practices are excluded, and every ritual we arrange is benefic. You will never hear from us that something bad will happen if you don't book. Read more in [Our temples and our temple promise](/help/getting-started/our-temples-and-our-promise).
 
 Rituals are performed with devotion by the pujaris of the temples we work with. Benefits described are those traditionally sought by devotees; {{brand.name}} makes no claims of guaranteed outcomes.
 
-## Where to next
+## Read next
 
 - [Create your account](/help/getting-started/create-your-account)
 - [Puja or havan?](/help/getting-started/puja-or-havan)

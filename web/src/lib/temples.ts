@@ -68,39 +68,39 @@ const t = (name: string, place: string, deity: string): Temple => {
 };
 
 export const TEMPLE_REGIONS: TempleRegion[] = [
-  { key: 'rishikesh', name: 'Rishikesh', blurb: 'On the Ganga, at the foot of the Garhwal hills.', temples: [
+  { key: 'rishikesh', name: 'Rishikesh', blurb: 'Beside the Ganga where the Garhwal hills begin.', temples: [
     t('Kunjapuri Devi Temple', 'Hilltop above Rishikesh, Narendra Nagar road', 'Devi'),
     t('Shatrughan Temple', 'Muni ki Reti, Rishikesh', 'Shatrughan'),
   ] },
-  { key: 'haridwar', name: 'Haridwar', blurb: 'Where the Ganga leaves the mountains.', temples: [
+  { key: 'haridwar', name: 'Haridwar', blurb: 'Where the Ganga flows out onto the plains.', temples: [
     t('Bilkeshwar Mahadev Temple', 'Near Har ki Pauri, Haridwar', 'Shiva'),
     t('Daksheshwar Mahadev Temple', 'Kankhal, Haridwar', 'Shiva'),
     t('Sureshwari Devi Temple', 'Rajaji forest, Ranipur, Haridwar', 'Devi'),
     t('Neeleshwar Mahadev Temple', 'Neel Parvat, Haridwar', 'Shiva'),
   ] },
-  { key: 'dehradun', name: 'Dehradun', blurb: 'Old temples in the Doon valley and its forests.', temples: [
+  { key: 'dehradun', name: 'Dehradun', blurb: 'Historic shrines of the Doon valley and its woods.', temples: [
     t('Prakasheshwar Mahadev Temple', 'Mussoorie road, Dehradun', 'Shiva'),
     t('Laxman Siddh Temple', 'Haridwar road, Dehradun', 'Siddh'),
   ] },
-  { key: 'purola', name: 'Purola & Rawain', blurb: 'Old shrines of the Rawain valley.', temples: [
+  { key: 'purola', name: 'Purola & Rawain', blurb: 'Ancient temples of the Rawain valley.', temples: [
     t('Kamleshwar Mahadev Temple', 'Kamal Siddh, Purola', 'Shiva'),
   ] },
-  { key: 'badrinath', name: 'Badrinath', blurb: 'Smaller shrines on the road to Badri Vishal.', temples: [
+  { key: 'badrinath', name: 'Badrinath', blurb: 'Quieter shrines along the way to Badri Vishal.', temples: [
     t('Yogadhyan Badri', 'Pandukeshwar', 'Vishnu'),
     t('Bhavishya Badri', 'Subhain, near Joshimath', 'Vishnu'),
     t('Vridha Badri', 'Animath, near Joshimath', 'Vishnu'),
     t('Mata Murti Temple', 'Mana village', 'Devi'),
   ] },
-  { key: 'kedarnath', name: 'Kedarnath', blurb: 'Temples of the Kedar valley and the winter seat of Baba Kedar.', temples: [
+  { key: 'kedarnath', name: 'Kedarnath', blurb: 'Kedar valley temples, including Baba Kedar\'s winter seat.', temples: [
     t('Kashi Vishwanath Temple', 'Guptkashi', 'Shiva'),
     t('Omkareshwar Temple', 'Ukhimath', 'Shiva'),
     t('Gauri Mai Temple', 'Gaurikund', 'Parvati'),
   ] },
-  { key: 'gangotri', name: 'Gangotri', blurb: 'Along the Bhagirathi, from Harsil to Mukhba.', temples: [
+  { key: 'gangotri', name: 'Gangotri', blurb: 'On the banks of the Bhagirathi, Harsil to Mukhba.', temples: [
     t('Mukhimath Ganga Temple', 'Mukhba village', 'Ganga'),
     t('Lakshmi Narayan Temple', 'Harsil', 'Vishnu'),
   ] },
-  { key: 'himachal', name: 'Himachal Pradesh', blurb: 'Wooden hill temples in Kullu and Mandi.', temples: [
+  { key: 'himachal', name: 'Himachal Pradesh', blurb: 'Timber temples in the hills of Kullu and Mandi.', temples: [
     t('Bijli Mahadev Temple', 'Kullu', 'Shiva'),
     t('Prashar Rishi Temple', 'Prashar lake, Mandi', 'Rishi Prashar'),
   ] },

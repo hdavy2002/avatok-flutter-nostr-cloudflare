@@ -81,10 +81,10 @@ for (let round = 0; faqCards.length < 6 && bySection.some((l) => l.length > roun
 // article is archived simply disappears.
 const QUICK: { id: string; label: string }[] = [
   { id: 'booking-and-paying/sankalp-replay-and-prasad', label: 'What is a gotra?' },
-  { id: 'billing/refunds', label: 'Refund by UPI' },
-  { id: 'booking-and-paying/join-a-live-show', label: 'Getting your video' },
+  { id: 'billing/refunds', label: 'Getting a UPI refund' },
+  { id: 'booking-and-paying/join-a-live-show', label: 'Where is my video?' },
   { id: 'getting-started/puja-or-havan', label: 'Puja or havan?' },
-  { id: 'booking-and-paying/how-to-book', label: 'How to book' },
+  { id: 'booking-and-paying/how-to-book', label: 'Booking a ritual' },
 ];
 const quick = QUICK.flatMap((c) => {
   const e = allEntries.find((x) => x.id === c.id);
@@ -110,12 +110,12 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
         <div class="hs-hero-inner">
           <div>
             <p class="hs-eyebrow">{BRAND.name} help centre</p>
-            <h1 id="help-title">Namaste. What can we <em>clear up</em> for you?</h1>
-            <p class="hs-hero-lead">Sankalp, gotra, prasad, refunds, your video. Short answers, in plain words, written by the team that performs your puja.</p>
+            <h1 id="help-title">Namaste. How can we <em>help you</em> today?</h1>
+            <p class="hs-hero-lead">Your sankalp, gotra, prasad, video or a refund. Clear, simple answers from the same team that arranges your puja.</p>
             <HelpSearch id="hero" />
             {quick.length > 0 && (
               <div class="hs-quick" aria-label="Popular questions">
-                <span>People ask about:</span>
+                <span>Popular questions:</span>
                 {quick.map((c) => <a href={c.href}>{c.label}</a>)}
               </div>
             )}
@@ -135,7 +135,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
       <!-- ② Pick a topic — one tile per live section + the contact tile -->
       <section class="hs-topics hs-wrap" aria-labelledby="topics-title">
         <div class="grand-section-heading">
-          <h2 id="topics-title"><span aria-hidden="true">✽</span>Pick a topic<span aria-hidden="true">✽</span></h2>
+          <h2 id="topics-title"><span aria-hidden="true">✽</span>Choose a topic<span aria-hidden="true">✽</span></h2>
           <a class="hs-link" href="#every-article">Every article <span aria-hidden="true">→</span></a>
         </div>
         <div class="hs-tile-grid">
@@ -147,7 +147,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
           ))}
           <a class="hs-tile hs-tile--contact" href="/contact">
             <img class="hs-diya" src={publicImage('/diya-logo.png', { width: 256, fit: 'scale-down' })} alt="" width="128" height="128" loading="lazy" decoding="async" />
-            <div class="hs-tile-copy"><h3>Still stuck? Write to us<small>We reply within a day</small></h3><span class="hs-arrow" aria-hidden="true">↗</span></div>
+            <div class="hs-tile-copy"><h3>Still need help? Email us<small>Answered within a day</small></h3><span class="hs-arrow" aria-hidden="true">↗</span></div>
           </a>
         </div>
       </section>
@@ -157,7 +157,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
         <section class="hs-faq" id="faq" aria-labelledby="faq-title">
           <div class="hs-wrap">
             <div class="grand-section-heading">
-              <h2 id="faq-title"><span aria-hidden="true">✽</span> Questions devotees ask most</h2>
+              <h2 id="faq-title"><span aria-hidden="true">✽</span> What devotees ask us most</h2>
               <a class="hs-link" href="#every-article">All articles <span aria-hidden="true">→</span></a>
             </div>
             <div class="hs-faq-grid">
@@ -172,7 +172,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
                 </article>
               ))}
             </div>
-            <p class="hs-faq-note">Answers describe how {BRAND.name} works today; anything about a ritual's benefits is what devotees traditionally seek, never a promise.</p>
+            <p class="hs-faq-note">These answers reflect how {BRAND.name} works right now; any mention of a ritual's benefits describes what devotees traditionally seek, and is never a promise.</p>
           </div>
         </section>
       )}
@@ -180,7 +180,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
       <!-- ④ Every article, by topic — white panels; each carries its section id -->
       <section class="hs-all hs-wrap" id="every-article" aria-labelledby="all-title">
         <div class="grand-section-heading">
-          <h2 id="all-title"><span aria-hidden="true">✽</span> Every article, by topic</h2>
+          <h2 id="all-title"><span aria-hidden="true">✽</span> All articles, grouped by topic</h2>
         </div>
         <div class="hs-panel-grid">
           {tree.map((s) => (
@@ -199,14 +199,14 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
         <div class="hs-stuck-inner">
           <div class="hs-stuck-art"><img src={publicImage('/assets/booking/elephant.png', { width: 640, fit: 'scale-down' })} alt="" width="280" height="187" loading="lazy" decoding="async" /></div>
           <div class="hs-stuck-copy">
-            <h2 id="stuck-title">Didn't find it?<br />A person will answer.</h2>
-            <p>Write to us in English or Hindi. If it's about a booking, include your 12-digit UPI transaction number; we reply within a day.</p>
-            <a class="hs-btn" href="/contact">Write to the team <span aria-hidden="true">→</span></a>
+            <h2 id="stuck-title">No answer here?<br />Ask a real person.</h2>
+            <p>Email us in Hindi or English. For a booking question, add your 12-digit UPI transaction number; you will hear back within a day.</p>
+            <a class="hs-btn" href="/contact">Contact the team <span aria-hidden="true">→</span></a>
           </div>
           <ul class="hs-ways" aria-label="Ways to reach us">
             <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
-            <li><Fragment set:html={markSvg(MARK_SEARCH, '')} /><div><b>Contact form</b><span>Prefer a form? Use our <a href="/contact">contact page</a>; it reaches the same team.</span></div></li>
-            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>', '')} /><div><b>Grievance Redressal</b><span>Not resolved by support? Our Nodal Officer: <code>grievance (@) {BRAND.domain}</code></span></div></li>
+            <li><Fragment set:html={markSvg(MARK_SEARCH, '')} /><div><b>Contact form</b><span>Rather use a form? Our <a href="/contact">contact page</a> goes to the same people.</span></div></li>
+            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>', '')} /><div><b>Grievance Redressal</b><span>Support could not resolve it? Reach our Nodal Officer: <code>grievance (@) {BRAND.domain}</code></span></div></li>
           </ul>
         </div>
       </section>

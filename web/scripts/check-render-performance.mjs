@@ -46,7 +46,7 @@ if (built) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');
   }
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  assert.equal(heading, 'Your Puja, in the Peaceful Himalayas.', 'Grand homepage H1 reaches the built page'); // WEB-HERO-PHOTO-1
+  assert.equal(heading, 'A puja in your name, at a quiet Himalayan temple.', 'Grand homepage H1 reaches the built page'); // AUMFE-COPY-SEO-1
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

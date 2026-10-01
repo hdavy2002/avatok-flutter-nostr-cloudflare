@@ -1,43 +1,43 @@
 ---
-title: "Our temples and our temple promise"
-description: "Which Himalayan temples {{brand.name}} works with, the temples we stay away from, and how a temple joins our list."
+title: "Which temples we work with, and our promise"
+description: "The Himalayan temples {{brand.name}} partners with in Uttarakhand and Himachal, the kinds of temples we always avoid, and how a new temple is added to our list."
 section: getting-started
 order: 3
-updated: 2026-09-29
-keywords: ["which temples", "himalayan temples", "uttarakhand temples", "positive temples", "no animal sacrifice", "temple list", "kaunsa mandir"]
+updated: 2026-10-01
+keywords: ["which temples", "himalayan temples", "uttarakhand temples", "positive temples", "no animal sacrifice", "temple list", "kaunsa mandir", "himalayan temple puja"]
 audience: buyer
 faq:
-  - q: "Which temples do you work with?"
-    a: "Small, peaceful Himalayan temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, across Uttarakhand and Himachal. The full list is on Our temples."
-  - q: "Which temples do you avoid?"
-    a: "Temples known for animal sacrifice, fear-based rituals, tantric, cult or black-magic practices. We focus on gentle, sattvic traditions, so we don't perform rituals for fierce forms such as Kali, Bhairav or Shani."
-  - q: "Can I choose the temple?"
-    a: "Each event is performed at the temple named on its event page, so pick the event at the temple you feel close to."
+  - q: "Which temples are you partnered with?"
+    a: "Small, peaceful temples in the Himalayas of Uttarakhand and Himachal, dedicated to Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. See the complete list on Our temples."
+  - q: "Which temples do you stay away from?"
+    a: "Any temple known for animal sacrifice, fear-based rituals, or tantric, cult or black-magic practices. We follow gentle, sattvic traditions, so we do not perform rituals for fierce forms such as Kali, Bhairav or Shani."
+  - q: "Can I choose which temple?"
+    a: "Each event happens at the temple named on its page, so choose the event at a temple you feel close to."
 draft: false
 ---
 
-<!-- [WEB-REFRAME-1 2026-09-29] Owner's positive-temple policy. -->
+<!-- [WEB-REFRAME-1 2026-09-29] Positive-temple policy. [AUMFE-COPY-SEO-1 2026-10-01] Reworded. -->
 
-## The temples we work with
+## Our partner temples
 
-We work with small, peaceful temples in the Himalayas of Uttarakhand and Himachal, many of them in villages that most pilgrims never reach. You can see them, region by region, on [Our temples](/temples).
+We partner with small, peaceful temples in the Himalayas of Uttarakhand and Himachal, many tucked away in villages that most pilgrims never visit. [Our temples](/temples) lists them region by region.
 
-We choose temples whose tradition is gentle and joyful:
+The temples we choose follow gentle, joyful traditions:
 
 - **Shiva and Parvati** — Mahadev temples and Uma–Maheshwar shrines
-- **Vishnu** and his forms, such as the Badri temples
-- **Ram and Sita**, Lakshman and Hanuman
+- **Vishnu** and his forms, including the Badri temples
+- **Ram and Sita**, with Lakshman and Hanuman
 - **Krishna** and Radha
-- **The gentle Himalayan Devis**, Ganga, Ganesha, Lakshmi, Saraswati and Surya
+- **The gentle Himalayan Devis**, together with Ganga, Ganesha, Lakshmi, Saraswati and Surya
 
-## The temples we stay away from
+## Temples we never work with
 
-We do not work with temples known for animal sacrifice (bali), now or in living memory, or with shrines tied to fear, ghosts, curses, tantric, cult or black-magic practices. We focus on gentle, sattvic traditions, so we don't perform rituals for fierce forms such as Kali, Bhairav or Shani, or any ritual sold as "removing a dosh" or protecting you from harm.
+We do not partner with any temple known for animal sacrifice (bali), whether today or within living memory, nor with shrines linked to fear, ghosts, curses, or tantric, cult or black-magic practices. Because we follow gentle, sattvic traditions, we do not perform rituals for fierce forms such as Kali, Bhairav or Shani, or any ritual marketed as "removing a dosh" or shielding you from harm.
 
-## How a temple joins our list
+## How a temple is added
 
-Our team visits the temple, meets the pujari and asks about its practices and festivals. Only when we are sure the temple follows a positive tradition does it appear on Our temples.
+Someone from our team travels to the temple, meets its pujari, and learns about its customs and festivals. A temple is listed on Our temples only once we are confident it follows a positive tradition.
 
 ## Supporting the pujaris
 
-A fair share of every booking goes to the temple, its pujari and his village, helping them through the long mountain winters. Read how it began on [About us](/about).
+The temple, its pujari and his village receive a fair share of every booking, which helps them through the long mountain winters. Read how we began on [About us](/about).

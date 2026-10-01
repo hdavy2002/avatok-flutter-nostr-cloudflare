@@ -1,6 +1,6 @@
 ---
-title: "Delete your {{brand.name}} account"
-description: "What happens, step by step, when you delete your {{brand.name}} account — the 30-day grace period, what's erased, and what's kept."
+title: "Deleting your {{brand.name}} account"
+description: "Step by step, exactly what deleting your {{brand.name}} account does: the 30-day grace period, which data is erased, and which records are kept afterwards."
 section: account-and-safety
 order: 4
 updated: 2026-09-11
@@ -20,7 +20,7 @@ draft: false
 
 ## It's a 30-day grace period, not instant deletion
 
-Tapping **Delete account** in Settings does not wipe your data right away. {{brand.name}} schedules the deletion for **30 days later** and marks your account as pending. Nothing about your profile, listings, bookings, or history is touched during those 30 days.
+Pressing **Delete account** in Settings does not erase your data straight away. {{brand.name}} sets the deletion for **30 days later** and flags your account as pending. For those 30 days, your profile, listings, bookings and history stay exactly as they are.
 
 ## Step by step
 

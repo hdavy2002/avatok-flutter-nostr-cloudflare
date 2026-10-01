@@ -6,10 +6,10 @@ export const MARKETPLACE_SEO: PublicContent = {
   kind: 'collection',
   key: 'marketplace',
   canonicalPath: '/marketplace',
-  title: `Havans & Pujas at Himalayan Temples · ${BRAND.name}`,
-  summary: 'Book havans and pujas performed by pujaris at positive Himalayan temples. Filter by deity, wish, date or price; your sankalp in your name and gotra, the video filmed by our crew, dry prasad delivered to your door.',
+  title: 'Book a Havan or Puja Online at a Himalayan Temple',
+  summary: 'Browse upcoming havans and pujas at positive Himalayan temples. Search by deity, wish or date, see prices starting from, and add dry prasad by courier.',
   visibility: 'public',
-  image: { url: '/assets/grand/hero.png', alt: `Havans and pujas at Himalayan temples — ${BRAND.name}.` },
+  image: { url: '/assets/grand/hero.png', alt: `Upcoming havans and pujas at Himalayan temples, from ${BRAND.name}.` },
 };
 
 // [WEB-HIW-2 2026-09-27] /how-it-works moved off layouts/Content.astro onto the
@@ -20,11 +20,11 @@ export const HOW_IT_WORKS_SEO: PublicContent = {
   kind: 'page',
   key: '/how-it-works',
   canonicalPath: '/how-it-works',
-  title: 'How we perform your havan at a Himalayan temple',
-  summary: 'How our crew travels to a Himalayan temple, how the pujari performs your havan or puja in your name and gotra, live streaming and the full video, weather delays and same-day dry prasad.',
+  title: 'How Your Havan Is Performed at a Himalayan Temple',
+  summary: 'From booking to blessing: our crew reaches the temple, the pujari performs your havan or puja, you watch live or get the full video, and dry prasad follows.',
   visibility: 'public',
   modifiedAt: new Date('2026-09-27').toISOString(),
-  image: { url: '/og-editorial.png', alt: `How we perform your havan at a Himalayan temple — ${BRAND.name}` },
+  image: { url: '/og-editorial.png', alt: `How a havan reaches you from a Himalayan temple — ${BRAND.name}` },
 };
 
 // [WEB-TEMPLES-1 2026-09-29] /temples — "Our temples" (header + footer menus).
@@ -32,19 +32,19 @@ export const TEMPLES_SEO: PublicContent = {
   kind: 'page',
   key: '/temples',
   canonicalPath: '/temples',
-  title: 'Our temples — Haridwar, Rishikesh, Kedarnath, Badrinath & Himachal',
-  summary: `The temples ${BRAND.name} works with across Uttarakhand and Himachal. Our team visits with a camera crew and live streams your puja, sends the full video if the network drops, and ships dry prasad the same day.`,
+  title: 'Our Temples: Haridwar, Kedarnath, Badrinath & More',
+  summary: 'Partner temples across Uttarakhand and Himachal. Our crew films your puja on site, streams it live or sends the full video, and ships dry prasad that same day.',
   visibility: 'public',
   modifiedAt: new Date('2026-09-29').toISOString(),
-  image: { url: '/og-editorial.png', alt: `The temples we work with — ${BRAND.name}` },
+  image: { url: '/og-editorial.png', alt: `Himalayan partner temples of ${BRAND.name}` },
 };
 
 export const HELP_SEO: PublicContent = {
   kind: 'collection',
   key: 'help',
   canonicalPath: '/help',
-  title: 'Help centre',
-  summary: `Guides for booking and paying for pujas and havans on ${BRAND.name} — search or browse by topic.`,
+  title: 'Help Centre: Booking Havans, Pujas and Prasad',
+  summary: `Plain answers on booking a havan or puja with ${BRAND.name}: your sankalp and gotra, the ritual video, prasad delivery, refunds and managing your account.`,
   visibility: 'public',
 };
 

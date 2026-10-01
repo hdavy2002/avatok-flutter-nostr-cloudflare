@@ -14,12 +14,12 @@ import '../styles/home-hero.css';
 // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] Puja & Havan service brief.
 // Intention cards (brief §5.3) in the existing six-card design.
 const categories = [
-  { name: 'puja', label: 'Success in studies', term: 'Studies' },
-  { name: 'festival', label: 'A fresh start', term: 'Fresh start' },
-  { name: 'aarti', label: 'Prosperity', term: 'Prosperity' },
-  { name: 'yoga', label: 'Health & peace', term: 'Health' },
-  { name: 'satsang', label: 'Love & family', term: 'Family' },
-  { name: 'bhajan', label: 'Festival pujas', term: 'Festival' },
+  { name: 'puja', label: 'Blessings for studies', term: 'Studies' },
+  { name: 'festival', label: 'New beginnings', term: 'Fresh start' },
+  { name: 'aarti', label: 'Abundance at home', term: 'Prosperity' },
+  { name: 'yoga', label: 'Health & calm', term: 'Health' },
+  { name: 'satsang', label: 'Family harmony', term: 'Family' },
+  { name: 'bhajan', label: 'Pujas for festivals', term: 'Festival' },
 ] as const;
 
 // [SAATHUM-GUIDE-1 2026-09-25] OWNER DECISION: the "Upcoming live pujas & havans"
@@ -62,7 +62,7 @@ import { BRAND } from '../lib/brand';
           design/homepage-hero/saathum-home-hero-mock.src.html, reproduced exactly. Styles: styles/home-hero.css. */}
       <section class="grand-hero hx" aria-labelledby="grand-title" data-home-section="hero">
         <div class="grand-hero-art hx-art">
-          <img class="grand-hero-image hx-photo" data-grand-artwork="hero" src={heroPhoto} srcset={heroPhotoSet} sizes="100vw" alt="Our crew filming a havan at a Himalayan temple at dawn, the pujari offering ghee into the fire with snow peaks behind." width="1672" height="941" fetchpriority="high" decoding="async" />
+          <img class="grand-hero-image hx-photo" data-grand-artwork="hero" src={heroPhoto} srcset={heroPhotoSet} sizes="100vw" alt="At first light a pujari pours ghee into the havan fire of a mountain temple while our crew films, snow peaks rising behind." width="1672" height="941" fetchpriority="high" decoding="async" />
         </div>
         <div class="hx-inner">
           <div class="grand-hero-copy hx-copy">
@@ -82,7 +82,7 @@ import { BRAND } from '../lib/brand';
 
       <section class="grand-experiences" id="experiences" aria-labelledby="grand-experiences-title" data-home-section="experiences">
         <div class="grand-section-heading">
-          <h2 id="grand-experiences-title"><span aria-hidden="true">✽</span> What would you like to welcome into your life? <span aria-hidden="true">✽</span></h2>
+          <h2 id="grand-experiences-title"><span aria-hidden="true">✽</span> What are you praying for today? <span aria-hidden="true">✽</span></h2>
         </div>
         <div class="grand-category-grid">
           {categories.map(category => <a class="grand-category" href={search(category.term)} data-home-cta={'experience-' + category.term.toLowerCase().replace(/\s+/g, '-')}>
@@ -97,13 +97,13 @@ import { BRAND } from '../lib/brand';
            framed by the gold ribbon on both sides. Tooltips are CSS-only (hover + keyboard focus). -->
       <section class="grand-belonging" id="benefits" aria-labelledby="grand-benefits-title" data-home-section="benefits">
         <div class="grand-belonging-inner">
-          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="A woman teacher seated with women in prayer, in colourful Indian folk art." /></div>
-          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">HOW DOES IT WORK?</h2></div>
+          <div class="grand-belonging-art"><FolkArtwork name="satsang" sizes="(max-width: 600px) 90vw, 32vw" alt="Folk-art painting of women sitting in prayer around a seated teacher, in bright Indian colours." /></div>
+          <div class="grand-belonging-copy"><h2 id="grand-benefits-title">FROM BOOKING TO BLESSING</h2></div>
           <div class="grand-joining" id="joining" data-home-section="joining">
             <ol class="grand-step-grid" aria-label="How it works, in three steps">
-              <li><a href="/marketplace" data-home-cta="steps-book" aria-describedby="step-tip-book"><FolkIcon kind="ticket" /><span class="grand-step-number">01</span><span class="grand-step-label">Book an event</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-book">Pay using Stripe for international and UPI for India.</span></li>
-              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch" aria-describedby="step-tip-watch"><FolkIcon kind="live" /><span class="grand-step-number">02</span><span class="grand-step-label">Get the video</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-watch">Filmed at the temple by our crew. We email you the video to download when it finishes.</span></li>
-              <li><a href="/help/booking-and-paying/sankalp-replay-and-prasad" data-home-cta="steps-prasad" aria-describedby="step-tip-prasad"><FolkIcon kind="prasad" /><span class="grand-step-number">03</span><span class="grand-step-label">Get prasad delivered</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-prasad">Prasad is optional, for a havan or puja, and available pan-India for now.</span></li>
+              <li><a href="/marketplace" data-home-cta="steps-book" aria-describedby="step-tip-book"><FolkIcon kind="ticket" /><span class="grand-step-number">01</span><span class="grand-step-label">Choose your ritual</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-book">Outside India you pay through Stripe; inside India, by UPI.</span></li>
+              <li><a href="/help/booking-and-paying/join-a-live-show" data-home-cta="steps-watch" aria-describedby="step-tip-watch"><FolkIcon kind="live" /><span class="grand-step-number">02</span><span class="grand-step-label">Receive the video</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-watch">Our crew films it at the temple, then emails you the video to download once it ends.</span></li>
+              <li><a href="/help/booking-and-paying/sankalp-replay-and-prasad" data-home-cta="steps-prasad" aria-describedby="step-tip-prasad"><FolkIcon kind="prasad" /><span class="grand-step-number">03</span><span class="grand-step-label">Prasad to your door</span></a><span class="grand-step-tip" role="tooltip" id="step-tip-prasad">An optional extra with any havan or puja; delivered across India for now.</span></li>
             </ol>
           </div>
         </div>
@@ -124,7 +124,7 @@ import { BRAND } from '../lib/brand';
              article in the Puja & Havan Guide. Data + images: lib/ritualGuides.ts. -->
         <div class="grand-moments-inner">
           <div class="grand-section-heading">
-            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Sacred havans we perform for you</h2>
+            <h2 id="grand-moments-title"><span aria-hidden="true">✽</span> Havans offered in your name</h2>
           </div>
           <div class="grand-listing-grid grand-listing-grid--havans">
             {featuredHavans.map((havan, i) => <article class="grand-listing grand-havan" data-havan-index={i}>
@@ -148,7 +148,7 @@ import { BRAND } from '../lib/brand';
 
       <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
         <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
-        <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Only positive Himalayan temples, only benefic rituals. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
+        <div class="grand-organise-copy"><h2 id="grand-organise-title">Gentle temples, gentle prayers.</h2><p>Positive Himalayan temples and benefic rituals only. Never any fear.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Find your puja <span aria-hidden="true">↗</span></a></div>
         <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 

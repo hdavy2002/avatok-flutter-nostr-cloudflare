@@ -58,13 +58,13 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
         <div class="tp-hero-inner">
           <div class="tp-hero-copy">
             <p class="tp-eyebrow">Our temples</p>
-            <h1 id="page-title">The temples we work with, <em>from Haridwar to the high Himalaya.</em></h1>
-            <p class="tp-lead">{BRAND.name} works with the priests of old, well-loved temples across Uttarakhand and Himachal. Many are small village shrines that most pilgrims never reach. We go there for you, with a camera, so you can take part from home.</p>
+            <h1 id="page-title">Our partner temples, <em>from the Ganga plains to the snowline.</em></h1>
+            <p class="tp-lead">{BRAND.name} partners with the priests of old, much-loved temples throughout Uttarakhand and Himachal. Many are little village shrines that few pilgrims ever reach. We make the trip with a camera on your behalf, so you can join in from home.</p>
             <div class="tp-pills"><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_COUNT} temples</span><span class="tp-pill"><span class="tp-dot"></span>{TEMPLE_REGIONS.length} regions</span><span class="tp-pill"><span class="tp-dot"></span>Uttarakhand &amp; Himachal</span></div>
-            <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">See all temples <span aria-hidden="true">↓</span></a></div>
+            <div class="tp-actions"><a class="tp-btn" href="/marketplace">Join a havan <span aria-hidden="true">→</span></a><a class="tp-link" href="#temples">Browse every temple <span aria-hidden="true">↓</span></a></div>
           </div>
           <div class="tp-hero-art">
-            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt={`The ${BRAND.name} crew filming a havan at a Himalayan temple, a family praying beside the pujari with snow peaks behind.`} width="1536" height="1024" fetchpriority="high" decoding="async" />
+            <img class="tp-hero-photo" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1180px) 100vw, 1100px" alt={`Beneath snowy peaks, the ${BRAND.name} crew films a havan at a mountain temple while a family prays near the pujari.`} width="1536" height="1024" fetchpriority="high" decoding="async" />
           </div>
         </div>
       </section>
@@ -72,24 +72,24 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
 
       <!-- HOW IT REACHES YOU -->
       <section class="tp-how tp-wrap" aria-labelledby="how-title">
-        <div class="tp-sec-head"><h2 id="how-title"><span aria-hidden="true">✽</span>How a temple puja reaches you</h2>
-        <p>You don't need to travel. Our team makes the journey on your behalf.</p></div>
+        <div class="tp-sec-head"><h2 id="how-title"><span aria-hidden="true">✽</span>From a mountain temple to your screen</h2>
+        <p>No travel for you. Our team does the journey instead.</p></div>
         <div class="tp-how-grid">
           <article class="tp-how-card">
             <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 40h10l5-8h18l5 8h10v30H22Z" fill="#fff6e6"/><circle cx="46" cy="55" r="10" fill="#d87332"/><circle cx="46" cy="55" r="4" fill="#fff6e6"/><path d="M70 47h4"/></g></svg>
-            <h3>We go to the temple</h3><p>Our team travels to the temple with a camera crew and works alongside the temple's own priest.</p>
+            <h3>We travel to the temple</h3><p>Our team and camera crew reach the temple and work side by side with its own priest.</p>
           </article>
           <article class="tp-how-card">
             <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="50" cy="52" r="7" fill="#ad3028"/><path d="M36 38a20 20 0 0 0 0 28M64 38a20 20 0 0 1 0 28M28 30a31 31 0 0 0 0 44M72 30a31 31 0 0 1 0 44"/></g></svg>
-            <h3>Live streaming for you</h3><p>We set up live streaming at the altar, so you can watch your puja or havan from home as it happens.</p>
+            <h3>Streamed live to you</h3><p>We set up a live stream at the altar so you can follow your puja or havan from home in real time.</p>
           </article>
           <article class="tp-how-card tp-how-card--warn">
             <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><rect x="22" y="28" width="56" height="38" rx="6" fill="#fff6e6"/><path d="M44 38l14 9-14 9Z" fill="#ad3028"/><path d="M50 70v10m-8-6 8 7 8-7"/></g></svg>
-            <h3>If the internet drops</h3><p>Mountain networks can fail, at the temple or at your end. We record the full ritual on camera anyway and send you a link to watch or download it.</p>
+            <h3>When the connection fails</h3><p>Hill networks can drop, at the temple or where you are. Either way we film the entire ritual and send you a link to watch or download it.</p>
           </article>
           <article class="tp-how-card">
             <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M24 38 50 26l26 12v28L50 78 24 66Z" fill="#d87332"/><path d="M24 38l26 12 26-12M50 50v28"/><path d="M37 32l26 12" stroke="#fff6e6"/></g></svg>
-            <h3>Prasad the same day</h3><p>If you chose prasad, we pack it and send it on the day of the puja. Only dry, sealed prasad, so it reaches you fresh.</p>
+            <h3>Prasad sent that day</h3><p>Added prasad? We pack and dispatch it on the day of your puja. It is always dry and sealed, so it arrives fresh.</p>
           </article>
         </div>
       </section>
@@ -97,8 +97,8 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
       <!-- TEMPLES DIRECTORY -->
       <section class="tp-dir" id="temples" aria-labelledby="dir-title">
         <div class="tp-wrap">
-          <div class="tp-sec-head"><h2 id="dir-title"><span aria-hidden="true">✽</span>Temples we work with</h2>
-          <p>Pick a region to see its temples. Each event page tells you which temple your puja or havan is performed at.</p></div>
+          <div class="tp-sec-head"><h2 id="dir-title"><span aria-hidden="true">✽</span>Our partner temples</h2>
+          <p>Choose a region to view its temples. Every event page names the temple where your puja or havan takes place.</p></div>
           <div class="tp-chips" role="group" aria-label="Filter temples by region">
             <button class="tp-chip" type="button" data-region="all" aria-pressed="true">All<small>{TEMPLE_COUNT}</small></button>
             {TEMPLE_REGIONS.map((r) => (
@@ -129,7 +129,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
               </div>
             </div>
           ))}
-          <p class="tp-dir-note">We add temples as our team builds a relationship with each temple's priests. If you have a family temple in the hills you would like us to visit, write to us at support (@) {BRAND.domain}.</p>
+          <p class="tp-dir-note">New temples join as our team gets to know each one's priests. Is there a family temple in the hills you would love us to visit? Write to support (@) {BRAND.domain}.</p>
         </div>
       </section>
 
@@ -138,39 +138,39 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
         <div class="tp-weather-card">
           <svg class="tp-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 70 40 40l10 14 8-10 20 26Z" fill="#fff6e6"/><path d="M34 28h14a8 8 0 0 0 0-16 11 11 0 0 0-21 4 6 6 0 0 0 7 12Z" fill="#d87332" transform="translate(12 6)"/><path d="M58 76v4m8-6v4m8-4v4"/></g></svg>
           <div>
-            <h2 id="weather-title">A note about weather in the mountains</h2>
-            <p>Sometimes your video is delayed. Mountain regions often have landslides and snowstorms that cut the network. Do not worry: our team has filmed the whole ritual and will upload it as soon as they are back in the studio. When this happens, we tell you about the delay on WhatsApp and by email.</p>
-            <p>For the same reason, your prasad courier can be delayed too. Please keep rain, snow, landslides and other natural events in mind when you book.</p>
+            <h2 id="weather-title">Mountain weather can slow things down</h2>
+            <p>Now and then a video arrives late. Landslides and snowstorms are common in the hills and can take the network down. Rest assured, our team has filmed the complete ritual and uploads it once they are back at the studio. Whenever this happens, we let you know on WhatsApp and by email.</p>
+            <p>The same conditions can hold up your prasad courier as well. Please bear rain, snow, landslides and other natural events in mind when you book.</p>
           </div>
         </div>
       </section>
 
       <!-- PRASAD -->
       <section class="tp-prasad tp-wrap" aria-labelledby="prasad-title">
-        <div class="tp-sec-head"><h2 id="prasad-title"><span aria-hidden="true">✽</span>Prasad that survives the journey</h2>
-        <p>Prasad travels from the hills to your door by courier, sometimes across the world. So we choose it carefully.</p></div>
+        <div class="tp-sec-head"><h2 id="prasad-title"><span aria-hidden="true">✽</span>Prasad made to travel</h2>
+        <p>Your prasad journeys by courier from the hills to your home, at times halfway round the world. That is why we pick it with care.</p></div>
         <div class="tp-prasad-grid">
-          <div class="tp-list tp-list--yes"><h3>What we send</h3><ul>
-            <li>Dry prasad such as mishri, elaichi dana and dry fruits</li>
-            <li>Roli, chandan, moli and akshat from the altar</li>
-            <li>Rudraksh, and vibhuti or bhasma where the temple offers it</li>
-            <li>Everything sealed and packed so nothing leaks or breaks</li></ul></div>
-          <div class="tp-list tp-list--no"><h3>What we don't send</h3><ul>
-            <li>Wet sweets, such as peda, laddoo made with milk, or halwa</li>
-            <li>Fresh fruit and fresh flowers</li>
-            <li>Anything made with milk, curd or ghee that can spoil</li>
-            <li>Liquids such as Gangajal in open bottles</li></ul></div>
+          <div class="tp-list tp-list--yes"><h3>What we include</h3><ul>
+            <li>Dry prasad like mishri, elaichi dana and dry fruits</li>
+            <li>Roli, chandan, moli and akshat taken from the altar</li>
+            <li>Rudraksh, plus vibhuti or bhasma where the temple gives it</li>
+            <li>All of it sealed and packed against leaks and breakage</li></ul></div>
+          <div class="tp-list tp-list--no"><h3>What we leave out</h3><ul>
+            <li>Moist sweets like peda, milk-based laddoo or halwa</li>
+            <li>Fresh fruit or fresh flowers</li>
+            <li>Anything with milk, curd or ghee that could spoil</li>
+            <li>Liquids, such as Gangajal in unsealed bottles</li></ul></div>
           <div class="tp-prasad-art"><img src={IMG.link} alt="" aria-hidden="true" width="384" height="640" loading="lazy" decoding="async" /></div>
         </div>
-        <p class="tp-sameday"><span class="tp-pill"><span class="tp-dot"></span>Shipped the same day</span>Your prasad leaves the temple on the day of your puja. Delivery time depends on where you live.</p>
+        <p class="tp-sameday"><span class="tp-pill"><span class="tp-dot"></span>Dispatched that day</span>Your prasad sets off from the temple on the day of your puja. How long it takes depends on where you live.</p>
       </section>
 
       <!-- TEMPLE PROMISE [WEB-REFRAME-1 2026-09-29] owner's positive-temple policy -->
       <section class="tp-charawa tp-wrap" aria-labelledby="promise-title">
         <div class="tp-charawa-card tp-promise-card">
           <img src={IMG.emblem} alt="" aria-hidden="true" width="240" height="240" loading="lazy" decoding="async" />
-          <div><h2 id="promise-title">Our temple promise</h2>
-          <p>We work only with positive temples: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. We stay away from temples known for animal sacrifice, fear or dark practices. Our team visits every temple and meets its pujari before it joins this list, and a fair share of every booking goes to the temple, its pujari and his village.</p></div>
+          <div><h2 id="promise-title">Our promise about temples</h2>
+          <p>Every temple we partner with is a positive one: Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. Temples linked with animal sacrifice, fear or dark practices are never included. Before a temple is added, our team goes there in person and meets its pujari, and the temple, the pujari and his village receive a fair share of each booking.</p></div>
         </div>
       </section>
 
@@ -178,24 +178,24 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
       <section class="tp-charawa tp-wrap" aria-labelledby="charawa-title">
         <div class="tp-charawa-card">
           <img src={IMG.emblem} alt="" aria-hidden="true" width="240" height="240" loading="lazy" decoding="async" />
-          <div><h2 id="charawa-title">Your charawa stays with the deity</h2>
-          <p>What you offer at the altar, such as chadhava, vastra, coconut, flowers or dakshina, is given to the deity during your puja. By tradition it stays at the temple. Charawa is not returned to you and cannot be refunded once the puja has been performed.</p></div>
+          <div><h2 id="charawa-title">Charawa belongs to the deity</h2>
+          <p>Whatever you offer at the altar — chadhava, vastra, coconut, flowers or dakshina — is placed before the deity during your puja and, as tradition holds, remains at the temple. Charawa is not sent back and cannot be refunded once the puja is done.</p></div>
         </div>
       </section>
 
       <!-- FAQ -->
       <section class="tp-faq tp-wrap" aria-labelledby="faq-title">
-        <div class="tp-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Common questions</h2></div>
+        <div class="tp-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Questions about our temples</h2></div>
         <div class="tp-faq-box">
-          <details open><summary>Who performs the puja at the temple?</summary><p>The temple's own priest. Our team looks after the camera, the live streaming and sending your prasad.</p></details>
-          <details><summary>What happens if the live stream stops?</summary><p>Networks in the hills can drop, at the temple or at your end. We record every ritual in full, so if the stream breaks we send you a link to watch or download the complete video.</p></details>
-          <details><summary>Can I choose the temple?</summary><p>Each event is performed at the temple named on its event page. Pick the event at the temple you feel close to.</p></details>
-          <details><summary>Why is my video late?</summary><p>Landslides, snowstorms and heavy rain can cut the network in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio. We tell you about the delay on WhatsApp and by email.</p></details>
-          <details><summary>When will my prasad arrive?</summary><p>We send it on the day of the puja. Delivery time depends on your location and the courier, and mountain weather such as rain, snow or landslides can delay it.</p></details>
-          <details><summary>Can I get my charawa back or refunded?</summary><p>No. Charawa is offered to the deity during your puja and stays at the temple by tradition, so it is not returned or refunded.</p></details>
+          <details open><summary>Who carries out the puja at the temple?</summary><p>The priest who serves that temple. Our team handles the filming, the live stream and dispatching your prasad.</p></details>
+          <details><summary>What if the live stream cuts out?</summary><p>Hill networks can fail at either end. Because every ritual is filmed in full, a broken stream simply means we send you a link to watch or download the whole video.</p></details>
+          <details><summary>Can I pick the temple?</summary><p>Every event takes place at the temple shown on its page, so choose an event at a temple that feels close to your heart.</p></details>
+          <details><summary>Why hasn't my video arrived?</summary><p>In the mountains, landslides, snowstorms and heavy rain can bring the network down. Our crew films the whole ritual all the same and uploads it once back at the studio, and we tell you about the delay on WhatsApp and by email.</p></details>
+          <details><summary>When should my prasad reach me?</summary><p>It is dispatched on the day of the puja. Delivery time varies with your location and the courier, and rain, snow or landslides in the mountains can slow it.</p></details>
+          <details><summary>Is charawa returned or refunded?</summary><p>No. It is offered to the deity during your puja and, by tradition, remains at the temple, so it is neither returned nor refunded.</p></details>
         </div>
       </section>
-      <div class="tp-wrap"><p class="tp-note">Temple names are shown so you know where your ritual is performed. {BRAND.name} is not the temple's management and makes no claims of guaranteed outcomes.</p>
+      <div class="tp-wrap"><p class="tp-note">We list temple names so you know where your ritual happens. {BRAND.name} does not manage any temple and makes no claims of guaranteed outcomes.</p>
         {TEMPLE_PHOTO_CREDITS.length > 0 && (
           <p class="tp-credits">Photo credits (Wikimedia Commons): {TEMPLE_PHOTO_CREDITS.map((tm, i) => (
             <span>{i > 0 ? ' · ' : ''}{tm.name}: <a href={tm.credit!.url} rel="noopener" target="_blank">{tm.credit!.by}</a>, {tm.credit!.license}</span>
@@ -208,8 +208,8 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
         <div class="tp-wrap tp-ask-inner">
           <img src={IMG.namaste} alt="" aria-hidden="true" width="550" height="640" loading="lazy" decoding="async" />
           <div>
-            <h2 id="ask-title">Sit at a Himalayan temple, <span>from your living room.</span></h2>
-            <p>Join a havan with families from around the world, or write to us at support (@) {BRAND.domain} with a question.</p>
+            <h2 id="ask-title">A Himalayan altar, <span>brought into your home.</span></h2>
+            <p>Share a havan with families across the globe, or email support (@) {BRAND.domain} with any question.</p>
           </div>
           <div class="tp-ask-actions"><a class="tp-btn tp-btn--paper" href="/marketplace">Join a havan</a><a class="tp-btn tp-btn--paper" href="/how-it-works">How it works</a></div>
         </div>

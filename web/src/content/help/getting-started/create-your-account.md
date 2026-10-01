@@ -1,6 +1,6 @@
 ---
-title: "Create your account"
-description: "How web sign-up works on {{brand.domain}} — an email code plus an Indian mobile OTP — and why onboarding and your {{brand.name}} number happen in the app."
+title: "Signing up for an account on {{brand.name}}"
+description: "How to sign up on {{brand.domain}} with an email code and an Indian mobile OTP, and why onboarding and your {{brand.name}} number are completed in the app."
 section: getting-started
 order: 2
 updated: 2026-09-11
@@ -20,7 +20,7 @@ draft: false
 
 ## What you need
 
-To [create an account](/sign-up) on {{brand.domain}} you need three things: your first and last name, an email address you can check, and an Indian mobile number. Both the email and the mobile number are verified with a one-time code before the account is created — there's no password to set or remember.
+Signing up on {{brand.domain}} ([create an account](/sign-up)) takes three things: your first and last name, an email inbox you can open, and an Indian mobile number. Each of the email and the number is confirmed with a one-time code before the account exists — you never set or remember a password.
 
 ## How it works, step by step
 

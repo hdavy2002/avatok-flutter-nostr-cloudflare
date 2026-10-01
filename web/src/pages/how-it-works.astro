@@ -64,16 +64,16 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
         <div class="hw-hero-inner">
           <div>
             <p class="hw-eyebrow">How it works</p>
-            <h1 id="hiw-title">Faith, brought home to you. <em>Here is how.</em></h1>
-            <p class="hw-lead">You choose an event, our crew travels to a peaceful Himalayan temple, and the temple's own pujari performs it at the altar while we film it for you. This page explains what to expect, and how to sit for each kind of event so you get the most from it.</p>
+            <h1 id="hiw-title">From your booking to the temple altar. <em>Step by step.</em></h1>
+            <p class="hw-lead">You pick an event, our crew makes the trip to a quiet Himalayan temple, and the pujari who serves there performs it at the altar while we film. Below you will find what happens at each stage, and how best to sit for every kind of event.</p>
             <div class="hw-hero-actions">
-              <a class="hw-btn" href="/marketplace">Explore events <span aria-hidden="true">→</span></a>
-              <a class="hw-link" href="#kinds">See the four kinds <span aria-hidden="true">↓</span></a>
+              <a class="hw-btn" href="/marketplace">Browse events <span aria-hidden="true">→</span></a>
+              <a class="hw-link" href="#kinds">The four event types <span aria-hidden="true">↓</span></a>
             </div>
-            <p class="hw-hero-quiet">Every event is performed on its date. Nothing is recorded in advance.</p>
+            <p class="hw-hero-quiet">Each event happens on its scheduled date. Nothing is pre-recorded.</p>
           </div>
           <div class="hw-hero-art">
-            <img class="hw-painting" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family sitting together at home in the morning, watching a havan on a tablet with a diya lit beside it." width="1000" height="667" fetchpriority="high" decoding="async" />
+            <img class="hw-painting" src={heroSrc} srcset={heroSrcSet} sizes="(max-width: 1100px) min(640px, 100vw), 50vw" alt="A family gathered at home one morning, a lit diya beside the tablet on which they watch a havan." width="1000" height="667" fetchpriority="high" decoding="async" />
             <img class="hw-stamp hw-stamp--a" src={IMG.puja} alt="" aria-hidden="true" width="640" height="505" decoding="async" />
             <img class="hw-stamp hw-stamp--b" src={IMG.link} alt="" aria-hidden="true" width="384" height="640" decoding="async" />
           </div>
@@ -85,36 +85,36 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
       <section class="hw-kinds" id="kinds" aria-labelledby="kinds-title">
         <div class="hw-wrap">
           <div class="hw-sec-head">
-            <div><h2 id="kinds-title"><span aria-hidden="true">✽</span>Four kinds of events. Each one is different.</h2>
-            <p>They look similar on a listing card, but you take part in each one differently. Here is what each means.</p></div>
+            <div><h2 id="kinds-title"><span aria-hidden="true">✽</span>Four event types, four ways to take part.</h2>
+            <p>On a listing card they can look alike, yet each asks something different of you. This is what sets them apart.</p></div>
           </div>
           <div class="hw-kind-grid">
             <article class="hw-kind hw-kind--havan">
               <span class="hw-tag">Havan</span>
               <img src={IMG.havan} alt="" width="640" height="558" loading="lazy" decoding="async" />
-              <h3>A shared fire ritual</h3>
-              <p>Priests make offerings into a sacred fire with Vedic mantras. Many families join one havan together, and one sankalp is recited for everyone before the fire is lit.</p>
+              <h3>One fire, many families</h3>
+              <p>Priests feed a sacred fire with offerings as Vedic mantras are chanted. Families from many places share a single havan, and a common sankalp is recited for all of them before the fire is kindled.</p>
               <div class="hw-meta"><span>Open to everyone</span><span>60 to 120 min</span><span>Sankalp + prasad</span></div>
             </article>
             <article class="hw-kind hw-kind--puja">
               <span class="hw-tag">Puja</span>
               <img src={IMG.puja} alt="" width="640" height="505" loading="lazy" decoding="async" />
-              <h3>Worship performed for you</h3>
-              <p>Offerings of lamp, flowers and prayer, performed by a priest at a real altar, with one sankalp recited for every devotee. Lighter than a havan and lovely for a festival or a special day.</p>
+              <h3>Worship offered on your behalf</h3>
+              <p>A priest offers a lamp, flowers and prayer at a real temple altar, reciting one sankalp for all who join. Simpler than a havan, and well suited to a festival or a day that matters.</p>
               <div class="hw-meta"><span>Open to everyone</span><span>20 to 60 min</span><span>Sankalp + prasad</span></div>
             </article>
             <article class="hw-kind hw-kind--satsang">
               <span class="hw-tag">Satsang &amp; sermon</span>
               <img src={IMG.satsang} alt="" width="640" height="531" loading="lazy" decoding="async" />
-              <h3>Sit and listen together</h3>
-              <p>A talk, a reading or devotional singing led by a speaker. There is no ritual and no sankalp; you reserve a seat, listen, and take away what speaks to you.</p>
+              <h3>Listening, side by side</h3>
+              <p>A speaker leads a talk, a reading or devotional songs. No ritual is performed and no sankalp is said; you save a seat, listen, and keep whatever moves you.</p>
               <div class="hw-meta"><span>One seat per family</span><span>45 to 90 min</span><span>No prasad</span></div>
             </article>
             <article class="hw-kind hw-kind--meditation">
               <span class="hw-tag">Meditation</span>
               <img src={IMG.meditation} alt="" width="640" height="461" loading="lazy" decoding="async" />
-              <h3>A guided quiet hour</h3>
-              <p>A guide leads you through breathing and stillness. You only need a quiet corner and a pair of headphones. Nothing is performed on your behalf; you do the practice.</p>
+              <h3>Stillness, with a guide</h3>
+              <p>A guide takes you through breathing and quiet. All you need is a calm corner and headphones. Nothing is done for you here; the practice is yours.</p>
               <div class="hw-meta"><span>Anyone can join</span><span>20 to 45 min</span><span>No prasad</span></div>
             </article>
           </div>
@@ -124,29 +124,29 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
       <!-- BOOKING -->
       <section class="hw-book" aria-labelledby="book-title">
         <div class="hw-wrap">
-          <div class="hw-sec-head"><div><h2 id="book-title"><span aria-hidden="true">✽</span>Booking takes a minute</h2><p>Three steps, all on your phone. No app needed.</p></div></div>
+          <div class="hw-sec-head"><div><h2 id="book-title"><span aria-hidden="true">✽</span>Book in about a minute</h2><p>Three quick steps on your phone, with no app to install.</p></div></div>
           <ol class="hw-steps">
-            <li><img src={IMG.ontime} alt="" width="443" height="494" loading="lazy" decoding="async" /><div><h3>Pick an event and a date</h3><p>Browse by wish, deity or festival under Explore. Every card shows who leads it, when it starts, and a price that begins at the number shown.</p></div></li>
-            <li><img src={IMG.namaste} alt="" width="550" height="640" loading="lazy" decoding="async" /><div><h3>Add your details</h3><p>For a havan or puja, tell us your name, gotra, your wish and up to six family names; the priest reads them at the altar. For a satsang or meditation, just reserve your seat.</p></div></li>
-            <li><img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" /><div><h3>Pay by UPI</h3><p>What you see at checkout is what you pay. Prasad delivery, dakshina and chadhava are optional extras you choose yourself. Free cancellation up to 24 hours before the start.</p></div></li>
+            <li><img src={IMG.ontime} alt="" width="443" height="494" loading="lazy" decoding="async" /><div><h3>Choose an event and a date</h3><p>Under Explore, search by wish, deity or festival. Each card tells you who leads it, when it begins, and the starting-from price.</p></div></li>
+            <li><img src={IMG.namaste} alt="" width="550" height="640" loading="lazy" decoding="async" /><div><h3>Share your details</h3><p>For a havan or puja, give your name, gotra, your wish and as many as six family names for the priest to read at the altar. For a satsang or meditation, simply save your seat.</p></div></li>
+            <li><img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" /><div><h3>Pay with UPI</h3><p>The checkout total is exactly what you pay. Prasad delivery, dakshina and chadhava are optional, and you decide on each. Cancel free of charge until 24 hours before the start.</p></div></li>
           </ol>
-          <p class="hw-book-note">Your booking appears under <b>My events</b> the moment you pay, with a countdown to the start.</p>
+          <p class="hw-book-note">As soon as you pay, the booking shows up under <b>My events</b> with a countdown to the start.</p>
         </div>
       </section>
 
       <!-- ON THE DAY -->
       <section class="hw-day hw-wrap" aria-labelledby="day-title">
-        <div class="hw-sec-head"><div><h2 id="day-title"><span aria-hidden="true">✽</span>On the day of the event</h2><p>Here is exactly what happens. It is the same for every kind of event.</p></div></div>
+        <div class="hw-sec-head"><div><h2 id="day-title"><span aria-hidden="true">✽</span>What happens on the day</h2><p>The sequence below is the same for every event type.</p></div></div>
         <div class="hw-day-card">
           <ol class="hw-timeline">
-            <li><span class="hw-when">After booking</span><span class="hw-dot" aria-hidden="true"></span><div><b>Your confirmation arrives by email</b><span>It also sits under My events, with the date and time of your event.</span></div></li>
-            <li><span class="hw-when">At the time</span><span class="hw-dot" aria-hidden="true"></span><div><b>The pujari performs it at the temple</b><span>For a havan or puja, the pujari recites the event's sankalp for every devotee. Our crew films it and live streams when the mountain network allows. Nothing for you to do or press.</span></div></li>
-            <li><span class="hw-when">From home</span><span class="hw-dot" aria-hidden="true"></span><div><b>Pray from where you sit</b><span>If you like, light a lamp at the same time, fold your hands and pray quietly with your family.</span></div></li>
-            <li><span class="hw-when">After</span><span class="hw-dot" aria-hidden="true"></span><div><b>We email you the video</b><span>Download it from the email or from My events whenever you like. If snow or a landslide cuts the network, we tell you on WhatsApp and email and send it once our crew is back in the studio. If you chose prasad, it is packed the same day.</span></div></li>
+            <li><span class="hw-when">After booking</span><span class="hw-dot" aria-hidden="true"></span><div><b>A confirmation email reaches you</b><span>You will find it under My events too, showing your event's date and time.</span></div></li>
+            <li><span class="hw-when">At the time</span><span class="hw-dot" aria-hidden="true"></span><div><b>The temple pujari performs it</b><span>At a havan or puja, the pujari recites the event's sankalp on behalf of every devotee. Our crew films throughout and streams live if the mountain network permits. You don't need to do or tap anything.</span></div></li>
+            <li><span class="hw-when">From home</span><span class="hw-dot" aria-hidden="true"></span><div><b>Pray wherever you are</b><span>You may light a lamp at the same hour, join your hands and pray quietly with your family.</span></div></li>
+            <li><span class="hw-when">After</span><span class="hw-dot" aria-hidden="true"></span><div><b>The video lands in your inbox</b><span>Download it from that email or from My events at any time. Should snow or a landslide knock out the network, we let you know on WhatsApp and email and send it once our crew returns to the studio. Prasad, if you chose it, is packed that same day.</span></div></li>
           </ol>
           <div class="hw-day-art">
             <img src={IMG.link} alt="" width="384" height="640" loading="lazy" decoding="async" />
-            <p class="hw-day-note">Can't find the email? Check your spam folder, or open My events.</p>
+            <p class="hw-day-note">No email yet? Look in your spam folder, or open My events.</p>
           </div>
         </div>
       </section>
@@ -154,18 +154,18 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
       <!-- SIT WELL -->
       <section class="hw-sit" aria-labelledby="sit-title">
         <div class="hw-wrap">
-          <div class="hw-sec-head"><div><h2 id="sit-title"><span aria-hidden="true">✽</span>How to sit for each kind of event</h2><p>A little preparation makes a big difference. These are gentle suggestions, not rules.</p></div></div>
+          <div class="hw-sec-head"><div><h2 id="sit-title"><span aria-hidden="true">✽</span>Getting ready for each event type</h2><p>A few small preparations help a lot. Treat these as friendly suggestions, not rules.</p></div></div>
           <div class="hw-sit-grid">
             <article class="hw-sit-card hw-sit-card--ritual hw-sit-card--wide">
               <div>
                 <div class="hw-tags"><span>Havan</span><span>Puja</span></div>
-                <h3>Be respectful, and let the mantras be heard</h3>
+                <h3>Sit with reverence, and let the mantras ring out</h3>
                 <ul>
-                  <li>Choose a clean, calm place to sit. Many families sit in front of their home mandir; a quiet corner is just as good.</li>
-                  <li>Turn the volume up or connect a speaker, so the mantras are clear for everyone in the room.</li>
-                  <li>Light a small diya or incense if you can. When the aarti begins, stand or fold your hands as you would in a temple.</li>
-                  <li>Keep phones on silent and let the family sit together. Children are welcome; this is their tradition too.</li>
-                  <li>The sankalp is recited near the start, so join on time.</li>
+                  <li>Find a tidy, peaceful spot. Plenty of families gather before their home mandir, but any quiet corner works.</li>
+                  <li>Raise the volume or plug in a speaker so everyone in the room hears the mantras clearly.</li>
+                  <li>If possible, light a little diya or some incense. When aarti starts, stand or join your hands just as you would at a temple.</li>
+                  <li>Silence your phones and sit together as a family. Children are very welcome; the tradition belongs to them as well.</li>
+                  <li>The sankalp comes early in the ritual, so be there from the start.</li>
                 </ul>
               </div>
               <img src={IMG.namaste} alt="" width="550" height="640" loading="lazy" decoding="async" />
@@ -173,11 +173,11 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
             <article class="hw-sit-card hw-sit-card--satsang">
               <div>
                 <div class="hw-tags"><span>Satsang</span><span>Sermon</span></div>
-                <h3>Headphones on, mic off, mind open</h3>
+                <h3>Headphones in, microphone muted, heart open</h3>
                 <ul>
-                  <li>Put on headphones so you catch every word, and keep your microphone muted.</li>
-                  <li>Sit comfortably, upright if you can. A notebook nearby is handy for a line you want to remember.</li>
-                  <li>Sing along softly when there is kirtan. Nobody else can hear you, so sing freely.</li>
+                  <li>Use headphones to hear every word, and leave your microphone on mute.</li>
+                  <li>Sit at ease, ideally upright. Keep a notebook close for any line worth remembering.</li>
+                  <li>When kirtan begins, sing along quietly. No one else hears you, so sing without holding back.</li>
                 </ul>
               </div>
               <img src={IMG.satsang} alt="" width="640" height="531" loading="lazy" decoding="async" />
@@ -185,38 +185,38 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
             <article class="hw-sit-card hw-sit-card--meditation">
               <div>
                 <div class="hw-tags"><span>Meditation</span></div>
-                <h3>A quiet room, headphones, no interruptions</h3>
+                <h3>A calm room, headphones and no disturbances</h3>
                 <ul>
-                  <li>Pick a room where you won't be disturbed for the session. Dim the lights and close the door.</li>
-                  <li>Wear headphones and mute your microphone. Turn on Do Not Disturb on your phone.</li>
-                  <li>Sit on a cushion or chair with your back straight; try not to lie down, it is easy to drift off.</li>
+                  <li>Choose a room where nobody will interrupt you for the whole session. Lower the lights and shut the door.</li>
+                  <li>Put on headphones and mute your microphone. Switch your phone to Do Not Disturb.</li>
+                  <li>Sit on a cushion or chair with a straight back; avoid lying down, as sleep comes easily.</li>
                 </ul>
               </div>
               <img src={IMG.meditation} alt="" width="640" height="461" loading="lazy" decoding="async" />
             </article>
           </div>
-          <p class="hw-sit-foot">Whatever the event, join a few minutes early. Settling in is part of the practice.</p>
+          <p class="hw-sit-foot">For any event, arrive a few minutes early. Settling in is part of the practice itself.</p>
         </div>
       </section>
 
       <!-- AFTER -->
       <section class="hw-after hw-wrap" aria-labelledby="after-title">
-        <div class="hw-sec-head"><div><h2 id="after-title"><span aria-hidden="true">✽</span>After the event</h2></div></div>
+        <div class="hw-sec-head"><div><h2 id="after-title"><span aria-hidden="true">✽</span>Once the event is over</h2></div></div>
         <div class="hw-after-grid">
           <article class="hw-after-card">
             <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><rect x="21" y="29" width="58" height="40" rx="6" fill="#fff6e6"/><path d="m44 39 17 10-17 10Z" fill="#ad3028"/><path d="M38 79h24m-12-9v9"/></g></svg>
-            <h3>Download the video</h3>
-            <p>Every event you attended stays under My events. Download the full video to your phone and watch it again, or share it with family who missed it.</p>
+            <h3>Keep the video</h3>
+            <p>All the events you joined remain under My events. Save the full video to your phone, watch it again, or pass it on to relatives who could not be there.</p>
           </article>
           <article class="hw-after-card">
             <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/></g></svg>
-            <h3>Prasad at your door</h3>
-            <p>If you chose prasad for a havan or puja, dry prasad from the temple is packed the same day and couriered anywhere in India, or abroad by international courier. Mountain weather can sometimes delay it. Track it from My events.</p>
+            <h3>Prasad, delivered</h3>
+            <p>Chose prasad with your havan or puja? Dry prasad from the temple is packed that day and couriered anywhere in India, or overseas by international courier. Mountain weather can occasionally slow it down. Follow it from My events.</p>
           </article>
           <article class="hw-after-card">
             <svg class="hw-ico" viewBox="0 0 100 100" fill="none" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#ffe1a2" stroke="#fff" stroke-width="7"/><g stroke="#8c3327" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/></g></svg>
-            <h3>Need a hand?</h3>
-            <p>Our <a href="/help">help centre</a> answers the common questions, or write to us at <b>support (@) {BRAND.domain}</b>. A person replies within a day.</p>
+            <h3>Need some help?</h3>
+            <p>The <a href="/help">help centre</a> covers the usual questions, or email <b>support (@) {BRAND.domain}</b>. A real person answers within a day.</p>
           </article>
         </div>
       </section>
@@ -224,26 +224,26 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
       <!-- PROMISE -->
       <section class="hw-promise hw-wrap" aria-labelledby="promise-title">
         <img src={IMG.elephant} alt="" width="1536" height="1024" loading="lazy" decoding="async" />
-        <div class="hw-promise-copy"><h2 id="promise-title">Only joy, only blessings.</h2><p>Every event we host is benefic. We never tell you something bad will happen if you don't book, and we make no promises about outcomes. You should leave lighter, not worried.</p></div>
+        <div class="hw-promise-copy"><h2 id="promise-title">Gentle temples, gentle prayers.</h2><p>Every event we hold is benefic. We will never warn that misfortune follows if you don't book, and we promise no outcomes. You should come away lighter, never anxious.</p></div>
         <img class="hw-flip" src={IMG.elephant} alt="" width="1536" height="1024" loading="lazy" decoding="async" />
       </section>
 
       <!-- FAQ -->
       <section class="hw-faq hw-wrap" aria-labelledby="faq-title">
-        <div class="hw-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Common questions</h2></div>
+        <div class="hw-sec-head"><h2 id="faq-title"><span aria-hidden="true">✽</span>Questions families ask</h2></div>
         <div class="hw-faq-box">
-          <details open><summary>Do I need to be present for the whole havan or puja?</summary><p>No. The havan or puja is performed in full whether or not you are watching. We email you the video afterwards to keep.</p></details>
-          <details><summary>How do I get the video?</summary><p>We email it to you when the event finishes. You can also download it from My events whenever you like.</p></details>
-          <details><summary>Where is my havan or puja performed?</summary><p>At the Himalayan temple named on the event page, by that temple's own pujari. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. See <a href="/temples">Our temples</a>.</p></details>
-          <details><summary>What if the weather delays my video or prasad?</summary><p>Landslides, snowstorms and heavy rain can cut the network or close roads in the mountains. Our crew still films the whole ritual and uploads it as soon as they are back in the studio, and we tell you about any delay on WhatsApp and by email.</p></details>
-          <details><summary>What is a gotra, and what if I don't know mine?</summary><p>It is your family lineage. Ask an elder; if nobody knows, our priests use "Kashyap" by custom, exactly as a temple would. You can also leave it blank.</p></details>
-          <details><summary>Can my family watch from another city?</summary><p>Yes. Share the video with your family wherever they are.</p></details>
-          <details><summary>Can I talk to the priest or speaker during the event?</summary><p>Microphones stay muted so the mantras and the talk are clear for everyone. For a havan or puja, the sankalp is recited for everyone; for a satsang, you can email us a question beforehand.</p></details>
-          <details><summary>Is the price on the card the final price?</summary><p>Cards show "starting from". At checkout you choose the extras you want (prasad delivery, dakshina, chadhava) and see the final amount, including GST, before you pay.</p></details>
+          <details open><summary>Must I watch the whole havan or puja?</summary><p>No. It is performed completely whether you watch or not, and we email you the video afterwards to keep.</p></details>
+          <details><summary>How will I receive the video?</summary><p>It comes to you by email when the event ends, and you can download it from My events at any time.</p></details>
+          <details><summary>Where does my havan or puja take place?</summary><p>At the Himalayan temple named on the event page, performed by the pujari who serves there. Our temples are all positive ones, of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis. See <a href="/temples">Our temples</a>.</p></details>
+          <details><summary>What if weather holds up my video or prasad?</summary><p>In the mountains, landslides, snowstorms and heavy rain can knock out the network or block roads. Our crew films the entire ritual regardless and uploads it once back in the studio, and any delay is shared with you on WhatsApp and by email.</p></details>
+          <details><summary>What is a gotra, and what if I don't know it?</summary><p>Your gotra is your family lineage. An elder may know it; if no one does, our priests follow custom and use "Kashyap", just as any temple would. Leaving it blank is fine too.</p></details>
+          <details><summary>Can relatives in another city watch too?</summary><p>Yes. Send the video to family members wherever they live.</p></details>
+          <details><summary>Can I speak to the priest or speaker during the event?</summary><p>Microphones remain muted so everyone hears the mantras and the talk clearly. At a havan or puja the sankalp covers everyone; for a satsang, email us your question ahead of time.</p></details>
+          <details><summary>Is the card price what I finally pay?</summary><p>Cards show a "starting from" price. At checkout you add any extras you want (prasad delivery, dakshina, chadhava) and see the full amount, GST included, before paying.</p></details>
         </div>
       </section>
 
-      <p class="hw-note">Rituals are performed with devotion by the pujaris of the temples we work with. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
+      <p class="hw-note">Each ritual is performed with devotion by the pujari of one of our partner temples. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
     <SiteFooter folk indiaLandingLanguage={false} />
   </div>
