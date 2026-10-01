@@ -8970,5 +8970,19 @@
         "note": "A real call ends ok."
       }
     ]
+  },
+  "AUMFE-KNOWLEDGE-REINDEX-1": {
+    "description": "[AUMFE-KNOWLEDGE-REINDEX-1 2026-10-01] Knowledge reindex is paged (cursor + limit) so a large library never exceeds the request budget; admin UI loops pages.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "knowledge_reindexed",
+        "property": "failed",
+        "equals": 0
+      }
+    ]
   }
 }

@@ -42,10 +42,19 @@ export default function SearchTestTab() {
   async function reindex(i: Index) {
     setReindexing(i);
     try {
-      const r = await knowledgeApi.reindex(i);
-      capture('admin_knowledge_reindexed', { index: i, ok: r.ok, failed: r.failed });
-      const why = Object.entries(r.reasons ?? {}).map(([k, v]) => `${v} ${k}`).join(', ');
-      (r.failed ? toast.error : toast.success)(`${cap(i)} index rebuilt: ${r.ok} indexed${r.failed ? `, ${r.failed} failed` : ''}`, { description: why || `${(r.ms / 1000).toFixed(1)}s` });
+      // [AUMFE-KNOWLEDGE-REINDEX-1] The server indexes one page per call; keep going until next_cursor is null.
+      let ok = 0; let failed = 0; let ms = 0; const reasons: Record<string, number> = {};
+      let cursor: string | null = null;
+      for (let page = 0; page < 200; page++) {
+        const r = await knowledgeApi.reindex(i, cursor);
+        ok += r.ok; failed += r.failed; ms += r.ms;
+        for (const [k, v] of Object.entries(r.reasons ?? {})) reasons[k] = (reasons[k] ?? 0) + v;
+        cursor = r.next_cursor ?? null;
+        if (!cursor) break;
+      }
+      capture('admin_knowledge_reindexed', { index: i, ok, failed });
+      const why = Object.entries(reasons).map(([k, v]) => `${v} ${k}`).join(', ');
+      (failed ? toast.error : toast.success)(`${cap(i)} index rebuilt: ${ok} indexed${failed ? `, ${failed} failed` : ''}`, { description: why || `${(ms / 1000).toFixed(1)}s` });
     } catch (er) { captureException(er, { where: 'admin_knowledge_reindex', index: i }); toast.error(errMessage(er, 'Re-index failed.')); }
     finally { setReindexing(null); }
   }

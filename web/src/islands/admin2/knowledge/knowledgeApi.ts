@@ -40,7 +40,7 @@ export interface CatalogHit {
   subject_kind: string; subject_id: string; title: string; price_inr: number | null; image_url: string | null; url: string;
   wear_days: string[]; deity: string | null; chakra: string | null; tradition_note: string; why: MatchReason[]; score: number;
 }
-export interface ReindexResult { index: string; ok: number; failed: number; reasons: Record<string, number>; ms: number }
+export interface ReindexResult { index: string; ok: number; failed: number; reasons: Record<string, number>; ms: number; next_cursor?: string | null; remaining?: number }
 export interface DraftMissingResult { drafted: number; failed: number; remaining: number }
 
 export const parseAny = (s: unknown): unknown[] => {
@@ -75,7 +75,7 @@ export const knowledgeApi = {
       .then((r) => ('note' in r ? r.note : r) as NoteRow),
   draftMissing: () => post<DraftMissingResult>(`${B}/notes/draft-missing`),
 
-  reindex: (index: 'tradition' | 'catalog') => post<ReindexResult>(`${B}/reindex`, { index }),
+  reindex: (index: 'tradition' | 'catalog', cursor?: string | null) => post<ReindexResult>(`${B}/reindex`, { index, cursor: cursor ?? undefined }),
   search: (index: 'tradition' | 'catalog', q: string) =>
     adminCall<{ index: string; q: string; hits: (TraditionHit | CatalogHit)[] }>(`${B}/search`, { query: { index, q } }).then((r) => r.hits ?? []),
 };

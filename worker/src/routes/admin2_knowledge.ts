@@ -271,22 +271,31 @@ const noteDraftMissing = wrap("noteDraftMissing", async (req, env, _p, uid) => {
 // ---------------------------------------------------------------------------
 // Reindex + search console
 // ---------------------------------------------------------------------------
+// [AUMFE-KNOWLEDGE-REINDEX-1] Paged: one call indexes at most `limit` rows after `cursor` (ordered by id) and
+// returns next_cursor, so a big library never runs past the request's time budget. The admin UI loops.
 const reindex = wrap("reindex", async (req, env, _p, uid) => {
   const b = await body(req);
   const index = b?.index;
   if (index !== "tradition" && index !== "catalog") return err(400, "bad_index", "index must be 'tradition' or 'catalog'.");
+  const limit = Math.max(1, Math.min(50, Number(b?.limit) || 20));
+  const cursor = s(b?.cursor, 200);
   const t0 = Date.now();
   let ok = 0; let failed = 0; const reasons: Record<string, number> = {};
   const bump = (r?: string) => { const key = r ?? "error"; reasons[key] = (reasons[key] ?? 0) + 1; };
+  let last = "";
+  let remaining = 0;
   if (index === "tradition") {
-    const rs = await env.DB_META.prepare(`SELECT id FROM tradition_corpus WHERE status='approved'`).all<{ id: string }>();
-    for (const r of rs.results ?? []) { const x = await indexTraditionEntry(env, r.id); if (x.ok) ok++; else { failed++; bump(x.reason); } }
+    const rs = await env.DB_META.prepare(`SELECT id FROM tradition_corpus WHERE status='approved' AND id > ?1 ORDER BY id LIMIT ?2`).bind(cursor, limit).all<{ id: string }>();
+    for (const r of rs.results ?? []) { last = r.id; const x = await indexTraditionEntry(env, r.id); if (x.ok) ok++; else { failed++; bump(x.reason); } }
+    if (last) remaining = (await env.DB_META.prepare(`SELECT COUNT(*) AS n FROM tradition_corpus WHERE status='approved' AND id > ?1`).bind(last).first<{ n: number }>())?.n ?? 0;
   } else {
-    const rs = await env.DB_META.prepare(`SELECT subject_kind, subject_id FROM product_tradition_notes WHERE status='approved'`).all<{ subject_kind: SubjectKind; subject_id: string }>();
-    for (const r of rs.results ?? []) { const x = await indexSubjectNote(env, r.subject_kind, r.subject_id); if (x.ok) ok++; else { failed++; bump(x.reason); } }
+    const rs = await env.DB_META.prepare(`SELECT id, subject_kind, subject_id FROM product_tradition_notes WHERE status='approved' AND id > ?1 ORDER BY id LIMIT ?2`).bind(cursor, limit).all<{ id: string; subject_kind: SubjectKind; subject_id: string }>();
+    for (const r of rs.results ?? []) { last = r.id; const x = await indexSubjectNote(env, r.subject_kind, r.subject_id); if (x.ok) ok++; else { failed++; bump(x.reason); } }
+    if (last) remaining = (await env.DB_META.prepare(`SELECT COUNT(*) AS n FROM product_tradition_notes WHERE status='approved' AND id > ?1`).bind(last).first<{ n: number }>())?.n ?? 0;
   }
-  void track(env, uid, "knowledge_reindexed", APP, { index, ok, failed, ms: Date.now() - t0 });
-  return json({ index, ok, failed, reasons, ms: Date.now() - t0 });
+  const next_cursor = last && remaining > 0 ? last : null;
+  void track(env, uid, "knowledge_reindexed", APP, { index, ok, failed, remaining, ms: Date.now() - t0 });
+  return json({ index, ok, failed, reasons, ms: Date.now() - t0, next_cursor, remaining });
 });
 
 const searchConsole = wrap("searchConsole", async (req, env, _p, uid) => {
