@@ -8913,5 +8913,23 @@
         "note": "Every AI draft attempt. ok=true means a draft was saved for review; ok=false carries code (no_grounding = tradition index empty or unbound, promise_wording, bad_model_output, gemini_error). Needs the Vectorize indexes and approved tradition entries before it can succeed."
       }
     ]
+  },
+  "AUMFE-GUIDE-BRAIN-1": {
+    "description": "[AUMFE-GUIDE-BRAIN-1 2026-10-01] Meera (voice) and Pandit ji (text) share one brain: lib/guides/brain.ts holds the owner rules and the shared tools (astrology tools moved to lib/guides/astro_tools.ts, plus search_catalog, search_tradition, recommend_for_chart). Pandit ji is a streaming Gemini text chat: GET /api/guides/pandit/state and POST /api/guides/pandit/chat (SSE), stored in ai_conversations (agent='pandit') / ai_messages, spend-capped with Preeti's monthly cap, memory extracted after each turn (consent-gated). Dark behind panditChatEnabled (admins in AGENT_ADMIN_UIDS can test).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "panditChatEnabled"
+    ],
+    "success": [
+      {
+        "event": "pandit_chat_turn",
+        "property": "ok",
+        "exists": true,
+        "min_events": 0,
+        "note": "One per Pandit ji message. ok=true means a reply was saved; ok=false means the turn failed (see the paired exception). Also carries tools, cards and rounds. Needs panditChatEnabled on or an admin uid."
+      }
+    ]
   }
 }

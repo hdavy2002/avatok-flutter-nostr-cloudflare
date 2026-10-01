@@ -35,9 +35,13 @@ describe("astrology agent definition", () => {
     const p = astrologyAgent.systemPrompt({ briefing: "BRIEFING-X", brandName: "Brand", nowIst: "now" });
     expect(p).toContain("Brand");
     expect(p.endsWith("BRIEFING-X")).toBe(true);
-    expect(p.length - "BRIEFING-X".length).toBeLessThan(3600);
+    expect(p.length - "BRIEFING-X".length).toBeLessThan(5200);
+    // [AUMFE-GUIDE-BRAIN-1] one brain: Meera's prompt carries the shared owner rules.
+    expect(p).toContain("GUIDE RULES");
+    expect(p).toContain("Recommend ONLY items returned by");
     expect(astrologyAgent.tools.map((t) => t.decl.name)).toEqual(
-      ["get_my_chart", "get_current_dasha", "check_doshas", "get_remedies", "get_today", "find_muhurta", "match_partner"]);
+      ["get_my_chart", "get_current_dasha", "check_doshas", "get_remedies", "get_today", "find_muhurta", "match_partner",
+        "search_catalog", "search_tradition", "recommend_for_chart"]);
   });
   it("no tool declares a uid parameter", () => {
     for (const t of astrologyAgent.tools) {

@@ -2072,6 +2072,9 @@ export interface PlatformConfig {
   // [AUMFE-VOICE-RUNTIME-1] Master switch for the voice guides (Gemini Live). While false only uids in
   // AGENT_ADMIN_UIDS can open a call (owner testing). Boolean -> NOT in numericKeys.
   voiceAgentsEnabled: boolean;
+  // [AUMFE-GUIDE-BRAIN-1] Master switch for Pandit ji, the text guide (/api/guides/pandit/*). While false only uids in
+  // AGENT_ADMIN_UIDS can chat (owner testing). Boolean -> NOT in numericKeys.
+  panditChatEnabled: boolean;
   // [AUMFE-VOICE-RUNTIME-1] Gemini Live model id for the voice guides (Developer API, BidiGenerateContent).
   // STRING -> NOT in numericKeys; declared in stringKeys below.
   voiceAgentModel: string;
@@ -2808,6 +2811,7 @@ const DEFAULTS: PlatformConfig = {
   shopPodPollMinutes: 30,
   // [AUMFE-VOICE-RUNTIME-1] voice guides — dark until the owner flips it (admins can test meanwhile).
   voiceAgentsEnabled: false,
+  panditChatEnabled: false, // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   voiceAgentModel: "gemini-3.8-live",
   voiceAgentMaxSeconds: 900,
   voiceAgentFreeSeconds: 180,

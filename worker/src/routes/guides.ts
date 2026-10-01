@@ -1,0 +1,97 @@
+// [AUMFE-GUIDE-BRAIN-1 2026-10-01] Pandit ji, the text guide — HTTP surface. Clerk auth like routes/voice.ts.
+//   GET  /api/guides/pandit/state   -> screen state (flag, profile, consent, chart, memories, last conversation)
+//   POST /api/guides/pandit/chat    {conversation_id?, text} -> text/event-stream (one JSON per `data:` line, see lib/guides/types.ts)
+// Profile, consent and memories are edited through the EXISTING /api/me/astro-profile, /api/me/memory-consent and
+// /api/me/memories routes (routes/agent_memory.ts); nothing is duplicated here.
+import type { Env } from "../types";
+import { json } from "../util";
+import { requireUser, isFail } from "../authz";
+import { track, trackException } from "../hooks";
+import { BRAND } from "../lib/brand";
+import { contactFor } from "../lib/identity";
+import { getProfile, listMemories } from "../lib/agent_memory";
+import { readConfig } from "./config";
+import { canUsePandit } from "../lib/guides/access";
+import { loadChartSummary } from "../lib/guides/chart";
+import { latestConversation, loadMessages } from "../lib/guides/store";
+import { MAX_USER_CHARS, runPanditTurn } from "../lib/guides/text_chat";
+import type { ChatEvent } from "../lib/guides/types";
+
+const APP = BRAND.slug;
+const BASE = "/api/guides/pandit";
+
+/** Returns null when the path is not ours. */
+export async function guidesRoute(req: Request, env: Env, p: string): Promise<Response | null> {
+  const isState = p === `${BASE}/state`;
+  const isChat = p === `${BASE}/chat`;
+  if (!isState && !isChat) return null;
+  if (isState && req.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+  if (isChat && req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+
+  const u = await requireUser(req, env);
+  if (isFail(u)) return json({ error: u.status === 401 ? "unauthorized" : u.error }, u.status);
+  const uid = u.uid;
+  const cfg = await readConfig(env);
+  const enabled = cfg.panditChatEnabled === true;
+  const canUse = canUsePandit(enabled, uid, env.AGENT_ADMIN_UIDS);
+
+  if (isState) return stateResponse(env, uid, enabled, canUse);
+
+  if (!canUse) {
+    void track(env, uid, "pandit_chat_blocked", APP, { reason: "disabled" });
+    return json({ error: "pandit_disabled" }, 403);
+  }
+  let body: { conversation_id?: unknown; text?: unknown };
+  try { body = (await req.json()) as typeof body; } catch { return json({ error: "bad_json" }, 400); }
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) return json({ error: "text_required" }, 400);
+  if (text.length > MAX_USER_CHARS) return json({ error: "text_too_long" }, 400);
+  const conversationId = typeof body.conversation_id === "string" && body.conversation_id ? body.conversation_id : null;
+  return sseResponse(env, uid, conversationId, text);
+}
+
+async function stateResponse(env: Env, uid: string, enabled: boolean, canUse: boolean): Promise<Response> {
+  try {
+    const [profile, contact, conv] = await Promise.all([
+      getProfile(env, uid),
+      contactFor(env, uid).catch((e) => { void trackException(env, e, { uid, route: `${BASE}/state`, handled: true, app_name: APP }); return { email: null, phone: null }; }),
+      latestConversation(env, uid),
+    ]);
+    const consent = !!profile?.memory_consent;
+    const [chart, memories, messages] = await Promise.all([
+      profile?.dob ? loadChartSummary(env, uid) : Promise.resolve(null),
+      consent ? listMemories(env, uid, { limit: 40 }) : Promise.resolve([]),
+      conv ? loadMessages(env, conv.id) : Promise.resolve([]),
+    ]);
+    return json({
+      enabled,
+      can_use: canUse,
+      needs_phone: !contact.phone,
+      profile: profile && {
+        name: profile.name, dob: profile.dob, tob: profile.tob, tob_unknown: !!profile.tob_unknown, place: profile.place, gender: profile.gender,
+      },
+      consent,
+      chart,
+      memories: memories.filter((m) => m.kind !== "summary").map((m) => ({ id: m.id, text: m.text })),
+      conversation: conv ? { id: conv.id, messages } : null,
+    });
+  } catch (e) {
+    await trackException(env, e, { uid, route: `${BASE}/state`, handled: true, app_name: APP });
+    return json({ error: "server_error" }, 500);
+  }
+}
+
+function sseResponse(env: Env, uid: string, conversationId: string | null, text: string): Response {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+  const enc = new TextEncoder();
+  let chain: Promise<unknown> = Promise.resolve();
+  const emit = (e: ChatEvent) => { chain = chain.then(() => writer.write(enc.encode(`data: ${JSON.stringify(e)}\n\n`))).catch(() => undefined); };
+  void (async () => {
+    try { await runPanditTurn(env, { uid, conversationId, text, emit }); }
+    finally { await chain; await writer.close().catch(() => undefined); } // client already gone: nothing left to tell it
+  })();
+  return new Response(readable, {
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },
+  });
+}
