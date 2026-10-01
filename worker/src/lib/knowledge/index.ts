@@ -7,3 +7,6 @@ export { indexTraditionEntry, removeTraditionEntry, searchTradition } from "./tr
 export type { TraditionHit, TraditionQuery, TraditionRow } from "./tradition";
 export { indexSubjectNote, removeSubject, searchCatalog, getNote, isSubjectKind } from "./catalog";
 export type { CatalogHit, CatalogQuery, CatalogFilters, SubjectKind, NoteRow, MatchReason } from "./catalog";
+// [AUMFE-DESIGN-MATCH-1 2026-10-01] AI drafting of tradition notes + shop product sync hook.
+export { draftNote, DraftError, listLiveWithoutNote } from "./note_draft";
+export { onShopProductChanged } from "./product_sync";

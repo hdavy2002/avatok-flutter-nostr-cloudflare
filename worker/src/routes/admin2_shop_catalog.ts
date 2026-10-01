@@ -9,6 +9,7 @@ import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports 
 import { requireAdmin } from "./admin_money";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
+import { onShopProductChanged } from "../lib/knowledge/product_sync"; // [AUMFE-DESIGN-MATCH-1]
 import {
   PAGE_HISTORY_MAX, buildDefaultPage, loadSnapshot, readPageRecord, resolvePage, validatePage, writePageRecord,
   type DefaultBanner, type DefaultHero, type PageData,
@@ -292,6 +293,7 @@ export const updateProduct = guarded("admin2.shop.products.update", async (req, 
   if (next.status === "archived" && row.status !== "archived") stmts.push(env.DB_META.prepare("DELETE FROM shop_slots WHERE product_id=?1").bind(id));
   await env.DB_META.batch(stmts);
   const flagsOk = await writeFlags(env, id, { is_new: v.is_new, is_bestseller: v.is_bestseller }, now);
+  await onShopProductChanged(env, id, { prev: row }); // [AUMFE-DESIGN-MATCH-1] never throws
   await audit(env, a.uid, "shop_product_update", id, { changes: Object.keys(v) });
   safeTrack(env, a.uid, "admin2_shop_product_saved", { action: "update", product_id: id, status: next.status });
   const [fresh, cols, promoted] = await Promise.all([loadProduct(env, id), allCollections(env), promotedMap(env)]);
@@ -307,6 +309,7 @@ const archiveProduct = guarded("admin2.shop.products.archive", async (req, env, 
       env.DB_META.prepare("UPDATE shop_products SET status='archived', archived_at=?2, updated_at=?2 WHERE id=?1").bind(id, now),
       env.DB_META.prepare("DELETE FROM shop_slots WHERE product_id=?1").bind(id),
     ]);
+    await onShopProductChanged(env, id, { prev: row }); // [AUMFE-DESIGN-MATCH-1] never throws
     await audit(env, a.uid, "shop_product_archive", id, { name: row.name });
     safeTrack(env, a.uid, "admin2_shop_product_deleted", { product_id: id });
   }

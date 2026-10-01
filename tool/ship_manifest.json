@@ -8897,5 +8897,21 @@
         "note": "A real call connected to Gemini Live, the guide spoke (first audio arrived) and the call ended by customer/time_up/idle rather than error/server. ok=false means Gemini rejected the setup (model id, NON_BLOCKING tools), the browser never sent mic audio, or the call died before the first agent audio; read voice_gemini_closed (code/reason) and $exception rows with app_name aumfe_voice."
       }
     ]
+  },
+  "AUMFE-DESIGN-MATCH-1": {
+    "description": "[AUMFE-DESIGN-MATCH-1 2026-10-01] AI-drafted tradition notes for shop products and events: Gemini drafts a design-first note (deity/symbol, then chakra/mandala/yantra, then print colours, shirt colour last) grounded only in the approved tradition library, validated in code (unknown sources dropped, wear days need support, promise wording rejected) and saved as DRAFT for an admin to approve. Admin routes POST /api/admin/v2/knowledge/notes/:kind/:id/draft and /notes/draft-missing. Shop product saves now keep the catalog vector in step (unlist removes it, a design edit on an approved note sends it back to draft).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "knowledge_note_drafted",
+        "property": "ok",
+        "exists": true,
+        "min_events": 0,
+        "note": "Every AI draft attempt. ok=true means a draft was saved for review; ok=false carries code (no_grounding = tradition index empty or unbound, promise_wording, bad_model_output, gemini_error). Needs the Vectorize indexes and approved tradition entries before it can succeed."
+      }
+    ]
   }
 }

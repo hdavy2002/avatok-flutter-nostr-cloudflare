@@ -5,6 +5,7 @@
 //   PUT/DELETE /knowledge/tradition/:id                          POST /knowledge/tradition/:id/approve
 //   POST /knowledge/tradition/import  {entries:[...]}  (always lands as DRAFT)
 //   GET/PUT /knowledge/notes/:kind/:id    POST /knowledge/notes/:kind/:id/approve|reject
+//   POST /knowledge/notes/:kind/:id/draft {hints?}   POST /knowledge/notes/draft-missing {exclude?}  (AI draft, DRAFT only)
 //   POST /knowledge/reindex {index:'tradition'|'catalog'}        GET /knowledge/search?index=&q=&filters
 //
 // Approval and indexing run INLINE (no waitUntil: a detached isolate dies on long jobs).
@@ -19,6 +20,7 @@ import {
   indexTraditionEntry, removeTraditionEntry, searchTradition, indexSubjectNote, removeSubject, searchCatalog, getNote, isSubjectKind,
 } from "../lib/knowledge";
 import type { SubjectKind } from "../lib/knowledge";
+import { draftNote, DraftError, listLiveWithoutNote } from "../lib/knowledge";
 
 const APP = BRAND.slug;
 const BASE = "/api/admin/v2/knowledge";
@@ -223,6 +225,48 @@ const noteReject = wrap("noteReject", async (req, env, [kind, id], uid) => {
   return json({ status: "rejected" });
 });
 
+// [AUMFE-DESIGN-MATCH-1] AI draft. Runs inline (a detached isolate dies on long jobs). Saves a DRAFT only, never approves.
+const hintsOf = (b: Record<string, any> | null) => {
+  const h = (b?.hints ?? null) as Record<string, any> | null;
+  if (!h || typeof h !== "object" || Array.isArray(h)) return undefined;
+  const arr = (v: unknown, n: number, m: number) => (Array.isArray(v) ? v.map((x) => s(x, m)).filter(Boolean).slice(0, n) : undefined);
+  return {
+    design_type: sn(h.design_type, 20) ?? undefined, design_elements: arr(h.design_elements, 10, 80), print_colours: arr(h.print_colours, 6, 40),
+    shirt_colour: sn(h.shirt_colour, 60) ?? undefined, deity: sn(h.deity, 60) ?? undefined, graha: sn(h.graha, 40) ?? undefined,
+    chakra: sn(h.chakra, 40) ?? undefined, wear_days: arr(h.wear_days, 7, 20),
+  };
+};
+const draftErr = (e: unknown): Response | null =>
+  e instanceof DraftError ? err(e.status, e.code, e.message) : null;
+
+const noteDraft = wrap("noteDraft", async (req, env, [kind, id], uid) => {
+  const k = kindOf(kind); if (!k) return err(400, "bad_kind", "kind must be shop_product or event.");
+  const b = await body(req); // body is optional
+  try {
+    const note = await draftNote(env, k, id, { hints: hintsOf(b), uid });
+    return json({ note });
+  } catch (e) {
+    const r = draftErr(e); if (r) return r;
+    throw e;
+  }
+});
+
+const noteDraftMissing = wrap("noteDraftMissing", async (req, env, _p, uid) => {
+  const b = await body(req);
+  const exclude = Array.isArray(b?.exclude) ? (b!.exclude as unknown[]).map((x) => s(x, 80)).filter(Boolean) : [];
+  const { ids, total } = await listLiveWithoutNote(env, 5, exclude);
+  const drafted: string[] = []; const failed: Array<{ id: string; error: string; message: string }> = [];
+  for (const id of ids) {
+    try { await draftNote(env, "shop_product", id, { uid }); drafted.push(id); }
+    catch (e) {
+      // draftNote already reported it; this row only tells the admin which product failed and why.
+      failed.push({ id, error: e instanceof DraftError ? e.code : "error", message: e instanceof DraftError ? e.message : "Drafting failed." });
+    }
+  }
+  void track(env, uid, "knowledge_draft_missing", APP, { drafted: drafted.length, failed: failed.length });
+  return json({ drafted, failed, remaining: Math.max(0, total - drafted.length) });
+});
+
 // ---------------------------------------------------------------------------
 // Reindex + search console
 // ---------------------------------------------------------------------------
@@ -273,6 +317,8 @@ export const ADMIN2_KNOWLEDGE_ROUTES: Admin2RouteDef[] = [
   { method: "POST", path: P(`tradition/${ID}/approve`), handler: traditionApprove },
   { method: "GET", path: P(`notes/${ID}/${ID}`), handler: noteGet },
   { method: "PUT", path: P(`notes/${ID}/${ID}`), handler: notePut },
+  { method: "POST", path: `${BASE}/notes/draft-missing`, handler: noteDraftMissing },
+  { method: "POST", path: P(`notes/${ID}/${ID}/draft`), handler: noteDraft },
   { method: "POST", path: P(`notes/${ID}/${ID}/approve`), handler: noteApprove },
   { method: "POST", path: P(`notes/${ID}/${ID}/reject`), handler: noteReject },
   { method: "POST", path: `${BASE}/reindex`, handler: reindex },
