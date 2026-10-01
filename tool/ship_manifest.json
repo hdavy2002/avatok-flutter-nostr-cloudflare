@@ -8861,5 +8861,23 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Type declarations and a spec only; nothing executes."
+  },
+  "AUMFE-ASTRO-AGENT-1": {
+    "description": "[AUMFE-ASTRO-AGENT-1 2026-10-01] Meera, the astrology voice guide (worker/src/lib/voice_agents/agents/astrology.ts): persona prompt plus seven tools (chart, dasha, doshas, remedies, today, muhurta, matching) reading the caller's saved birth profile via AstrologyAPI. Reachable only through the voice runtime behind voiceAgentsEnabled.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "voiceAgentsEnabled"
+    ],
+    "success": [
+      {
+        "event": "voice_tool_call",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Emitted by the voice runtime for every tool call (astrology tools included). ok=false means the tool returned an error (no birth details, AstrologyAPI down or unconfigured)."
+      }
+    ]
   }
 }
