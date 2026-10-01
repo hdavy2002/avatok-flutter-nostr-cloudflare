@@ -8931,5 +8931,19 @@
         "note": "One per Pandit ji message. ok=true means a reply was saved; ok=false means the turn failed (see the paired exception). Also carries tools, cards and rounds. Needs panditChatEnabled on or an admin uid."
       }
     ]
+  },
+  "AUMFE-PANDIT-ADMIN-HELP-1": {
+    "description": "[AUMFE-PANDIT-ADMIN-HELP-1 2026-10-01] Admin AI conversations: agent filter (Preeti / Pandit ji / Meera) via optional ?agent= on the admin list API; Pandit ji help articles added as drafts.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin_ai_conversations_filter",
+        "property": "agent",
+        "expect_present": true
+      }
+    ]
   }
 }
