@@ -1,0 +1,162 @@
+# [SAATHUM-FREEZE-1] Build (and, only on explicit request, deploy) a static archive of
+# today's public saathum.com pages to ITS OWN Cloudflare Pages project, `saathum-frozen`,
+# once the live site (Pages project `avatok-app`) has moved to its new domain.
+#
+# This is NOT the live site build. tool/saathum-freeze/prepare-source.mjs mutates a
+# throwaway checkout of web/ before `astro build` ever runs: it keeps ONLY the
+# prerenderable public information pages (home, about, how-it-works, temples, the
+# Puja & Havan guide, help centre, contact with the form switched off, legal pages),
+# swaps every island that talks to the API / Clerk / the chat backend for an empty
+# component, drops the Cloudflare adapter and writes a disallow-all robots.txt plus a
+# `_redirects` that 301s every functional path (/j/*, /l/*, /book/*, /dashboard*, ...)
+# to the same path on the new origin. tool/saathum-freeze/postprocess-dist.mjs then
+# stamps noindex + a canonical to the new origin + a "we moved" banner on every built
+# page, and check-frozen-build.mjs fails the job if anything slipped through.
+#
+# See tool/saathum-freeze/README.md for the full design, the kept/removed route lists
+# and the redirect list.
+#
+# Requires the same two repo secrets as web-deploy.yml (deploy job only):
+#   CLOUDFLARE_API_TOKEN  — token with "Cloudflare Pages: Edit" on the account
+#   CLOUDFLARE_ACCOUNT_ID — the account id that owns the Cloudflare account
+#
+# Deliberately workflow_dispatch ONLY (never a push/pull_request trigger) and `publish`
+# defaults to false: a run builds and verifies the archive, and only deploys when the
+# owner ticks `publish`. The Pages project `saathum-frozen` must already exist.
+name: Freeze saathum.com (Cloudflare Pages)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit (SHA, tag or branch) whose web/ is snapshotted — build from the commit that is live today
+        type: string
+        required: true
+      new_origin:
+        description: Origin the archive points visitors at (blank = the default in tool/saathum-freeze/freeze-config.mjs)
+        type: string
+        required: false
+        default: ''
+      pricing_api:
+        description: Optional API origin read ONCE at build time to bake today's "starting from" prices into the HTML (blank = built-in fallback price). Never reaches the built site.
+        type: string
+        required: false
+        default: ''
+      publish:
+        description: Deploy the verified archive to the saathum-frozen Pages project
+        type: boolean
+        default: false
+        required: true
+
+concurrency:
+  group: saathum-freeze-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.pin.outputs.sha }}
+    steps:
+      - name: Guard explicit dispatch
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin the snapshot commit
+        id: pin
+        env:
+          SNAPSHOT_REF: ${{ inputs.ref }}
+        run: |
+          sha="$(git rev-parse --verify "${SNAPSHOT_REF}^{commit}")"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Snapshotting web/ as it stood at $sha"
+
+      - name: Restore web/, shared/ and Specs/ to the snapshot commit
+        env:
+          SNAPSHOT_SHA: ${{ steps.pin.outputs.sha }}
+        run: |
+          # Only these three trees are overlaid from the snapshot commit; the freeze
+          # scripts (tool/saathum-freeze/*) stay at the version of the ref this
+          # workflow was dispatched from. web/ imports ../Specs/brand.json and
+          # ../shared/i18n, so both come along. The old trees are removed first so a
+          # file that only exists on the dispatching ref cannot leak into the build.
+          rm -rf web shared Specs
+          git checkout "$SNAPSHOT_SHA" -- web shared Specs
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Mutates this checkout's web/ in place. Safe here ONLY because this is a
+      # throwaway CI checkout that is discarded at the end of the job — see the warning
+      # at the top of prepare-source.mjs.
+      - name: Prepare frozen source (keep public pages only, strip API/auth, write redirects)
+        env:
+          NEW_ORIGIN: ${{ inputs.new_origin }}
+        run: node tool/saathum-freeze/prepare-source.mjs web
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        # No PUBLIC_CLERK_PUBLISHABLE_KEY, no PUBLIC_API_BASE: this build has no sign-in
+        # and no Worker calls, by design. FREEZE_PRICING_API (optional) is read by the
+        # BUILD only, to bake current prices into the HTML; it is not inlined anywhere.
+        env:
+          PUBLIC_RELEASE_SHA: ${{ steps.pin.outputs.sha }}
+          FREEZE_PRICING_API: ${{ inputs.pricing_api }}
+        run: npm run build      # prebuild (tokens, images) + astro build + brandify-public
+
+      - name: Postprocess built HTML (noindex, canonical, banner, repoint links)
+        env:
+          NEW_ORIGIN: ${{ inputs.new_origin }}
+        run: node tool/saathum-freeze/postprocess-dist.mjs web/dist
+
+      - name: Check frozen build
+        env:
+          NEW_ORIGIN: ${{ inputs.new_origin }}
+        run: node tool/saathum-freeze/check-frozen-build.mjs web/dist
+
+      - name: Save verified frozen artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: saathum-frozen-dist-${{ steps.pin.outputs.sha }}
+          path: web/dist
+          include-hidden-files: true
+          retention-days: 7
+          compression-level: 0
+
+  deploy:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Download verified frozen artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: saathum-frozen-dist-${{ needs.build.outputs.sha }}
+          path: tool/saathum-freeze/dist
+
+      - name: Deploy to Cloudflare Pages (saathum-frozen)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: tool/saathum-freeze
+          # No [[kv_namespaces]], no [vars], no adapter bindings (see wrangler.toml): this
+          # ships as plain static files with nothing that can reach D1, KV, R2 or Clerk.
+          command: pages deploy dist --project-name=saathum-frozen --branch=main --commit-hash=${{ needs.build.outputs.sha }}

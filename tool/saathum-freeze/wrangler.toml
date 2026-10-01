@@ -1,0 +1,11 @@
+# [SAATHUM-FREEZE-1] Cloudflare Pages config for the FROZEN static archive of saathum.com.
+# Its own Pages project — separate from `avatok-app` (the live SSR site, which moves to the
+# new domain), `avatok-frozen` (the old avatok.ai snapshot) and `avatok-web`.
+#
+# Deliberately NO [[kv_namespaces]], no [vars], no adapter-driven bindings: the frozen build
+# (see prepare-source.mjs) removes the Cloudflare adapter entirely, so this ships as plain
+# static files with no _worker.js and no Functions. Nothing here can reach D1, KV, R2 or
+# Clerk — a stale credential or binding on an unmaintained archive is a liability.
+name = "saathum-frozen"
+compatibility_date = "2025-05-05"
+pages_build_output_dir = "./dist"
