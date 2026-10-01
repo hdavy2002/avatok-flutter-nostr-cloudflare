@@ -8593,5 +8593,21 @@
         "note": "Customer opened My orders."
       }
     ]
+  },
+  "SAATHUM-ADMIN-DELETE-1": {
+    "description": "[SAATHUM-ADMIN-DELETE-1 2026-10-01] Admin can permanently delete events (POST /api/admin/v2/events/:id/delete, refused with 409 has_money_history when any booking/payment row exists) and free videos (POST /api/admin/v2/free-videos/:id/delete), alongside the existing cancel/archive.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_event_deleted",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin permanently deleted an event."
+      }
+    ]
   }
 }

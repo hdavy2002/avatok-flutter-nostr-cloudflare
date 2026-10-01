@@ -210,6 +210,16 @@ export async function archiveFreeVideo(db: D1Database, id: string, adminUid: str
   return (r.meta?.changes ?? 0) > 0;
 }
 
+/** [SAATHUM-ADMIN-DELETE-1] Permanent delete: the row and its view rows. false when the video does not exist. Any status. */
+export async function deleteFreeVideo(db: D1Database, id: string): Promise<boolean> {
+  if (!(await getRow(db, id))) return false;
+  try {
+    await db.prepare(`DELETE FROM event_video_views WHERE listing_id=?1`).bind(id).run();
+  } catch (e) { if (!isMissingColumnError(e)) throw e; } // views table not migrated: nothing to remove
+  const r = await db.prepare(`DELETE FROM free_videos WHERE id=?1`).bind(id).run();
+  return (r.meta?.changes ?? 0) > 0;
+}
+
 async function viewCounts(db: D1Database, ids: string[]): Promise<Map<string, { viewers: number; plays: number }>> {
   const out = new Map<string, { viewers: number; plays: number }>();
   if (!ids.length) return out;
@@ -423,6 +433,18 @@ async function adminArchive(req: Request, env: Env, id: string): Promise<Respons
   } catch (e) { return adminUnavailable(env, e, "free_videos:admin_archive"); }
 }
 
+// [SAATHUM-ADMIN-DELETE-1] POST /api/admin/v2/free-videos/:id/delete {confirm:true} — permanent (archive stays as DELETE :id).
+async function adminDelete(req: Request, env: Env, id: string): Promise<Response> {
+  const g = await adminGuard(req, env); if (g instanceof Response) return g;
+  const b = await readBody(req);
+  if (!b || b.confirm !== true) return admin2Err(400, "confirm_required", "Confirm the deletion.");
+  try {
+    if (!(await deleteFreeVideo(env.DB_META, id))) return admin2Err(404, "not_found", "No such video.");
+    await adminTel(env, g.uid, { id, action: "delete" });
+    return json({ ok: true, id, deleted: true }, 200, NO_STORE);
+  } catch (e) { return adminUnavailable(env, e, "free_videos:admin_delete"); }
+}
+
 // [SAATHUM-FREEVIDEOS-AUTOFILL-1 2026-10-01] POST /api/admin/v2/free-videos/autofill
 // { youtube_url } -> { title, description, category, source: 'ai'|'youtube', original }.
 // Nothing is saved; the admin form fills its fields and the admin edits/saves as usual.
@@ -445,5 +467,6 @@ export const ADMIN2_FREE_VIDEO_ROUTES: Admin2RouteDef[] = [
   { method: "POST", path: "/api/admin/v2/free-videos/autofill", handler: (req, env) => adminAutofill(req, env) },
   { method: "GET", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminGet(req, env, id) },
   { method: "PUT", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminUpdate(req, env, id) },
+  { method: "POST", path: new RegExp(`^/api/admin/v2/free-videos/${ID}/delete$`), handler: (req, env, [id]) => adminDelete(req, env, id) },
   { method: "DELETE", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminArchive(req, env, id) },
 ];

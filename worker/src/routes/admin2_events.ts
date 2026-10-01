@@ -11,6 +11,7 @@
 //   POST /api/admin/v2/events/:id/publish       approve + publish, one action
 //   POST /api/admin/v2/events/:id/unpublish     back to the Drafts tab (nothing sold only)
 //   POST /api/admin/v2/events/:id/cancel        refund open orders, then cancel
+//   POST /api/admin/v2/events/:id/delete        {confirm:true} permanent delete (409 has_money_history if any booking/payment)
 //   POST /api/admin/v2/events/:id/poster        {action:'generate'|'keep'} AI poster
 //   GET  /api/admin/v2/temples                  [SAATHUM-TEMPLE-FIELD-1] saved temples
 //   POST /api/admin/v2/temples                  {name, place} add a temple (duplicate -> the existing row)
@@ -52,6 +53,7 @@ import { scheduleState } from "../lib/listing_schedule";
 import { refundOpenOrdersForListing } from "./commercial_lifecycle";
 import { releaseBlocks } from "../cal/engine";
 import { releaseListingReservations } from "../cal/listing_reservations";
+import { deleteBlockers, deleteEventRows } from "../lib/event_delete";
 import { startsMsSql, SMOKE_LISTING_ID } from "../lib/me_dashboard_data";
 import {
   DEITY_SUGGESTIONS, EVENT_TABS, INTENTIONS, nextSeo, type AttrPatch, type SeoPatch, LIMITS, MIN_PRICE_RUPEES, coverUrlOf, likeContains, msToIst,
@@ -773,6 +775,44 @@ export async function adminEventCancel(req: Request, env: Env, id: string): Prom
   return json({ ok: true, id, status: "cancelled", refunds });
 }
 
+/**
+ * [SAATHUM-ADMIN-DELETE-1] Delete permanently. Only for an event nobody has booked or paid for:
+ * ANY row in a money table (see lib/event_delete.ts) refuses with 409 has_money_history, and an
+ * inconclusive check refuses with 503 — payment records must be kept, so we never delete when unsure.
+ * listing_approval_history is KEPT (audit trail); history + audit are written BEFORE the row goes.
+ */
+export async function adminEventDelete(req: Request, env: Env, id: string): Promise<Response> {
+  const a = await admin(req, env); if (a instanceof Response) return a;
+  const b = await readBody(req);
+  if (!b || b.confirm !== true) return err(400, "confirm_required", "Confirm the deletion.");
+  const row = await loadRow(env, id);
+  if (!row || String(row.kind) !== "live_event" || id === SMOKE_LISTING_ID) return err(404, "not_found", "No such event.");
+  const status = String(row.status);
+  const blockers = await deleteBlockers(env.DB_META, id);
+  if (blockers.unsure) {
+    await trackException(env, new Error(`delete check failed on ${blockers.unsure.table}: ${blockers.unsure.error}`), { uid: a.uid, route: "admin2_events.delete.check", handled: true, app_name: APP });
+    return err(503, "delete_check_failed", "Couldn't confirm this event is free of bookings and payments, so it was not deleted. Try again in a minute.");
+  }
+  if (blockers.total > 0) {
+    return err(409, "has_money_history", "This event has bookings or payments, so it can't be deleted — cancel it instead. Payment records must be kept.", { counts: blockers.counts });
+  }
+  await releaseListingReservations(env, String(row.creator_id), id).catch((e) => trackException(env, e, { uid: a.uid, route: "admin2_events.delete.release", handled: true, app_name: APP }));
+  await releaseBlocks(env, LISTINGS_APP, id).catch(() => undefined);
+  await ftsSync(env, id, true).catch(() => undefined);
+  await history(env, { listingId: id, actorId: a.uid, action: "admin_delete", prev: status, next: null, reason: String(row.title ?? "").slice(0, 200) || null });
+  await audit(env, a.uid, "listing_admin_delete", id, { previous_status: status, title: String(row.title ?? "").slice(0, 200), via: "admin2" });
+  let res;
+  try {
+    res = await deleteEventRows(env.DB_META, id);
+  } catch (e) {
+    await trackException(env, e, { uid: a.uid, route: "admin2_events.delete.rows", handled: true, app_name: APP });
+    return err(503, "delete_failed", "The event could not be fully deleted. Try again in a minute.");
+  }
+  if (!res.listingDeleted) return err(404, "not_found", "No such event.");
+  safeTrack(env, a.uid, "admin2_event_deleted", { listing_id: id, previous_status: status });
+  return json({ ok: true, id, deleted: true });
+}
+
 /** AI poster: generate (synchronous, like the old admin panel) or keep the generated one. */
 export async function adminEventPoster(req: Request, env: Env, id: string, exec: Exec): Promise<Response> {
   const a = await admin(req, env); if (a instanceof Response) return a;
@@ -818,5 +858,6 @@ export const ADMIN2_EVENT_ROUTES: Admin2RouteDef[] = [
   { method: "POST", path: new RegExp(`^/api/admin/v2/events/${ID}/publish$`), handler: (req, env, [id]) => adminEventPublish(req, env, id, undefined) },
   { method: "POST", path: new RegExp(`^/api/admin/v2/events/${ID}/unpublish$`), handler: (req, env, [id]) => adminEventUnpublish(req, env, id) },
   { method: "POST", path: new RegExp(`^/api/admin/v2/events/${ID}/cancel$`), handler: (req, env, [id]) => adminEventCancel(req, env, id) },
+  { method: "POST", path: new RegExp(`^/api/admin/v2/events/${ID}/delete$`), handler: (req, env, [id]) => adminEventDelete(req, env, id) },
   { method: "POST", path: new RegExp(`^/api/admin/v2/events/${ID}/poster$`), handler: (req, env, [id]) => adminEventPoster(req, env, id, undefined) },
 ];

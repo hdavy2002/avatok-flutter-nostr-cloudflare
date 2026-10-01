@@ -72,6 +72,9 @@ export interface FreeVideoAutofill {
 }
 export const autofillFreeVideo = (youtube_url: string) =>
   adminApi<FreeVideoAutofill>(`${freeVideosPath()}/autofill`, { method: 'POST', body: { youtube_url } });
+/** [SAATHUM-ADMIN-DELETE-1] Permanent delete (the row and its view counts). Archive above stays the soft option. */
+export const deleteFreeVideo = (id: string) =>
+  adminApi<{ ok: boolean; id: string; deleted: boolean }>(`${freeVideosPath(id)}/delete`, { method: 'POST', body: { confirm: true } });
 export const archiveFreeVideo = (id: string) => adminApi<{ ok: boolean }>(freeVideosPath(id), { method: 'DELETE' });
 
 export function freeStatusMeta(status: string): { label: string; variant: 'secondary' | 'accent' | 'muted' } {

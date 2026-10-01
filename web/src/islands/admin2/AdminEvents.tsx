@@ -8,8 +8,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CalendarDays, Copy, ExternalLink, Filter, MonitorPlay, Pencil, Plus, Search, SearchX, Ticket, Users, VideoOff, X,
+  CalendarDays, Copy, ExternalLink, Filter, MonitorPlay, Pencil, Plus, Search, SearchX, Ticket, Trash2, Users, VideoOff, X,
 } from 'lucide-react';
+import DeleteDialog from './DeleteDialog';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
@@ -19,8 +20,8 @@ import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from '../../components/ui/sonner';
 import { fmtDuration, fmtIstDateTime, listingImage, ErrorState, EmptyState, Shimmer } from '../../components/dash2/shared';
-import { adminApi, errMessage, formatPaise, isAbort } from './adminApi';
-import { EVENT_TABS, eventsPath, statusMeta, type EventRow, type EventTab, type EventsListResponse, type EventsMeta } from './eventsApi';
+import { ApiError, adminApi, errMessage, formatPaise, isAbort } from './adminApi';
+import { DELETE_EVENT_BODY, EVENT_TABS, deleteEvent, eventsPath, statusMeta, type EventRow, type EventTab, type EventsListResponse, type EventsMeta } from './eventsApi';
 
 const ALL = '__all';
 
@@ -159,7 +160,7 @@ export default function AdminEvents() {
         )
       ) : (
         <ul className={cn('flex flex-col gap-3 transition-opacity', loading && 'opacity-60')} aria-busy={loading}>
-          {data?.items.map((ev) => <EventCard key={ev.id} ev={ev} />)}
+          {data?.items.map((ev) => <EventCard key={ev.id} ev={ev} onDeleted={() => void load()} />)}
           {data && data.items.length >= 200 && (
             <li className="text-center text-[13px] font-semibold text-muted-foreground">Showing the first 200. Search or filter to narrow down.</li>
           )}
@@ -182,7 +183,27 @@ function emptyBody(tab: EventTab): string {
   }[tab];
 }
 
-function EventCard({ ev }: { ev: EventRow }) {
+function EventCard({ ev, onDeleted }: { ev: EventRow; onDeleted: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const sold = ev.seats_booked > 0 || ev.pending_payments > 0;
+
+  async function onDelete() {
+    setDeleting(true); setDeleteError(null);
+    try {
+      await deleteEvent(ev.id);
+      capture('admin2_event_deleted', { id: ev.id });
+      toast.success('Event deleted');
+      setConfirmDelete(false);
+      onDeleted();
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status >= 500) captureException(e, { where: 'admin2_event_delete' });
+      setDeleteError(errMessage(e));
+      setDeleting(false);
+    }
+  }
+
   const st = statusMeta(ev.status, ev.tab);
   const img = listingImage(ev.image_url, 320);
   const publicUrl = ev.book_url;
@@ -244,7 +265,14 @@ function EventCard({ ev }: { ev: EventRow }) {
         <Button variant="ghost" size="sm" onClick={() => void copyLink()}><Copy /> Copy link</Button>
         <Button asChild variant="ghost" size="sm"><a href={publicUrl} target="_blank" rel="noopener"><ExternalLink /> View on site</a></Button>
         <Button asChild variant="ghost" size="sm"><a href={`/admin/bookings?event=${encodeURIComponent(ev.id)}`}><Ticket /> Bookings</a></Button>
+        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={sold}
+          title={sold ? 'People have booked or are paying — cancel instead.' : undefined}
+          onClick={() => { setDeleteError(null); setConfirmDelete(true); }}>
+          <Trash2 /> Delete
+        </Button>
       </div>
+      <DeleteDialog open={confirmDelete} onOpenChange={setConfirmDelete} busy={deleting} error={deleteError}
+        title="Delete this event permanently?" body={DELETE_EVENT_BODY} onConfirm={() => void onDelete()} />
     </li>
   );
 }

@@ -119,6 +119,12 @@ export const templeLabel = (t: { name: string; place: string }) => `${t.name}, $
 export const eventsPath = (id?: string, action?: string) =>
   `/api/admin/v2/events${id ? `/${encodeURIComponent(id)}` : ''}${action ? `/${action}` : ''}`;
 
+/** [SAATHUM-ADMIN-DELETE-1] Permanent delete. The server answers 409 has_money_history when anyone has booked or paid. */
+export const deleteEvent = (id: string) =>
+  adminApi<{ ok: boolean; id: string; deleted: boolean }>(eventsPath(id, 'delete'), { method: 'POST', body: { confirm: true } });
+
+export const DELETE_EVENT_BODY = 'This event disappears everywhere — the site, search and the admin lists — and this cannot be undone. Events that have bookings or payments can\'t be deleted; cancel those instead.';
+
 export function statusMeta(status: string, tab?: EventTab): { label: string; variant: 'default' | 'secondary' | 'accent' | 'destructive' | 'outline' | 'muted' } {
   switch (status) {
     case 'published': return tab === 'past' ? { label: 'Ended', variant: 'muted' } : tab === 'live' ? { label: 'Live', variant: 'destructive' } : { label: 'Published', variant: 'accent' };

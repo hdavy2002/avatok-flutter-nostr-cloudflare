@@ -4,14 +4,16 @@
  * No Clerk provider here: AdminNav owns it; calls go through adminApi().
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Eye, MonitorPlay, Pencil, Plus } from 'lucide-react';
-import { captureException } from '../../lib/analytics';
+import { ExternalLink, Eye, MonitorPlay, Pencil, Plus, Trash2 } from 'lucide-react';
+import { capture, captureException } from '../../lib/analytics';
+import { toast } from '../../components/ui/sonner';
+import DeleteDialog from './DeleteDialog';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { EmptyState, ErrorState, Shimmer, youtubeThumb } from '../../components/dash2/shared';
 import { errMessage, isAbort } from './adminApi';
-import { categoryLabel, freeStatusMeta, listFreeVideos, type FreeVideoRow } from './freeVideosApi';
+import { categoryLabel, deleteFreeVideo, freeStatusMeta, listFreeVideos, type FreeVideoRow } from './freeVideosApi';
 
 export default function FreeVideosList() {
   const [items, setItems] = useState<FreeVideoRow[] | null>(null);
@@ -52,12 +54,31 @@ export default function FreeVideosList() {
 
   return (
     <ul className={cn('flex flex-col gap-3 transition-opacity', loading && 'opacity-60')} aria-busy={loading}>
-      {items?.map((v) => <Row key={v.id} v={v} />)}
+      {items?.map((v) => <Row key={v.id} v={v} onDeleted={(id) => setItems((cur) => (cur ? cur.filter((x) => x.id !== id) : cur))} />)}
     </ul>
   );
 }
 
-function Row({ v }: { v: FreeVideoRow }) {
+function Row({ v, onDeleted }: { v: FreeVideoRow; onDeleted: (id: string) => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function onDelete() {
+    setDeleting(true); setDeleteError(null);
+    try {
+      await deleteFreeVideo(v.id);
+      capture('admin2_free_video_deleted', { id: v.id });
+      toast.success('Video deleted');
+      setConfirm(false);
+      onDeleted(v.id);
+    } catch (e) {
+      captureException(e, { where: 'admin2_free_video_delete' });
+      setDeleteError(errMessage(e));
+      setDeleting(false);
+    }
+  }
+
   const st = freeStatusMeta(v.status);
   const img = v.cover_url || youtubeThumb(v.youtube_video_id);
   const edit = `/admin/free-videos/${encodeURIComponent(v.id)}`;
@@ -90,7 +111,14 @@ function Row({ v }: { v: FreeVideoRow }) {
         {v.status === 'published' && (
           <Button asChild variant="ghost" size="sm"><a href={`/watch/${encodeURIComponent(v.id)}`} target="_blank" rel="noopener"><ExternalLink /> View on site</a></Button>
         )}
+        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => { setDeleteError(null); setConfirm(true); }}>
+          <Trash2 /> Delete
+        </Button>
       </div>
+      <DeleteDialog open={confirm} onOpenChange={setConfirm} busy={deleting} error={deleteError}
+        title="Delete this video permanently?"
+        body="It is removed from the site and its view counts are erased. This cannot be undone. To just hide it, archive it from its page instead."
+        onConfirm={() => void onDelete()} />
     </li>
   );
 }

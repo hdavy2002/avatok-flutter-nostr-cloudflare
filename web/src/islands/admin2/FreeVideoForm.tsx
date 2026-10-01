@@ -7,7 +7,8 @@
  *  - Telemetry: admin2_free_video_saved {id, status}; failures -> captureException.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, Archive, CircleAlert, ExternalLink, ImagePlus, Loader2, Save, Send, Sparkles, Upload } from 'lucide-react';
+import { ArrowLeft, Archive, CircleAlert, ExternalLink, ImagePlus, Loader2, Save, Send, Sparkles, Trash2, Upload } from 'lucide-react';
+import DeleteDialog from './DeleteDialog';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
@@ -25,7 +26,7 @@ import VideoCropEditor from './VideoCropEditor';
 import { ApiError, errMessage } from './adminApi';
 import { looksLikeYoutube, uploadCover, youtubeIdOf } from './eventsApi';
 import {
-  FREE_VIDEO_CATEGORIES, FREE_VIDEO_LIMITS, archiveFreeVideo, autofillFreeVideo, categoryLabel, createFreeVideo, freeStatusMeta, getFreeVideo,
+  FREE_VIDEO_CATEGORIES, FREE_VIDEO_LIMITS, archiveFreeVideo, autofillFreeVideo, categoryLabel, createFreeVideo, deleteFreeVideo, freeStatusMeta, getFreeVideo,
   updateFreeVideo, type FreeVideoBody, type FreeVideoRow, type FreeVideoStatus,
 } from './freeVideosApi';
 
@@ -60,6 +61,9 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const apply = useCallback((v: FreeVideoRow) => {
@@ -184,6 +188,21 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
       setBusy(null);
     } finally {
       setConfirmArchive(false);
+    }
+  }
+
+  async function onDelete() {
+    if (!id) return;
+    setDeleting(true); setDeleteError(null);
+    try {
+      await deleteFreeVideo(id);
+      capture('admin2_free_video_deleted', { id });
+      toast.success('Video deleted');
+      window.location.assign('/admin/free-videos');
+    } catch (e) {
+      captureException(e, { where: 'admin2_free_video_delete' });
+      setDeleteError(errMessage(e));
+      setDeleting(false);
     }
   }
 
@@ -345,6 +364,12 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
                 {busy === 'archive' ? <Loader2 className="animate-spin" /> : <Archive />} Archive
               </Button>
             )}
+            {id && (
+              <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10" disabled={busy !== null || deleting}
+                onClick={() => { setDeleteError(null); setConfirmDelete(true); }}>
+                <Trash2 /> Delete permanently
+              </Button>
+            )}
           </div>
         </aside>
       </div>
@@ -361,6 +386,11 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DeleteDialog open={confirmDelete} onOpenChange={setConfirmDelete} busy={deleting} error={deleteError}
+        title="Delete this video permanently?"
+        body="It is removed from the site and its view counts are erased. This cannot be undone. To just hide it, archive it instead."
+        onConfirm={() => void onDelete()} />
     </div>
   );
 }

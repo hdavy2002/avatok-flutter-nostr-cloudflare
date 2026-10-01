@@ -51,10 +51,11 @@ import { toast } from '../../components/ui/sonner';
 import { fmtDuration, fmtIstDateTime, listingImage, youtubeThumb, ErrorState, Shimmer } from '../../components/dash2/shared';
 import { ApiError, adminApi, errMessage, formatPaise } from './adminApi';
 import {
-  DURATION_PRESETS, TIME_SLOTS, dateOfYmd, eventsPath, istTodayYmd, looksLikeYoutube, saveYoutube, statusMeta,
+  DELETE_EVENT_BODY, DURATION_PRESETS, TIME_SLOTS, dateOfYmd, deleteEvent, eventsPath, istTodayYmd, looksLikeYoutube, saveYoutube, statusMeta,
   templeLabel, templesPath, timeLabel, uploadCover, ymdOf, youtubeIdOf, type Blocker, type EventDetailResponse, type EventsMeta, type TempleRow,
 } from './eventsApi';
 import { BRAND } from '../../lib/brand';
+import DeleteDialog from './DeleteDialog';
 
 /* ── form model ─────────────────────────────────────────────────────────── */
 
@@ -243,6 +244,9 @@ export default function EventForm({ eventId }: { eventId?: string }) {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [banner, setBanner] = useState<{ tone: 'error' | 'ok'; text: string; blockers?: Blocker[] } | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const refs = useRef<Partial<Record<keyof FormState, HTMLElement | null>>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -418,6 +422,22 @@ export default function EventForm({ eventId }: { eventId?: string }) {
       toast.success('Unpublished');
       capture('admin2_event_saved', { action: 'unpublish', ok: true, listing_id: id });
     } catch (e) { showError(e, 'unpublish'); } finally { setBusy(null); }
+  }
+
+  async function onDelete() {
+    if (!id) return;
+    setDeleting(true); setDeleteError(null);
+    try {
+      await deleteEvent(id);
+      capture('admin2_event_deleted', { id });
+      toast.success('Event deleted');
+      window.location.assign('/admin/events');
+    } catch (e) {
+      // 409 has_money_history / 503 are shown in the dialog with the server's own words.
+      if (!(e instanceof ApiError) || e.status >= 500) captureException(e, { where: 'admin2_event_delete' });
+      setDeleteError(errMessage(e));
+      setDeleting(false);
+    }
   }
 
   async function onCancel() {
@@ -1142,6 +1162,16 @@ export default function EventForm({ eventId }: { eventId?: string }) {
                     <Ban /> {status === 'draft' ? 'Discard draft' : 'Cancel event'}
                   </Button>
                 )}
+                {id && (() => {
+                  const sold = (ev?.seats_booked ?? 0) > 0 || (ev?.pending_payments ?? 0) > 0;
+                  return (
+                    <Button variant="ghost" className="flex-1 text-destructive hover:bg-destructive/10" disabled={busy !== null || deleting || sold}
+                      title={sold ? 'People have booked or are paying — cancel instead. Payment records are kept.' : undefined}
+                      onClick={() => { setDeleteError(null); setConfirmDelete(true); }}>
+                      <Trash2 /> Delete permanently
+                    </Button>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1169,6 +1199,9 @@ export default function EventForm({ eventId }: { eventId?: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DeleteDialog open={confirmDelete} onOpenChange={setConfirmDelete} busy={deleting} error={deleteError}
+        title="Delete this event permanently?" body={DELETE_EVENT_BODY} onConfirm={() => void onDelete()} />
     </div>
   );
 }
