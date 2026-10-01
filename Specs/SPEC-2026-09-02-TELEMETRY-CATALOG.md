@@ -956,3 +956,31 @@ phone number or UTR in an event. Every product id is the `prd-…` id, every ord
 
 `WEB-STORE` success definition: `shop_product_viewed` followed by `shop_add_to_cart` with `source` in (`pdp`, `buy_now`, `card`) for the
 same person; and `shop_cart_opened.count > 0`. Absence of `shop_list_viewed` with `filters` ≠ '' means the filter sidebar never ran.
+
+## Studio + POD (`AUMFE-POD-*`, Oct 2026)
+
+Print-on-demand Studio in Admin 2 (`/admin/shop/studio/**`) and the partner hand-off. Spec: `Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md` §5, §6, §8.
+
+### Web — admin Studio (`AUMFE-POD-STUDIO-WEB-1`)
+
+| Event | Props | Note |
+|---|---|---|
+| `studio_viewed` | `step` | A Studio screen opened; `step` is `home\|upload\|product\|design\|photos\|publish`. |
+| `studio_design_created` | — | First file of a new design chosen (design row created). |
+| `studio_art_uploaded` | `w, h, has_alpha` | Artwork checked in the browser and stored (size after trimming). `has_alpha:false` = no see-through background. |
+| `studio_placement_saved` | `shape, dpi` | "Looks good" — print file rendered at 300 DPI and uploaded. **Success value:** `dpi` ≥ 150 (the editor blocks lower). |
+| `studio_photo_uploaded` | `kind, size_ok` | An owner model photo stored; `size_ok:false` = short side under 1200 px. |
+| `studio_published` | `steps_failed` | Publish call returned. **Success value:** `steps_failed = 0`. |
+
+Errors (all via `captureException`, tagged `where`): `studio_list`, `studio_get_design`, `studio_fits`, `studio_art_upload`, `studio_art_preview`, `studio_solid_edges`, `studio_rename`, `studio_upload_next`, `studio_put_products`, `studio_print_file`, `studio_print_preview`, `studio_plain_pictures`, `studio_photo_upload`, `studio_photo_update`, `studio_photo_reorder`, `studio_photos_next`, `studio_copy_ai`, `studio_save_draft`, `studio_publish`, `studio_collections`, `studio_resume`.
+
+### Worker (planned by STUDIO-API / CORE / FULFIL — listed here so the catalog is one place)
+
+| Event | Props | Note |
+|---|---|---|
+| `admin2_studio_*` | per route | Studio API writes (design, art, print, photos, publish). |
+| `pod_partner_*` | per route | Print-partner admin API (test, sync, settings). |
+| `shop_fulfilment_sent` | `provider, ms` | Order accepted by the partner. |
+| `shop_fulfilment_failed` | `code` | Partner call failed (`not_configured\|auth_failed\|rejected\|unavailable\|not_found`). |
+| `shop_fulfilment_status` | `from, to, provider` | Partner status moved (poll). |
+| `$ai_generation` | — | Studio best-match text and product-copy draft (Gemini text only; no image generation anywhere). |

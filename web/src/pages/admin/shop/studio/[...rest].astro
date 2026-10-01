@@ -1,0 +1,38 @@
+---
+// [AUMFE-POD-STUDIO-WEB-1 2026-10-01] /admin/shop/studio and every step under it — Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md §5.
+//   /admin/shop/studio                      Studio home (Main mockup)
+//   /admin/shop/studio/new                  Step 1 Upload, new design
+//   /admin/shop/studio/<id>/upload|product|design|photos|publish
+// ONE catch-all page on purpose (like pages/admin/agents/[...rest].astro): the site sits at Cloudflare's 100-rule
+// _routes.json ceiling, and one wildcard is one rule instead of seven. Admin-gated by the Admin2 shell (AdminNav = Clerk
+// provider + admin guard); noindex comes from the layout; SSR so the URL tail reaches the island.
+export const prerender = false;
+import Admin2 from '../../../../layouts/Admin2.astro';
+import StudioApp from '../../../../islands/admin2/studio/StudioApp.tsx';
+
+const rest = String(Astro.params.rest ?? '').slice(0, 200);
+const [first, step] = rest.split('/').filter(Boolean);
+
+const SUBTITLE: Record<string, string> = {
+  home: 'Upload your artwork, place it on a shirt, add your model photos, publish to the shop.',
+  upload: 'Step 1 · Upload the artwork you made. PNG with a see-through background works best.',
+  product: 'Step 2 · Where this artwork fits best. Print areas come from Printrove.',
+  design: 'Step 3 · Your art starts in the middle. Pick a frame shape, then zoom and move — only what is inside the frame prints.',
+  photos: 'Step 4 · Add the model photos you made. We check them against what you sell.',
+  publish: 'Step 5 · Check the print details, set prices, publish.',
+};
+const key = !first ? 'home' : first === 'new' ? 'upload' : step ?? 'upload';
+const subtitle = SUBTITLE[key] ?? SUBTITLE.home;
+---
+
+<Admin2 title="Shop · Studio" heading="Studio" subtitle={subtitle} active="shop-products">
+  {!first && (
+    <Fragment slot="actions">
+      <a href="/admin/shop/studio/new" class="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-[14px] bg-[#b3261e] px-5 font-dashbody text-[15px] font-black text-white no-underline shadow-[0_3px_0_#7a150f]">+ New product from my artwork</a>
+    </Fragment>
+  )}
+  <Fragment slot="head">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@600;700&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'" />
+  </Fragment>
+  <StudioApp client:load rest={rest} />
+</Admin2>

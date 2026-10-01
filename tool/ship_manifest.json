@@ -8743,5 +8743,28 @@
         "note": "Web: the owner pressed Send to production in the confirm dialog."
       }
     ]
+  },
+  "AUMFE-POD-STUDIO-WEB-1": {
+    "description": "[AUMFE-POD-STUDIO-WEB-1 2026-10-01] Admin Studio screens /admin/shop/studio, /new, /<id>/upload|product|design|photos|publish as exact replicas of Specs/studio-mockup/*.dc.html (one catch-all page): in-browser artwork checks + trim, product fit table, editor with the real artwork (frame none/rect/square/circle, zoom, drag, DPI chip), 300 DPI transparent print file (lib/printFile.ts), owner model photos + browser-made plain-shirt pictures (lib/composite.ts), prices and publish steps. Calls the STUDIO-API worker routes. See Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md section 5.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "studio_placement_saved",
+        "property": "shape",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner pressed Looks good in the Studio editor: print file rendered and uploaded. Absent after he says he designed a shirt means the print render/upload path is failing (CORS on the art URL, size limits or the print route)."
+      },
+      {
+        "event": "studio_published",
+        "property": "steps_failed",
+        "exists": true,
+        "min_events": 1,
+        "note": "Studio publish returned. steps_failed must be 0 for a clean publish; present-but-nonzero means a publish step (partner upload, listing, variant map or shop product) is failing."
+      }
+    ]
   }
 }
