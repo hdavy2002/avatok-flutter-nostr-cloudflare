@@ -1,0 +1,105 @@
+/* [SAATHUM-SHOP-DASH-1 2026-10-01] Customer dashboard shop screens — ported VERBATIM from
+   Specs/shop-mockup/shop.css (My orders, Billing tag, wishlist cards), every rule scoped under
+   .shop-dash. Only the dashboard-relevant rules are carried; the .sh-dash/.sh-side shell is the real
+   Dashboard2 layout. Additive (not in the mockup): .sh-form textarea, .sh-modal-box focus/err rows. */
+.shop-dash{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e8a4c;--line:#e3cfa9;--chip:#f3e7d2;--card:#fffdf8;--cream:#fbf3e4;color:var(--ink);font-family:Nunito,system-ui,sans-serif}
+.shop-dash *{box-sizing:border-box}
+.shop-dash h1,.shop-dash h2,.shop-dash h3{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:var(--ink);letter-spacing:0}
+.shop-dash .sh-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:14px;font:900 16px Nunito,sans-serif;letter-spacing:.02em;cursor:pointer;border:0;text-decoration:none;transition:transform .12s}
+.shop-dash .sh-btn:active{transform:translateY(2px)}
+.shop-dash .sh-btn--red{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--redDk)}
+.shop-dash .sh-btn--teal{background:var(--teal);color:#fff;box-shadow:0 3px 0 #0b2424}
+.shop-dash .sh-btn--ghost{background:#fff;color:var(--teal);border:2px solid var(--teal)}
+.shop-dash .sh-btn--wide{width:100%}
+.shop-dash .sh-link{font:800 15px Nunito;color:var(--teal);text-decoration:underline;text-underline-offset:4px;cursor:pointer;background:none;border:0}
+.shop-dash .sh-note{display:inline-block;padding:4px 10px;border-radius:999px;background:#fff3c4;border:1px dashed #c9a13a;font:700 13px Nunito;color:#6b4a2b}
+.shop-dash .sh-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+.shop-dash .sh-card{position:relative;display:flex;flex-direction:column;gap:6px;cursor:pointer;min-width:0}
+.shop-dash .sh-card-art{position:relative;aspect-ratio:3/4;border-radius:20px;overflow:hidden;background:#efdcbf;border:5px solid #fff;box-shadow:0 12px 28px #5a2c0f2e;transition:transform .2s,box-shadow .2s}
+.shop-dash .sh-card:hover .sh-card-art{transform:translateY(-4px) rotate(-.3deg);box-shadow:0 20px 40px #5a2c0f45}
+.shop-dash .sh-card-art img{width:100%;height:100%;object-fit:cover;display:block}
+.shop-dash .sh-badge{position:absolute;top:12px;left:12px;padding:6px 11px;border-radius:10px;font:900 13px/1 Nunito;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red);box-shadow:0 2px 8px #0004}
+.shop-dash .sh-badge--new{background:var(--teal)}
+.shop-dash .sh-badge--best{background:#c27a0e}
+.shop-dash .sh-heart{position:absolute;top:10px;right:10px;width:42px;height:42px;border-radius:50%;background:#fff8ee;border:0;display:grid;place-items:center;cursor:pointer;color:var(--ink)}
+.shop-dash .sh-heart svg{width:20px;height:20px}
+.shop-dash .sh-heart.is-on{color:var(--red)}
+.shop-dash .sh-heart.is-on svg{fill:currentColor}
+.shop-dash .sh-quick{position:absolute;left:12px;right:12px;bottom:12px;opacity:0;transform:translateY(8px);transition:.2s;min-height:44px}
+.shop-dash .sh-card:hover .sh-quick{opacity:1;transform:none}
+.shop-dash .sh-card h3{font:700 18px/1.25 Comfortaa,sans-serif;color:var(--teal);margin-top:10px}
+.shop-dash .sh-price{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:900 18px Nunito;color:var(--ink)}
+.shop-dash .sh-price s{font:700 15px Nunito;color:#8a7560}
+.shop-dash .sh-off{padding:3px 9px;border-radius:999px;background:var(--red);color:#fff;font:900 13px Nunito}
+.shop-dash .sh-sw{display:flex;gap:6px;margin-top:2px}
+.shop-dash .sh-sw i{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #c9b08c}
+.shop-dash .sh-list .sh-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.shop-dash .sh-empty{grid-column:1/-1;text-align:center;padding:60px 20px;background:#fffaf0;border-radius:22px;border:5px solid #fff}
+.shop-dash .sh-empty b{display:block;font:700 22px Comfortaa;margin-bottom:8px}
+.shop-dash .sh-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.shop-dash .sh-form label{display:flex;flex-direction:column;gap:6px;font:800 14px Nunito;color:var(--ink)}
+.shop-dash .sh-form label.full{grid-column:1/-1}
+.shop-dash .sh-form input,.shop-dash .sh-form select{height:48px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:0 14px;font:700 16px Nunito;color:var(--ink)}
+.shop-dash .sh-dtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.shop-dash .sh-dtitle h1{font-size:clamp(28px,2.6vw,36px)}
+.shop-dash .sh-dtitle p{margin:4px 0 0;font:700 15px Nunito;color:var(--sub)}
+.shop-dash .sh-order{background:var(--card);border:5px solid #fff;border-radius:22px;padding:20px;box-shadow:0 10px 24px #5a2c0f1f;margin-bottom:16px}
+.shop-dash .sh-oh{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.shop-dash .sh-oh b{font:900 17px Nunito}
+.shop-dash .sh-oh small{display:block;font:700 14px Nunito;color:var(--sub)}
+.shop-dash .sh-st{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font:900 13px Nunito;letter-spacing:.04em;text-transform:uppercase}
+.shop-dash .st-pending{background:#fff3c4;color:#7a5a00}
+.shop-dash .st-paid{background:#e2eefc;color:#1b4f8c}
+.shop-dash .st-packed{background:#efe3fb;color:#5a2d8c}
+.shop-dash .st-shipped{background:#e0f2f1;color:#0f5c57}
+.shop-dash .st-delivered{background:#e4f3e9;color:#1e6b3c}
+.shop-dash .st-cancelled{background:#fde4e1;color:#9b1c14}
+.shop-dash .sh-oitems{display:flex;gap:12px;flex-wrap:wrap}
+.shop-dash .sh-oitem{display:flex;gap:10px;align-items:center;background:#fff;border-radius:14px;padding:8px 14px 8px 8px}
+.shop-dash .sh-oitem img{width:52px;aspect-ratio:3/4;object-fit:cover;border-radius:8px}
+.shop-dash .sh-oitem b{display:block;font:800 15px Comfortaa;color:var(--teal)}
+.shop-dash .sh-oitem small{font:700 13px Nunito;color:var(--sub)}
+.shop-dash .sh-track{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0 6px;position:relative}
+.shop-dash .sh-track div{text-align:center;font:800 13px/1.3 Nunito;color:#a08974;position:relative;padding-top:34px}
+.shop-dash .sh-track div::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#efdcbf;border:3px solid #fff;box-shadow:0 0 0 2px #e3cfa9;z-index:1}
+.shop-dash .sh-track div::after{content:"";position:absolute;top:16px;left:-50%;width:100%;height:4px;background:#efdcbf}
+.shop-dash .sh-track div:first-child::after{display:none}
+.shop-dash .sh-track div.ok{color:var(--green)}
+.shop-dash .sh-track div.ok::before{background:var(--green);box-shadow:0 0 0 2px #9fd3b2}
+.shop-dash .sh-track div.ok::after{background:var(--green)}
+.shop-dash .sh-track div small{display:block;font-weight:700;color:#8a7560}
+.shop-dash .sh-oact{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.shop-dash .sh-oact .sh-btn{min-height:42px;font-size:14px;padding:0 16px}
+.shop-dash .sh-modal{position:fixed;inset:0;z-index:99;display:none;place-items:center;background:#1a0d0680;padding:16px}
+.shop-dash .sh-modal.is-on{display:grid}
+.shop-dash .sh-modal-box{width:min(520px,100%);background:#fbf3e4;border:6px solid #fff;border-radius:24px;padding:24px;max-height:90vh;overflow:auto}
+.shop-dash .sh-modal-box h2{font-size:24px;margin-bottom:6px}
+.shop-dash .sh-modal-box p{font:600 15px Nunito;color:var(--sub);margin:0 0 14px}
+@media (max-width:1100px){
+  .shop-dash .sh-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  .shop-dash .sh-grid,.shop-dash .sh-list .sh-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .shop-dash .sh-card h3{font-size:16px}
+  .shop-dash .sh-price{font-size:16px}
+  .shop-dash .sh-quick{display:none}
+  .shop-dash .sh-form{grid-template-columns:1fr}
+  .shop-dash .sh-track{grid-template-columns:repeat(5,1fr)}
+  .shop-dash .sh-track div{font-size:12px}
+}
+.shop-dash .sh-ph{position:relative;width:100%;height:100%;display:grid;place-items:center;background:
+  repeating-linear-gradient(135deg,#00000008 0 12px,transparent 12px 24px),var(--ph,#efdcbf);color:#5a1f14a6;font:800 14px Nunito;text-align:center;padding:10px}
+.shop-dash .sh-ph span{background:#fffdf8d9;border-radius:999px;padding:6px 12px;border:1px dashed #5a1f1466}
+.shop-dash .sh-oitem .sh-ph{aspect-ratio:3/4;border-radius:10px;font-size:0}
+.shop-dash .sh-oitem .sh-ph span{display:none}
+.shop-dash .sh-oitem .sh-ph{width:52px}
+.shop-dash .sh-form textarea{width:100%;min-height:110px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:12px 14px;font:700 16px Nunito;color:var(--ink);resize:vertical}
+.shop-dash .sh-form input[type=file]{height:auto;padding:10px 14px}
+.shop-dash .sh-err{color:var(--red);font:800 14px Nunito;margin-top:8px;min-height:18px}
+.shop-dash .sh-modal-box small{display:block;font:700 13px Nunito;color:var(--sub)}
+.shop-dash .sh-oact a.sh-btn{text-decoration:none}
+.shop-dash .sh-card a.sh-card-link{color:inherit;text-decoration:none}
+/* Billing type tag — Billing.tsx is outside .shop-dash, so these two rules are unscoped. */
+.sh-bill-src{display:inline-block;padding:4px 10px;border-radius:999px;font:900 12px Nunito;letter-spacing:.05em;text-transform:uppercase}
+.src-shop{background:#fdeae6;color:#9b1c14}
+.src-event{background:#e0f2f1;color:#0f5c57}

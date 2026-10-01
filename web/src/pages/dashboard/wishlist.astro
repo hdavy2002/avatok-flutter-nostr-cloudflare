@@ -1,0 +1,9 @@
+---
+// /dashboard/wishlist — [SAATHUM-SHOP-DASH-1] Dashboard 2 "Wishlist" (saved T-shirts). Spec §5.6.
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import Wishlist from '../../islands/dashboard2/shop/Wishlist.tsx';
+---
+<Dashboard2 title="Wishlist" active="wishlist" subtitle="T-shirts you have saved.">
+  <Wishlist client:load />
+</Dashboard2>

@@ -41,6 +41,7 @@ import {
   dayKey, dayToDate, errCode, errMessage, formatPaise, isAbort, istDate, istDateTime, istDay, istDayToMs, istTime, istYear, meApi, meBlob,
 } from './accountApi';
 import { BRAND } from '../../lib/brand';
+import './shop/shopDash.css';
 
 /* ── types ──────────────────────────────────────────────────────────────── */
 
@@ -56,7 +57,10 @@ interface PaymentLine {
   amount_paise: number;
   status: PayStatus;
   paid_at: number | null;
+  /** [SAATHUM-SHOP-DASH-1] 'shop' for a T-shirt order; absent on older API builds = 'event'. */
+  kind?: 'event' | 'shop';
 }
+interface ShopItem { name: string; colour?: string; size?: string; qty: number; unit_rupees?: number; amount_rupees?: number; image_url?: string | null }
 interface Refund {
   status: string;
   requested_at: number | null;
@@ -73,6 +77,7 @@ interface PaymentDetail extends PaymentLine {
   refund?: Refund;
   can_request_refund: boolean;
   receipt_url: string | null;
+  items?: ShopItem[];
 }
 interface PageResp { items: PaymentLine[]; next_cursor?: string }
 interface Category { id: string; label: string }
@@ -89,6 +94,12 @@ const STATUS_META: Record<PayStatus, { label: string; cls: string; dot: string }
   refunded: { label: 'Refunded', cls: 'bg-secondary text-secondary-foreground', dot: 'bg-secondary' },
 };
 const STATUSES = Object.keys(STATUS_META) as PayStatus[];
+
+/** [SAATHUM-SHOP-DASH-1] Mockup `.sh-bill-src`: red SHOP / teal EVENT tag on every row. */
+function SourceTag({ kind }: { kind?: 'event' | 'shop' }) {
+  const shop = kind === 'shop';
+  return <span className={cn('sh-bill-src', shop ? 'src-shop' : 'src-event')}>{shop ? 'Shop' : 'Event'}</span>;
+}
 
 /* ── filters <-> URL ────────────────────────────────────────────────────── */
 
@@ -342,6 +353,14 @@ function PaymentDrawer({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
+        {d.kind === 'shop' ? (
+          <Section icon={<Sparkles className="h-4 w-4" />} title="What it was for">
+            <Field label="Order">{d.event_title ?? 'Shop order'}</Field>
+            {(d.items ?? []).map((it, i) => (
+              <Field key={i} label={`Item ${i + 1}`}>{it.name}{it.colour || it.size ? ` · ${[it.colour, it.size].filter(Boolean).join(' · ')}` : ''} · Qty {it.qty}{it.amount_rupees != null ? ` · ₹${it.amount_rupees.toLocaleString('en-IN')}` : ''}</Field>
+            ))}
+          </Section>
+        ) : (
         <Section icon={<Sparkles className="h-4 w-4" />} title="What it was for">
           <Field label="Ritual">{d.event_title ?? `${BRAND.name} booking`}</Field>
           {d.listing_id && <Field label="Event ID"><CopyValue value={d.listing_id} label="event ID" /></Field>}
@@ -350,6 +369,7 @@ function PaymentDrawer({
           {d.event_starts_at && <Field label="Time">{istTime(d.event_starts_at)}</Field>}
           {d.sankalp_name && <Field label="Sankalp name">{d.sankalp_name}</Field>}
         </Section>
+        )}
         <Section icon={<IndianRupee className="h-4 w-4" />} title="Payment">
           <Field label="Amount"><span className="font-dash text-[15px] font-bold">{formatPaise(d.amount_paise)}</span></Field>
           <Field label="Paid on">{d.paid_at ? istDateTime(d.paid_at) : 'Waiting for the bank to confirm'}</Field>
@@ -369,7 +389,7 @@ function PaymentDrawer({
         ) : (
           <p className="text-[13px] font-semibold text-muted-foreground">The receipt will be ready once the bank confirms your payment.</p>
         )}
-        {d.can_request_refund && (
+        {d.kind !== 'shop' && d.can_request_refund && (
           <Button variant="outline" className="text-primary" onClick={() => setRefundOpen(true)}>
             <RotateCcw /> Request refund
           </Button>
@@ -441,8 +461,9 @@ function PaymentRow({
                 {line.event_title ?? `${BRAND.name} booking`}
               </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-semibold text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{line.event_starts_at ? istDate(line.event_starts_at) : 'Date to be set'}</span>
-                {(line.category_label || line.category) && (
+                <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{line.kind === 'shop' ? istDate(line.paid_at) : line.event_starts_at ? istDate(line.event_starts_at) : 'Date to be set'}</span>
+                <SourceTag kind={line.kind} />
+                {line.kind !== 'shop' && (line.category_label || line.category) && (
                   <Badge variant="outline" className="border-border/70 px-2 py-0 text-[11px] font-bold text-foreground/80">{line.category_label ?? line.category}</Badge>
                 )}
               </span>

@@ -9,7 +9,7 @@
 //     <MyEvents client:load />
 //   </Dashboard2>
 //
-// - `active` ∈ 'book' | 'my-events' | 'past' | 'billing' | 'profile'.
+// - `active` ∈ 'book' | 'my-events' | 'past' | 'orders' | 'wishlist' | 'billing' | 'profile'.
 // - DashNav owns the page's ONLY <ClerkProvider> and the auth guard. Screen
 //   islands must not mount their own ClerkIsland; use getActiveTokenWaited().
 // - A sonner <Toaster/> is mounted here; call `toast()` from components/ui/sonner.
@@ -61,8 +61,14 @@ const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fi
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
       <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
         <header class="mb-6 sm:mb-8">
-          <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>
-          {subtitle && <p class="mt-2 max-w-2xl text-[15px] font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
+          {/* [SAATHUM-SHOP-DASH-1] optional `actions` slot (My orders' red "Shop again"); renders nothing for every other page. */}
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div class="min-w-0">
+              <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>
+              {subtitle && <p class="mt-2 max-w-2xl text-[15px] font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
+            </div>
+            <slot name="actions" />
+          </div>
           <div class="dash-ribbon mt-5" aria-hidden="true"></div>
         </header>
         <slot />

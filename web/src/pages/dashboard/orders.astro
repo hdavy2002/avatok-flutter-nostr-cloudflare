@@ -1,0 +1,11 @@
+---
+// /dashboard/orders — [SAATHUM-SHOP-DASH-1] Dashboard 2 "My orders" (shop). Spec §5.6.
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import MyOrders from '../../islands/dashboard2/shop/MyOrders.tsx';
+import '../../islands/dashboard2/shop/shopDash.css';
+---
+<Dashboard2 title="My orders" active="orders" subtitle="Every shop order, its payment and where the parcel is right now.">
+  <div class="shop-dash" slot="actions"><a class="sh-btn sh-btn--red" href="/shop/all">Shop again</a></div>
+  <MyOrders client:load />
+</Dashboard2>

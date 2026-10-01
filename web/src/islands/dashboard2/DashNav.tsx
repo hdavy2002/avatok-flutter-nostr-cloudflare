@@ -13,7 +13,7 @@
  * Layout (all three rendered, CSS picks one):
  *   ≥1024px  260px sidebar: diya logo, user card, menu with animated marker, Logout
  *   640–1023 72px icon rail with tooltips
- *   <640px   top bar + fixed bottom tab bar (5 tabs; Logout lives in Profile)
+ *   <640px   top bar + fixed bottom tab bar (7 tabs; Logout lives in Profile)
  */
 import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -178,6 +178,7 @@ function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; rea
               {on && <span aria-hidden className="absolute -left-4 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
               <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={2.2} />
               <span className="relative">{it.label}</span>
+              {it.badge && <span className="relative ml-auto rounded-full bg-grand-gold px-[7px] py-[3px] text-[11px] font-black leading-none text-[#3a1a0a]">{it.badge}</span>}
             </a>
           );
         })}
@@ -246,8 +247,8 @@ function PhoneBars({ active, who }: { active: DashKey; who: Who | null }) {
       </header>
       <nav
         aria-label="Dashboard"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
-        style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)' }}
+        className="fixed inset-x-0 bottom-0 z-40 grid border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
+        style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)', gridTemplateColumns: `repeat(${DASH_NAV.length}, minmax(0, 1fr))` }}
       >
         {DASH_NAV.map((it) => {
           const on = it.key === active;
