@@ -12,7 +12,8 @@ import { ClerkIsland } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { signInUrlForHere } from '../../lib/authRedirect';
-import { captureException } from '../../lib/analytics';
+import { capture, captureException } from '../../lib/analytics';
+import { getPhoneStatus, finishUrl } from '../auth/passwordless';
 import { BRAND } from '../../lib/brand';
 import {
   deleteMemory, errMessage, getAgents, getMemories, getProfile, getSessions, saveConsent, saveProfile,
@@ -78,13 +79,36 @@ function timeAgo(ms: number): string {
 
 /* ── guard + names (hooks chosen once per build: with or without a Clerk key) ───────────── */
 
+/** WhatsApp gate — same rule as Dashboard 2 (DashNav.phoneGate): a signed-in account that still owes a verified
+ * WhatsApp number finishes sign-up first and comes back here. A failed status read lets the person in
+ * (account bootstrap still refuses an unverified phone server-side). */
+async function whatsappGate(): Promise<boolean> {
+  try {
+    const st = await getPhoneStatus();
+    if (st.needs_phone) {
+      capture('whatsapp_gate_shown', { surface: 'voice' });
+      location.replace(finishUrl(location.pathname + location.search));
+      return false;
+    }
+    capture('whatsapp_gate_passed', { surface: 'voice' });
+  } catch (err) {
+    captureException(err, { where: 'voice_phone_gate' });
+  }
+  return true;
+}
+
 function useGuardClerk(): boolean {
   const { isLoaded, isSignedIn } = useAuth();
   const [ok, setOk] = useState(false);
   useEffect(() => {
-    if (!isLoaded) return;
-    if (!isSignedIn && !lsGet(GUEST_JWT_KEY)) { location.replace(signInUrlForHere()); return; }
-    setOk(true);
+    if (!isLoaded) return undefined;
+    if (!isSignedIn && !lsGet(GUEST_JWT_KEY)) { location.replace(signInUrlForHere()); return undefined; }
+    let cancelled = false;
+    void (async () => {
+      if (isSignedIn && !(await whatsappGate())) return;
+      if (!cancelled) setOk(true);
+    })();
+    return () => { cancelled = true; };
   }, [isLoaded, isSignedIn]);
   return ok;
 }
