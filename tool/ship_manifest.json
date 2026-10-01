@@ -8805,5 +8805,21 @@
         "note": "Fires when the Studio or the daily cron refreshes the stored catalogue (empty or older than 24 h). count should be about 13 products."
       }
     ]
+  },
+  "AUMFE-ASTRO-CLIENT-1": {
+    "description": "[AUMFE-ASTRO-CLIENT-1 2026-10-01] Shared AstrologyAPI connector library (worker/src/lib/astrology: REST client + D1 cache astro_api_cache + geo lookups + MCP client + endpoint registry). No route yet; used later by voice agents and the Pandit ji chat. Needs secret ASTROLOGYAPI_KEY (unset => error astro_not_configured) and migration 2026-10-01-astro-api-cache.sql applied to DB_META. Emits astro_api_call {endpoint, cached, ms, ok, status}.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "astro_api_call",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Only fires once a caller exists and ASTROLOGYAPI_KEY is set. ok=false with error=astro_not_configured means the secret is missing; other errors are API failures."
+      }
+    ]
   }
 }

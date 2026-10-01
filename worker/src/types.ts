@@ -265,6 +265,10 @@ export interface Env {
   // append-only sentinel_evidence log. Specs/GUARDIAN-SENTINEL-FINAL-PLAN §S2.
   MEM0_API_KEY?: string;
 
+  // [AUMFE-ASTRO-CLIENT-1] AstrologyAPI token (REST json/vision hosts + MCP), sent as header x-astrologyapi-key.
+  // NOT SET YET: `wrangler secret put ASTROLOGYAPI_KEY`. Unset -> lib/astrology calls return error "astro_not_configured".
+  ASTROLOGYAPI_KEY?: string;
+
   // Ava AI Voice Agent (WP4, plan §4) — Grok Voice Agent realtime API +
   // Collections RAG. `wrangler secret put GROK_API_KEY` — set SEPARATELY per
   // environment (staging + prod each get their own x.ai key, plan §15.6 "no
