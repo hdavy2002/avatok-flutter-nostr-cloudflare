@@ -8334,5 +8334,21 @@
         "note": "Visitors click the hero to watch."
       }
     ]
+  },
+  "SAATHUM-PLAYER-PAUSE-COVER-1": {
+    "description": "[SAATHUM-PLAYER-PAUSE-COVER-1 2026-10-01] Guarded player covers the frame with our poster while paused, hiding YouTube's own play button and title.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Players still start and play."
+      }
+    ]
   }
 }

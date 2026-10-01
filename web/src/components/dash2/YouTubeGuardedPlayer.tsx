@@ -317,7 +317,11 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
     else if (k === 'escape' && pseudoFs) { e.preventDefault(); setPseudoFs(false); }
   };
 
-  const showPoster = err == null && !started;
+  // [SAATHUM-PLAYER-PAUSE-COVER-1 2026-10-01] Owner: hide YouTube's own UI completely. When
+  // paused, YouTube paints its grey play button and the video title over the frame (we cannot
+  // style inside its iframe, and with a crop the button sits off-centre and peeks out from
+  // behind ours). So our poster also covers the frame while PAUSED, not only before first play.
+  const showPoster = err == null && (!started || state === S.PAUSED);
   const posterSrc = poster || youtubeThumb(videoId);
   const btn = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-grand-cream transition-colors hover:bg-accent-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grand-gold';
   const hideCls = !controlsVisible && playing ? 'pointer-events-none opacity-0' : 'opacity-100';
