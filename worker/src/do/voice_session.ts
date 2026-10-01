@@ -17,7 +17,6 @@ import type { Env } from "../types";
 import type { ClientMsg, ServerMsg, VoiceAgentDef, VoiceCard, VoiceTool, VoiceToolCtx } from "../lib/voice_agents/types";
 import { trackUserContact, trackException } from "../hooks";
 import { readConfig, type PlatformConfig } from "../routes/config";
-import { thinkingCfg } from "../util";
 import { BRAND } from "../lib/brand";
 import { getAgent, toPublic } from "../lib/voice_agents/registry";
 import { memoryTools } from "../lib/voice_agents/memory_tools";
@@ -183,7 +182,7 @@ export class VoiceSessionDO {
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: this.agent.voice } } },
-          ...thinkingCfg(this.model), // cost/latency guard shared with the receptionist
+          // [AUMFE-VOICE-FIX-1] No thinkingConfig: gemini-3.8-live rejects it (1007 "Thinking level is not supported").
         },
         systemInstruction: { parts: [{ text: this.setupSystem }] },
         tools: [{ functionDeclarations: decls }],

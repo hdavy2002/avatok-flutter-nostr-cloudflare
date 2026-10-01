@@ -8945,5 +8945,30 @@
         "exists": true
       }
     ]
+  },
+  "AUMFE-VOICE-FIX-1": {
+    "description": "[AUMFE-VOICE-FIX-1 2026-10-01] First owner test call closed after 1 s: gemini-3.8-live rejects thinkingConfig in the Live setup (WS 1007 'Thinking level is not supported for this model'). Removed thinkingConfig from VoiceSessionDO setup. Web: a call that errors in its first 5 s now shows 'The call did not connect' instead of the after-call summary.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "voiceAgentsEnabled"
+    ],
+    "success": [
+      {
+        "event": "voice_gemini_closed",
+        "property": "code",
+        "exists": true,
+        "min_events": 0,
+        "note": "Should no longer appear with code 1007 right after voice_session_started."
+      },
+      {
+        "event": "voice_session_ended",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "A real call ends ok."
+      }
+    ]
   }
 }

@@ -65,7 +65,9 @@ export function useVoiceCall() {
     c?.close();
     const r = readyRef.current;
     const seconds = Math.max(meterRef.current?.seconds ?? 0, 0) || elapsedRef.current;
-    if (!r) {
+    // [AUMFE-VOICE-FIX-1] A call that failed in its first seconds is a connection failure, not a finished talk.
+    if (!r || (reason === 'error' && seconds < 5)) {
+      if (r) capture('voice_call_ended', { agent: agentRef.current?.id ?? '', seconds, reason });
       // never got going: back to where they were, with a calm message
       setPhase('idle');
       setError((prev) => prev ?? { kind: 'closed', message: '' });
