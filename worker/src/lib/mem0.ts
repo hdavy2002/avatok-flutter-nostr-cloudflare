@@ -92,3 +92,73 @@ export async function deleteCallerMemory(env: Env, businessUid: string, callerUi
   const userId = userIdFor(businessUid, callerUid);
   await mfetch(env, `/memories/?user_id=${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
+
+// ---------------------------------------------------------------------------
+// [AUMFE-AGENT-MEMORY-1] Generic mem0 access for the shared agent memory core
+// (lib/agent_memory). Same secret, same fail-open rule as above, but the caller
+// learns WHY a call did not succeed so it can emit telemetry (no silent catch).
+// ---------------------------------------------------------------------------
+export interface Mem0Result {
+  ok: boolean;
+  /** "no_key" | "http_<status>" | "network" | "bad_json" when !ok */
+  reason?: string;
+  json?: any;
+}
+
+export function mem0Configured(env: Env): boolean {
+  return !!env.MEM0_API_KEY;
+}
+
+export async function mem0Call(env: Env, path: string, init?: RequestInit): Promise<Mem0Result> {
+  const key = env.MEM0_API_KEY;
+  if (!key) return { ok: false, reason: "no_key" };
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Token ${key}`,
+        "Content-Type": "application/json",
+        ...(init?.headers as Record<string, string> | undefined),
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    const text = await res.text();
+    if (!text) return { ok: true };
+    try {
+      return { ok: true, json: JSON.parse(text) };
+    } catch {
+      return { ok: false, reason: "bad_json" };
+    }
+  } catch (e) {
+    return { ok: false, reason: `network:${String(e).slice(0, 80)}` };
+  }
+}
+
+/** Store one memory verbatim (infer:false — no mem0-side rewriting). Returns the mem0 id when known. */
+export async function mem0Add(env: Env, userId: string, text: string, metadata?: Record<string, unknown>): Promise<{ id: string | null; res: Mem0Result }> {
+  const res = await mem0Call(env, `/memories/`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, messages: [{ role: "user", content: text.slice(0, 2000) }], infer: false, metadata }),
+  });
+  const first = Array.isArray(res.json) ? res.json[0] : Array.isArray(res.json?.results) ? res.json.results[0] : null;
+  return { id: first?.id ? String(first.id) : null, res };
+}
+
+export async function mem0Search(env: Env, userId: string, query: string, limit = 8): Promise<{ texts: string[]; res: Mem0Result }> {
+  const res = await mem0Call(env, `/memories/search/`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, query: query.slice(0, 500), limit }),
+  });
+  const items: any[] = Array.isArray(res.json) ? res.json : Array.isArray(res.json?.results) ? res.json.results : [];
+  const texts = items.map((m) => String(m?.memory ?? m?.text ?? "").trim()).filter(Boolean).slice(0, limit);
+  return { texts, res };
+}
+
+export async function mem0DeleteOne(env: Env, memoryId: string): Promise<Mem0Result> {
+  return mem0Call(env, `/memories/${encodeURIComponent(memoryId)}/`, { method: "DELETE" });
+}
+
+export async function mem0DeleteUser(env: Env, userId: string): Promise<Mem0Result> {
+  return mem0Call(env, `/memories/?user_id=${encodeURIComponent(userId)}`, { method: "DELETE" });
+}

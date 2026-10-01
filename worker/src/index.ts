@@ -58,6 +58,7 @@ import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp
 import { whatsappAuthSend, whatsappAuthVerify, accountPhoneClaim } from "./routes/whatsapp_auth"; // [WA-LOGIN-1]
 import { meDashboardRoute } from "./routes/me_dashboard"; // [DASH2-API]
 import { admin2Route } from "./routes/admin2"; // [ADMIN2-API]
+import { agentMemoryRoute } from "./routes/agent_memory"; // [AUMFE-AGENT-MEMORY-1]
 import { mePushRoute } from "./routes/me_push"; import { runPushReminders } from "./lib/web_push"; // [DASH2-PUSH]
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
@@ -1056,6 +1057,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
       // [DASH2-API 2026-09-25] Saathum customer dashboard (Dashboard 2) — routes/me_dashboard.ts.
+      if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"
           || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {

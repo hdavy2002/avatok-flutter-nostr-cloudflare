@@ -8643,12 +8643,12 @@
     ]
   },
   "SAATHUM-DOMAIN-LEGACY-1": {
-      "description": "[SAATHUM-DOMAIN-LEGACY-1] brand.json legacyDomains (empty today): generator keeps api.<legacy> Worker routes, legacy media hosts accepted for stored URLs, web-deploy derives Clerk key/API base from brand.json.",
-      "shipped": "2026-10-01",
-      "two_sided": false,
-      "min_devices_on_build": 0,
-      "flags": [],
-      "no_telemetry": "Pure build/config plumbing with legacyDomains = [] — every generated file, route and host check is byte-identical or behaves identically to before (gen_brand --check passes on the unchanged wrangler.toml; the derived Clerk key reproduces pk_live_Y2xlcmsuc2FhdGh1bS5jb20k exactly). No new event, flag or response shape. Check: after the next web deploy, the sign-in page still loads Clerk."
+    "description": "[SAATHUM-DOMAIN-LEGACY-1] brand.json legacyDomains (empty today): generator keeps api.<legacy> Worker routes, legacy media hosts accepted for stored URLs, web-deploy derives Clerk key/API base from brand.json.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Pure build/config plumbing with legacyDomains = [] — every generated file, route and host check is byte-identical or behaves identically to before (gen_brand --check passes on the unchanged wrangler.toml; the derived Clerk key reproduces pk_live_Y2xlcmsuc2FhdGh1bS5jb20k exactly). No new event, flag or response shape. Check: after the next web deploy, the sign-in page still loads Clerk."
   },
   "AUMFE-POD-CORE-1": {
     "description": "[AUMFE-POD-CORE-1 2026-10-01] Print-on-demand foundation: migration worker/migrations/2026-10-01-aumfe-pod.sql (pod_catalog, studio_designs, studio_photos, pod_listings, pod_variant_map, shop_fulfilments, shop_fulfilment_events; CREATE-only, not yet applied), swappable partner boundary worker/src/lib/pod/ (manual + Printrove adapter, specs, address helpers), admin Print partner API /api/admin/v2/shop/partner|partner/test|partner/sync|partner/settings and /api/admin/v2/shop/catalog (routes/admin2_pod_partner.ts), config keys shopPodProvider ('manual'), shopPodAutoSend (false), shopPodPollMinutes (30). Ships on the manual provider; Printrove only after the owner supplies PRINTROVE_EMAIL / PRINTROVE_PASSWORD secrets and the probe script has been run. See Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md.",
@@ -8819,6 +8819,22 @@
         "equals": true,
         "min_events": 1,
         "note": "Only fires once a caller exists and ASTROLOGYAPI_KEY is set. ok=false with error=astro_not_configured means the secret is missing; other errors are API failures."
+      }
+    ]
+  },
+  "AUMFE-AGENT-MEMORY-1": {
+    "description": "[AUMFE-AGENT-MEMORY-1 2026-10-01] Shared agent memory core (worker/src/lib/agent_memory): customer astro profile + memory consent, remembered facts/open threads/session summaries (D1 owner of truth, mem0 semantic index, fail-open), agent sessions with transcripts in private R2 and Gemini summarisation, and buildBriefing() for agent prompts. Routes: /api/me/astro-profile, /api/me/memory-consent, /api/me/memories, /api/me/agent-sessions. Library only until an agent calls it; migrations 2026-10-01-agent-memory*.sql must be applied first.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "agent_memory_briefing_built",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Fires when an agent builds a customer briefing. ok=false means the briefing query failed and the agent ran without memory."
       }
     ]
   }
