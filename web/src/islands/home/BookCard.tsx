@@ -372,8 +372,6 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
             {it.isLiveStream && <span className="bn-pill bn-pill--live"><i />LIVE</span>}
             {it.visibility === 'private'
               ? <span className="bn-pill bn-pill--one">Private · 1:1</span>
-              : it.freeNow && !it.isLiveStream
-                ? <span className="bn-pill bn-pill--live"><i />Free · watch now</span>
               : it.mode === 'live'
                 ? <span className="bn-pill bn-pill--live"><i />{it.liveNow ? 'Happening now' : 'Open to all'}</span>
                 : <span className="bn-pill bn-pill--one">1:1 Puja</span>}
@@ -385,15 +383,13 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
               live must SAY so — the countdown gives way to a live-streaming banner. */}
           {it.isLiveStream && <span className="bn-cd-label bn-cd-label--stream"><i />Live streaming now</span>}
           {/* [SAATHUM-FREEVID-CARD-1] A free video is watchable now: say so instead of a countdown. */}
-          {!it.isLiveStream && it.freeNow && <span className="bn-cd-label bn-cd-label--stream"><i />Watch free now</span>}
+          {!it.isLiveStream && it.freeNow && <span className="bn-cd-label bn-cd-label--stream"><i />Streaming live now</span>}
           {!it.isLiveStream && !it.freeNow && !it.liveNow && it.startsAt != null && <>
             <span className="bn-cd-label">{copy.startsIn}</span>
             <Countdown startsAt={it.startsAt} now={now} />
           </>}
           {!it.isLiveStream && it.liveNow && <span className="bn-cd-label bn-cd-label--live">Happening now</span>}
         </span>
-        {/* [SAATHUM-FREEVID-CARD-1] Hover: big play button + "Watch for free". */}
-        {it.freeNow && <span className="bn-watch-hover"><span className="bn-watch-hover-btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>Watch for free</span></span>}
       </a>
       <div className="bn-body">
         <h3 className="bn-title"><a href={it.href} onClick={() => track('title')}>{it.title}</a></h3>
@@ -441,7 +437,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} title={it.freeNow ? 'Watch for free' : undefined} onClick={(e) => { track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book'); if (it.freeNow) goFreeWatch(e, it); }}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} onClick={(e) => { track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book'); if (it.freeNow) goFreeWatch(e, it); }}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">

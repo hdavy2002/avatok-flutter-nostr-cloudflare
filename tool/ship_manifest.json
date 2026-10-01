@@ -8350,5 +8350,37 @@
         "note": "Players still start and play."
       }
     ]
+  },
+  "SAATHUM-CLERK-SINGLE-BRIDGE-1": {
+    "description": "[SAATHUM-CLERK-SINGLE-BRIDGE-1 2026-10-01] One shared session-only Clerk provider per page; fixes the vanishing free player.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_live_player_started",
+        "property": "listing_id",
+        "min_events": 1,
+        "note": "One shared session-only Clerk provider per page; fixes the vanishing free player.",
+        "exists": true
+      }
+    ]
+  },
+  "SAATHUM-FREEVID-CARD-2": {
+    "description": "[SAATHUM-FREEVID-CARD-2 2026-10-01] Free video cards: image says Streaming live now; Watch free only on the button.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "property": "free",
+        "min_events": 1,
+        "note": "Free video cards: image says Streaming live now; Watch free only on the button.",
+        "equals": true
+      }
+    ]
   }
 }
