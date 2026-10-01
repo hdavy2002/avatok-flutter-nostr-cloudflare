@@ -3,6 +3,7 @@
 // plain application/json when probed; text/event-stream "data:" lines are handled defensively).
 import type { Env } from "../../types";
 import { track, trackException } from "../../hooks";
+import { BRAND } from "../brand";
 
 const MCP_URL = "https://mcp.astrologyapi.com/mcp";
 const PROTOCOL = "2025-06-18";
@@ -42,7 +43,7 @@ async function rpc(env: Env, method: string, params: unknown, session?: string):
 
 async function session(env: Env): Promise<string | undefined> {
   const init = await rpc(env, "initialize", {
-    protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: "saathum-worker", version: "1" },
+    protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: `${BRAND.slug}-worker`, version: "1" },
   });
   if (init.msg.error) throw new Error(`mcp_init_${init.msg.error.code ?? "err"}`);
   return init.session ?? undefined;
@@ -82,7 +83,7 @@ export async function mcpCallTool(env: Env, name: string, args: Record<string, u
     void trackException(env, e, { handled: true, route: "astro_mcp_call", extra: { tool: name } });
     out = { error: (e as { name?: string })?.name === "TimeoutError" ? "astro_timeout" : "astro_mcp_unavailable" };
   }
-  void track(env, uid, "astro_api_call", "saathum", { endpoint: `mcp:${name}`, cached: false, ms: Date.now() - t0, ok: !out?.error, status: out?.error ? 0 : 200 });
+  void track(env, uid, "astro_api_call", BRAND.slug, { endpoint: `mcp:${name}`, cached: false, ms: Date.now() - t0, ok: !out?.error, status: out?.error ? 0 : 200 });
   return out;
 }
 

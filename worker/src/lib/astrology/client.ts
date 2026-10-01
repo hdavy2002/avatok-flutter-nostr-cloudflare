@@ -5,6 +5,7 @@
 import type { Env } from "../../types";
 import { track } from "../../hooks";
 import { cacheGet, cachePut, type AstroTtl } from "./cache";
+import { BRAND } from "../brand";
 
 export const ASTRO_HOSTS = {
   json: "https://json.astrologyapi.com/v1",
@@ -12,7 +13,7 @@ export const ASTRO_HOSTS = {
 } as const;
 export type AstroHost = keyof typeof ASTRO_HOSTS;
 
-const APP = "saathum";
+export const APP = BRAND.slug;
 const TIMEOUT_MS = 10_000;
 
 export interface AstroOpts {
