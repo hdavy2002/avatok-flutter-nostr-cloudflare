@@ -8398,5 +8398,53 @@
         "note": "Players still play."
       }
     ]
+  },
+  "SAATHUM-FREEVIDEOS-API-1": {
+    "description": "[SAATHUM-FREEVIDEOS-API-1 2026-10-01] Free videos API: public list/detail/watch/view, admin CRUD, live badge cron, analytics titles.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_view",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Free videos API: public list/detail/watch/view, admin CRUD, live badge cron, analytics titles."
+      }
+    ]
+  },
+  "SAATHUM-FREEVIDEOS-ADMIN-1": {
+    "description": "[SAATHUM-FREEVIDEOS-ADMIN-1 2026-10-01] Admin Free videos section: list + create/edit form with cover, category, crop.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "free_video_admin_saved",
+        "property": "id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin Free videos section: list + create/edit form with cover, category, crop."
+      }
+    ]
+  },
+  "SAATHUM-FREEVIDEOS-WEB-1": {
+    "description": "[SAATHUM-FREEVIDEOS-WEB-1 2026-10-01] Public Free videos row, /free-videos page and /watch/<id> page.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Public Free videos row, /free-videos page and /watch/<id> page."
+      }
+    ]
   }
 }
