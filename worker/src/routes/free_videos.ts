@@ -21,6 +21,7 @@ import { isAdminUid } from "../lib/admin_calendar_exempt";
 import { parseYoutubeVideoId } from "../lib/me_dashboard_logic";
 import { cropFromRow, isValidCrop, toCrop, type VideoCrop } from "../lib/video_crop";
 import { isMissingColumnError, recordVideoView } from "../lib/freevid_compat";
+import { autofillFromYoutube, fetchYoutubeMeta } from "../lib/free_video_autofill"; // [SAATHUM-FREEVIDEOS-AUTOFILL-1]
 import { requireAdmin } from "./admin_money";
 import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports this file, a value import would be circular
 
@@ -422,10 +423,26 @@ async function adminArchive(req: Request, env: Env, id: string): Promise<Respons
   } catch (e) { return adminUnavailable(env, e, "free_videos:admin_archive"); }
 }
 
+// [SAATHUM-FREEVIDEOS-AUTOFILL-1 2026-10-01] POST /api/admin/v2/free-videos/autofill
+// { youtube_url } -> { title, description, category, source: 'ai'|'youtube', original }.
+// Nothing is saved; the admin form fills its fields and the admin edits/saves as usual.
+async function adminAutofill(req: Request, env: Env): Promise<Response> {
+  const g = await adminGuard(req, env); if (g instanceof Response) return g;
+  const b = await readBody(req);
+  const url = typeof b?.youtube_url === "string" ? b.youtube_url : "";
+  const videoId = url ? parseYoutubeVideoId(url) : null;
+  if (!videoId) return admin2Err(400, "invalid_youtube_url", "That is not a YouTube link.", { field: "youtube_url" });
+  const meta = await fetchYoutubeMeta(env, videoId);
+  if (!meta || !meta.title) return admin2Err(404, "youtube_not_found", "Couldn't read that video from YouTube — check the link, or that the video is public or unlisted.", { field: "youtube_url" });
+  const r = await autofillFromYoutube(env, g.uid, meta);
+  return json({ ok: true, youtube_video_id: videoId, ...r }, 200, NO_STORE);
+}
+
 const ID = "([^/]+)";
 export const ADMIN2_FREE_VIDEO_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: "/api/admin/v2/free-videos", handler: (req, env) => adminList(req, env) },
   { method: "POST", path: "/api/admin/v2/free-videos", handler: (req, env) => adminCreate(req, env) },
+  { method: "POST", path: "/api/admin/v2/free-videos/autofill", handler: (req, env) => adminAutofill(req, env) },
   { method: "GET", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminGet(req, env, id) },
   { method: "PUT", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminUpdate(req, env, id) },
   { method: "DELETE", path: new RegExp(`^/api/admin/v2/free-videos/${ID}$`), handler: (req, env, [id]) => adminArchive(req, env, id) },

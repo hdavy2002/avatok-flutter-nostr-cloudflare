@@ -64,6 +64,14 @@ export const getFreeVideo = (id: string) => adminApi<FreeVideoResponse>(freeVide
 export const createFreeVideo = (body: FreeVideoBody) => adminApi<FreeVideoResponse>(freeVideosPath(), { method: 'POST', body });
 export const updateFreeVideo = (id: string, body: FreeVideoBody) => adminApi<FreeVideoResponse>(freeVideosPath(id), { method: 'PUT', body });
 /** Soft delete: the server sets status = 'archived'. */
+/** [SAATHUM-FREEVIDEOS-AUTOFILL-1] Pull the video's title/description from YouTube and have AI
+ *  rewrite them (unique wording) + pick a category. Saves nothing. */
+export interface FreeVideoAutofill {
+  ok: boolean; youtube_video_id: string; title: string; description: string;
+  category: FreeVideoCategory | null; source: 'ai' | 'youtube'; original: { title: string; channel: string };
+}
+export const autofillFreeVideo = (youtube_url: string) =>
+  adminApi<FreeVideoAutofill>(`${freeVideosPath()}/autofill`, { method: 'POST', body: { youtube_url } });
 export const archiveFreeVideo = (id: string) => adminApi<{ ok: boolean }>(freeVideosPath(id), { method: 'DELETE' });
 
 export function freeStatusMeta(status: string): { label: string; variant: 'secondary' | 'accent' | 'muted' } {

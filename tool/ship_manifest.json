@@ -8446,5 +8446,21 @@
         "note": "Public Free videos row, /free-videos page and /watch/<id> page."
       }
     ]
+  },
+  "SAATHUM-FREEVIDEOS-AUTOFILL-1": {
+    "description": "[SAATHUM-FREEVIDEOS-AUTOFILL-1 2026-10-01] Admin free video form fills title/description/category from the YouTube link, rewritten by AI.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "free_video_autofill",
+        "property": "ai_status",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "AI rewrite succeeds."
+      }
+    ]
   }
 }

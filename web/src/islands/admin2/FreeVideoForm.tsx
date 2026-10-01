@@ -7,7 +7,7 @@
  *  - Telemetry: admin2_free_video_saved {id, status}; failures -> captureException.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, Archive, CircleAlert, ExternalLink, ImagePlus, Loader2, Save, Send, Upload } from 'lucide-react';
+import { ArrowLeft, Archive, CircleAlert, ExternalLink, ImagePlus, Loader2, Save, Send, Sparkles, Upload } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
@@ -25,7 +25,7 @@ import VideoCropEditor from './VideoCropEditor';
 import { ApiError, errMessage } from './adminApi';
 import { looksLikeYoutube, uploadCover, youtubeIdOf } from './eventsApi';
 import {
-  FREE_VIDEO_CATEGORIES, FREE_VIDEO_LIMITS, archiveFreeVideo, categoryLabel, createFreeVideo, freeStatusMeta, getFreeVideo,
+  FREE_VIDEO_CATEGORIES, FREE_VIDEO_LIMITS, archiveFreeVideo, autofillFreeVideo, categoryLabel, createFreeVideo, freeStatusMeta, getFreeVideo,
   updateFreeVideo, type FreeVideoBody, type FreeVideoRow, type FreeVideoStatus,
 } from './freeVideosApi';
 
@@ -87,6 +87,37 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
   };
 
   const ytId = useMemo(() => youtubeIdOf(form.youtube_url), [form.youtube_url]);
+
+  // [SAATHUM-FREEVIDEOS-AUTOFILL-1 2026-10-01] Owner: paste the YouTube link and the form
+  // fills itself — YouTube's title/description, rewritten by AI into unique wording, plus a
+  // category. Runs automatically for a NEW video whose title and description are still
+  // empty; the "Fill from YouTube" button re-runs it any time (overwriting the three fields).
+  const [fill, setFill] = useState<{ state: 'idle' | 'loading' | 'done' | 'error'; msg?: string }>({ state: 'idle' });
+  const autoTried = useRef<string | null>(null);
+  const runAutofill = useCallback(async (why: 'auto' | 'button') => {
+    const url = form.youtube_url.trim();
+    if (!url || !youtubeIdOf(url)) return;
+    setFill({ state: 'loading' });
+    try {
+      const r = await autofillFreeVideo(url);
+      setForm((f) => ({ ...f, title: r.title || f.title, description: r.description || f.description, category: r.category ?? f.category }));
+      setErrors((e) => ({ ...e, title: undefined, description: undefined }));
+      setFill({ state: 'done', msg: r.source === 'ai'
+        ? 'Filled from YouTube and rewritten by AI. Check it and edit anything you like.'
+        : 'Filled from YouTube (AI rewrite was unavailable). Please reword it so it is unique.' });
+      capture('admin2_free_video_autofill', { why, source: r.source, video_id: r.youtube_video_id });
+    } catch (e) {
+      captureException(e, { where: 'admin2_free_video_autofill' });
+      setFill({ state: 'error', msg: errMessage(e) });
+    }
+  }, [form.youtube_url]);
+  useEffect(() => {
+    if (videoId || !ytId || autoTried.current === ytId) return;
+    if (form.title.trim() || form.description.trim()) return;
+    autoTried.current = ytId;
+    const t = window.setTimeout(() => { void runAutofill('auto'); }, 400);
+    return () => window.clearTimeout(t);
+  }, [videoId, ytId, form.title, form.description, runAutofill]);
   const archived = status === 'archived';
   const disabled = busy !== null || archived;
   const dirty = !base
@@ -207,6 +238,27 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-5">
+          <Section title="YouTube video" subtitle="Start here: paste the YouTube link and the title, description and category fill in by themselves. Only signed-in visitors can watch, and the link is never shown on the page.">
+            <Field label="YouTube link" htmlFor="fv-yt" error={errors.youtube_url}>
+              <Input id="fv-yt" inputMode="url" value={form.youtube_url} disabled={disabled}
+                onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://youtube.com/watch?v=…" aria-invalid={!!errors.youtube_url} />
+            </Field>
+            {ytId && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" disabled={disabled || fill.state === 'loading'} onClick={() => void runAutofill('button')}>
+                  {fill.state === 'loading' ? <Loader2 className="animate-spin" /> : <Sparkles />} {fill.state === 'loading' ? 'Reading the video…' : 'Fill from YouTube with AI'}
+                </Button>
+                {fill.msg && (
+                  <p role="status" className={cn('text-[14px] font-semibold', fill.state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>{fill.msg}</p>
+                )}
+              </div>
+            )}
+            {ytId && (
+              <VideoCropEditor videoId={ytId} title={form.title} disabled={disabled}
+                value={form.crop} saved={base?.crop ?? null} onChange={(c) => set('crop', c)} />
+            )}
+          </Section>
+
           <Section title="Details" subtitle="Shown on the card and on the watch page.">
             <Field label="Title" htmlFor="fv-title" error={errors.title} hint={`${form.title.length}/${FREE_VIDEO_LIMITS.titleMax}`}>
               <Input id="fv-title" value={form.title} disabled={disabled} maxLength={FREE_VIDEO_LIMITS.titleMax + 20}
@@ -257,16 +309,6 @@ export default function FreeVideoForm({ videoId }: { videoId?: string }) {
             {errors.cover_url && <p className="text-[13px] font-semibold text-destructive" role="alert">{errors.cover_url}</p>}
           </Section>
 
-          <Section title="YouTube video" subtitle="Paste an unlisted YouTube link. Only signed-in visitors can watch, and the link is never shown on the page.">
-            <Field label="YouTube link" htmlFor="fv-yt" error={errors.youtube_url}>
-              <Input id="fv-yt" inputMode="url" value={form.youtube_url} disabled={disabled}
-                onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://youtube.com/watch?v=…" aria-invalid={!!errors.youtube_url} />
-            </Field>
-            {ytId && (
-              <VideoCropEditor videoId={ytId} title={form.title} disabled={disabled}
-                value={form.crop} saved={base?.crop ?? null} onChange={(c) => set('crop', c)} />
-            )}
-          </Section>
         </div>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-6">
