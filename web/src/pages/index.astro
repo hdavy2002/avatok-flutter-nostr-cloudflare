@@ -6,6 +6,7 @@ import SiteFooter from '../components/SiteFooter.astro';
 import FolkArtwork from '../components/FolkArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import BookingArtwork from '../components/BookingArtwork.astro';
+import AskPanditSection from '../components/home/AskPanditSection.astro';
 import { ARTWORK_QUALITY, publicImage, publicImageSrcSet } from '../lib/config';
 import { HOME_HERO, HOME_SEO } from '../lib/homeContent';
 import '../styles/saathum-folk.css';
@@ -92,6 +93,9 @@ import { BRAND } from '../lib/brand';
         </div>
       </section>
       <div class="grand-divider grand-divider--after-experiences" aria-hidden="true"></div>
+
+      {/* [AUMFE-PANDIT-WEB-1 2026-10-01] "Ask Pandit ji" band — static HTML, opens /pandit. Component: components/home/AskPanditSection.astro */}
+      <AskPanditSection />
 
       <!-- [HOME-HOWITWORKS-1 2026-09-27] "How does it work?" strip — sits above Book now,
            framed by the gold ribbon on both sides. Tooltips are CSS-only (hover + keyboard focus). -->

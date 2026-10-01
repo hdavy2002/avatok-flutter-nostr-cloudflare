@@ -1,0 +1,46 @@
+---
+// /pandit — [AUMFE-PANDIT-WEB-1 2026-10-01] Ask Pandit ji: the astrology chat that suggests colours, chakra designs and pujas.
+// noindex until the launch flag is on (the page itself shows "opening soon" while the worker says can_use=false).
+//
+// NOTE FOR AI:
+//  - Same folk shell as /talk (Base chrome={false}, .folk-site, SiteHeader/SiteFooter folk).
+//  - Everything interactive is the Pandit island (islands/pandit/): sign-in gate, phone gate, birth card, streaming chat.
+//  - Per-person data: never cached or indexed. Brand name/domain only through BRAND.
+//  - The avatar is /images/pandit-ji.jpg (public/images/).
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { publicImage, clerkFapiHost } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import PanditApp from '../islands/pandit/Pandit.tsx';
+import '../styles/saathum-folk.css';
+import { BRAND } from '../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const clerkHost = clerkFapiHost();
+---
+<Base
+  title={`Ask Pandit ji · ${BRAND.name}`}
+  description={`Share your birth details and ask Pandit ji what to wear, which puja to do and what your kundli says.`}
+  noindex={true}
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#fff8e8" />
+    {clerkHost && <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />}
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content">
+      <PanditApp client:load />
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>
