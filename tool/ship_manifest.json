@@ -8984,5 +8984,19 @@
         "equals": 0
       }
     ]
+  },
+  "AUMFE-PANDIT-WEB-2": {
+    "description": "[AUMFE-PANDIT-WEB-2 2026-10-01] /pandit uses the shared WhatsApp gate (getPhoneStatus) and opens for admins while panditChatEnabled is off.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "pandit_page_view",
+        "property": "surface",
+        "exists": true
+      }
+    ]
   }
 }

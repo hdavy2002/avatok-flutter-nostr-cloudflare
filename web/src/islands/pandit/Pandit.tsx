@@ -15,7 +15,7 @@ import { IslandBoundary } from '../../components/IslandBoundary';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { signInUrlForHere } from '../../lib/authRedirect';
 import { capture, captureException } from '../../lib/analytics';
-import { finishUrl } from '../auth/passwordless';
+import { finishUrl, getPhoneStatus } from '../auth/passwordless';
 import { RichText } from '../preeti/richText';
 import { ApiError } from '../../lib/apiClient';
 import { deleteMemory, errMessage, getState, saveConsent, saveProfile, SignedOutError, streamChat } from './api';
@@ -144,13 +144,18 @@ function Pandit() {
       try {
         const s = await getState();
         if (cancelled) return;
-        if (s.needs_phone) {
+        // [AUMFE-PANDIT-WEB-2] Same WhatsApp rule as /talk and Dashboard 2 (getPhoneStatus), not the guides API's
+        // raw contact read, which disagreed and looped verified users through /sign-up?finish=1. Fail open.
+        let needsPhone = false;
+        try { needsPhone = (await getPhoneStatus()).needs_phone === true; } catch (pe) { captureException(pe, { where: 'pandit_phone_gate' }); }
+        if (cancelled) return;
+        if (needsPhone) {
           capture('whatsapp_gate_shown', { surface: 'pandit' });
           location.replace(finishUrl(location.pathname + location.search));
           return;
         }
         apply(s);
-        if (!s.enabled || !s.can_use) { setView('soon'); return; }
+        if (!s.can_use) { setView('soon'); return; } // can_use already covers the flag OR the admin list
         if (s.conversation) { setConvId(s.conversation.id); setMessages(s.conversation.messages ?? []); }
         setView(s.profile?.dob ? 'chat' : 'onboard');
       } catch (e) {
