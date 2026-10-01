@@ -110,6 +110,7 @@ export const saveBirthDetailsTool: VoiceTool = {
         tob: { type: "STRING", description: "Time of birth, 24-hour HH:MM. Omit when unknown." },
         tob_unknown: { type: "BOOLEAN", description: "true when the customer does not know their birth time." },
         place: { type: "STRING", description: "Birth town or city, e.g. 'Dehradun'." },
+        gender: { type: "STRING", description: "Customer's gender if they said it: male, female or other. Optional.", enum: ["male", "female", "other"] },
         place_hint: { type: "STRING", description: "State or country to disambiguate the place, e.g. 'Uttarakhand'. Optional." },
       },
       required: ["dob", "place"],
@@ -148,6 +149,8 @@ export const saveBirthDetailsTool: VoiceTool = {
       };
       const name = str(args.name);
       if (name) input.name = name;
+      const gender = str(args.gender).toLowerCase();
+      if (gender) input.gender = gender;
       const r = await upsertProfile(ctx.env, ctx.uid, input);
       if (!r.ok) return { error: r.error };
       ctx.showCard?.({

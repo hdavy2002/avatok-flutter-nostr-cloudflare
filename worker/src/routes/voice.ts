@@ -40,6 +40,8 @@ export async function voiceAgentsList(req: Request, env: Env): Promise<Response>
     enabled: cfg.voiceAgentsEnabled === true,
     can_use: uid ? canUseVoice(cfg.voiceAgentsEnabled === true, uid, env.AGENT_ADMIN_UIDS) : false,
     signed_in: !!uid,
+    price_per_min_paise: cfg.voiceAgentPricePerMinPaise,
+    free_seconds: cfg.voiceAgentFreeSeconds,
   });
 }
 
