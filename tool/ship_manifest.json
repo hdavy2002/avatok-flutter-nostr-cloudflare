@@ -8837,5 +8837,21 @@
         "note": "Fires when an agent builds a customer briefing. ok=false means the briefing query failed and the agent ran without memory."
       }
     ]
+  },
+  "AUMFE-KNOWLEDGE-VECTOR-1": {
+    "description": "[AUMFE-KNOWLEDGE-VECTOR-1 2026-10-01] Shared knowledge layer on Cloudflare Vectorize (indexes aumfe-catalog and aumfe-tradition, bge-m3 1024-dim): approved Hindu tradition library plus approved per-product/event tradition notes, searchable by Pandit ji, Preeti and voice agents. D1 is truth; hits are hydrated and dropped unless approved and live. Admin API under /api/admin/v2/knowledge/*. Searches return [] until the indexes are created by hand (Specs/VECTORIZE-SETUP-AUMFE-KNOWLEDGE.md) and the migration is applied.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "vector_search",
+        "property": "ok",
+        "exists": true,
+        "min_events": 0,
+        "note": "Every knowledge search. ok=true means Vectorize answered; ok=false with reason 'unbound' means the index or binding does not exist yet, 'error' means a query failure (see $exception)."
+      }
+    ]
   }
 }

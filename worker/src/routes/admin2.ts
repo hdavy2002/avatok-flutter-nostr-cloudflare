@@ -21,6 +21,7 @@ import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
 import { adminAnalytics } from "./admin2_analytics"; // [ADMIN2-ANALYTICS] agent D
 import { ADMIN2_CHADHAVA_ROUTES } from "./saathum_chadhava"; // [SAATHUM-CHADHAVA] agent A2
 import { ADMIN2_AI_ROUTES } from "./admin2_ai"; // [SAATHUM-PREETI-1]
+import { ADMIN2_KNOWLEDGE_ROUTES } from "./admin2_knowledge"; // [AUMFE-KNOWLEDGE-VECTOR-1]
 import { ADMIN2_FREE_VIDEO_ROUTES } from "./free_videos"; // [SAATHUM-FREEVIDEOS-API-1]
 import { ADMIN2_SHOP_CATALOG_ROUTES } from "./admin2_shop_catalog"; // [SAATHUM-SHOP-API-CATALOG-1]
 import { ADMIN2_SHOP_ORDER_ROUTES } from "./admin2_shop_orders"; // [SAATHUM-SHOP-API-ORDERS-1]
@@ -245,6 +246,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   ...ADMIN2_STUDIO_ROUTES, // [AUMFE-POD-STUDIO-API-1]
   ...ADMIN2_POD_FULFIL_ROUTES, // [AUMFE-POD-FULFIL-1]
   ...ADMIN2_AI_ROUTES, // [SAATHUM-PREETI-1]
+  ...ADMIN2_KNOWLEDGE_ROUTES, // [AUMFE-KNOWLEDGE-VECTOR-1]
   ...ADMIN2_FREE_VIDEO_ROUTES, // [SAATHUM-FREEVIDEOS-API-1]
 ];
 

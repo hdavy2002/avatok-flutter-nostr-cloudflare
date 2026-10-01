@@ -374,6 +374,18 @@ dataset = "avatok_metrics"
 binding = "VECTOR_INDEX"
 index_name = "avatok-semantic"
 
+# [AUMFE-KNOWLEDGE-VECTOR-1] Shared knowledge layer (Pandit ji, Preeti, voice agents).
+# bge-m3 = 1024 dims, cosine. Indexes + metadata indexes are created BY HAND before first
+# insert: see Specs/VECTORIZE-SETUP-AUMFE-KNOWLEDGE.md. Env types are optional, so the worker
+# still runs (searches return []) until the indexes exist.
+[[vectorize]]
+binding = "VEC_CATALOG"
+index_name = "aumfe-catalog"
+
+[[vectorize]]
+binding = "VEC_TRADITION"
+index_name = "aumfe-tradition"
+
 # ---------------------------------------------------------------------------
 # Durable Object — group call rooms (SFU signaling). 1:1 calls stay P2P.
 # WebSocket Hibernation so idle rooms cost ~nothing.

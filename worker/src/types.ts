@@ -614,6 +614,10 @@ export interface Env {
   // `wrangler secret put VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`.
   VOBIZ_AUTH_ID?: string;
   VOBIZ_AUTH_TOKEN?: string;
+  // [AUMFE-KNOWLEDGE-VECTOR-1] Vectorize indexes for the shared knowledge layer. Optional so the
+  // worker runs before the indexes exist (searches then return []).
+  VEC_CATALOG?: VectorizeIndex;
+  VEC_TRADITION?: VectorizeIndex;
 }
 
 /** Stable async marketplace replay job.  The negotiation id is the durable
