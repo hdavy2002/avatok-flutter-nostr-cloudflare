@@ -8683,5 +8683,28 @@
         "note": "Owner changed the partner or automation settings; read by hand, not a pass/fail count."
       }
     ]
+  },
+  "AUMFE-POD-STUDIO-API-1": {
+    "description": "[AUMFE-POD-STUDIO-API-1 2026-10-01] Shop Studio API under /api/admin/v2/shop/studio/ (worker/src/routes/admin2_studio.ts + lib/studio_logic.ts): designs, artwork/print-file/photo uploads, product fits (print area + DPI verdict + faded-colour contrast check, Gemini best-match text with deterministic fallback), placement validation, AI product copy, and an idempotent resumable publish (partner design upload, listing, variant map, shop product via the shop admin create/update handlers, shop sections). Needs migration 2026-10-01-aumfe-pod.sql (CORE) and the admin2.ts route spread (CORE); no flag of its own (the provider is read from shopPodProvider, default manual).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_studio_published",
+        "property": "steps_failed",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner published a Studio design. steps_failed > 0 means a publish step (partner upload, listing, variant link, shop product or section) failed; read admin2_studio_publish_step{step,status} for which one."
+      },
+      {
+        "event": "admin2_studio_art_uploaded",
+        "property": "design_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner uploaded artwork in the Studio. Absent while admin2_view for the Studio fires means uploads are failing (size/type/header parse)."
+      }
+    ]
   }
 }

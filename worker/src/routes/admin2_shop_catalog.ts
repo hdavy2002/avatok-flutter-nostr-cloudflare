@@ -22,11 +22,11 @@ const APP = "saathum";
 const BASE = "/api/admin/v2/shop";
 const RESTORE_WINDOW_MS = 30 * 86_400_000;
 
-const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) =>
+export const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) =>
   json({ error, message, ...extra }, status);
 const noStore = { "cache-control": "private, no-store" };
 
-async function adminGuard(req: Request, env: Env): Promise<{ uid: string } | Response> {
+export async function adminGuard(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const a = await requireAdmin(req, env);
   if (a instanceof Response) {
     return a.status === 403 ? err(403, "admin_only", "You don't have admin access.") : err(a.status, "unauthorized", "Please sign in again.");
@@ -34,11 +34,11 @@ async function adminGuard(req: Request, env: Env): Promise<{ uid: string } | Res
   return a;
 }
 
-function safeTrack(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
+export function safeTrack(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
   try { void track(env, uid, event, APP, props); } catch { /* telemetry is best-effort */ }
 }
 
-async function audit(env: Env, adminId: string, action: string, target: string, meta: Record<string, unknown>): Promise<void> {
+export async function audit(env: Env, adminId: string, action: string, target: string, meta: Record<string, unknown>): Promise<void> {
   try {
     await env.DB_WALLET.prepare(
       "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -46,7 +46,7 @@ async function audit(env: Env, adminId: string, action: string, target: string, 
   } catch { /* audit is best-effort, matching the other admin routes */ }
 }
 
-async function readBody(req: Request, max = 65_536): Promise<Record<string, unknown> | null> {
+export async function readBody(req: Request, max = 65_536): Promise<Record<string, unknown> | null> {
   const text = await req.text();
   if (text.length > max) return null;
   if (!text.trim()) return {};
@@ -192,7 +192,7 @@ const getProduct = guarded("admin2.shop.products.get", async (_req, env, _a, [id
   return json({ product: adminProduct(row, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), promoted.get(id) ?? []) }, 200, noStore);
 });
 
-const createProduct = guarded("admin2.shop.products.create", async (req, env, a) => {
+export const createProduct = guarded("admin2.shop.products.create", async (req, env, a) => {
   const b = await readBody(req);
   if (!b) return err(400, "invalid_request", "Send the product as JSON.");
   const { value: v, errors } = normalizeProductInput(b, { partial: false });
@@ -233,7 +233,7 @@ const createProduct = guarded("admin2.shop.products.create", async (req, env, a)
   return json({ product: adminProduct(row!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), []), ...(flagsOk ? {} : { warning: FLAGS_PENDING }) }, 201);
 });
 
-const updateProduct = guarded("admin2.shop.products.update", async (req, env, a, [id]) => {
+export const updateProduct = guarded("admin2.shop.products.update", async (req, env, a, [id]) => {
   const row = await loadProduct(env, id);
   if (!row) return err(404, "not_found", "No such product.");
   const b = await readBody(req);
