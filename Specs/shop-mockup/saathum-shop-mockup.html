@@ -1,0 +1,939 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"></head><body><title>Saa Thum Shop</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@500;600;700;800;900&display=swap">
+<style>:root{color-scheme:light}html,body{margin:0;background:#f8ead0}body{font-family:Nunito,sans-serif}button{font-family:inherit}
+/* ===== Saa Thum Shop mockup — uses the site's chandan / ink / red / teal tokens ===== */
+.sh,:root{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e8a4c;--line:#e3cfa9;--chip:#f3e7d2;--card:#fffdf8;--cream:#fbf3e4;
+  color:var(--ink);font-family:Nunito,system-ui,sans-serif;background:linear-gradient(160deg,#f8ead0 0%,#f2e0bd 100%);min-height:70vh}
+.sh *{box-sizing:border-box}
+.sh h1,.sh h2,.sh h3{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:var(--ink);letter-spacing:0}
+.sh-wrap{max-width:1400px;margin:0 auto;padding:0 clamp(16px,4vw,48px)}
+.sh-view{display:none}.sh-view.is-on{display:block}
+.sh-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:14px;font:900 16px Nunito,sans-serif;letter-spacing:.02em;cursor:pointer;border:0;text-decoration:none;transition:transform .12s}
+.sh-btn:active{transform:translateY(2px)}
+.sh-btn--red{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--redDk)}
+.sh-btn--teal{background:var(--teal);color:#fff;box-shadow:0 3px 0 #0b2424}
+.sh-btn--ghost{background:#fff;color:var(--teal);border:2px solid var(--teal)}
+.sh-btn--wide{width:100%}
+.sh-link{font:800 15px Nunito;color:var(--teal);text-decoration:underline;text-underline-offset:4px;cursor:pointer;background:none;border:0}
+.sh-eyebrow{font:900 13px Nunito;letter-spacing:.14em;text-transform:uppercase;color:#9a5a26}
+.sh-note{display:inline-block;padding:4px 10px;border-radius:999px;background:#fff3c4;border:1px dashed #c9a13a;font:700 13px Nunito;color:#6b4a2b}
+
+/* header additions */
+.avh-cart{position:relative;display:inline-grid;place-items:center;width:46px;height:46px;border-radius:14px;background:#fff;border:2px solid #5a1f14;color:#5a1f14;cursor:pointer;margin-right:4px}
+.avh-cart svg{width:22px;height:22px}
+.avh-cart b{position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#b3261e;color:#fff;font:900 13px/22px Nunito;text-align:center;border:2px solid #fff}
+.avh-cart b:empty{display:none}
+.avh-nav a.is-active{color:#b3261e!important;text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:3px}
+
+/* mockup switcher */
+.sh-switch{position:sticky;top:0;z-index:40;background:#173f3f;color:#fff}
+.sh-switch .sh-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.sh-switch span{font:800 14px Nunito;opacity:.85;margin-right:4px}
+.sh-switch button{font:800 14px Nunito;color:#fff;background:#ffffff1f;border:1px solid #ffffff40;border-radius:999px;padding:7px 14px;cursor:pointer}
+.sh-switch button.is-on{background:#F6B93B;color:#3a1a0a;border-color:#F6B93B}
+
+/* ---------- HERO (layout 2) ---------- */
+.sh-hero{position:relative;min-height:620px;background:#3a2418 center/cover no-repeat;display:flex;flex-direction:column;justify-content:space-between;padding:36px 0 24px}
+.sh-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#1a0d0659 0%,transparent 55%),linear-gradient(0deg,#1a0d0670,transparent 30%);pointer-events:none}
+.sh-hero>.sh-wrap{position:relative;z-index:2;width:100%}
+.sh-hero-card{max-width:500px;padding:30px 32px;border-radius:26px;background:#fff8ecd9;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:6px solid #ffffffb0;box-shadow:0 18px 40px #3a1a0a40}
+.sh-hero-card h1{font-size:clamp(38px,4.4vw,60px);line-height:1.05;margin:10px 0 14px}
+.sh-hero-card h1 em{font-style:normal;color:var(--red)}
+.sh-hero-card p{font:600 17px/1.55 Nunito;color:var(--body);margin:0 0 20px}
+.sh-hero-ctas{display:flex;gap:10px;flex-wrap:wrap}
+.sh-ticks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:16px;font:700 14px Nunito;color:var(--sub)}
+.sh-ticks span::before{content:"✓ ";color:var(--red);font-weight:900}
+.sh-dot{position:absolute;z-index:3;width:26px;height:26px;border-radius:50%;background:#fff;border:0;box-shadow:0 0 0 6px #ffffff55;cursor:pointer;display:grid;place-items:center}
+.sh-dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--red)}
+.sh-dot:hover{box-shadow:0 0 0 9px #ffffff70}
+.sh-pop{position:absolute;z-index:4;display:none;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:8px 16px 8px 8px;box-shadow:0 12px 30px #0004;cursor:pointer;min-width:240px}
+.sh-pop.is-on{display:flex}
+.sh-pop img{width:58px;height:58px;border-radius:12px;object-fit:cover}
+.sh-pop b{display:block;font:800 15px Nunito;color:var(--teal)}
+.sh-pop small{font:700 14px Nunito;color:var(--sub)}
+.sh-promise{display:flex;align-items:center;gap:clamp(16px,3vw,44px);flex-wrap:wrap;background:#fff;border-radius:22px;padding:14px 26px;box-shadow:0 10px 26px #0003;margin-top:28px}
+.sh-promise div b{display:block;font:900 15px Nunito;color:var(--ink)}
+.sh-promise div small{font:600 14px Nunito;color:var(--sub)}
+.sh-promise .sh-link{margin-left:auto}
+
+/* ---------- sections ---------- */
+.sh-sec{padding:48px 0 8px}
+.sh-sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+.sh-sec-head h2{font-size:clamp(28px,2.8vw,40px);line-height:1.15}
+.sh-sec-head h2 span{color:#c9481f}
+.sh-sec-head p{margin:6px 0 0;font:700 15px/1.4 Nunito;color:var(--sub)}
+.sh-cats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}
+.sh-cat{background:#f6e3c4;border:5px solid #fff;border-radius:22px;padding:14px 14px 16px;cursor:pointer;text-align:left;box-shadow:0 10px 22px #5a2c0f26;transition:transform .2s}
+.sh-cat:hover{transform:translateY(-4px)}
+.sh-cat img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;margin-bottom:10px}
+.sh-cat b{display:block;font:800 17px Comfortaa,sans-serif;color:var(--ink)}
+.sh-cat small{font:700 14px Nunito;color:var(--sub)}
+
+/* product card (layouts 1 & 3) */
+.sh-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+.sh-card{position:relative;display:flex;flex-direction:column;gap:6px;cursor:pointer;min-width:0}
+.sh-card-art{position:relative;aspect-ratio:3/4;border-radius:20px;overflow:hidden;background:#efdcbf;border:5px solid #fff;box-shadow:0 12px 28px #5a2c0f2e;transition:transform .2s,box-shadow .2s}
+.sh-card:hover .sh-card-art{transform:translateY(-4px) rotate(-.3deg);box-shadow:0 20px 40px #5a2c0f45}
+.sh-card-art img{width:100%;height:100%;object-fit:cover;display:block}
+.sh-badge{position:absolute;top:12px;left:12px;padding:6px 11px;border-radius:10px;font:900 13px/1 Nunito;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red);box-shadow:0 2px 8px #0004}
+.sh-badge--new{background:var(--teal)}.sh-badge--best{background:#c27a0e}
+.sh-heart{position:absolute;top:10px;right:10px;width:42px;height:42px;border-radius:50%;background:#fff8ee;border:0;display:grid;place-items:center;cursor:pointer;color:var(--ink)}
+.sh-heart svg{width:20px;height:20px}.sh-heart.is-on{color:var(--red)}.sh-heart.is-on svg{fill:currentColor}
+.sh-quick{position:absolute;left:12px;right:12px;bottom:12px;opacity:0;transform:translateY(8px);transition:.2s;min-height:44px}
+.sh-card:hover .sh-quick{opacity:1;transform:none}
+.sh-card h3{font:700 18px/1.25 Comfortaa,sans-serif;color:var(--teal);margin-top:10px}
+.sh-price{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:900 18px Nunito;color:var(--ink)}
+.sh-price s{font:700 15px Nunito;color:#8a7560}
+.sh-off{padding:3px 9px;border-radius:999px;background:var(--red);color:#fff;font:900 13px Nunito}
+.sh-sw{display:flex;gap:6px;margin-top:2px}
+.sh-sw i{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #c9b08c}
+
+.sh-banner{display:grid;grid-template-columns:1.1fr 1fr;border-radius:26px;overflow:hidden;background:#b3261e;color:#fff;border:6px solid #fff;box-shadow:0 18px 36px #5a2c0f47;margin-top:12px}
+.sh-banner-copy{padding:40px clamp(22px,4vw,56px);display:flex;flex-direction:column;justify-content:center;gap:14px}
+.sh-banner h2{color:#fff;font-size:clamp(28px,3vw,44px);line-height:1.12}
+.sh-banner p{font:600 17px/1.5 Nunito;margin:0;color:#ffe9d6}
+.sh-banner img{width:100%;height:100%;object-fit:cover;min-height:300px}
+.sh-banner .sh-eyebrow{color:#F6B93B}
+
+/* ---------- ALL / FILTERS (layout 1) ---------- */
+.sh-crumb{font:700 14px Nunito;color:var(--sub);padding:22px 0 6px}
+.sh-crumb a{color:var(--teal);cursor:pointer;text-decoration:underline}
+.sh-list{display:grid;grid-template-columns:280px 1fr;gap:36px;padding:10px 0 50px}
+.sh-filters{align-self:start;position:sticky;top:120px;background:#fffaf0;border:5px solid #fff;border-radius:22px;padding:20px 20px 10px;box-shadow:0 10px 24px #5a2c0f1f}
+.sh-filters>h2{font-size:22px;margin-bottom:8px}
+.sh-fg{border-top:1px solid var(--line);padding:14px 0}
+.sh-fg summary{list-style:none;display:flex;justify-content:space-between;align-items:center;font:900 16px Nunito;color:var(--ink);cursor:pointer}
+.sh-fg summary::-webkit-details-marker{display:none}
+.sh-fg summary::after{content:"⌄";font-size:18px;transition:.2s}
+.sh-fg[open] summary::after{transform:rotate(180deg)}
+.sh-fg-body{padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.sh-opt{display:flex;align-items:center;gap:10px;font:700 15px Nunito;color:var(--body);cursor:pointer}
+.sh-opt input{width:20px;height:20px;accent-color:var(--red)}
+.sh-opt i{width:20px;height:20px;border-radius:50%;box-shadow:0 0 0 1px #c9b08c}
+.sh-opt em{margin-left:auto;font-style:normal;color:#8a7560;font-size:14px}
+.sh-sizes{display:flex;flex-wrap:wrap;gap:8px}
+.sh-sizes label{cursor:pointer}
+.sh-sizes input{position:absolute;opacity:0;pointer-events:none}
+.sh-sizes span{display:inline-grid;place-items:center;min-width:48px;height:42px;padding:0 10px;border-radius:12px;border:2px solid var(--line);background:#fff;font:800 15px Nunito;color:var(--ink)}
+.sh-sizes input:checked+span{border-color:var(--red);background:#fdeae6;color:var(--red)}
+.sh-range{position:relative;height:30px}
+.sh-range input{position:absolute;inset:0;width:100%;pointer-events:none;-webkit-appearance:none;appearance:none;background:none}
+.sh-range input::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;border:3px solid var(--red);cursor:pointer}
+.sh-range input::-moz-range-thumb{pointer-events:auto;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--red);cursor:pointer}
+.sh-range::before{content:"";position:absolute;left:0;right:0;top:13px;height:4px;border-radius:4px;background:var(--red)}
+.sh-minmax{display:flex;align-items:center;gap:8px}
+.sh-minmax label{flex:1;font:700 13px Nunito;color:var(--sub)}
+.sh-minmax input{width:100%;height:44px;border-radius:999px;border:2px solid var(--line);padding:0 14px;font:800 15px Nunito;color:var(--ink);background:#fff;margin-top:4px}
+.sh-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.sh-toolbar b{font:800 16px Nunito;color:var(--sub)}
+.sh-toolbar select{height:44px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:0 12px;font:800 15px Nunito;color:var(--ink)}
+.sh-chips{display:flex;gap:8px;flex-wrap:wrap}
+.sh-chip{padding:7px 12px;border-radius:999px;background:#fff;border:2px solid var(--line);font:800 14px Nunito;color:var(--ink);cursor:pointer}
+.sh-list .sh-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sh-filter-btn{display:none}
+.sh-empty{grid-column:1/-1;text-align:center;padding:60px 20px;background:#fffaf0;border-radius:22px;border:5px solid #fff}
+.sh-empty b{display:block;font:700 22px Comfortaa;margin-bottom:8px}
+
+/* ---------- PRODUCT ---------- */
+.sh-pdp{display:grid;grid-template-columns:1.05fr 1fr;gap:clamp(24px,4vw,60px);padding:10px 0 40px}
+.sh-gal{display:grid;grid-template-columns:84px 1fr;gap:14px;align-self:start;position:sticky;top:120px}
+.sh-thumbs{display:flex;flex-direction:column;gap:10px}
+.sh-thumbs button{padding:0;border:3px solid transparent;border-radius:14px;overflow:hidden;cursor:pointer;background:none}
+.sh-thumbs button.is-on{border-color:var(--red)}
+.sh-thumbs img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+.sh-main-img{border-radius:24px;overflow:hidden;border:6px solid #fff;box-shadow:0 18px 36px #5a2c0f33;aspect-ratio:3/4;background:#efdcbf}
+.sh-main-img img{width:100%;height:100%;object-fit:cover}
+.sh-pdp-info h1{font-size:clamp(30px,3vw,42px);line-height:1.15;margin:8px 0 10px}
+.sh-pdp-info .sh-price{font-size:26px}
+.sh-pdp-info .sh-price s{font-size:18px}
+.sh-tax{font:700 14px Nunito;color:#7a6a55;margin:4px 0 18px}
+.sh-lbl{display:flex;justify-content:space-between;font:900 15px Nunito;color:var(--ink);margin:18px 0 10px}
+.sh-lbl span{font-weight:700;color:var(--sub)}
+.sh-colours{display:flex;gap:10px}
+.sh-colours button{width:44px;height:44px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px var(--line);cursor:pointer}
+.sh-colours button.is-on{box-shadow:0 0 0 3px var(--red)}
+.sh-qty{display:inline-flex;align-items:center;border:2px solid var(--line);border-radius:14px;background:#fff;height:48px}
+.sh-qty button{width:44px;height:100%;border:0;background:none;font:900 20px Nunito;color:var(--ink);cursor:pointer}
+.sh-qty span{min-width:34px;text-align:center;font:900 16px Nunito}
+.sh-buy{display:grid;grid-template-columns:auto 1fr 1fr;gap:10px;margin-top:22px}
+.sh-err{color:var(--red);font:800 14px Nunito;margin-top:8px;min-height:18px}
+.sh-pin{display:flex;gap:8px;margin-top:20px;padding:16px;border-radius:18px;background:#fffaf0;border:2px dashed var(--line);flex-wrap:wrap;align-items:center}
+.sh-pin input{flex:1;min-width:140px;height:46px;border-radius:12px;border:2px solid var(--line);padding:0 14px;font:800 15px Nunito}
+.sh-pin p{width:100%;margin:4px 0 0;font:700 14px Nunito;color:var(--green)}
+.sh-acc{margin-top:18px;border-top:1px solid var(--line)}
+.sh-acc details{border-bottom:1px solid var(--line);padding:14px 0}
+.sh-acc summary{font:900 16px Nunito;cursor:pointer;color:var(--ink)}
+.sh-acc p,.sh-acc li{font:600 15px/1.6 Nunito;color:var(--body)}
+.sh-acc ul{margin:8px 0 0 18px;list-style:disc}
+.sh-perks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.sh-perks div{background:#fff;border-radius:16px;padding:12px;text-align:center;font:800 14px/1.3 Nunito;color:var(--teal);border:2px solid #fff;box-shadow:0 6px 14px #5a2c0f1a}
+.sh-perks div i{display:block;font-style:normal;font-size:22px;margin-bottom:4px}
+.sh-sizeguide{width:100%;border-collapse:collapse;margin-top:10px;font:700 15px Nunito}
+.sh-sizeguide td,.sh-sizeguide th{border:1px solid var(--line);padding:8px;text-align:center}
+
+/* ---------- CART DRAWER ---------- */
+.sh-scrim{position:fixed;inset:0;background:#1a0d0680;z-index:90;opacity:0;pointer-events:none;transition:.25s}
+.sh-scrim.is-on{opacity:1;pointer-events:auto}
+.sh-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:#fbf3e4;z-index:91;transform:translateX(105%);transition:transform .3s ease;display:flex;flex-direction:column;box-shadow:-20px 0 40px #0003}
+.sh-drawer.is-on{transform:none}
+.sh-dh{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:2px solid var(--line)}
+.sh-dh h2{font-size:24px}
+.sh-x{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:#fff;font:900 22px Nunito;cursor:pointer;color:var(--ink)}
+.sh-free{margin:14px 22px 0;padding:12px 14px;border-radius:14px;background:#fff;font:800 14px Nunito;color:var(--teal)}
+.sh-bar{height:8px;border-radius:8px;background:#efdcbf;margin-top:8px;overflow:hidden}
+.sh-bar i{display:block;height:100%;background:linear-gradient(90deg,#F6B93B,#b3261e);border-radius:8px;transition:width .3s}
+.sh-items{flex:1;overflow:auto;padding:8px 22px}
+.sh-item{display:grid;grid-template-columns:84px 1fr auto;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+.sh-item img{width:84px;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:3px solid #fff}
+.sh-item b{display:block;font:800 16px/1.25 Comfortaa;color:var(--teal)}
+.sh-item small{display:block;font:700 14px Nunito;color:var(--sub);margin:4px 0 10px}
+.sh-item .sh-qty{height:40px}
+.sh-item .sh-qty button{width:36px}
+.sh-item-r{text-align:right;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end}
+.sh-item-r strong{font:900 16px Nunito}
+.sh-item-r button{font:800 14px Nunito;color:var(--red);background:none;border:0;cursor:pointer;text-decoration:underline}
+.sh-df{padding:18px 22px 22px;border-top:2px solid var(--line);background:#fff8ec}
+.sh-row{display:flex;justify-content:space-between;font:700 15px Nunito;color:var(--body);margin-bottom:8px}
+.sh-row--tot{font:900 19px Nunito;color:var(--ink);margin:12px 0 14px}
+.sh-cart-empty{text-align:center;padding:60px 10px}
+.sh-cart-empty b{display:block;font:700 22px Comfortaa;margin-bottom:8px}
+.sh-cart-empty p{font:600 15px Nunito;color:var(--sub)}
+.sh-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,120px);background:#173f3f;color:#fff;font:800 15px Nunito;padding:14px 20px;border-radius:14px;z-index:95;transition:.3s;box-shadow:0 10px 30px #0004}
+.sh-toast.is-on{transform:translate(-50%,0)}
+
+/* ---------- CHECKOUT ---------- */
+.sh-co{display:grid;grid-template-columns:1fr 400px;gap:30px;padding:24px 0 60px;align-items:start}
+.sh-steps{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.sh-steps span{padding:8px 14px;border-radius:999px;background:#fff;border:2px solid var(--line);font:800 14px Nunito;color:var(--sub)}
+.sh-steps span.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.sh-steps span.is-done{background:#e4f3e9;border-color:#9fd3b2;color:var(--green)}
+.sh-panel{background:var(--card);border:6px solid #fff;border-radius:22px;padding:24px;box-shadow:0 14px 30px #5a2c0f26;margin-bottom:18px}
+.sh-panel h2{font-size:24px;margin-bottom:6px}
+.sh-panel>p{font:600 15px Nunito;color:var(--sub);margin:0 0 16px}
+.sh-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sh-form label{display:flex;flex-direction:column;gap:6px;font:800 14px Nunito;color:var(--ink)}
+.sh-form label.full{grid-column:1/-1}
+.sh-form input,.sh-form select{height:48px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:0 14px;font:700 16px Nunito;color:var(--ink)}
+.sh-wa{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:#eaf7ef;border:2px solid #b5e0c4;font:800 15px Nunito;color:#155c33;margin-bottom:16px}
+.sh-wa i{font-style:normal;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#25D366;color:#fff}
+.sh-sum{position:sticky;top:120px}
+.sh-sum-item{display:grid;grid-template-columns:60px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.sh-sum-item img{width:60px;aspect-ratio:3/4;object-fit:cover;border-radius:10px}
+.sh-sum-item b{font:800 15px/1.2 Comfortaa;color:var(--teal);display:block}
+.sh-sum-item small{font:700 13px Nunito;color:var(--sub)}
+.sh-sum-item strong{font:900 15px Nunito}
+.sh-coupon{display:flex;gap:8px;margin:14px 0}
+.sh-coupon input{flex:1;height:46px;border-radius:12px;border:2px solid var(--line);padding:0 12px;font:800 15px Nunito;text-transform:uppercase}
+.sh-pay{display:grid;grid-template-columns:240px 1fr;gap:24px;align-items:start}
+.sh-qr{background:#fff;border-radius:18px;padding:14px;border:2px solid var(--line);text-align:center}
+.sh-qr svg{width:100%;height:auto}
+.sh-qr small{display:block;font:800 13px Nunito;color:var(--sub);margin-top:6px}
+.sh-amt{background:#fff3c4;border:2px dashed #c9a13a;border-radius:16px;padding:14px 16px;margin-bottom:14px}
+.sh-amt small{font:900 13px Nunito;letter-spacing:.1em;text-transform:uppercase;color:#7a6a55}
+.sh-amt b{display:block;font:900 34px Nunito;color:#9b1c14}
+.sh-amt em{font-style:normal;font:700 14px Nunito;color:var(--green)}
+.sh-upi{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:2px solid var(--line);border-radius:14px;padding:10px 14px;font:800 15px Nunito;margin-bottom:12px}
+.sh-how{font:600 15px/1.6 Nunito;color:var(--body);margin:0 0 16px;padding-left:20px;list-style:decimal}
+.sh-wait{display:flex;flex-direction:column;gap:10px;margin:14px 0}
+.sh-wait div{display:flex;align-items:center;gap:12px;font:800 15px Nunito;color:var(--sub)}
+.sh-wait i{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-style:normal;background:#efdcbf;color:#fff;font-size:14px}
+.sh-wait .ok i{background:var(--green)}.sh-wait .ok{color:var(--green)}
+.sh-wait .spin i{background:#F6B93B;animation:shpulse 1s infinite}
+@keyframes shpulse{50%{opacity:.4}}
+.sh-utr{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.sh-utr input{flex:1;min-width:180px;height:46px;border-radius:12px;border:2px solid var(--line);padding:0 12px;font:800 16px Nunito;letter-spacing:.08em}
+.sh-done{text-align:center;padding:40px 24px}
+.sh-done .big{width:84px;height:84px;margin:0 auto 14px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font-size:42px}
+.sh-done h2{font-size:32px;margin-bottom:8px}
+.sh-done p{font:600 16px/1.5 Nunito;color:var(--body);max-width:560px;margin:0 auto 18px}
+
+/* ---------- DASHBOARDS (customer + admin preview) ---------- */
+.sh-dash{display:grid;grid-template-columns:250px 1fr;gap:26px;padding:26px 0 60px;align-items:start}
+.sh-side{background:#fffaf0;border:5px solid #fff;border-radius:22px;padding:14px;box-shadow:0 10px 24px #5a2c0f1f;position:sticky;top:120px}
+.sh-side h3{font:900 13px Nunito;letter-spacing:.12em;text-transform:uppercase;color:#9a5a26;margin:10px 10px 6px}
+.sh-side a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;font:800 15px Nunito;color:var(--ink);cursor:pointer;text-decoration:none}
+.sh-side a.is-on{background:var(--teal);color:#fff}
+.sh-side a .new{margin-left:auto;font:900 11px Nunito;background:#F6B93B;color:#3a1a0a;padding:3px 7px;border-radius:999px}
+.sh-dtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.sh-dtitle h1{font-size:clamp(28px,2.6vw,36px)}
+.sh-dtitle p{margin:4px 0 0;font:700 15px Nunito;color:var(--sub)}
+.sh-order{background:var(--card);border:5px solid #fff;border-radius:22px;padding:20px;box-shadow:0 10px 24px #5a2c0f1f;margin-bottom:16px}
+.sh-oh{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.sh-oh b{font:900 17px Nunito}
+.sh-oh small{display:block;font:700 14px Nunito;color:var(--sub)}
+.sh-st{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font:900 13px Nunito;letter-spacing:.04em;text-transform:uppercase}
+.st-pending{background:#fff3c4;color:#7a5a00}.st-paid{background:#e2eefc;color:#1b4f8c}.st-packed{background:#efe3fb;color:#5a2d8c}
+.st-shipped{background:#e0f2f1;color:#0f5c57}.st-delivered{background:#e4f3e9;color:#1e6b3c}.st-cancelled{background:#fde4e1;color:#9b1c14}
+.sh-oitems{display:flex;gap:12px;flex-wrap:wrap}
+.sh-oitem{display:flex;gap:10px;align-items:center;background:#fff;border-radius:14px;padding:8px 14px 8px 8px}
+.sh-oitem img{width:52px;aspect-ratio:3/4;object-fit:cover;border-radius:8px}
+.sh-oitem b{display:block;font:800 15px Comfortaa;color:var(--teal)}
+.sh-oitem small{font:700 13px Nunito;color:var(--sub)}
+.sh-track{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0 6px;position:relative}
+.sh-track div{text-align:center;font:800 13px/1.3 Nunito;color:#a08974;position:relative;padding-top:34px}
+.sh-track div::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#efdcbf;border:3px solid #fff;box-shadow:0 0 0 2px #e3cfa9;z-index:1}
+.sh-track div::after{content:"";position:absolute;top:16px;left:-50%;width:100%;height:4px;background:#efdcbf}
+.sh-track div:first-child::after{display:none}
+.sh-track div.ok{color:var(--green)}.sh-track div.ok::before{background:var(--green);box-shadow:0 0 0 2px #9fd3b2}.sh-track div.ok::after{background:var(--green)}
+.sh-track div small{display:block;font-weight:700;color:#8a7560}
+.sh-oact{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.sh-oact .sh-btn{min-height:42px;font-size:14px;padding:0 16px}
+.sh-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:5px solid #fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 24px #5a2c0f1f}
+.sh-table th{background:#f6e3c4;text-align:left;font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a4a1e;padding:12px 14px}
+.sh-table td{padding:12px 14px;border-top:1px solid var(--line);font:700 15px Nunito;color:var(--body);vertical-align:middle}
+.sh-table td b{color:var(--ink)}
+.sh-table img{width:44px;aspect-ratio:3/4;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px}
+.sh-tbl-wrap{overflow-x:auto;border-radius:20px}
+.sh-mini{min-height:36px!important;padding:0 12px!important;font-size:13px!important;border-radius:10px!important}
+.sh-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.sh-kpi{background:var(--card);border:5px solid #fff;border-radius:20px;padding:16px;box-shadow:0 8px 20px #5a2c0f1a}
+.sh-kpi small{font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a6a55}
+.sh-kpi b{display:block;font:900 30px Nunito;color:var(--ink);margin-top:4px}
+.sh-kpi em{font-style:normal;font:800 14px Nunito;color:var(--green)}
+.sh-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.sh-tabs button{padding:9px 14px;border-radius:999px;background:#fff;border:2px solid var(--line);font:800 14px Nunito;color:var(--ink);cursor:pointer}
+.sh-tabs button.is-on{background:var(--ink);border-color:var(--ink);color:#fff}
+.sh-apanel{display:none}.sh-apanel.is-on{display:block}
+.sh-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.sh-slot{background:var(--card);border:5px solid #fff;border-radius:20px;padding:16px;box-shadow:0 8px 20px #5a2c0f1a}
+.sh-slot h3{font-size:18px;margin-bottom:4px}
+.sh-slot p{font:600 14px Nunito;color:var(--sub);margin:0 0 10px}
+.sh-slot-items{display:flex;gap:8px;flex-wrap:wrap}
+.sh-slot-items span{display:inline-flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:4px 10px 4px 4px;font:800 13px Nunito;border:2px solid var(--line)}
+.sh-slot-items img{width:28px;height:28px;border-radius:50%;object-fit:cover}
+.sh-modal{position:fixed;inset:0;z-index:99;display:none;place-items:center;background:#1a0d0680;padding:16px}
+.sh-modal.is-on{display:grid}
+.sh-modal-box{width:min(520px,100%);background:#fbf3e4;border:6px solid #fff;border-radius:24px;padding:24px;max-height:90vh;overflow:auto}
+.sh-modal-box h2{font-size:24px;margin-bottom:6px}
+.sh-modal-box p{font:600 15px Nunito;color:var(--sub);margin:0 0 14px}
+.sh-promo-opts{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.sh-bill-src{display:inline-block;padding:4px 10px;border-radius:999px;font:900 12px Nunito;letter-spacing:.05em;text-transform:uppercase}
+.src-shop{background:#fdeae6;color:#9b1c14}.src-event{background:#e0f2f1;color:#0f5c57}
+
+/* ---------- responsive ---------- */
+@media (max-width:1100px){
+  .sh-cats{grid-template-columns:repeat(3,1fr)}
+  .sh-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sh-list{grid-template-columns:1fr}
+  .sh-filters{display:none;position:fixed;inset:0;z-index:92;top:0;border-radius:0;overflow:auto}
+  .sh-filters.is-on{display:block}
+  .sh-filter-btn{display:inline-flex}
+  .sh-co{grid-template-columns:1fr}.sh-sum{position:static}
+  .sh-kpis{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:820px){
+  .sh-pdp{grid-template-columns:1fr}.sh-gal{position:static;grid-template-columns:1fr}.sh-thumbs{flex-direction:row;order:2}.sh-thumbs button{width:70px}
+  .sh-banner{grid-template-columns:1fr}
+  .sh-dash{grid-template-columns:1fr}.sh-side{position:static;display:flex;overflow-x:auto;gap:4px;padding:8px}.sh-side h3{display:none}.sh-side a{white-space:nowrap}
+  .sh-pay{grid-template-columns:1fr}.sh-qr{max-width:260px;margin:0 auto}
+  .sh-slots{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .sh-hero{min-height:auto;padding-top:220px}
+  .sh-hero-card{padding:22px;border-width:4px}
+  .sh-dot,.sh-pop{display:none!important}
+  .sh-promise{border-radius:18px;padding:14px 18px}
+  .sh-promise .sh-link{margin-left:0}
+  .sh-cats{grid-template-columns:repeat(2,1fr);gap:12px}
+  .sh-grid,.sh-list .sh-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .sh-card h3{font-size:16px}.sh-price{font-size:16px}
+  .sh-quick{display:none}
+  .sh-buy{grid-template-columns:1fr 1fr}.sh-buy .sh-qty{grid-column:1/-1;justify-self:start}
+  .sh-form{grid-template-columns:1fr}
+  .sh-track{grid-template-columns:repeat(5,1fr)}.sh-track div{font-size:12px}
+  .sh-perks{grid-template-columns:1fr 1fr 1fr}
+  .sh-kpis{grid-template-columns:1fr 1fr}
+}
+
+/* ---------- image placeholders (layout mockup — no photos) ---------- */
+.sh-ph{position:relative;width:100%;height:100%;display:grid;place-items:center;background:
+  repeating-linear-gradient(135deg,#00000008 0 12px,transparent 12px 24px),var(--ph,#efdcbf);color:#5a1f14a6;font:800 14px Nunito;text-align:center;padding:10px}
+.sh-ph span{background:#fffdf8d9;border-radius:999px;padding:6px 12px;border:1px dashed #5a1f1466}
+.sh-ph--banner{min-height:300px;--ph:#e9b9a5}
+.sh-hero{background:repeating-linear-gradient(135deg,#ffffff0a 0 18px,transparent 18px 36px),linear-gradient(120deg,#6b3a22,#3a2418)}
+.sh-hero-ph{position:absolute;right:8%;top:50%;transform:translateY(-58%);z-index:1;color:#fff8;font:800 15px Nunito;border:2px dashed #fff6;border-radius:20px;padding:120px 60px}
+.sh-thumbs .sh-ph{aspect-ratio:3/4;font-size:11px;padding:4px}
+.sh-item .sh-ph,.sh-sum-item .sh-ph,.sh-oitem .sh-ph{aspect-ratio:3/4;border-radius:10px;font-size:0}
+.sh-item .sh-ph{width:84px}.sh-sum-item .sh-ph{width:60px}.sh-oitem .sh-ph{width:52px}
+.sh-table .sh-ph{display:inline-block;width:44px;height:58px;border-radius:8px;vertical-align:middle;margin-right:8px;font-size:0}
+.sh-pop .sh-ph{width:58px;height:58px;border-radius:12px;font-size:0}
+.sh-slot-items .sh-ph{width:28px;height:28px;border-radius:50%;font-size:0;padding:0}
+.sh-cat .sh-ph{aspect-ratio:1;border-radius:14px;margin-bottom:10px;height:auto}
+/* simplified site chrome for the layout mockup */
+.mk-head{position:sticky;top:0;z-index:50;background:#fbf3e4;border-bottom:3px solid #e3cfa9}
+.mk-head .sh-wrap{display:flex;align-items:center;gap:22px;height:76px}
+.mk-logo{display:flex;align-items:center;gap:10px;font:700 24px Comfortaa,sans-serif;color:#b3261e;text-decoration:none}
+.mk-logo i{width:40px;height:40px;border-radius:50%;background:#F6B93B;border:3px solid #b3261e}
+.mk-nav{display:flex;gap:18px;flex:1;flex-wrap:nowrap;overflow:hidden}
+.mk-nav a{font:900 14px Nunito;letter-spacing:.06em;text-transform:uppercase;color:#5a1f14;text-decoration:none;white-space:nowrap;cursor:pointer}
+.mk-nav a.is-active{color:#b3261e;text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:3px}
+.mk-r{display:flex;align-items:center;gap:10px}
+.mk-foot{background:#5a1f14;color:#f8ead0;padding:40px 0;font:700 15px Nunito}
+.mk-foot .sh-wrap{display:flex;gap:40px;flex-wrap:wrap;justify-content:space-between}
+.mk-foot b{display:block;font:700 18px Comfortaa;color:#F6B93B;margin-bottom:8px}
+.mk-foot a{display:block;color:#f8ead0;text-decoration:none;margin:4px 0}
+.sh-switch{top:79px}
+@media (max-width:1100px){.mk-nav{display:none}}
+
+.sh-item .sh-ph span,.sh-sum-item .sh-ph span,.sh-oitem .sh-ph span,.sh-table .sh-ph span,.sh-pop .sh-ph span,.sh-slot-items .sh-ph span{display:none}
+.sh-hero-ph{width:300px;height:340px;padding:0 0 18px;display:flex;align-items:flex-end;justify-content:center;text-align:center}
+@media (max-width:640px){.sh-hero{padding-top:28px}.sh-hero-ph{display:none}.sh-switch{position:static}.mk-logo{font-size:20px}.mk-logo i{width:32px;height:32px}.mk-head .sh-wrap{height:64px;gap:10px}}
+.mk-logo{white-space:nowrap}
+@media (max-width:820px){.sh-thumbs .sh-ph span{display:none}}
+</style>
+<header class="mk-head"><div class="sh-wrap"><a class="mk-logo" data-go="home"><i></i>Saa Thum</a><nav class="mk-nav"><a>Home</a><a>Explore</a><a data-nav="shop" data-go="home">Shop</a><a>How it works</a><a>Our temples</a><a>Blog</a><a>Help centre</a><a>About us</a></nav><div class="mk-r"><button class="avh-cart" aria-label="Open cart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1.2 12.2a1 1 0 0 1-1 .8H8.2a1 1 0 0 1-1-.8z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg><b></b></button><a class="sh-btn sh-btn--teal" style="min-height:44px" data-go="orders">Dashboard</a></div></div></header>
+<main id="main-content" class="sh">
+<!-- MOCKUP ONLY: the switcher bar does not ship. It lets the owner look at the
+     storefront, the customer dashboard and the admin side from one page. -->
+<div class="sh-switch"><div class="sh-wrap">
+  <span>Mockup views:</span>
+  <button data-go="home" class="is-on">Shop home</button>
+  <button data-go="all">All T-shirts + filters</button>
+  <button data-go="p/2">Product page</button>
+  <button data-go="checkout">Checkout (UPI)</button>
+  <button data-go="orders">Customer: My orders</button>
+  <button data-go="billing">Customer: Billing</button>
+  <button data-go="admin">Admin: Shop</button>
+</div></div>
+
+<!-- ================= SHOP HOME ================= -->
+<section class="sh-view is-on" data-view="home">
+  <div class="sh-hero" id="shHero">
+    <button class="sh-dot" style="left:80%;top:30%" data-pop="5" aria-label="Himalayan Mandir Tee"></button>
+    <button class="sh-dot" style="left:84%;top:45%" data-pop="3" aria-label="Murli Mandala Oversized Tee"></button>
+    <button class="sh-dot" style="left:78%;top:58%" data-pop="4" aria-label="Temple Bell Tee"></button>
+    <div class="sh-pop" id="shPop"></div>
+    <div class="sh-hero-ph">Hero lifestyle photo<br>(admin-uploaded)</div>
+    <div class="sh-wrap">
+      <div class="sh-hero-card">
+        <p class="sh-eyebrow">The Saa Thum Shop · New season</p>
+        <h1>Wear your faith, <em>softly.</em></h1>
+        <p>Pure cotton T-shirts with Mahadev, Krishna, lotus and Himalayan temple art — designed by us, printed to order in India and delivered free, pan India.</p>
+        <div class="sh-hero-ctas">
+          <button class="sh-btn sh-btn--red" data-go="all">Shop all T-shirts →</button>
+          <button class="sh-btn sh-btn--ghost" data-go="all" data-coll="Mahadev">Mahadev collection</button>
+        </div>
+        <div class="sh-ticks"><span>100% cotton, 180 GSM</span><span>Sizes S to 3XL + kids</span><span>Pay by UPI</span></div>
+      </div>
+    </div>
+    <div class="sh-wrap">
+      <div class="sh-promise">
+        <div><b>Free shipping</b><small>Pan India, every order</small></div>
+        <div><b>Printed to order</b><small>Made just for you</small></div>
+        <div><b>Pay by any UPI app</b><small>Scan the QR, done</small></div>
+        <button class="sh-link" data-go="all">Tap a dot to shop the stack →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sh-wrap">
+    <section class="sh-sec">
+      <div class="sh-sec-head"><div><h2><span>✽</span> Shop by collection</h2><p>Every design starts from a story — a deity, a temple, a mantra.</p></div><button class="sh-link" data-go="all">All collections</button></div>
+      <div class="sh-cats" id="shCats"></div>
+    </section>
+
+    <section class="sh-sec">
+      <div class="sh-sec-head"><div><h2><span>✽</span> New arrivals</h2><p>Fresh off the press this week.</p></div><button class="sh-link" data-go="all" data-tag="new">View all</button></div>
+      <div class="sh-grid" id="shNew"></div>
+    </section>
+
+    <section class="sh-sec">
+      <div class="sh-banner">
+        <div class="sh-banner-copy">
+          <p class="sh-eyebrow">Featured · Navratri drop</p>
+          <h2>The Lotus &amp; Diya tee — light for every home.</h2>
+          <p>Hand-drawn folk lotus with a lit diya at its heart. Off-white cotton, soft red and gold ink.</p>
+          <div><button class="sh-btn sh-btn--teal" data-go="p/2">See the tee →</button></div>
+        </div>
+        <div class="sh-ph sh-ph--banner"><span>Feature banner photo</span></div>
+      </div>
+    </section>
+
+    <section class="sh-sec" style="padding-bottom:60px">
+      <div class="sh-sec-head"><div><h2><span>✽</span> Bestsellers</h2><p>What devotees are wearing the most.</p></div><button class="sh-link" data-go="all">View all</button></div>
+      <div class="sh-grid" id="shBest"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ================= ALL + FILTERS ================= -->
+<section class="sh-view" data-view="all">
+  <div class="sh-wrap">
+    <div class="sh-crumb"><a data-go="home">Shop</a> / All T-shirts</div>
+    <div class="sh-list">
+      <aside class="sh-filters" id="shFilters">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h2>Filters</h2><button class="sh-x sh-filter-close" style="display:none" aria-label="Close filters">×</button></div>
+        <details class="sh-fg" open><summary>Price</summary><div class="sh-fg-body">
+          <div class="sh-range"><input type="range" id="fMin" min="399" max="999" step="10" value="399"><input type="range" id="fMax" min="399" max="999" step="10" value="999"></div>
+          <div class="sh-minmax"><label>Min<input id="fMinN" inputmode="numeric" value="399"></label>–<label>Max<input id="fMaxN" inputmode="numeric" value="999"></label></div>
+          <small id="fPriceLbl" style="font:700 14px Nunito;color:#6b4a2b">₹399 – ₹999</small>
+        </div></details>
+        <details class="sh-fg" open><summary>Collection</summary><div class="sh-fg-body" id="fColl"></div></details>
+        <details class="sh-fg" open><summary>Colour</summary><div class="sh-fg-body" id="fColour"></div></details>
+        <details class="sh-fg" open><summary>Size</summary><div class="sh-fg-body"><div class="sh-sizes" id="fSize"></div></div></details>
+        <details class="sh-fg"><summary>Fit</summary><div class="sh-fg-body" id="fFit"></div></details>
+        <details class="sh-fg"><summary>Print type</summary><div class="sh-fg-body" id="fPrint"></div></details>
+        <details class="sh-fg"><summary>For</summary><div class="sh-fg-body" id="fFor"></div></details>
+        <div style="padding:14px 0 10px;display:flex;gap:8px"><button class="sh-btn sh-btn--ghost" style="flex:1" id="fClear">Clear all</button><button class="sh-btn sh-btn--red sh-filter-close" style="flex:1;display:none">Show results</button></div>
+      </aside>
+      <div>
+        <div class="sh-toolbar">
+          <div style="display:flex;gap:10px;align-items:center"><button class="sh-btn sh-btn--ghost sh-filter-btn" id="fOpen" style="min-height:44px">Filters</button><b id="fCount">7 products</b></div>
+          <label style="font:800 14px Nunito;color:#6b4a2b">Sort&nbsp;<select id="fSort"><option value="feat">Featured</option><option value="new">Newest</option><option value="lo">Price: low to high</option><option value="hi">Price: high to low</option><option value="best">Bestselling</option></select></label>
+        </div>
+        <div class="sh-chips" id="fChips" style="margin-bottom:16px"></div>
+        <div class="sh-grid" id="shAll"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRODUCT ================= -->
+<section class="sh-view" data-view="p">
+  <div class="sh-wrap"><div class="sh-crumb" id="pCrumb"></div><div class="sh-pdp" id="pdp"></div>
+  <section class="sh-sec" style="padding-bottom:60px"><div class="sh-sec-head"><div><h2><span>✽</span> You may also like</h2></div></div><div class="sh-grid" id="shAlso"></div></section></div>
+</section>
+
+<!-- ================= CHECKOUT ================= -->
+<section class="sh-view" data-view="checkout">
+  <div class="sh-wrap">
+    <div class="sh-crumb"><a data-go="home">Shop</a> / Checkout</div>
+    <div class="sh-co">
+      <div id="coMain"></div>
+      <aside class="sh-panel sh-sum" id="coSum"></aside>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CUSTOMER: MY ORDERS / BILLING ================= -->
+<section class="sh-view" data-view="orders" data-dash="cust">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side" data-side="cust"></nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>My orders</h1><p>Every shop order, its payment and where the parcel is right now.</p></div><button class="sh-btn sh-btn--red" data-go="all">Shop again</button></div>
+      <div id="custOrders"></div>
+    </div>
+  </div></div>
+</section>
+<section class="sh-view" data-view="billing" data-dash="cust">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side" data-side="cust"></nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>Billing</h1><p>All your payments in one place — event bookings and shop orders.</p></div></div>
+      <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Date</th><th>For</th><th>Type</th><th>UPI ref (UTR)</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="custBill"></tbody></table></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ================= ADMIN: SHOP ================= -->
+<section class="sh-view" data-view="admin">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side">
+      <h3>Admin</h3><a>Analytics</a><a>Users</a><a>Events</a><a>Bookings</a><a>Payments</a>
+      <h3>Shop</h3>
+      <a class="is-on" data-atab="orders">Orders <span class="new" id="aNewCount">3 new</span></a>
+      <a data-atab="products">Products</a><a data-atab="cats">Categories</a><a data-atab="promo">Promote to cards</a><a data-atab="coupons">Coupons</a><a data-atab="settings">Shop settings</a>
+    </nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>Shop</h1><p>Orders, products, categories and where each product is promoted.</p></div><button class="sh-btn sh-btn--red" id="aAddProd">+ Add product</button></div>
+      <div class="sh-kpis">
+        <div class="sh-kpi"><small>Orders today</small><b>12</b><em>+4 vs yesterday</em></div>
+        <div class="sh-kpi"><small>Revenue (30 days)</small><b>₹48,960</b><em>71 orders</em></div>
+        <div class="sh-kpi"><small>To ship</small><b id="aToShip">5</b><em style="color:#9b1c14">2 older than 48h</em></div>
+        <div class="sh-kpi"><small>To send to Printrove</small><b id="aToPrint">1</b><em style="color:#7a5a00">paid, not placed yet</em></div>
+      </div>
+
+      <div class="sh-apanel is-on" data-apanel="orders">
+        <div class="sh-tabs" id="aOrderTabs"><button class="is-on" data-f="all">All</button><button data-f="pending">Awaiting payment</button><button data-f="paid">Paid · send to printer</button><button data-f="packed">At Printrove</button><button data-f="shipped">Shipped</button><button data-f="delivered">Delivered</button><button data-f="cancelled">Cancelled / refunded</button></div>
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead><tbody id="aOrders"></tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="products">
+        <div class="sh-tabs"><button class="is-on">All (7)</button><button>Live</button><button>Draft</button><button>Hidden</button><button>Archived</button></div>
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Sizes</th><th>Promoted on</th><th>Status</th><th>Actions</th></tr></thead><tbody id="aProducts"></tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="cats">
+        <div class="sh-panel"><h2>Categories &amp; collections</h2><p>Collections show as tiles on the shop home and as a filter. Drag to reorder (mockup).</p>
+          <div id="aCats"></div>
+          <div class="sh-coupon"><input placeholder="New collection name, e.g. Ram Darbar" id="aCatName" style="text-transform:none"><button class="sh-btn sh-btn--teal" id="aCatAdd">Add</button></div>
+        </div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="promo">
+        <p style="font:700 15px Nunito;color:#6b4a2b;margin:0 0 14px">Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product.</p>
+        <div class="sh-slots" id="aSlots"></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="coupons">
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Valid till</th><th>Status</th></tr></thead><tbody>
+          <tr><td><b>NAVRATRI10</b></td><td>10% off</td><td>₹999</td><td>18 / 200</td><td>12 Oct 2026</td><td><span class="sh-st st-delivered">Active</span></td></tr>
+          <tr><td><b>FIRSTTEE</b></td><td>₹100 off</td><td>₹599</td><td>41 / ∞</td><td>—</td><td><span class="sh-st st-delivered">Active</span></td></tr>
+          <tr><td><b>SHRAVAN</b></td><td>15% off</td><td>—</td><td>96 / 100</td><td>31 Aug 2026</td><td><span class="sh-st st-cancelled">Expired</span></td></tr>
+        </tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="settings">
+        <div class="sh-panel"><h2>Shop settings</h2><p>Every number here feeds the shop pages and checkout — nothing is typed into pages.</p>
+          <div class="sh-form">
+            <label>Shipping<input value="Free, pan India (included in price)"></label>
+            <label>International shipping<select><option>Not offered</option></select></label>
+            <label>GST<input value="18% added at checkout"></label>
+            <label>Returns<input value="Only if we sent the wrong item"></label>
+            <label>Print partner<select><option>Printrove</option></select></label>
+            <label>Report-a-problem window<input value="48 hours from delivery"></label>
+            <label>Delivery time shown<input value="5–8 days"></label>
+            <label>Order alerts to<input value="Owner WhatsApp"></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- cart drawer -->
+<div class="sh-scrim" id="shScrim"></div>
+<aside class="sh-drawer" id="shCart" aria-label="Your cart">
+  <div class="sh-dh"><h2>Your cart</h2><button class="sh-x" id="shCartClose" aria-label="Close cart">×</button></div>
+  <div class="sh-free" id="shFree"></div>
+  <div class="sh-items" id="shItems"></div>
+  <div class="sh-df" id="shCartFoot"></div>
+</aside>
+<div class="sh-toast" id="shToast"></div>
+
+<!-- admin modal -->
+<div class="sh-modal" id="shModal"><div class="sh-modal-box" id="shModalBox"></div></div>
+</main>
+
+<footer class="mk-foot"><div class="sh-wrap"><div><b>Saa Thum</b>Faith, brought home to you.</div><div><b>Browse</b><a>Home</a><a>Explore</a><a>Shop</a><a>Blog</a></div><div><b>Shop help</b><a>Shipping (free, pan India)</a><a>Size guide</a><a>Refund policy</a><a>Track my order</a></div><div><b>Trust</b><a>Refund policy</a><a>Privacy</a><a>Terms</a></div></div></footer>
+<script>(function(){
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const inr=n=>'₹'+Number(n).toLocaleString('en-IN');
+const COLOURS={Saffron:'#e07a1f',Black:'#222',Cream:'#f1e8d6',Maroon:'#7a1f24',Teal:'#127a72',Mustard:'#d9a62b',White:'#fafafa',Navy:'#1f2a4a'};
+const P=[
+ {id:0,name:'Om Saffron Tee',coll:'Minimal',price:699,mrp:0,col:['Saffron','Maroon','Cream'],sizes:['S','M','L','XL','XXL'],fit:'Regular',print:'Chest print',for:'Adults',tag:'',sold:120,newr:4},
+ {id:1,name:'Har Har Mahadev Trishul Tee',coll:'Mahadev',price:799,mrp:999,col:['Black','Navy'],sizes:['S','M','L','XL','XXL','3XL'],fit:'Regular',print:'Big front print',for:'Adults',tag:'sale',sold:310,newr:3},
+ {id:2,name:'Lotus & Diya Tee',coll:'Lotus & Diya',price:649,mrp:0,col:['Cream','White'],sizes:['S','M','L','XL'],fit:'Regular',print:'Big front print',for:'Adults',tag:'new',sold:80,newr:7},
+ {id:3,name:'Murli Mandala Oversized Tee',coll:'Krishna',price:899,mrp:0,col:['Maroon','Black'],sizes:['M','L','XL','XXL'],fit:'Oversized',print:'Back print',for:'Adults',tag:'best',sold:420,newr:2},
+ {id:4,name:'Temple Bell Embroidered Tee',coll:'Minimal',price:749,mrp:0,col:['Teal','Navy','Cream'],sizes:['S','M','L','XL','XXL'],fit:'Regular',print:'Embroidery',for:'Adults',tag:'new',sold:60,newr:6},
+ {id:5,name:'Himalayan Mandir Tee',coll:'Himalaya',price:699,mrp:799,col:['Mustard','Cream'],sizes:['S','M','L','XL'],fit:'Regular',print:'Big front print',for:'Adults',tag:'sale',sold:190,newr:5},
+ {id:6,name:'Baby Gaj Kids Tee',coll:'Kids',price:449,mrp:0,col:['White','Saffron'],sizes:['2-3Y','4-5Y','6-7Y','8-9Y'],fit:'Regular',print:'Big front print',for:'Kids',tag:'new',sold:95,newr:8},
+];
+const COLLS=[['Mahadev','Shiva, trishul, damru'],['Krishna','Murli, peacock, Vrindavan'],['Lotus & Diya','Light and new beginnings'],['Himalaya','Mountain temples we visit'],['Minimal','Small symbols, everyday wear'],['Kids','For little devotees']];
+const ph=(p,label='T-shirt photo')=>`<div class="sh-ph" style="--ph:${shade(COLOURS[p.col[0]])}"><span>${label}</span></div>`;
+function shade(h){const n=parseInt(h.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;r=Math.round(r*.45+239*.55);g=Math.round(g*.45+220*.55);b=Math.round(b*.45+191*.55);return`rgb(${r},${g},${b})`}
+
+/* ---------- state ---------- */
+let cart=[{id:1,col:'Black',size:'L',qty:1},{id:3,col:'Maroon',size:'XL',qty:1}];
+const wish=new Set();
+const GST_PCT=18;
+const sub=()=>cart.reduce((s,i)=>s+P[i.id].price*i.qty,0);
+const ship=()=>0;
+const gstOf=n=>Math.round(n*GST_PCT/100);
+
+/* ---------- card ---------- */
+function card(p){
+  const off=p.mrp?Math.round((1-p.price/p.mrp)*100):0;
+  const badge=p.tag==='sale'?'<span class="sh-badge">Sale</span>':p.tag==='new'?'<span class="sh-badge sh-badge--new">New</span>':p.tag==='best'?'<span class="sh-badge sh-badge--best">Bestseller</span>':'';
+  return `<article class="sh-card" data-open="${p.id}">
+   <div class="sh-card-art">${ph(p)}${badge}
+    <button class="sh-heart${wish.has(p.id)?' is-on':''}" data-wish="${p.id}" aria-label="Save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-9.5-9.2C1 8.3 3.3 5 6.6 5c2 0 3.4 1.1 4.4 2.5C12 6.1 13.4 5 15.4 5 18.7 5 21 8.3 19.5 11.8 17.5 16.4 12 21 12 21z"/></svg></button>
+    <button class="sh-btn sh-btn--red sh-quick" data-quick="${p.id}">Quick add · ${p.sizes[1]||p.sizes[0]}</button>
+   </div>
+   <h3>${p.name}</h3>
+   <div class="sh-price">${inr(p.price)}${p.mrp?` <s>${inr(p.mrp)}</s> <span class="sh-off">−${off}%</span>`:''}</div>
+   <div class="sh-sw">${p.col.map(c=>`<i style="background:${COLOURS[c]}" title="${c}"></i>`).join('')}</div>
+  </article>`;
+}
+
+/* ---------- router ---------- */
+function go(r){location.hash=r}
+function route(){
+  let h=(location.hash||'#home').slice(1); let [v,arg]=h.split('/');
+  if(!$(`[data-view="${v}"]`))v='home';
+  $$('.sh-view').forEach(x=>x.classList.toggle('is-on',x.dataset.view===v));
+  $$('.sh-switch button').forEach(b=>b.classList.toggle('is-on',b.dataset.go.split('/')[0]===v));
+  $$('.mk-nav a').forEach(a=>a.classList.toggle('is-active',a.dataset.nav==='shop'&&['home','all','p','checkout'].includes(v)));
+  if(v==='p')renderPdp(+arg||0);
+  if(v==='checkout')renderCheckout();
+  if(v==='orders')renderOrders();
+  if(v==='billing')renderBilling();
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange',route);
+
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]');
+  if(g){e.preventDefault(); if(g.dataset.coll){F.coll=new Set([g.dataset.coll]);syncFilters()} if(g.dataset.tag==='new'){$('#fSort').value='new';applyFilters()} go(g.dataset.go);return}
+  const w=e.target.closest('[data-wish]'); if(w){e.stopPropagation();const id=+w.dataset.wish;wish.has(id)?wish.delete(id):wish.add(id);w.classList.toggle('is-on');toast(wish.has(id)?'Saved to your wishlist':'Removed from wishlist');return}
+  const q=e.target.closest('[data-quick]'); if(q){e.stopPropagation();const p=P[+q.dataset.quick];addToCart(p.id,p.col[0],p.sizes[1]||p.sizes[0],1);return}
+  const o=e.target.closest('[data-open]'); if(o){go('p/'+o.dataset.open);return}
+});
+
+/* ---------- home ---------- */
+$('#shCats').innerHTML=COLLS.map(([n,d],i)=>`<button class="sh-cat" data-go="all" data-coll="${n}"><div class="sh-ph" style="--ph:${shade(Object.values(COLOURS)[i])}"><span>Collection art</span></div><b>${n}</b><small>${P.filter(p=>p.coll===n).length} designs · ${d}</small></button>`).join('');
+$('#shNew').innerHTML=P.filter(p=>p.tag==='new'||p.id===5).slice(0,4).map(card).join('');
+$('#shBest').innerHTML=[...P].sort((a,b)=>b.sold-a.sold).slice(0,4).map(card).join('');
+$$('.sh-dot').forEach(d=>d.addEventListener('click',e=>{
+  const p=P[+d.dataset.pop],pop=$('#shPop');
+  pop.innerHTML=`${ph(p)}<div><b>${p.name}</b><small>${inr(p.price)} · tap to view →</small></div>`;
+  pop.style.left=`calc(${d.style.left} - 270px)`;pop.style.top=`calc(${d.style.top} - 30px)`;
+  pop.classList.add('is-on');pop.onclick=()=>go('p/'+p.id);e.stopPropagation();
+}));
+document.addEventListener('click',e=>{if(!e.target.closest('.sh-dot,.sh-pop'))$('#shPop').classList.remove('is-on')});
+
+/* ---------- filters (layout 1) ---------- */
+const F={min:399,max:999,coll:new Set(),col:new Set(),size:new Set(),fit:new Set(),print:new Set(),for:new Set()};
+const uniq=k=>[...new Set(P.flatMap(p=>[].concat(p[k])))];
+function opt(group,v,count,sw){return`<label class="sh-opt"><input type="checkbox" data-fg="${group}" value="${v}">${sw?`<i style="background:${sw}"></i>`:''}${v}<em>${count}</em></label>`}
+$('#fColl').innerHTML=COLLS.map(([n])=>opt('coll',n,P.filter(p=>p.coll===n).length)).join('');
+$('#fColour').innerHTML=uniq('col').map(c=>opt('col',c,P.filter(p=>p.col.includes(c)).length,COLOURS[c])).join('');
+$('#fSize').innerHTML=['S','M','L','XL','XXL','3XL','2-3Y','4-5Y','6-7Y','8-9Y'].map(s=>`<label><input type="checkbox" data-fg="size" value="${s}"><span>${s}</span></label>`).join('');
+$('#fFit').innerHTML=uniq('fit').map(v=>opt('fit',v,P.filter(p=>p.fit===v).length)).join('');
+$('#fPrint').innerHTML=uniq('print').map(v=>opt('print',v,P.filter(p=>p.print===v).length)).join('');
+$('#fFor').innerHTML=uniq('for').map(v=>opt('for',v,P.filter(p=>p.for===v).length)).join('');
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.fg){t.checked?F[t.dataset.fg].add(t.value):F[t.dataset.fg].delete(t.value);applyFilters()}});
+function priceSync(src){
+  let a=+$('#fMin').value,b=+$('#fMax').value;
+  if(src==='n'){a=+$('#fMinN').value||399;b=+$('#fMaxN').value||999}
+  if(a>b)[a,b]=[b,a]; F.min=a;F.max=b;
+  $('#fMin').value=a;$('#fMax').value=b;$('#fMinN').value=a;$('#fMaxN').value=b;$('#fPriceLbl').textContent=`${inr(a)} – ${inr(b)}`;applyFilters();
+}
+['#fMin','#fMax'].forEach(s=>$(s).addEventListener('input',()=>priceSync('r')));
+['#fMinN','#fMaxN'].forEach(s=>$(s).addEventListener('change',()=>priceSync('n')));
+$('#fSort').addEventListener('change',applyFilters);
+$('#fClear').addEventListener('click',()=>{['coll','col','size','fit','print','for'].forEach(k=>F[k].clear());$('#fMinN').value=399;$('#fMaxN').value=999;syncFilters();priceSync('n')});
+$('#fOpen').addEventListener('click',()=>{$('#shFilters').classList.add('is-on');$$('.sh-filter-close').forEach(b=>b.style.display='')});
+$$('.sh-filter-close').forEach(b=>b.addEventListener('click',()=>{$('#shFilters').classList.remove('is-on');$$('.sh-filter-close').forEach(x=>x.style.display='none')}));
+function syncFilters(){$$('[data-fg]').forEach(i=>i.checked=F[i.dataset.fg].has(i.value));applyFilters()}
+function applyFilters(){
+  let r=P.filter(p=>p.price>=F.min&&p.price<=F.max&&(!F.coll.size||F.coll.has(p.coll))&&(!F.col.size||p.col.some(c=>F.col.has(c)))&&(!F.size.size||p.sizes.some(s=>F.size.has(s)))&&(!F.fit.size||F.fit.has(p.fit))&&(!F.print.size||F.print.has(p.print))&&(!F.for.size||F.for.has(p.for)));
+  const s=$('#fSort').value;
+  if(s==='lo')r.sort((a,b)=>a.price-b.price); if(s==='hi')r.sort((a,b)=>b.price-a.price);
+  if(s==='best')r.sort((a,b)=>b.sold-a.sold); if(s==='new')r.sort((a,b)=>b.newr-a.newr);
+  $('#fCount').textContent=`${r.length} product${r.length===1?'':'s'}`;
+  $('#shAll').innerHTML=r.length?r.map(card).join(''):`<div class="sh-empty"><b>No T-shirts match these filters</b><p style="font:600 15px Nunito;color:#6b4a2b">Try a wider price range or fewer filters.</p><button class="sh-btn sh-btn--ghost" onclick="document.getElementById('fClear').click()">Clear filters</button></div>`;
+  const chips=[];['coll','col','size','fit','print','for'].forEach(k=>F[k].forEach(v=>chips.push(`<button class="sh-chip" data-unchip="${k}|${v}">${v} ×</button>`)));
+  if(F.min>399||F.max<999)chips.push(`<span class="sh-chip">${inr(F.min)}–${inr(F.max)}</span>`);
+  $('#fChips').innerHTML=chips.join('');
+}
+document.addEventListener('click',e=>{const c=e.target.closest('[data-unchip]');if(c){const[k,v]=c.dataset.unchip.split('|');F[k].delete(v);syncFilters()}});
+applyFilters();
+
+/* ---------- product page ---------- */
+let sel={};
+function renderPdp(id){
+  const p=P[id]; sel={id,col:p.col[0],size:null,qty:1};
+  const off=p.mrp?Math.round((1-p.price/p.mrp)*100):0;
+  $('#pCrumb').innerHTML=`<a data-go="home">Shop</a> / <a data-go="all" data-coll="${p.coll}">${p.coll}</a> / ${p.name}`;
+  $('#pdp').innerHTML=`
+  <div class="sh-gal"><div class="sh-thumbs">${['Front','Back','Print close-up','On model'].map((t,i)=>`<button class="${i?'':'is-on'}" data-thumb="${t}">${ph(p,t)}</button>`).join('')}</div>
+   <div class="sh-main-img" id="pMain">${ph(p,'Front photo')}</div></div>
+  <div class="sh-pdp-info">
+   <p class="sh-eyebrow">${p.coll} collection${p.tag==='best'?' · Bestseller':''}</p>
+   <h1>${p.name}</h1>
+   <div class="sh-price">${inr(p.price)}${p.mrp?` <s>${inr(p.mrp)}</s> <span class="sh-off">−${off}%</span>`:''}</div>
+   <p class="sh-tax">+ ${GST_PCT}% GST at checkout · Free shipping, pan India</p>
+   <div class="sh-lbl">Colour <span id="pCol">${p.col[0]}</span></div>
+   <div class="sh-colours">${p.col.map((c,i)=>`<button class="${i?'':'is-on'}" style="background:${COLOURS[c]}" data-col="${c}" aria-label="${c}"></button>`).join('')}</div>
+   <div class="sh-lbl">Size <button class="sh-link" id="pGuide">Size guide</button></div>
+   <div class="sh-sizes" id="pSizes">${p.sizes.map(s=>`<label><input type="radio" name="psz" value="${s}"><span>${s}</span></label>`).join('')}</div>
+   <div class="sh-err" id="pErr"></div>
+   <div class="sh-buy"><div class="sh-qty"><button data-q="-1">−</button><span id="pQty">1</span><button data-q="1">+</button></div>
+    <button class="sh-btn sh-btn--ghost" id="pAdd">Add to cart</button><button class="sh-btn sh-btn--red" id="pBuy">Buy now</button></div>
+   <div class="sh-perks"><div><i>🖨️</i>Printed to order for you</div><div><i>🚚</i>Free shipping, pan India</div><div><i>📲</i>Pay by any UPI app</div></div>
+   <div class="sh-pin"><b style="font:900 15px Nunito;width:100%">Check delivery</b><input id="pPin" placeholder="Enter 6-digit pincode" inputmode="numeric" maxlength="6"><button class="sh-btn sh-btn--teal" id="pPinBtn" style="min-height:46px">Check</button><p id="pPinOut" hidden></p></div>
+   <div class="sh-acc">
+    <details open><summary>About this design</summary><p>Original Saa Thum artwork. ${p.print} on ${p.fit.toLowerCase()} fit ${p.for==='Kids'?'kids ':''}T-shirt. Designed to be worn with respect — to the temple, to work, everyday.</p></details>
+    <details><summary>Fabric &amp; care</summary><ul><li>100% combed cotton, 180 GSM, bio-washed</li><li>Wash inside out in cold water</li><li>Do not iron directly on the print</li></ul></details>
+    <details><summary>Shipping &amp; returns</summary><ul><li>Printed to order, delivered in 5–8 days — free shipping anywhere in India</li><li>We ship within India only</li><li>No returns or exchanges for size or change of mind — please check the size guide</li><li>Wrong or damaged item? Tell us within 48 hours with a photo and we replace it or refund you</li></ul></details>
+   </div>
+  </div>`;
+}
+document.addEventListener('click',e=>{
+  if(!$('[data-view="p"]').classList.contains('is-on'))return;
+  const c=e.target.closest('[data-col]'); if(c){sel.col=c.dataset.col;$$('[data-col]').forEach(b=>b.classList.toggle('is-on',b===c));$('#pCol').textContent=sel.col;$('#pMain .sh-ph').style.setProperty('--ph',shade(COLOURS[sel.col]))}
+  const t=e.target.closest('[data-thumb]'); if(t){$$('[data-thumb]').forEach(b=>b.classList.toggle('is-on',b===t));$('#pMain span').textContent=t.dataset.thumb+' photo'}
+  const q=e.target.closest('[data-q]'); if(q){sel.qty=Math.max(1,Math.min(10,sel.qty+ +q.dataset.q));$('#pQty').textContent=sel.qty}
+  if(e.target.id==='pAdd'||e.target.id==='pBuy'){
+    const s=$('input[name=psz]:checked'); if(!s){$('#pErr').textContent='Please pick a size first.';return}
+    $('#pErr').textContent=''; addToCart(sel.id,sel.col,s.value,sel.qty,e.target.id==='pBuy');
+  }
+  if(e.target.id==='pPinBtn'){const v=$('#pPin').value,o=$('#pPinOut');o.hidden=false;if(!/^\d{6}$/.test(v)){o.style.color='#b3261e';o.textContent='Enter a valid 6-digit pincode.'}else{o.style.color='';o.textContent=`✓ Delivers to ${v} in 5–8 days · free shipping`}}
+  if(e.target.id==='pGuide'){modal(`<h2>Size guide</h2><p>Chest and length in inches, measured flat. Oversized fits are 2" wider.</p><table class="sh-sizeguide"><tr><th>Size</th><th>Chest</th><th>Length</th></tr>${[['S',38,27],['M',40,28],['L',42,29],['XL',44,30],['XXL',46,31],['3XL',48,32]].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table><div style="margin-top:16px"><button class="sh-btn sh-btn--teal sh-btn--wide" data-close>Got it</button></div>`)}
+});
+
+/* ---------- cart ---------- */
+function addToCart(id,col,size,qty,buyNow){
+  const ex=cart.find(i=>i.id===id&&i.col===col&&i.size===size);
+  ex?ex.qty+=qty:cart.push({id,col,size,qty});
+  renderCart(); if(buyNow){go('checkout');return} openCart(); toast(`Added: ${P[id].name} (${size})`);
+}
+function renderCart(){
+  const n=cart.reduce((s,i)=>s+i.qty,0); $$('.avh-cart b').forEach(b=>b.textContent=n||'');
+  const s=sub();
+  $('#shFree').innerHTML='🚚 <b>Free shipping</b> on every order, pan India';
+  $('#shFree').style.display=cart.length?'':'none';
+  $('#shItems').innerHTML=cart.length?cart.map((i,k)=>{const p=P[i.id];return`<div class="sh-item">${ph({col:[i.col]})}<div><b>${p.name}</b><small>${i.col} · Size ${i.size}</small><div class="sh-qty"><button data-cq="${k}|-1">−</button><span>${i.qty}</span><button data-cq="${k}|1">+</button></div></div><div class="sh-item-r"><strong>${inr(p.price*i.qty)}</strong><button data-rm="${k}">Remove</button></div></div>`}).join(''):`<div class="sh-cart-empty"><b>Your cart is empty</b><p>Find a T-shirt that carries your faith.</p><button class="sh-btn sh-btn--red" data-go="all" onclick="document.getElementById('shCartClose').click()">Browse T-shirts</button></div>`;
+  $('#shCartFoot').innerHTML=cart.length?`<div class="sh-row"><span>Subtotal</span><span>${inr(s)}</span></div><div class="sh-row"><span>Shipping</span><span>Free</span></div><div class="sh-row"><span>GST (${GST_PCT}%)</span><span>${inr(gstOf(s))}</span></div><div class="sh-row sh-row--tot"><span>Total</span><span>${inr(s+gstOf(s))}</span></div><button class="sh-btn sh-btn--red sh-btn--wide" id="cGo">Checkout · Pay by UPI →</button><button class="sh-btn sh-btn--ghost sh-btn--wide" style="margin-top:8px" id="cKeep">Keep shopping</button>`:'';
+}
+function openCart(){$('#shCart').classList.add('is-on');$('#shScrim').classList.add('is-on')}
+function closeCart(){$('#shCart').classList.remove('is-on');$('#shScrim').classList.remove('is-on')}
+document.addEventListener('click',e=>{
+  if(e.target.closest('.avh-cart')){renderCart();openCart()}
+  if(e.target.id==='shScrim'||e.target.id==='shCartClose'||e.target.id==='cKeep')closeCart();
+  if(e.target.id==='cGo'){closeCart();go('checkout')}
+  const q=e.target.closest('[data-cq]'); if(q){const[k,d]=q.dataset.cq.split('|');cart[k].qty+=+d;if(cart[k].qty<1)cart.splice(k,1);renderCart();if(location.hash==='#checkout')renderSum()}
+  const r=e.target.closest('[data-rm]'); if(r){cart.splice(+r.dataset.rm,1);renderCart()}
+});
+let tt;function toast(m){const t=$('#shToast');t.textContent=m;t.classList.add('is-on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('is-on'),2200)}
+
+/* ---------- checkout ---------- */
+let step=1,coupon=0,lastOrder=null;
+function renderSum(){
+  const s=sub(),total=s-coupon+gstOf(s-coupon);
+  $('#coSum').innerHTML=`<h2>Order summary</h2>${cart.map(i=>`<div class="sh-sum-item">${ph({col:[i.col]})}<div><b>${P[i.id].name}</b><small>${i.col} · ${i.size} · Qty ${i.qty}</small></div><strong>${inr(P[i.id].price*i.qty)}</strong></div>`).join('')}
+   ${step<4?`<div class="sh-coupon"><input placeholder="Coupon code" id="coCode"><button class="sh-btn sh-btn--ghost" id="coApply" style="min-height:46px">Apply</button></div>`:''}
+   <div class="sh-row"><span>Subtotal</span><span>${inr(s)}</span></div>
+   ${coupon?`<div class="sh-row" style="color:#1e8a4c"><span>Coupon NAVRATRI10</span><span>−${inr(coupon)}</span></div>`:''}
+   <div class="sh-row"><span>Shipping</span><span>Free</span></div>
+   <div class="sh-row"><span>GST (${GST_PCT}%)</span><span>${inr(gstOf(s-coupon))}</span></div>
+   <div class="sh-row sh-row--tot"><span>Total</span><span>${inr(total)}</span></div>
+   <p style="font:700 13px Nunito;color:#7a6a55;margin:0">Free shipping, pan India. No returns — wrong item? We replace it or refund you.</p>`;
+}
+function stepsBar(){return`<div class="sh-steps">${['1 · You','2 · Delivery address','3 · Review','4 · Pay with UPI'].map((t,i)=>`<span class="${i+1===step?'is-on':i+1<step?'is-done':''}">${i+1<step?'✓ ':''}${t}</span>`).join('')}</div>`}
+function renderCheckout(){
+  if(!cart.length&&step<5){$('#coMain').innerHTML=`<div class="sh-panel sh-done"><h2>Your cart is empty</h2><p>Add a T-shirt to check out.</p><button class="sh-btn sh-btn--red" data-go="all">Browse T-shirts</button></div>`;$('#coSum').innerHTML='';return}
+  const m=$('#coMain'); renderSum();
+  if(step===1)m.innerHTML=stepsBar()+`<div class="sh-panel"><h2>You</h2><p>Signed in. Order updates come on WhatsApp and email.</p>
+    <div class="sh-wa"><i>✓</i>WhatsApp +91 98•••• 4521 verified</div>
+    <div class="sh-form"><label>Full name<input value="Anita Sharma"></label><label>Email<input value="anita@example.com"></label></div>
+    <p style="font:700 14px Nunito;color:#6b4a2b;margin:14px 0 0">Not signed in? Same as event bookings: WhatsApp first, then email, then Google.</p>
+    <div style="margin-top:18px"><button class="sh-btn sh-btn--red" data-step="2">Continue to address →</button></div></div>`;
+  if(step===2)m.innerHTML=stepsBar()+`<div class="sh-panel"><h2>Delivery address</h2><p>Saved addresses from your profile appear first.</p>
+    <label class="sh-opt" style="background:#fff;border:2px solid #b3261e;border-radius:14px;padding:14px;margin-bottom:14px"><input type="radio" name="ad" checked> <span><b style="color:#5a1f14">Home</b> — 12 Rajpur Road, Dehradun, Uttarakhand 248001</span></label>
+    <details><summary class="sh-link" style="display:inline">+ Use a new address</summary><div class="sh-form" style="margin-top:14px">
+    <label class="full">Address line<input placeholder="House, street, area"></label><label>Pincode<input placeholder="248001"></label><label>City<input></label><label>State<select><option>Uttarakhand</option><option>Delhi</option><option>Maharashtra</option></select></label><label>Phone for courier<input placeholder="+91"></label></div></details>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap"><button class="sh-btn sh-btn--ghost" data-step="1">← Back</button><button class="sh-btn sh-btn--red" data-step="3">Continue to review →</button></div></div>`;
+  if(step===3)m.innerHTML=stepsBar()+`<div class="sh-panel"><h2>Review your order</h2><p>Check sizes now — every tee is printed to order, so sizes can’t be changed later.</p>
+    ${cart.map(i=>`<div class="sh-sum-item">${ph({col:[i.col]})}<div><b>${P[i.id].name}</b><small>${i.col} · Size ${i.size}</small></div><div class="sh-qty" style="height:40px"><button data-cq="${cart.indexOf(i)}|-1">−</button><span>${i.qty}</span><button data-cq="${cart.indexOf(i)}|1">+</button></div></div>`).join('')}
+    <p style="font:700 15px Nunito;color:#3c4a4c;margin:16px 0 0">Ships to: 12 Rajpur Road, Dehradun 248001 · Printed to order, arrives in 5–8 days</p>
+    <label class="sh-opt" style="margin-top:14px"><input type="checkbox" class="coAgree"> I agree to the <a class="sh-link" style="font-size:15px">Terms &amp; Conditions</a></label><label class="sh-opt" style="margin-top:8px"><input type="checkbox" class="coAgree"> I agree to the <a class="sh-link" style="font-size:15px">Refund policy</a> — no returns; refund only if we send the wrong item</label><p class="sh-err" id="coAgreeErr"></p>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap"><button class="sh-btn sh-btn--ghost" data-step="2">← Back</button><button class="sh-btn sh-btn--red" id="coToPay">Go to payment →</button></div></div>`;
+  if(step===4){const b=sub()-coupon,total=b+gstOf(b), pay=total-3;
+    m.innerHTML=stepsBar()+`<div class="sh-panel"><p class="sh-eyebrow">Last step · Pay</p><h2>Pay with UPI</h2><p>Same as event bookings — scan the QR or pay to the UPI ID. No card, no app redirect.</p>
+    <div class="sh-pay"><div class="sh-qr">${qr()}<small>Scan with any UPI app</small><button class="sh-link" style="font-size:14px">Save QR</button></div>
+    <div><div class="sh-amt"><small>Please pay this exact amount</small><b>${inr(pay)}</b><em>UPI rounding discount −₹3 (helps us match your payment)</em></div>
+     <div class="sh-upi"><span>UPI ID <b>saathum@hdfcbank</b></span><button class="sh-link" style="font-size:14px">Copy</button></div>
+     <ol class="sh-how"><li>Open GPay, PhonePe, Paytm or BHIM</li><li>Scan the QR or pay to the UPI ID</li><li>Pay exactly <b>${inr(pay)}</b>, then tap the button below</li></ol>
+     <button class="sh-btn sh-btn--red sh-btn--wide" id="coPaid">I’ve paid →</button>
+     <p style="font:700 13px Nunito;color:#7a6a55;margin:10px 0 0">This QR is held for 30 minutes.</p></div></div></div>`;}
+  if(step===45)m.innerHTML=stepsBar()+`<div class="sh-panel"><p class="sh-eyebrow">Payment · Step 2 of 2</p><h2>Waiting for bank to confirm</h2><p>Your bank usually confirms within a minute. This page updates by itself.</p>
+    <div class="sh-wait"><div class="ok"><i>✓</i>You paid in your UPI app</div><div class="spin" id="w2"><i>…</i>Bank is confirming your payment</div><div id="w3"><i></i>Order confirmed and receipt sent</div></div>
+    <p style="font:800 14px Nunito;color:#5a1f14;margin:14px 0 6px">Have your 12-digit UPI reference? Enter it to speed things up</p>
+    <div class="sh-utr"><input placeholder="12-digit UTR" maxlength="12" inputmode="numeric"><button class="sh-btn sh-btn--teal" style="min-height:46px">Submit</button></div></div>`;
+  if(step===5){m.innerHTML=`<div class="sh-panel sh-done"><div class="big">✓</div><p class="sh-eyebrow">Order SHP-24817 confirmed</p><h2>Thank you, Anita!</h2><p>Payment of ${inr(lastOrder.total)} received. Your T-shirts go to print now. We send the tracking link on WhatsApp and email the moment they ship (usually 3–5 days).</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="sh-btn sh-btn--red" data-go="orders">Track in My orders →</button><button class="sh-btn sh-btn--ghost">Download receipt (PDF)</button><button class="sh-btn sh-btn--ghost" data-go="home">Keep shopping</button></div></div>`;$('#coSum').innerHTML=`<h2>Paid</h2>${lastOrder.html}<div class="sh-row sh-row--tot"><span>Total paid</span><span>${inr(lastOrder.total)}</span></div><p style="font:700 14px Nunito;color:#1e8a4c;margin:0">✓ Shows in Dashboard → Billing</p>`}
+}
+document.addEventListener('click',e=>{
+  const s=e.target.closest('[data-step]'); if(s){step=+s.dataset.step;renderCheckout();window.scrollTo(0,0)}
+  if(e.target.id==='coToPay'){const ok=$$('.coAgree').every(c=>c.checked);if(!ok){$('#coAgreeErr').textContent='Please agree to the Terms & Conditions and the Refund policy to continue.';return}step=4;renderCheckout();window.scrollTo(0,0)}
+  if(e.target.id==='coApply'){const v=($('#coCode').value||'').trim().toUpperCase();if(v==='NAVRATRI10'){coupon=Math.round(sub()*.1);toast('Coupon applied: 10% off')}else toast('Try NAVRATRI10 in this mockup');renderSum()}
+  if(e.target.id==='coPaid'){step=45;renderCheckout();
+    setTimeout(()=>{const w=$('#w2');if(w){w.className='ok';w.querySelector('i').textContent='✓'}},1600);
+    setTimeout(()=>{const w=$('#w3');if(w){w.className='ok';w.querySelector('i').textContent='✓'}},2600);
+    setTimeout(()=>{lastOrder={total:sub()-coupon+gstOf(sub()-coupon)-3,html:cart.map(i=>`<div class="sh-sum-item">${ph({col:[i.col]})}<div><b>${P[i.id].name}</b><small>${i.col} · ${i.size} · Qty ${i.qty}</small></div><strong>${inr(P[i.id].price*i.qty)}</strong></div>`).join(''),items:cart.slice()};
+      ORDERS.unshift({id:'SHP-24817',date:'1 Oct 2026',items:lastOrder.items,total:lastOrder.total,st:'paid',utr:'627415093388',cust:'Anita Sharma',city:'Dehradun'});
+      cart=[];coupon=0;renderCart();step=5;renderCheckout();renderAdminOrders()},3400);}
+});
+function qr(){let s='<svg viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/>';let seed=7;const rnd=()=>(seed=(seed*9301+49297)%233280)/233280;
+  const finder=(x,y)=>`<rect x="${x}" y="${y}" width="7" height="7" fill="#17343c"/><rect x="${x+1}" y="${y+1}" width="5" height="5" fill="#fff"/><rect x="${x+2}" y="${y+2}" width="3" height="3" fill="#17343c"/>`;
+  for(let y=1;y<28;y++)for(let x=1;x<28;x++){if((x<9&&y<9)||(x>19&&y<9)||(x<9&&y>19))continue;if(rnd()>.52)s+=`<rect x="${x}" y="${y}" width="1" height="1" fill="#17343c"/>`}
+  return s+finder(1,1)+finder(21,1)+finder(1,21)+'</svg>'}
+
+/* ---------- customer dashboard ---------- */
+const ORDERS=[
+ {id:'SHP-24790',date:'26 Sep 2026',items:[{id:3,col:'Maroon',size:'L',qty:1}],total:899,st:'shipped',utr:'626918204471',cust:'Anita Sharma',city:'Dehradun',awb:'DL 77812 4410',courier:'Printrove · Delhivery'},
+ {id:'SHP-24655',date:'12 Sep 2026',items:[{id:0,col:'Saffron',size:'M',qty:2},{id:6,col:'White',size:'4-5Y',qty:1}],total:1847,st:'delivered',utr:'625511873320',cust:'Anita Sharma',city:'Dehradun',awb:'BD 77011 2893',courier:'Printrove · Bluedart'},
+];
+const custSide=`<h3>My account</h3><a>Book events</a><a>My events</a><a>Past events</a><a data-go="orders">My orders <span class="new">New</span></a><a>Wishlist</a><a data-go="billing">Billing</a><a>Profile</a><a>Logout</a>`;
+$$('[data-side="cust"]').forEach(n=>n.innerHTML=custSide);
+const STEPS=['Ordered','Paid','Printing','Shipped','Delivered'],RANK={pending:0,paid:1,packed:2,shipped:3,delivered:4};
+const stLabel={pending:'Awaiting payment',paid:'Paid · going to print',packed:'Printing at Printrove',shipped:'Shipped',delivered:'Delivered',cancelled:'Cancelled'};
+function renderOrders(){
+  $$('[data-side="cust"] a').forEach(a=>a.classList.toggle('is-on',a.dataset.go==='orders'));
+  $('#custOrders').innerHTML=ORDERS.filter(o=>o.cust==='Anita Sharma').map(o=>`<div class="sh-order"><div class="sh-oh"><div><b>${o.id}</b><small>Placed ${o.date} · ${inr(o.total)} paid by UPI</small></div><span class="sh-st st-${o.st}">${stLabel[o.st]}</span></div>
+   <div class="sh-oitems">${o.items.map(i=>`<div class="sh-oitem">${ph({col:[i.col]})}<div><b>${P[i.id].name}</b><small>${i.col} · ${i.size} · Qty ${i.qty}</small></div></div>`).join('')}</div>
+   <div class="sh-track">${STEPS.map((s,k)=>`<div class="${k<=RANK[o.st]?'ok':''}">${s}${k===3&&o.awb?`<small>${o.awb}</small>`:''}</div>`).join('')}</div>
+   <div class="sh-oact">${o.st==='shipped'?`<button class="sh-btn sh-btn--teal">Track parcel (${o.courier}) →</button>`:''}<button class="sh-btn sh-btn--ghost">Receipt PDF</button>${o.st==='delivered'?'<button class="sh-btn sh-btn--ghost">Wrong item? Report it</button>':''}<button class="sh-btn sh-btn--ghost">Need help?</button></div></div>`).join('');
+}
+function renderBilling(){
+  $$('[data-side="cust"] a').forEach(a=>a.classList.toggle('is-on',a.dataset.go==='billing'));
+  const shop=ORDERS.filter(o=>o.cust==='Anita Sharma').map(o=>`<tr><td>${o.date}</td><td><b>${o.id}</b> · ${o.items.length} item${o.items.length>1?'s':''}</td><td><span class="sh-bill-src src-shop">Shop</span></td><td>${o.utr}</td><td><b>${inr(o.total)}</b></td><td><span class="sh-st st-delivered">Paid</span></td><td><button class="sh-link" style="font-size:14px">Receipt</button></td></tr>`).join('');
+  $('#custBill').innerHTML=shop+`<tr><td>20 Sep 2026</td><td><b>Rudrabhishek Havan</b> · Kedarnath</td><td><span class="sh-bill-src src-event">Event</span></td><td>626300117245</td><td><b>₹311</b></td><td><span class="sh-st st-delivered">Paid</span></td><td><button class="sh-link" style="font-size:14px">Receipt</button></td></tr><tr><td>02 Sep 2026</td><td><b>Ganapati Havan</b> · Haridwar</td><td><span class="sh-bill-src src-event">Event</span></td><td>624519900812</td><td><b>₹111</b></td><td><span class="sh-st st-cancelled">Refunded</span></td><td><button class="sh-link" style="font-size:14px">Receipt</button></td></tr>`;
+}
+
+/* ---------- admin ---------- */
+ORDERS.push(
+ {id:'SHP-24815',date:'1 Oct 2026',items:[{id:1,col:'Black',size:'XL',qty:1}],total:799,st:'paid',utr:'627411200958',cust:'Rohit Negi',city:'Haridwar'},
+ {id:'SHP-24812',date:'30 Sep 2026',items:[{id:5,col:'Mustard',size:'M',qty:1},{id:2,col:'Cream',size:'S',qty:1}],total:1348,st:'packed',utr:'627388164020',cust:'Priya Iyer',city:'Chennai'},
+ {id:'SHP-24810',date:'30 Sep 2026',items:[{id:4,col:'Teal',size:'L',qty:1}],total:828,st:'pending',utr:'—',cust:'Sameer Joshi',city:'Pune'},
+ {id:'SHP-24801',date:'28 Sep 2026',items:[{id:3,col:'Black',size:'XXL',qty:1}],total:978,st:'cancelled',utr:'626977305112',cust:'Kavita Rawat',city:'Delhi'});
+let aFilter='all';
+function renderAdminOrders(){
+  const rows=ORDERS.filter(o=>aFilter==='all'||o.st===aFilter);
+  $('#aOrders').innerHTML=rows.map(o=>{const k=ORDERS.indexOf(o);
+   const act=o.st==='pending'?`<button class="sh-btn sh-btn--ghost sh-mini" data-amatch="${k}">Match payment</button>`:o.st==='paid'?`<button class="sh-btn sh-btn--teal sh-mini" data-apack="${k}">Sent to Printrove</button>`:o.st==='packed'?`<button class="sh-btn sh-btn--red sh-mini" data-aship="${k}">Mark shipped</button>`:o.st==='shipped'?`<button class="sh-btn sh-btn--ghost sh-mini" data-adeliv="${k}">Mark delivered</button>`:o.st==='cancelled'?`<span style="font:700 14px Nunito">Refund UTR sent</span>`:'—';
+   return`<tr><td><b>${o.id}</b><br><small>${o.date}</small></td><td>${o.cust}<br><small>${o.city}</small></td><td>${o.items.map(i=>`${P[i.id].name} · ${i.size} ×${i.qty}`).join('<br>')}</td><td><b>${inr(o.total)}</b></td><td>${o.utr==='—'?'<span style="color:#7a5a00">Not matched</span>':'UPI '+o.utr.slice(-4)}</td><td><span class="sh-st st-${o.st}">${stLabel[o.st]}</span>${o.awb&&o.st!=='delivered'?`<br><small>${o.awb}</small>`:''}</td><td>${act}</td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;padding:30px">No orders in this state.</td></tr>';
+  $('#aToShip').textContent=ORDERS.filter(o=>o.st==='paid'||o.st==='packed').length;
+  $('#aNewCount').textContent=ORDERS.filter(o=>o.st==='paid').length+' to print';$('#aToPrint').textContent=ORDERS.filter(o=>o.st==='paid').length;
+}
+$('#aOrderTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;aFilter=b.dataset.f;$$('#aOrderTabs button').forEach(x=>x.classList.toggle('is-on',x===b));renderAdminOrders()});
+const SLOTS={'Hero hotspots (photo dots)':[5,3,4],'New arrivals rail':[2,4,6,5],'Featured banner':[2],'Bestsellers rail':[3,1,0,5],'Sale badge':[1,5],'Product page · You may also like':[0,3,4,1]};
+function renderProducts(){
+  $('#aProducts').innerHTML=P.filter(p=>!p.gone).map(p=>{const on=Object.entries(SLOTS).filter(([,v])=>v.includes(p.id)).map(([k])=>k.split(' (')[0].split(' ·')[0]);
+   return`<tr><td>${ph(p)}<b>${p.name}</b></td><td>${p.coll}</td><td><b>${inr(p.price)}</b>${p.mrp?`<br><small><s>${inr(p.mrp)}</s></small>`:''}</td><td><small>${p.sizes.join(' · ')}</small></td><td style="max-width:220px"><small>${on.join(', ')||'—'}</small></td><td><span class="sh-st st-delivered">Live</span></td>
+   <td style="white-space:nowrap"><button class="sh-btn sh-btn--ghost sh-mini" data-aedit="${p.id}">Edit</button> <button class="sh-btn sh-btn--teal sh-mini" data-apromo="${p.id}">Promote</button> <button class="sh-btn sh-btn--ghost sh-mini" style="color:#b3261e;border-color:#b3261e" data-adel="${p.id}">Delete</button></td></tr>`}).join('');
+}
+function renderSlots(){$('#aSlots').innerHTML=Object.entries(SLOTS).map(([k,v])=>`<div class="sh-slot"><h3>${k}</h3><p>${v.length} product${v.length>1?'s':''} · drag to reorder</p><div class="sh-slot-items">${v.filter(i=>!P[i].gone).map(i=>`<span>${ph(P[i])}${P[i].name}</span>`).join('')}<span style="border-style:dashed;padding:4px 10px;cursor:pointer">+ Add</span></div></div>`).join('')}
+let CATS=COLLS.map(c=>c[0]);
+function renderCats(){$('#aCats').innerHTML=CATS.map((c,i)=>`<div class="sh-sum-item" style="grid-template-columns:28px 1fr auto"><span style="font:900 18px Nunito;color:#a08974;cursor:grab">⋮⋮</span><div><b>${c}</b><small>${P.filter(p=>p.coll===c&&!p.gone).length} products · shown on shop home</small></div><div style="white-space:nowrap"><button class="sh-btn sh-btn--ghost sh-mini">Edit</button> <button class="sh-btn sh-btn--ghost sh-mini" style="color:#b3261e;border-color:#b3261e" data-acatdel="${i}">Delete</button></div></div>`).join('')}
+$('#aCatAdd').addEventListener('click',()=>{const v=$('#aCatName').value.trim();if(!v)return;CATS.push(v);$('#aCatName').value='';renderCats();toast('Collection added')});
+$$('[data-atab]').forEach(a=>a.addEventListener('click',()=>{$$('[data-atab]').forEach(x=>x.classList.toggle('is-on',x===a));$$('.sh-apanel').forEach(p=>p.classList.toggle('is-on',p.dataset.apanel===a.dataset.atab))}));
+
+function modal(html){$('#shModalBox').innerHTML=html;$('#shModal').classList.add('is-on')}
+function closeModal(){$('#shModal').classList.remove('is-on')}
+let mIdx=null;
+document.addEventListener('click',e=>{
+  if(e.target.id==='shModal'||e.target.closest('[data-close]'))closeModal();
+  const t=e.target.closest('[data-apack],[data-adeliv],[data-amatch]');
+  if(t){const k=+(t.dataset.apack??t.dataset.adeliv??t.dataset.amatch);const o=ORDERS[k];
+    if(t.dataset.amatch!==undefined){mIdx=k;modal(`<h2>Match payment · ${o.id}</h2><p>No bank SMS matched ${inr(o.total)} yet. Enter the customer's 12-digit UTR after checking your bank app.</p><div class="sh-form"><label class="full">UTR<input placeholder="12-digit UPI reference"></label></div><div style="display:flex;gap:10px;margin-top:16px"><button class="sh-btn sh-btn--ghost" data-close>Cancel</button><button class="sh-btn sh-btn--teal" id="mMatch" style="flex:1">Confirm payment</button></div><p style="margin-top:12px;font-size:14px">Rejecting sends the soft WhatsApp + email message with the support contact.</p>`);return}
+    o.st=t.dataset.apack!==undefined?'packed':'delivered';renderAdminOrders();toast(`${o.id} → ${stLabel[o.st]} · customer notified on WhatsApp + email`)}
+  const s=e.target.closest('[data-aship]'); if(s){mIdx=+s.dataset.aship;const o=ORDERS[mIdx];modal(`<h2>Mark ${o.id} as shipped</h2><p>${o.cust}, ${o.city} · ${o.items.length} item(s). Copy the courier and tracking number from Printrove.</p><div class="sh-form">
+    <label>Courier (from Printrove)<select id="mCour"><option>Printrove · Delhivery</option><option>Printrove · Bluedart</option><option>Printrove · Xpressbees</option><option>Printrove · India Post</option></select></label><label>AWB / tracking number<input id="mAwb" value="DL 77920 1183"></label><label class="full">Tracking link<input value="https://www.delhivery.com/track/package/…"></label><label class="full">Expected delivery<input value="5 Oct 2026"></label></div>
+    <label class="sh-opt" style="margin-top:14px"><input type="checkbox" checked> Send tracking on WhatsApp + email</label>
+    <div style="display:flex;gap:10px;margin-top:16px"><button class="sh-btn sh-btn--ghost" data-close>Cancel</button><button class="sh-btn sh-btn--red" id="mShip" style="flex:1">Mark shipped</button></div>`)}
+  if(e.target.id==='mShip'){const o=ORDERS[mIdx];o.st='shipped';o.awb=$('#mAwb').value;o.courier=$('#mCour').value;closeModal();renderAdminOrders();toast(`${o.id} shipped · tracking sent to ${o.cust}`)}
+  if(e.target.id==='mMatch'){ORDERS[mIdx].st='paid';ORDERS[mIdx].utr='627455510239';closeModal();renderAdminOrders();toast('Payment confirmed · order moved to “to pack”')}
+  const d=e.target.closest('[data-adel]'); if(d){mIdx=+d.dataset.adel;modal(`<h2>Delete “${P[mIdx].name}”?</h2><p>It disappears from the shop, every card and search. Past orders and receipts keep their copy of the product. You can restore it from Archived for 30 days.</p><div style="display:flex;gap:10px"><button class="sh-btn sh-btn--ghost" data-close>Cancel</button><button class="sh-btn sh-btn--red" id="mDel" style="flex:1">Delete product</button></div>`)}
+  if(e.target.id==='mDel'){P[mIdx].gone=true;closeModal();renderProducts();renderSlots();renderCats();toast('Product deleted (archived for 30 days)')}
+  const pr=e.target.closest('[data-apromo]'); if(pr){mIdx=+pr.dataset.apromo;modal(`<h2>Promote “${P[mIdx].name}”</h2><p>Tick every card on the shop where this product should appear.</p><div class="sh-promo-opts">${Object.keys(SLOTS).map(k=>`<label class="sh-opt"><input type="checkbox" data-slot="${k}"${SLOTS[k].includes(mIdx)?' checked':''}>${k}</label>`).join('')}</div><div class="sh-form"><label>Badge<select><option>None</option><option>New</option><option>Bestseller</option><option>Sale</option></select></label><label>Show until<input value="Always"></label></div><div style="display:flex;gap:10px;margin-top:16px"><button class="sh-btn sh-btn--ghost" data-close>Cancel</button><button class="sh-btn sh-btn--teal" id="mPromo" style="flex:1">Save</button></div>`)}
+  if(e.target.id==='mPromo'){$$('[data-slot]').forEach(c=>{const a=SLOTS[c.dataset.slot],i=a.indexOf(mIdx);if(c.checked&&i<0)a.push(mIdx);if(!c.checked&&i>=0)a.splice(i,1)});closeModal();renderProducts();renderSlots();toast('Promotion saved')}
+  const ed=e.target.closest('[data-aedit]'); if(ed||e.target.id==='aAddProd'){const p=ed?P[+ed.dataset.aedit]:null;modal(`<h2>${p?'Edit product':'Add product'}</h2><p>Photos, price and stock per size. SEO title and share card are written automatically.</p><div class="sh-form">
+    <label class="full">Product name<input value="${p?p.name:''}" placeholder="e.g. Ram Darbar Tee"></label><label>Collection<select>${CATS.map(c=>`<option${p&&p.coll===c?' selected':''}>${c}</option>`).join('')}</select></label><label>Fit<select><option>Regular</option><option${p&&p.fit==='Oversized'?' selected':''}>Oversized</option></select></label>
+    <label>Price (₹)<input value="${p?p.price:''}"></label><label>MRP for strike-through (₹)<input value="${p&&p.mrp?p.mrp:''}" placeholder="optional"></label>
+    <label class="full">Colours<input value="${p?p.col.join(', '):''}" placeholder="Black, Maroon"></label>
+    <label class="full">Sizes offered<input value="${p?p.sizes.join(', '):'S, M, L, XL, XXL'}"></label><label class="full">Printrove product / design ID<input placeholder="from your Printrove dashboard"></label>
+    <label class="full">Photos (front, back, close-up, on model)<div class="sh-ph" style="min-height:90px;border-radius:12px"><span>Drop photos here</span></div></label>
+    <label class="full">Description<input value="${p?'Original Saa Thum artwork…':''}"></label>
+    <label>Status<select><option>Live</option><option>Draft</option><option>Hidden</option></select></label><label>Price shown<input value="+18% GST at checkout" disabled></label></div>
+    <div style="display:flex;gap:10px;margin-top:16px"><button class="sh-btn sh-btn--ghost" data-close>Cancel</button><button class="sh-btn sh-btn--red" data-close style="flex:1">${p?'Save changes':'Publish product'}</button></div>`)}
+  const cd=e.target.closest('[data-acatdel]'); if(cd){const i=+cd.dataset.acatdel;const n=P.filter(p=>p.coll===CATS[i]&&!p.gone).length;if(n){toast(`Move its ${n} product(s) first — a collection with products can't be deleted`)}else{CATS.splice(i,1);renderCats()}}
+});
+
+/* ---------- init ---------- */
+$('#shAlso')&&($('#shAlso').innerHTML=P.slice(0,4).map(card).join(''));
+renderCart();renderAdminOrders();renderProducts();renderSlots();renderCats();route();
+})();
+</script></body></html>

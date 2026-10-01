@@ -1,0 +1,222 @@
+<main id="main-content" class="sh">
+<!-- MOCKUP ONLY: the switcher bar does not ship. It lets the owner look at the
+     storefront, the customer dashboard and the admin side from one page. -->
+<div class="sh-switch"><div class="sh-wrap">
+  <span>Mockup views:</span>
+  <button data-go="home" class="is-on">Shop home</button>
+  <button data-go="all">All T-shirts + filters</button>
+  <button data-go="p/2">Product page</button>
+  <button data-go="checkout">Checkout (UPI)</button>
+  <button data-go="orders">Customer: My orders</button>
+  <button data-go="billing">Customer: Billing</button>
+  <button data-go="admin">Admin: Shop</button>
+</div></div>
+
+<!-- ================= SHOP HOME ================= -->
+<section class="sh-view is-on" data-view="home">
+  <div class="sh-hero" id="shHero">
+    <button class="sh-dot" style="left:58.5%;top:40%" data-pop="5" aria-label="Himalayan Mandir Tee"></button>
+    <button class="sh-dot" style="left:61%;top:53%" data-pop="3" aria-label="Murli Mandala Oversized Tee"></button>
+    <button class="sh-dot" style="left:56%;top:80%" data-pop="4" aria-label="Temple Bell Tee"></button>
+    <div class="sh-pop" id="shPop"></div>
+    <div class="sh-hero-ph">Hero lifestyle photo<br>(admin-uploaded)</div>
+    <div class="sh-wrap">
+      <div class="sh-hero-card">
+        <p class="sh-eyebrow">The Saa Thum Shop · New season</p>
+        <h1>Wear your faith, <em>softly.</em></h1>
+        <p>Pure cotton T-shirts with Mahadev, Krishna, lotus and Himalayan temple art — designed by us, printed to order in India and delivered free, pan India.</p>
+        <div class="sh-hero-ctas">
+          <button class="sh-btn sh-btn--red" data-go="all">Shop all T-shirts →</button>
+          <button class="sh-btn sh-btn--ghost" data-go="all" data-coll="Mahadev">Mahadev collection</button>
+        </div>
+        <div class="sh-ticks"><span>100% cotton, 180 GSM</span><span>Sizes S to 3XL + kids</span><span>Pay by UPI</span></div>
+      </div>
+    </div>
+    <div class="sh-wrap">
+      <div class="sh-promise">
+        <div><b>Free shipping</b><small>Pan India, every order</small></div>
+        <div><b>Printed to order</b><small>Made just for you</small></div>
+        <div><b>Pay by any UPI app</b><small>Scan the QR, done</small></div>
+        <button class="sh-link" data-go="all">Tap a dot to shop the stack →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sh-wrap">
+    <section class="sh-sec">
+      <div class="sh-sec-head"><div><h2><span>✽</span> Shop by collection</h2><p>Every design starts from a story — a deity, a temple, a mantra.</p></div><button class="sh-link" data-go="all">All collections</button></div>
+      <div class="sh-cats" id="shCats"></div>
+    </section>
+
+    <section class="sh-sec">
+      <div class="sh-sec-head"><div><h2><span>✽</span> New arrivals</h2><p>Fresh off the press this week.</p></div><button class="sh-link" data-go="all" data-tag="new">View all</button></div>
+      <div class="sh-grid" id="shNew"></div>
+    </section>
+
+    <section class="sh-sec">
+      <div class="sh-banner">
+        <div class="sh-banner-copy">
+          <p class="sh-eyebrow">Featured · Navratri drop</p>
+          <h2>The Lotus &amp; Diya tee — light for every home.</h2>
+          <p>Hand-drawn folk lotus with a lit diya at its heart. Off-white cotton, soft red and gold ink.</p>
+          <div><button class="sh-btn sh-btn--teal" data-go="p/2">See the tee →</button></div>
+        </div>
+        <div class="sh-ph sh-ph--banner"><span>Feature banner photo</span></div>
+      </div>
+    </section>
+
+    <section class="sh-sec" style="padding-bottom:60px">
+      <div class="sh-sec-head"><div><h2><span>✽</span> Bestsellers</h2><p>What devotees are wearing the most.</p></div><button class="sh-link" data-go="all">View all</button></div>
+      <div class="sh-grid" id="shBest"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ================= ALL + FILTERS ================= -->
+<section class="sh-view" data-view="all">
+  <div class="sh-wrap">
+    <div class="sh-crumb"><a data-go="home">Shop</a> / All T-shirts</div>
+    <div class="sh-list">
+      <aside class="sh-filters" id="shFilters">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h2>Filters</h2><button class="sh-x sh-filter-close" style="display:none" aria-label="Close filters">×</button></div>
+        <details class="sh-fg" open><summary>Price</summary><div class="sh-fg-body">
+          <div class="sh-range"><input type="range" id="fMin" min="399" max="999" step="10" value="399"><input type="range" id="fMax" min="399" max="999" step="10" value="999"></div>
+          <div class="sh-minmax"><label>Min<input id="fMinN" inputmode="numeric" value="399"></label>–<label>Max<input id="fMaxN" inputmode="numeric" value="999"></label></div>
+          <small id="fPriceLbl" style="font:700 14px Nunito;color:#6b4a2b">₹399 – ₹999</small>
+        </div></details>
+        <details class="sh-fg" open><summary>Collection</summary><div class="sh-fg-body" id="fColl"></div></details>
+        <details class="sh-fg" open><summary>Colour</summary><div class="sh-fg-body" id="fColour"></div></details>
+        <details class="sh-fg" open><summary>Size</summary><div class="sh-fg-body"><div class="sh-sizes" id="fSize"></div></div></details>
+        <details class="sh-fg"><summary>Fit</summary><div class="sh-fg-body" id="fFit"></div></details>
+        <details class="sh-fg"><summary>Print type</summary><div class="sh-fg-body" id="fPrint"></div></details>
+        <details class="sh-fg"><summary>For</summary><div class="sh-fg-body" id="fFor"></div></details>
+        <div style="padding:14px 0 10px;display:flex;gap:8px"><button class="sh-btn sh-btn--ghost" style="flex:1" id="fClear">Clear all</button><button class="sh-btn sh-btn--red sh-filter-close" style="flex:1;display:none">Show results</button></div>
+      </aside>
+      <div>
+        <div class="sh-toolbar">
+          <div style="display:flex;gap:10px;align-items:center"><button class="sh-btn sh-btn--ghost sh-filter-btn" id="fOpen" style="min-height:44px">Filters</button><b id="fCount">7 products</b></div>
+          <label style="font:800 14px Nunito;color:#6b4a2b">Sort&nbsp;<select id="fSort"><option value="feat">Featured</option><option value="new">Newest</option><option value="lo">Price: low to high</option><option value="hi">Price: high to low</option><option value="best">Bestselling</option></select></label>
+        </div>
+        <div class="sh-chips" id="fChips" style="margin-bottom:16px"></div>
+        <div class="sh-grid" id="shAll"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRODUCT ================= -->
+<section class="sh-view" data-view="p">
+  <div class="sh-wrap"><div class="sh-crumb" id="pCrumb"></div><div class="sh-pdp" id="pdp"></div>
+  <section class="sh-sec" style="padding-bottom:60px"><div class="sh-sec-head"><div><h2><span>✽</span> You may also like</h2></div></div><div class="sh-grid" id="shAlso"></div></section></div>
+</section>
+
+<!-- ================= CHECKOUT ================= -->
+<section class="sh-view" data-view="checkout">
+  <div class="sh-wrap">
+    <div class="sh-crumb"><a data-go="home">Shop</a> / Checkout</div>
+    <div class="sh-co">
+      <div id="coMain"></div>
+      <aside class="sh-panel sh-sum" id="coSum"></aside>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CUSTOMER: MY ORDERS / BILLING ================= -->
+<section class="sh-view" data-view="orders" data-dash="cust">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side" data-side="cust"></nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>My orders</h1><p>Every shop order, its payment and where the parcel is right now.</p></div><button class="sh-btn sh-btn--red" data-go="all">Shop again</button></div>
+      <div id="custOrders"></div>
+    </div>
+  </div></div>
+</section>
+<section class="sh-view" data-view="billing" data-dash="cust">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side" data-side="cust"></nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>Billing</h1><p>All your payments in one place — event bookings and shop orders.</p></div></div>
+      <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Date</th><th>For</th><th>Type</th><th>UPI ref (UTR)</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody id="custBill"></tbody></table></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ================= ADMIN: SHOP ================= -->
+<section class="sh-view" data-view="admin">
+  <div class="sh-wrap"><div class="sh-dash">
+    <nav class="sh-side">
+      <h3>Admin</h3><a>Analytics</a><a>Users</a><a>Events</a><a>Bookings</a><a>Payments</a>
+      <h3>Shop</h3>
+      <a class="is-on" data-atab="orders">Orders <span class="new" id="aNewCount">3 new</span></a>
+      <a data-atab="products">Products</a><a data-atab="cats">Categories</a><a data-atab="promo">Promote to cards</a><a data-atab="coupons">Coupons</a><a data-atab="settings">Shop settings</a>
+    </nav>
+    <div>
+      <div class="sh-dtitle"><div><h1>Shop</h1><p>Orders, products, categories and where each product is promoted.</p></div><button class="sh-btn sh-btn--red" id="aAddProd">+ Add product</button></div>
+      <div class="sh-kpis">
+        <div class="sh-kpi"><small>Orders today</small><b>12</b><em>+4 vs yesterday</em></div>
+        <div class="sh-kpi"><small>Revenue (30 days)</small><b>₹48,960</b><em>71 orders</em></div>
+        <div class="sh-kpi"><small>To ship</small><b id="aToShip">5</b><em style="color:#9b1c14">2 older than 48h</em></div>
+        <div class="sh-kpi"><small>To send to Printrove</small><b id="aToPrint">1</b><em style="color:#7a5a00">paid, not placed yet</em></div>
+      </div>
+
+      <div class="sh-apanel is-on" data-apanel="orders">
+        <div class="sh-tabs" id="aOrderTabs"><button class="is-on" data-f="all">All</button><button data-f="pending">Awaiting payment</button><button data-f="paid">Paid · send to printer</button><button data-f="packed">At Printrove</button><button data-f="shipped">Shipped</button><button data-f="delivered">Delivered</button><button data-f="cancelled">Cancelled / refunded</button></div>
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead><tbody id="aOrders"></tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="products">
+        <div class="sh-tabs"><button class="is-on">All (7)</button><button>Live</button><button>Draft</button><button>Hidden</button><button>Archived</button></div>
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Sizes</th><th>Promoted on</th><th>Status</th><th>Actions</th></tr></thead><tbody id="aProducts"></tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="cats">
+        <div class="sh-panel"><h2>Categories &amp; collections</h2><p>Collections show as tiles on the shop home and as a filter. Drag to reorder (mockup).</p>
+          <div id="aCats"></div>
+          <div class="sh-coupon"><input placeholder="New collection name, e.g. Ram Darbar" id="aCatName" style="text-transform:none"><button class="sh-btn sh-btn--teal" id="aCatAdd">Add</button></div>
+        </div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="promo">
+        <p style="font:700 15px Nunito;color:#6b4a2b;margin:0 0 14px">Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product.</p>
+        <div class="sh-slots" id="aSlots"></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="coupons">
+        <div class="sh-tbl-wrap"><table class="sh-table"><thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Valid till</th><th>Status</th></tr></thead><tbody>
+          <tr><td><b>NAVRATRI10</b></td><td>10% off</td><td>₹999</td><td>18 / 200</td><td>12 Oct 2026</td><td><span class="sh-st st-delivered">Active</span></td></tr>
+          <tr><td><b>FIRSTTEE</b></td><td>₹100 off</td><td>₹599</td><td>41 / ∞</td><td>—</td><td><span class="sh-st st-delivered">Active</span></td></tr>
+          <tr><td><b>SHRAVAN</b></td><td>15% off</td><td>—</td><td>96 / 100</td><td>31 Aug 2026</td><td><span class="sh-st st-cancelled">Expired</span></td></tr>
+        </tbody></table></div>
+      </div>
+
+      <div class="sh-apanel" data-apanel="settings">
+        <div class="sh-panel"><h2>Shop settings</h2><p>Every number here feeds the shop pages and checkout — nothing is typed into pages.</p>
+          <div class="sh-form">
+            <label>Shipping<input value="Free, pan India (included in price)"></label>
+            <label>International shipping<select><option>Not offered</option></select></label>
+            <label>GST<input value="18% added at checkout"></label>
+            <label>Returns<input value="Only if we sent the wrong item"></label>
+            <label>Print partner<select><option>Printrove</option></select></label>
+            <label>Report-a-problem window<input value="48 hours from delivery"></label>
+            <label>Delivery time shown<input value="5–8 days"></label>
+            <label>Order alerts to<input value="Owner WhatsApp"></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- cart drawer -->
+<div class="sh-scrim" id="shScrim"></div>
+<aside class="sh-drawer" id="shCart" aria-label="Your cart">
+  <div class="sh-dh"><h2>Your cart</h2><button class="sh-x" id="shCartClose" aria-label="Close cart">×</button></div>
+  <div class="sh-free" id="shFree"></div>
+  <div class="sh-items" id="shItems"></div>
+  <div class="sh-df" id="shCartFoot"></div>
+</aside>
+<div class="sh-toast" id="shToast"></div>
+
+<!-- admin modal -->
+<div class="sh-modal" id="shModal"><div class="sh-modal-box" id="shModalBox"></div></div>
+</main>

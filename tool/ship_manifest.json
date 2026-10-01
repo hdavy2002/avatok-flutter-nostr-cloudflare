@@ -8462,5 +8462,136 @@
         "note": "AI rewrite succeeds."
       }
     ]
+  },
+  "SAATHUM-SHOP-API-CATALOG-1": {
+    "description": "[SAATHUM-SHOP-API-CATALOG-1 2026-10-01] Shop schema (all shop_* tables, CREATE-only migration 2026-10-01-saathum-shop.sql), public catalog API /api/shop/home|products|products/:slug|quote, admin catalog API /api/admin/v2/shop/products|collections|slots|settings|coupons. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §2-4.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "shop_product_viewed",
+        "property": "product_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Web PDP rendered from GET /api/shop/products/:slug. Absent while shop pages are visited means the catalog API is failing or returns no live products."
+      },
+      {
+        "event": "admin2_shop_product_saved",
+        "property": "product_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner saved a product in admin. Absent after he says he added products means the admin catalog write path is failing."
+      }
+    ]
+  },
+  "SAATHUM-SHOP-API-ORDERS-1": {
+    "description": "[SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Shop orders on the shared HDFC UPI rail: POST /api/shop/orders (terms + refund policy required, GST 18% added, unique amount reserved in saathum_amount_reservations), matching extended to shop_orders in matchSaathumReceipt + ingest hooks + sweeps + admin review, confirm/reject with WhatsApp+email+PDF, admin order lifecycle (at-printer/shipped/delivered/cancel/refund), Billing UNION. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §4.2-4.5.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "shop_order_created",
+        "property": "order_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Server created a shop order. Absent while shop_checkout_step(step=pay) fires means order creation is failing."
+      },
+      {
+        "event": "shop_order_confirmed",
+        "property": "via",
+        "exists": true,
+        "min_events": 1,
+        "note": "A shop payment was matched and confirmed (via=sms_auto|utr|admin). Present only with via=admin for every order means automatic SMS matching is not seeing shop_orders."
+      },
+      {
+        "event": "shop_order_status_changed",
+        "property": "to",
+        "exists": true,
+        "min_events": 1,
+        "note": "Admin moved an order to at_printer/shipped/delivered. Absent after confirmed orders exist means the admin order actions are failing."
+      }
+    ]
+  },
+  "SAATHUM-SHOP-WEB-STORE-1": {
+    "description": "[SAATHUM-SHOP-WEB-STORE-1 2026-10-01] /shop, /shop/all, /shop/c/:slug, /shop/p/:slug as exact replicas of the approved mockup; header Shop link + cart button + cart drawer; wishlist store. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.1-5.3.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "shop_home_viewed",
+        "property": "path",
+        "exists": true,
+        "min_events": 1,
+        "note": "/shop rendered and the island loaded."
+      },
+      {
+        "event": "shop_add_to_cart",
+        "property": "source",
+        "exists": true,
+        "min_events": 1,
+        "note": "A visitor added a tee (card quick add, PDP or buy now). Absent while shop_product_viewed fires means the buy box is broken."
+      }
+    ]
+  },
+  "SAATHUM-SHOP-WEB-CHECKOUT-1": {
+    "description": "[SAATHUM-SHOP-WEB-CHECKOUT-1 2026-10-01] /shop/checkout (You, Address, Review with required Terms + Refund ticks, Pay with UPI, Done) reusing the event checkout sign-in/address/PayStep logic; Shop sections in /terms and /refunds. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.4.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "shop_checkout_step",
+        "property": "step",
+        "exists": true,
+        "min_events": 1,
+        "note": "Buyer moved through checkout steps. step=pay absent while step=review fires means the terms gate or order creation blocks everyone."
+      },
+      {
+        "event": "shop_pay_paid_claimed",
+        "property": "order_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Buyer tapped I've paid."
+      }
+    ]
+  },
+  "SAATHUM-SHOP-ADMIN-1": {
+    "description": "[SAATHUM-SHOP-ADMIN-1 2026-10-01] Admin Shop group: Orders, Products, Categories, Promote to cards, Coupons, Shop settings — exact replica of the mockup admin view inside the Admin2 shell. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.5.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_shop_order_status_changed",
+        "property": "to",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner changed an order status from the admin UI."
+      }
+    ]
+  },
+  "SAATHUM-SHOP-DASH-1": {
+    "description": "[SAATHUM-SHOP-DASH-1 2026-10-01] Dashboard 2: My orders (tracker, tracking link, receipt, wrong-item report), Wishlist, Billing Shop/Event tag. See Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.6.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dash_orders_viewed",
+        "property": "count",
+        "exists": true,
+        "min_events": 1,
+        "note": "Customer opened My orders."
+      }
+    ]
   }
 }
