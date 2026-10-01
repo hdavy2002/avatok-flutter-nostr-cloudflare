@@ -1,6 +1,6 @@
 /* [AUMFE-VOICE-WEB-1] /talk — the voice guides: choose a guide, tell her about you (first time), talk, see the
  * summary. One component, CSS breakpoints (phone < 768px, two columns from 768px). Built to the approved
- * "Aum Fe Voice Agent Call" mockup. Wire protocol: islands/voice/types.ts (copy of worker voice_agents/types.ts).
+ * approved voice-agent call mockup (design canvas). Wire protocol: islands/voice/types.ts (copy of worker voice_agents/types.ts).
  *
  * Auth: ClerkIsland provides the single Clerk provider; a signed-out visitor is sent to /sign-in and brought
  * back here (same rule as Dashboard 2). The page is unlisted until launch (noindex, no nav links).
