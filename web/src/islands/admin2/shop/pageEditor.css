@@ -1,0 +1,29 @@
+/* [SAATHUM-SHOP-EDITOR-1 2026-10-01] Chrome around the Puck shop-page editor (host document only; the canvas uses shop.css). */
+.pe-root{position:fixed;inset:0;z-index:200;background:#fff;display:flex;flex-direction:column;font-family:Nunito,system-ui,sans-serif}
+.pe-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid #e3cfa9;background:#fffaf0;color:#5a1f14;font:800 14px Nunito,system-ui,sans-serif}
+.pe-top a{color:#173f3f;text-decoration:underline;text-underline-offset:3px}
+.pe-top b{font:700 16px Comfortaa,sans-serif}
+.pe-top .pe-spacer{flex:1}
+.pe-status{font-weight:700;color:#6b4a2b;white-space:nowrap;font-size:13px}
+.pe-status.is-err{color:#9b1c14}
+.pe-body{flex:1;min-height:0}
+.pe-state{display:grid;place-items:center;height:100%;padding:24px;text-align:center;color:#6b4a2b;font:700 16px Nunito,sans-serif}
+.pe-btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 14px;border-radius:10px;border:0;background:#b3261e;color:#fff;font:900 14px Nunito,sans-serif;cursor:pointer}
+.pe-btn:disabled{opacity:.55;cursor:default}
+.pe-btn--ghost{background:#fff;color:#173f3f;border:2px solid #173f3f}
+.pe-btn--teal{background:#173f3f}
+.pe-link{background:none;border:0;color:#173f3f;text-decoration:underline;font:800 13px Nunito,sans-serif;cursor:pointer;padding:0}
+.pe-input{width:100%;min-height:36px;border:1px solid #d7c7a8;border-radius:8px;padding:0 8px;font:600 14px Nunito,sans-serif;background:#fff}
+.pe-img{display:flex;flex-direction:column;gap:8px}
+.pe-img-box{aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:repeating-linear-gradient(135deg,#f6e3c4 0 12px,#fbf0dc 12px 24px);display:grid;place-items:center;color:#6b4a2b;font:700 13px Nunito,sans-serif}
+.pe-img-box img{width:100%;height:100%;object-fit:cover}
+.pe-img-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pe-img small{color:#6b4a2b}
+.pe-err{color:#9b1c14;font:700 13px Nunito,sans-serif;margin:0}
+.pe-modal{position:fixed;inset:0;z-index:300;background:#0006;display:grid;place-items:center;padding:16px}
+.pe-modal-box{background:#fff;border-radius:16px;padding:20px;max-width:460px;width:100%;box-shadow:0 20px 50px #0004;color:#5a1f14}
+.pe-modal-box h2{font:700 20px Comfortaa,sans-serif;margin:0 0 6px}
+.pe-modal-box p{margin:0 0 14px;font:600 14px Nunito,sans-serif;color:#6b4a2b}
+.pe-ver{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #eee3cd;font:700 14px Nunito,sans-serif}
+/* canvas: dots/cards cannot be clicked while editing (positions are set in the sidebar) */
+.sh-editing .sh-dot,.sh-editing .sh-pop{pointer-events:none}

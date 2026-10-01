@@ -13,6 +13,7 @@ import { json } from "../util";
 import { trackException } from "../hooks";
 import { readConfig } from "./config";
 import { shopOrdersRoute } from "./shop_orders";
+import { PAGE_KEY, parseRecord, resolvePage, type Resolved } from "../lib/shop_page";
 import {
   computeShopQuote, parseColours, parseImages, parseSizes, toShopCard,
   type CouponRow, type ProductRow, type ShopCard, type ShopCartItem,
@@ -108,7 +109,7 @@ async function home(env: Env): Promise<Response> {
   const [liveRows, cols, settingsRows, newIds, bestIds] = await Promise.all([
     loadLive(env),
     loadCollections(env),
-    env.DB_META.prepare("SELECT key, value_json FROM shop_settings WHERE key IN ('hero','featured_banner')").all<{ key: string; value_json: string }>(),
+    env.DB_META.prepare("SELECT key, value_json FROM shop_settings WHERE key IN ('hero','featured_banner','page_home')").all<{ key: string; value_json: string }>(),
     slotIds(env, "new_arrivals", now),
     slotIds(env, "bestsellers", now),
   ]);
@@ -140,7 +141,15 @@ async function home(env: Env): Promise<Response> {
     product: cardOf(fbProduct, cmap),
   } : null;
 
+  // [SAATHUM-SHOP-EDITOR-1] The owner's edited page (null = the site renders its built-in default from the fields below).
+  const page = parseRecord(settings.get(PAGE_KEY)).published;
+  const resolved: Resolved = page
+    ? resolvePage(page, { live: liveRows, cols, newIds, bestIds })
+    : { products: {}, rails: {} };
+
   return json({
+    page,
+    resolved,
     hero: { ...hero, hotspots },
     collections: cols.map((c) => ({ id: c.id, slug: c.slug, name: c.name, blurb: c.blurb, image_url: c.image_url, count: counts.get(c.id) ?? 0 })),
     new_arrivals: newArrivals.map((p) => cardOf(p, cmap)),

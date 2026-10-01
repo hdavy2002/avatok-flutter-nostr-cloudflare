@@ -6,6 +6,7 @@
 // NOTE FOR AI: other shop surfaces (checkout, dashboard, admin) import these types and
 // functions. Keep the names and shapes stable — they mirror the worker contract exactly.
 import { request } from './apiClient';
+import type { PageData, ShopResolved } from '../islands/shop/blocks/types';
 
 export interface ShopColour { name: string; hex: string }
 
@@ -65,6 +66,9 @@ export interface ShopHome {
   new_arrivals: ShopCard[];
   featured_banner: ShopFeaturedBanner | null;
   bestsellers: ShopCard[];
+  /** [SAATHUM-SHOP-EDITOR-1] The owner's published page (Puck data) and what its blocks need; null = render the built-in default. */
+  page?: PageData | null;
+  resolved?: ShopResolved | null;
 }
 
 export interface ShopFacets {

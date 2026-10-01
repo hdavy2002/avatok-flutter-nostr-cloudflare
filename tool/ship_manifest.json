@@ -8609,5 +8609,21 @@
         "note": "Admin permanently deleted an event."
       }
     ]
+  },
+  "SAATHUM-SHOP-EDITOR-1": {
+    "description": "[SAATHUM-SHOP-EDITOR-1 2026-10-01] Visual editor (Puck) for the /shop home page at /admin/shop/editor: click-to-edit text, photo uploads, hero/collections/product rows/featured banner/photo banner/text blocks, autosaved draft, publish + previous versions. Public /shop renders the published page (identical to before when nothing is edited). Worker: /api/admin/v2/shop/page*, GET /api/shop/home adds page+resolved.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_shop_page_published",
+        "property": "blocks",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner published the shop-home page from the editor. Absent while admin2_view(screen=shop-editor) fires means publishing is failing."
+      }
+    ]
   }
 }

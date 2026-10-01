@@ -2,11 +2,11 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, type LucideIcon,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'freevideos'
-  | 'shop-orders' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings';
+  | 'shop-orders' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string }
 
@@ -25,6 +25,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'ai', label: 'AI assistant', short: 'AI', href: '/admin/ai', icon: Sparkles }, // [SAATHUM-PREETI-1]
   // [SAATHUM-SHOP-ADMIN-1] Shop group (spec §5.5). Keep these contiguous: the heading renders above the first.
   { key: 'shop-orders', label: 'Orders', short: 'Orders', href: '/admin/shop', icon: ShoppingBag, group: 'Shop' },
+  { key: 'shop-editor', label: 'Edit shop page', short: 'Edit page', href: '/admin/shop/editor', icon: LayoutTemplate, group: 'Shop' }, // [SAATHUM-SHOP-EDITOR-1]
   { key: 'shop-products', label: 'Products', short: 'Products', href: '/admin/shop/products', icon: Shirt, group: 'Shop' },
   { key: 'shop-collections', label: 'Categories', short: 'Categories', href: '/admin/shop/collections', icon: LayoutGrid, group: 'Shop' },
   { key: 'shop-promote', label: 'Promote to cards', short: 'Promote', href: '/admin/shop/promote', icon: Megaphone, group: 'Shop' },

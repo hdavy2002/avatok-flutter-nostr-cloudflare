@@ -8,6 +8,11 @@ import { json } from "../util";
 import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports this file, a value import would be circular
 import { requireAdmin } from "./admin_money";
 import { track, trackException } from "../hooks";
+import { BRAND } from "../lib/brand";
+import {
+  PAGE_HISTORY_MAX, buildDefaultPage, loadSnapshot, readPageRecord, resolvePage, validatePage, writePageRecord,
+  type DefaultBanner, type DefaultHero, type PageData,
+} from "../lib/shop_page";
 import {
   SLOTS, isValidImageUrl, normalizeProductInput, parseImages, slugify, toShopCard,
   type FieldError, type ProductRow, type CouponRow,
@@ -586,6 +591,105 @@ const putSetting = guarded("admin2.shop.settings.put", async (req, env, a, [key]
 });
 
 // ---------------------------------------------------------------------------
+// [SAATHUM-SHOP-EDITOR-1 2026-10-01] Shop-home page editor (Puck). Storage + validation: lib/shop_page.ts.
+//   GET    /page            -> { source: draft|published|default, data, draft_at, published_at, has_draft, has_published, history[] }
+//   PUT    /page/draft      {data}   autosave (validated, stored as the draft)
+//   DELETE /page/draft              discard the draft
+//   POST   /page/publish    {data}   validated; becomes the live page; the previous live page joins `history` (last 5)
+//   POST   /page/revert     {index}  history[index] becomes the live page again (the current one swaps into history)
+//   POST   /page/resolve    {data}   what the blocks need to render (products + rail items) — the editor canvas preview
+// ---------------------------------------------------------------------------
+const PAGE_BODY_MAX = 260_000;
+
+function historyMeta(rec: Awaited<ReturnType<typeof readPageRecord>>) {
+  return rec.history.map((h, index) => ({ index, at: h.at, by: h.by }));
+}
+
+async function defaultPageFromSettings(env: Env): Promise<PageData> {
+  const r = await env.DB_META.prepare("SELECT key, value_json FROM shop_settings WHERE key IN ('hero','featured_banner')").all<{ key: string; value_json: string }>();
+  const m = new Map((r.results ?? []).map((x) => [x.key, x.value_json]));
+  const read = (k: string): Record<string, unknown> | null => { try { const v = m.get(k) ? JSON.parse(m.get(k)!) : null; return v && typeof v === "object" ? v : null; } catch { return null; } };
+  const hero = read("hero") as (DefaultHero & { hotspots?: Array<{ product_id: string; x: number; y: number }> }) | null;
+  const fb = read("featured_banner") as (Partial<DefaultBanner> & { product_id?: string | null }) | null;
+  let banner: DefaultBanner | null = null;
+  if (fb && typeof fb.product_id === "string" && fb.product_id) {
+    const live = await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND status='live'").bind(fb.product_id).first();
+    if (live) banner = { product_id: fb.product_id, eyebrow: String(fb.eyebrow ?? ""), title: String(fb.title ?? ""), text: String(fb.text ?? ""), cta_label: String(fb.cta_label ?? ""), image_url: typeof fb.image_url === "string" && fb.image_url ? fb.image_url : null };
+  }
+  return buildDefaultPage({ brandName: BRAND.name, hero, banner });
+}
+
+const getPage = guarded("admin2.shop.page.get", async (_req, env) => {
+  const rec = await readPageRecord(env);
+  const source = rec.draft ? "draft" : rec.published ? "published" : "default";
+  const data = rec.draft ?? rec.published ?? await defaultPageFromSettings(env);
+  return json({
+    source, data, draft_at: rec.draft_at, published_at: rec.published_at, has_draft: !!rec.draft, has_published: !!rec.published,
+    history: historyMeta(rec),
+  }, 200, noStore);
+});
+
+async function pageBody(req: Request): Promise<{ data: PageData } | Response> {
+  const b = await readBody(req, PAGE_BODY_MAX);
+  if (!b) return err(400, "invalid_request", "Send the page as JSON (200 KB limit).");
+  const v = validatePage(b.data);
+  return "errors" in v ? bad(v.errors, "invalid_page") : v;
+}
+
+const putPageDraft = guarded("admin2.shop.page.draft", async (req, env) => {
+  const v = await pageBody(req);
+  if (v instanceof Response) return v;
+  const rec = await readPageRecord(env);
+  rec.draft = v.data; rec.draft_at = Date.now();
+  await writePageRecord(env, rec);
+  return json({ ok: true, draft_at: rec.draft_at }, 200, noStore);
+});
+
+const deletePageDraft = guarded("admin2.shop.page.draft.delete", async (_req, env, a) => {
+  const rec = await readPageRecord(env);
+  rec.draft = null; rec.draft_at = null;
+  await writePageRecord(env, rec);
+  await audit(env, a.uid, "shop_page_draft_discard", "page_home", {});
+  return json({ ok: true }, 200, noStore);
+});
+
+const publishPage = guarded("admin2.shop.page.publish", async (req, env, a) => {
+  const v = await pageBody(req);
+  if (v instanceof Response) return v;
+  const rec = await readPageRecord(env);
+  const now = Date.now();
+  if (rec.published) rec.history = [{ data: rec.published, at: rec.published_at ?? now, by: rec.published_by }, ...rec.history].slice(0, PAGE_HISTORY_MAX);
+  rec.published = v.data; rec.published_at = now; rec.published_by = a.uid;
+  rec.draft = null; rec.draft_at = null;
+  await writePageRecord(env, rec);
+  await audit(env, a.uid, "shop_page_publish", "page_home", { blocks: v.data.content.length });
+  safeTrack(env, a.uid, "admin2_shop_page_published", { blocks: v.data.content.length });
+  return json({ ok: true, published_at: now, history: historyMeta(rec) }, 200, noStore);
+});
+
+const revertPage = guarded("admin2.shop.page.revert", async (req, env, a) => {
+  const b = await readBody(req, 1_000);
+  const index = Number(b?.index);
+  const rec = await readPageRecord(env);
+  if (!Number.isInteger(index) || index < 0 || index >= rec.history.length) return err(400, "invalid_input", "That earlier version does not exist.", { field: "index" });
+  const now = Date.now();
+  const [chosen] = rec.history.splice(index, 1);
+  if (rec.published) rec.history = [{ data: rec.published, at: rec.published_at ?? now, by: rec.published_by }, ...rec.history].slice(0, PAGE_HISTORY_MAX);
+  rec.published = chosen.data; rec.published_at = now; rec.published_by = a.uid;
+  rec.draft = null; rec.draft_at = null;
+  await writePageRecord(env, rec);
+  await audit(env, a.uid, "shop_page_revert", "page_home", { restored_from: chosen.at });
+  safeTrack(env, a.uid, "admin2_shop_page_reverted", { restored_from: chosen.at });
+  return json({ ok: true, data: chosen.data, published_at: now, history: historyMeta(rec) }, 200, noStore);
+});
+
+const resolvePageRoute = guarded("admin2.shop.page.resolve", async (req, env) => {
+  const v = await pageBody(req);
+  if (v instanceof Response) return v;
+  return json({ resolved: resolvePage(v.data, await loadSnapshot(env)) }, 200, noStore);
+});
+
+// ---------------------------------------------------------------------------
 // Coupons
 // ---------------------------------------------------------------------------
 const CODE_RE = /^[A-Z0-9_-]{3,20}$/;
@@ -708,6 +812,12 @@ export const ADMIN2_SHOP_CATALOG_ROUTES: Admin2RouteDef[] = [
   { method: "PUT", path: re(`slots/${ID}`), handler: putSlot },
   { method: "GET", path: `${BASE}/settings`, handler: getSettings },
   { method: "PUT", path: re(`settings/${ID}`), handler: putSetting },
+  { method: "GET", path: `${BASE}/page`, handler: getPage },
+  { method: "PUT", path: `${BASE}/page/draft`, handler: putPageDraft },
+  { method: "DELETE", path: `${BASE}/page/draft`, handler: deletePageDraft },
+  { method: "POST", path: `${BASE}/page/publish`, handler: publishPage },
+  { method: "POST", path: `${BASE}/page/revert`, handler: revertPage },
+  { method: "POST", path: `${BASE}/page/resolve`, handler: resolvePageRoute },
   { method: "GET", path: `${BASE}/coupons`, handler: listCoupons },
   { method: "POST", path: `${BASE}/coupons`, handler: createCoupon },
   { method: "PUT", path: re(`coupons/${ID}`), handler: updateCoupon },

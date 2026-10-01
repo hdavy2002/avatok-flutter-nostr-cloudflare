@@ -42,6 +42,7 @@ const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fi
   <Fragment slot="head">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="hsl(42, 100%, 95%)" />
+    <slot name="head" />{/* [SAATHUM-SHOP-EDITOR-1] optional extra <head> content (the shop-page editor loads the shop fonts) */}
   </Fragment>
   {/* Radix portals (dialogs, popovers, selects, sheets) render into <body>, outside the
       .dash2 root, so body carries the scope too. Runs before paint. */}

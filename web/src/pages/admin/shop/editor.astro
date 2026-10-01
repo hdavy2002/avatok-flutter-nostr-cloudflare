@@ -1,0 +1,15 @@
+---
+// [SAATHUM-SHOP-EDITOR-1 2026-10-01] /admin/shop/editor — visual editor (Puck) for the /shop home page.
+// Admin-gated by the Admin2 shell (AdminNav = Clerk provider + admin guard; the island stays hidden until the guard says ok).
+// The editor covers the whole window (fixed overlay) because Puck needs the room; it has its own "← Back to Shop admin" link.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import PageEditor from '../../../islands/admin2/shop/PageEditor.tsx';
+---
+
+<Admin2 title="Shop · Edit page" heading="Edit shop page" subtitle="Change the words and photos of the shop home page." active="shop-editor">
+  <Fragment slot="head">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <PageEditor client:only="react" />
+</Admin2>
