@@ -8853,5 +8853,13 @@
         "note": "Every knowledge search. ok=true means Vectorize answered; ok=false with reason 'unbound' means the index or binding does not exist yet, 'error' means a query failure (see $exception)."
       }
     ]
+  },
+  "AUMFE-VOICE-CONTRACT-1": {
+    "description": "[AUMFE-VOICE-CONTRACT-1 2026-10-01] Types-only contract for the voice guides (worker/src/lib/voice_agents/types.ts) plus Specs/SPEC-2026-10-01-VOICE-AGENTS.md. No runtime code.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Type declarations and a spec only; nothing executes."
   }
 }
