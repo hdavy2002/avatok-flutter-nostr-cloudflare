@@ -160,7 +160,7 @@ export default function LibraryTab() {
               {items.map((e) => (
                 <li key={e.id} className="flex items-stretch gap-1 rounded-xl border border-border bg-card shadow-sm">
                   <label className="flex min-h-[56px] w-12 shrink-0 cursor-pointer items-center justify-center" aria-label={`Select ${e.title}`}>
-                    <input type="checkbox" className="h-5 w-5 accent-[hsl(var(--primary))]" disabled={e.status !== 'draft'} checked={picked.has(e.id)} onChange={() => togglePick(e.id)} />
+                    <input type="checkbox" className="h-5 w-5 accent-[#07545b]" disabled={e.status !== 'draft'} checked={picked.has(e.id)} onChange={() => togglePick(e.id)} />
                   </label>
                   <button type="button" onClick={() => setEdit({ id: e.id, entry: e })}
                     className="flex min-h-[56px] min-w-0 flex-1 flex-col items-start gap-1 rounded-r-xl py-3 pr-4 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
