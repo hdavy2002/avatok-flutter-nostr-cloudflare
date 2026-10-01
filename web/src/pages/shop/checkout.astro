@@ -1,0 +1,54 @@
+---
+// [SAATHUM-SHOP-WEB-CHECKOUT-1 2026-10-01] /shop/checkout — the shop checkout (You -> Delivery address ->
+// Review -> Pay with UPI), built to the owner-approved mockup Specs/shop-mockup ("Checkout (UPI)") exactly.
+// Spec: Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.4.
+//
+// NOTE FOR AI:
+//  - Real folk shell (same as pages/temples.astro): Base chrome={false}, the `.folk-site` wrapper,
+//    SiteHeader/SiteFooter `folk`. NOT the plain Base shell /book/[id]/checkout uses.
+//  - All the interactive work is the ShopCheckout island (islands/shop-checkout/). Its sign-in/WhatsApp step is
+//    the event checkout's YouStep; its PayPanel is the event PayStep's state machine on shop orders.
+//  - Per-buyer data (cart, order, payment) is never server-rendered or cached: noindex here, the cart lives in
+//    localStorage and every order call carries the buyer's token.
+//  - Brand name/domain only through BRAND; no literals.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import { publicImage, clerkFapiHost } from '../../lib/config';
+import { HOME_HEADER_LINKS } from '../../lib/homeNavigation';
+import { ShopCheckout } from '../../islands/shop-checkout/ShopCheckout.tsx';
+import '../../styles/saathum-folk.css';
+import '../../islands/shop-checkout/shopCheckout.css';
+import { BRAND } from '../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+// The step machine needs clerk-js (~300 KB from the Clerk host): open that connection while the HTML parses.
+const clerkHost = clerkFapiHost();
+---
+<Base
+  title={`Checkout · Shop · ${BRAND.domain}`}
+  description={`Complete your T-shirt order on ${BRAND.domain}. Pay by UPI.`}
+  noindex={true}
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    {clerkHost && <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />}
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="sh">
+      <div class="sh-wrap">
+        <div class="sh-crumb"><a href="/shop">Shop</a> / Checkout</div>
+        <ShopCheckout client:load />
+      </div>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

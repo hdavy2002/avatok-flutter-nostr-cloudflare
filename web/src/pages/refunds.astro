@@ -36,6 +36,8 @@ const toc = [
   { id: 'we-cancel', label: "If we cancel or can't perform your event" },
   { id: 'missed', label: 'No automatic refunds for missed attendance' },
   { id: 'outcome', label: 'No refunds based on the outcome' },
+  { id: 'charawa', label: 'Charawa and weather delays' },
+  { id: 'shop', label: 'Shop orders (T-shirts)' },
   { id: 'disputes', label: 'Wrong or duplicate payments' },
   { id: 'rights', label: 'Your rights' },
 ];
@@ -49,7 +51,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   lead="What you see is what you pay. Cancel with enough notice — 24 hours for a havan or puja, 3 days for a satsang, sermon or meditation — and we refund you in full."
   description={`How cancellations and refunds work on ${BRAND.name} — the notice period for each event type, why it exists, and how to request a refund with your UPI transaction number.`}
   image="/og/refunds.png"
-  updated="2026-09-30"
+  updated="2026-10-01"
   helpHref="/help/billing/refunds"
   sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
   stamp={{ src: '/assets/saathum-how-it-works/ontime.webp', width: 443, height: 494 }}
@@ -182,7 +184,19 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
     email, and send the video and prasad as soon as we can.
   </p>
 
-  <h2 id="disputes"><span class="lg-n">9.</span>Wrong or duplicate payments</h2>
+  <h2 id="shop"><span class="lg-n">9.</span>Shop orders (T-shirts)</h2>
+  <p>
+    The rules above are for events. T-shirts from our shop are different, and these are the rules for them:
+  </p>
+  <ul>
+    <li><strong>Printed to order.</strong> Each T-shirt is printed to order for you by our print partner and delivered within India, free of shipping charge. Delivery usually takes 5–8 days, and courier delays can happen.</li>
+    <li><strong>GST.</strong> GST at 18% is added at checkout and shown before you pay.</li>
+    <li><strong>No returns, exchanges or cancellations.</strong> Printing starts as soon as your payment is confirmed, so we do not take returns or exchanges, or cancel an order, once it is paid. This includes a wrong size chosen or a change of mind.</li>
+    <li><strong>Wrong or damaged item.</strong> If we send the wrong item, or it arrives damaged, tell us within 48 hours of delivery and include a photo. Use “Wrong item? Report it” on your order in My orders, or email support (@) {BRAND.domain}. We then send a replacement, or refund you in full.</li>
+    <li><strong>How a shop refund is paid.</strong> We send the refund to the UPI account you paid from and share the 12-digit UPI reference (UTR) with you on WhatsApp and email once it has been sent.</li>
+  </ul>
+
+  <h2 id="disputes"><span class="lg-n">10.</span>Wrong or duplicate payments</h2>
   <p>
     If you think you were charged by mistake or paid twice, email
     support (@) {BRAND.domain} with the 12-digit UPI transaction
@@ -190,7 +204,7 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
     faster, and we'll sort it out directly.
   </p>
 
-  <h2 id="rights"><span class="lg-n">10.</span>Your rights</h2>
+  <h2 id="rights"><span class="lg-n">11.</span>Your rights</h2>
   <p>
     Nothing in this policy limits any rights you have under applicable consumer protection law.
   </p>

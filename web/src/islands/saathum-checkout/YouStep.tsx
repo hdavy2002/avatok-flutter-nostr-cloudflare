@@ -45,7 +45,11 @@ export function YouStep({
   copy,
   stepIndex,
   totalSteps,
+  shop = false,
 }: {
+  /** [SAATHUM-SHOP-WEB-CHECKOUT-1] Shop checkout reuses this sign-in + WhatsApp-verify step; only the copy differs
+   *  (no event wording, no step dots, no event telemetry — the shop island reports its own steps). */
+  shop?: boolean;
   signedIn: boolean;
   onSignedIn: () => void;
   onVerified: () => void;
@@ -72,7 +76,7 @@ export function YouStep({
   const codeRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    capture('saathum_checkout_step', { step: 'you', listing_id: listingId, event_type: eventType });
+    if (!shop) capture('saathum_checkout_step', { step: 'you', listing_id: listingId, event_type: eventType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -204,9 +208,9 @@ export function YouStep({
   if (!signedIn) {
     return (
       <div className="sthc-card">
-        <div className="sthc-kick">Step {stepIndex} of {totalSteps} · You</div>
-        <h3 className="sthc-h3">Sign in to book</h3>
-        <div className="sthc-dots">{dots}</div>
+        <div className="sthc-kick">{shop ? 'You' : `Step ${stepIndex} of ${totalSteps} · You`}</div>
+        <h3 className="sthc-h3">{shop ? 'Sign in to continue' : 'Sign in to book'}</h3>
+        {!shop && <div className="sthc-dots">{dots}</div>}
         <div className="sthc-choice" role="tablist" aria-label="How do you want to sign in?">
           <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`sthc-btn${method === 'whatsapp' ? '' : ' sthc-btn--ghost'}`} onClick={() => chooseMethod('whatsapp')}>
             WhatsApp
@@ -221,9 +225,9 @@ export function YouStep({
         {method === 'email' ? (
           <>
           {readWaProof() && (
-            <p className="sthc-hint">Your WhatsApp number {readWaProof()?.phone_masked} is verified. Now add your email — we send your booking and receipts there.</p>
+            <p className="sthc-hint">Your WhatsApp number {readWaProof()?.phone_masked} is verified. Now add your email — we send your {shop ? 'order updates' : 'booking'} and receipts there.</p>
           )}
-          <EmailCodeSignIn reason="so we can send your booking" onAuthed={() => void afterEmailSignedIn()} />
+          <EmailCodeSignIn reason={shop ? 'so we can send your order updates' : 'so we can send your booking'} onAuthed={() => void afterEmailSignedIn()} />
           </>
         ) : (
           <>
@@ -268,9 +272,9 @@ export function YouStep({
 
   return (
     <div className="sthc-card">
-      <div className="sthc-kick">Step {stepIndex} of {totalSteps} · You</div>
+      <div className="sthc-kick">{shop ? 'You' : `Step ${stepIndex} of ${totalSteps} · You`}</div>
       <h3 className="sthc-h3">Verify your WhatsApp number</h3>
-      <div className="sthc-dots">{dots}</div>
+      {!shop && <div className="sthc-dots">{dots}</div>}
       <WhatsAppNumberInput
         value={phone} countryCode={country}
         onChange={(n, c) => { setPhone(n); setCountry(c); }}
@@ -279,7 +283,7 @@ export function YouStep({
       />
       {err && <p className="sthc-err" role="alert">{err}</p>}
       <div className="sthc-hint">
-        We&rsquo;ll email you the video when the {copy.noun} finishes.
+        {shop ? <>We&rsquo;ll send your order updates on WhatsApp and email.</> : <>We&rsquo;ll email you the video when the {copy.noun} finishes.</>}
       </div>
       {phase !== 'code' && phase !== 'verifying' && (
         <button className="sthc-btn" disabled={phase === 'sending' || phone.replace(/\D/g, '').length < 4} onClick={() => void sendCode()}>

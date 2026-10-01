@@ -26,6 +26,7 @@ const toc = [
   { id: 'content', label: 'Your content' },
   { id: 'use', label: 'Acceptable use' },
   { id: 'payments', label: 'Payments, payouts & fees' },
+  { id: 'shop', label: 'Shop orders (T-shirts)' },
   { id: 'ai', label: 'Artificial intelligence — important disclaimer' },
   { id: 'third', label: 'Third-party services' },
   { id: 'ip', label: 'Intellectual property' },
@@ -47,13 +48,13 @@ const ganeshImg = publicImage('/assets/saathum-bright/ganesh.png', { width: 320,
   lead={`The agreement between you and ${BRAND.name} for using ${BRAND.name}.`}
   description={`The agreement between you and ${BRAND.name} — your account, acceptable use, payments, and the limits of what we promise.`}
   image="/og/terms.png"
-  updated="2026-09-15"
+  updated="2026-10-01"
   sticker={{ src: '/assets/saathum-editorial-stickers-v2/terms-sticker-v2.png', width: 1378, height: 1142, alt: 'A red bound book beside a kalash with mango leaves and a diya — terms of service.' }}
   stamp={{ src: '/assets/saathum-bright/lotus.png', width: 1254, height: 1254 }}
   toc={toc}
   railCard={{
     title: 'Governed by the laws of India',
-    html: 'Read sections 10 and 11 with care — they set out what we promise, and what we do not.',
+    html: 'Read sections 11 and 12 with care — they set out what we promise, and what we do not.',
     image: { src: '/assets/saathum-booking/elephant.png', width: 1536, height: 1024 },
   }}
 >
@@ -67,7 +68,7 @@ const ganeshImg = publicImage('/assets/saathum-bright/ganesh.png', { width: 320,
   <h2 id="status"><span class="lg-n">1.</span>Who we are, and where we are in our journey</h2>
   <p>
     {BRAND.name} is built and operated by a small team in Dehradun, Uttarakhand, India. Please read
-    section 10 (Disclaimers) and section 11 (Limitation of liability) carefully.
+    section 11 (Disclaimers) and section 12 (Limitation of liability) carefully.
   </p>
 
   <h2 id="eligibility"><span class="lg-n">2.</span>Eligibility &amp; accounts</h2>
@@ -102,7 +103,24 @@ const ganeshImg = publicImage('/assets/saathum-bright/ganesh.png', { width: 320,
     it. See our <a href="/refunds">Refunds &amp; Cancellations</a> policy.
   </p>
 
-  <h2 id="ai"><span class="lg-n">6.</span>Artificial intelligence — important disclaimer</h2>
+  <h2 id="shop"><span class="lg-n">6.</span>Shop orders (T-shirts)</h2>
+  <p>
+    {BRAND.name} also sells T-shirts in our shop. These rules apply to every shop order, on top of the rest of
+    these Terms.
+  </p>
+  <ul>
+    <li><strong>Printed to order.</strong> Each T-shirt is printed to order for you by our print partner. That is why the size and design you choose cannot be changed once you have paid.</li>
+    <li><strong>India only, free delivery.</strong> We deliver within India and nowhere else. Delivery is free: the price you see already includes shipping. It usually takes 5–8 days, and courier delays can happen.</li>
+    <li><strong>GST.</strong> GST at 18% is added at checkout on the price (after any coupon), and you see the full total before you pay.</li>
+    <li><strong>Paying.</strong> You pay by UPI. Your order is confirmed when we match your payment, and we then send your receipt on WhatsApp and email.</li>
+    <li><strong>No returns, exchanges or cancellations.</strong> Printing starts as soon as your payment is confirmed, so we do not accept returns, exchanges or cancellations once an order is paid. This includes a wrong size chosen or a change of mind.</li>
+    <li><strong>Wrong or damaged item.</strong> If we send the wrong item, or it arrives damaged, tell us within 48 hours of delivery and include a photo. Use “Wrong item? Report it” on your order in My orders, or email support (@) {BRAND.domain}. We then send a replacement, or refund you in full to the UPI account you paid from.</li>
+  </ul>
+  <p>
+    See our <a href="/refunds#shop">Refunds &amp; Cancellations</a> policy for how a shop refund is paid.
+  </p>
+
+  <h2 id="ai"><span class="lg-n">7.</span>Artificial intelligence — important disclaimer</h2>
   <div class="lg-note">
     <div>
       <span class="lg-tag">Please read</span>
@@ -123,26 +141,26 @@ const ganeshImg = publicImage('/assets/saathum-bright/ganesh.png', { width: 320,
     <img src={ganeshImg} alt="" aria-hidden="true" width="1254" height="1254" />
   </div>
 
-  <h2 id="third"><span class="lg-n">7.</span>Third-party services</h2>
+  <h2 id="third"><span class="lg-n">8.</span>Third-party services</h2>
   <p>
     The Services may link to or integrate third-party products. We are not responsible for
     third-party services, and your use of them is governed by their own terms.
   </p>
 
-  <h2 id="ip"><span class="lg-n">8.</span>Intellectual property</h2>
+  <h2 id="ip"><span class="lg-n">9.</span>Intellectual property</h2>
   <p>
     The Services, including software, design, and trademarks, are owned by {BRAND.name} or its
     licensors and protected by law. These Terms do not grant you rights to our branding except as
     needed to use the Services.
   </p>
 
-  <h2 id="termination"><span class="lg-n">9.</span>Termination</h2>
+  <h2 id="termination"><span class="lg-n">10.</span>Termination</h2>
   <p>
     You may stop using the Services at any time. We may suspend or terminate access if you violate
     these Terms or to protect the Services and our community. Some provisions survive termination.
   </p>
 
-  <h2 id="disclaimers"><span class="lg-n">10.</span>Disclaimers</h2>
+  <h2 id="disclaimers"><span class="lg-n">11.</span>Disclaimers</h2>
   <p>
     The Services are provided "as is" and "as available" without warranties of any kind, to the
     fullest extent permitted by law. We do not warrant that the Services will be uninterrupted,
@@ -157,33 +175,33 @@ const ganeshImg = publicImage('/assets/saathum-bright/ganesh.png', { width: 320,
     in our <a href="/refunds">Refund policy</a>.
   </p>
 
-  <h2 id="liability"><span class="lg-n">11.</span>Limitation of liability</h2>
+  <h2 id="liability"><span class="lg-n">12.</span>Limitation of liability</h2>
   <p>
     To the maximum extent permitted by law, {BRAND.name}, its founders and its team will not be liable for any
     indirect, incidental, special, consequential, or punitive damages, or for lost profits or data,
     arising from your use of the Services.
   </p>
 
-  <h2 id="indemnification"><span class="lg-n">12.</span>Indemnification</h2>
+  <h2 id="indemnification"><span class="lg-n">13.</span>Indemnification</h2>
   <p>
     You agree to indemnify and hold {BRAND.name} and its founders harmless from claims arising out of your content, your
     use of the Services, or your violation of these Terms or applicable law.
   </p>
 
-  <h2 id="law"><span class="lg-n">13.</span>Governing law</h2>
+  <h2 id="law"><span class="lg-n">14.</span>Governing law</h2>
   <p>
     These Terms are governed by the laws of India, without regard to conflict-of-laws
     rules, except where local mandatory consumer-protection laws apply to you. Our contracting entity
     is {BRAND.name}.
   </p>
 
-  <h2 id="changes"><span class="lg-n">14.</span>Changes</h2>
+  <h2 id="changes"><span class="lg-n">15.</span>Changes</h2>
   <p>
     We may update these Terms from time to time. We will post the updated version here and revise
     the "Last updated" date. Continued use after changes means you accept the updated Terms.
   </p>
 
-  <h2 id="contact"><span class="lg-n">15.</span>Contact</h2>
+  <h2 id="contact"><span class="lg-n">16.</span>Contact</h2>
   <p>
     Questions about these Terms? Email support (@) {BRAND.domain} or
     visit our <a href="/contact">contact page</a>.
