@@ -7,6 +7,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { trackException } from "../hooks";
+import { BRAND } from "../lib/brand";
 import { forgetAll, forgetOne, getProfile, listMemories, listSessions, setConsent, upsertProfile } from "../lib/agent_memory";
 
 const PROFILE_PUBLIC = (p: Awaited<ReturnType<typeof getProfile>>) =>
@@ -49,7 +50,7 @@ export async function agentMemoryRoute(req: Request, env: Env, p: string): Promi
     if (isSess && m === "GET") return json({ sessions: await listSessions(env, uid) });
     return json({ error: "method_not_allowed" }, 405);
   } catch (e) {
-    await trackException(env, e, { route: "agent_memory", handled: true, app_name: "aumfe", uid });
+    await trackException(env, e, { route: "agent_memory", handled: true, app_name: BRAND.slug, uid });
     return json({ error: "server_error" }, 500);
   }
 }
