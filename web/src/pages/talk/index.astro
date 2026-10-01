@@ -1,0 +1,46 @@
+---
+// /talk — [AUMFE-VOICE-WEB-1 2026-10-01] The voice guides: choose a guide, tell her about you, talk, summary.
+// UNLISTED until launch: noindex, no nav/menu/sitemap links. Spec: Specs/SPEC-2026-10-01-VOICE-AGENTS.md.
+//
+// NOTE FOR AI:
+//  - Same folk shell as pages/shop/checkout.astro (Base chrome={false}, .folk-site, SiteHeader/SiteFooter folk).
+//  - Everything interactive is the Voice island (islands/voice/); it owns sign-in redirect, mic, audio, WebSocket.
+//  - The AudioWorklet files live in public/voice/ and are fetched only when a call starts (site-speed rule).
+//  - Per-person data: never cached or indexed. Brand name/domain only through BRAND.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import { publicImage, clerkFapiHost } from '../../lib/config';
+import { HOME_HEADER_LINKS } from '../../lib/homeNavigation';
+import VoiceApp from '../../islands/voice/Voice.tsx';
+import '../../styles/saathum-folk.css';
+import { BRAND } from '../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const clerkHost = clerkFapiHost();
+---
+<Base
+  title={`Talk to a guide · ${BRAND.name}`}
+  description={`Talk with an ${BRAND.name} AI guide by voice.`}
+  noindex={true}
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#fff8e8" />
+    {clerkHost && <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />}
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content">
+      <VoiceApp client:load />
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>
