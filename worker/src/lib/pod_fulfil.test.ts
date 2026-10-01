@@ -131,6 +131,10 @@ describe('sendBlockedReason / deriveProduction', () => {
 });
 
 describe('placementForPartner', () => {
+  it('prefers the print PNG box over the frame (art zoomed out is smaller than the frame)', () => {
+    expect(placementForPartner({ side: 'front', frame_w_in: 11, frame_h_in: 11, frame_top_in: 2.5, print_w_in: 8, print_h_in: 7.5, print_left_in: 3.8, print_top_in: 4 }, 15.6))
+      .toEqual({ side: 'front', width_in: 8, height_in: 7.5, top_in: 4, left_in: 3.8 });
+  });
   it('centres the frame on the print area unless a left offset was stored', () => {
     expect(placementForPartner({ side: 'front', frame_w_in: 11, frame_h_in: 11, frame_top_in: 2.5 }, 15.6)).toEqual({ side: 'front', width_in: 11, height_in: 11, top_in: 2.5, left_in: 2.3 });
     expect(placementForPartner({ side: 'back', frame_w_in: 8, frame_h_in: 6, frame_top_in: 1, frame_left_in: 0.5 }, 15.6)).toMatchObject({ side: 'back', left_in: 0.5 });

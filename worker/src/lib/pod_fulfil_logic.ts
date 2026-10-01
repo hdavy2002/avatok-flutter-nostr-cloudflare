@@ -178,19 +178,27 @@ export function deriveProduction(orderFulfil: OrderFulfil, row: FulfilmentLite |
 // ---------------------------------------------------------------------------
 export type StudioPlacementLike = {
   side?: unknown; frame_w_in?: unknown; frame_h_in?: unknown; frame_top_in?: unknown; frame_left_in?: unknown;
-  print_w_in?: unknown; print_h_in?: unknown; nudge_x_in?: unknown;
+  print_w_in?: unknown; print_h_in?: unknown; print_left_in?: unknown; print_top_in?: unknown; nudge_x_in?: unknown;
 };
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /**
- * The owner's locked placement as the partner wants it. The frame is centred on the print area unless the studio stored an
- * explicit left offset. Returns null when the design never saved a usable placement (the caller then blocks the send).
+ * Where the print PNG sits on the print area, in inches from the area's top-left -- the numbers the partner is given AND the
+ * ones the detail panel shows (describeShipment calls this too). studio_designs.placement_json stores the PNG's own box as
+ * print_left_in / print_top_in / print_w_in / print_h_in (it can be smaller than the frame when the art is zoomed out), so those
+ * win. Only a placement without them (older rows) falls back to the frame, centred on the print area unless frame_left_in is stored.
+ * Returns null when there is no usable size (the caller then blocks the send).
  */
 export function placementForPartner(p: StudioPlacementLike | null | undefined, areaWidthIn: number | null): { side: "front" | "back"; width_in: number; height_in: number; top_in: number; left_in: number } | null {
   if (!p) return null;
-  const w = num(p.print_w_in) ?? num(p.frame_w_in), h = num(p.print_h_in) ?? num(p.frame_h_in);
+  const side = p.side === "back" ? "back" : "front";
+  const pw = num(p.print_w_in), ph = num(p.print_h_in), pl = num(p.print_left_in), pt = num(p.print_top_in);
+  if (pw != null && ph != null && pl != null && pt != null && pw > 0 && ph > 0) {
+    return { side, width_in: round2(pw), height_in: round2(ph), top_in: round2(pt), left_in: round2(pl) };
+  }
+  const w = pw ?? num(p.frame_w_in), h = ph ?? num(p.frame_h_in);
   if (w == null || h == null || w <= 0 || h <= 0) return null;
-  const left = num(p.frame_left_in) ?? (areaWidthIn != null ? Math.max(0, (areaWidthIn - w) / 2) : 0);
-  return { side: p.side === "back" ? "back" : "front", width_in: round2(w), height_in: round2(h), top_in: round2(num(p.frame_top_in) ?? 0), left_in: round2(left) };
+  const left = pl ?? num(p.frame_left_in) ?? (areaWidthIn != null ? Math.max(0, (areaWidthIn - w) / 2) : 0);
+  return { side, width_in: round2(w), height_in: round2(h), top_in: round2(pt ?? num(p.frame_top_in) ?? 0), left_in: round2(left) };
 }
