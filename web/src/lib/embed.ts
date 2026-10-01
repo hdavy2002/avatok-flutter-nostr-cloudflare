@@ -40,7 +40,7 @@ interface HostChannel { postMessage(payload: string): void }
 interface EmbedWindow extends Window {
   SaathumHost?: HostChannel;
   /** Host → page token delivery. Installed by `installEmbedBridge`. */
-  __saathumEmbedToken?: (id: number, token: string | null) => void;
+  __siteEmbedToken?: (id: number, token: string | null) => void;
 }
 
 function w(): EmbedWindow | null {
@@ -138,7 +138,7 @@ export function installEmbedBridge(): (() => Promise<string | null>) | null {
   // the host's `bridge_ms` stays the time to FIRST paintable page.
   if (_provider) return _provider;
 
-  win.__saathumEmbedToken = (id: number, token: string | null) => {
+  win.__siteEmbedToken = (id: number, token: string | null) => {
     const entry = pending.get(id);
     if (!entry) return; // already timed out — a late answer is not an error
     pending.delete(id);

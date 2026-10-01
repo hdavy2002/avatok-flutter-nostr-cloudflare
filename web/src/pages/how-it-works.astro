@@ -7,14 +7,14 @@
 //
 // NOTE FOR AI:
 //  - Same shell as pages/marketplace.astro and pages/help/index.astro: Base
-//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    chrome={false}, the `.folk-site[data-design="reference-v5"]`
 //    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
 //    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer are
 //    NOT copied — the live components are the header and footer.
 //  - Page CSS: styles/how-it-works.css (scoped under `.hw`). Every rule there
 //    is the mockup's rule, `hw-` prefixed. The gold ribbon is the live
 //    `.grand-divider` (1:1 the same rule as the mockup's `.ribbon`).
-//  - Graphics: public/assets/saathum-how-it-works/ (the mock's die-cut stickers
+//  - Graphics: public/assets/how-it-works/ (the mock's die-cut stickers
 //    and hero painting), plus the live elephant and diya art, all through
 //    publicImage() so the built-image-source deploy check can verify them.
 //  - "Don't box in": .hw-wrap is max 1280px (1480px >= 1800px) with the band
@@ -34,7 +34,7 @@ import '../styles/saathum-folk.css';
 import '../styles/how-it-works.css';
 import { BRAND } from '../lib/brand';
 
-const A = '/assets/saathum-how-it-works/';
+const A = '/assets/how-it-works/';
 // Die-cut stickers: every one is shown at <= 230px, so a 640px variant covers 2x.
 const sticker = (name: string) => publicImage(`${A}${name}.webp`, { width: 640, fit: 'scale-down' });
 const IMG = {
@@ -45,7 +45,7 @@ const IMG = {
   link: sticker('link'),
   namaste: sticker('namaste'),
   ontime: sticker('ontime'),
-  elephant: publicImage('/assets/saathum-booking/elephant.png', { width: 420, fit: 'scale-down' }),
+  elephant: publicImage('/assets/booking/elephant.png', { width: 420, fit: 'scale-down' }),
 };
 const heroSrc = publicImage(`${A}hero.png`, { width: 1280, fit: 'scale-down' });
 const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 'scale-down' });
@@ -55,7 +55,7 @@ const heroSrcSet = publicImageSrcSet(`${A}hero.png`, [640, 900, 1280], { fit: 's
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="hw">

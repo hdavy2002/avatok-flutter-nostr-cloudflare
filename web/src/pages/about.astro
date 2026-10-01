@@ -1,7 +1,7 @@
 ---
 // [WEB-ABOUT-BLOG-1 2026-09-30] OWNER: removed the woman-in-saree sticker; /about is now a
 // blog article — intro (eyebrow, h1, lead, pill), then a WIDE hero photo
-// (design/about-page/davy.png, cropped to /assets/saathum-about/about-hero-davy.jpg)
+// (design/about-page/davy.png, cropped to /assets/about/about-hero-davy.jpg)
 // in a white sticker border, then the unchanged story in the white card. Exact
 // replica of the approved mock design/about-page/saathum-about-blog-mock.src.html
 // (build-about-blog-mock.py). Story text unchanged. The share card is the hero photo.
@@ -19,7 +19,7 @@
 //
 // NOTE FOR AI:
 //  - Shell: the same folk shell as layouts/LegalFolk.astro — Base
-//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    chrome={false}, the `.folk-site[data-design="reference-v5"]`
 //    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
 //    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer
 //    are NOT copied — the live components are the header and footer.
@@ -27,12 +27,12 @@
 //    is the mockup's rule, `ab-` prefixed. The gold ribbon is the live
 //    `.grand-divider`. There is no hero band on this page: the layout is the
 //    die-cut sticker (design/desi-art/saathum.png, served from
-//    /assets/saathum-about/about-sticker.png) pinned on the LEFT and the
+//    /assets/about/about-sticker.png) pinned on the LEFT and the
 //    story card on the RIGHT; on <=1100px the sticker stacks on top.
 //  - SEO/OG: this page builds its own PublicContent (kind 'page') the same
 //    way LegalFolk does, and its `image` is the sticker path itself, which
 //    is what the /og/page/about.png renderer paints (resolve.ts reads the
-//    `saathum:og-art` meta; prepare-og-art.mjs pre-renders any
+//    `site:og-art` meta; prepare-og-art.mjs pre-renders any
 //    /assets/saathum*/ artwork). So the social card = title + sticker.
 //  - Exactly one <h1>. Emails stay plain text "support (@) saathum.com",
 //    never mailto. Brand text is "Saa Thum". Address is Dehradun,
@@ -54,7 +54,7 @@ import { BRAND } from '../lib/brand';
 const title = 'About us — it began on a snowbound night in a Himalayan temple';
 const description = `${BRAND.name} was born in a snowstorm, when a Himalayan pujari sheltered our co-founder for the night. Today our crew travels to remote, positive mountain temples to perform havans in your name, and every booking supports the pujaris and villages who keep them alive.`;
 const updated = '2026-09-29';
-const HERO = '/assets/saathum-about/about-hero-davy.jpg';
+const HERO = '/assets/about/about-hero-davy.jpg';
 const HERO_ALT = 'Our co-founder, dusted with snow, holding a steel glass of hot ginger tea under a woollen blanket, while the smiling pujari makes rotis over the fire in the stone temple behind him.';
 
 const content: PublicContent = {
@@ -70,15 +70,15 @@ const content: PublicContent = {
 
 const heroSrc = publicImage(HERO, { width: 1200, fit: 'scale-down' });
 const heroSrcSet = publicImageSrcSet(HERO, [480, 768, 1086], { fit: 'scale-down' });
-const emblemSrc = publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 200, fit: 'scale-down' });
-const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
+const emblemSrc = publicImage('/assets/logo/emblem-diya-lotus.png', { width: 200, fit: 'scale-down' });
+const namasteSrc = publicImage('/assets/how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="ab">

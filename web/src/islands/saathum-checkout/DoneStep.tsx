@@ -20,7 +20,7 @@ function DoneSticker() {
   return (
     <img
       className="sthc-done-sticker"
-      src="/assets/saathum-booking-stickers/booking-blessed.png"
+      src="/assets/booking-stickers/booking-blessed.png"
       alt=""
       onError={() => setBroken(true)}
     />
@@ -64,7 +64,7 @@ export function DoneStep({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `saathum-receipt-${checkout.checkout_id}.pdf`;
+      a.download = `receipt-${checkout.checkout_id}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

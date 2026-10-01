@@ -8,7 +8,7 @@
 //
 // NOTE FOR AI:
 //  - Same shell as pages/how-it-works.astro: Base chrome={false}, the
-//    `.folk-site[data-design="saathum-reference-v5"]` wrapper, SiteHeader/
+//    `.folk-site[data-design="reference-v5"]` wrapper, SiteHeader/
 //    SiteFooter `folk`, Comfortaa+Nunito. Page CSS: styles/temples.css (`.tp`).
 //  - Temple list lives in lib/temples.ts (with the owner's exclusion rules).
 //    Temple photos arrive later: cards without `photo: true` show a placeholder.
@@ -28,18 +28,18 @@ import '../styles/saathum-folk.css';
 import '../styles/temples.css';
 import { BRAND } from '../lib/brand';
 
-const A = '/assets/saathum-how-it-works/';
+const A = '/assets/how-it-works/';
 const sticker = (name: string, width = 420) => publicImage(`${A}${name}.webp`, { width, fit: 'scale-down' });
 const IMG = {
   link: sticker('link'),
   namaste: sticker('namaste', 340),
-  emblem: publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 240, fit: 'scale-down' }),
+  emblem: publicImage('/assets/logo/emblem-diya-lotus.png', { width: 240, fit: 'scale-down' }),
 };
 // [WEB-TEMPLES-4 2026-09-29] OWNER: hero photo is now design/temple-crew/crew2.png (saved over
 // crew.jpg) with NO havan sticker on it.
 // [WEB-TEMPLES-2 2026-09-29] OWNER: the hero is the crew photo (design/temple-crew/crew.png),
 // big and centred under the copy, exactly as the approved mockup looks.
-const CREW = '/assets/saathum-temples/crew.jpg';
+const CREW = '/assets/temples/crew.jpg';
 const heroSrc = publicImage(CREW, { width: 1280, fit: 'scale-down' });
 const heroSrcSet = publicImageSrcSet(CREW, [640, 900, 1280, 1536], { fit: 'scale-down' });
 const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 640, height: 480, fit: 'cover' });
@@ -49,7 +49,7 @@ const cardPhoto = (slug: string) => publicImage(templePhotoPath(slug), { width: 
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="tp">

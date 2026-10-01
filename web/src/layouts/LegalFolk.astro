@@ -8,7 +8,7 @@
 //
 // NOTE FOR AI:
 //  - Same shell as pages/how-it-works.astro / pages/marketplace.astro: Base
-//    chrome={false}, the `.folk-site[data-design="saathum-reference-v5"]`
+//    chrome={false}, the `.folk-site[data-design="reference-v5"]`
 //    wrapper carrying --folk-border-url, SiteHeader/SiteFooter `folk`,
 //    Comfortaa+Nunito, theme-color #fff8e8. The mockup's own header/footer are
 //    NOT copied — the live components are the header and footer.
@@ -109,14 +109,14 @@ const stickerSrc = publicImage(sticker.src, { width: 720, fit: 'scale-down' });
 const stickerSrcSet = publicImageSrcSet(sticker.src, [320, 480, 720], { fit: 'scale-down' });
 const stampSrc = stamp ? publicImage(stamp.src, { width: 320, fit: 'scale-down' }) : undefined;
 const railCardImgSrc = railCard ? publicImage(railCard.image.src, { width: 384, fit: 'scale-down' }) : undefined;
-const namasteSrc = publicImage('/assets/saathum-how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
+const namasteSrc = publicImage('/assets/how-it-works/namaste.webp', { width: 340, fit: 'scale-down' });
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="lg">

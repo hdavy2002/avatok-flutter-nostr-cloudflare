@@ -9,7 +9,7 @@
 // NOTE FOR AI:
 //  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
 //    styles/legal-folk.css. Same conventions as pages/refunds.astro:
-//    Base chrome={false}, `.folk-site[data-design="saathum-reference-v5"]`,
+//    Base chrome={false}, `.folk-site[data-design="reference-v5"]`,
 //    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
 //  - This page supplies only content props (title/lead/updated/sticker/toc/
 //    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
@@ -44,8 +44,8 @@ const toc = [
   description={`What ${BRAND.name} collects, why we collect it, how we protect it, and the control you have over your information.`}
   image="/og/privacy.png"
   updated="2026-09-25"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/privacy-sticker-v2.png', width: 1206, height: 1304, alt: 'A teal lotus-shaped shield with a golden padlock and a diya — privacy.' }}
-  stamp={{ src: '/assets/saathum-bright/lotus.png', width: 1254, height: 1254 }}
+  sticker={{ src: '/assets/editorial-stickers-v2/privacy-sticker-v2.png', width: 1206, height: 1304, alt: 'A teal lotus-shaped shield with a golden padlock and a diya — privacy.' }}
+  stamp={{ src: '/assets/bright/lotus.png', width: 1254, height: 1254 }}
   toc={toc}
   railCard={{
     title: 'We never sell your data',

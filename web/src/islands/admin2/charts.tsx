@@ -1,6 +1,6 @@
 /* [ADMIN2-ANALYTICS 2026-09-26] Hand-rolled SVG/HTML chart pieces for the Admin 2
  * Analytics page. No chart library. Follows the dataviz method:
- *  - Colours are tokens (saathum-tokens.css --chart-1 teal / --chart-2 gold, validated
+ *  - Colours are tokens (site-tokens.css --chart-1 teal / --chart-2 gold, validated
  *    against --card in light and dark); text always wears text tokens, never a series colour.
  *  - 2px lines, <=24px bars with a 4px rounded data-end and a 2px surface gap, recessive
  *    hairline grid, legends for >=2 series, a hover/focus tooltip on every chart, and a

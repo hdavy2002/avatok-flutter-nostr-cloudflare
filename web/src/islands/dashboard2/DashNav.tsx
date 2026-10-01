@@ -124,7 +124,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <a href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} home`}>
       {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
-      <img src={publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
+      <img src={publicImage('/assets/logo/emblem-diya-lotus.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
     </a>
   );
 }

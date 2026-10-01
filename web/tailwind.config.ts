@@ -10,7 +10,7 @@ const zine = require('./tailwind.zine.cjs');
 // TOP of the generated zine extend without changing anything the rest of the
 // site renders:
 //  - Every shadcn colour reads an HSL triplet CSS variable that is defined ONLY
-//    under `.dash2` (src/styles/saathum-tokens.css). Outside `.dash2` no element
+//    under `.dash2` (src/styles/site-tokens.css). Outside `.dash2` no element
 //    uses these utilities, so nothing changes.
 //  - `card` is the one key that collides with zine (`bg-card` = var(--zine-card)
 //    all over the v1 dashboard). Its DEFAULT stays var(--zine-card); `.dash2`

@@ -351,7 +351,7 @@ export function PayStep({
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', margin: '10px 0' }}>
         {qr && phone && (
-          <a className="sthc-btn sthc-btn--teal" href={qr} download={`saathum-pay-${amountText}.png`}
+          <a className="sthc-btn sthc-btn--teal" href={qr} download={`pay-${amountText}.png`}
             onClick={() => capture('saathum_checkout_pay_qr_saved')}>Save QR</a>
         )}
         {vpa && (

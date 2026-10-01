@@ -3,7 +3,7 @@
 // checkout for live events (Specs/SPEC-2026-09-26-SAATHUM-CHECKOUT.md). SSR
 // loads the listing exactly like ../[id].astro (same 404 handling, same
 // cache header) so the summary column is instant; the interactive step
-// machine lives in islands/saathum-checkout/SaathumCheckout.tsx.
+// machine lives in islands/saathum-checkout/BookingCheckout.tsx.
 //
 // [WEB-OLD-CHECKOUT-GONE-1 2026-09-27] OWNER DECISION: this is the ONLY checkout. The old
 // BookingFlow island (and islands/checkout's gateway/pay/confirm steps) was
@@ -14,7 +14,7 @@ import Base from '../../../layouts/Base.astro';
 import { cfImage, clerkFapiHost } from '../../../lib/config';
 import { getListing, ApiError } from '../../../lib/apiClient';
 import type { CoverMedia, Listing } from '../../../lib/types';
-import { SaathumCheckout } from '../../../islands/saathum-checkout/SaathumCheckout.tsx';
+import { SaathumCheckout } from '../../../islands/saathum-checkout/BookingCheckout.tsx';
 import { BRAND } from '../../../lib/brand';
 
 const { id } = Astro.params;

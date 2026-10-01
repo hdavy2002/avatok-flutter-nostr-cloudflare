@@ -35,50 +35,50 @@ assert.match(visibleText, /HIMALAYAN TEMPLE HAVANS/, 'Hero eyebrow'); // WEB-REF
 for (const heading of ['What would you like to welcome into your life?', 'Sacred havans we perform for you', 'HOW DOES IT WORK?', 'Only joy, only blessings.']) {
   assert(visibleText.includes(heading), 'Approved homepage heading: ' + heading);
 }
-assert.match(html, /data-design="saathum-reference-v5"/, 'Approved grand booking design identity');
+assert.match(html, /data-design="reference-v5"/, 'Approved grand booking design identity');
 assert.match(html, /data-grand-artwork="hero"/, 'Grand hero artwork is rendered');
 assert.doesNotMatch(html, /folk-seal|folk-handnote|folk-art-note/, 'Retired compact badges and notes are absent');
-assert.doesNotMatch(html, /data-reference-artwork|saathum-reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
+assert.doesNotMatch(html, /data-reference-artwork|reference\/approved-homepage|hero-poster-nonav|creator-constellation/i, 'Retired screenshot artwork is absent from the promoted homepage');
 // [BRAND-LOGO-1 2026-09-27] The lotus sticker no longer renders in the header/
 // footer — the single horizontal Saa Thum logo does. Assert that instead.
-assert.match(html, /class="avh-logo-mark"[^>]*saathum-logo-horizontal|saathum-logo-horizontal[^>]*class="avh-logo-mark"|class="avh-logo-mark"/, 'Header brand logo is rendered');
+assert.match(html, /class="avh-logo-mark"[^>]*logo-horizontal|logo-horizontal[^>]*class="avh-logo-mark"|class="avh-logo-mark"/, 'Header brand logo is rendered');
 assert.match(html, /class="bf-logo-mark"/, 'Footer brand logo is rendered');
-assert.match(html, /rel="icon" href="\/assets\/saathum-logo\/favicon-512\.png"/, 'Diya favicon is linked');
+assert.match(html, /rel="icon" href="\/assets\/logo\/favicon-512\.png"/, 'Diya favicon is linked');
 assert.doesNotMatch(html, /avh-logo-text|bf-logo-text|app-logo2\.png/, 'Retired icon + text brand lockup and old favicon are absent');
 const renderedFolkArtwork = new Set(['satsang']);
 for (const [name, width, height] of [['hero', 1536, 1024], ['ganesh', 1254, 1254], ['cow', 1254, 1254], ['music', 1254, 1254], ['satsang', 1536, 1024], ['culture', 1536, 1024], ['lotus', 1254, 1254], ['border', 2172, 724]]) {
   if (name !== 'border' && renderedFolkArtwork.has(name)) assert.match(html, new RegExp('data-folk-artwork="' + name + '"'), 'Folk artwork is rendered: ' + name);
-  if (name === 'border') assert.match(html, /saathum-bright\/border\.png/, 'Optimized repeating border asset is referenced');
-  const file = resolve(root, 'assets/saathum-bright', name + '.png');
+  if (name === 'border') assert.match(html, /bright\/border\.png/, 'Optimized repeating border asset is referenced');
+  const file = resolve(root, 'assets/bright', name + '.png');
   assert(existsSync(file), 'Original sticker asset exists: ' + name);
   const metadata = await sharp(file).metadata();
   assert(metadata.hasAlpha, 'Sticker asset retains transparency: ' + name);
   assert.equal(metadata.width, width, 'Sticker width is recorded: ' + name);
   assert.equal(metadata.height, height, 'Sticker height is recorded: ' + name);
 }
-const grandHeroPath = resolve(root, 'assets/saathum-grand/hero.png');
+const grandHeroPath = resolve(root, 'assets/grand/hero.png');
 assert(existsSync(grandHeroPath), 'Grand hero artwork exists');
 const grandHeroMetadata = await sharp(grandHeroPath).metadata();
 assert(grandHeroMetadata.hasAlpha, 'Grand hero retains transparent foreground');
 assert.equal(grandHeroMetadata.width, 1214, 'Grand hero width is recorded');
 assert.equal(grandHeroMetadata.height, 1295, 'Grand hero height is recorded');
-assert(html.includes('saathum-grand/hero-havan.jpg'), 'Exact hero photo source is referenced'); // WEB-HERO-PHOTO-1
+assert(html.includes('grand/hero-havan.jpg'), 'Exact hero photo source is referenced'); // WEB-HERO-PHOTO-1
 // [SAATHUM-GUIDE-1 2026-09-25] Listing art left the homepage with the sample listing cards;
-// the havan cards use /assets/saathum-rituals/ (checked below and in check-homepage-browser.mjs).
+// the havan cards use /assets/rituals/ (checked below and in check-homepage-browser.mjs).
 for (const [kind, names] of [['category', ['puja', 'aarti', 'bhajan', 'satsang', 'festival', 'yoga']]]) {
   for (const name of names) {
-    const path = resolve(root, 'assets/saathum-booking', kind + '-' + name + '.png');
+    const path = resolve(root, 'assets/booking', kind + '-' + name + '.png');
     assert(existsSync(path), 'Booking artwork exists: ' + kind + '-' + name);
     const metadata = await sharp(path).metadata();
     assert(metadata.width && metadata.height, 'Booking artwork has dimensions: ' + kind + '-' + name);
     assert(!metadata.hasAlpha, 'Booking artwork is opaque RGB: ' + kind + '-' + name);
     if (kind === 'category') assert.equal(metadata.width, metadata.height, 'Category art is square: ' + name);
     else assert(metadata.width > metadata.height, 'Listing art is landscape: ' + name);
-    const sourcePath = 'saathum-booking/' + kind + '-' + name + '.png';
+    const sourcePath = 'booking/' + kind + '-' + name + '.png';
     assert(html.includes(sourcePath), 'Exact booking artwork source is referenced: ' + sourcePath);
   }
 }
-const elephantPath = resolve(root, 'assets/saathum-booking/elephant.png');
+const elephantPath = resolve(root, 'assets/booking/elephant.png');
 assert(existsSync(elephantPath), 'Organiser strip elephant artwork exists');
 const elephantMetadata = await sharp(elephantPath).metadata();
 assert(elephantMetadata.hasAlpha, 'Organiser elephant retains transparency');
@@ -227,8 +227,8 @@ for (const href of ritualLinks) {
  assert.match(article, /class="bazaar-footer bazaar-footer--folk"/, 'Shared article footer: ' + href);
  assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
  // [SAATHUM-GUIDE-2] Havans are open shared events (power of many); pujas are private.
-  // [PRICING-1] The price is a live [data-saathum-price] span fed by /api/pricing — never a hardcoded figure.
- if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from <span data-saathum-price="[a-z0-9-]+" data-saathum-type="havan">₹\d[\d,]*<\/span>/, 'Havan price anchor (live from /api/pricing, [PRICING-1]): ' + href); }
+  // [PRICING-1] The price is a live [data-site-price] span fed by /api/pricing — never a hardcoded figure.
+ if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from <span data-site-price="[a-z0-9-]+" data-site-type="havan">₹\d[\d,]*<\/span>/, 'Havan price anchor (live from /api/pricing, [PRICING-1]): ' + href); }
  assert.match(article, /The story behind it/, 'Deity story: ' + href);
  assert.match(article, /temple priests/, 'Temple priests explained: ' + href);
  assert.match(article, /href="\/refunds"/, 'Refund policy link: ' + href);
@@ -237,15 +237,15 @@ for (const href of ritualLinks) {
  assert.equal(meta(article, 'og:type'), 'article');
  assert.match(article, /BreadcrumbList/);
  assert(sitemap.includes(BRAND.webOrigin + href + '/<'), 'Article in sitemap: ' + href);
- // Artwork: one file per ritual at /assets/saathum-rituals/<slug>.png, landscape, unique.
- const file = resolve(root, 'assets/saathum-rituals', slug + '.png');
+ // Artwork: one file per ritual at /assets/rituals/<slug>.png, landscape, unique.
+ const file = resolve(root, 'assets/rituals', slug + '.png');
  assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
  const art = await sharp(file).metadata();
  assert(art.width > art.height, 'Ritual artwork is landscape: ' + slug + '.png');
  const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
  assert(!ritualImages.has(hash), 'Duplicate ritual artwork bytes: ' + slug + '.png');
  ritualImages.add(hash);
- assert(article.includes('saathum-rituals/' + slug + '.png'), 'Article shows its own artwork: ' + href);
+ assert(article.includes('rituals/' + slug + '.png'), 'Article shows its own artwork: ' + href);
 }
 console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, sharing and unique artwork.');
 
@@ -258,7 +258,7 @@ const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
 // [WEB-OG-SHARE-1 2026-09-29] Owner decision: the share image is the homepage's own hero photo, 1200x630 JPEG.
 // (normalizeBuiltImages maps the built /cdn-cgi/image/.../_images/<hash> URL back to its source path.)
-assert.equal(ogImageUrl, BRAND.webOrigin + '/assets/saathum-grand/hero-havan.jpg', 'Homepage shares its hero photo');
+assert.equal(ogImageUrl, BRAND.webOrigin + '/assets/grand/hero-havan.jpg', 'Homepage shares its hero photo');
 assert.match(rawHtml, new RegExp('property="og:image" content="' + reEscape(BRAND.webOrigin) + '/cdn-cgi/image/format=jpeg,quality=80,width=1200,height=630,fit=cover,gravity=0\\.5x0\\.35/'), 'Share photo is a 1200x630 JPEG');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);

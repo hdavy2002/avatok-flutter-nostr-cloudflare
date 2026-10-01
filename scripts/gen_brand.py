@@ -32,6 +32,8 @@ TS_TARGETS = [
     ROOT / "worker" / "src" / "lib" / "brand.ts",
     ROOT / "consumers" / "src" / "brand.ts",
 ]
+WEB_TARGET = TS_TARGETS[0]
+WEB_LEGACY_TARGET = ROOT / "web" / "src" / "lib" / "brandLegacy.ts"
 DART_TARGET = ROOT / "app" / "lib" / "core" / "brand.dart"
 WRANGLER_TARGET = ROOT / "worker" / "wrangler.toml"
 CONSUMERS_WRANGLER = ROOT / "consumers" / "wrangler.toml"
@@ -78,7 +80,9 @@ def dart_list(items: list) -> str:
     return "<String>[" + ", ".join(dart(i) for i in items) + "]"
 
 
-def render_ts(b: dict) -> str:
+def render_ts(b: dict, client: bool = False) -> str:
+    """client=True (web): legacy-domain data is NOT put in BRAND (it would ship in every browser
+    chunk); it goes to brandLegacy.ts, imported from server-only code behind import.meta.env.SSR."""
     h, e = b["hosts"], b["emails"]
     legacy = legacy_domains(b)
     lines = ["/**"] + [f" * {l}" for l in HEADER.splitlines()] + [" */", ""]
@@ -94,8 +98,6 @@ def render_ts(b: dict) -> str:
         f"  slug: {js(b['slug'])},",
         f"  nameHindi: {js(b['nameHindi'])},",
         f"  slogan: {js(b['slogan'])},",
-        f"  /** Earlier public names — only for the help article that explains the rename. */",
-        f"  previousNames: {ts_list(b.get('previousNames', []))},",
         f"  /** One-sentence meaning of the name (front page). */",
         f"  nameMeaningShort: {js(b.get('nameMeaningShort', ''))},",
         f"  /** Full story of the name (About page, help). */",
@@ -111,10 +113,12 @@ def render_ts(b: dict) -> str:
         f"  authHost: {js(h['auth'])},",
         f"  authOrigin: {js('https://' + h['auth'])},",
         f"  mailHost: {js(h['mail'])},",
+    ] + ([] if client else [
         "  /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */",
         f"  legacyDomains: {ts_list(legacy)},",
         f"  legacyMediaHosts: {ts_list(['media.' + d for d in legacy])},",
         f"  legacyApiHosts: {ts_list(['api.' + d for d in legacy])},",
+    ]) + [
         "  emails: {",
         f"    support: {js(e['support'])},",
         f"    noreply: {js(e['noreply'])},",
@@ -136,11 +140,36 @@ def render_ts(b: dict) -> str:
         "  return h === BRAND.domain || h.endsWith(`.${BRAND.domain}`);",
         "}",
         "",
+    ]
+    if not client:
+        lines += [
         "/** True for the brand domain, any legacy domain, and any subdomain of either. */",
         "export function isBrandOrLegacyHost(host: string): boolean {",
         "  const h = host.toLowerCase();",
         "  if (isBrandHost(h)) return true;",
         "  return BRAND.legacyDomains.some((d) => h === d || h.endsWith(`.${d}`));",
+        "}",
+        "",
+        ]
+    return "\n".join(lines)
+
+
+def render_legacy_ts(b: dict) -> str:
+    legacy = legacy_domains(b)
+    lines = ["/**"] + [f" * {l}" for l in HEADER.splitlines()] + [" */", ""]
+    lines += [
+        "/** SERVER-ONLY. Import behind `import.meta.env.SSR` so it never reaches a browser chunk. */",
+        "import { isBrandHost } from './brand';",
+        "",
+        f"export const LEGACY_DOMAINS: readonly string[] = {ts_list(legacy)};",
+        f"export const LEGACY_MEDIA_HOSTS: readonly string[] = {ts_list(['media.' + d for d in legacy])};",
+        f"export const LEGACY_API_HOSTS: readonly string[] = {ts_list(['api.' + d for d in legacy])};",
+        "",
+        "/** True for the brand domain, any legacy domain, and any subdomain of either. */",
+        "export function isBrandOrLegacyHost(host: string): boolean {",
+        "  const h = host.toLowerCase();",
+        "  if (isBrandHost(h)) return true;",
+        "  return LEGACY_DOMAINS.some((d) => h === d || h.endsWith(`.${d}`));",
         "}",
         "",
     ]
@@ -160,7 +189,6 @@ def render_dart(b: dict) -> str:
         f"  static const String slug = {dart(b['slug'])};",
         f"  static const String nameHindi = {dart(b['nameHindi'])};",
         f"  static const String slogan = {dart(b['slogan'])};",
-        f"  static const List<String> previousNames = {dart_list(b.get('previousNames', []))};",
         f"  static const String nameMeaningShort = {dart(b.get('nameMeaningShort', ''))};",
         f"  static const String nameMeaningLong = {dart(b.get('nameMeaningLong', ''))};",
         f"  static const String domain = {dart(b['domain'])};",
@@ -269,7 +297,8 @@ def sync_consumers_wrangler(text: str, b: dict) -> str:
 def main() -> int:
     check = "--check" in sys.argv[1:]
     b = load()
-    outputs = {p: render_ts(b) for p in TS_TARGETS}
+    outputs = {p: render_ts(b, client=(p == WEB_TARGET)) for p in TS_TARGETS}
+    outputs[WEB_LEGACY_TARGET] = render_legacy_ts(b)
     outputs[DART_TARGET] = render_dart(b)
     if WRANGLER_TARGET.exists():
         outputs[WRANGLER_TARGET] = sync_wrangler(WRANGLER_TARGET.read_text(encoding="utf-8"), b)

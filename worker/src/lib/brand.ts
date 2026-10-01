@@ -14,8 +14,6 @@ export const BRAND = {
   slug: "aumfe",
   nameHindi: "ॐ फ़े",
   slogan: "Faith, brought home to you.",
-  /** Earlier public names — only for the help article that explains the rename. */
-  previousNames: ["Saa Thum"] as readonly string[],
   /** One-sentence meaning of the name (front page). */
   nameMeaningShort: "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
   /** Full story of the name (About page, help). */

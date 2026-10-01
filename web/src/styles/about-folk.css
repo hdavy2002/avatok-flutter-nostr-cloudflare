@@ -3,12 +3,12 @@
    reproduced 1:1 (build: design/about-page/build-about-mock.py). OWNER:
    "exact replica of what you have shown me, not an inspired version."
    Every rule below is the mock's own rule, renamed with an `ab-` prefix and
-   scoped under `.folk-site[data-design="saathum-reference-v5"] .ab` — the
+   scoped under `.folk-site[data-design="reference-v5"] .ab` — the
    same convention as legal-folk.css's `.lg`. The mock's header/footer rules
    and `.ribbon` are DELIBERATELY OMITTED: the live SiteHeader/SiteFooter own
    the chrome and `.ribbon` is the live `.grand-divider` (saathum-folk.css).
    The base rules (h1-h3/p/em/img/a) apply to `.ab` (the <main>) only. */
-.folk-site[data-design="saathum-reference-v5"] .ab {
+.folk-site[data-design="reference-v5"] .ab {
   --cream: #fff8e8; --paper: #fffaf0; --teal: #07545b; --ink: #17343c; --red: #c82c25;
   --sage: #dfe7d0; --gold: #d1ae70; --gold-hair: #d1ae7066; --terra: #A54C2E; --marigold: #F6B93B;
   --quiet: #937751; --body: #35494c; --plum-a: #3d2138;
@@ -16,86 +16,86 @@
   display: block; background: var(--cream); color: var(--ink);
   font: 19px/1.55 'Nunito', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
 }
-@media (min-width: 1800px) { .folk-site[data-design="saathum-reference-v5"] .ab { --box: 1480px; } }
-.folk-site[data-design="saathum-reference-v5"] .ab a { color: inherit; text-underline-offset: 4px; }
-.folk-site[data-design="saathum-reference-v5"] .ab a:focus-visible, .folk-site[data-design="saathum-reference-v5"] .ab button:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
-.folk-site[data-design="saathum-reference-v5"] .ab h1, .folk-site[data-design="saathum-reference-v5"] .ab h2, .folk-site[data-design="saathum-reference-v5"] .ab h3 { font-family: 'Comfortaa', system-ui, sans-serif; font-weight: 700; letter-spacing: -.045em; line-height: 1.16; margin: 0; color: var(--teal); text-wrap: balance; }
-.folk-site[data-design="saathum-reference-v5"] .ab h1 { font-size: clamp(38px, 4vw, 58px); }
-.folk-site[data-design="saathum-reference-v5"] .ab h2 { font-size: clamp(25px, 2vw, 33px); }
-.folk-site[data-design="saathum-reference-v5"] .ab h3 { font-size: clamp(21px, 1.5vw, 25px); }
-.folk-site[data-design="saathum-reference-v5"] .ab p { margin: 0; }
-.folk-site[data-design="saathum-reference-v5"] .ab em { color: var(--red); font-style: normal; }
-.folk-site[data-design="saathum-reference-v5"] .ab img { max-width: 100%; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-wrap { max-width: var(--box); margin: auto; padding-inline: var(--gutter); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-eyebrow { font-size: 15px; font-weight: 900; letter-spacing: .16em; line-height: 1.4; color: var(--teal); text-transform: uppercase; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; background: var(--red); color: #fff; text-decoration: none; padding: 16px 26px; border: 1px solid #a9211a; border-radius: 10px; font: 800 19px/1.25 'Nunito', sans-serif; cursor: pointer; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-btn:hover { background: #ac241e; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-btn--paper { background: var(--paper); color: var(--teal); border: 2px solid var(--paper); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-btn--paper:hover { background: #fff; }
+@media (min-width: 1800px) { .folk-site[data-design="reference-v5"] .ab { --box: 1480px; } }
+.folk-site[data-design="reference-v5"] .ab a { color: inherit; text-underline-offset: 4px; }
+.folk-site[data-design="reference-v5"] .ab a:focus-visible, .folk-site[data-design="reference-v5"] .ab button:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+.folk-site[data-design="reference-v5"] .ab h1, .folk-site[data-design="reference-v5"] .ab h2, .folk-site[data-design="reference-v5"] .ab h3 { font-family: 'Comfortaa', system-ui, sans-serif; font-weight: 700; letter-spacing: -.045em; line-height: 1.16; margin: 0; color: var(--teal); text-wrap: balance; }
+.folk-site[data-design="reference-v5"] .ab h1 { font-size: clamp(38px, 4vw, 58px); }
+.folk-site[data-design="reference-v5"] .ab h2 { font-size: clamp(25px, 2vw, 33px); }
+.folk-site[data-design="reference-v5"] .ab h3 { font-size: clamp(21px, 1.5vw, 25px); }
+.folk-site[data-design="reference-v5"] .ab p { margin: 0; }
+.folk-site[data-design="reference-v5"] .ab em { color: var(--red); font-style: normal; }
+.folk-site[data-design="reference-v5"] .ab img { max-width: 100%; }
+.folk-site[data-design="reference-v5"] .ab .ab-wrap { max-width: var(--box); margin: auto; padding-inline: var(--gutter); }
+.folk-site[data-design="reference-v5"] .ab .ab-eyebrow { font-size: 15px; font-weight: 900; letter-spacing: .16em; line-height: 1.4; color: var(--teal); text-transform: uppercase; }
+.folk-site[data-design="reference-v5"] .ab .ab-btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; background: var(--red); color: #fff; text-decoration: none; padding: 16px 26px; border: 1px solid #a9211a; border-radius: 10px; font: 800 19px/1.25 'Nunito', sans-serif; cursor: pointer; }
+.folk-site[data-design="reference-v5"] .ab .ab-btn:hover { background: #ac241e; }
+.folk-site[data-design="reference-v5"] .ab .ab-btn--paper { background: var(--paper); color: var(--teal); border: 2px solid var(--paper); }
+.folk-site[data-design="reference-v5"] .ab .ab-btn--paper:hover { background: #fff; }
 
 /* [WEB-ABOUT-BLOG-1 2026-09-30] about — blog article: intro, wide sticker-border
    hero photo, story card. Rules = design/about-page/saathum-about-blog-mock.src.html. */
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-about { padding-block: 34px 48px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-col { max-width: 900px; margin-inline: auto; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-intro h1 { margin-top: 12px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-lead { margin-top: 18px; font-size: clamp(20px, 1.4vw, 23px); line-height: 1.45; color: #2b4046; max-width: 34em; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-story-meta { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 22px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--marigold); color: var(--ink); border-radius: 999px; padding: 8px 16px; font-size: 16px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero { max-width: 1180px; margin: 34px auto 0; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame { background: #fff; padding: clamp(8px, 1vw, 14px); border-radius: 26px; box-shadow: 0 14px 34px #17343c2e, 0 0 0 1px #17343c0d; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 50% 32%; border-radius: 16px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-hero figcaption { margin-top: 14px; font-size: 16px; font-weight: 700; color: var(--quiet); text-align: center; letter-spacing: .02em; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-story { max-width: 900px; margin: 34px auto 0; background: #fff; border: 5px solid #fff; border-radius: 22px; box-shadow: 0 10px 26px #17343c1a; padding: clamp(26px, 3vw, 48px) clamp(20px, 3.8vw, 58px) clamp(30px, 3vw, 50px); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose > * + * { margin-top: 18px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose p, .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose li { font-size: 19px; line-height: 1.6; color: var(--body); max-width: 68ch; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose strong { color: var(--ink); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose a { color: var(--teal); font-weight: 800; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose h2 { padding-top: 26px; margin-top: 32px; border-top: 1px solid var(--gold-hair); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose h2:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-prose .ab-drop::first-letter { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 3.1em; line-height: .8; color: var(--red); float: left; padding: 8px 10px 0 0; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-quote { background: #fff5d6; border: 3px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c14, inset 0 0 0 1px var(--marigold); padding: 24px 26px; margin-top: 26px; display: grid; grid-template-columns: 1fr 96px; gap: 18px; align-items: center; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-quote p { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: clamp(22px, 1.7vw, 27px); line-height: 1.3; color: var(--teal); max-width: none; letter-spacing: -.02em; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-quote p span { color: var(--red); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-quote img { width: 96px; height: auto; filter: drop-shadow(0 5px 6px #17343c26); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-places { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; margin: 20px 0 0; list-style: none; max-width: none; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-places li { font-size: 17px; font-weight: 800; color: var(--teal); background: var(--sage); border: 2px solid #fff; border-radius: 999px; padding: 8px 16px; box-shadow: 0 3px 8px #17343c12; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-promise { padding-left: 0; list-style: none; display: grid; gap: 12px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-promise li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: baseline; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-promise li::before { content: "✓"; color: var(--red); font-weight: 900; font-size: 20px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-where { margin-top: 30px; background: var(--sage); border: 4px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c14; padding: 22px 24px; display: grid; grid-template-columns: 1fr auto; gap: 18px 26px; align-items: center; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-tag { display: inline-block; font-size: 14px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--terra); padding: 5px 11px; border-radius: 999px; margin-bottom: 10px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-where p { max-width: none; font-size: 18px; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-where p strong { display: block; font-size: 20px; color: var(--teal); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-where .ab-btn { white-space: nowrap; }
+.folk-site[data-design="reference-v5"] .ab .ab-about { padding-block: 34px 48px; }
+.folk-site[data-design="reference-v5"] .ab .ab-col { max-width: 900px; margin-inline: auto; }
+.folk-site[data-design="reference-v5"] .ab .ab-intro h1 { margin-top: 12px; }
+.folk-site[data-design="reference-v5"] .ab .ab-lead { margin-top: 18px; font-size: clamp(20px, 1.4vw, 23px); line-height: 1.45; color: #2b4046; max-width: 34em; }
+.folk-site[data-design="reference-v5"] .ab .ab-story-meta { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 22px; }
+.folk-site[data-design="reference-v5"] .ab .ab-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--marigold); color: var(--ink); border-radius: 999px; padding: 8px 16px; font-size: 16px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.folk-site[data-design="reference-v5"] .ab .ab-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+.folk-site[data-design="reference-v5"] .ab .ab-hero { max-width: 1180px; margin: 34px auto 0; }
+.folk-site[data-design="reference-v5"] .ab .ab-hero-frame { background: #fff; padding: clamp(8px, 1vw, 14px); border-radius: 26px; box-shadow: 0 14px 34px #17343c2e, 0 0 0 1px #17343c0d; }
+.folk-site[data-design="reference-v5"] .ab .ab-hero-frame img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 50% 32%; border-radius: 16px; }
+.folk-site[data-design="reference-v5"] .ab .ab-hero figcaption { margin-top: 14px; font-size: 16px; font-weight: 700; color: var(--quiet); text-align: center; letter-spacing: .02em; }
+.folk-site[data-design="reference-v5"] .ab .ab-story { max-width: 900px; margin: 34px auto 0; background: #fff; border: 5px solid #fff; border-radius: 22px; box-shadow: 0 10px 26px #17343c1a; padding: clamp(26px, 3vw, 48px) clamp(20px, 3.8vw, 58px) clamp(30px, 3vw, 50px); }
+.folk-site[data-design="reference-v5"] .ab .ab-prose > * + * { margin-top: 18px; }
+.folk-site[data-design="reference-v5"] .ab .ab-prose p, .folk-site[data-design="reference-v5"] .ab .ab-prose li { font-size: 19px; line-height: 1.6; color: var(--body); max-width: 68ch; }
+.folk-site[data-design="reference-v5"] .ab .ab-prose strong { color: var(--ink); }
+.folk-site[data-design="reference-v5"] .ab .ab-prose a { color: var(--teal); font-weight: 800; }
+.folk-site[data-design="reference-v5"] .ab .ab-prose h2 { padding-top: 26px; margin-top: 32px; border-top: 1px solid var(--gold-hair); }
+.folk-site[data-design="reference-v5"] .ab .ab-prose h2:first-child { padding-top: 0; margin-top: 0; border-top: 0; }
+.folk-site[data-design="reference-v5"] .ab .ab-prose .ab-drop::first-letter { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 3.1em; line-height: .8; color: var(--red); float: left; padding: 8px 10px 0 0; }
+.folk-site[data-design="reference-v5"] .ab .ab-quote { background: #fff5d6; border: 3px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c14, inset 0 0 0 1px var(--marigold); padding: 24px 26px; margin-top: 26px; display: grid; grid-template-columns: 1fr 96px; gap: 18px; align-items: center; }
+.folk-site[data-design="reference-v5"] .ab .ab-quote p { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: clamp(22px, 1.7vw, 27px); line-height: 1.3; color: var(--teal); max-width: none; letter-spacing: -.02em; }
+.folk-site[data-design="reference-v5"] .ab .ab-quote p span { color: var(--red); }
+.folk-site[data-design="reference-v5"] .ab .ab-quote img { width: 96px; height: auto; filter: drop-shadow(0 5px 6px #17343c26); }
+.folk-site[data-design="reference-v5"] .ab .ab-places { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; margin: 20px 0 0; list-style: none; max-width: none; }
+.folk-site[data-design="reference-v5"] .ab .ab-places li { font-size: 17px; font-weight: 800; color: var(--teal); background: var(--sage); border: 2px solid #fff; border-radius: 999px; padding: 8px 16px; box-shadow: 0 3px 8px #17343c12; }
+.folk-site[data-design="reference-v5"] .ab .ab-promise { padding-left: 0; list-style: none; display: grid; gap: 12px; }
+.folk-site[data-design="reference-v5"] .ab .ab-promise li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: baseline; }
+.folk-site[data-design="reference-v5"] .ab .ab-promise li::before { content: "✓"; color: var(--red); font-weight: 900; font-size: 20px; }
+.folk-site[data-design="reference-v5"] .ab .ab-where { margin-top: 30px; background: var(--sage); border: 4px solid #fff; border-radius: 16px; box-shadow: 0 6px 18px #17343c14; padding: 22px 24px; display: grid; grid-template-columns: 1fr auto; gap: 18px 26px; align-items: center; }
+.folk-site[data-design="reference-v5"] .ab .ab-tag { display: inline-block; font-size: 14px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--terra); padding: 5px 11px; border-radius: 999px; margin-bottom: 10px; }
+.folk-site[data-design="reference-v5"] .ab .ab-where p { max-width: none; font-size: 18px; }
+.folk-site[data-design="reference-v5"] .ab .ab-where p strong { display: block; font-size: 20px; color: var(--teal); }
+.folk-site[data-design="reference-v5"] .ab .ab-where .ab-btn { white-space: nowrap; }
 
 /* closing band — terracotta, namaste sticker */
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask { position: relative; padding-block: 44px 50px; z-index: 0; color: var(--paper); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask::before { content: ""; position: absolute; inset: 0 50% 0; width: 100vw; transform: translateX(-50%); background: var(--terra); z-index: -1; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-inner { display: grid; grid-template-columns: 170px 1fr auto; gap: 30px; align-items: center; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask img { width: 170px; height: auto; filter: drop-shadow(0 8px 10px #3a140a55); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask h2 { color: var(--paper); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask h2 span { color: var(--marigold); }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask p { margin-top: 10px; font-size: 19px; color: #f6e7d3; max-width: 52ch; }
-.folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+.folk-site[data-design="reference-v5"] .ab .ab-ask { position: relative; padding-block: 44px 50px; z-index: 0; color: var(--paper); }
+.folk-site[data-design="reference-v5"] .ab .ab-ask::before { content: ""; position: absolute; inset: 0 50% 0; width: 100vw; transform: translateX(-50%); background: var(--terra); z-index: -1; }
+.folk-site[data-design="reference-v5"] .ab .ab-ask-inner { display: grid; grid-template-columns: 170px 1fr auto; gap: 30px; align-items: center; }
+.folk-site[data-design="reference-v5"] .ab .ab-ask img { width: 170px; height: auto; filter: drop-shadow(0 8px 10px #3a140a55); }
+.folk-site[data-design="reference-v5"] .ab .ab-ask h2 { color: var(--paper); }
+.folk-site[data-design="reference-v5"] .ab .ab-ask h2 span { color: var(--marigold); }
+.folk-site[data-design="reference-v5"] .ab .ab-ask p { margin-top: 10px; font-size: 19px; color: #f6e7d3; max-width: 52ch; }
+.folk-site[data-design="reference-v5"] .ab .ab-ask-actions { display: flex; flex-wrap: wrap; gap: 14px; }
 
 @media (max-width: 1100px) {
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-inner { grid-template-columns: 130px 1fr; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-actions { grid-column: 1 / -1; }
+  .folk-site[data-design="reference-v5"] .ab .ab-ask-inner { grid-template-columns: 130px 1fr; }
+  .folk-site[data-design="reference-v5"] .ab .ab-ask-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
-  .folk-site[data-design="saathum-reference-v5"] .ab { --gutter: 16px; font-size: 18px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose p, .folk-site[data-design="saathum-reference-v5"] .ab .ab-prose li { font-size: 18px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-story { border-radius: 16px; margin-top: 26px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero { margin-top: 26px; margin-inline: -4px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame { border-radius: 18px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-hero-frame img { aspect-ratio: 4 / 3; object-position: 50% 0; border-radius: 12px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-quote { grid-template-columns: 1fr; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-quote img { width: 84px; justify-self: center; order: -1; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-where { grid-template-columns: 1fr; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-where .ab-btn { justify-self: start; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-inner { grid-template-columns: 1fr; text-align: center; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask img { margin: auto; width: 130px; }
-  .folk-site[data-design="saathum-reference-v5"] .ab .ab-ask-actions { justify-content: center; }
+  .folk-site[data-design="reference-v5"] .ab { --gutter: 16px; font-size: 18px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-prose p, .folk-site[data-design="reference-v5"] .ab .ab-prose li { font-size: 18px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-story { border-radius: 16px; margin-top: 26px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-hero { margin-top: 26px; margin-inline: -4px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-hero-frame { border-radius: 18px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-hero-frame img { aspect-ratio: 4 / 3; object-position: 50% 0; border-radius: 12px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-quote { grid-template-columns: 1fr; }
+  .folk-site[data-design="reference-v5"] .ab .ab-quote img { width: 84px; justify-self: center; order: -1; }
+  .folk-site[data-design="reference-v5"] .ab .ab-where { grid-template-columns: 1fr; }
+  .folk-site[data-design="reference-v5"] .ab .ab-where .ab-btn { justify-self: start; }
+  .folk-site[data-design="reference-v5"] .ab .ab-ask-inner { grid-template-columns: 1fr; text-align: center; }
+  .folk-site[data-design="reference-v5"] .ab .ab-ask img { margin: auto; width: 130px; }
+  .folk-site[data-design="reference-v5"] .ab .ab-ask-actions { justify-content: center; }
 }
-@media (prefers-reduced-motion: reduce) { .folk-site[data-design="saathum-reference-v5"] .ab * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .folk-site[data-design="reference-v5"] .ab * { transition: none !important; } }

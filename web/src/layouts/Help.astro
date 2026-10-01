@@ -6,7 +6,7 @@
 //
 // NOTE FOR AI:
 //  - Same shell as pages/help/index.astro and pages/marketplace.astro: Base
-//    chrome={false}, `.folk-site[data-design="saathum-reference-v5"]` wrapper,
+//    chrome={false}, `.folk-site[data-design="reference-v5"]` wrapper,
 //    SiteHeader/SiteFooter `folk`. Styles: styles/help-skin.css (`.hs`).
 //  - Terracotta band: breadcrumb, h1 (plain cream — the mockup's marigold
 //    keyword needs per-article markup we don't have), lead = description,
@@ -76,7 +76,7 @@ const content: PublicContent = {
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="hs hs-article-page">

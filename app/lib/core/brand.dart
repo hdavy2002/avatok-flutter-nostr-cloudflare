@@ -9,7 +9,6 @@ abstract final class Brand {
   static const String slug = 'aumfe';
   static const String nameHindi = 'ॐ फ़े';
   static const String slogan = 'Faith, brought home to you.';
-  static const List<String> previousNames = <String>['Saa Thum'];
   static const String nameMeaningShort = 'Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.';
   static const String nameMeaningLong = 'Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.';
   static const String domain = 'aumfe.com';

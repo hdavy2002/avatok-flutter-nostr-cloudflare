@@ -19,7 +19,7 @@ export const GET: APIRoute = () => {
 > ${BRAND.name} (${BRAND.domain}) is an online havan and puja service. Our crew travels to remote, peaceful Himalayan temples in Uttarakhand and Himachal, where the temple's own pujari performs havans and pujas with a sankalp in your name and gotra. We live stream when the mountain network allows, always send the full video, and courier dry prasad from the temple. We work only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and every booking supports the pujaris and villages who keep them alive. Tagline: "Faith, brought home to you."
 
 ## About
-- Name: ${BRAND.name}. The domain is written ${BRAND.domain}. ${BRAND.nameMeaningShort} It was previously called ${BRAND.previousNames.join(", ")}; the old website address now points here.
+- Name: ${BRAND.name}. The domain is written ${BRAND.domain}. ${BRAND.nameMeaningShort}
 - Based in: Dehradun, Uttarakhand, India. The crew works at temples across Uttarakhand and Himachal Pradesh.
 - Temple policy: only positive temples (Shiva and Parvati, Vishnu, Ram and Sita, Krishna, Himalayan Devis). No temples known for animal sacrifice, fear, tantric, cult or black-magic practices; no Kali, Bhairav or Shani rituals.
 - Who it is for: Hindu families everywhere, and especially the Indian diaspora descended from the girmitiyas (indentured labourers) of Suriname, Guyana, Trinidad and Tobago, Fiji, Mauritius, South Africa and the Caribbean, who often live far from a temple or priest.

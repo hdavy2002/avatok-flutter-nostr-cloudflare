@@ -2,7 +2,7 @@ import { API_BASE } from '../config';
 export type Catalog = { schemaVersion: 1; release: string; locale: string; namespace: string; messages: Record<string,string>; sourceHash: string };
 export type Manifest = {schemaVersion:1; release:string; locales:Record<string,{namespaces:string[];status:string}>; namespaces:string[];sourceHashes:Record<string,string>};
 const origin = API_BASE.replace(/\/$/, '');
-const cacheName = 'saathum-public-ui-v1';
+const cacheName = 'public-ui-v1';
 let lastManifest:Manifest|undefined;
 let manifestPromise: Promise<Manifest> | undefined, manifestAt=0;
 const catalogs=new Map<string,Promise<Catalog>>();
@@ -26,7 +26,7 @@ export function manifest(): Promise<Manifest> {
     manifestPromise=fetch(origin+'/i18n/v1/manifest.json',{credentials:'omit',cache:'no-cache',signal:AbortSignal.timeout(5000)})
       .then(async response=>{if(!response.ok)throw Error('Catalog manifest unavailable');const value=await boundedJson(response);if(!validManifest(value))throw Error('Invalid catalog manifest');
         const previous=lastManifest;lastManifest=value;try {localStorage.setItem('saathum.ui.manifest.'+origin,JSON.stringify(value));}catch {}
-        if(previous&&previous.release!==value.release)window.dispatchEvent(new CustomEvent('saathum:catalog-release'));
+        if(previous&&previous.release!==value.release)window.dispatchEvent(new CustomEvent('site:catalog-release'));
         return value;
       }).catch(error=>{if(lastManifest)return lastManifest;throw error;});
     // Cached copy is returned immediately; revalidation failure stays in the background.

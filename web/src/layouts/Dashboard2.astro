@@ -2,7 +2,7 @@
 // Dashboard 2 shell — [DASH2-FOUNDATION 2026-09-25]. Contract:
 // Specs/SPEC-2026-09-25-DASHBOARD-2.md.
 //
-// Customer-only dashboard skinned with the landing tokens (saathum-tokens.css)
+// Customer-only dashboard skinned with the landing tokens (site-tokens.css)
 // and shadcn/ui (components/ui/*). Usage:
 //
 //   <Dashboard2 title="My events" active="my-events" subtitle="…">
@@ -20,7 +20,7 @@ import DashToaster from '../islands/dashboard2/DashToaster.tsx';
 import InstallPrompt from '../islands/dashboard2/InstallPrompt.tsx';
 import type { DashKey } from '../islands/dashboard2/nav';
 import { publicImage } from '../lib/config';
-import '../styles/saathum-tokens.css';
+import '../styles/site-tokens.css';
 import { BRAND } from '../lib/brand';
 
 export interface Props {
@@ -36,7 +36,7 @@ const { title, heading, subtitle, active } = Astro.props;
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' });
+const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' });
 ---
 
 <Base title={`${title} · ${BRAND.name}`} chrome={false} noindex={true} indiaLandingLanguage={false}>

@@ -576,7 +576,7 @@ export default function MarketplaceV2({ guides, deities, intentions, afterEvents
 
   const emptyState = (
     <div className="mk-empty" role="status">
-      <img src={publicImage('/assets/saathum-bright/lotus.png', { width: 160, fit: 'scale-down' })} alt="" width={72} height={72} />
+      <img src={publicImage('/assets/bright/lotus.png', { width: 160, fit: 'scale-down' })} alt="" width={72} height={72} />
       {status === 'error'
         ? <h2 id="mk-empty-title">We couldn’t load events just now.</h2>
         : <h2 id="mk-empty-title">
@@ -616,7 +616,7 @@ export default function MarketplaceV2({ guides, deities, intentions, afterEvents
               <a key={t.key || 'all'} className={'mk-tab' + (filters.type === t.key ? ' is-on' : '')} style={{ '--tc': t.color } as CSSProperties}
                 aria-current={filters.type === t.key ? 'true' : undefined}
                 {...filterLink({ type: t.key }, () => capture('marketplace_tab', { type: t.key || 'all' }))}>
-                <img src={publicImage(`/assets/saathum-booking/${t.art}.png`, { width: 240, fit: 'scale-down' })} alt="" width={120} height={120} loading="lazy" decoding="async" />
+                <img src={publicImage(`/assets/booking/${t.art}.png`, { width: 240, fit: 'scale-down' })} alt="" width={120} height={120} loading="lazy" decoding="async" />
                 <span className="mk-tab-copy"><b>{t.label}</b><small>{tabSub[t.key] ?? t.sub}</small></span>
                 {ready && n > 0 && <span className="mk-tab-count" aria-label={plural(n, 'event')}>{n}</span>}
               </a>

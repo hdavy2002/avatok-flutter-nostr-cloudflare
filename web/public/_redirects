@@ -30,8 +30,10 @@
 /tokens/ / 301
 /payouts / 301
 /payouts/ / 301
-/help/getting-started/what-is-avatok /help/getting-started/what-is-saathum 301
-/help/getting-started/what-is-avatok/ /help/getting-started/what-is-saathum 301
+/help/getting-started/what-is-avatok /help/getting-started/what-is-this-site 301
+/help/getting-started/what-is-avatok/ /help/getting-started/what-is-this-site 301
+/help/getting-started/what-is-saathum /help/getting-started/what-is-this-site 301
+/help/getting-started/what-is-saathum/ /help/getting-started/what-is-this-site 301
 # [SAATHUM-ENTITY-1 2026-09-25] Owner removed these pages; files kept (archived).
 /dmca / 301
 /dmca/ / 301
@@ -52,8 +54,8 @@
 /help/booking-and-paying/find-a-creator-or-show  /help/booking-and-paying/how-to-book  301
 /help/booking-and-paying/find-a-creator-or-show/ /help/booking-and-paying/how-to-book  301
 
-# [SAATHUM-DEBRAND-1 2026-09-27] The admin account's handle changed to "saathum";
-# listing URLs moved from /<old-handle>/<slug> to /saathum/<slug>.
+# [SAATHUM-DEBRAND-1 2026-09-27] The admin account's public handle changed (D1-driven);
+# listing URLs moved from /<old-handle>/<slug> to the new handle.
 /humphrey/*   /saathum/:splat   301
 # [WEB-REFRAME-1 2026-09-29] Rituals removed under the positive-temple policy.
 /rituals/navagraha-havan/*   /rituals/  301

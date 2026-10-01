@@ -32,7 +32,7 @@ import { publicImage } from '../lib/config';
  */
 // [WEB-AUTH-STATE-1 2026-08-28] HeaderAuth is no longer imported: the header's
 // auth CTAs are plain links toggled by CSS from the cookie-derived
-// html[data-saathum-auth] attribute. The island (and its <ClerkProvider>) was the
+// html[data-site-auth] attribute. The island (and its <ClerkProvider>) was the
 // reason the `static` and `in` modes had to exist at all. The file is kept for
 // now rather than deleted, in case another surface still wants a React-side
 // signal, but nothing renders it.
@@ -102,7 +102,7 @@ const LANDING_LINKS: HeaderLink[] = HOME_HEADER_LINKS;
 void DEFAULT_LINKS;
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
 const { folk = true, referenceHome = folk, links = folk ? LANDING_LINKS : DEFAULT_LINKS, sticky = true, responsiveHome = folk, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
-const folkBorder = `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`;
+const folkBorder = `--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`;
 const globalLinks: HeaderLink[] = [
   { href: '#formats', label: 'For creators' },
   { href: '#how-it-works', label: 'How it works' },
@@ -148,19 +148,19 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
       if (!signedIn) {
         try { signedIn = !!localStorage.getItem('saathum_guest_jwt'); } catch (e) {}
       }
-      document.documentElement.setAttribute('data-saathum-auth', signedIn ? 'in' : 'out');
+      document.documentElement.setAttribute('data-site-auth', signedIn ? 'in' : 'out');
     } catch (e) {
-      document.documentElement.setAttribute('data-saathum-auth', 'out');
+      document.documentElement.setAttribute('data-site-auth', 'out');
     }
   })();
 </script>
 
 {/* [SAATHUM-CHROME-1] display:contents wrapper: carries the landing page's
-    .folk-site[data-design="saathum-reference-v5"] scope (fonts, colours,
+    .folk-site[data-design="reference-v5"] scope (fonts, colours,
     --grand-* tokens) onto the header on EVERY page without creating a box,
     so position:sticky still pins to the viewport. The marigold ribbon that
     used to be hand-placed on index/organisers now lives here. */}
-<div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style={folk ? `display:contents;${folkBorder}` : 'display:contents'}>
+<div class:list={[folk && 'folk-site site-chrome']} data-design={folk ? 'reference-v5' : undefined} style={folk ? `display:contents;${folkBorder}` : 'display:contents'}>
 <header class:list={['avh', folk && 'avh--folk', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   {!folk && <TruckBorder kind="jhalar" count={60} class="avh-band" />}
   <div class="avh-bar">
@@ -172,7 +172,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   <a class="avh-logo" href="/" aria-label={`${BRAND.name} home`} data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
     {/* [BRAND-LOGO-1 2026-09-27] Single horizontal Saa Thum logo (diya on lotus
         + सा थम wordmark baked into the PNG) replaces the icon + text lockup. */}
-    <img class="avh-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 480, fit: 'scale-down' })} alt={BRAND.name} width="189" height="64" />
+    <img class="avh-logo-mark" src={publicImage('/assets/logo/logo-horizontal.png', { width: 480, fit: 'scale-down' })} alt={BRAND.name} width="189" height="64" />
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -229,7 +229,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
         scaled for the drawer's narrower heading row. */}
     <div class="avh-drawer-brand">
       {/* [BRAND-LOGO-1] Same horizontal logo as the desktop bar. */}
-      <img class="avh-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 400, fit: 'scale-down' })} alt={BRAND.name} width="153" height="52" />
+      <img class="avh-logo-mark" src={publicImage('/assets/logo/logo-horizontal.png', { width: 400, fit: 'scale-down' })} alt={BRAND.name} width="153" height="52" />
     </div>
     <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
@@ -344,8 +344,8 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
      offering "Dashboard / Sign out" to an anonymous visitor is a broken page.
      `display: none !important` because .avh-cta sets its own display. */
   .avh-auth-in { display: none !important; }
-  html[data-saathum-auth='in'] .avh-auth-in { display: inline-flex !important; }
-  html[data-saathum-auth='in'] .avh-auth-out { display: none !important; }
+  html[data-site-auth='in'] .avh-auth-in { display: inline-flex !important; }
+  html[data-site-auth='in'] .avh-auth-out { display: none !important; }
 
   /* Published header height. The dashboard pins its sidebar and its own toolbar
      to the viewport, so it needs to offset both by exactly this much or they

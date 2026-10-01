@@ -1,10 +1,11 @@
 import manifest from '../../publicImageManifest.json';
 import { BRAND } from '../../brand';
+import { LEGACY_MEDIA_HOSTS } from '../../brandLegacy';
 
 const ORIGIN: string = BRAND.webOrigin;
 const BLOSSOM_ORIGIN: string = BRAND.mediaOrigin;
 // [SAATHUM-DOMAIN-LEGACY-1] stored image URLs from before a domain switch.
-const LEGACY_MEDIA_ORIGINS: readonly string[] = BRAND.legacyMediaHosts.map((h) => `https://${h}`);
+const LEGACY_MEDIA_ORIGINS: readonly string[] = LEGACY_MEDIA_HOSTS.map((h) => `https://${h}`);
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 2500;
 const MAX_REDIRECTS = 2;

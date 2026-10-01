@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 const root = resolve('dist');
 const manifest = JSON.parse(await readFile(resolve('src/lib/publicImageManifest.json'), 'utf8'));
-const borderSource = '/assets/saathum-bright/border.png';
+const borderSource = '/assets/bright/border.png';
 const borderImmutable = manifest[borderSource];
 assert(borderImmutable, 'immutable border asset is in the public image manifest');
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
@@ -98,7 +98,7 @@ try {
       assert(Math.abs(art.width - art.height) < 2, name + ': category scene remains square #' + index);
       if (width <= 600) assert(art.width >= 110, name + ': phone category art stays legible #' + index);
     }
-    // [SAATHUM-GUIDE-1 2026-09-25] Eight havan knowledge cards (art from /assets/saathum-rituals/).
+    // [SAATHUM-GUIDE-1 2026-09-25] Eight havan knowledge cards (art from /assets/rituals/).
     const listingArt = await page.locator('.grand-havan .grand-listing-art img').evaluateAll(elements => elements.map(image => {
       const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
     }));

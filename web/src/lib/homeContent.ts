@@ -22,8 +22,8 @@ export const HOME_SEO: PublicContent = {
   image: {
     // [WEB-OG-SHARE-1] The homepage's actual hero photo (WEB-HERO-PHOTO-1), so a
     // shared saathum.com link previews with the same picture visitors see first.
-    url: '/assets/saathum-grand/hero-havan.jpg',
+    url: '/assets/grand/hero-havan.jpg',
     alt: 'Our crew filming a havan at a Himalayan temple at dawn, the pujari offering ghee into the fire with snow peaks behind.',
-    revision: 'saathum-home-v3',
+    revision: 'home-v3',
   },
 };

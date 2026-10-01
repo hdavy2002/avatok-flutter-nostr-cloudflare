@@ -40,7 +40,7 @@ if (built) {
   const html = readFileSync(built, 'utf8');
   // Owner-approved reference copy remains readable HTML, independent of art.
   assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'emitted home has exactly one H1');
-  const fontOwners = (html.match(/data-saathum-fonts/g) ?? []).length;
+  const fontOwners = (html.match(/data-site-fonts/g) ?? []).length;
   assert(fontOwners <= 1, 'emitted home must not duplicate font owners');
   if (baseSource.includes("components/Fonts.astro")) {
     assert.equal(fontOwners, 1, 'one font owner in emitted home');

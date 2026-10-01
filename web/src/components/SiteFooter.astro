@@ -129,7 +129,7 @@ const chromeKey = (value: string) => ({
 }[value]);
 ---
 
-{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={visibleLegalLinks} year={year} /> : <div class:list={[folk && 'folk-site saathum-chrome']} data-design={folk ? 'saathum-reference-v5' : undefined} style="display:contents"><footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={visibleLegalLinks} year={year} /> : <div class:list={[folk && 'folk-site site-chrome']} data-design={folk ? 'reference-v5' : undefined} style="display:contents"><footer class:list={['bazaar-footer', folk && 'bazaar-footer--folk', variant === 'global' && 'bazaar-footer--global']} style={folk ? `--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})` : undefined}>
   {!folk && <TruckBorder kind="chai" count={40} />}
 
   <div class="bf-main">
@@ -141,7 +141,7 @@ const chromeKey = (value: string) => ({
       <a class="bf-logo" href="/" aria-label={`${BRAND.name} home`} data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
         {/* [BRAND-LOGO-1 2026-09-27] Horizontal Saa Thum logo replaces the
             diya + text lockup, matching the header. */}
-        <img class="bf-logo-mark" src={publicImage('/assets/saathum-logo/saathum-logo-horizontal.png', { width: 560, fit: 'scale-down' })} alt={BRAND.name} width="212" height="72" />
+        <img class="bf-logo-mark" src={publicImage('/assets/logo/logo-horizontal.png', { width: 560, fit: 'scale-down' })} alt={BRAND.name} width="212" height="72" />
       </a>
       {/* [SHV2-S8] Tagline changed (A3) — the old chrome.tagline key is not
           reused here for the india copy (AC-18); the global copy is untouched

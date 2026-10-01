@@ -9,7 +9,7 @@ export const MARKETPLACE_SEO: PublicContent = {
   title: `Havans & Pujas at Himalayan Temples · ${BRAND.name}`,
   summary: 'Book havans and pujas performed by pujaris at positive Himalayan temples. Filter by deity, wish, date or price; your sankalp in your name and gotra, the video filmed by our crew, dry prasad delivered to your door.',
   visibility: 'public',
-  image: { url: '/assets/saathum-grand/hero.png', alt: `Havans and pujas at Himalayan temples — ${BRAND.name}.` },
+  image: { url: '/assets/grand/hero.png', alt: `Havans and pujas at Himalayan temples — ${BRAND.name}.` },
 };
 
 // [WEB-HIW-2 2026-09-27] /how-it-works moved off layouts/Content.astro onto the

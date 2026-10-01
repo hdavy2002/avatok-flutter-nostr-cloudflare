@@ -156,7 +156,7 @@ async function resolvePublicPage(key: string): Promise<OgResolveResult> {
     const title = metaFromHtml(html, 'og:title') ?? plainText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
     const description = metaFromHtml(html, 'og:description') ?? metaFromHtml(html, 'description');
     if (!title) return { status: 'unavailable' };
-    const art = metaFromHtml(html, 'saathum:og-art');
+    const art = metaFromHtml(html, 'site:og-art');
     return publicContentRecord({
       kind: 'page', key, canonicalPath: path, title, summary: description, visibility: 'public',
       publishedAt: metaFromHtml(html, 'article:published_time'),
@@ -164,7 +164,7 @@ async function resolvePublicPage(key: string): Promise<OgResolveResult> {
       image: art ? {
         url: art,
         alt: metaFromHtml(html, 'og:image:alt') ?? title,
-        revision: metaFromHtml(html, 'saathum:og-art-revision'),
+        revision: metaFromHtml(html, 'site:og-art-revision'),
       } : undefined,
     });
   } catch {

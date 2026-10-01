@@ -7,7 +7,7 @@
 //
 // NOTE FOR AI:
 //  - Same shell as pages/marketplace.astro: Base chrome={false}, the
-//    `.folk-site[data-design="saathum-reference-v5"]` wrapper carrying
+//    `.folk-site[data-design="reference-v5"]` wrapper carrying
 //    --folk-border-url, SiteHeader/SiteFooter `folk`, Comfortaa+Nunito,
 //    theme-color #fff8e8. Page CSS: styles/help-skin.css (scoped under `.hs`).
 //  - REAL CONTENT ONLY, from lib/help.ts. The mockup renamed "For creators" to
@@ -100,7 +100,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content" class="hs hs-home" style={gridVars}>
@@ -197,7 +197,7 @@ const gridVars = `--hs-tiles:${n + 1};--hs-panels:${n};--hs-panels-md:${n === 4 
       <!-- ⑤ Didn't find it? — the landing's sage band -->
       <section class="hs-stuck" aria-labelledby="stuck-title">
         <div class="hs-stuck-inner">
-          <div class="hs-stuck-art"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 640, fit: 'scale-down' })} alt="" width="280" height="187" loading="lazy" decoding="async" /></div>
+          <div class="hs-stuck-art"><img src={publicImage('/assets/booking/elephant.png', { width: 640, fit: 'scale-down' })} alt="" width="280" height="187" loading="lazy" decoding="async" /></div>
           <div class="hs-stuck-copy">
             <h2 id="stuck-title">Didn't find it?<br />A person will answer.</h2>
             <p>Write to us in English or Hindi. If it's about a booking, include your 12-digit UPI transaction number; we reply within a day.</p>

@@ -27,7 +27,7 @@ const categories = [
 // description, Read more → /rituals/<slug>), plus an "Explore more havans &
 // pujas" button → /rituals (the Puja & Havan Guide, which replaced /ideas).
 // Cards + images come from lib/ritualGuides.ts (featuredHavans) — images at
-// /assets/saathum-rituals/<slug>.png. The old sample listing cards (prices,
+// /assets/rituals/<slug>.png. The old sample listing cards (prices,
 // ratings, schedule badges) are in git history at c32524ca for restore.
 import { featuredHavans, ritualCategoryShort, rituals } from '../lib/ritualGuides';
 // [SAATHUM-BOOKNOW-1 2026-09-26] "Book now" shelf — real upcoming listings, hidden when there are none.
@@ -37,7 +37,7 @@ import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
 // Raw /assets paths on purpose: a /cdn-cgi/image URL inside serialized island props
 // (HTML-escaped JSON) trips the built-image-source deploy check. The island calls publicImage().
 // [WEB-HERO-PHOTO-1] Full-bleed hero photo (design/temple-crew/havan3.png).
-const HERO_PHOTO = '/assets/saathum-grand/hero-havan.jpg';
+const HERO_PHOTO = '/assets/grand/hero-havan.jpg';
 const heroPhoto = publicImage(HERO_PHOTO, { width: 1672, fit: 'scale-down' });
 const heroPhotoSet = publicImageSrcSet(HERO_PHOTO, [640, 900, 1280, 1672], { fit: 'scale-down' });
 const bookNowGuides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
@@ -54,7 +54,7 @@ import { BRAND } from '../lib/brand';
     <meta name="theme-color" content="#fff8e8" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content">
@@ -147,9 +147,9 @@ import { BRAND } from '../lib/brand';
 
 
       <section class="grand-organise" id="organise-invite" aria-labelledby="grand-organise-title" data-home-section="promise">
-        <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+        <div class="grand-elephant grand-elephant--left"><img src={publicImage('/assets/booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
         <div class="grand-organise-copy"><h2 id="grand-organise-title">Only joy, only blessings.</h2><p>Only positive Himalayan temples, only benefic rituals. No fear, ever.</p><a class="grand-button" href="/marketplace" data-home-cta="promise-choose-puja">Choose a puja <span aria-hidden="true">↗</span></a></div>
-        <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/saathum-booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+        <div class="grand-elephant grand-elephant--right"><img src={publicImage('/assets/booking/elephant.png', { width: 360, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
       </section>
 
       <p class="grand-booking-note">{BRAND.nameMeaningShort}</p>

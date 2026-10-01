@@ -5,8 +5,8 @@
 //
 // Replaces the old creator /ideas page (archived, 301 → /rituals).
 //
-// IMAGES: every ritual has ONE image at /assets/saathum-rituals/<slug>.png
-// (file on disk: web/public/assets/saathum-rituals/<slug>.png, 1536×1024).
+// IMAGES: every ritual has ONE image at /assets/rituals/<slug>.png
+// (file on disk: web/public/assets/rituals/<slug>.png, 1536×1024).
 // The card, the article hero and the social preview all read `image`, so the
 // moment a file is dropped in with the right name it shows up everywhere.
 // Prompts for every file: Specs/saathum-ritual-images/IMAGE-PROMPTS.md.
@@ -38,7 +38,7 @@ export const ritualCategoryShort: Record<RitualCategory, string> = {
 
 export const ritualTypes: Record<RitualType, string> = { havan: 'Havan', puja: 'Puja' };
 
-export const RITUAL_IMAGE_DIR = '/assets/saathum-rituals';
+export const RITUAL_IMAGE_DIR = '/assets/rituals';
 
 type RitualSource = {
   slug: string;

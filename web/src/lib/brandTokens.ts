@@ -14,7 +14,6 @@ const VALUES: Record<string, string> = {
   nameHindi: BRAND.nameHindi,
   nameMeaningShort: BRAND.nameMeaningShort,
   nameMeaningLong: BRAND.nameMeaningLong,
-  previousName: BRAND.previousNames[0] ?? '',
 };
 
 const TOKEN = /\{\{brand\.(\w+)\}\}/g;

@@ -5,7 +5,7 @@
 // Three readers:
 //   1. The build — prerendered pages bake in the price that was live at build time.
 //   2. The browser — public/pricing.js (loaded by pages that show a price) re-reads
-//      /api/pricing and rewrites every [data-saathum-price] element, so a price
+//      /api/pricing and rewrites every [data-site-price] element, so a price
 //      change shows on every article within a minute, with no rebuild.
 //   3. The OG card endpoint — reads the live price per request.
 //

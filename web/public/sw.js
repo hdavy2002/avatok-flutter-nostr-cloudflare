@@ -18,7 +18,7 @@
  * JSON {title, body, url, tag}; `push` shows it, `notificationclick` focuses an open
  * dashboard tab (navigating it to the url) or opens a new one.
  */
-const VERSION = 'saathum-sw-v2'; // v2: [DASH2-PUSH] push + notificationclick
+const VERSION = 'site-sw-v2'; // v2: [DASH2-PUSH] push + notificationclick
 const STATIC_CACHE = `${VERSION}-static`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const OFFLINE_URL = '/offline.html';
@@ -72,7 +72,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keep = new Set([STATIC_CACHE, SHELL_CACHE]);
     for (const key of await caches.keys()) {
-      if (key.startsWith('saathum-sw-') && !keep.has(key)) await caches.delete(key);
+      if (key.startsWith('site-sw-') && !keep.has(key)) await caches.delete(key);
     }
     await self.clients.claim();
   })());

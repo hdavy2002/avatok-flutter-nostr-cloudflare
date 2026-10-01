@@ -9,7 +9,7 @@
 //    Do NOT re-add any of these.
 //  - Photos: the owner supplies AI-made pictures later. Until a temple's photo
 //    exists, set `photo: false` and the card shows a "Photo coming soon" panel.
-//    To add one: save web/public/assets/saathum-temples/<slug>.jpg and set
+//    To add one: save web/public/assets/temples/<slug>.jpg and set
 //    `photo: true`. Never ship third-party (e.g. Wikimedia CC BY-SA) photos
 //    here without their credit line — the owner chose no credit lines.
 //  - Mockup: design/temples-page/saathum-temples-mock.src.html (owner-approved).
@@ -108,4 +108,4 @@ export const TEMPLE_REGIONS: TempleRegion[] = [
 
 export const TEMPLE_COUNT = TEMPLE_REGIONS.reduce((n, r) => n + r.temples.length, 0);
 export const TEMPLE_PHOTO_CREDITS = TEMPLE_REGIONS.flatMap((r) => r.temples).filter((tm) => tm.credit);
-export const templePhotoPath = (slug: string) => `/assets/saathum-temples/${slug}.jpg`;
+export const templePhotoPath = (slug: string) => `/assets/temples/${slug}.jpg`;

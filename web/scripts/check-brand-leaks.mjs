@@ -3,7 +3,7 @@
 // (robots "index"), the sitemap or llms.txt shows one of the banned words in its
 // VISIBLE text or its SEO metadata (title, description, JSON-LD).
 //
-// Code identifiers such as data-saathum-auth or window.SaathumHost live in scripts
+// Code identifiers such as data-site-auth or window.SaathumHost live in scripts
 // and attributes and are deliberately NOT scanned here — renaming those needs an
 // app build (see the SEO rebrand plan, phase 5).
 //

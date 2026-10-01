@@ -162,7 +162,7 @@ function ReceiptButton({ checkout }: { checkout: SaathumCheckoutSummary }) {
       const { blob, filename } = await authedBlob(`/api/saathum/checkout/${encodeURIComponent(checkout.checkout_id)}/receipt.pdf`);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = filename ?? `saathum-receipt-${checkout.checkout_id}.pdf`;
+      a.download = filename ?? `receipt-${checkout.checkout_id}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -225,7 +225,7 @@ function downloadIcs(item: EventItem) {
   const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${item.listing.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'saathum-event'}.ics`;
+  a.download = `${item.listing.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'event'}.ics`;
   document.body.appendChild(a);
   a.click();
   a.remove();

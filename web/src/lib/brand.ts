@@ -14,8 +14,6 @@ export const BRAND = {
   slug: "aumfe",
   nameHindi: "ॐ फ़े",
   slogan: "Faith, brought home to you.",
-  /** Earlier public names — only for the help article that explains the rename. */
-  previousNames: ["Saa Thum"] as readonly string[],
   /** One-sentence meaning of the name (front page). */
   nameMeaningShort: "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
   /** Full story of the name (About page, help). */
@@ -31,10 +29,6 @@ export const BRAND = {
   authHost: "clerk.aumfe.com",
   authOrigin: "https://clerk.aumfe.com",
   mailHost: "mail.aumfe.com",
-  /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */
-  legacyDomains: ["saathum.com"] as readonly string[],
-  legacyMediaHosts: ["media.saathum.com"] as readonly string[],
-  legacyApiHosts: ["api.saathum.com"] as readonly string[],
   emails: {
     support: "support@aumfe.com",
     noreply: "noreply@aumfe.com",
@@ -54,11 +48,4 @@ export function brandUrl(path = '/'): string {
 export function isBrandHost(host: string): boolean {
   const h = host.toLowerCase();
   return h === BRAND.domain || h.endsWith(`.${BRAND.domain}`);
-}
-
-/** True for the brand domain, any legacy domain, and any subdomain of either. */
-export function isBrandOrLegacyHost(host: string): boolean {
-  const h = host.toLowerCase();
-  if (isBrandHost(h)) return true;
-  return BRAND.legacyDomains.some((d) => h === d || h.endsWith(`.${d}`));
 }

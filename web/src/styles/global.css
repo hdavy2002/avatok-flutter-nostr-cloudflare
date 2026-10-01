@@ -138,10 +138,10 @@ a {
 /* [LIST-TRUST-1 §2.3] The AI-agent card's "ALWAYS ON" status pill carries a
  * pulsing dot instead of the fixed dot every other lane's pill uses (the
  * agent never shows a time — §2.3). Referenced from ListingTile.tsx inline
- * styles as `animation: 'saathum-pill-pulse ...'`; kept here because inline
+ * styles as `animation: 'pill-pulse ...'`; kept here because inline
  * styles can't declare @keyframes. The reduced-motion block below already
  * collapses it to a static dot for anyone who asked for that. */
-@keyframes saathum-pill-pulse {
+@keyframes pill-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.72); }
 }

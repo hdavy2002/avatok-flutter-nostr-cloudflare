@@ -1,6 +1,6 @@
 ---
 // Admin 2 shell — [ADMIN2-SHELL 2026-09-26]. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md
-// ("Shell usage"). Same look as layouts/Dashboard2.astro (saathum-tokens.css + shadcn).
+// ("Shell usage"). Same look as layouts/Dashboard2.astro (site-tokens.css + shadcn).
 //
 //   <Admin2 title="Events" active="events" subtitle="…">
 //     <Fragment slot="actions"><a href="/admin/events/new" class="…">New event</a></Fragment>
@@ -18,7 +18,7 @@ import AdminNav from '../islands/admin2/AdminNav.tsx';
 import DashToaster from '../islands/dashboard2/DashToaster.tsx';
 import type { AdminKey } from '../islands/admin2/nav';
 import { publicImage } from '../lib/config';
-import '../styles/saathum-tokens.css';
+import '../styles/site-tokens.css';
 import { BRAND } from '../lib/brand';
 
 export interface Props {
@@ -35,7 +35,7 @@ const hasActions = Astro.slots.has('actions');
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' });
+const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' });
 ---
 
 <Base title={`${title} · ${BRAND.name} Admin`} chrome={false} noindex={true} indiaLandingLanguage={false}>
@@ -83,7 +83,7 @@ const ribbon = publicImage('/assets/saathum-bright/border.png', { width: 640, fi
 
         <div class="admin2-gate" data-gate="denied" role="alert">
           <div class="mx-auto max-w-lg rounded-xl border border-border bg-card p-6 text-center shadow-[var(--dash-shadow,none)] sm:p-8">
-            <img src={publicImage('/assets/saathum-logo/saathum-emblem-diya-lotus.png', { width: 128, fit: 'scale-down' })} alt="" width="56" height="56" class="mx-auto h-14 w-14 object-contain" />
+            <img src={publicImage('/assets/logo/emblem-diya-lotus.png', { width: 128, fit: 'scale-down' })} alt="" width="56" height="56" class="mx-auto h-14 w-14 object-contain" />
             <h2 class="mt-4 font-dash text-[22px] font-bold text-grand-teal">You don't have admin access</h2>
             <p class="mt-2 text-[15px] font-semibold leading-relaxed text-muted-foreground">
               This area is for the {BRAND.name} team. If you should have access, ask the owner to add your account.

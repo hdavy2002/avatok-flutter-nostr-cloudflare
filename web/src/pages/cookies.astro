@@ -8,7 +8,7 @@
 // NOTE FOR AI:
 //  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
 //    styles/legal-folk.css. Same conventions as pages/refunds.astro: Base
-//    chrome={false}, `.folk-site[data-design="saathum-reference-v5"]`,
+//    chrome={false}, `.folk-site[data-design="reference-v5"]`,
 //    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
 //  - This page supplies only content props (title/lead/updated/sticker/toc/
 //    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
@@ -38,8 +38,8 @@ const toc = [
   description={`The cookies and similar technologies ${BRAND.name} uses, what each one is for, and how to turn them off.`}
   image="/og/cookies.png"
   updated="2026-08-28"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/cookies-sticker-v2.png', width: 1374, height: 1145, alt: 'A brass mithai box with sweets, a lotus and a cup — the cookies page.' }}
-  stamp={{ src: '/assets/saathum-booking/elephant.png', width: 1536, height: 1024 }}
+  sticker={{ src: '/assets/editorial-stickers-v2/cookies-sticker-v2.png', width: 1374, height: 1145, alt: 'A brass mithai box with sweets, a lotus and a cup — the cookies page.' }}
+  stamp={{ src: '/assets/booking/elephant.png', width: 1536, height: 1024 }}
   toc={toc}
   railCard={{
     title: 'Only the essentials',

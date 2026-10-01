@@ -98,7 +98,7 @@ export const ORG: OrgConstants = {
   url: brandUrl('/'),
   // [BRAND-LOGO-1 2026-09-27] Square diya mark for Google's Organization logo.
   logo: {
-    url: brandUrl('/assets/saathum-logo/favicon-512.png'),
+    url: brandUrl('/assets/logo/favicon-512.png'),
     width: 512,
     height: 512,
   },

@@ -13,7 +13,7 @@ const web = fileURLToPath(new URL('../', import.meta.url));
 const fontPath = join(web, 'public/fonts/Comfortaa-Bold.ttf');
 const font = await readFile(fontPath);
 const parsedFont = opentype.parse(font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength));
-const source = await readFile(join(web, 'public/assets/saathum-grand/hero.png'));
+const source = await readFile(join(web, 'public/assets/grand/hero.png'));
 const hero = await sharp(source).resize(900, 1000, { fit: 'cover' }).flatten({ background: '#f4dbad' }).jpeg({ quality: 82, chromaSubsampling: '4:4:4' }).toBuffer();
 
 const background = Buffer.from('<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg"><rect width="1200" height="630" fill="#b94427"/><rect x="12" y="12" width="1176" height="606" fill="#fff8e8"/><rect x="720" y="56" width="424" height="518" rx="26" fill="#d39f53"/></svg>');

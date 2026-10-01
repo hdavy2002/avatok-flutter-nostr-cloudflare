@@ -105,7 +105,7 @@ export const shopPageConfig = {
       ) },
     },
     render: ({ children }: { children?: ReactNode }) => (
-      <div className="folk-site" data-design="saathum-reference-v5"><main className="sh">{children}</main></div>
+      <div className="folk-site" data-design="reference-v5"><main className="sh">{children}</main></div>
     ),
   },
   components: {

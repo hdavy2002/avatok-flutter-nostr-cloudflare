@@ -33,9 +33,9 @@ import LegalFolk from '../layouts/LegalFolk.astro';
 import { publicImage } from '../lib/config';
 import { BRAND } from '../lib/brand';
 
-const linkImg = publicImage('/assets/saathum-how-it-works/link.webp', { width: 320, fit: 'scale-down' });
-const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
-const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-sticker-v2.png', { width: 320, fit: 'scale-down' });
+const linkImg = publicImage('/assets/how-it-works/link.webp', { width: 320, fit: 'scale-down' });
+const ontimeImg = publicImage('/assets/how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
+const privacyImg = publicImage('/assets/editorial-stickers-v2/privacy-sticker-v2.png', { width: 320, fit: 'scale-down' });
 ---
 
 <LegalFolk
@@ -47,7 +47,7 @@ const privacyImg = publicImage('/assets/saathum-editorial-stickers-v2/privacy-st
   image="/og/contact.png"
   metaPill={`support (@) ${BRAND.domain}`}
   sticker={{
-    src: '/assets/saathum-legal/contact-welcome.png',
+    src: '/assets/legal/contact-welcome.png',
     width: 790,
     height: 1009,
     alt: 'A smiling woman in a silk saree welcoming you with joined hands, a lit diya on a lotus below.',

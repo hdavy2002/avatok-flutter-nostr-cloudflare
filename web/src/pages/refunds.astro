@@ -16,7 +16,7 @@
 // NOTE FOR AI:
 //  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
 //    styles/legal-folk.css. Same conventions as pages/how-it-works.astro:
-//    Base chrome={false}, `.folk-site[data-design="saathum-reference-v5"]`,
+//    Base chrome={false}, `.folk-site[data-design="reference-v5"]`,
 //    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
 //  - This page supplies only content props (title/lead/updated/sticker/toc/
 //    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
@@ -41,7 +41,7 @@ const toc = [
   { id: 'disputes', label: 'Wrong or duplicate payments' },
   { id: 'rights', label: 'Your rights' },
 ];
-const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
+const ontimeImg = publicImage('/assets/how-it-works/ontime.webp', { width: 320, fit: 'scale-down' });
 ---
 
 <LegalFolk
@@ -53,13 +53,13 @@ const ontimeImg = publicImage('/assets/saathum-how-it-works/ontime.webp', { widt
   image="/og/refunds.png"
   updated="2026-10-01"
   helpHref="/help/billing/refunds"
-  sticker={{ src: '/assets/saathum-editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
-  stamp={{ src: '/assets/saathum-how-it-works/ontime.webp', width: 443, height: 494 }}
+  sticker={{ src: '/assets/editorial-stickers-v2/refunds-sticker-v2.png', width: 1376, height: 1143, alt: 'A brass bowl of coins with a scroll and a lotus — refunds.' }}
+  stamp={{ src: '/assets/how-it-works/ontime.webp', width: 443, height: 494 }}
   toc={toc}
   railCard={{
     title: 'Keep your UTR handy',
     html: 'Your 12-digit UPI transaction number is how we find your payment. <a href="/help/billing/refunds">Read the help centre</a>',
-    image: { src: '/assets/saathum-how-it-works/link.webp', width: 384, height: 640 },
+    image: { src: '/assets/how-it-works/link.webp', width: 384, height: 640 },
   }}
 >
   <p>

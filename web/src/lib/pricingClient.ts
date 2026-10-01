@@ -1,10 +1,10 @@
 // [PRICING-1 2026-09-26] Browser half of lib/pricing.ts. Prerendered pages bake
 // in the price that was live at build time; this re-reads /api/pricing and
-// rewrites every [data-saathum-price] element so a change made at /admin/pricing
+// rewrites every [data-site-price] element so a change made at /admin/pricing
 // shows on every article within a minute — no rebuild, no deploy.
 //
-//   <span data-saathum-price="havan" data-saathum-type="havan">₹111</span>   floor
-//   <span data-saathum-price="<slug>" data-saathum-type="havan|puja">…</span> one ritual
+//   <span data-site-price="havan" data-site-type="havan">₹111</span>   floor
+//   <span data-site-price="<slug>" data-site-type="havan|puja">…</span> one ritual
 import { API_BASE } from './env';
 import { captureException } from './analytics';
 
@@ -13,7 +13,7 @@ type Pricing = { havan_from: number | null; puja_from: number | null; rituals: R
 function rupees(n: number): string { return `₹${n.toLocaleString('en-IN')}`; }
 
 async function refreshPrices(): Promise<void> {
-  const nodes = document.querySelectorAll<HTMLElement>('[data-saathum-price]');
+  const nodes = document.querySelectorAll<HTMLElement>('[data-site-price]');
   if (!nodes.length) return;
   try {
     const res = await fetch(`${API_BASE}/api/pricing`, { headers: { Accept: 'application/json' } });

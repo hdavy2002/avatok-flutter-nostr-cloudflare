@@ -101,8 +101,8 @@ const {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {/* [BRAND-LOGO-1 2026-09-27] Diya-in-white-circle favicon. */}
-    <link rel="icon" href="/assets/saathum-logo/favicon-512.png" type="image/png" sizes="512x512" />
-    <link rel="icon" href="/assets/saathum-logo/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/assets/logo/favicon-512.png" type="image/png" sizes="512x512" />
+    <link rel="icon" href="/assets/logo/favicon-32.png" type="image/png" sizes="32x32" />
     {/* [WEB-SEO-AUTO-1] One resolver emits the complete metadata set. New
         public routes pass ordinary content data; unclassified routes fail
         closed to noindex instead of inheriting misleading homepage metadata. */}
@@ -180,7 +180,7 @@ const {
     <script is:inline define:vars={{ marker: EMBED_UA_MARKER }}>
       try {
         if (navigator.userAgent.indexOf(marker) !== -1) {
-          document.documentElement.setAttribute('data-saathum-embed', '');
+          document.documentElement.setAttribute('data-site-embed', '');
           if (window.SaathumHost && window.SaathumHost.postMessage) {
             window.SaathumHost.postMessage(JSON.stringify({ type: 'ready' }));
           }
@@ -188,11 +188,11 @@ const {
       } catch (e) { /* no navigator, or the host is gone — the page still renders */ }
     </script>
     <style is:global>
-      html[data-saathum-embed] header.avh,
-      html[data-saathum-embed] footer.bazaar-footer { display: none !important; }
+      html[data-site-embed] header.avh,
+      html[data-site-embed] footer.bazaar-footer { display: none !important; }
       /* The app's WebView is a phone screen with no browser chrome to absorb an
          overscroll, and a horizontal one there reads as a broken page. */
-      html[data-saathum-embed], html[data-saathum-embed] body { overscroll-behavior-x: none; }
+      html[data-site-embed], html[data-site-embed] body { overscroll-behavior-x: none; }
     </style>
     <slot name="head" />
   </head>

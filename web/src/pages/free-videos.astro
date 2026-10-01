@@ -45,7 +45,7 @@ const content: PublicContent = {
   title: `Free videos: satsang, bhajan, aarti and more · ${BRAND.name}`,
   summary: 'Watch satsang, meditation, sermons, bhajans, aarti and festival videos free. Sign in with just your email and press play.',
   visibility: 'public',
-  image: { url: '/assets/saathum-grand/hero.png', alt: `Free videos on ${BRAND.name}.` },
+  image: { url: '/assets/grand/hero.png', alt: `Free videos on ${BRAND.name}.` },
 };
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
@@ -54,7 +54,7 @@ const content: PublicContent = {
     <link rel="preconnect" href={API_BASE} crossorigin />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
     <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
     <main id="main-content">

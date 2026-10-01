@@ -124,7 +124,7 @@ export async function ritualIndex(brand: BrandRuntime): Promise<{ slug: string; 
 export async function resolveArticleCard(brand: BrandRuntime, slug: string): Promise<PreetiCard | null> {
   const it = (await ritualIndex(brand)).find((x) => x.slug === slug);
   if (!it) return null;
-  return { type: "article", slug, title: it.title, image: `${brand.site}/assets/saathum-rituals/${encodeURIComponent(slug)}.png`, url: `${brand.site}/rituals/${encodeURIComponent(slug)}/` };
+  return { type: "article", slug, title: it.title, image: `${brand.site}/assets/rituals/${encodeURIComponent(slug)}.png`, url: `${brand.site}/rituals/${encodeURIComponent(slug)}/` };
 }
 
 export { eventWindow };

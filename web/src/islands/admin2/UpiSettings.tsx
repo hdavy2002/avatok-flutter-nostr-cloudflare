@@ -115,7 +115,7 @@ export default function UpiSettings() {
           <div className="grid content-start gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="upi-vpa" className="text-[14px] font-bold">Your UPI ID</Label>
-              <Input id="upi-vpa" value={vpa} onChange={(e) => setVpa(e.target.value.replace(/\s/g, ''))} placeholder="saathum@hdfcbank" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-invalid={vpa.trim() !== '' && !previewOk} className="text-[17px] font-bold" />
+              <Input id="upi-vpa" value={vpa} onChange={(e) => setVpa(e.target.value.replace(/\s/g, ''))} placeholder="yourname@bank" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-invalid={vpa.trim() !== '' && !previewOk} className="text-[17px] font-bold" />
               {vpa.trim() !== '' && !previewOk && <p className="text-[13px] font-bold text-destructive">Should look like name@bank.</p>}
             </div>
             <div className="grid gap-1.5">
