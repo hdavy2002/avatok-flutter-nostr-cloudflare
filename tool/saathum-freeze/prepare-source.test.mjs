@@ -79,6 +79,7 @@ console.log('stubs / robots / service worker: OK');
     assert.doesNotMatch(read('src/components/PreetiMount.astro'), /PreetiChat/);
     assert.match(read('src/lib/env.ts'), /API_BASE: string = '';/);
     assert.doesNotMatch(read('src/lib/brand.ts'), /api\.|clerk\./i);
+    assert.match(read('src/lib/brand.ts'), /legacyDomains: \[\] as readonly string\[\]/);
     assert.match(read('src/lib/pricing.ts'), /FREEZE_PRICING_API/);
     assert.doesNotMatch(read('src/lib/pricingClient.ts'), /fetch/);
     assert.doesNotMatch(read('src/styles/legal-folk.css'), /turnstile/i);

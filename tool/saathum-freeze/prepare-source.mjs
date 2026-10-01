@@ -205,8 +205,15 @@ function main() {
   );
   patchFile(
     join(src, 'lib', 'brand.ts'),
-    (s) => s.replace(/^(\s*)(apiHost|apiOrigin|authHost|authOrigin): "[^"]*",/gm, '$1$2: "",'),
-    'lib/brand.ts (api/auth hosts blanked)',
+    (s) =>
+      s
+        .replace(/^(\s*)(apiHost|apiOrigin|authHost|authOrigin): "[^"]*",/gm, '$1$2: "",')
+        // Legacy-domain lists (and so every api./media. host derived from them) are emptied; the
+        // helpers that read them then match nothing.
+        .replace(/^(\s*)(legacyDomains|legacyMediaHosts|legacyApiHosts): \[[^\]]*\] as readonly string\[\],/gm, '$1$2: [] as readonly string[],')
+        // Generated doc comments talk about api./media. hosts; drop them so no host-shaped text survives.
+        .replace(/^[ \t]*\/\*\*[\s\S]*?\*\/[ \t]*\n/gm, ''),
+    'lib/brand.ts (api/auth/legacy hosts blanked, comments dropped)',
   );
   // Build-time "starting from" prices: fetched once during the build, never at run time.
   // CI can set FREEZE_PRICING_API to the live API origin to bake the current prices into the
