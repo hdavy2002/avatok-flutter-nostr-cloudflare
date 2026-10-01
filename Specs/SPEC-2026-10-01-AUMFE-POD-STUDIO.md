@@ -11,8 +11,7 @@ Screens (mockup file → page):
 | `Upload.dc.html` | `/admin/shop/studio/new` and `/admin/shop/studio/<id>/upload` | STUDIO-WEB |
 | `Product.dc.html` | `/admin/shop/studio/<id>/product` | STUDIO-WEB |
 | `Editor.dc.html` | `/admin/shop/studio/<id>/design` | STUDIO-WEB |
-| `Models.dc.html` | `/admin/shop/studio/<id>/models` | STUDIO-WEB |
-| `Photos.dc.html` | `/admin/shop/studio/<id>/photos` | STUDIO-WEB |
+| `Photos.dc.html` ("Your photos") | `/admin/shop/studio/<id>/photos` | STUDIO-WEB |
 | `Publish.dc.html` | `/admin/shop/studio/<id>/publish` | STUDIO-WEB |
 | `Orders.dc.html` | existing `/admin/shop` Orders panel (changed) | FULFIL |
 | `PrintPartner.dc.html` | `/admin/shop/partner` | FULFIL |
@@ -21,9 +20,9 @@ One page can serve all studio steps (`/admin/shop/studio/[id].astro` with `?step
 
 ## 0. Rules that override everything below
 
-1. **The owner makes the artwork.** No AI artwork generation. AI is used only for (a) the best-match product suggestion text and (b) model photos.
+1. **The owner makes the artwork AND the model photos himself** (owner decision 2026-10-01, after the first mockup). No AI image generation anywhere in this feature. AI (Gemini text) is used only for the best-match product suggestion text and the product copy draft.
 2. **The print file is what the owner saw.** The editor renders the artwork clipped to the chosen frame (none / rectangle / square / circle) at 300 DPI into a transparent PNG **in the browser** (canvas/OffscreenCanvas), capped at 5000 px per side, and uploads it. That PNG is the ONLY file a print partner ever receives. Never re-render or re-generate it on the server, never ask an image model to redraw it.
-3. **Model photos never redraw the print.** AI makes the person wearing a PLAIN shirt of the colour; the exact print file is composited onto the chest in the browser (4-corner perspective + the photo's shading multiplied over it). Generation calls are synchronous, one photo per request (NOT `waitUntil` — it gets killed, see `poster-generation-dies-in-waituntil`). Use the existing Vertex pipeline `generateImage` (`routes/ava_image.ts`), never Higgsfield.
+3. **Photos are for the shop page only.** The owner uploads his model photos and tags each with the shirt colour it shows. Nothing is ever taken from a photo for printing — printing always uses the Step 3 print file. Plain-shirt pictures (print on a flat shirt per colour + a print close-up) are generated in the browser from the print file, so every sold colour has at least one picture.
 4. **Nothing is sent to a print partner until the money is confirmed** (`shop_orders.pay_status='confirmed'`). Sending is idempotent: one `shop_fulfilments` row per order, `reference_number = order_no`, check-before-create at the partner.
 5. **All partner talk lives in `worker/src/lib/pod/`.** No Printrove field name outside it. Default provider is `manual` (today's hand workflow) until the owner gives the Printrove login and flips `shopPodProvider`.
 6. Secrets (`PRINTROVE_EMAIL`, `PRINTROVE_PASSWORD`) are Worker secrets, never in code, KV, logs, PostHog or the browser. The bearer token is cached in KV `pod:printrove:token` until 1 h before `expires_at`.
@@ -36,7 +35,7 @@ One page can serve all studio steps (`/admin/shop/studio/[id].astro` with `?step
 |---|---|
 | `AUMFE-POD-CORE-1` | `worker/migrations/2026-10-01-aumfe-pod.sql` (ALL new tables §2), `worker/src/lib/pod/*` (types, registry, `printrove.ts`, `manual.ts`, `specs.ts`, `address.ts`), `worker/src/routes/admin2_pod_partner.ts` (export `ADMIN2_POD_PARTNER_ROUTES`), config keys in `worker/src/routes/config.ts`, the route spreads for ALL three new route arrays in `worker/src/routes/admin2.ts` (`ADMIN2_POD_PARTNER_ROUTES`, `ADMIN2_STUDIO_ROUTES`, `ADMIN2_POD_FULFIL_ROUTES`), `scripts/printrove_probe.mjs`, `worker/src/lib/pod/*.test.ts` |
 | `AUMFE-POD-STUDIO-API-1` | `worker/src/routes/admin2_studio.ts` (export `ADMIN2_STUDIO_ROUTES`), `worker/src/lib/studio_logic.ts` (+ test) |
-| `AUMFE-POD-STUDIO-WEB-1` | `web/src/pages/admin/shop/studio/**`, `web/src/islands/admin2/studio/**`, `web/src/lib/studioApi.ts`, `web/src/lib/printFile.ts` (clip + export), `web/src/lib/composite.ts` (perspective composite) |
+| `AUMFE-POD-STUDIO-WEB-1` | `web/src/pages/admin/shop/studio/**`, `web/src/islands/admin2/studio/**`, `web/src/lib/studioApi.ts`, `web/src/lib/printFile.ts` (clip + export), `web/src/lib/composite.ts` (plain-shirt pictures) |
 | `AUMFE-POD-FULFIL-1` | `worker/src/routes/admin2_pod_fulfil.ts` (export `ADMIN2_POD_FULFIL_ROUTES`), `worker/src/lib/pod_fulfil.ts` (send + poll + status mapping), the cron hook in `worker/src/index.ts` (one call in `scheduled`), edits to `worker/src/routes/admin2_shop_orders.ts` (money fields in list/detail), `web/src/islands/admin2/shop/OrdersPanel.tsx`, `web/src/pages/admin/shop/partner.astro`, `web/src/islands/admin2/shop/PartnerPanel.tsx`, `web/src/islands/admin2/nav.ts` (+ `AdminNav.tsx` only if needed) — nav adds **Studio** (`/admin/shop/studio`, after Orders, pill "New") and **Print partner** (`/admin/shop/partner`, last in Shop group, pill "New") |
 
 STUDIO-API and FULFIL import from `lib/pod/index.ts` exactly as typed in §3 — CORE builds it in parallel to that text. If a contract must change, ask the coordinator.
@@ -49,18 +48,18 @@ pod_catalog(provider TEXT, provider_product_id TEXT, kind TEXT,          -- kind
   size_chart_json TEXT, raw_json TEXT, synced_at INTEGER NOT NULL, PRIMARY KEY(provider, provider_product_id))
 
 studio_designs(id TEXT PK 'dsn-'+8hex, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN('draft','ready','live','retired')),
-  step TEXT NOT NULL DEFAULT 'upload',                                     -- upload|product|design|models|photos|publish
+  step TEXT NOT NULL DEFAULT 'upload',                                     -- upload|product|design|photos|publish
   art_key TEXT, art_w INTEGER, art_h INTEGER, art_bytes INTEGER, art_mime TEXT, art_checks_json TEXT, art_preview_url TEXT,
   products_json TEXT NOT NULL DEFAULT '[]',                                -- chosen [{kind, provider_product_id, side}]
   placement_json TEXT,                                                     -- see §4 Placement
   print_key TEXT, print_w INTEGER, print_h INTEGER, print_sha256 TEXT, print_preview_url TEXT,
   version INTEGER NOT NULL DEFAULT 1, locked_at INTEGER,                   -- print file locked once published; edits → version+1
-  models_brief_json TEXT, colours_json TEXT NOT NULL DEFAULT '[]',
+  colours_json TEXT NOT NULL DEFAULT '[]',
   copy_json TEXT, prices_json TEXT, product_id TEXT,                       -- shop_products.id after publish
   created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)
 
-studio_photos(id TEXT PK 'sph-'+8hex, design_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN('model_base','model_final','flat','closeup')),
-  colour TEXT, url TEXT NOT NULL, quad_json TEXT, prompt TEXT, model TEXT, status TEXT NOT NULL DEFAULT 'kept' CHECK(status IN('kept','removed')),
+studio_photos(id TEXT PK 'sph-'+8hex, design_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN('model','flat','closeup')),
+  colour TEXT, url TEXT NOT NULL, width INTEGER, height INTEGER, checks_json TEXT, status TEXT NOT NULL DEFAULT 'kept' CHECK(status IN('kept','removed')),
   sort INTEGER NOT NULL DEFAULT 0, is_main INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)   idx(design_id, kind)
 
 pod_listings(product_id TEXT, provider TEXT, design_id TEXT, design_version INTEGER, provider_design_ref TEXT, provider_listing_ref TEXT,
@@ -77,7 +76,7 @@ shop_fulfilments(order_id TEXT PK, provider TEXT NOT NULL, reference_number TEXT
 
 shop_fulfilment_events(id INTEGER PK AUTOINCREMENT, order_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, provider_status TEXT, note TEXT)  idx(order_id, at)
 ```
-R2 keys (private `DIGITAL`): `studio/<design_id>/art-<sha8>.<ext>`, `studio/<design_id>/print-v<version>-<sha8>.png`. Previews (public `BLOBS`, through the existing image CDN helpers): downscaled ≤ 1600 px copies uploaded by the browser alongside. Model/flat photos: public `BLOBS` (they go on the shop page).
+R2 keys (private `DIGITAL`): `studio/<design_id>/art-<sha8>.<ext>`, `studio/<design_id>/print-v<version>-<sha8>.png`. Previews (public `BLOBS`, through the existing image CDN helpers): downscaled ≤ 1600 px copies uploaded by the browser alongside. Owner photos and plain-shirt pictures: public `BLOBS` (they go on the shop page).
 
 ## 3. `worker/src/lib/pod/` — the swappable boundary (CORE)
 
@@ -143,7 +142,7 @@ export function fitForProduct(px_w: number, px_h: number, kind, side): { full_ar
 
 `manual.ts`: `supportsApi=false`; `createOrder` throws `PodError('not_configured')`; `syncCatalog` returns a built-in catalogue from `PRINT_SPECS` (one product per kind, colours Black/Maroon/Navy/Bottle green/Off-white/White, sizes S–3XL, cost null) so the Studio works before Printrove is connected.
 
-Config keys (CORE, `config.ts` interface + DEFAULTS; strings are allowed): `shopPodProvider: 'manual'` (string, `'manual'|'printrove'`), `shopPodAutoSend: false`, `shopPodPollMinutes: 30` (numericKeys), `studioModelPhotosEnabled: true`. Prove each with the fake-flag contract (`tool/check_ship_readiness.py --check flags`).
+Config keys (CORE, `config.ts` interface + DEFAULTS; strings are allowed): `shopPodProvider: 'manual'` (string, `'manual'|'printrove'`), `shopPodAutoSend: false`, `shopPodPollMinutes: 30` (numericKeys). Prove each with the fake-flag contract (`tool/check_ship_readiness.py --check flags`).
 
 ### Partner admin API (CORE) — `ADMIN2_POD_PARTNER_ROUTES`, under `/api/admin/v2/shop/partner/`, `adminGuard`, writes → `admin_audit` + `safeTrack`
 - `GET partner` → `{ provider: PodProviderId, providers:[{id,label,supportsApi,configured:boolean}], connection:{ok,message,token_expires_at}|null, auto_send, poll_minutes, catalog:{count, synced_at}, notify_buyer:true, alert_owner:true }` (configured = secrets present; never return secret values).
@@ -158,20 +157,19 @@ Config keys (CORE, `config.ts` interface + DEFAULTS; strings are allowed): `shop
 
 - `GET designs?status=` → `{items: DesignCard[], counts}`; `DesignCard = {id, name, status, step, art_preview_url, print_preview_url, products_label, colours, updated_at, product_slug|null}`.
 - `POST designs {name}` → `{design}`.
-- `GET designs/:id` → `{design}` · `PUT designs/:id {name?, step?, colours?, models_brief?, copy?, prices?}` · `DELETE designs/:id` → status `retired` (never deletes a live product's design).
+- `GET designs/:id` → `{design}` · `PUT designs/:id {name?, step?, colours?, copy?, prices?}` · `DELETE designs/:id` → status `retired` (never deletes a live product's design).
 - `POST designs/:id/art` (raw body, `content-type` image/png|image/jpeg, header `x-file-name` ASCII-safe-encoded per `upload-filename-header-encoding`; ≤ 25 MB) → stores original in DIGITAL, reads width/height from the PNG/JPEG header server-side, records checks `{w,h,bytes,mime, rgb:boolean|null, has_alpha:boolean|null}`; `POST designs/:id/art-preview` (≤ 3 MB webp/png) → BLOBS URL. The browser computes and sends `PUT designs/:id {art_checks: {trimmed_px, soft_edge_pct, dominant_colours:[hex], cmyk_converted}}` (merged into art_checks_json).
 - `GET designs/:id/fits` → `{ items:[{kind, label, side, area_in:[w,h], full_area_dpi, sharp_w_in, verdict, note, catalog:{provider_product_id, colours:[{name,hex}], sizes:[], cost_from_paise|null}|null}], best: {kind, side, colours:[names], text} }` — `best.text` from Gemini (`gemini` text via the existing helper used by `admin2_ai.ts`), given dims, verdicts and dominant colours; deterministic fallback text when AI fails. Garment colours "look faded" when contrast(dominant art colour, garment) < 3:1.
 - `PUT designs/:id/products {products:[{kind, provider_product_id, side}]}`.
 - `PUT designs/:id/placement {placement}` with `placement = {kind, side, shape:'none'|'rect'|'square'|'circle', frame_w_in, frame_h_in, frame_top_in, zoom_pct, nudge_x_in, nudge_y_in, print_w_in, print_h_in, dpi}` — server validates against `PRINT_SPECS` (frame inside the area; dpi ≥ 150 else 400 `too_blurry`).
-- `POST designs/:id/print` (raw PNG, ≤ 15 MB, ≤ 5000 px/side, must have alpha) + `POST designs/:id/print-preview` → stores, sets print_key/w/h/sha256, `step='models'`. 409 `locked` if `locked_at` set and version not bumped (`POST designs/:id/new-version` bumps version, clears locked_at).
-- `POST designs/:id/model-photo {colour, colour_hex, brief}` → ONE synchronous `generateImage` call: a photorealistic person per `brief` wearing a **plain, unprinted** shirt of `colour_hex`, chest facing camera, no text/logos anywhere; stores to BLOBS; inserts `studio_photos(kind='model_base')`; returns `{photo, suggested_quad}` where `suggested_quad` = 4 corner points (fractions of the image) from a Gemini vision call asking for the chest print area of the shirt (fallback: a fixed centre-chest quad). Gated by `studioModelPhotosEnabled`; `$ai_generation` telemetry like `reception_room_cf.ts`.
-- `POST designs/:id/photos` (raw image + headers `x-kind: model_final|flat|closeup`, `x-colour`, `x-base-id?`, `x-quad?` JSON) → stores the browser-composited result, inserts row. `PUT photos/:pid {status?, sort?, is_main?}`.
+- `POST designs/:id/print` (raw PNG, ≤ 15 MB, ≤ 5000 px/side, must have alpha) + `POST designs/:id/print-preview` → stores, sets print_key/w/h/sha256, `step='photos'`. 409 `locked` if `locked_at` set and version not bumped (`POST designs/:id/new-version` bumps version, clears locked_at).
+- `POST designs/:id/photos` (raw JPG/PNG/WebP ≤ 15 MB; headers `x-kind: model|flat|closeup`, `x-colour`, `x-file-name`) → stores to BLOBS, reads width/height from the header, inserts `studio_photos` with `checks_json = {size_ok (short side ≥ 1200 px), colour_sold (x-colour is one of the design's chosen colours)}`; returns `{photo}`. `PUT photos/:pid {colour?, status?, sort?, is_main?}` recomputes checks. `GET designs/:id` includes `photo_coverage: [{colour, photos:n}]` for every chosen colour.
 - `POST designs/:id/copy-ai` → `{name, description, seo_title}` drafted by Gemini from design name + product + colours (no invented fabric facts; use catalog data or a `[FABRIC]` gap).
 - `POST designs/:id/publish {collection_id, badge, prices:{[size]:rupees}, slots:[]}` → runs steps in order, each idempotent and resumable, persisting progress in `studio_designs.copy_json.publish_steps`:
   1. `uploadDesign(print file)` → `pod_listings.provider_design_ref` (manual: skipped, ref = design id),
   2. `createListing` per chosen product (manual: skipped),
   3. write `pod_variant_map` rows for every colour × size from the catalogue,
-  4. create/update the `shop_products` row through the SAME insert/update helpers `admin2_shop_catalog.ts` uses (status `live`, images = kept photos in sort order with main first, colours/sizes from the chosen variants, `price_rupees` = lowest size price; per-size prices stored in `prices_json` for display — **shop checkout pricing stays per product as today**, so if sizes differ in price, publish one price = the owner's S–XL price and show the note "2XL/3XL priced the same for now" — do NOT change `shop_logic.ts` in this issue),
+  4. create/update the `shop_products` row through the SAME insert/update helpers `admin2_shop_catalog.ts` uses (status `live`, images = kept photos in sort order with main first (owner photos, then plain-shirt pictures), colours/sizes from the chosen variants, `price_rupees` = lowest size price; per-size prices stored in `prices_json` for display — **shop checkout pricing stays per product as today**, so if sizes differ in price, publish one price = the owner's S–XL price and show the note "2XL/3XL priced the same for now" — do NOT change `shop_logic.ts` in this issue),
   5. slots. Sets `status='live'`, `locked_at`, `product_id`. Returns `{design, steps:[{key, label, status:'done'|'skipped'|'failed', note}]}`; a failed step returns 200 with that step `failed` (retry = call again).
 
 ## 5. Web Studio (STUDIO-WEB)
@@ -180,11 +178,10 @@ Pages are thin Astro shells (`prerender=false`, `Admin2` layout, noindex) mounti
 - **Upload:** file input + drag-drop; client decodes the image (createImageBitmap), computes: has alpha, trimmed transparent edge (bbox of alpha > 8), soft-edge % (alpha 1–254 pixels / non-transparent pixels), 3 dominant colours (k-means on a 64 px thumbnail), CMYK JPEGs → drawn to canvas = converted to RGB. Trims transparent edges before upload. Shows the checks list and "prints sharp up to W × H in" from `maxSharpInches` (mirror the formula client-side).
 - **Product:** table from `GET fits`, best-match card, ticks → `PUT products`.
 - **Editor:** port the mockup's editor logic (`Editor.dc.html` script) to a real island over the actual artwork image (not the placeholder): shirt SVG, print area from `PRINT_SPECS` for the chosen product/side, frame shapes none/rect/square/circle, frame size, zoom (40–300 %), nudge ½ in, frame height, shirt colour from the chosen colours, front/back, live DPI chip (≥300 Sharp, 200–299 Good, 150–199 OK, <150 blocks "Looks good"). Also allow pointer-drag of the art inside the frame. "Looks good →": `lib/printFile.ts` renders the clipped print at 300 DPI (`px = inches × 300`, both sides ≤ 5000 → scale down and report the real DPI), transparent outside the frame, uploads print + preview, saves placement.
-- **Models:** the questions exactly as the mockup (multi/single choices, free text, colours, count 3–5) → `PUT designs/:id {models_brief, colours}`.
-- **Photos:** for each colour, call `model-photo` sequentially with a progress row per photo; show the base photo with 4 draggable corner handles at `suggested_quad`; `lib/composite.ts` warps the print onto the quad (projective transform by triangle subdivision on canvas, ≥ 16×16 grid), multiplies the base photo's luminance (shading) over it at ~35 %, keeps the shirt colour underneath; upload as `model_final`. Flat mockups (front per colour + print close-up) are composited onto the shirt SVG/silhouette automatically and uploaded as `flat`/`closeup`. Set main / reorder / remove / redo.
+- **Your photos:** multi-file upload (drag-drop), each card with a colour select (the design's chosen colours), size and colour-sold chips, Set as main / Remove, drag to reorder; the coverage panel ("every colour you sell has a photo?") from `photo_coverage`. Plain-shirt pictures: `lib/composite.ts` draws the print file onto the shirt silhouette (same SVG/geometry as the editor) per chosen colour + a print close-up, uploads them as `flat`/`closeup` automatically when the step opens (re-made if the print version changes).
 - **Publish:** mockup screen; prices table per size (chest/length/cost from catalogue when present, else `[FROM PRINTROVE]` text); "Publish now" calls publish and renders each returned step with ✓ / ✗ + retry.
 - Studio home = `GET designs` cards + counts; "+ New product from my artwork" → `POST designs` → upload step.
-- Telemetry (`lib/analytics.ts`): `studio_viewed`, `studio_design_created`, `studio_art_uploaded {w,h,has_alpha}`, `studio_placement_saved {shape,dpi}`, `studio_model_photo {ok, ms}`, `studio_published {steps_failed}`; errors via `captureException`.
+- Telemetry (`lib/analytics.ts`): `studio_viewed`, `studio_design_created`, `studio_art_uploaded {w,h,has_alpha}`, `studio_placement_saved {shape,dpi}`, `studio_photo_uploaded {kind, size_ok}`, `studio_published {steps_failed}`; errors via `captureException`.
 
 ## 6. Orders: money + Send to production + status sync (FULFIL)
 
@@ -214,7 +211,7 @@ Every tick: (a) retry `problem`/`sending` rows whose `next_attempt_at` passed (b
 `cd worker && npx tsc --noEmit` (device_bash works) · `cd web && npx tsc --noEmit -p .` if it runs, else read the diff carefully · `python3 scripts/check_brand_literals.py` · `python3 tool/check_ship_readiness.py --check all` · `python3 tool/check_design_guard.py --check all` · unit tests next to pure logic (vitest runs only on the macOS host via Desktop Commander; device_bash cannot). Report deliberate differences from the mockup.
 
 ## 8. Telemetry catalog
-Add a "Studio + POD" section to `Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md` (STUDIO-WEB owns that edit): web events in §5, worker `admin2_studio_*`, `pod_partner_*`, `shop_fulfilment_sent {provider, ms}`, `shop_fulfilment_failed {code}`, `shop_fulfilment_status {from,to}`, `$ai_generation` for model photos, copy and best-match text.
+Add a "Studio + POD" section to `Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md` (STUDIO-WEB owns that edit): web events in §5, worker `admin2_studio_*`, `pod_partner_*`, `shop_fulfilment_sent {provider, ms}`, `shop_fulfilment_failed {code}`, `shop_fulfilment_status {from,to}`, `$ai_generation` for the copy and best-match text.
 
 ## 9. Why (short)
 Printrove's API (docs dated 2021) has token login by email+password, catalogue, design upload, product library, pincode serviceability, orders and order lookup — but **no documented webhooks, no response examples, no cancel**. So: polling, defensive mapping with a probe script, and a `manual` provider that keeps today's flow working. Masters and placements live with us, so moving to another partner = a new adapter + "Move all products" (later issue). Address lines must be 3–50 chars (we allow 200) and a 10-digit phone is required (our checkout makes it optional) — handled in `address.ts`.

@@ -129,7 +129,7 @@ textarea.fld{min-height:110px;line-height:1.5;resize:vertical}
 <a href="PrintPartner.dc.html">Print partner<span class="pill">New</span></a>
 </nav>
 <main>
-<div class="dt"><div><h1>Studio</h1><p>Step 3 · Your art starts in the middle. Pick a frame shape, then zoom and move — only what is inside the frame prints.</p></div><div class="row"><a class="btn ghost sm" href="Main.dc.html">All designs</a><span class="chip">Draft saved · trishul-gold.png</span></div></div><div class="steps"><a class="done" href="Upload.dc.html"><b>✓</b>Upload artwork</a><a class="done" href="Product.dc.html"><b>✓</b>Product</a><a class="on" href="Editor.dc.html"><b>3</b>Design on shirt</a><a class="" href="Models.dc.html"><b>4</b>Models</a><a class="" href="Photos.dc.html"><b>5</b>Model photos</a><a class="" href="Publish.dc.html"><b>6</b>Publish</a></div>
+<div class="dt"><div><h1>Studio</h1><p>Step 3 · Your art starts in the middle. Pick a frame shape, then zoom and move — only what is inside the frame prints.</p></div><div class="row"><a class="btn ghost sm" href="Main.dc.html">All designs</a><span class="chip">Draft saved · trishul-gold.png</span></div></div><div class="steps"><a class="done" href="Upload.dc.html"><b>✓</b>Upload artwork</a><a class="done" href="Product.dc.html"><b>✓</b>Product</a><a class="on" href="Editor.dc.html"><b>3</b>Design on shirt</a><a class="" href="Photos.dc.html"><b>4</b>Your photos</a><a class="" href="Publish.dc.html"><b>5</b>Publish</a></div>
 <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start">
 <div class="panel" style="padding:16px">
 <div class="row" style="justify-content:space-between;margin-bottom:10px"><div class="tabs" style="margin:0"><sc-for list="{{sides}}" as="sd" hint-placeholder-count="2"><button type="button" class="opt {{sd.cls}}" onClick="{{sd.pick}}">{{sd.label}}</button></sc-for></div><span class="chip info">Men's round-neck T-shirt · print area 15.6 × 19.6 in</span></div>
@@ -153,7 +153,7 @@ textarea.fld{min-height:110px;line-height:1.5;resize:vertical}
 <div class="ctl"><h3>Frame height on the shirt</h3><div class="row"><button type="button" class="btn ghost sm" onClick="{{fUp}}">Higher</button><button type="button" class="btn ghost sm" onClick="{{fDown}}">Lower</button><span class="chip">{{topText}} from top of print area</span></div></div>
 <div class="ctl"><h3>Shirt colour</h3><div class="row"><sc-for list="{{colours}}" as="c" hint-placeholder-count="5"><button type="button" class="sw {{c.cls}}" onClick="{{c.pick}}"><i style="background:{{c.hex}}"></i>{{c.name}}</button></sc-for></div></div>
 <div class="note">We cut your art to the frame and send Printrove a see-through PNG of only that part. The circle is printed exactly as you see it.</div>
-<div class="foot" style="margin-top:14px"><a class="btn ghost" href="Product.dc.html">Back</a><a class="btn red" href="Models.dc.html">Looks good →</a></div>
+<div class="foot" style="margin-top:14px"><a class="btn ghost" href="Product.dc.html">Back</a><a class="btn red" href="Photos.dc.html">Looks good →</a></div>
 </div></div>
 
 </main>
