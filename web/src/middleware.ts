@@ -70,7 +70,9 @@ export function isGonePath(pathname: string): boolean {
 // Only 200s with a public, non-zero max-age and no Set-Cookie are stored, so a
 // page that ever starts varying per user must drop `public` from its header.
 // [SAATHUM-FREEVIDEOS-WEB-1] /watch/<id> (free video page) is the same document for everyone too.
-const EDGE_CACHE_PATH = /^\/(?:book\/[^/]+(?:\/checkout)?|watch\/[^/]+|marketplace)\/?$/;
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The public shop pages (/shop, /shop/all, /shop/c/<slug>, /shop/p/<slug>) are the
+// same document for everyone too. /shop/checkout is deliberately NOT here (per-visitor, noindex).
+const EDGE_CACHE_PATH = /^\/(?:book\/[^/]+(?:\/checkout)?|watch\/[^/]+|marketplace|shop(?:\/all|\/c\/[^/]+|\/p\/[^/]+)?)\/?$/;
 const BUILD_ID = (import.meta.env.PUBLIC_RELEASE_SHA as string | undefined) || 'dev';
 type EdgeCache = { match(k: Request): Promise<Response | undefined>; put(k: Request, r: Response): Promise<void> };
 

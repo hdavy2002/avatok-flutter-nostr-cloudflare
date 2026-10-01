@@ -19,11 +19,16 @@ const PRIVATE_PREFIXES = [
 const PRIVATE_EXACT = new Set([
   '/add', '/sign-in', '/sign-out', '/sign-up', '/forgot-password', '/sso-callback',
   '/pricing-preview', '/landing-steps-preview', '/global-next', '/india-next',
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Per-visitor checkout: never indexed.
+  '/shop/checkout',
 ]);
 
 const PUBLIC_EXACT = new Set([
   '/', '/marketplace', '/help', '/how-it-works', '/temples', '/privacy',
   '/terms', '/cookies', '/refunds', '/contact', '/rituals', '/disclaimer', '/grievance',
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Shop home and the all-T-shirts listing. Collection and product pages
+  // (/shop/c/<slug>, /shop/p/<slug>) provide PublicContent from the live catalogue, so they are not listed here.
+  '/shop', '/shop/all',
 ]);
 
 function normalizePath(pathname: string): string {
@@ -64,6 +69,12 @@ export function resolveRoutePolicy(
 
   if (path === '/marketplace' && searchParams && [...searchParams.keys()].some((key) => key !== 'page')) {
     return { indexable: false, canonicalPath: '/marketplace', reason: 'filtered-collection' };
+  }
+
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] A filtered listing (?colour=…&sort=…) is a view, not a page: noindex,
+  // canonical stays the unfiltered URL — same rule as /marketplace.
+  if ((path === '/shop/all' || path.startsWith('/shop/c/')) && searchParams && [...searchParams.keys()].length > 0) {
+    return { indexable: false, canonicalPath: path, reason: 'filtered-collection' };
   }
 
   if (content) {

@@ -1,0 +1,24 @@
+---
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] /shop/c/<slug> — the same "All T-shirts + filters" view, pre-filtered to one
+// collection (the collection tile on the shop home links here). Unknown collection -> 404.
+export const prerender = false;
+
+import ShopListing from '../../../components/ShopListing.astro';
+import { loadListing } from '../../../lib/shopListingData';
+import { shopCollectionContent } from '../../../lib/seo/catalog';
+
+const slug = String(Astro.params.slug ?? '').toLowerCase();
+if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(slug)) {
+  return new Response('Collection not found', { status: 404, headers: { 'x-robots-tag': 'noindex', 'Cache-Control': 'no-store' } });
+}
+const { filters, result } = await loadListing(Astro.url, slug);
+const known = result?.facets.collections.find((c) => c.slug === slug);
+if (result && !known) {
+  return new Response('Collection not found', { status: 404, headers: { 'x-robots-tag': 'noindex', 'Cache-Control': 'no-store' } });
+}
+const name = known?.name ?? slug.replace(/-/g, ' ');
+Astro.response.headers.set('Cache-Control', result ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store');
+---
+<ShopListing content={shopCollectionContent({ slug, name })} heading={`${name} T-shirts`}
+  crumb={[{ label: 'Shop', href: '/shop' }, { label: 'All T-shirts', href: '/shop/all' }, { label: name }]}
+  filters={filters} result={result} baseCollection={slug} />

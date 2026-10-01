@@ -895,3 +895,64 @@ never message text in PostHog.
 | `preeti_spend_alert` | `kind: '80' \| '100', sent, reason?` | Monthly cap alert to the ops WhatsApp (once per IST month per level). `sent:false` carries the failure `reason`. |
 | `preeti_retention_purge` | `day, messages_deleted, conversations_deleted` | Daily 12-month purge. |
 | `preeti_kb_sync` | `source:'deploy_hook', scanned, uploaded, unchanged, removed, failed` | `POST /api/preeti/internal/sync` finished. |
+
+## Shop — Hindu T-shirts (`[SAATHUM-SHOP-*]`, 2026-10-01)
+
+Spec: `SPEC-2026-10-01-SAATHUM-SHOP.md` §8. Web events use `capture` from `web/src/lib/analytics.ts`; worker events use
+`hooks.track` (`app_name: 'saathum'`); failures go through `captureException` / `hooks.trackException`. Never an address,
+phone number or UTR in an event. Every product id is the `prd-…` id, every order id the `shp_…` id.
+
+### Web — storefront (`SAATHUM-SHOP-WEB-STORE-1`)
+
+| Event | Props | Note |
+|---|---|---|
+| `shop_home_viewed` | — | `/shop` rendered (fires from `ShopTelemetry`, `client:idle`). |
+| `shop_list_viewed` | `filters` | `/shop/all` or `/shop/c/<slug>` hydrated. `filters` = the active URL filters as `group=a,b&min=…` (empty string = none). |
+| `shop_filter_changed` | `group, value, on?` | `group`: `collection\|colour\|size\|fit\|print\|for\|sort`. Checkbox/chip toggles carry `on`; `sort` carries the sort key as `value`. |
+| `shop_product_viewed` | `product_id` | `/shop/p/<slug>` hydrated. |
+| `shop_add_to_cart` | `product_id, size, colour, qty, source` | `source: 'card'` (quick add; also `home_new`, `home_best`, `also_like` from the grids) `\| 'pdp' \| 'buy_now'`. **Success value:** fired once per click that actually added a line. |
+| `shop_cart_opened` | `count` | Cart drawer opened (header button, quick add, add to cart). `count` = items in the cart. |
+| `shop_wish_toggled` | `product_id, on` | Heart on a card (`on: false` = removed). |
+
+### Web — checkout (`SAATHUM-SHOP-WEB-CHECKOUT-1`)
+
+| Event | Props | Note |
+|---|---|---|
+| `shop_checkout_step` | `step` | `step`: `you\|address\|review\|pay\|done`. |
+| `shop_checkout_terms_blocked` | — | "Go to payment" pressed without both required boxes ticked. |
+| `shop_order_created` | `order_id, total` | `POST /api/shop/orders` succeeded (`total` = rupees incl. GST). |
+| `shop_pay_paid_claimed` | — | "I've paid" pressed. |
+| `shop_pay_utr` | — | A 12-digit UPI reference submitted. |
+| `shop_order_confirmed_seen` | `order_id` | The confirmation screen was shown. **Success value of the whole funnel.** |
+
+### Web — dashboard (`SAATHUM-SHOP-DASH-1`)
+
+| Event | Props | Note |
+|---|---|---|
+| `dash_orders_viewed` | — | `/dashboard/orders` opened. |
+| `dash_order_problem_reported` | `order_id` | "Wrong item? Report it" submitted. |
+
+### Web — admin (`SAATHUM-SHOP-ADMIN-1`)
+
+| Event | Props | Note |
+|---|---|---|
+| `admin2_shop_product_saved` | `product_id, created` | Add / edit product saved. |
+| `admin2_shop_product_deleted` | `product_id` | Archived (restorable for 30 days). |
+| `admin2_shop_product_promoted` | `product_id, slots, badge` | Promote dialog saved. |
+| `admin2_shop_order_status_changed` | `order_id, from, to` | `at_printer\|shipped\|delivered\|cancelled\|refunded`. |
+| `admin2_shop_payment_confirmed` | `order_id, via` | `via: 'sms' \| 'utr' \| 'manual'`. |
+
+### Worker (`track()`; `SAATHUM-SHOP-API-*`)
+
+| Event | Props | Note |
+|---|---|---|
+| `shop_order_created` | `order_id, total_rupees, items, coupon` | Order row + reserved UPI amount created. |
+| `shop_order_confirmed` | `order_id, via` | **Success value:** payment matched/confirmed; `via: 'sms' \| 'utr' \| 'admin'`. |
+| `shop_order_rejected` | `order_id, reason` | Payment rejected by an admin. |
+| `shop_order_status_changed` | `order_id, from, to` | Fulfilment transition. |
+| `shop_problem_reported` | `order_id` | Buyer reported a wrong / damaged item within the window. |
+
+### Ship manifest note
+
+`WEB-STORE` success definition: `shop_product_viewed` followed by `shop_add_to_cart` with `source` in (`pdp`, `buy_now`, `card`) for the
+same person; and `shop_cart_opened.count > 0`. Absence of `shop_list_viewed` with `filters` ≠ '' means the filter sidebar never ran.

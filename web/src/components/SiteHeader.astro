@@ -5,6 +5,9 @@ import '../styles/folk-chrome.css';
 // [SAATHUM-CHROME-1] The landing page's header/footer rules live here; imported
 // by the chrome itself so every page that renders the header gets them.
 import '../styles/saathum-folk.css';
+import '../styles/shop-cart.css';
+import CartButton from '../islands/shop/CartButton';
+import CartDrawer from '../islands/shop/CartDrawer';
 import { publicImage } from '../lib/config';
 /*
  * SiteHeader — the standard Saa Thum header, site-wide.
@@ -106,6 +109,9 @@ const globalLinks: HeaderLink[] = [
   { href: '#payouts', label: 'Payouts' },
 ];
 const headerLinks = variant === 'global' ? globalLinks : links;
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The Shop link is highlighted (red, underlined) on every /shop page.
+const onShop = /^\/shop(?:\/|$)/.test(Astro.url.pathname);
+const isActive = (href: string) => href === '/shop' && onShop;
 // [SHV2-S8] Only the 'global' variant's nav is still localised — D9 takes the
 // India/Saa Thum shell English-only, so the new default links never carry a
 // data-india-i18n key (AC-18: no old key may be reused with new wording under
@@ -170,8 +176,13 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
-    {headerLinks.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
+    {headerLinks.map((l) => <a href={l.href} class:list={[isActive(l.href) && 'is-active']} aria-current={isActive(l.href) ? 'page' : undefined} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   </nav>
+
+  {/* [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Cart button: its OWN child of .avh-bar, outside .avh-right (which is
+      hidden <=1100px), so it shows at every width — left of Dashboard/Sign in on desktop, left of the burger on
+      phones. `client:idle`: the count loads after the page is interactive (owner rule WEB-PERF). */}
+  {variant !== 'global' && <div class="avh-cartwrap"><CartButton client:idle /></div>}
 
   <div class="avh-right">
     {/* [SHV2-S8 2026-09-21] IndiaLanguageSelector unmounted here — D9 hides
@@ -225,7 +236,7 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
   {/* [SHV2-S8 2026-09-21] IndiaLanguageSelector unmounted here too — see the
       desktop instance above. */}
-  {headerLinks.map((l) => <a href={l.href} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
+  {headerLinks.map((l) => <a href={l.href} aria-current={isActive(l.href) ? 'page' : undefined} data-india-i18n={variant === 'global' && indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
       page regardless of session — the comment here said so, blaming the
@@ -241,6 +252,8 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
   {variant === 'global' && <a data-i18n="web-common.a9744a11b7d55a26" class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
 </dialog>
+{/* [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The cart drawer + toast, mounted once per page, loaded when idle. */}
+{variant !== 'global' && <CartDrawer client:idle />}
 </div>
 
 

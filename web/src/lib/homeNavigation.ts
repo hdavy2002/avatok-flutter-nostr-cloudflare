@@ -28,6 +28,8 @@ export const HOME_HEADER_LINKS = [
   // [WEB-NAV-HOME-1 2026-09-27] OWNER DECISION: Home is the first menu item.
   { href: '/', label: 'Home' },
   { href: '/marketplace', label: 'Explore' },
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] OWNER DECISION: "Shop" (Hindu T-shirts) sits right after Explore.
+  { href: '/shop', label: 'Shop' },
   { href: '/how-it-works', label: 'How it works' },
   // [WEB-TEMPLES-1 2026-09-29] OWNER DECISION: "Our temples" in the header menu.
   { href: '/temples', label: 'Our temples' },
@@ -46,6 +48,8 @@ export const HOME_FOOTER_COLUMNS = [
   { title: 'Browse', links: [
     { href: '/', label: 'Home' },
     { href: '/marketplace', label: 'Explore' },
+    // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Shop after Explore in the footer too.
+    { href: '/shop', label: 'Shop' },
     { href: '/rituals/', label: 'Blog' },
   ] },
   { title: 'Company', links: [

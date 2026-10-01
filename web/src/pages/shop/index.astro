@@ -1,0 +1,160 @@
+---
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] /shop — the Shop home: an exact build of the owner-approved mockup
+// (Specs/shop-mockup, "Shop home" view). Spec: Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.3.
+//
+// NOTE FOR AI:
+//  - REAL DATA ONLY from GET /api/shop/home (hero settings, collections, new arrivals, featured banner, bestsellers).
+//    Never add sample products "so it looks full". When there are no live products the page still renders its
+//    structure: hero with the mockup copy, an empty-state box under New arrivals; empty sections are omitted.
+//  - Photos: hero / collection / banner / product photos come from the API and fill the same boxes with
+//    object-fit:cover; a missing photo shows the mockup's striped `.sh-ph` placeholder (spec §0.2).
+//  - SSR (prerender = false) with the same 60 s public cache header + edge cache as /marketplace (middleware.ts).
+//  - Islands: ProductGrid (heart + quick add) and HeroHotspots are `client:idle`; everything else is plain HTML.
+//  - Copy that is not in the API (default hero text, section headings) is the mockup's, word for word.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import ProductGrid from '../../islands/shop/ProductCard';
+import HeroHotspots from '../../islands/shop/HeroHotspots';
+import ShopTelemetry from '../../islands/shop/ShopTelemetry';
+import { API_BASE, publicImage } from '../../lib/config';
+import { HOME_HEADER_LINKS } from '../../lib/homeNavigation';
+import { SHOP_SEO } from '../../lib/seo/catalog';
+import { getHome, type ShopHome } from '../../lib/shopApi';
+import { photo, shade } from '../../lib/shopUi';
+import { withDeadline } from '../../lib/requestDeadline';
+import { BRAND } from '../../lib/brand';
+import '../../styles/saathum-folk.css';
+import '../../styles/shop.css';
+
+const SSR_DEADLINE_MS = 1800;
+let home: ShopHome | null = null;
+try {
+  home = await withDeadline((signal) => getHome(signal), SSR_DEADLINE_MS);
+} catch (err) {
+  console.warn('[SHOP-SSR] home fetch failed; rendering the empty structure', err instanceof Error ? err.message : String(err));
+}
+Astro.response.headers.set('Cache-Control', home ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store');
+
+const hero = home?.hero ?? {};
+const collections = home?.collections ?? [];
+const fresh = home?.new_arrivals ?? [];
+const best = home?.bestsellers ?? [];
+const banner = home?.featured_banner ?? null;
+const hotspots = (hero.hotspots ?? []).filter((h) => h?.product);
+
+// Mockup copy is the default for every hero field the admin has not set.
+const eyebrow = hero.eyebrow || `The ${BRAND.name} Shop · New season`;
+const title = hero.title || 'Wear your faith,';
+const titleEm = hero.title_em ?? (hero.title ? '' : 'softly.');
+const lead = hero.lead || 'Pure cotton T-shirts with Mahadev, Krishna, lotus and Himalayan temple art — designed by us, printed to order in India and delivered free, pan India.';
+const ctaLabel = hero.cta_label || 'Shop all T-shirts →';
+const second = collections.find((c) => c.slug === hero.second_cta_collection) ?? collections[0] ?? null;
+const ticks = hero.ticks?.length ? hero.ticks : ['100% cotton, 180 GSM', 'Sizes S to 3XL + kids', 'Pay by UPI'];
+const promise = hero.promise?.length ? hero.promise : [
+  { title: 'Free shipping', sub: 'Pan India, every order' },
+  { title: 'Printed to order', sub: 'Made just for you' },
+  { title: 'Pay by any UPI app', sub: 'Scan the QR, done' },
+];
+const heroPhoto = hero.image_url ? photo(hero.image_url, 1600) : null;
+const heroStyle = heroPhoto ? `background:#3a2418 url(${JSON.stringify(heroPhoto)}) center/cover no-repeat` : undefined;
+const TILE_TINTS = ['#e07a1f', '#222', '#f1e8d6', '#7a1f24', '#127a72', '#d9a62b', '#fafafa', '#1f2a4a'];
+const bannerPhoto = banner ? photo(banner.image_url || banner.product?.image_url, 900) : null;
+const content = heroPhoto && hero.image_url
+  ? { ...SHOP_SEO, image: { url: hero.image_url, alt: `The ${BRAND.name} Shop — Hindu T-shirts` } }
+  : SHOP_SEO;
+---
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preconnect" href={API_BASE} crossorigin />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="sh">
+      <ShopTelemetry client:idle event="shop_home_viewed" />
+
+      <!-- ================= SHOP HOME ================= -->
+      <div class:list={['sh-hero', heroPhoto && 'sh-hero--photo']} id="shHero" style={heroStyle}>
+        <HeroHotspots client:idle hotspots={hotspots} />
+        {!heroPhoto && <div class="sh-hero-ph">Hero lifestyle photo<br />(admin-uploaded)</div>}
+        <div class="sh-wrap">
+          <div class="sh-hero-card">
+            <p class="sh-eyebrow">{eyebrow}</p>
+            <h1>{title}{titleEm ? ' ' : ''}{titleEm ? <em>{titleEm}</em> : null}</h1>
+            <p>{lead}</p>
+            <div class="sh-hero-ctas">
+              <a class="sh-btn sh-btn--red" href="/shop/all">{ctaLabel}</a>
+              {second && <a class="sh-btn sh-btn--ghost" href={`/shop/c/${second.slug}`}>{second.name} collection</a>}
+            </div>
+            <div class="sh-ticks">{ticks.map((t) => <span>{t}</span>)}</div>
+          </div>
+        </div>
+        <div class="sh-wrap">
+          <div class="sh-promise">
+            {promise.map((p) => <div><b>{p.title}</b><small>{p.sub}</small></div>)}
+            <a class="sh-link" href="/shop/all">Tap a dot to shop the stack →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="sh-wrap">
+        {collections.length > 0 && (
+          <section class="sh-sec">
+            <div class="sh-sec-head"><div><h2><span>✽</span> Shop by collection</h2><p>Every design starts from a story — a deity, a temple, a mantra.</p></div><a class="sh-link" href="/shop/all">All collections</a></div>
+            <div class="sh-cats" id="shCats">
+              {collections.map((c, i) => {
+                const src = photo(c.image_url, 420);
+                return (
+                  <a class="sh-cat" href={`/shop/c/${c.slug}`}>
+                    {src
+                      ? <img src={src} alt={c.name} width="420" height="420" loading="lazy" decoding="async" />
+                      : <div class="sh-ph" style={`--ph:${shade(TILE_TINTS[i % TILE_TINTS.length])}`}><span>Collection art</span></div>}
+                    <b>{c.name}</b>
+                    <small>{c.count} design{c.count === 1 ? '' : 's'}{c.blurb ? ` · ${c.blurb}` : ''}</small>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <section class="sh-sec">
+          <div class="sh-sec-head"><div><h2><span>✽</span> New arrivals</h2><p>Fresh off the press this week.</p></div><a class="sh-link" href="/shop/all?sort=new">View all</a></div>
+          {fresh.length > 0
+            ? <ProductGrid client:idle items={fresh} source="home_new" id="shNew" />
+            : <div class="sh-empty"><b>New T-shirts are coming soon</b><p>We are printing our first designs. Please check back shortly.</p><a class="sh-btn sh-btn--ghost" href="/marketplace">Explore pujas and havans</a></div>}
+        </section>
+
+        {banner && (
+          <section class="sh-sec">
+            <div class="sh-banner">
+              <div class="sh-banner-copy">
+                <p class="sh-eyebrow">{banner.eyebrow}</p>
+                <h2>{banner.title}</h2>
+                <p>{banner.text}</p>
+                <div><a class="sh-btn sh-btn--teal" href={`/shop/p/${banner.product.slug}`}>{banner.cta_label || 'See the tee →'}</a></div>
+              </div>
+              {bannerPhoto
+                ? <div class="sh-banner-art"><img src={bannerPhoto} alt={banner.title} width="900" height="900" loading="lazy" decoding="async" /></div>
+                : <div class="sh-ph sh-ph--banner"><span>Feature banner photo</span></div>}
+            </div>
+          </section>
+        )}
+
+        {best.length > 0 && (
+          <section class="sh-sec" style="padding-bottom:60px">
+            <div class="sh-sec-head"><div><h2><span>✽</span> Bestsellers</h2><p>What devotees are wearing the most.</p></div><a class="sh-link" href="/shop/all">View all</a></div>
+            <ProductGrid client:idle items={best} source="home_best" id="shBest" />
+          </section>
+        )}
+        {best.length === 0 && <div style="height:52px"></div>}
+      </div>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

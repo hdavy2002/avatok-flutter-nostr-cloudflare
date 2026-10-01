@@ -82,6 +82,12 @@ const dynamicCoverage = new Map([
   // /watch/<id> page is linked from that hub (crawlable), so the hub is its coverage.
   ['src/pages/free-videos.astro', 'sitemap-pages.xml'],
   ['src/pages/watch/[id].astro', 'sitemap-pages.xml'],
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The Shop: /shop and /shop/all are listed in sitemap-pages.xml; every collection
+  // (/shop/c/<slug>) is linked from /shop and every product (/shop/p/<slug>) from /shop/all, so the hubs are their coverage.
+  ['src/pages/shop/index.astro', 'sitemap-pages.xml'],
+  ['src/pages/shop/all.astro', 'sitemap-pages.xml'],
+  ['src/pages/shop/c/[slug].astro', 'sitemap-pages.xml'],
+  ['src/pages/shop/p/[slug].astro', 'sitemap-pages.xml'],
 ]);
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

@@ -1,0 +1,54 @@
+---
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The shared body of /shop/all and /shop/c/<slug> — the approved mockup's
+// "All T-shirts + filters" view. Same shell as pages/temples.astro / marketplace.astro (Base chrome={false},
+// folk-site wrapper, folk header/footer). The pages fetch the data and set the cache header; this only renders.
+//
+// NOTE FOR AI:
+//  - The mockup shows no heading on this view (crumb, then filters + grid). A visually hidden <h1> keeps the
+//    page well-formed for search engines without changing what the owner approved.
+import Base from '../layouts/Base.astro';
+import SiteHeader from './SiteHeader.astro';
+import SiteFooter from './SiteFooter.astro';
+import ShopFilters from '../islands/shop/ShopFilters';
+import { API_BASE, publicImage } from '../lib/config';
+import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
+import { EMPTY_FACETS } from '../lib/shopListingData';
+import type { ShopListResult } from '../lib/shopApi';
+import type { FilterState } from '../lib/shopFilters';
+import type { PublicContent } from '../lib/seo/types';
+import '../styles/saathum-folk.css';
+import '../styles/shop.css';
+
+interface Props {
+  content: PublicContent;
+  heading: string;
+  crumb: { label: string; href?: string }[];
+  filters: FilterState;
+  result: ShopListResult | null;
+  baseCollection?: string;
+}
+const { content, heading, crumb, filters, result, baseCollection } = Astro.props;
+---
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preconnect" href={API_BASE} crossorigin />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="sh">
+      <div class="sh-wrap">
+        <h1 class="sh-sr">{heading}</h1>
+        <div class="sh-crumb">
+          {crumb.map((c, i) => (<>{i > 0 ? ' / ' : ''}{c.href ? <a href={c.href}>{c.label}</a> : c.label}</>))}
+        </div>
+        <ShopFilters client:idle
+          initialItems={result?.items ?? []} initialTotal={result?.total ?? 0} facets={result?.facets ?? EMPTY_FACETS}
+          initial={filters} baseCollection={baseCollection} />
+      </div>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

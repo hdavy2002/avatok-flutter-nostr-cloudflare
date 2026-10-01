@@ -1,0 +1,68 @@
+---
+// [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] /shop/p/<slug> — the product page: an exact build of the owner-approved mockup
+// ("Product page" view). Spec: Specs/SPEC-2026-10-01-SAATHUM-SHOP.md §5.3.
+//
+// NOTE FOR AI:
+//  - SSR from GET /api/shop/products/:slug (live products only; anything else -> 404). The gallery + buy box is the
+//    BuyBox island (`client:idle`), server-rendered first so the page is complete HTML for search engines.
+//  - Title / description / share image come from the product (seo_title, seo_description, first photo) via
+//    lib/seo/catalog.ts shopProductContent(); schema.org Product + BreadcrumbList are emitted by the SEO resolver.
+//  - The tax line's GST rate is read from the public config (getShopGst), never typed here.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import SiteHeader from '../../../components/SiteHeader.astro';
+import SiteFooter from '../../../components/SiteFooter.astro';
+import BuyBox from '../../../islands/shop/BuyBox';
+import ProductGrid from '../../../islands/shop/ProductCard';
+import ShopTelemetry from '../../../islands/shop/ShopTelemetry';
+import { ApiError } from '../../../lib/apiClient';
+import { API_BASE, publicImage } from '../../../lib/config';
+import { HOME_HEADER_LINKS } from '../../../lib/homeNavigation';
+import { shopProductContent } from '../../../lib/seo/catalog';
+import { getProduct, getShopGst } from '../../../lib/shopApi';
+import { withDeadline } from '../../../lib/requestDeadline';
+import '../../../styles/saathum-folk.css';
+import '../../../styles/shop.css';
+
+const slug = String(Astro.params.slug ?? '').toLowerCase();
+const notFound = () => new Response('Product not found', { status: 404, headers: { 'x-robots-tag': 'noindex', 'Cache-Control': 'no-store' } });
+if (!/^[a-z0-9][a-z0-9-]{0,120}$/.test(slug)) return notFound();
+
+let data: Awaited<ReturnType<typeof getProduct>>;
+let gst = { rate: 18, enabled: true };
+try {
+  [data, gst] = await Promise.all([
+    withDeadline((signal) => getProduct(slug, signal), 2500),
+    withDeadline((signal) => getShopGst(signal), 800).catch(() => ({ rate: 18, enabled: true })),
+  ]);
+} catch (err) {
+  if (err instanceof ApiError && (err.status === 404 || err.status === 410)) return notFound();
+  console.warn('[SHOP-SSR] product fetch failed', err instanceof Error ? err.message : String(err));
+  return new Response('The shop is taking a moment. Please try again.', { status: 503, headers: { 'Retry-After': '30', 'Cache-Control': 'no-store' } });
+}
+const { product, also_like: also } = data;
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+---
+<Base content={shopProductContent(product)} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preconnect" href={API_BASE} crossorigin />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="saathum-reference-v5" style={`--folk-border-url:url(${publicImage('/assets/saathum-bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="sh">
+      <ShopTelemetry client:idle event="shop_product_viewed" props={{ product_id: product.id }} />
+      <div class="sh-wrap">
+        <div class="sh-crumb" id="pCrumb"><a href="/shop">Shop</a> / {product.collection ? <><a href={`/shop/c/${product.collection.slug}`}>{product.collection.name}</a> / </> : null}{product.name}</div>
+        <div class="sh-pdp" id="pdp"><BuyBox client:idle product={product} gst={gst} /></div>
+        {also.length > 0 && (
+          <section class="sh-sec" style="padding-bottom:60px"><div class="sh-sec-head"><div><h2><span>✽</span> You may also like</h2></div></div><ProductGrid client:idle items={also} source="also_like" id="shAlso" /></section>
+        )}
+      </div>
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

@@ -56,6 +56,10 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ...rituals.map(ritual => [ritual.href, 'monthly', '0.8'] as [string, string, string]),
   ['/how-it-works', 'monthly', '0.8'],
   ['/temples', 'monthly', '0.8'],
+  // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The Shop. Product and collection pages are crawled from these two hubs
+  // (every product links from /shop/all, every collection from /shop), the same way /free-videos covers /watch/<id>.
+  ['/shop', 'daily', '0.8'],
+  ['/shop/all', 'daily', '0.8'],
   ['/about', 'monthly', '0.8'],
   ['/contact', 'monthly', '0.5'],
   ['/refunds', 'monthly', '0.5'],

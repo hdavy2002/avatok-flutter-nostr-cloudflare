@@ -1,0 +1,68 @@
+/* [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Saa Thum Shop — header cart button + cart drawer + toast + shared
+   button/placeholder atoms. Loaded by SiteHeader.astro on EVERY page, so it stays small. Everything else
+   lives in shop.css (loaded by the /shop pages), which assumes this file is present.
+   Rules are ported VERBATIM from Specs/shop-mockup/shop.css (same values, same class names); the only changes:
+   the colour tokens are scoped on the shop roots instead of :root, and the real header/footer replace the
+   mockup's .mk-head/.mk-foot/.sh-switch (dropped). Do not "improve" values here: the owner approved the mockup. */
+/* SPECIFICITY: every selector below is prefixed with `:root:root` (+0,2,0) so the mockup's values win over the folk
+   chrome's own element rules (`.folk-site[data-design] h1/h2/h3/em/a`, which would otherwise recolour and resize the
+   shop headings). Values and class names are the mockup's, unchanged. */
+:root:root .sh,:root:root .sh-cart-root,:root:root .avh-cart{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e8a4c;--line:#e3cfa9;--chip:#f3e7d2;--card:#fffdf8;--cream:#fbf3e4}
+:root:root .sh-cart-root{color:var(--ink);font-family:Nunito,system-ui,sans-serif}
+:root:root .sh-cart-root *{box-sizing:border-box}
+:root:root .sh-cart-root h2{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:var(--ink);letter-spacing:0}
+:root:root .avh-cartwrap{display:flex;align-items:center;margin-left:auto;flex:0 0 auto}
+:root:root .avh-bar .avh-cartwrap~.avh-burger{margin-left:8px}
+:root:root .avh-cart{font-family:Nunito,system-ui,sans-serif;padding:0}
+:root:root a.sh-link{color:var(--teal)}
+:root:root .sh-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:14px;font:900 16px Nunito,sans-serif;letter-spacing:.02em;cursor:pointer;border:0;text-decoration:none;transition:transform .12s}
+:root:root .sh-btn:active{transform:translateY(2px)}
+:root:root .sh-btn--red{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--redDk)}
+:root:root .sh-btn--teal{background:var(--teal);color:#fff;box-shadow:0 3px 0 #0b2424}
+:root:root .sh-btn--ghost{background:#fff;color:var(--teal);border:2px solid var(--teal)}
+:root:root .sh-btn--wide{width:100%}
+:root:root .sh-link{font:800 15px Nunito;color:var(--teal);text-decoration:underline;text-underline-offset:4px;cursor:pointer;background:none;border:0}
+:root:root .avh-cart{position:relative;display:inline-grid;place-items:center;width:46px;height:46px;border-radius:14px;background:#fff;border:2px solid #5a1f14;color:#5a1f14;cursor:pointer;margin-right:4px}
+:root:root .avh-cart svg{width:22px;height:22px}
+:root:root .avh-cart b{position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#b3261e;color:#fff;font:900 13px/22px Nunito;text-align:center;border:2px solid #fff}
+:root:root .avh-cart b:empty{display:none}
+:root:root .avh-nav a.is-active{color:#b3261e!important;text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:3px}
+:root:root .sh-qty{display:inline-flex;align-items:center;border:2px solid var(--line);border-radius:14px;background:#fff;height:48px}
+:root:root .sh-qty button{width:44px;height:100%;border:0;background:none;font:900 20px Nunito;color:var(--ink);cursor:pointer}
+:root:root .sh-qty span{min-width:34px;text-align:center;font:900 16px Nunito}
+:root:root .sh-scrim{position:fixed;inset:0;background:#1a0d0680;z-index:90;opacity:0;pointer-events:none;transition:.25s}
+:root:root .sh-scrim.is-on{opacity:1;pointer-events:auto}
+:root:root .sh-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:#fbf3e4;z-index:91;transform:translateX(105%);transition:transform .3s ease;display:flex;flex-direction:column;box-shadow:-20px 0 40px #0003}
+:root:root .sh-drawer.is-on{transform:none}
+:root:root .sh-dh{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:2px solid var(--line)}
+:root:root .sh-dh h2{font-size:24px}
+:root:root .sh-x{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:#fff;font:900 22px Nunito;cursor:pointer;color:var(--ink)}
+:root:root .sh-free{margin:14px 22px 0;padding:12px 14px;border-radius:14px;background:#fff;font:800 14px Nunito;color:var(--teal)}
+:root:root .sh-bar{height:8px;border-radius:8px;background:#efdcbf;margin-top:8px;overflow:hidden}
+:root:root .sh-bar i{display:block;height:100%;background:linear-gradient(90deg,#F6B93B,#b3261e);border-radius:8px;transition:width .3s}
+:root:root .sh-items{flex:1;overflow:auto;padding:8px 22px}
+:root:root .sh-item{display:grid;grid-template-columns:84px 1fr auto;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+:root:root .sh-item img{width:84px;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:3px solid #fff}
+:root:root .sh-item b{display:block;font:800 16px/1.25 Comfortaa;color:var(--teal)}
+:root:root .sh-item small{display:block;font:700 14px Nunito;color:var(--sub);margin:4px 0 10px}
+:root:root .sh-item .sh-qty{height:40px}
+:root:root .sh-item .sh-qty button{width:36px}
+:root:root .sh-item-r{text-align:right;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end}
+:root:root .sh-item-r strong{font:900 16px Nunito}
+:root:root .sh-item-r button{font:800 14px Nunito;color:var(--red);background:none;border:0;cursor:pointer;text-decoration:underline}
+:root:root .sh-df{padding:18px 22px 22px;border-top:2px solid var(--line);background:#fff8ec}
+:root:root .sh-row{display:flex;justify-content:space-between;font:700 15px Nunito;color:var(--body);margin-bottom:8px}
+:root:root .sh-row--tot{font:900 19px Nunito;color:var(--ink);margin:12px 0 14px}
+:root:root .sh-cart-empty{text-align:center;padding:60px 10px}
+:root:root .sh-cart-empty b{display:block;font:700 22px Comfortaa;margin-bottom:8px}
+:root:root .sh-cart-empty p{font:600 15px Nunito;color:var(--sub)}
+:root:root .sh-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,120px);background:#173f3f;color:#fff;font:800 15px Nunito;padding:14px 20px;border-radius:14px;z-index:95;transition:.3s;box-shadow:0 10px 30px #0004}
+:root:root .sh-toast.is-on{transform:translate(-50%,0)}
+:root:root .sh-ph{position:relative;width:100%;height:100%;display:grid;place-items:center;background:
+  repeating-linear-gradient(135deg,#00000008 0 12px,transparent 12px 24px),var(--ph,#efdcbf);color:#5a1f14a6;font:800 14px Nunito;text-align:center;padding:10px}
+:root:root .sh-ph span{background:#fffdf8d9;border-radius:999px;padding:6px 12px;border:1px dashed #5a1f1466}
+:root:root .sh-ph--banner{min-height:300px;--ph:#e9b9a5}
+:root:root .sh-item .sh-ph{aspect-ratio:3/4;border-radius:10px;font-size:0}
+:root:root .sh-item .sh-ph{width:84px}
+:root:root .sh-item .sh-ph span{display:none}
+:root:root .sh-err{color:var(--red);font:800 14px Nunito;margin-top:8px;min-height:18px}
