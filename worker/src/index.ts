@@ -101,6 +101,7 @@ import { smsForwarderIncoming, adminForwarderCaptures } from "./routes/sms_forwa
 import { adminSaathumReviewList, adminSaathumCheckoutConfirm, adminSaathumCheckoutReject } from "./routes/saathum_payment_review";
 import { runSaathumPaymentSweeps } from "./lib/saathum_upi3";
 import { checkSaathumStreamEnds } from "./lib/saathum_stream_state"; // [SAATHUM-WATCH-1]
+import { freeVideosRoute, refreshFreeVideoLive } from "./routes/free_videos"; // [SAATHUM-FREEVIDEOS-API-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -559,6 +560,10 @@ export default {
         checkSaathumStreamEnds(env)
           .then((r) => { if (r.checked) console.log("[saathum-stream-end-check]", JSON.stringify(r)); })
           .catch((e) => { console.error("[saathum-stream-end-check] failed:", String(e)); }),
+        // [SAATHUM-FREEVIDEOS-API-1 2026-10-01] Live badge for published free videos (YouTube API, no-op without a key).
+        refreshFreeVideoLive(env)
+          .then((r) => { if (r.checked) console.log("[free-video-live]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[free-video-live] failed:", String(e)); }),
         // [SAATHUM-PREETI-1 2026-09-30] Preeti: knowledge sync (self-throttled to once per IST day) + chat
         // retention purge / spend-alert re-check (same throttle). Both never throw out of the tick.
         runPreetiDailyMaintenance(env)
@@ -1048,6 +1053,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       }
       // [ADMIN2-API 2026-09-26] Admin 2 (Saa Thum admin dashboard) — routes/admin2.ts route table.
       if (p === "/api/admin/whoami" || p.startsWith("/api/admin/v2/")) { const r = await admin2Route(req, env, p); if (r) return r; }
+      // [SAATHUM-FREEVIDEOS-API-1 2026-10-01] Free videos (public list/card, signed-in watch + view).
+      if (p === "/api/free-videos" || p.startsWith("/api/free-videos/")) { const r = await freeVideosRoute(req, env, p); if (r) return r; }
       // [SAATHUM-CHECKOUT-API 2026-09-26] Saa Thum event checkout. NOT behind
       // hdfcSmsRailEnabled (that kill switch only covers the /api/pay/hdfc-sms/*
       // and /api/sms/* smoke-harness family) — Saa Thum keeps its own payment

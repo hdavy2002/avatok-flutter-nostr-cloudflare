@@ -21,6 +21,7 @@ import { ADMIN2_USER_ROUTES } from "./admin2_users"; // [ADMIN2-USERS] agent E
 import { adminAnalytics } from "./admin2_analytics"; // [ADMIN2-ANALYTICS] agent D
 import { ADMIN2_CHADHAVA_ROUTES } from "./saathum_chadhava"; // [SAATHUM-CHADHAVA] agent A2
 import { ADMIN2_AI_ROUTES } from "./admin2_ai"; // [SAATHUM-PREETI-1]
+import { ADMIN2_FREE_VIDEO_ROUTES } from "./free_videos"; // [SAATHUM-FREEVIDEOS-API-1]
 
 const APP = "saathum";
 
@@ -234,6 +235,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   // --- chadhava (agent A2) ---
   ...ADMIN2_CHADHAVA_ROUTES,
   ...ADMIN2_AI_ROUTES, // [SAATHUM-PREETI-1]
+  ...ADMIN2_FREE_VIDEO_ROUTES, // [SAATHUM-FREEVIDEOS-API-1]
 ];
 
 /** Match a path against the table. Exported for tests. */

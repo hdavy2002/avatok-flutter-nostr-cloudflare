@@ -155,8 +155,8 @@ describe("analytics video_views SQL", () => {
     const db = seed();
     const rows = db.prepare(videoViewsByEventSql(true)).all(10 * DAY, 20 * DAY);
     expect(shapeVideoViews(null, rows).by_event).toEqual([
-      { listing_id: "A", title: "Satsang", free: true, viewers: 2, plays: 8 },
-      { listing_id: "B", title: "Havan", free: false, viewers: 1, plays: 1 },
+      { listing_id: "A", title: "Satsang", free: true, kind: "event", viewers: 2, plays: 8 },
+      { listing_id: "B", title: "Havan", free: false, kind: "event", viewers: 1, plays: 1 },
     ]);
   });
   it("the fallback query (no free_watch column) still runs and reports free=false", () => {

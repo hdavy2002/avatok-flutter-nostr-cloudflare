@@ -209,12 +209,17 @@ SELECT COUNT(DISTINCT CASE WHEN first_at>=?2 AND first_at<?3 THEN uid END) AS vi
        COALESCE(SUM(CASE WHEN last_at>=?2 AND last_at<?3 THEN plays ELSE 0 END),0) AS plays_cur,
        COALESCE(SUM(CASE WHEN last_at>=?1 AND last_at<?2 THEN plays ELSE 0 END),0) AS plays_prev
   FROM event_video_views WHERE last_at>=?1 OR first_at>=?1`;
-/** Binds: ?1 from, ?2 to. `withFree` names l.free_watch (absent column -> fallback, free=0). */
-export const videoViewsByEventSql = (withFree: boolean) => `
-SELECT v.listing_id AS listing_id, l.title AS title, ${withFree ? "COALESCE(l.free_watch,0)" : "0"} AS free,
+/**
+ * Binds: ?1 from, ?2 to. `withFree` names l.free_watch (absent column -> fallback, free=0).
+ * [SAATHUM-FREEVIDEOS-API-1] `withFreeVideos` also joins free_videos (ids start 'fv_') for the title
+ * and tags the row kind='free_video'; absent table -> fallback to event-only titles.
+ */
+export const videoViewsByEventSql = (withFree: boolean, withFreeVideos = false) => `
+SELECT v.listing_id AS listing_id, ${withFreeVideos ? "COALESCE(l.title, fv.title)" : "l.title"} AS title, ${withFree ? "COALESCE(l.free_watch,0)" : "0"} AS free,
+       CASE WHEN v.listing_id LIKE 'fv\\_%' ESCAPE '\\' THEN 'free_video' ELSE 'event' END AS kind,
        COUNT(DISTINCT CASE WHEN v.first_at>=?1 AND v.first_at<?2 THEN v.uid END) AS viewers,
        COALESCE(SUM(CASE WHEN v.last_at>=?1 AND v.last_at<?2 THEN v.plays ELSE 0 END),0) AS plays
-  FROM event_video_views v LEFT JOIN listings l ON l.id=v.listing_id
+  FROM event_video_views v LEFT JOIN listings l ON l.id=v.listing_id${withFreeVideos ? " LEFT JOIN free_videos fv ON fv.id=v.listing_id" : ""}
  WHERE (v.first_at>=?1 AND v.first_at<?2) OR (v.last_at>=?1 AND v.last_at<?2)
  GROUP BY v.listing_id
 HAVING viewers>0
@@ -222,7 +227,7 @@ HAVING viewers>0
 
 export interface VideoViewsBlock {
   viewers: { cur: number; prev: number }; plays: { cur: number; prev: number };
-  by_event: { listing_id: string; title: string | null; free: boolean; viewers: number; plays: number }[];
+  by_event: { listing_id: string; title: string | null; free: boolean; kind: "event" | "free_video"; viewers: number; plays: number }[];
   /** true when the views table is not migrated yet (numbers are zero, not "nobody watched"). */
   unavailable?: true;
 }
@@ -232,7 +237,8 @@ export function shapeVideoViews(totals: any | null, byEvent: any[]): VideoViewsB
     viewers: pair(num(totals?.viewers_cur), num(totals?.viewers_prev)),
     plays: pair(num(totals?.plays_cur), num(totals?.plays_prev)),
     by_event: byEvent.map((r) => ({
-      listing_id: String(r.listing_id), title: r.title ?? null, free: Number(r.free) === 1, viewers: num(r.viewers), plays: num(r.plays),
+      listing_id: String(r.listing_id), title: r.title ?? null, free: Number(r.free) === 1,
+      kind: (r.kind === "free_video" || String(r.listing_id).startsWith("fv_") ? "free_video" : "event") as "event" | "free_video", viewers: num(r.viewers), plays: num(r.plays),
     })),
   };
 }
@@ -242,8 +248,10 @@ async function videoViewsBlock(env: Env, w: AnalyticsWindow): Promise<VideoViews
     const db = env.DB_META;
     const totals = await db.prepare(VIDEO_VIEWS_TOTALS_SQL).bind(w.prevFrom, w.from, w.to).first<any>();
     const byEvent = await withNewColumns(env, "admin2_analytics.video_views",
-      () => db.prepare(videoViewsByEventSql(true)).bind(w.from, w.to).all<any>(),
-      () => db.prepare(videoViewsByEventSql(false)).bind(w.from, w.to).all<any>());
+      () => db.prepare(videoViewsByEventSql(true, true)).bind(w.from, w.to).all<any>(),
+      () => withNewColumns(env, "admin2_analytics.video_views_nofv",
+        () => db.prepare(videoViewsByEventSql(true)).bind(w.from, w.to).all<any>(),
+        () => db.prepare(videoViewsByEventSql(false)).bind(w.from, w.to).all<any>()));
     return shapeVideoViews(totals, byEvent?.results ?? []);
   } catch (e) {
     // The rest of the page must still load. A missing table is expected until the owner
