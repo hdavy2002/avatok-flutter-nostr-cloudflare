@@ -14,7 +14,7 @@ const help = defineCollection({
   schema: z.object({
     title: z.string().min(4).max(90),
     description: z.string().min(20).max(200), // meta description + card blurb
-    section: z.enum(['getting-started', 'booking-and-paying', 'creators', 'billing', 'account-and-safety']),
+    section: z.enum(['getting-started', 'booking-and-paying', 'creators', 'billing', 'account-and-safety', 'talk-to-a-guide']),
     order: z.number().int().min(1), // position within section
     updated: z.coerce.date(),
     keywords: z.array(z.string()).default([]), // extra search terms, e.g. ["UPI","withdraw"]

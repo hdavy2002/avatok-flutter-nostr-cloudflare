@@ -16,7 +16,8 @@ export type HelpSectionId =
   | 'booking-and-paying'
   | 'creators'
   | 'billing'
-  | 'account-and-safety';
+  | 'account-and-safety'
+  | 'talk-to-a-guide';
 
 export type HelpEntry = CollectionEntry<'help'>;
 
@@ -58,6 +59,14 @@ export const SECTIONS: Record<
     order: 5,
     blurb: 'Reporting a problem and deleting your account.',
     tone: 'pink',
+  },
+  // [AUMFE-HELP-GUIDES-1] Hidden until launch: every article in this section is
+  // draft: true, and getHelpTree() omits sections with no live entries.
+  'talk-to-a-guide': {
+    label: 'Talk to a guide',
+    order: 6,
+    blurb: 'Talking to an AI voice guide: languages, birth details, memory, privacy, minutes and payment.',
+    tone: 'sky',
   },
 };
 

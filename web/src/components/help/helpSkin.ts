@@ -15,6 +15,7 @@ export const SECTION_ART: Record<HelpSectionId, string> = {
   creators: '/help/art/help-tile-sankalp-prasad.png',
   billing: '/help/art/help-tile-payments-refunds.png',
   'account-and-safety': '/help/art/help-tile-account-safety.png',
+  'talk-to-a-guide': '/help/art/help-tile-getting-started.png', // [AUMFE-HELP-GUIDES-1] placeholder art until launch
 };
 
 export const HERO_ART = '/help/art/help-hero-v2.png';
@@ -26,6 +27,7 @@ export const SECTION_PILL: Record<HelpSectionId, string> = {
   creators: 'hs-pill--gold',
   billing: 'hs-pill--sky',
   'account-and-safety': 'hs-pill--gold',
+  'talk-to-a-guide': 'hs-pill--sky',
 };
 
 /** The mockup's folk "marks" (inner strokes only; the medallion is shared). */
@@ -35,6 +37,7 @@ const MARK_INNER: Record<HelpSectionId, string> = {
   creators: '<path d="M24 56h52c-5 17-16 23-26 23S29 73 24 56Z" fill="#d87332"/><path d="M30 61h40M44 78h12M50 54c-18-7-6-21 3-33-1 11 14 23-3 33Z" fill="#ef9e25"/>',
   billing: '<path d="M23 33h54v12c-11 0-11 14 0 14v12H23V59c11 0 11-14 0-14Z" fill="#fff6e6"/><path d="M60 35v6m0 7v6m0 7v7m-24-17 6 6 10-13"/>',
   'account-and-safety': '<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>',
+  'talk-to-a-guide': '<rect x="40" y="24" width="20" height="34" rx="10" fill="#fff6e6"/><path d="M30 50a20 20 0 0 0 40 0M50 70v10M40 80h20"/>',
 };
 export const MARK_TICKET = MARK_INNER.billing;
 export const MARK_SCREEN = MARK_INNER['booking-and-paying'];
