@@ -1,0 +1,12 @@
+---
+// /admin/free-videos/[id] — [SAATHUM-FREEVIDEOS-ADMIN-1 2026-10-01] edit / publish / archive one free video.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import FreeVideoForm from '../../../islands/admin2/FreeVideoForm.tsx';
+
+const id = String(Astro.params.id ?? '').slice(0, 200);
+---
+
+<Admin2 title="Edit free video" active="freevideos">
+  <FreeVideoForm client:load videoId={id} />
+</Admin2>

@@ -53,7 +53,7 @@ interface AnalyticsData {
   /** [SAATHUM-FREEVID-ADMIN-1] Absent on an older API — the section is hidden then. */
   video_views?: {
     viewers: Pair; plays: Pair;
-    by_event: { listing_id: string; title: string | null; free: boolean; viewers: number; plays: number }[];
+    by_event: { listing_id: string; title: string | null; free: boolean; kind?: 'event' | 'free_video'; viewers: number; plays: number }[];
   };
 }
 
@@ -507,9 +507,10 @@ export default function Analytics() {
                           <tr key={e.listing_id} className="border-t border-border/40 transition-colors hover:bg-muted">
                             <td className="px-2 py-2.5 font-bold tabular-nums text-muted-foreground">{i + 1}</td>
                             <td className="max-w-0 px-2 py-2.5">
-                              <a href={`/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex items-center gap-2 no-underline">
+                              <a href={e.kind === 'free_video' ? `/admin/free-videos/${encodeURIComponent(e.listing_id)}` : `/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex items-center gap-2 no-underline">
                                 <span className="truncate font-bold text-foreground hover:underline">{e.title ?? e.listing_id}</span>
                                 {e.free && <Badge variant="accent" className="shrink-0">FREE</Badge>}
+                                {e.kind === 'free_video' && <Badge variant="outline" className="shrink-0">Free video</Badge>}
                               </a>
                             </td>
                             <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.viewers)}</td>

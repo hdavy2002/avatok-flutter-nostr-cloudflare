@@ -1,0 +1,10 @@
+---
+// /admin/free-videos/new — [SAATHUM-FREEVIDEOS-ADMIN-1 2026-10-01] add a free video (draft or publish).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import FreeVideoForm from '../../../islands/admin2/FreeVideoForm.tsx';
+---
+
+<Admin2 title="New free video" active="freevideos" subtitle="Add the details and the YouTube link, then save a draft or publish.">
+  <FreeVideoForm client:load />
+</Admin2>

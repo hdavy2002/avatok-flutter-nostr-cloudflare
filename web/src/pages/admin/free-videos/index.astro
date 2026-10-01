@@ -1,0 +1,16 @@
+---
+// /admin/free-videos — [SAATHUM-FREEVIDEOS-ADMIN-1 2026-10-01] every free YouTube video.
+// Specs/SPEC-2026-10-01-FREE-VIDEOS.md. API: GET /api/admin/v2/free-videos.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import FreeVideosList from '../../../islands/admin2/FreeVideosList.tsx';
+---
+
+<Admin2 title="Free videos" active="freevideos" subtitle="Videos anyone signed in can watch for free. Not events: no price, booking or date.">
+  <Fragment slot="actions">
+    <a href="/admin/free-videos/new" class="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 font-dashbody text-sm font-bold text-primary-foreground no-underline shadow-sm hover:bg-primary/90">
+      <span aria-hidden="true">+</span> New free video
+    </a>
+  </Fragment>
+  <FreeVideosList client:load />
+</Admin2>
