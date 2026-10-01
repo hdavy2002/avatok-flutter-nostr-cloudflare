@@ -10,7 +10,8 @@ import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports 
 import { track, trackException } from "../hooks";
 import { adminGuard, audit, createProduct, err, readBody, safeTrack, updateProduct } from "./admin2_shop_catalog";
 import { presignDigitalReadUrl } from "./media";
-import { getPodProvider } from "../lib/pod";
+import { getPodProvider, ensurePodCatalog, referenceShippingRupees } from "../lib/pod";
+import type { CatalogInfo } from "../lib/pod";
 import type { CatalogProduct, PodProvider } from "../lib/pod";
 import { BADGES, SLOTS } from "../lib/shop_logic";
 import {
@@ -19,6 +20,7 @@ import {
   cleanProducts, cleanSlots, fallbackBestText, fallbackCopy, isKind, orderPhotosForShop, parseCopyReply, parseImageInfo,
   parseJson, partnerPlacement, pendingSteps, photoChecks, photoCoverage, pickBest, printTypeFor, productsLabel, resolveVariants,
   resumeSteps, shopPrice, sniffImageMime, summariseCatalog, validatePlacement, variantSku,
+  computeSizeCosts, reconcileColours, remapProducts, firstUnavailableColour, type DesignCosts,
   type DesignColour, type FitRow, type Placement, type StepKey, type StepResult, type StoredSteps,
 } from "../lib/studio_logic";
 
@@ -84,20 +86,45 @@ function photoShape(p: PhotoRow) {
   };
 }
 
-// Catalogue (current provider's synced rows; the built-in manual catalogue when nothing is synced yet).
-type CatRow = { provider: string; provider_product_id: string; kind: string; name: string; category: string | null; variants_json: string; size_chart_json: string | null };
-async function loadCatalog(env: Env, provider: PodProvider): Promise<CatalogProduct[]> {
-  const r = await env.DB_META.prepare("SELECT provider, provider_product_id, kind, name, category, variants_json, size_chart_json FROM pod_catalog WHERE provider=?1 ORDER BY kind, name")
-    .bind(provider.id).all<CatRow>();
-  const rows = r.results ?? [];
-  if (rows.length) {
-    return rows.map((x) => ({
-      provider: x.provider as CatalogProduct["provider"], provider_product_id: x.provider_product_id, kind: x.kind, name: x.name, category: x.category,
-      variants: parseJson(x.variants_json, []), size_chart: parseJson(x.size_chart_json, null),
-    }));
+// Catalogue [AUMFE-POD-COST-1]: Printrove's stored rows whenever its login is configured (auto-synced when empty or a day old),
+// whatever shopPodProvider says (that flag is only about who places orders). The built-in manual catalogue is a visible fallback
+// (source:'builtin' + reason) when Printrove is not connected or the sync fails.
+const loadCatalogInfo = (env: Env): Promise<CatalogInfo> => ensurePodCatalog(env);
+async function loadCatalog(env: Env, _provider?: PodProvider): Promise<CatalogProduct[]> { return (await loadCatalogInfo(env)).products; }
+
+/**
+ * Drafts made on the built-in catalogue move to the partner product of the same kind, and chosen colours the partner product does not
+ * sell are flagged unavailable (aliases in studio_logic COLOUR_ALIASES). Persisted; published (locked) designs are never touched.
+ */
+async function reconcileDesign(env: Env, row: DesignRow, info: CatalogInfo): Promise<DesignRow> {
+  if (info.source !== "printrove" || row.locked_at || row.status === "retired") return row;
+  const rm = remapProducts(parseJson<ProductRef[]>(row.products_json, []), info.products);
+  const primary = rm.products[0];
+  const prod = primary ? info.products.find((p) => p.provider_product_id === primary.provider_product_id) : undefined;
+  const chosen = parseJson<DesignColour[]>(row.colours_json, []);
+  const rc = prod ? reconcileColours(chosen, summariseCatalog(prod).colours) : null;
+  if (!rm.changed && !rc?.changed) return row;
+  const next = { ...row };
+  const stmts = [];
+  if (rm.changed) {
+    next.products_json = JSON.stringify(rm.products);
+    stmts.push(env.DB_META.prepare("UPDATE studio_designs SET products_json=?2 WHERE id=?1").bind(row.id, next.products_json));
   }
-  const manual = provider.id === "manual" ? provider : await getPodProvider(env, "manual");
-  return manual.syncCatalog();
+  if (rc?.changed) {
+    next.colours_json = JSON.stringify(rc.colours);
+    stmts.push(env.DB_META.prepare("UPDATE studio_designs SET colours_json=?2 WHERE id=?1").bind(row.id, next.colours_json));
+    for (const r of rc.renamed) {
+      stmts.push(env.DB_META.prepare("UPDATE studio_photos SET colour=?3 WHERE design_id=?1 AND lower(colour)=lower(?2)").bind(row.id, r.from, r.to));
+    }
+  }
+  try {
+    await env.DB_META.batch(stmts);
+    if (rc?.changed) await recomputePhotoChecks(env, row.id, rc.colours.filter((c) => !c.unavailable).map((c) => c.name));
+  } catch (e) {
+    await trackException(env, e, { route: "admin2_studio:reconcile", handled: true, app_name: APP, extra: { design_id: row.id } });
+    return row;
+  }
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,9 +139,29 @@ function computeFits(row: DesignRow, catalog: CatalogProduct[]): FitRow[] {
   return buildFits(row.art_w, row.art_h, catalog.map(summariseCatalog), dominantOf(row));
 }
 
-async function designJson(env: Env, row: DesignRow) {
-  const provider = await getPodProvider(env);
-  const [photos, catalog] = await Promise.all([loadPhotos(env, row.id), loadCatalog(env, provider)]);
+/** Partner costs per size for the chosen product, side and saved print size; null until a partner product + placement exist. */
+async function costsFor(env: Env, row: DesignRow, info: CatalogInfo): Promise<DesignCosts | null> {
+  if (info.source !== "printrove") return null;
+  const primary = parseJson<ProductRef[]>(row.products_json, [])[0];
+  const placement = parseJson<Placement | null>(row.placement_json, null);
+  const prod = primary ? info.products.find((p) => p.provider_product_id === primary.provider_product_id) : undefined;
+  if (!prod || !placement) return null;
+  const side = placement.side;
+  const shipping = await referenceShippingRupees(env);
+  const colours = parseJson<DesignColour[]>(row.colours_json, []).filter((c) => !c.unavailable).map((c) => c.name);
+  return {
+    provider_product_id: prod.provider_product_id, side, print_w_in: placement.print_w_in, print_h_in: placement.print_h_in, shipping_rupees: shipping,
+    sizes: computeSizeCosts(prod, colours, side, placement.print_w_in, placement.print_h_in, shipping),
+  };
+}
+
+async function designJson(env: Env, inRow: DesignRow) {
+  const info = await loadCatalogInfo(env);
+  const row = await reconcileDesign(env, inRow, info);
+  const catalog = info.products;
+  const photos = await loadPhotos(env, row.id);
+  let costs: DesignCosts | null = null;
+  try { costs = await costsFor(env, row, info); } catch (e) { await trackException(env, e, { route: "admin2_studio:costs", handled: true, app_name: APP, extra: { design_id: row.id } }); }
   const colours = parseJson<DesignColour[]>(row.colours_json, []);
   const copy = parseJson<Record<string, unknown>>(row.copy_json, {});
   delete copy.publish_lock;
@@ -136,6 +183,9 @@ async function designJson(env: Env, row: DesignRow) {
     art_url: artUrl,
     print_url: printUrl,
     fits: computeFits(row, catalog),
+    catalog_source: info.source,
+    catalog_reason: info.reason,
+    costs,
   };
 }
 
@@ -201,7 +251,13 @@ const createDesign = guarded("admin2.studio.designs.create", async (req, env, a)
   return designResponse(env, id, 201);
 });
 
-const getDesign = guarded("admin2.studio.designs.get", async (_req, env, _a, [id]) => designResponse(env, id));
+const getDesign = guarded("admin2.studio.designs.get", async (_req, env, a, [id]) => {
+  const row = await loadDesign(env, id);
+  if (!row) return err(404, "not_found", "No such design.");
+  const design = await designJson(env, row);
+  safeTrack(env, a.uid, "admin2_studio_costs_viewed", { design_id: id, source: design.catalog_source });
+  return json({ design }, 200, noStore);
+});
 
 const updateDesign = guarded("admin2.studio.designs.update", async (req, env, a, [id]) => {
   const row = await loadDesign(env, id);
@@ -229,9 +285,8 @@ const updateDesign = guarded("admin2.studio.designs.update", async (req, env, a,
     else if (row.status === "ready" && b.step !== "publish") newStatus = "draft";
   }
   if ("colours" in b) {
-    const provider = await getPodProvider(env);
     const hexByName = new Map<string, string | null>();
-    for (const p of await loadCatalog(env, provider)) for (const c of summariseCatalog(p).colours) hexByName.set(c.name.toLowerCase(), c.hex);
+    for (const p of await loadCatalog(env)) for (const c of summariseCatalog(p).colours) hexByName.set(c.name.toLowerCase(), c.hex);
     const c = cleanColours(b.colours, hexByName);
     if (!c.ok) return bad("colours", c.message);
     set((n2) => `colours_json=?${n2}`, JSON.stringify(c.value)); changed.push("colours");
@@ -405,8 +460,8 @@ const getFits = guarded("admin2.studio.fits", async (_req, env, a, [id]) => {
   const row = await loadDesign(env, id);
   if (!row) return err(404, "not_found", "No such design.");
   if (!row.art_w || !row.art_h) return err(409, "no_art", "Upload the artwork first.");
-  const provider = await getPodProvider(env);
-  const catalog = await loadCatalog(env, provider);
+  const info = await loadCatalogInfo(env);
+  const catalog = info.products;
   const items = computeFits(row, catalog);
   const best = pickBest(items);
   const dominant = dominantOf(row);
@@ -430,7 +485,7 @@ const getFits = guarded("admin2.studio.fits", async (_req, env, a, [id]) => {
     } catch (e) { await trackException(env, e, { uid: a.uid, route: "admin2_studio:fits_cache", handled: true, app_name: APP }); }
   }
   safeTrack(env, a.uid, "admin2_studio_fits_viewed", { design_id: id, best_kind: best?.kind ?? "none", ai });
-  return json({ items, best: best ? { kind: best.kind, side: best.side, colours: bestColours(best), text } : { kind: null, side: null, colours: [], text } }, 200, noStore);
+  return json({ items, catalog_source: info.source, catalog_reason: info.reason, best: best ? { kind: best.kind, side: best.side, colours: bestColours(best), text } : { kind: null, side: null, colours: [], text } }, 200, noStore);
 });
 
 const putProducts = guarded("admin2.studio.products", async (req, env, a, [id]) => {
@@ -754,9 +809,11 @@ async function saveProgress(env: Env, id: string, stored: StoredSteps): Promise<
 const publish = guarded("admin2.studio.publish", async (req, env, a, [id]) => {
   const b = await readBody(req, 100_000);
   if (!b) return err(400, "invalid_request", "Send the publish details as JSON.");
-  const row = await loadDesign(env, id);
-  if (!row) return err(404, "not_found", "No such design.");
-  if (row.status === "retired") return err(409, "retired", "This design is retired.");
+  const loaded = await loadDesign(env, id);
+  if (!loaded) return err(404, "not_found", "No such design.");
+  if (loaded.status === "retired") return err(409, "retired", "This design is retired.");
+  const catInfo = await loadCatalogInfo(env);
+  const row = await reconcileDesign(env, loaded, catInfo); // [AUMFE-POD-COST-1] manual: drafts -> partner product; unsold colours flagged
 
   // Inputs: body wins, stored values fill the gaps.
   const stored0 = parseJson<Record<string, unknown>>(row.copy_json, {});
@@ -793,8 +850,12 @@ const publish = guarded("admin2.studio.publish", async (req, env, a, [id]) => {
   if (!Object.keys(prices).length) missing.push("prices");
   if (!copy.name || copy.name.length < 2) missing.push("product name");
   if (missing.length) return err(400, "not_ready", `Not ready to publish: ${missing.join(", ")}.`, { missing });
+  const unsold = colours.filter((c) => c.unavailable).map((c) => c.name);
+  if (unsold.length) {
+    return err(400, "colour_unavailable", `${unsold.join(", ")} ${unsold.length === 1 ? "is" : "are"} not sold by Printrove. Pick the colours again in the Product step.`, { colours: unsold, first: firstUnavailableColour(colours) });
+  }
 
-  const catalog = await loadCatalog(env, provider);
+  const catalog = catInfo.products;
   const primary = products[0];
   const catalogProduct = catalog.find((p) => p.provider_product_id === primary.provider_product_id) ?? null;
   const resolved = catalogProduct ? resolveVariants(colours, catalogProduct, prices) : { colours: [], sizes: [], rows: [], missing: [] };

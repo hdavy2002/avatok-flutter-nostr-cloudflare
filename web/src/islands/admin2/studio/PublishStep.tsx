@@ -1,23 +1,28 @@
 /* PublishStep — [AUMFE-POD-STUDIO-WEB-1 2026-10-01] Step 5, replica of Specs/studio-mockup/Publish.dc.html.
  * "What Printrove will print" summary, words (+ Write with AI), sizes and prices, and the resumable publish steps
  * (POST publish returns every step as done / skipped / failed; a failed step is retried by pressing Publish again).
- * Deliberate differences: chest / length / cost show the mockup's [FROM PRINTROVE] text until the catalogue carries them;
- * prices start empty (the owner sets them, we do not invent one). Shop checkout charges ONE price per product (spec §4), so a
+ * [AUMFE-POD-COST-1] Deliberate differences: Printrove gives no size chart, so Chest/Length are replaced by the real cost per size
+ * (Printrove garment + print, GST, shipping estimate -> "Your cost") with a live Profit column and a "Suggest prices" helper;
+ * sizes come from the real catalogue (S-5XL etc.); prices start empty (the owner sets them, we do not invent one). Shop checkout charges ONE price per product (spec §4), so a
  * 2XL/3XL price that differs from S–XL gets the note "priced the same for now". */
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '../../../components/ui/sonner';
 import { capture, captureException } from '../../../lib/analytics';
 import {
-  areaFor, copyAi, errMessage, fmtIn, getFits, gstOn, publishDesign, stepHref, updateDesign,
-  type Fits, type PublishStepRow,
+  areaFor, copyAi, errMessage, fmtIn, getFits, gstOn, publishDesign, stepHref, suggestPrice, updateDesign,
+  type CostRange, type Fits, type PublishStepRow, type SizeCost,
 } from '../../../lib/studioApi';
 import { listCollections, type AdminCollection } from '../shop/shopApi';
 import { LoadError, Loading, Page, Steps, TopBar, useDesign } from './StudioKit';
 
-const DEFAULT_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const FALLBACK_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']; // last resort only: the catalogue's own sizes are used whenever there is one
 const SHAPE_LABEL: Record<string, string> = { none: 'Whole print area', rect: 'Rectangle', square: 'Square', circle: 'Circle' };
 const BADGES: [string, string][] = [['', 'Automatic'], ['new', 'New'], ['best', 'Bestseller'], ['sale', 'Sale']];
 const inr = (n: number): string => `₹${n.toLocaleString('en-IN')}`;
+/** Rupees rounded up to a whole rupee; a range prints as ₹165–₹175. */
+const up = (n: number): number => Math.ceil(n - 1e-9);
+const rangeText = (r: CostRange | null): string => (!r ? '—' : up(r.min) === up(r.max) ? inr(up(r.max)) : `${inr(up(r.min))}–${inr(up(r.max))}`);
+const gstAmount = (c: SizeCost): number | null => (c.garment_rupees && c.print_rupees ? ((c.garment_rupees.max + c.print_rupees.max) * c.partner_gst_pct) / 100 : null);
 
 export default function PublishStep({ designId }: { designId: string }) {
   const { design, setDesign, error, reload } = useDesign(designId);
@@ -53,7 +58,13 @@ export default function PublishStep({ designId }: { designId: string }) {
 
   const product = design?.products[0] ?? null;
   const fit = fits?.items.find((i) => i.kind === product?.kind && i.side === product?.side) ?? fits?.items.find((i) => i.kind === product?.kind);
-  const sizes = useMemo(() => (fit?.catalog?.sizes?.length ? fit.catalog.sizes : DEFAULT_SIZES), [fit]);
+  const costs = design?.costs ?? null;
+  const costBySize = useMemo(() => new Map((costs?.sizes ?? []).map((c) => [c.size, c])), [costs]);
+  // Sizes come from the real catalogue; a size with nothing in stock in the chosen colours cannot be sold, so it is left out.
+  const sizes = useMemo(() => {
+    if (costs?.sizes.length) { const live = costs.sizes.filter((c) => c.in_stock).map((c) => c.size); if (live.length) return live; }
+    return fit?.catalog?.sizes?.length ? fit.catalog.sizes : FALLBACK_SIZES;
+  }, [costs, fit]);
 
   if (error && !design) return <Page><LoadError message={error} onRetry={() => void reload()} /></Page>;
   if (!design || !fits || !inited) return <Page><Loading what="Opening the last step…" /></Page>;
@@ -62,16 +73,27 @@ export default function PublishStep({ designId }: { designId: string }) {
   const area = pl ? areaFor(pl.kind, pl.side) : null;
   const priceNum = (sz: string): number => { const n = Math.round(Number(prices[sz])); return Number.isFinite(n) && n > 0 ? n : 0; };
   const allPriced = sizes.every((sz) => priceNum(sz) > 0);
-  const baseSizes = sizes.filter((sz) => !/^[23]XL$/i.test(sz));
+  const baseSizes = sizes.filter((sz) => !/^[2-5]XL$/i.test(sz));
   const base = Math.min(...(baseSizes.length ? baseSizes : sizes).map(priceNum).filter((n) => n > 0), Infinity);
-  const bigDiffer = sizes.some((sz) => /^[23]XL$/i.test(sz) && priceNum(sz) > 0 && Number.isFinite(base) && priceNum(sz) !== base);
-  const costText = fit?.catalog?.cost_from_paise != null ? `from ${inr(Math.round(fit.catalog.cost_from_paise / 100))}` : '[PRINTROVE COST]';
+  const bigDiffer = sizes.some((sz) => /^[2-5]XL$/i.test(sz) && priceNum(sz) > 0 && Number.isFinite(base) && priceNum(sz) !== base);
+  const builtin = design.catalog_source === 'builtin';
+  const unsold = design.colour_info.filter((c) => c.unavailable).map((c) => c.name);
+  const yourCost = (sz: string): number | null => { const t = costBySize.get(sz)?.total_rupees; return typeof t === 'number' ? up(t) : null; };
+  const suggestable = sizes.some((sz) => yourCost(sz) !== null);
+  const suggest = (): void => {
+    setPrices((p) => {
+      const next = { ...p };
+      for (const sz of sizes) { const c = yourCost(sz); if (c !== null && !(Number(next[sz]) > 0)) next[sz] = String(suggestPrice(c)); }
+      return next;
+    });
+    capture('studio_prices_suggested', { sizes: sizes.length });
+  };
   const hasPrint = !!design.print_w && !!pl;
   const colName = collections.find((c) => c.id === collectionId)?.name ?? 'your';
   const keptPhotos = design.photos.filter((p) => p.status === 'kept').length;
   const failed = (steps ?? []).filter((s) => s.status === 'failed').length;
   const published = !!steps && steps.length > 0 && failed === 0 && design.status === 'live';
-  const canPublish = hasPrint && allPriced && !!collectionId && name.trim().length > 1 && !busy;
+  const canPublish = hasPrint && allPriced && !!collectionId && name.trim().length > 1 && !busy && unsold.length === 0;
 
   const pricesBody = (): Record<string, number> => Object.fromEntries(sizes.map((sz) => [sz, priceNum(sz)]));
   const saveDraft = async (): Promise<void> => {
@@ -154,19 +176,40 @@ export default function PublishStep({ designId }: { designId: string }) {
               </select></label></div></div>
       </div>
 
-      <div className="panel"><h2>Sizes and prices</h2>
-        <p className="lead">Size chart comes from Printrove. Shipping is free and included; GST 18% is added at checkout.</p>
+      <div className="panel"><div className="foot" style={{ margin: '0 0 6px' }}><h2>Sizes and prices</h2>
+        <button className="btn ghost sm" type="button" disabled={!suggestable} onClick={suggest}>Suggest prices</button></div>
+        <p className="lead">Shipping is free for the buyer and included in your price; GST 18% is added at checkout.</p>
+        {unsold.length > 0 && (
+          <p className="errtxt" role="alert" style={{ margin: '0 0 12px' }}>
+            {unsold.join(', ')} {unsold.length === 1 ? 'is' : 'are'} not sold by Printrove. <a href={stepHref(design.id, 'product')}>Pick the colours again in the Product step</a> before publishing.
+          </p>
+        )}
+        {builtin && (
+          <p className="note" role="status" style={{ marginBottom: 12 }}>
+            Printrove catalogue unavailable — showing estimates. {design.catalog_reason ?? ''} Printrove&apos;s costs cannot be shown until it is back, so set prices with care.
+          </p>
+        )}
+        {!builtin && !costs && <p className="note" style={{ marginBottom: 12 }}>Place the print in Step 3 to see what Printrove charges for it.</p>}
         <div style={{ overflowX: 'auto', borderRadius: 20 }}>
           <table className="tbl">
-            <thead><tr><th>Size</th><th>Chest</th><th>Length</th><th>Printrove cost</th><th>Your price ₹</th><th>GST</th><th>Buyer pays</th></tr></thead>
+            <thead><tr><th>Size</th><th>Printrove cost</th><th>Printrove GST</th><th>Shipping</th><th>Your cost</th><th>Your price ₹</th><th>Profit</th><th>GST 18%</th><th>Buyer pays</th></tr></thead>
             <tbody>
               {sizes.map((sz) => {
                 const n = priceNum(sz);
+                const c = builtin ? undefined : costBySize.get(sz);
+                const total = c && typeof c.total_rupees === 'number' ? up(c.total_rupees) : null;
+                const profit = n && total !== null ? n - total : null;
+                const gst = c ? gstAmount(c) : null;
                 return (
                   <tr key={sz}>
-                    <td><b>{sz}</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>{costText}</td>
+                    <td><b>{sz}</b></td>
+                    <td>{c && c.garment_rupees && c.print_rupees ? `${rangeText(c.garment_rupees)} + ${rangeText(c.print_rupees)}` : '—'}</td>
+                    <td>{c && gst !== null ? `${inr(up(gst))} (${c.partner_gst_pct}%)` : '—'}</td>
+                    <td>{c && c.shipping_rupees !== null ? inr(up(c.shipping_rupees)) : '—'}</td>
+                    <td><b>{total !== null ? inr(total) : '—'}</b></td>
                     <td><input className="fld" style={{ minHeight: 38, width: 110 }} inputMode="numeric" aria-label={`Price for ${sz}`} value={prices[sz] ?? ''}
                       onChange={(e) => setPrices((p) => ({ ...p, [sz]: e.target.value.replace(/[^\d]/g, '') }))} /></td>
+                    <td>{profit !== null ? <b style={{ color: profit > 0 ? '#1e7a44' : '#b3261e' }}>{profit < 0 ? '−' : ''}{inr(Math.abs(profit))}</b> : '—'}</td>
                     <td>{n ? inr(gstOn(n)) : '—'}</td><td><b>{n ? inr(n + gstOn(n)) : '—'}</b></td>
                   </tr>
                 );
@@ -174,7 +217,10 @@ export default function PublishStep({ designId }: { designId: string }) {
             </tbody>
           </table>
         </div>
-        {bigDiffer && <p className="note" style={{ marginTop: 12 }}>2XL/3XL priced the same for now — the shop charges one price per product, so {inr(base)} applies to every size.</p>}
+        <p style={{ font: '600 14px Nunito', color: '#6b4a2b', margin: '12px 0 0' }}>
+          Costs are Printrove&apos;s prices today for this print size; GST and shipping are estimates until the first real order.
+        </p>
+        {bigDiffer && <p className="note" style={{ marginTop: 12 }}>2XL and larger are priced the same for now — the shop charges one price per product, so {inr(base)} applies to every size.</p>}
       </div>
 
       <div className="panel"><h2>Publish</h2>

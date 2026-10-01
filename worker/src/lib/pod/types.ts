@@ -5,7 +5,9 @@ export type PrintSide = 'front' | 'back';
 /** Per-side print pricing the partner charges on top of the garment: max(min_price_rupees, rate_per_sq_in_rupees x w_in x h_in). */
 export type PrintCostRates = { rate_per_sq_in_rupees: number; min_price_rupees: number };
 export type CatalogVariant = { provider_variant_id: string; colour: string; colour_hex: string | null; size: string; base_cost_paise: number | null; sku?: string;
-  weight_g?: number; print_cost?: { front?: PrintCostRates; back?: PrintCostRates } };
+  weight_g?: number; print_cost?: { front?: PrintCostRates; back?: PrintCostRates };
+  /** [AUMFE-POD-COST-1] The partner's GST rate (percent) on the garment + print charge. */
+  gst_pct?: number };
 export type CatalogProduct = { provider: PodProviderId; provider_product_id: string; kind: string; name: string; category: string | null;
   variants: CatalogVariant[]; size_chart: Array<{ size: string; chest_in?: number; length_in?: number }> | null;
   /** The partner's own printable area per side in inches ([w, h]); authoritative over PRINT_SPECS (the fallback) when present. */

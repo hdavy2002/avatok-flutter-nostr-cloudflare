@@ -66,7 +66,9 @@ export default function ProductStep({ designId }: { designId: string }) {
     if (saved.length) setPicked(new Set(saved));
     else if (fits.best) setPicked(new Set([keyOf(fits.best.kind, fits.best.side ?? 'front')]));
     else setPicked(new Set());
-    setColours(design.colours.length ? design.colours : (fits.best?.colours ?? []));
+    // Colours Printrove does not sell on this product are not carried over: the owner picks again from the real list below.
+    const sold = design.colour_info.filter((c) => !c.unavailable).map((c) => c.name);
+    setColours(design.colours.length ? sold : (fits.best?.colours ?? []));
   }, [design, fits, picked, rows]);
 
   const offered = useMemo(() => {
@@ -117,6 +119,11 @@ export default function ProductStep({ designId }: { designId: string }) {
     <Page>
       <TopBar design={design} />
       <Steps id={design.id} current="product" design={design} />
+      {design.catalog_source === 'builtin' && (
+        <p className="note" role="status" style={{ marginBottom: 18 }}>
+          Printrove catalogue unavailable — showing estimates{design.catalog_reason ? `. ${design.catalog_reason}` : ''} Colours and sizes here are not Printrove&apos;s own, so check again once it is back.
+        </p>
+      )}
       {best && (
         <div className="panel" style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="ph chk" style={{ width: 140, height: 140, borderStyle: 'solid', padding: 10 }}>
@@ -155,12 +162,21 @@ export default function ProductStep({ designId }: { designId: string }) {
           </table>
         </div>
         <p style={{ font: '600 14px Nunito', color: '#6b4a2b', margin: '12px 0 0' }}>
-          Garment sizes (S–3XL chest and length), fabric and Printrove&apos;s base cost for each product are pulled from Printrove when the catalogue syncs.
+          Sizes, colours and Printrove&apos;s prices come from Printrove&apos;s own catalogue. What each size costs you is on the Publish step.
         </p>
       </div>
       <div className="panel">
         <h2>Colours you will sell</h2>
         <p className="lead">Tick every shirt colour this design is sold in. Your photos and the plain-shirt pictures follow this list.</p>
+        {design.colour_info.some((c) => c.unavailable) && (
+          <div className="note" role="alert" style={{ marginBottom: 14 }}>
+            <b>Not sold by Printrove — pick again:</b>{' '}
+            {design.colour_info.filter((c) => c.unavailable).map((c, i) => (
+              <span key={c.name} style={{ marginRight: 10 }}><i style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: c.hex, border: '2px solid #0002', verticalAlign: '-2px', marginRight: 4 }}></i>{c.name}{i < design.colour_info.filter((x) => x.unavailable).length - 1 ? ',' : ''}</span>
+            ))}
+            <br />Choose from the colours below, which are the ones Printrove really prints this product in.
+          </div>
+        )}
         <div className="row">
           {offered.map((c) => (
             <button key={c.name} type="button" className={`sw${usable.includes(c.name) ? ' on' : ''}`} aria-pressed={usable.includes(c.name)} onClick={() => toggleColour(c.name)}>

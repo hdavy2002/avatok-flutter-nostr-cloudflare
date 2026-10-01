@@ -8782,5 +8782,28 @@
         "note": "Catalogue sync after PRINTROVE_LOGIN is set. count should be about 13 products (the mapped garment kinds); 0 or a failure means the real payload no longer matches lib/pod/printrove.ts mapProduct."
       }
     ]
+  },
+  "AUMFE-POD-COST-1": {
+    "description": "[AUMFE-POD-COST-1 2026-10-01] Studio catalogue now comes from Printrove whenever its login is set (auto-synced when empty or a day old, plus a daily cron refresh; built-in estimates only as a visible fallback, catalog_source:'builtin'). Drafts made on the built-in catalogue are remapped to the Printrove product of the same kind; chosen colours Printrove does not sell are flagged unavailable and publish refuses (colour_unavailable). Design JSON carries costs per size (garment, print for the saved print size, partner GST, shipping to 110001 cached in KV, total). Publish step shows Printrove cost, GST, shipping, Your cost, Profit and a Suggest prices helper; the [FROM PRINTROVE]/[PRINTROVE COST] placeholders are gone.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_studio_costs_viewed",
+        "property": "source",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner opened a design in the Studio. source should be 'printrove'; 'builtin' means the Printrove catalogue is unavailable and no costs are shown."
+      },
+      {
+        "event": "pod_catalog_auto_synced",
+        "property": "count",
+        "exists": true,
+        "min_events": 0,
+        "note": "Fires when the Studio or the daily cron refreshes the stored catalogue (empty or older than 24 h). count should be about 13 products."
+      }
+    ]
   }
 }

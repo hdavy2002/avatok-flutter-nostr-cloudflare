@@ -10,10 +10,9 @@ import { requireAdmin } from "./admin_money";
 import { track, trackException } from "../hooks";
 import { readConfig, writeConfigOverrides } from "./config";
 import {
-  POD_PROVIDER_IDS, getPodProvider, podConnectionPeek, podProviderConfigured, PodError,
-  type CatalogProduct, type CatalogVariant, type PodProviderId,
+  POD_PROVIDER_IDS, getPodProvider, podConnectionPeek, podProviderConfigured, PodError, ensurePodCatalog, syncCatalogToDb,
+  type PodProviderId,
 } from "../lib/pod";
-import { builtInCatalog } from "../lib/pod/manual";
 
 const APP = "saathum";
 const BASE = "/api/admin/v2/shop";
@@ -80,11 +79,6 @@ const PROVIDER_LABELS: Record<PodProviderId, { label: string; supportsApi: boole
   printrove: { label: "Printrove", supportsApi: true },
 };
 
-type CatalogRow = {
-  provider: string; provider_product_id: string; kind: string; name: string; category: string | null;
-  variants_json: string; size_chart_json: string | null; raw_json: string | null; synced_at: number;
-};
-
 async function catalogStats(env: Env, provider: PodProviderId): Promise<{ count: number; synced_at: number | null }> {
   try {
     const r = await env.DB_META.prepare("SELECT COUNT(*) AS n, MAX(synced_at) AS at FROM pod_catalog WHERE provider=?1")
@@ -102,7 +96,7 @@ async function catalogStats(env: Env, provider: PodProviderId): Promise<{ count:
 async function getPartner(_req: Request, env: Env): Promise<Response> {
   const cfg = await readConfig(env);
   const provider: PodProviderId = isProviderId(cfg.shopPodProvider) ? cfg.shopPodProvider : "manual";
-  const [connection, catalog] = await Promise.all([podConnectionPeek(env, provider), catalogStats(env, provider)]);
+  const [connection, catalog] = await Promise.all([podConnectionPeek(env, provider), catalogStats(env, podProviderConfigured(env, "printrove") ? "printrove" : provider)]); // catalogue = Printrove's whenever connected [AUMFE-POD-COST-1]
   return json({
     provider,
     providers: POD_PROVIDER_IDS.map((id) => ({ id, ...PROVIDER_LABELS[id], configured: podProviderConfigured(env, id) })),
@@ -142,31 +136,13 @@ async function testPartner(req: Request, env: Env, a: { uid: string }): Promise<
 // ---------------------------------------------------------------------------
 // POST partner/sync
 // ---------------------------------------------------------------------------
-const BATCH = 50;
-
 async function syncPartner(req: Request, env: Env, a: { uid: string }): Promise<Response> {
   const id = await targetProvider(req, env);
   if (id instanceof Response) return id;
-  const started = Date.now();
-  const items = await (await getPodProvider(env, id)).syncCatalog();
-  const now = Date.now();
-  const stmt = env.DB_META.prepare(
-    `INSERT INTO pod_catalog (provider, provider_product_id, kind, name, category, variants_json, size_chart_json, raw_json, synced_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?8)
-     ON CONFLICT(provider, provider_product_id) DO UPDATE SET kind=excluded.kind, name=excluded.name, category=excluded.category,
-       variants_json=excluded.variants_json, size_chart_json=excluded.size_chart_json, raw_json=excluded.raw_json, synced_at=excluded.synced_at`,
-  );
-  const writes = items.map((p) => stmt.bind(
-    p.provider, p.provider_product_id, p.kind, p.name, p.category, JSON.stringify(p.variants),
-    p.size_chart ? JSON.stringify(p.size_chart) : null, now,
-    p.print_area_in ? JSON.stringify({ print_area_in: p.print_area_in }) : null, // raw_json carries the partner's own print areas
-  ));
-  for (let i = 0; i < writes.length; i += BATCH) await env.DB_META.batch(writes.slice(i, i + BATCH));
-  // Products the partner no longer lists drop out of the catalogue (this sync is the whole truth for the provider).
-  await env.DB_META.prepare("DELETE FROM pod_catalog WHERE provider=?1 AND synced_at < ?2").bind(id, now).run();
-  safeTrack(env, a.uid, "pod_partner_synced", { provider: id, count: items.length, ms: Date.now() - started });
-  await audit(env, a.uid, "pod_partner_sync", id, { count: items.length });
-  return json({ count: items.length, synced_at: now }, 200, noStore);
+  const r = await syncCatalogToDb(env, id); // [AUMFE-POD-COST-1] shared with the automatic daily refresh
+  safeTrack(env, a.uid, "pod_partner_synced", { provider: id, count: r.count, ms: r.ms });
+  await audit(env, a.uid, "pod_partner_sync", id, { count: r.count });
+  return json({ count: r.count, synced_at: r.synced_at }, 200, noStore);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,42 +185,15 @@ async function putSettings(req: Request, env: Env, a: { uid: string }): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// GET catalog?kind=
+// GET catalog?kind=   [AUMFE-POD-COST-1] Printrove's catalogue whenever its login is set (auto-synced); the built-in
+// estimate catalogue only as a visible fallback (catalog_source:'builtin' + catalog_reason).
 // ---------------------------------------------------------------------------
-function parseJsonColumn<T>(env: Env, raw: string | null, fallback: T, what: string): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch (e) {
-    void trackException(env, e, { route: "pod_partner/catalog", handled: true, app_name: APP, extra: { column: what } });
-    return fallback;
-  }
-}
-
 async function getCatalog(req: Request, env: Env): Promise<Response> {
   const kind = new URL(req.url).searchParams.get("kind")?.trim() || "";
   if (kind && !/^[a-z_]{1,32}$/.test(kind)) return err(400, "invalid_input", "Unknown kind.", { field: "kind" });
-  const cfg = await readConfig(env);
-  const provider: PodProviderId = isProviderId(cfg.shopPodProvider) ? cfg.shopPodProvider : "manual";
-  let rows: CatalogRow[] = [];
-  try {
-    const r = kind
-      ? await env.DB_META.prepare("SELECT * FROM pod_catalog WHERE provider=?1 AND kind=?2 ORDER BY name").bind(provider, kind).all<CatalogRow>()
-      : await env.DB_META.prepare("SELECT * FROM pod_catalog WHERE provider=?1 ORDER BY kind, name").bind(provider).all<CatalogRow>();
-    rows = r.results ?? [];
-  } catch (e) {
-    if (!/no such table/i.test(String((e as { message?: string })?.message ?? e))) throw e;
-  }
-  const items: CatalogProduct[] = rows.length
-    ? rows.map((r) => {
-      const area = parseJsonColumn<{ print_area_in?: CatalogProduct["print_area_in"] } | null>(env, r.raw_json, null, "raw_json")?.print_area_in;
-      return {
-        provider, provider_product_id: r.provider_product_id, kind: r.kind, name: r.name, category: r.category,
-        variants: parseJsonColumn<CatalogVariant[]>(env, r.variants_json, [], "variants_json"),
-        size_chart: parseJsonColumn<CatalogProduct["size_chart"]>(env, r.size_chart_json, null, "size_chart_json"),
-        ...(area ? { print_area_in: area } : {}),
-      };
-    })
-    : builtInCatalog().filter((p) => !kind || p.kind === kind); // nothing synced yet: the built-in manual catalogue
-  return json({ items }, 200, noStore);
+  const info = await ensurePodCatalog(env);
+  const items = info.products.filter((p) => !kind || p.kind === kind);
+  return json({ items, catalog_source: info.source, catalog_reason: info.reason, synced_at: info.synced_at }, 200, noStore);
 }
 
 export const ADMIN2_POD_PARTNER_ROUTES: Admin2RouteDef[] = [

@@ -9,6 +9,8 @@ import type { PodProvider, PodProviderId } from './types';
 export * from './types';
 export { PRINT_SPECS, maxSharpInches, fitForProduct, estimatePrintCostRupees, areaFor } from './specs';
 export { splitAddressForPartner, deliveryPhone10 } from './address';
+export { ensurePodCatalog, loadStoredCatalog, syncCatalogToDb, runPodCatalogRefresh, referenceShippingRupees, CATALOG_MAX_AGE_MS, SHIP_REF_PINCODE } from './catalog_store';
+export type { CatalogInfo } from './catalog_store';
 
 export const POD_PROVIDER_IDS: PodProviderId[] = ['manual', 'printrove'];
 

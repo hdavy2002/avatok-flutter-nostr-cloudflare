@@ -38,6 +38,15 @@ export interface StudioPhoto {
 }
 export interface PublishStepRow { key: string; label: string; status: 'done' | 'skipped' | 'failed' | 'pending'; note: string }
 export interface DesignCopy { name?: string; description?: string; seo_title?: string; publish_steps?: PublishStepRow[]; [k: string]: unknown }
+/** [AUMFE-POD-COST-1] What the print partner charges per size for this print (rupees). */
+export interface CostRange { min: number; max: number }
+export interface SizeCost {
+  size: string; garment_rupees: CostRange | null; print_rupees: CostRange | null; partner_gst_pct: number;
+  shipping_rupees: number | null; total_rupees: number | null; in_stock: boolean;
+}
+export interface DesignCosts { provider_product_id: string; side: PrintSide; print_w_in: number; print_h_in: number; shipping_rupees: number | null; sizes: SizeCost[] }
+export type CatalogSource = 'printrove' | 'builtin';
+export interface ColourInfo { name: string; hex: string; unavailable: boolean }
 export interface Design {
   id: string; name: string; status: StudioStatus; step: StudioStep;
   art_w: number | null; art_h: number | null; art_bytes: number | null; art_mime: string | null;
@@ -45,6 +54,9 @@ export interface Design {
   products: ChosenProduct[]; placement: SavedPlacement | null;
   print_w: number | null; print_h: number | null; print_preview_url: string | null; print_url: string | null;
   version: number; locked_at: number | null; colours: string[];
+  /** Chosen colours with their swatch; `unavailable` = the print partner does not sell it on this product. */
+  colour_info: ColourInfo[];
+  catalog_source: CatalogSource; catalog_reason: string | null; costs: DesignCosts | null;
   copy: DesignCopy; prices: Record<string, number>; product_id: string | null;
   photos: StudioPhoto[]; photo_coverage: { colour: string; photos: number }[];
   created_at: number; updated_at: number;
@@ -60,7 +72,7 @@ export interface FitItem {
   kind: string; label: string; side: PrintSide; area_in: [number, number]; full_area_dpi: number; sharp_w_in: number;
   verdict: 'great' | 'good' | 'small_only' | 'too_small'; note: string; catalog: FitCatalog | null;
 }
-export interface Fits { items: FitItem[]; best: { kind: string; side?: PrintSide; colours: string[]; text: string } | null }
+export interface Fits { catalog_source?: CatalogSource; catalog_reason?: string | null; items: FitItem[]; best: { kind: string; side?: PrintSide; colours: string[]; text: string } | null }
 
 export interface PublishInput { collection_id: string; badge: string; prices: Record<string, number>; slots: string[] }
 export interface PublishResult { design: Design; steps: PublishStepRow[] }
@@ -100,6 +112,10 @@ export function normDesign(r: Raw): Design {
     version: num(r.version) ?? 1, locked_at: num(r.locked_at),
     // Colours are stored as names; an object form {name} is tolerated.
     colours: colours.map((c) => (isObj(c) ? String(c.name ?? '') : String(c))).filter(Boolean),
+    colour_info: colours.filter(isObj).map((c) => ({ name: String(c.name ?? ''), hex: typeof c.hex === 'string' ? c.hex : '#888888', unavailable: c.unavailable === true })).filter((c) => c.name),
+    catalog_source: r.catalog_source === 'printrove' ? 'printrove' : 'builtin',
+    catalog_reason: str(r.catalog_reason),
+    costs: isObj(r.costs) && Array.isArray(r.costs.sizes) ? (r.costs as unknown as DesignCosts) : null,
     copy: pj<DesignCopy>(r.copy ?? r.copy_json, {}) ?? {},
     prices: pj<Record<string, number>>(r.prices ?? r.prices_json, {}) ?? {},
     product_id: str(r.product_id),
@@ -221,6 +237,13 @@ export const fmtIn = (v: number): string => (Math.round(v * 10) / 10).toFixed(1)
 export const fmtBytes = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 /** GST 18% added at checkout (mockup arithmetic: price 799 → 144 → 943). */
 export const gstOn = (rupees: number): number => Math.round(rupees * 0.18);
+
+/** "Suggest prices": cost x 1.8, rounded up to the next price ending in 49 or 99 (₹x49 / ₹x99). */
+export function suggestPrice(costRupees: number): number {
+  let n = Math.max(1, Math.ceil(costRupees * 1.8));
+  while (n % 50 !== 49) n += 1;
+  return n;
+}
 
 /** Fallback swatches (the mockup's five) when the catalogue carries no colour hex. */
 export const DEFAULT_COLOURS: { name: string; hex: string }[] = [

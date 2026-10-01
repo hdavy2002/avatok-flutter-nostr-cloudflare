@@ -1,7 +1,7 @@
 // [AUMFE-POD-STUDIO-API-1 2026-10-01] Pure helpers for the Shop Studio API (routes/admin2_studio.ts).
 // Contract: Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md section 4. No I/O here so every rule is unit-testable.
 // Print-partner facts (print areas, DPI verdicts) come from lib/pod; nothing partner-specific is named in this file.
-import { PRINT_SPECS, fitForProduct } from "./pod";
+import { PRINT_SPECS, fitForProduct, estimatePrintCostRupees } from "./pod";
 import type { CatalogProduct, CatalogVariant, PrintSide } from "./pod";
 
 export type PodKind = keyof typeof PRINT_SPECS.areas;
@@ -384,7 +384,8 @@ export function orderPhotosForShop(photos: PhotoOrderRow[]): PhotoOrderRow[] {
 // ---------------------------------------------------------------------------
 // Colours / prices / copy input
 // ---------------------------------------------------------------------------
-export type DesignColour = { name: string; hex: string };
+/** `unavailable` = the chosen colour is not offered by the partner product (set by reconcileColours; publish refuses while any is set). */
+export type DesignColour = { name: string; hex: string; unavailable?: boolean };
 export function cleanColours(raw: unknown, catalogHexByName: Map<string, string | null> = new Map()): { ok: true; value: DesignColour[] } | { ok: false; message: string } {
   if (!Array.isArray(raw) || raw.length > 12) return { ok: false, message: "Choose up to 12 colours." };
   const out: DesignColour[] = [];
@@ -538,3 +539,91 @@ export function cleanProducts(raw: unknown): { ok: true; value: Array<{ kind: Po
   }
   return { ok: true, value: out };
 }
+
+// ---------------------------------------------------------------------------
+// [AUMFE-POD-COST-1] Cost per size, draft remap and colour reconciliation
+// ---------------------------------------------------------------------------
+export type Range = { min: number; max: number };
+export type SizeCost = {
+  size: string;
+  /** Garment charge (min-max across the chosen colours), rupees. */
+  garment_rupees: Range | null;
+  /** Print charge for the saved print size on the saved side (min-max across the chosen colours), rupees. */
+  print_rupees: Range | null;
+  partner_gst_pct: number;
+  /** Cheapest courier charge to the reference pincode, rupees; null when it could not be checked. */
+  shipping_rupees: number | null;
+  /** (max garment + max print) plus partner GST, plus shipping (when known). Null when the partner gave no garment or print price. */
+  total_rupees: number | null;
+  in_stock: boolean;
+};
+export type DesignCosts = { provider_product_id: string; side: PrintSide; print_w_in: number; print_h_in: number; shipping_rupees: number | null; sizes: SizeCost[] };
+
+export const DEFAULT_PARTNER_GST_PCT = 5;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const range = (xs: number[]): Range | null => (xs.length ? { min: r2(Math.min(...xs)), max: r2(Math.max(...xs)) } : null);
+
+/**
+ * What the partner charges per size for this print: across the chosen colours (all colours when none chosen).
+ * Sizes are every size the product has in any colour; a size with no stocked variant in the chosen colours is in_stock:false.
+ */
+export function computeSizeCosts(
+  product: Pick<CatalogProduct, "variants">, chosenColours: string[], side: PrintSide, printWIn: number, printHIn: number, shippingRupees: number | null,
+): SizeCost[] {
+  const want = new Set(chosenColours.map((c) => c.toLowerCase()));
+  const sizes = sortSizes([...new Set(product.variants.map((v) => v.size))]);
+  return sizes.map((size) => {
+    const vs = product.variants.filter((v) => v.size === size && (!want.size || want.has(v.colour.toLowerCase())));
+    const garment = range(vs.map((v) => v.base_cost_paise).filter((n): n is number => typeof n === "number" && n > 0).map((n) => n / 100));
+    const print = range(vs.map((v) => estimatePrintCostRupees(v, side, printWIn, printHIn)).filter((n): n is number => n !== null));
+    const gst = vs.length ? Math.max(...vs.map((v) => (typeof v.gst_pct === "number" ? v.gst_pct : DEFAULT_PARTNER_GST_PCT))) : DEFAULT_PARTNER_GST_PCT;
+    const total = garment && print ? r2((garment.max + print.max) * (1 + gst / 100) + (shippingRupees ?? 0)) : null;
+    return { size, garment_rupees: garment, print_rupees: print, partner_gst_pct: gst, shipping_rupees: shippingRupees, total_rupees: total, in_stock: vs.length > 0 };
+  });
+}
+
+/** Chosen-colour name -> the partner's own name for it. Documented small alias table; nothing else is guessed. */
+export const COLOUR_ALIASES: Record<string, string> = { navy: "navy blue", grey: "melange grey" };
+
+export function matchCatalogColour(name: string, offered: CatalogColour[]): CatalogColour | null {
+  const n = name.trim().toLowerCase();
+  const exact = offered.find((c) => c.name.toLowerCase() === n);
+  if (exact) return exact;
+  const alias = COLOUR_ALIASES[n];
+  return alias ? offered.find((c) => c.name.toLowerCase() === alias) ?? null : null;
+}
+
+/**
+ * Chosen colours checked against the partner product. A match (exact / case-insensitive / alias) takes the partner's name and
+ * swatch; anything else is kept but flagged unavailable:true so the owner picks again. Photos are re-keyed via `renamed`.
+ */
+export function reconcileColours(chosen: DesignColour[], offered: CatalogColour[]): { colours: DesignColour[]; changed: boolean; renamed: Array<{ from: string; to: string }> } {
+  const renamed: Array<{ from: string; to: string }> = [];
+  const colours = chosen.map((c): DesignColour => {
+    const m = matchCatalogColour(c.name, offered);
+    if (!m) return { name: c.name, hex: c.hex, unavailable: true };
+    if (m.name !== c.name) renamed.push({ from: c.name, to: m.name });
+    return { name: m.name, hex: m.hex ?? c.hex };
+  });
+  // Two chosen colours can collapse onto one partner colour (Navy + Navy Blue): keep the first.
+  const seen = new Set<string>();
+  const unique = colours.filter((c) => { const k = c.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { colours: unique, changed: JSON.stringify(unique) !== JSON.stringify(chosen), renamed };
+}
+
+export type ProductRefLite = { kind: string; provider_product_id: string; side: string };
+/** A draft made on the built-in catalogue (provider_product_id "manual:...") moves to the partner product of the same kind. */
+export function remapProducts<T extends ProductRefLite>(products: T[], catalog: Array<Pick<CatalogProduct, "provider_product_id" | "kind">>): { products: T[]; changed: boolean } {
+  let changed = false;
+  const out = products.map((p) => {
+    if (!p.provider_product_id.startsWith("manual:")) return p;
+    const hit = catalog.find((c) => c.kind === p.kind && !c.provider_product_id.startsWith("manual:"));
+    if (!hit) return p;
+    changed = true;
+    return { ...p, provider_product_id: hit.provider_product_id };
+  });
+  return { products: out, changed };
+}
+
+/** First chosen colour that the partner product does not offer (publish refuses while this is set). */
+export const firstUnavailableColour = (colours: DesignColour[]): string | null => colours.find((c) => c.unavailable)?.name ?? null;

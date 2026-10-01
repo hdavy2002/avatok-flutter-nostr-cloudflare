@@ -319,6 +319,8 @@ export class PrintroveProvider implements PodProvider {
       };
       const w = num(o.weight);
       if (w !== null) v.weight_g = w;
+      const gst = num(o.gst); // [AUMFE-POD-COST-1] percent (probe 2026-10-01: 5)
+      if (gst !== null && gst >= 0 && gst <= 100) v.gst_pct = gst;
       const front = this.rates(o, 'front');
       const back = this.rates(o, 'back');
       if (front || back) v.print_cost = { ...(front ? { front } : {}), ...(back ? { back } : {}) };

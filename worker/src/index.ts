@@ -269,6 +269,7 @@ import { marketplaceCategories, proposedCategories } from "./routes/categories";
 import { sitemapListings, sitemapCreators, sitemapManifest } from "./routes/sitemap"; // [WEB-SEO-AUTO-1]
 import { composeSession, composeTurn, composePublish } from "./routes/compose";
 import { runPodFulfilmentTick } from "./lib/pod_fulfil"; // [AUMFE-POD-FULFIL-1]
+import { runPodCatalogRefresh } from "./lib/pod"; // [AUMFE-POD-COST-1]
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
@@ -582,6 +583,9 @@ export default {
         runPodFulfilmentTick(env, ctx)
           .then((r) => { if (r.retried || r.autoSent || r.polled) console.log("[pod-fulfilment]", JSON.stringify(r)); })
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "pod_fulfilment_tick", handled: true, app_name: "saathum" })); console.error("[pod-fulfilment] failed:", String(e)); }),
+        // [AUMFE-POD-COST-1 2026-10-01] Once a day: refresh the stored Printrove catalogue (cheap check first; guarded; never throws).
+        runPodCatalogRefresh(env)
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "pod_catalog_refresh", handled: true, app_name: "saathum" })); console.error("[pod-catalog] failed:", String(e)); }),
       ]),
     );
   },

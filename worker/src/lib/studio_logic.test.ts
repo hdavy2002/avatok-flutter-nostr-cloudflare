@@ -6,6 +6,7 @@ import {
   contrastRatio, fallbackBestText, fallbackCopy, looksFaded, orderPhotosForShop, parseCopyReply, parseImageInfo, partnerPlacement,
   pendingSteps, photoChecks, photoCoverage, pickBest, printTypeFor, resolveVariants, resumeSteps, shopPrice, sizeRank, sniffImageMime,
   summariseCatalog, validatePlacement, variantSku, STEP_KEYS, type Placement,
+  computeSizeCosts, reconcileColours, remapProducts, matchCatalogColour, firstUnavailableColour,
 } from "./studio_logic";
 
 // --- tiny image builders ----------------------------------------------------
@@ -297,5 +298,76 @@ describe("publish planning", () => {
   it("sku keeps the partner's, else is deterministic", () => {
     expect(variantSku("dsn-1", 2, "Off-white", "2XL", "SKU-9")).toBe("SKU-9");
     expect(variantSku("dsn-1", 2, "Off-white", "2XL")).toBe("dsn-1-v2-off-white-2xl");
+  });
+});
+
+// [AUMFE-POD-COST-1]
+const rates = { front: { rate_per_sq_in_rupees: 4, min_price_rupees: 60 }, back: { rate_per_sq_in_rupees: 3, min_price_rupees: 50 } };
+const v = (colour: string, size: string, base: number, extra: Record<string, unknown> = {}) =>
+  ({ provider_variant_id: `${colour}-${size}`, colour, colour_hex: "#111111", size, base_cost_paise: base * 100, print_cost: rates, gst_pct: 5, ...extra });
+
+describe("computeSizeCosts", () => {
+  const product = { variants: [v("Black", "S", 150), v("Black", "M", 160), v("White", "M", 170), v("Black", "5XL", 220, { gst_pct: 12 })] };
+  it("sums garment + print, adds partner GST and shipping, per size across chosen colours", () => {
+    const rows = computeSizeCosts(product, ["Black"], "front", 3.4, 3.4, 60);
+    expect(rows.map((r) => r.size)).toEqual(["S", "M", "5XL"]);
+    const s = rows[0];
+    expect(s.garment_rupees).toEqual({ min: 150, max: 150 });
+    expect(s.print_rupees).toEqual({ min: 60, max: 60 }); // 4 x 3.4 x 3.4 = 46.24 < minimum 60
+    expect(s.total_rupees).toBe(Math.round(((150 + 60) * 1.05 + 60) * 100) / 100); // 280.5
+    expect(s.shipping_rupees).toBe(60);
+    expect(s.in_stock).toBe(true);
+  });
+  it("shows a min-max range when colours differ and totals on the dearest", () => {
+    const m = computeSizeCosts(product, ["Black", "white"], "front", 3.4, 3.4, null).find((r) => r.size === "M")!;
+    expect(m.garment_rupees).toEqual({ min: 160, max: 170 });
+    expect(m.total_rupees).toBe(Math.round((170 + 60) * 1.05 * 100) / 100); // shipping unknown -> not added
+  });
+  it("uses the variant's own GST and the larger print charge for a big print", () => {
+    const x = computeSizeCosts(product, ["Black"], "back", 10, 10, 0).find((r) => r.size === "5XL")!;
+    expect(x.partner_gst_pct).toBe(12);
+    expect(x.print_rupees).toEqual({ min: 300, max: 300 });
+    expect(x.total_rupees).toBe(Math.round((220 + 300) * 1.12 * 100) / 100);
+  });
+  it("marks a size with no stocked variant in the chosen colours as out of stock, and works with no colours chosen", () => {
+    const rows = computeSizeCosts(product, ["White"], "front", 3, 3, 60);
+    expect(rows.find((r) => r.size === "S")).toMatchObject({ in_stock: false, garment_rupees: null, total_rupees: null });
+    expect(computeSizeCosts(product, [], "front", 3, 3, 60).find((r) => r.size === "S")!.in_stock).toBe(true);
+  });
+  it("has no total when the partner gave no print rates or garment price", () => {
+    const bare = { variants: [{ provider_variant_id: "1", colour: "Black", colour_hex: null, size: "M", base_cost_paise: null }] };
+    expect(computeSizeCosts(bare, ["Black"], "front", 3, 3, 60)[0]).toMatchObject({ garment_rupees: null, print_rupees: null, total_rupees: null, partner_gst_pct: 5 });
+  });
+});
+
+describe("remap and colour reconciliation", () => {
+  const offered = [{ name: "Black", hex: "#1a1a1a" }, { name: "Navy Blue", hex: "#001f3f" }, { name: "Melange Grey", hex: "#999999" }];
+  it("moves manual: products to the partner product of the same kind and leaves others alone", () => {
+    const r = remapProducts(
+      [{ kind: "polo", provider_product_id: "manual:polo", side: "front" }, { kind: "mens_tee", provider_product_id: "460", side: "back" }, { kind: "hoodie", provider_product_id: "manual:hoodie", side: "front" }],
+      [{ provider_product_id: "1182", kind: "polo" }, { provider_product_id: "460", kind: "mens_tee" }],
+    );
+    expect(r.changed).toBe(true);
+    expect(r.products.map((p) => p.provider_product_id)).toEqual(["1182", "460", "manual:hoodie"]);
+    expect(remapProducts([{ kind: "polo", provider_product_id: "1182", side: "front" }], [{ provider_product_id: "1182", kind: "polo" }]).changed).toBe(false);
+  });
+  it("matches exact, case-insensitive and the documented aliases only", () => {
+    expect(matchCatalogColour("black", offered)?.name).toBe("Black");
+    expect(matchCatalogColour("Navy", offered)?.name).toBe("Navy Blue");
+    expect(matchCatalogColour("Grey", offered)?.name).toBe("Melange Grey");
+    expect(matchCatalogColour("Bottle green", offered)).toBeNull();
+  });
+  it("renames matches, flags the rest unavailable and reports renames", () => {
+    const r = reconcileColours([{ name: "Navy", hex: "#1b2a4a" }, { name: "Bottle green", hex: "#0f4a35" }, { name: "black", hex: "#000000" }], offered);
+    expect(r.colours).toEqual([{ name: "Navy Blue", hex: "#001f3f" }, { name: "Bottle green", hex: "#0f4a35", unavailable: true }, { name: "Black", hex: "#1a1a1a" }]);
+    expect(r.renamed).toEqual([{ from: "Navy", to: "Navy Blue" }, { from: "black", to: "Black" }]);
+    expect(r.changed).toBe(true);
+    expect(firstUnavailableColour(r.colours)).toBe("Bottle green");
+    // settled state is stable and clears the flag when the colour becomes sold
+    expect(reconcileColours(r.colours, offered).changed).toBe(false);
+    expect(reconcileColours([{ name: "Black", hex: "#1a1a1a", unavailable: true }], offered).colours).toEqual([{ name: "Black", hex: "#1a1a1a" }]);
+  });
+  it("collapses two chosen colours that land on one partner colour", () => {
+    expect(reconcileColours([{ name: "Navy", hex: "#111111" }, { name: "Navy Blue", hex: "#222222" }], offered).colours).toHaveLength(1);
   });
 });
