@@ -1,0 +1,10 @@
+---
+// [AUMFE-POD-FULFIL-1 2026-10-01] /admin/shop/partner — Print partner settings (Specs/studio-mockup/PrintPartner.dc.html).
+export const prerender = false;
+import ShopLayout from '../../../islands/admin2/shop/ShopLayout.astro';
+import PartnerPanel from '../../../islands/admin2/shop/PartnerPanel.tsx';
+---
+
+<ShopLayout active="shop-partner" tab="Print partner">
+  <PartnerPanel client:load />
+</ShopLayout>

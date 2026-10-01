@@ -45,6 +45,15 @@ export default function ShopAdmin({ page }: { page: ShopPage }) {
 
   return (
     <div className="shop-admin" data-shop-page={page}>
+      {page === 'orders' ? (
+        /* [AUMFE-POD-FULFIL-1] Orders mockup tiles (Specs/studio-mockup/Orders.dc.html). */
+        <div className="sh-kpis">
+          <div className="sh-kpi"><small>Paid, ready to send</small><b>{kpis ? kpis.to_print : '—'}</b><em style={{ color: '#6b4a00' }}>bank confirmed</em></div>
+          <div className="sh-kpi"><small>Waiting for bank</small><b>{kpis ? (kpis.waiting_bank ?? 0) : '—'}</b><em style={{ color: '#6b4a2b' }}>customer says paid</em></div>
+          <div className="sh-kpi"><small>At Printrove</small><b>{kpis ? (kpis.at_printer ?? kpis.to_ship) : '—'}</b><em style={{ color: '#6b4a2b' }}>printing or packed</em></div>
+          <div className="sh-kpi"><small>Shipped this week</small><b>{kpis ? (kpis.shipped_7d ?? 0) : '—'}</b><em>tracking sent</em></div>
+        </div>
+      ) : (
       <div className="sh-kpis">
         <div className="sh-kpi"><small>Orders today</small><b>{kpis ? kpis.orders_today : '—'}</b>
           <em style={diff < 0 ? { color: '#9b1c14' } : undefined}>{kpis ? `${diff < 0 ? '−' : '+'}${Math.abs(diff)} vs yesterday` : ' '}</em></div>
@@ -52,6 +61,7 @@ export default function ShopAdmin({ page }: { page: ShopPage }) {
         <div className="sh-kpi"><small>To ship</small><b>{kpis ? kpis.to_ship : '—'}</b><em style={{ color: '#9b1c14' }}>{kpis ? `${kpis.stale_48h} older than 48h` : ' '}</em></div>
         <div className="sh-kpi"><small>To send to Printrove</small><b>{kpis ? kpis.to_print : '—'}</b><em style={{ color: '#7a5a00' }}>paid, not placed yet</em></div>
       </div>
+      )}
 
       {page === 'orders' && <OrdersPanel onChanged={() => void refreshKpis()} />}
       {page === 'products' && <ProductsPanel rev={rev} />}

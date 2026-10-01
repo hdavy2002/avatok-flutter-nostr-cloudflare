@@ -268,6 +268,7 @@ import {
 import { marketplaceCategories, proposedCategories } from "./routes/categories";
 import { sitemapListings, sitemapCreators, sitemapManifest } from "./routes/sitemap"; // [WEB-SEO-AUTO-1]
 import { composeSession, composeTurn, composePublish } from "./routes/compose";
+import { runPodFulfilmentTick } from "./lib/pod_fulfil"; // [AUMFE-POD-FULFIL-1]
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
@@ -576,6 +577,11 @@ export default {
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_transcript_emails", handled: true, app_name: "saathum" })); console.error("[preeti-transcripts] failed:", String(e)); }),
         runAgentLiveSweeps(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "agent_live_sweeps" })); console.error("[agent-live-sweeps] failed:", String(e)); }),
+        // [AUMFE-POD-FULFIL-1 2026-10-01] Print-partner sync: retry stuck sends, auto-send paid orders, poll shipped status.
+        // A no-op while shopPodProvider is 'manual'. Never throws out of the tick.
+        runPodFulfilmentTick(env, ctx)
+          .then((r) => { if (r.retried || r.autoSent || r.polled) console.log("[pod-fulfilment]", JSON.stringify(r)); })
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "pod_fulfilment_tick", handled: true, app_name: "saathum" })); console.error("[pod-fulfilment] failed:", String(e)); }),
       ]),
     );
   },

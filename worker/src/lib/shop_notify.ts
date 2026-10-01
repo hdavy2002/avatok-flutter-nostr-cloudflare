@@ -100,6 +100,19 @@ export async function notifyShopWhatsApp(env: Env, kind: ShopNotifyKind, row: Sh
   }
 }
 
+/**
+ * [AUMFE-POD-FULFIL-1] The buyer messages that follow a fulfilment transition, in ONE place so the admin's manual buttons
+ * (routes/admin2_shop_orders.ts) and the automatic print-partner path (lib/pod_fulfil.ts) send byte-identical messages.
+ * `cancel` has no buyer template (the refund message follows when the money goes back). Never throws.
+ */
+export type ShopTransitionNotify = "at-printer" | "shipped" | "delivered" | "refund" | "cancel";
+export async function notifyShopTransition(env: Env, action: ShopTransitionNotify, after: ShopOrderRow): Promise<void> {
+  if (action === "at-printer") await notifyShopWhatsApp(env, "shop_order_printing", after);
+  else if (action === "shipped") { await notifyShopWhatsApp(env, "shop_order_shipped", after, after.awb ?? ""); await notifyShopEmail(env, "shipped", after); }
+  else if (action === "delivered") await notifyShopWhatsApp(env, "shop_order_delivered", after);
+  else if (action === "refund") { await notifyShopWhatsApp(env, "shop_order_refunded", after); await notifyShopEmail(env, "refunded", after); }
+}
+
 // ---------------------------------------------------------------------------
 // Owner alerts
 // ---------------------------------------------------------------------------
@@ -111,6 +124,16 @@ export async function alertOwnerNewShopOrder(env: Env, row: ShopOrderRow): Promi
     await sendAdminAlert(env, `${BRAND.nameCompact} shop: new paid order ${row.order_no}\n${rupees(row.total_rupees)} - ${n} item${n === 1 ? "" : "s"} - ${a.city ?? ""}${a.state ? `, ${a.state}` : ""}\nOpen admin > Shop > Orders to send it to the printer.`);
   } catch (err) {
     await trackException(env, err, { uid: row.uid, route: "shop_notify:owner_alert", handled: true, app_name: APP });
+  }
+}
+
+/** [AUMFE-POD-FULFIL-1] Owner WhatsApp when the print partner rejects an order or a status poll reports trouble. */
+export async function alertOwnerFulfilmentProblem(env: Env, row: ShopOrderRow, message: string): Promise<void> {
+  try {
+    if (!(await readShopPolicy(env)).alerts_whatsapp) return;
+    await sendAdminAlert(env, `${BRAND.nameCompact} shop: print partner problem on ${row.order_no}\n"${message.slice(0, 200)}"\nOpen admin > Shop > Orders to retry or handle it by hand.`);
+  } catch (err) {
+    await trackException(env, err, { uid: row.uid, route: "shop_notify:fulfilment_alert", handled: true, app_name: APP });
   }
 }
 

@@ -10,9 +10,25 @@ export interface Props { active: AdminKey; tab: string }
 const { active, tab } = Astro.props;
 ---
 
-<Admin2 title={`Shop · ${tab}`} heading="Shop" subtitle="Orders, products, categories and where each product is promoted." active={active}>
+{/* [AUMFE-POD-FULFIL-1] Orders (and Print partner) use the studio mockups' title row. */}
+<Admin2
+  title={`Shop · ${tab}`}
+  heading={active === 'shop-partner' ? 'Print partner' : 'Shop'}
+  subtitle={active === 'shop-orders'
+    ? 'Paid orders go to Printrove with one button. A button only turns on when your bank has confirmed the money.'
+    : active === 'shop-partner'
+      ? 'Who prints and ships your products. Changing partner never touches your designs or orders already sent.'
+      : 'Orders, products, categories and where each product is promoted.'}
+  active={active}
+>
   <Fragment slot="actions">
-    <div class="shop-admin"><button type="button" class="sh-btn sh-btn--red" id="shop-add-product">+ Add product</button></div>
+    <div class="shop-admin">
+      {active === 'shop-orders'
+        ? <a class="sh-btn sh-btn--red" href="/admin/shop/studio">+ New product in Studio</a>
+        : active === 'shop-partner'
+          ? null
+          : <button type="button" class="sh-btn sh-btn--red" id="shop-add-product">+ Add product</button>}
+    </div>
   </Fragment>
   <slot />
 </Admin2>

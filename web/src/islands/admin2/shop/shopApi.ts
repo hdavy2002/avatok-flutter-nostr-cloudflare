@@ -68,7 +68,36 @@ export interface Coupon {
 export interface Kpis {
   orders_today: number; orders_yesterday: number; revenue_30d_rupees: number; orders_30d: number;
   to_print: number; to_ship: number; stale_48h: number;
+  /** [AUMFE-POD-FULFIL-1] Orders-page tiles. */
+  paid_ready_bank?: number; waiting_bank?: number; at_printer?: number; shipped_7d?: number;
 }
+
+/* [AUMFE-POD-FULFIL-1] Money + production on every order (worker lib/pod_fulfil_logic.ts). */
+export type MoneyState = 'bank_confirmed' | 'owner_confirmed' | 'customer_claimed' | 'awaiting' | 'expired' | 'rejected';
+export interface Money {
+  state: MoneyState; label: string; amount_expected_rupees: number; amount_received_rupees: number | null; received_at: number | null;
+  utr_last4: string | null; payer_vpa_masked: string | null; matched: 'auto' | 'manual' | null; buyer_notified_at: number | null; claimed_at: number | null;
+}
+export type ProductionState = 'not_sent' | 'queued' | 'sending' | 'sent' | 'printing' | 'shipped' | 'delivered' | 'problem' | 'cancelled';
+export interface Production {
+  state: ProductionState; provider: string | null; provider_order_id: string | null; courier: string | null; awb: string | null;
+  tracking_url: string | null; problem: string | null; can_send: boolean; send_blocked_reason: string | null;
+}
+export interface ShipmentLine {
+  name: string; colour: string; size: string; qty: number;
+  print: { design_id: string | null; version: number | null; width_px: number | null; height_px: number | null; preview_url: string | null; shape: string | null; locked: boolean } | null;
+  placement: { side: 'front' | 'back'; width_in: number; height_in: number; top_in: number; left_in: number } | null;
+  partner_item: { provider_variant_id: string; base_cost_paise: number | null; sku: string | null } | null;
+  problem: string | null;
+}
+export interface Shipment {
+  provider: { id: string; label: string; supportsApi: boolean };
+  lines: ShipmentLine[];
+  address: { ok: boolean; lines: string[]; pincode: string | null; serviceable: boolean | null; reason: string | null };
+  phone: { ok: boolean; masked: string | null; source: 'address' | 'whatsapp' | null };
+  blocker: { code: string; message: string } | null; ready: boolean;
+}
+export interface ProductionEvent { at: number; kind: string; provider_status: string | null; note: string | null }
 
 export interface OrderLine { name: string; size?: string; colour?: string; qty: number; unit_rupees?: number; amount_rupees?: number; image_url?: string | null; slug?: string }
 export interface AdminOrder {
@@ -77,12 +106,14 @@ export interface AdminOrder {
   items: OrderLine[]; total_rupees: number;
   pay_status: string; payer_reference: string | null; utr_last4: string | null;
   fulfil_status: string; courier: string | null; awb: string | null; tracking_url: string | null; eta_text: string | null;
+  money?: Money; production?: Production;
 }
 export interface SmsCandidate { message_hash: string; amount_paise: number; bank_reference: string | null; received_at: number }
 export interface OrderDetail extends AdminOrder {
   timeline?: { kind: string; at: number; actor?: string | null; note?: string | null }[];
   problem?: { message?: string; photo_url?: string | null; at?: number; reported_at?: number } | null;
   sms_candidates?: SmsCandidate[];
+  shipment?: Shipment; production_events?: ProductionEvent[];
   address?: { name?: string; phone?: string; line1?: string; line2?: string; city?: string; state?: string; pincode?: string } | null;
 }
 
@@ -124,6 +155,24 @@ export const listOrders = (tab: string, q: string, cursor: string | null) =>
   adminApi<{ items: AdminOrder[]; next_cursor: string | null; counts?: Record<string, number> }>(`${SHOP}/orders`, {
     query: { tab, ...(q ? { q } : {}), ...(cursor ? { cursor } : {}) },
   });
+export const sendToProduction = (id: string) =>
+  adminApi<{ ok: boolean; adopted?: boolean; production?: Production }>(`${SHOP}/orders/${encodeURIComponent(id)}/send-to-production`, { method: 'POST', body: { confirm: true } });
+export const retryProduction = (id: string) => adminApi<{ ok: boolean }>(`${SHOP}/orders/${encodeURIComponent(id)}/production/retry`, { method: 'POST', body: {} });
+export const resolveProduction = (id: string, action: 'resend' | 'manual' | 'cancel') =>
+  adminApi<{ ok: boolean }>(`${SHOP}/orders/${encodeURIComponent(id)}/production/resolve`, { method: 'POST', body: { action } });
+
+/* [AUMFE-POD-FULFIL-1] Print partner settings (worker routes/admin2_pod_partner.ts, spec §3). */
+export interface PartnerState {
+  provider: 'manual' | 'printrove';
+  providers: { id: 'manual' | 'printrove'; label: string; supportsApi: boolean; configured: boolean }[];
+  connection: { ok: boolean; message: string; token_expires_at?: number } | null;
+  auto_send: boolean; poll_minutes: number; catalog: { count: number; synced_at: number | null }; notify_buyer: boolean; alert_owner: boolean;
+}
+export const getPartner = () => adminApi<PartnerState>(`${SHOP}/partner`);
+export const testPartner = () => adminApi<{ ok: boolean; message: string; token_expires_at?: number }>(`${SHOP}/partner/test`, { method: 'POST', body: {} });
+export const syncPartner = () => adminApi<{ count: number; synced_at: number }>(`${SHOP}/partner/sync`, { method: 'POST', body: {} });
+export const putPartnerSettings = (body: { provider?: string; auto_send?: boolean; poll_minutes?: number }) =>
+  adminApi<{ ok?: boolean }>(`${SHOP}/partner/settings`, { method: 'PUT', body });
 export const getOrder = (id: string) => adminApi<{ order: OrderDetail }>(`${SHOP}/orders/${encodeURIComponent(id)}`);
 export const orderAction = (id: string, action: 'confirm-payment' | 'reject-payment' | 'at-printer' | 'shipped' | 'delivered' | 'cancel' | 'refund', body: unknown = {}) =>
   adminApi<{ order?: AdminOrder }>(`${SHOP}/orders/${encodeURIComponent(id)}/${action}`, { method: 'POST', body });
@@ -159,13 +208,15 @@ export function uiStatus(o: Pick<AdminOrder, 'pay_status' | 'fulfil_status'>): U
   return 'paid';
 }
 
+/** [AUMFE-POD-FULFIL-1] Tab labels are the Orders mockup's (Specs/studio-mockup/Orders.dc.html). */
 export const ORDER_TABS: { f: string; label: string }[] = [
   { f: 'all', label: 'All' },
-  { f: 'awaiting', label: 'Awaiting payment' },
-  { f: 'to_print', label: 'Paid · send to printer' },
+  { f: 'to_print', label: 'Ready to send' },
+  { f: 'awaiting', label: 'Waiting for bank' },
   { f: 'at_printer', label: 'At Printrove' },
   { f: 'shipped', label: 'Shipped' },
   { f: 'delivered', label: 'Delivered' },
+  { f: 'problems', label: 'Problems' },
   { f: 'cancelled', label: 'Cancelled / refunded' },
 ];
 

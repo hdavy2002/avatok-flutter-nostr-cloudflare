@@ -22,7 +22,8 @@ import {
   SHOP_ORDER_ID_RE, SHOP_TRANSITIONS, SHOP_TAB_SQL, SHOP_TABS, SHOP_STALE_MS, canTransition, isShopTab, istDayStartMs, orderItems,
   shopExternalStatus, utrLast4, validHttpUrl, type ShopAction, type ShopOrderRow, type ShopTab,
 } from "../lib/shop_orders_logic";
-import { notifyShopEmail, notifyShopWhatsApp } from "../lib/shop_notify";
+import { notifyShopTransition } from "../lib/shop_notify";
+import { describeShipment, loadFulfilmentEvents, loadOrderExtras, moneyAndProduction, type OrderExtras } from "../lib/pod_fulfil"; // [AUMFE-POD-FULFIL-1]
 import { loadShopOrder, appendShopEvent, confirmShopOrder, rejectShopOrder } from "./shop_orders";
 
 const APP = "saathum";
@@ -53,16 +54,19 @@ const str = (v: unknown, max: number): string | null => (typeof v === "string" &
 // ---------------------------------------------------------------------------
 // Shapes
 // ---------------------------------------------------------------------------
-async function adminShape(env: Env, row: ShopOrderRow, now = Date.now()) {
+async function adminShape(env: Env, row: ShopOrderRow, now = Date.now(), extras?: OrderExtras) {
   const address = (() => { try { return JSON.parse(row.address_json) as Partial<Address>; } catch { return {} as Partial<Address>; } })();
   const [email, wa] = await Promise.all([emailFor(env, row.uid).catch(() => null), verifiedWhatsAppNumber(env, row.uid).catch(() => null)]);
   const phone = wa ?? (address.phone ? `+91${address.phone}` : null);
+  // [AUMFE-POD-FULFIL-1] money + production (spec §6.1). A list preloads `extras` once; a single order loads its own.
+  const { money, production } = moneyAndProduction(row, extras ?? await loadOrderExtras(env, [row]), wa, now);
   return {
     order_id: row.order_id, order_no: row.order_no, created_at: row.created_at,
     customer: { uid: row.uid, name: row.contact_name ?? address.name ?? null, email, phone_masked: maskE164(phone), city: address.city ?? null },
     items: orderItems(row), total_rupees: row.total_rupees,
     pay_status: shopExternalStatus(row, now), payer_reference: row.payer_reference, utr_last4: utrLast4(row.utr ?? row.payer_reference),
     fulfil_status: row.fulfil_status, courier: row.courier, awb: row.awb, tracking_url: row.tracking_url, eta_text: row.eta_text,
+    money, production,
   };
 }
 
@@ -108,7 +112,8 @@ async function adminOrderList(req: Request, env: Env): Promise<Response> {
   const page = rows.slice(0, PAGE);
   const last = page[page.length - 1];
   const items = [];
-  for (const r of page) items.push(await adminShape(env, r, now));
+  const extras = await loadOrderExtras(env, page);
+  for (const r of page) items.push(await adminShape(env, r, now, extras));
   return json({
     items, next_cursor: rows.length > PAGE && last ? encodeCursor({ t: last.created_at, id: last.order_id }) : null,
     counts: await tabCounts(env, now),
@@ -142,9 +147,10 @@ async function adminOrderDetail(req: Request, env: Env, id: string): Promise<Res
   let problem: unknown = null;
   try { problem = row.problem_json ? JSON.parse(row.problem_json) : null; } catch { problem = null; }
   const shaped = await adminShape(env, row);
+  const [shipment, productionEvents] = await Promise.all([describeShipment(env, row), loadFulfilmentEvents(env, id)]); // [AUMFE-POD-FULFIL-1] "What the partner gets"
   return json({
     order: {
-      ...shaped,
+      ...shaped, shipment, production_events: productionEvents,
       address: (() => { try { return JSON.parse(row.address_json); } catch { return null; } })(),
       subtotal_rupees: row.subtotal_rupees, discount_rupees: row.discount_rupees, coupon_code: row.coupon_code,
       gst_rupees: row.gst_rupees, gst_rate_pct: row.gst_rate_pct, pay_amount_paise: row.amount_paise,
@@ -277,13 +283,8 @@ async function transition(req: Request, env: Env, id: string, action: ShopAction
   await appendShopEvent(env, id, EVENT_KIND[action], a.uid, note, now).catch((e) => trackException(env, e, { uid: a.uid, route: `admin2_shop_orders:${action}:event`, handled: true, app_name: APP }));
   await audit(env, a.uid, `shop_order_${EVENT_KIND[action]}`, id, { from: row.fulfil_status, to: t.to, notify });
   await track(env, a.uid, "shop_order_status_changed", APP, { order_id: id, buyer_uid: row.uid, from: row.fulfil_status, to: t.to, notify });
-  if (notify) {
-    if (action === "at-printer") await notifyShopWhatsApp(env, "shop_order_printing", after);
-    else if (action === "shipped") { await notifyShopWhatsApp(env, "shop_order_shipped", after, after.awb ?? ""); await notifyShopEmail(env, "shipped", after); }
-    else if (action === "delivered") await notifyShopWhatsApp(env, "shop_order_delivered", after);
-    else if (action === "refund") { await notifyShopWhatsApp(env, "shop_order_refunded", after); await notifyShopEmail(env, "refunded", after); }
-    // cancel: no buyer template (the refund message follows when the money goes back).
-  }
+  // [AUMFE-POD-FULFIL-1] The buyer messages live in lib/shop_notify.ts notifyShopTransition so the print-partner path sends the same ones.
+  if (notify) await notifyShopTransition(env, action, after);
   return json({ ok: true, order: await adminShape(env, after) });
 }
 
@@ -301,13 +302,21 @@ async function adminKpis(req: Request, env: Env): Promise<Response> {
             COALESCE(SUM(CASE WHEN confirmed_at>=?3 AND fulfil_status NOT IN ('refunded','cancelled') THEN amount_paise ELSE 0 END),0) AS revenue_30d_paise,
             COALESCE(SUM(CASE WHEN fulfil_status='new' THEN 1 ELSE 0 END),0) AS to_print,
             COALESCE(SUM(CASE WHEN fulfil_status='at_printer' THEN 1 ELSE 0 END),0) AS to_ship,
-            COALESCE(SUM(CASE WHEN fulfil_status IN ('new','at_printer') AND confirmed_at<=?4 THEN 1 ELSE 0 END),0) AS stale_48h
+            COALESCE(SUM(CASE WHEN fulfil_status IN ('new','at_printer') AND confirmed_at<=?4 THEN 1 ELSE 0 END),0) AS stale_48h,
+            COALESCE(SUM(CASE WHEN fulfil_status='shipped' AND shipped_at>=?5 THEN 1 ELSE 0 END),0) AS shipped_7d
        FROM shop_orders WHERE pay_status='confirmed'`,
-  ).bind(today, yesterday, last30, now - SHOP_STALE_MS).first<Record<string, number>>();
+  ).bind(today, yesterday, last30, now - SHOP_STALE_MS, now - 7 * DAY_MS).first<Record<string, number>>();
+  // [AUMFE-POD-FULFIL-1] Orders tiles: paid + bank-confirmed and not sent yet / customer says paid but no bank credit yet.
+  const m = await metaDb(env).prepare(
+    `SELECT COALESCE(SUM(CASE WHEN pay_status='confirmed' AND confirm_source='sms_auto' AND fulfil_status='new' THEN 1 ELSE 0 END),0) AS paid_ready_bank,
+            COALESCE(SUM(CASE WHEN pay_status IN ('awaiting_payment','review_pending') AND (paid_claimed_at IS NOT NULL OR utr IS NOT NULL) THEN 1 ELSE 0 END),0) AS waiting_bank
+       FROM shop_orders`,
+  ).first<Record<string, number>>();
   return json({
     orders_today: Number(r?.orders_today ?? 0), orders_yesterday: Number(r?.orders_yesterday ?? 0),
     revenue_30d_rupees: Math.round(Number(r?.revenue_30d_paise ?? 0) / 100), orders_30d: Number(r?.orders_30d ?? 0),
     to_print: Number(r?.to_print ?? 0), to_ship: Number(r?.to_ship ?? 0), stale_48h: Number(r?.stale_48h ?? 0),
+    paid_ready_bank: Number(m?.paid_ready_bank ?? 0), waiting_bank: Number(m?.waiting_bank ?? 0), at_printer: Number(r?.to_ship ?? 0), shipped_7d: Number(r?.shipped_7d ?? 0),
   }, 200, { "cache-control": "private, no-store" });
 }
 

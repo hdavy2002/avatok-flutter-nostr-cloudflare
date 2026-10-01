@@ -8706,5 +8706,42 @@
         "note": "Owner uploaded artwork in the Studio. Absent while admin2_view for the Studio fires means uploads are failing (size/type/header parse)."
       }
     ]
+  },
+  "AUMFE-POD-FULFIL-1": {
+    "description": "[AUMFE-POD-FULFIL-1 2026-10-01] Print-partner fulfilment for shop orders (Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md §6). worker/src/lib/pod_fulfil.ts + pod_fulfil_logic.ts: sendOrderToPartner (money-confirmed only, one shop_fulfilments row per order, findOrderByReference before createOrder, order frozen items + pod_variant_map + the design's locked print file/placement), describeShipment (the detail panel's 'What Printrove gets'), runPodFulfilmentTick (retry 5m/30m/2h, auto-send when shopPodAutoSend, poll sent/printing/shipped every shopPodPollMinutes; one guarded call in index.ts scheduled, no-op while shopPodProvider is manual). routes/admin2_pod_fulfil.ts: POST orders/:id/send-to-production, production/retry, production/resolve, GET production. admin2_shop_orders.ts list+detail gain money + production + shipment, kpis gain waiting_bank/at_printer/shipped_7d, new 'problems' tab; the buyer-message dispatch of the manual at-printer/shipped/delivered/refund actions moved verbatim into shop_notify.notifyShopTransition so the automatic path sends identical messages. Web: OrdersPanel (Money + Production columns, red Send to production + confirm dialog, money/send panels), /admin/shop/partner (PartnerPanel), nav entries Studio + Print partner with 'New' pills. Default provider is manual, so nothing changes in production until the owner connects Printrove and flips shopPodProvider; the telemetry below therefore stays at 0 until then.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "shop_fulfilment_sent",
+        "property": "provider",
+        "exists": true,
+        "min_events": 0,
+        "note": "One per order sent to the print partner ({provider, ms}). 0 while shopPodProvider is 'manual'; after the owner connects Printrove, every paid order sent should produce one."
+      },
+      {
+        "event": "shop_fulfilment_failed",
+        "property": "code",
+        "exists": true,
+        "min_events": 0,
+        "note": "Fires when a send or a status poll fails ({code: rejected|unavailable|auth_failed|not_configured|variant_unmapped|address_unfit|phone_missing}). Read by hand: any value other than 0 needs the owner's eyes (the owner also gets a WhatsApp alert)."
+      },
+      {
+        "event": "shop_fulfilment_status",
+        "property": "to",
+        "exists": true,
+        "min_events": 0,
+        "note": "Partner status moved ({from,to,provider}) -- printing, shipped, delivered. Absent for days after orders were sent means the status poll is not running or the partner mapping (PROBE) is wrong."
+      },
+      {
+        "event": "admin2_shop_send_to_production",
+        "property": "ok",
+        "exists": true,
+        "min_events": 0,
+        "note": "Web: the owner pressed Send to production in the confirm dialog."
+      }
+    ]
   }
 }

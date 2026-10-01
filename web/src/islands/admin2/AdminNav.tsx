@@ -119,6 +119,14 @@ function PrintBadge({ n, className }: { n: number; className?: string }) {
   );
 }
 
+/** [AUMFE-POD-FULFIL-1] Gold "New" pill (mockup `.pill`) for entries that carry `pill` in nav.ts. */
+function NavPill({ label, className }: { label?: string; className?: string }) {
+  if (!label) return null;
+  return (
+    <span className={cn('relative ml-auto rounded-full bg-[#F6B93B] px-2 py-[3px] font-dashbody text-[12px] font-black leading-none text-[#3a1a0a]', className)}>{label}</span>
+  );
+}
+
 /** Paid shop orders waiting to be placed with the printer. Shop screens announce it themselves
  * (`shop-admin:to-print`); every other admin page asks GET /api/admin/v2/shop/kpis once. */
 function useToPrint(ready: boolean, active: AdminKey): number {
@@ -201,6 +209,7 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
               <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={2.2} />
               <span className="relative">{it.label}</span>
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
+              <NavPill label={it.pill} />
             </a>
             </Fragment>
           );
@@ -314,6 +323,7 @@ function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null
                   className={cn(row, cur ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted')}>
                   <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
+                  <NavPill label={it.pill} />
                 </a>
               </Fragment>
             );

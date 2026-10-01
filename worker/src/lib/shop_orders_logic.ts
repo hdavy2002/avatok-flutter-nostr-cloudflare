@@ -224,8 +224,8 @@ export function reportWindowOpen(row: Pick<ShopOrderRow, "fulfil_status" | "deli
 // ---------------------------------------------------------------------------
 // Admin helpers
 // ---------------------------------------------------------------------------
-export type ShopTab = "all" | "awaiting" | "to_print" | "at_printer" | "shipped" | "delivered" | "cancelled";
-export const SHOP_TABS: ShopTab[] = ["all", "awaiting", "to_print", "at_printer", "shipped", "delivered", "cancelled"];
+export type ShopTab = "all" | "awaiting" | "to_print" | "at_printer" | "shipped" | "delivered" | "problems" | "cancelled";
+export const SHOP_TABS: ShopTab[] = ["all", "awaiting", "to_print", "at_printer", "shipped", "delivered", "problems", "cancelled"];
 export const isShopTab = (v: unknown): v is ShopTab => typeof v === "string" && (SHOP_TABS as string[]).includes(v);
 
 /** SQL predicate per tab; `?1` is always `now`. Never-paid orders whose window passed are hidden everywhere but are not "awaiting". */
@@ -237,6 +237,8 @@ export const SHOP_TAB_SQL: Record<ShopTab, string> = {
   at_printer: `(pay_status='confirmed' AND fulfil_status='at_printer')`,
   shipped: `(pay_status='confirmed' AND fulfil_status='shipped')`,
   delivered: `(pay_status='confirmed' AND fulfil_status='delivered')`,
+  // [AUMFE-POD-FULFIL-1] A print-partner problem (shop_fulfilments) or a buyer's "wrong/damaged item" report.
+  problems: `(problem_json IS NOT NULL OR EXISTS (SELECT 1 FROM shop_fulfilments f WHERE f.order_id=shop_orders.order_id AND f.status='problem'))`,
   cancelled: `(pay_status='cancelled' OR fulfil_status IN ('cancelled','refunded'))`,
 };
 

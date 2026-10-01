@@ -2,13 +2,13 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, type LucideIcon,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'freevideos'
-  | 'shop-orders' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings';
+  | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings';
 
-export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string }
+export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
 
 export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'overview', label: 'Analytics', short: 'Analytics', href: '/admin', icon: ChartColumn }, // [ADMIN2-ANALYTICS] key stays 'overview'
@@ -25,12 +25,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'ai', label: 'AI assistant', short: 'AI', href: '/admin/ai', icon: Sparkles }, // [SAATHUM-PREETI-1]
   // [SAATHUM-SHOP-ADMIN-1] Shop group (spec §5.5). Keep these contiguous: the heading renders above the first.
   { key: 'shop-orders', label: 'Orders', short: 'Orders', href: '/admin/shop', icon: ShoppingBag, group: 'Shop' },
+  { key: 'shop-studio', label: 'Studio', short: 'Studio', href: '/admin/shop/studio', icon: Palette, group: 'Shop', pill: 'New' }, // [AUMFE-POD-FULFIL-1] page built by AUMFE-POD-STUDIO-WEB-1
   { key: 'shop-editor', label: 'Edit shop page', short: 'Edit page', href: '/admin/shop/editor', icon: LayoutTemplate, group: 'Shop' }, // [SAATHUM-SHOP-EDITOR-1]
   { key: 'shop-products', label: 'Products', short: 'Products', href: '/admin/shop/products', icon: Shirt, group: 'Shop' },
   { key: 'shop-collections', label: 'Categories', short: 'Categories', href: '/admin/shop/collections', icon: LayoutGrid, group: 'Shop' },
   { key: 'shop-promote', label: 'Promote to cards', short: 'Promote', href: '/admin/shop/promote', icon: Megaphone, group: 'Shop' },
   { key: 'shop-coupons', label: 'Coupons', short: 'Coupons', href: '/admin/shop/coupons', icon: BadgePercent, group: 'Shop' },
   { key: 'shop-settings', label: 'Shop settings', short: 'Shop settings', href: '/admin/shop/settings', icon: Settings2, group: 'Shop' },
+  { key: 'shop-partner', label: 'Print partner', short: 'Partner', href: '/admin/shop/partner', icon: Printer, group: 'Shop', pill: 'New' }, // [AUMFE-POD-FULFIL-1]
 ];
 
 /** Phone tab bar: these five, then "More" (the rest + View site + Logout). */
