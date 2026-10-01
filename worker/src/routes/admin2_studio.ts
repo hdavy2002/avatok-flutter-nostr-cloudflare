@@ -5,7 +5,7 @@
 // (stored as-is, never re-rendered). All print-partner talk goes through lib/pod (getPodProvider); no partner field names here.
 // Every route is under /api/admin/v2/shop/studio/, behind the admin guard; every write is audited and tracked admin2_studio_*.
 import type { Env } from "../types";
-import { json, sha256Hex, decodeFileNameHeader, geminiRun, GEMINI_MODEL } from "../util";
+import { CORS, json, sha256Hex, decodeFileNameHeader, geminiRun, GEMINI_MODEL } from "../util";
 import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports this file
 import { track, trackException } from "../hooks";
 import { adminGuard, audit, createProduct, err, readBody, safeTrack, updateProduct } from "./admin2_shop_catalog";
@@ -370,6 +370,20 @@ const uploadPrint = guarded("admin2.studio.print", async (req, env, a, [id]) => 
   safeTrack(env, a.uid, "admin2_studio_print_saved", { design_id: id, w: info.w, h: info.h, bytes: body.bytes.byteLength, version: row.version });
   return designResponse(env, id);
 });
+
+// The editor draws these private files into a canvas, which a presigned R2 URL cannot serve (no CORS for the admin origin),
+// so the Worker streams the bytes itself behind the admin guard.
+const streamFile = (which: "art" | "print") => guarded(`admin2.studio.file.${which}`, async (_req, env, _a, [id]) => {
+  const row = await loadDesign(env, id);
+  const key = which === "art" ? row?.art_key : row?.print_key;
+  if (!row || !key) return err(404, "no_file", which === "art" ? "No artwork has been uploaded yet." : "No print file has been saved yet.");
+  const obj = await env.DIGITAL.get(key);
+  if (!obj) return err(404, "no_file", "That file is missing from storage.");
+  const type = which === "print" ? "image/png" : row.art_mime || obj.httpMetadata?.contentType || "application/octet-stream";
+  return new Response(obj.body, { status: 200, headers: { ...CORS, "content-type": type, "cache-control": "private, no-store" } });
+});
+const streamArt = streamFile("art");
+const streamPrint = streamFile("print");
 
 const newVersion = guarded("admin2.studio.new_version", async (_req, env, a, [id]) => {
   const row = await loadDesign(env, id);
@@ -860,6 +874,8 @@ export const ADMIN2_STUDIO_ROUTES: Admin2RouteDef[] = [
   { method: "PUT", path: re(`designs/${ID}/placement`), handler: putPlacement },
   { method: "POST", path: re(`designs/${ID}/print`), handler: uploadPrint },
   { method: "POST", path: re(`designs/${ID}/print-preview`), handler: uploadPrintPreview },
+  { method: "GET", path: re(`designs/${ID}/file/art`), handler: streamArt },
+  { method: "GET", path: re(`designs/${ID}/file/print`), handler: streamPrint },
   { method: "POST", path: re(`designs/${ID}/new-version`), handler: newVersion },
   { method: "POST", path: re(`designs/${ID}/photos`), handler: uploadPhoto },
   { method: "PUT", path: re(`photos/${ID}`), handler: updatePhoto },

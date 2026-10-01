@@ -245,6 +245,8 @@ export function fallbackBestText(row: FitRow | null, artW: number, artH: number,
 export type Placement = {
   kind: PodKind; side: PrintSide; shape: Shape; frame_w_in: number; frame_h_in: number; frame_top_in: number;
   zoom_pct: number; nudge_x_in: number; nudge_y_in: number; print_w_in: number; print_h_in: number; dpi: number;
+  /** Where the clipped print PNG sits on the print area, inches from its top-left. Defaults: centred / frame_top_in. */
+  print_left_in?: number; print_top_in?: number;
 };
 export type PlacementResult = { ok: true; placement: Placement } | { ok: false; status: 400; code: string; message: string; field?: string };
 
@@ -274,6 +276,16 @@ export function validatePlacement(raw: unknown): PlacementResult {
   if (Math.abs(p.nudge_x_in as number) > 20 || Math.abs(p.nudge_y_in as number) > 20) return fail("invalid_placement", "Nudge is out of range.", "nudge_x_in");
   const pw = p.print_w_in as number, ph = p.print_h_in as number;
   if (pw <= 0 || ph <= 0 || pw > aw + EPS || ph > ah + EPS) return fail("outside_print_area", "The print file size does not fit the print area.", "print_w_in");
+  let left = round2(Math.max(0, (aw - pw) / 2));
+  let top = round2(Math.max(0, ft));
+  for (const k of ["print_left_in", "print_top_in"] as const) {
+    if (p[k] === undefined || p[k] === null) continue;
+    const v = p[k];
+    if (!finite(v) || v < -EPS) return fail("invalid_placement", `${k} must be a number of inches, 0 or more.`, k);
+    if (k === "print_left_in") left = round2(Math.max(0, v)); else top = round2(Math.max(0, v));
+  }
+  if (left + pw > aw + EPS) return fail("outside_print_area", "The print file runs past the side of the print area.", "print_left_in");
+  if (top + ph > ah + EPS) return fail("outside_print_area", "The print file runs past the bottom of the print area.", "print_top_in");
   const dpi = p.dpi as number;
   if (dpi < LIMITS.minDpi) return fail("too_blurry", `At ${Math.round(dpi)} DPI this would print blurry. Make the art smaller on the shirt or upload a bigger file (minimum ${LIMITS.minDpi} DPI).`, "dpi");
   return {
@@ -281,7 +293,7 @@ export function validatePlacement(raw: unknown): PlacementResult {
     placement: {
       kind: p.kind, side: p.side, shape: p.shape as Shape, frame_w_in: round2(fw), frame_h_in: round2(fh), frame_top_in: round2(Math.max(0, ft)),
       zoom_pct: Math.round(zoom), nudge_x_in: round2(p.nudge_x_in as number), nudge_y_in: round2(p.nudge_y_in as number),
-      print_w_in: round2(pw), print_h_in: round2(ph), dpi: Math.round(dpi),
+      print_w_in: round2(pw), print_h_in: round2(ph), dpi: Math.round(dpi), print_left_in: left, print_top_in: top,
     },
   };
 }
@@ -289,7 +301,9 @@ export function validatePlacement(raw: unknown): PlacementResult {
 /** Where the print file sits on the partner's print area: centred left-to-right, frame_top from the top. */
 export function partnerPlacement(p: Placement): { side: PrintSide; width_in: number; height_in: number; top_in: number; left_in: number } {
   const area = PRINT_SPECS.areas[p.kind][p.side];
-  return { side: p.side, width_in: p.print_w_in, height_in: p.print_h_in, top_in: p.frame_top_in, left_in: round2(Math.max(0, (area[0] - p.print_w_in) / 2)) };
+  const left = typeof p.print_left_in === "number" ? p.print_left_in : round2(Math.max(0, (area[0] - p.print_w_in) / 2));
+  const top = typeof p.print_top_in === "number" ? p.print_top_in : p.frame_top_in;
+  return { side: p.side, width_in: p.print_w_in, height_in: p.print_h_in, top_in: top, left_in: left };
 }
 
 // ---------------------------------------------------------------------------

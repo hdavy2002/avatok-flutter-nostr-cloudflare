@@ -155,6 +155,26 @@ describe("placement validation", () => {
     expect(validatePlacement({ ...goodPlacement, dpi: "x" }).ok).toBe(false);
     expect(validatePlacement(null).ok).toBe(false);
   });
+  it("keeps print_left_in / print_top_in and defaults them when absent", () => {
+    const withPos = validatePlacement({ ...goodPlacement, print_left_in: 1.5, print_top_in: 3 });
+    if (!withPos.ok) throw new Error("setup");
+    expect(withPos.placement).toMatchObject({ print_left_in: 1.5, print_top_in: 3 });
+    expect(partnerPlacement(withPos.placement)).toEqual({ side: "front", width_in: 11, height_in: 11, top_in: 3, left_in: 1.5 });
+    const dflt = validatePlacement(goodPlacement);
+    if (!dflt.ok) throw new Error("setup");
+    expect(dflt.placement).toMatchObject({ print_left_in: 2.3, print_top_in: 2.5 });
+  });
+  it("rejects a print position that is negative, not a number, or runs off the area", () => {
+    expect(validatePlacement({ ...goodPlacement, print_left_in: -1 })).toMatchObject({ ok: false, field: "print_left_in" });
+    expect(validatePlacement({ ...goodPlacement, print_top_in: "a" })).toMatchObject({ ok: false, field: "print_top_in" });
+    expect(validatePlacement({ ...goodPlacement, print_left_in: 5 })).toMatchObject({ ok: false, code: "outside_print_area", field: "print_left_in" });
+    expect(validatePlacement({ ...goodPlacement, print_top_in: 9 })).toMatchObject({ ok: false, code: "outside_print_area", field: "print_top_in" });
+    expect(validatePlacement({ ...goodPlacement, print_left_in: 4.6, print_top_in: 8.6 }).ok).toBe(true);
+  });
+  it("partnerPlacement falls back to centred / frame_top for old stored placements", () => {
+    const old = { ...(goodPlacement as unknown as Placement) };
+    expect(partnerPlacement(old)).toEqual({ side: "front", width_in: 11, height_in: 11, top_in: 2.5, left_in: 2.3 });
+  });
   it("centres the print file on the area for the partner", () => {
     const p = validatePlacement(goodPlacement);
     if (!p.ok) throw new Error("setup");
