@@ -2059,6 +2059,16 @@ export interface PlatformConfig {
   // creating/editing an agent listing. NUMERIC → it MUST also appear in
   // `numericKeys` below or `flags.sh set agentMinPricePerMin=10` 400s `bad type`.
   agentMinPricePerMin: number;
+  // [AUMFE-POD-CORE-1] Which print partner fulfils shop orders: 'manual' (the owner places orders by hand in the
+  // partner's dashboard, today's flow) or 'printrove' (API). Read by lib/pod/index.ts getPodProvider().
+  // STRING -> NOT in numericKeys; declared in stringKeys below; validated to the two ids in putConfig.
+  shopPodProvider: string;
+  // [AUMFE-POD-CORE-1] When true the cron sends confirmed shop orders to the partner on its own; false = the owner
+  // presses "Send to production". Boolean -> NOT in numericKeys.
+  shopPodAutoSend: boolean;
+  // [AUMFE-POD-CORE-1] Minutes between partner order-status polls (the partner has no webhooks). NUMERIC -> MUST
+  // also appear in `numericKeys` below or `flags.sh set shopPodPollMinutes=30` 400s `bad type`.
+  shopPodPollMinutes: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -2779,6 +2789,10 @@ const DEFAULTS: PlatformConfig = {
   agentSlotMinutes: "5,10,20,30,40,60",
   agentPlatformMaxConcurrent: 20,
   agentMinPricePerMin: 10,
+  // [AUMFE-POD-CORE-1] print-on-demand partner; ships on the hand workflow until the owner flips it.
+  shopPodProvider: "manual",
+  shopPodAutoSend: false,
+  shopPodPollMinutes: 30,
 };
 
 /**
@@ -3071,12 +3085,16 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AGENT-LIVE-1] numeric — must be here or `flags.sh set
     // agentPlatformMaxConcurrent=20` / `agentMinPricePerMin=10` 400s `bad type`.
     "agentPlatformMaxConcurrent", "agentMinPricePerMin",
+    // [AUMFE-POD-CORE-1] numeric — must be here or `flags.sh set shopPodPollMinutes=30` 400s `bad type`.
+    "shopPodPollMinutes",
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
     // [AGENT-LIVE-1] string config — must be here or `flags.sh set
     // agentLiveModel=gpt-live-1` 400s `bad type`.
     "agentLiveModel", "agentBackendModel", "agentSlotMinutes",
+    // [AUMFE-POD-CORE-1] 'manual' | 'printrove' — string config.
+    "shopPodProvider",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -3112,6 +3130,12 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: "virtualNumberPrimaryProvider must be vobiz or frejun" }, 400);
     }
     // [AGENT-LIVE-1] bounds validation (BUILD SPEC §2/WS-A).
+    if (k === "shopPodProvider" && v !== "manual" && v !== "printrove") {
+      return json({ error: "shopPodProvider must be manual or printrove" }, 400);
+    }
+    if (k === "shopPodPollMinutes" && (!Number.isInteger(v) || (v as number) < 5 || (v as number) > 1440)) {
+      return json({ error: "shopPodPollMinutes must be an integer 5-1440" }, 400);
+    }
     if (k === "agentPlatformMaxConcurrent") {
       const n = v as number;
       if (!Number.isInteger(n) || n < 0 || n > 500) {
@@ -3162,4 +3186,18 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Echo the EFFECTIVE config (defaults + overrides) so the admin UI still sees
   // every flag, even though only `next` was persisted.
   return json({ ok: true, config: enforcePermanentFreeCommunication({ ...DEFAULTS, ...next }), overrides: next });
+}
+
+/**
+ * [AUMFE-POD-CORE-1] Write config OVERRIDES from server code (the admin Print partner page) through the same KV blob
+ * putConfig writes: ONE read of the overrides, merge, ONE write, then bust this isolate's memo. Keys must be declared
+ * in DEFAULTS (the fake-flag rule). Callers validate values; this only guards the key names.
+ */
+export async function writeConfigOverrides(env: Env, patch: Record<string, string | number | boolean>): Promise<void> {
+  for (const k of Object.keys(patch)) {
+    if (!(k in DEFAULTS)) throw new Error(`unknown config key: ${k}`);
+  }
+  const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Record<string, unknown>;
+  await env.TOKENS.put(KEY, JSON.stringify({ ...current, ...patch }));
+  bustConfigMemo(env);
 }

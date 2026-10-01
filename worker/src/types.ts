@@ -499,6 +499,10 @@ export interface Env {
   // (shared secret for POST /api/preeti/internal/sync, header x-preeti-sync-token).
   PREETI_MODEL?: string;
   PREETI_SYNC_TOKEN?: string;
+  // [AUMFE-POD-CORE-1] Optional Worker secrets for the Printrove print partner (lib/pod/printrove.ts). Never in wrangler.toml,
+  // KV, logs, PostHog or the browser. Absent => the provider reports `not_configured` and the `manual` provider keeps working.
+  PRINTROVE_EMAIL?: string;
+  PRINTROVE_PASSWORD?: string;
 
   // Dedicated Gemini key for the AI Receptionist Live (speech-to-speech) calls +
   // its summary call, so receptionist spend is isolated to its own Google Cloud
