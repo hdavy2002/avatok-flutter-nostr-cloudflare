@@ -119,7 +119,7 @@ export default function PublishStep({ designId }: { designId: string }) {
     { title: 'Show on New arrivals', sub: '' },
   ];
   const rows = steps && steps.length > 0
-    ? steps.map((s) => ({ title: s.label, sub: s.note, cls: s.status === 'failed' ? 'bad' : s.status === 'done' ? 'ok' : 'wait', mark: s.status === 'failed' ? '✗' : s.status === 'done' ? '✓' : '–' }))
+    ? steps.map((s, i) => ({ title: s.label, sub: s.note, cls: s.status === 'failed' ? 'bad' : s.status === 'done' ? 'ok' : 'wait', mark: s.status === 'failed' ? '✗' : s.status === 'done' ? '✓' : s.status === 'skipped' ? '–' : String(i + 1) }))
     : staticSteps.map((s, i) => ({ title: s.title, sub: s.sub, cls: 'wait', mark: String(i + 1) }));
   const half = Math.ceil(rows.length / 2);
 

@@ -85,10 +85,3 @@ export async function renderPrintFile(art: ImageBitmap | HTMLImageElement, layou
   void natH;
   return { blob, preview, width: w, height: h, dpi: Math.round(Math.min(sourceDpi, ppi)), scaledDown };
 }
-
-/** Fetch + decode an image URL (signed art/print URL) into a bitmap. Needs CORS on the image host. */
-export async function loadBitmap(url: string): Promise<ImageBitmap> {
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`Could not load the image (${res.status}).`);
-  return createImageBitmap(await res.blob());
-}

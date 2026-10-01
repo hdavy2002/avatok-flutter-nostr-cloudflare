@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from '../../../components/ui/sonner';
 import { capture, captureException } from '../../../lib/analytics';
 import {
-  PRINT_SPECS, STEP_ORDER, areaFor, createDesign, errMessage, fmtBytes, fmtIn, maxSharpInches, stepHref, updateDesign,
+  PRINT_SPECS, STEP_ORDER, areaFor, createDesign, errMessage, fetchArtBlob, fmtBytes, fmtIn, maxSharpInches, stepHref, updateDesign,
   uploadArt, uploadArtPreview, type Design, type StudioStep,
 } from '../../../lib/studioApi';
 import type { ArtAnalysis } from './artAnalysis';
@@ -75,7 +75,7 @@ export default function UploadStep({ designId }: { designId: string | null }) {
     setBusy('Making the edges solid…'); setProblem(null);
     try {
       const { solidifyEdges } = await import('./artAnalysis');
-      const src: Blob = analysis ? analysis.blob : await (await fetch(design?.art_url ?? '')).blob();
+      const src: Blob = analysis ? analysis.blob : await fetchArtBlob(design?.id ?? idRef.current ?? '');
       const f = await solidifyEdges(src, analysis?.fileName ?? design?.name ?? 'artwork');
       setBusy(null);
       await handleFile(f);
@@ -115,7 +115,7 @@ export default function UploadStep({ designId }: { designId: string | null }) {
     : design && design.art_w && design.art_h
       ? { w: design.art_w, h: design.art_h, bytes: design.art_bytes ?? 0, mime: design.art_mime ?? 'image/png', has_alpha: design.art_checks.has_alpha ?? null, rgb: design.art_checks.rgb ?? null, cmyk: !!design.art_checks.cmyk_converted, soft: design.art_checks.soft_edge_pct ?? 0, colours: design.art_checks.dominant_colours ?? [] }
       : null;
-  const shown = analysis?.previewUrl ?? design?.art_preview_url ?? design?.art_url ?? null;
+  const shown = analysis?.previewUrl ?? design?.art_preview_url ?? null;
   const sharp = info ? maxSharpInches(info.w, info.h) : null;
   const ref = areaFor('mens_tee', 'front');
   const fitsWhole = sharp ? sharp.w >= ref.w : false;

@@ -111,7 +111,7 @@ export default function ProductStep({ designId }: { designId: string }) {
 
   const best = fits.best;
   const bestItem = best ? fits.items.find((i) => i.kind === best.kind) : undefined;
-  const artImg = design.art_preview_url ?? design.art_url;
+  const artImg = design.art_preview_url;
 
   return (
     <Page>

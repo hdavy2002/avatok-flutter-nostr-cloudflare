@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '../../../components/ui/sonner';
 import { capture, captureException } from '../../../lib/analytics';
 import {
-  PRINT_SPECS, areaFor, errMessage, getFits, hexForColour, stepHref, updatePhoto, uploadPhoto,
+  PRINT_SPECS, areaFor, errMessage, fetchPrintBlob, getFits, hexForColour, stepHref, updatePhoto, uploadPhoto,
   type Design, type Fits, type StudioPhoto,
 } from '../../../lib/studioApi';
 import { advanceTo } from './UploadStep';
@@ -48,7 +48,7 @@ export default function PhotosStep({ designId }: { designId: string }) {
 
   /* ── plain-shirt pictures, made automatically ── */
   const makePlain = useCallback(async (d: Design): Promise<void> => {
-    if (!d.print_url || !d.placement || d.colours.length === 0) return;
+    if (!d.print_w || !d.placement || d.colours.length === 0) return;
     const rec = readVer(d.id);
     const stale = rec !== null && rec !== d.version;
     const live = d.photos.filter((p) => p.status === 'kept');
@@ -59,8 +59,8 @@ export default function PhotosStep({ designId }: { designId: string }) {
     setPlainBusy(true); setPlainErr(null);
     try {
       if (stale) for (const p of live.filter((x) => x.kind === 'flat' || x.kind === 'closeup')) await updatePhoto(d.id, p.id, { status: 'removed' });
-      const [comp, pf] = await Promise.all([import('../../../lib/composite'), import('../../../lib/printFile')]);
-      const bmp = await pf.loadBitmap(d.print_url);
+      const comp = await import('../../../lib/composite');
+      const bmp = await createImageBitmap(await fetchPrintBlob(d.id));
       const area = areaFor(d.placement.kind, d.placement.side);
       const todo = stale ? d.colours : missing;
       for (const c of todo) {
@@ -220,7 +220,7 @@ export default function PhotosStep({ designId }: { designId: string }) {
       <div className="panel">
         <div className="foot" style={{ margin: '0 0 12px' }}><h2>Plain shirt pictures</h2>
           <span className={`chip ${plainErr ? 'bad' : plainBusy ? 'warn' : 'ok'}`}>{plainErr ?? (plainBusy ? 'Making them from your design…' : 'Made automatically from your design')}</span></div>
-        {plain.length === 0 ? <p className="lead" style={{ margin: 0 }}>{plainBusy ? 'One moment…' : design.print_url ? 'They appear here once made.' : 'Finish Step 3 and they are made from your print file.'}</p> : (
+        {plain.length === 0 ? <p className="lead" style={{ margin: 0 }}>{plainBusy ? 'One moment…' : design.print_w ? 'They appear here once made.' : 'Finish Step 3 and they are made from your print file.'}</p> : (
           <div className="g4">
             {plain.map((p) => (
               <div className="card" key={p.id}>

@@ -3,7 +3,7 @@
 // The worker (STUDIO-API) is built in parallel: shapes below follow the spec text, and the readers (normDesign,
 // normPhoto) accept both parsed columns (`art_checks`) and the raw `*_json` strings so a small naming difference
 // on the server does not break the screens.
-import { ApiError, adminApi, whenAdmin, adminToken } from '../islands/admin2/adminApi';
+import { ApiError, adminApi, adminBlob, whenAdmin, adminToken } from '../islands/admin2/adminApi';
 import { API_BASE } from './env';
 import { fileNameHeader } from './uploadHeaders';
 import type { FrameShape, PrintSide, SavedPlacement } from './studioGeometry';
@@ -36,7 +36,7 @@ export interface StudioPhoto {
   id: string; design_id: string; kind: 'model' | 'flat' | 'closeup'; colour: string | null; url: string;
   width: number | null; height: number | null; checks: PhotoChecks; status: 'kept' | 'removed'; sort: number; is_main: boolean;
 }
-export interface PublishStepRow { key: string; label: string; status: 'done' | 'skipped' | 'failed'; note: string }
+export interface PublishStepRow { key: string; label: string; status: 'done' | 'skipped' | 'failed' | 'pending'; note: string }
 export interface DesignCopy { name?: string; description?: string; seo_title?: string; publish_steps?: PublishStepRow[]; [k: string]: unknown }
 export interface Design {
   id: string; name: string; status: StudioStatus; step: StudioStep;
@@ -147,6 +147,10 @@ export async function publishDesign(id: string, input: PublishInput): Promise<Pu
 export async function updatePhoto(designId: string, photoId: string, patch: Partial<{ colour: string; status: 'kept' | 'removed'; sort: number; is_main: boolean }>): Promise<void> {
   await adminApi<unknown>(`${dp(designId)}/photos/${encodeURIComponent(photoId)}`, { method: 'PUT', body: patch });
 }
+
+/** Bytes of the private original / print file, through the authenticated admin API (never the presigned R2 URL: no CORS). */
+export async function fetchArtBlob(id: string): Promise<Blob> { return (await adminBlob(`${dp(id)}/file/art`)).blob; }
+export async function fetchPrintBlob(id: string): Promise<Blob> { return (await adminBlob(`${dp(id)}/file/print`)).blob; }
 
 /* ───────── raw-body uploads (art, previews, print file, photos) ───────── */
 

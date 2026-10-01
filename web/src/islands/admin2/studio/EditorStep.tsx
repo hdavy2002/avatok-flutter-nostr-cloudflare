@@ -7,7 +7,7 @@ import { toast } from '../../../components/ui/sonner';
 import { capture, captureException } from '../../../lib/analytics';
 import {
   DEFAULT_COLOURS, areaFor, errMessage, getFits, hexForColour, newVersion, putPlacement, putProducts, stepHref,
-  uploadPrint, uploadPrintPreview, type ChosenProduct, type Fits,
+  fetchArtBlob, uploadPrint, uploadPrintPreview, type ChosenProduct, type Fits,
 } from '../../../lib/studioApi';
 import {
   EXPORT_DPI, EXPORT_MAX_PX, NECK_PATH, SHIRT_PATH, STAGE_H, STAGE_PX_PER_IN as P, STAGE_W, areaRectPx, computeLayout, dpiQuality,
@@ -98,7 +98,7 @@ export default function EditorStep({ designId }: { designId: string }) {
   const aw = L.artW * P; const ah = L.artH * P;
   const al = L.artLeft * P; const at = L.artTop * P;
   const radius = s.shape === 'circle' ? '50%' : s.shape === 'none' ? '0' : '6px';
-  const artUrl = design.art_url ?? design.art_preview_url;
+  const artUrl = design.art_preview_url; // public preview for display; the bytes for export come from fetchArtBlob()
   const set = (o: Partial<EditorState>): void => setS((cur) => ({ ...cur, ...o }));
   const blocked = q.blocks || L.empty || !!busy;
 
@@ -121,9 +121,8 @@ export default function EditorStep({ designId }: { designId: string }) {
     if (design.locked_at && !window.confirm('This design is already live. Saving makes a new version of its print file. Continue?')) return;
     setProblem(null); setBusy('Making your print file…');
     try {
-      if (!design.art_url) throw new Error('Your artwork is not available. Go back to Step 1 and upload it again.');
       const pf = await import('../../../lib/printFile');
-      const bmp = await pf.loadBitmap(design.art_url);
+      const bmp = await createImageBitmap(await fetchArtBlob(design.id));
       const out = await pf.renderPrintFile(bmp, L, s.shape);
       bmp.close();
       const pr = printRectIn(L);
