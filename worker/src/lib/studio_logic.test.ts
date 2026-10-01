@@ -1,5 +1,6 @@
 // [AUMFE-POD-STUDIO-API-1] Unit tests for the Shop Studio pure logic.
 import { describe, it, expect } from "vitest";
+import { PRINT_SPECS } from "./pod";
 import {
   artChecksFromInfo, audienceFor, buildFits, checkPrintFile, cleanBrowserChecks, cleanColours, cleanPrices, cleanProducts, cleanSlots,
   contrastRatio, fallbackBestText, fallbackCopy, looksFaded, orderPhotosForShop, parseCopyReply, parseImageInfo, partnerPlacement,
@@ -107,7 +108,7 @@ describe("catalogue + fits", () => {
   });
   it("builds a fit row per kind and side with faded flags and picks the best", () => {
     const fits = buildFits(3300, 3300, [summariseCatalog(catalogProduct)], ["#d4a017"]);
-    expect(fits).toHaveLength(18);
+    expect(fits).toHaveLength(Object.keys(PRINT_SPECS.areas).length * 2); // every kind x front/back
     const men = fits.find((f) => f.kind === "mens_tee" && f.side === "front")!;
     expect(men.area_in).toEqual([15.6, 19.6]);
     expect(men.catalog?.colours.find((c) => c.name === "White")?.faded).toBe(true);

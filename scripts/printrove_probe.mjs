@@ -2,8 +2,10 @@
 // [AUMFE-POD-CORE-1] Printrove API probe. Prints the REAL response shapes so the `// PROBE:` guesses in
 // worker/src/lib/pod/printrove.ts can be corrected. Read-only by default. Token, passwords and personal data are redacted.
 //
-//   PRINTROVE_EMAIL=you@example.com PRINTROVE_PASSWORD='...' node scripts/printrove_probe.mjs
+//   PRINTROVE_LOGIN='{"email":"you@example.com","password":"..."}' node scripts/printrove_probe.mjs
+//   (PRINTROVE_EMAIL + PRINTROVE_PASSWORD still work as a fallback; the Worker secret is the same single PRINTROVE_LOGIN JSON.)
 //   ... node scripts/printrove_probe.mjs --create-test-order     # OFF by default, see below
+// Credentials are only ever passed on the command line; never write them to a file.
 //
 // Calls (all GET unless noted): POST token, categories, one category's products, one product's detail (variants),
 // designs list, products list, orders list, serviceability for 110001 and 248001.
@@ -15,12 +17,16 @@
 // Requests are spaced 600 ms apart (the API allows about 2 per second).
 
 const BASE = 'https://api.printrove.com/api/external/';
-const email = process.env.PRINTROVE_EMAIL;
-const password = process.env.PRINTROVE_PASSWORD;
+let email = process.env.PRINTROVE_EMAIL;
+let password = process.env.PRINTROVE_PASSWORD;
+if (process.env.PRINTROVE_LOGIN) {
+  try { ({ email, password } = JSON.parse(process.env.PRINTROVE_LOGIN)); }
+  catch { console.error('PRINTROVE_LOGIN is not valid JSON ({"email":"...","password":"..."}).'); process.exit(2); }
+}
 const createTestOrder = process.argv.includes('--create-test-order');
 
 if (!email || !password) {
-  console.error('Set PRINTROVE_EMAIL and PRINTROVE_PASSWORD in the environment.');
+  console.error('Set PRINTROVE_LOGIN (JSON {"email","password"}) in the environment.');
   process.exit(2);
 }
 

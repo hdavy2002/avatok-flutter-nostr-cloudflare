@@ -499,8 +499,10 @@ export interface Env {
   // (shared secret for POST /api/preeti/internal/sync, header x-preeti-sync-token).
   PREETI_MODEL?: string;
   PREETI_SYNC_TOKEN?: string;
-  // [AUMFE-POD-CORE-1] Optional Worker secrets for the Printrove print partner (lib/pod/printrove.ts). Never in wrangler.toml,
-  // KV, logs, PostHog or the browser. Absent => the provider reports `not_configured` and the `manual` provider keeps working.
+  // [AUMFE-POD-CORE-1/2] Printrove login for lib/pod/printrove.ts. The Worker is at Cloudflare's 128 text-binding limit, so the
+  // login is ONE secret: PRINTROVE_LOGIN = JSON {"email":"...","password":"..."}. PRINTROVE_EMAIL / PRINTROVE_PASSWORD remain a
+  // fallback only. Never in wrangler.toml, KV, logs, PostHog or the browser. Absent => `not_configured`; `manual` keeps working.
+  PRINTROVE_LOGIN?: string;
   PRINTROVE_EMAIL?: string;
   PRINTROVE_PASSWORD?: string;
 

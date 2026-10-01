@@ -1,9 +1,13 @@
+// [AUMFE-POD-CORE-2 2026-10-01] Mapped to the REAL response shapes captured by scripts/printrove_probe.mjs against the owner's
+// account (token, categories, category products, product detail, designs/products/orders lists, serviceability). Still unknown
+// and kept defensive with `// PROBE:`: create-design, create-product, create-order and get-order replies/status values.
 // [AUMFE-POD-CORE-1] Printrove adapter. Contract: Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md section 3. This is the ONLY file
 // that may name a Printrove field. The API docs (2021) give no response examples and no units for design `dimensions`, so
 // every response mapping here is DEFENSIVE (several plausible keys, raw kept) and every guess is marked `// PROBE:`;
 // scripts/printrove_probe.mjs prints the real shapes so they can be corrected the day the owner supplies the login.
 //
-// Secrets: PRINTROVE_EMAIL / PRINTROVE_PASSWORD are Worker secrets. They are used only in the token call body; they are
+// Secrets: ONE Worker secret PRINTROVE_LOGIN = JSON {"email","password"} (the Worker is at the 128 text-binding limit);
+// PRINTROVE_EMAIL / PRINTROVE_PASSWORD are a fallback. They are used only in the token call body; they are
 // never put in KV, logs, error details, PostHog or any response. The bearer token is cached in KV (TOKENS) at
 // `pod:printrove:token` until 1 h before it expires.
 import type { Env } from '../../types';
@@ -11,7 +15,7 @@ import { trackException } from '../../hooks';
 import { PRINT_SPECS } from './specs';
 import {
   PodError,
-  type CatalogProduct, type CatalogVariant, type FulfilmentOrder, type ListingInput, type NormalisedState, type NormalisedStatus,
+  type CatalogProduct, type CatalogVariant, type PrintCostRates, type FulfilmentOrder, type ListingInput, type NormalisedState, type NormalisedStatus,
   type PodProvider,
 } from './types';
 
@@ -22,9 +26,9 @@ const MIN_GAP_MS = 500; // <= 2 requests per second
 const MAX_TRIES = 3;
 const PAGE_SIZE = 20; // lists return at most 20 per page
 const MAX_PAGES = 50;
-const MAX_DETAIL_FETCHES = 80; // product-detail calls per catalogue sync (each is one rate-limited request)
 const REQUEST_TIMEOUT_MS = 25_000;
-// PROBE: units of design `dimensions` are undocumented. Assumed pixels at 300 DPI; change to 1 if the probe shows inches.
+// PROBE: units of design `dimensions` in create-product are still unconfirmed. The partner's print areas are pixels at 300 DPI
+// (4680 x 5880 px = 15.6 x 19.6 in), so pixels at 300/in is the best guess; change to 1 if a real product shows inches.
 const DIMENSION_UNITS_PER_INCH = 300;
 
 type Rec = Record<string, unknown>;
@@ -61,32 +65,43 @@ type StoredToken = { token: string; expires_at: number };
 let tokenMemo: StoredToken | null = null;
 let tokenInflight: Promise<StoredToken> | null = null;
 
-/** PROBE: `expires_at` format is undocumented; accepts epoch seconds, epoch ms or a date string. */
+/** `expires_at` is an ISO string such as "2027-10-01T10:58:47.000000Z" (about a year out). Numbers are tolerated too. */
 function parseExpiry(v: unknown): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;
   if (typeof v === 'string' && v.trim()) {
+    const t = Date.parse(v.trim());
+    if (Number.isFinite(t)) return t;
     const asNum = Number(v);
     if (Number.isFinite(asNum)) return asNum < 1e12 ? asNum * 1000 : asNum;
-    const t = Date.parse(v);
-    if (Number.isFinite(t)) return t;
   }
-  return Date.now() + 2 * 3_600_000; // unknown: assume 2 h so the 1 h refresh margin still leaves 1 h of cache
+  if (typeof v === 'number' && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;
+  return Date.now() + 2 * 3_600_000; // unparseable: assume 2 h so the 1 h refresh margin still leaves 1 h of cache
 }
 
-/** Classify a product into a Studio print kind from its name/category (the API has no kind field). */
-export function classifyKind(name: string, category: string | null): string {
-  const t = `${name} ${category ?? ''}`.toLowerCase();
-  const isTee = /\b(t-?shirt|tee|tshirt)s?\b|t shirt/.test(t);
-  if (t.includes('crop') && t.includes('hood')) return 'crop_hoodie';
-  if (t.includes('crop')) return 'crop_top';
-  if (t.includes('hood')) return 'hoodie';
-  if (t.includes('sweat')) return 'sweatshirt';
-  if (t.includes('polo')) return 'polo';
-  if (isTee && /toddler|infant|baby/.test(t)) return 'toddler_tee';
-  if (isTee && /\b(kid|kids|boys?|girls?|youth|junior)\b/.test(t)) return 'kids_tee';
-  if (isTee && /\b(women|womens|women's|ladies|female)\b/.test(t)) return 'womens_tee';
-  if (isTee) return 'mens_tee';
-  return 'other';
+/** The Printrove login: ONE secret PRINTROVE_LOGIN (JSON {"email","password"}), else PRINTROVE_EMAIL + PRINTROVE_PASSWORD. Null when absent/invalid. */
+export function printroveLogin(env: Env): { email: string; password: string } | null {
+  const raw = env.PRINTROVE_LOGIN?.trim();
+  if (raw) {
+    try {
+      const o = JSON.parse(raw) as { email?: unknown; password?: unknown };
+      if (typeof o.email === 'string' && o.email.trim() && typeof o.password === 'string' && o.password) {
+        return { email: o.email.trim(), password: o.password };
+      }
+    } catch { /* invalid JSON: reported as not configured with a specific message in fetchToken, never echoing the value */ }
+    return null;
+  }
+  const email = env.PRINTROVE_EMAIL?.trim();
+  const password = env.PRINTROVE_PASSWORD;
+  return email && password?.trim() ? { email, password } : null;
+}
+
+/** Studio kind by Printrove product id (the API has no kind field). Accessories and everything else are `other` (not shown). */
+export const KIND_BY_PRODUCT_ID: Record<string, string> = {
+  '460': 'mens_tee', '462': 'womens_tee', '561': 'kids_tee', '560': 'toddler_tee',
+  '463': 'hoodie', '1012': 'sweatshirt', '1182': 'polo', '464': 'crop_top', '1087': 'crop_hoodie',
+  '1216': 'oversized_tee', '1440': 'oversized_tee', '461': 'full_sleeve_tee', '1453': 'vneck_tee',
+};
+export function classifyKind(productId: string): string {
+  return KIND_BY_PRODUCT_ID[productId] ?? 'other';
 }
 
 /** Map a partner status string to our normalised state. Unknown statuses stay `sent` (provider_status is kept verbatim). */
@@ -109,10 +124,6 @@ export class PrintroveProvider implements PodProvider {
 
   constructor(private env: Env) {}
 
-  private configured(): boolean {
-    return Boolean(this.env.PRINTROVE_EMAIL?.trim() && this.env.PRINTROVE_PASSWORD?.trim());
-  }
-
   // --- auth ---------------------------------------------------------------------------------------------------------
   private async trackSoft(e: unknown, route: string): Promise<void> {
     await trackException(this.env, e, { route, handled: true, app_name: 'saathum' });
@@ -129,14 +140,19 @@ export class PrintroveProvider implements PodProvider {
   }
 
   private async fetchToken(): Promise<StoredToken> {
-    if (!this.configured()) throw new PodError('not_configured', 'Printrove login is not set. Add PRINTROVE_EMAIL and PRINTROVE_PASSWORD as Worker secrets.');
+    const login = printroveLogin(this.env);
+    if (!login) {
+      throw new PodError('not_configured', this.env.PRINTROVE_LOGIN?.trim()
+        ? 'PRINTROVE_LOGIN is not valid JSON. It must look like {"email":"...","password":"..."}.'
+        : 'Printrove login is not set. Add the Worker secret PRINTROVE_LOGIN = {"email":"...","password":"..."}.');
+    }
     await throttle();
     let res: Response;
     try {
       res = await fetch(`${BASE}token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ email: this.env.PRINTROVE_EMAIL, password: this.env.PRINTROVE_PASSWORD }),
+        body: JSON.stringify({ email: login.email, password: login.password }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (e) {
@@ -148,9 +164,9 @@ export class PrintroveProvider implements PodProvider {
     if (!res.ok) throw new PodError('unavailable', `Printrove login failed (HTTP ${res.status}).`, { status: res.status });
     const body = rec(await res.json().catch(() => null));
     const data = rec(pick(body, ['data'])) ?? body;
-    const token = str(pick(data, ['access_token', 'token'])); // PROBE: token key
+    const token = str(pick(data, ['access_token', 'token']));
     if (!token) throw new PodError('unavailable', 'Printrove login returned no token.', { keys: body ? Object.keys(body) : null });
-    const expires_at = parseExpiry(pick(data, ['expires_at', 'expires_in', 'expiry'])); // PROBE: expiry key + format
+    const expires_at = parseExpiry(pick(data, ['expires_at']));
     const stored: StoredToken = { token, expires_at };
     const ttl = Math.floor((expires_at - TOKEN_REFRESH_BEFORE_MS - Date.now()) / 1000);
     if (ttl >= 60) {
@@ -229,7 +245,7 @@ export class PrintroveProvider implements PodProvider {
     throw lastErr ?? new PodError('unavailable', 'Printrove did not respond.');
   }
 
-  /** PROBE: list envelope. Finds the items array in a bare array or under data/products/categories/orders/items/results. */
+  /** List envelope: `{status, categories|products|designs|orders:[...], links, meta}`; also tolerates a bare array or `data`. */
   private items(body: unknown, depth = 0): unknown[] {
     if (Array.isArray(body)) return body;
     const r = rec(body);
@@ -248,7 +264,7 @@ export class PrintroveProvider implements PodProvider {
     const all: unknown[] = [];
     let prevSig = '';
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const body = await this.call('GET', path, { query: { ...query, page } }); // PROBE: page param name
+      const body = await this.call('GET', path, { query: { ...query, page } }); // Laravel pagination: ?page=N, meta.last_page
       const got = this.items(body);
       if (!got.length) break;
       const sig = JSON.stringify(got.slice(0, 3));
@@ -257,7 +273,7 @@ export class PrintroveProvider implements PodProvider {
       all.push(...got);
       if (stop?.(all)) break;
       const meta = rec(pick(rec(body), ['meta', 'pagination']));
-      const last = num(pick(meta, ['last_page', 'total_pages'])) ?? num(pick(rec(body), ['last_page', 'total_pages'])); // PROBE
+      const last = num(pick(meta, ['last_page', 'total_pages'])) ?? num(pick(rec(body), ['last_page', 'total_pages']));
       if (last !== null && page >= last) break;
       if (got.length < PAGE_SIZE) break;
     }
@@ -275,78 +291,79 @@ export class PrintroveProvider implements PodProvider {
     }
   }
 
-  /** Flatten any variant-looking objects (an id plus a colour key) found inside a product payload, carrying a parent size. */
-  private collectVariants(node: unknown, inheritedSize: string | null, out: CatalogVariant[], depth = 0): void {
-    if (depth > 4) return;
-    if (Array.isArray(node)) { for (const n of node) this.collectVariants(n, inheritedSize, out, depth + 1); return; }
-    const o = rec(node);
-    if (!o) return;
-    const size = str(pick(o, ['size', 'size_name', 'size_label'])) ?? inheritedSize; // PROBE: size key
-    const id = str(pick(o, ['id', 'variant_id']));
-    const colourRaw = pick(o, ['colour', 'color', 'colour_name', 'color_name']); // PROBE: colour key (string or {name,hex})
-    const colour = str(colourRaw);
-    if (id && colour && size) {
-      const hex = str(pick(rec(colourRaw), ['hex', 'code', 'color_code'])) ?? str(pick(o, ['colour_hex', 'color_hex', 'hex', 'color_code', 'colour_code'])); // PROBE
-      const rupees = num(pick(o, ['price', 'base_price', 'cost', 'mrp'])); // PROBE: assumed rupees
-      const sku = str(pick(o, ['sku']));
-      const v: CatalogVariant = { provider_variant_id: id, colour, colour_hex: hex && /^#?[0-9a-f]{3,8}$/i.test(hex) ? (hex.startsWith('#') ? hex : `#${hex}`) : null, size, base_cost_paise: rupees === null ? null : Math.round(rupees * 100) };
-      if (sku) v.sku = sku;
-      out.push(v);
-      return;
-    }
-    for (const v of Object.values(o)) if (v && typeof v === 'object') this.collectVariants(v, size, out, depth + 1);
+  private rates(o: Rec, side: 'front' | 'back'): PrintCostRates | undefined {
+    const rate = num(o[`${side}_rate_per_square_inch`]);
+    const min = num(o[`${side}_minimum_printing_price`]);
+    return rate === null && min === null ? undefined : { rate_per_sq_in_rupees: rate ?? 0, min_price_rupees: min ?? 0 };
   }
 
-  private sizeChart(p: Rec): CatalogProduct['size_chart'] {
-    const raw = pick(p, ['size_chart', 'sizechart', 'measurements']); // PROBE: size-chart key + row keys
-    const rows = Array.isArray(raw) ? raw : this.items(raw);
-    const out: Array<{ size: string; chest_in?: number; length_in?: number }> = [];
-    for (const r of rows) {
-      const o = rec(r);
-      const size = str(pick(o, ['size', 'name']));
-      if (!o || !size) continue;
-      const row: { size: string; chest_in?: number; length_in?: number } = { size };
-      const chest = num(pick(o, ['chest', 'chest_in', 'width', 'bust']));
-      const len = num(pick(o, ['length', 'length_in', 'height']));
-      if (chest !== null) row.chest_in = chest;
-      if (len !== null) row.length_in = len;
-      out.push(row);
+  /** Map one product-detail payload `{status, product:{id,name,variants:[...]}}` to a catalogue product. Out-of-stock variants are skipped. */
+  mapProduct(body: unknown, kind: string, productId: string, listName: string, category: string | null): CatalogProduct | null {
+    const full = rec(pick(rec(body), ['product'])) ?? {};
+    const raw = Array.isArray(full.variants) ? (full.variants as unknown[]) : [];
+    const variants: CatalogVariant[] = [];
+    const px = { front: [] as number[][], back: [] as number[][] };
+    for (const rv of raw) {
+      const o = rec(rv);
+      if (!o) continue;
+      if (str(o.stock_status) !== 'in_stock') continue; // cannot be ordered right now
+      const id = str(o.id);
+      const colour = str(o.color);
+      const size = str(o.size);
+      if (!id || !colour || !size) continue;
+      const base = num(o.base_price);
+      const hex = str(o.color_code);
+      const v: CatalogVariant = {
+        provider_variant_id: id, colour, colour_hex: hex && /^#?[0-9a-f]{3,8}$/i.test(hex) ? (hex.startsWith('#') ? hex : `#${hex}`) : null, size,
+        base_cost_paise: base === null ? null : Math.round(base * 100), // base_price is rupees (the garment)
+      };
+      const w = num(o.weight);
+      if (w !== null) v.weight_g = w;
+      const front = this.rates(o, 'front');
+      const back = this.rates(o, 'back');
+      if (front || back) v.print_cost = { ...(front ? { front } : {}), ...(back ? { back } : {}) };
+      variants.push(v);
+      for (const side of ['front', 'back'] as const) {
+        const pw = num(o[`${side}_print_width`]);
+        const ph = num(o[`${side}_print_height`]);
+        if (pw && ph) px[side].push([pw, ph]);
+      }
     }
-    return out.length ? out : null;
+    if (!variants.length) return null;
+    const area = (side: 'front' | 'back'): [number, number] | undefined => {
+      const first = px[side][0]; // identical across a product's variants (verified for every garment kind on 2026-10-01)
+      return first ? [Math.round((first[0] / 300) * 100) / 100, Math.round((first[1] / 300) * 100) / 100] : undefined; // px at 300 DPI -> in
+    };
+    const front = area('front');
+    const back = area('back');
+    return {
+      provider: 'printrove', provider_product_id: productId, kind, name: str(full.name) ?? listName, category,
+      variants, size_chart: null, // PROBE: the product detail carries no size chart; look for it elsewhere before showing one
+      ...(front || back ? { print_area_in: { ...(front ? { front } : {}), ...(back ? { back } : {}) } } : {}),
+    };
   }
 
   async syncCatalog(): Promise<CatalogProduct[]> {
     const categories = await this.paginate('categories');
     const products: CatalogProduct[] = [];
     const failures: Array<{ id: string; why: string }> = [];
-    let detail = 0;
-    outer: for (const c of categories) {
+    for (const c of categories) {
       const cat = rec(c);
-      const catId = str(pick(cat, ['id', 'category_id']));
-      const catName = str(pick(cat, ['name', 'title'])) ;
+      const catId = str(pick(cat, ['id']));
+      const catName = str(pick(cat, ['name']));
       if (!catId) continue;
       const list = await this.paginate(`categories/${encodeURIComponent(catId)}`);
       for (const pr of list) {
         const p = rec(pr);
-        const pid = str(pick(p, ['id', 'product_id']));
-        const name = str(pick(p, ['name', 'title'])) ?? `Product ${pid}`;
+        const pid = str(pick(p, ['id']));
         if (!pid) continue;
-        const kind = classifyKind(name, catName);
-        if (kind === 'other') continue; // the Studio only offers the known garment kinds; skip the rest to save calls
-        if (detail >= MAX_DETAIL_FETCHES) break outer;
-        detail++;
+        const kind = classifyKind(pid);
+        if (kind === 'other') continue; // accessories and unlisted garments are not offered yet
         try {
           const body = await this.call('GET', `categories/${encodeURIComponent(catId)}/products/${encodeURIComponent(pid)}`);
-          const full = rec(pick(rec(body), ['product', 'data'])) ?? rec(body) ?? {};
-          const variants: CatalogVariant[] = [];
-          this.collectVariants(full, null, variants);
-          const seen = new Set<string>();
-          const unique = variants.filter((v) => (seen.has(v.provider_variant_id) ? false : (seen.add(v.provider_variant_id), true)));
-          if (!unique.length) { failures.push({ id: pid, why: 'no variants recognised in product payload' }); continue; }
-          products.push({
-            provider: 'printrove', provider_product_id: pid, kind, name: str(pick(full, ['name', 'title'])) ?? name,
-            category: catName, variants: unique, size_chart: this.sizeChart(full),
-          });
+          const mapped = this.mapProduct(body, kind, pid, str(pick(p, ['name'])) ?? `Product ${pid}`, catName);
+          if (mapped) products.push(mapped);
+          else failures.push({ id: pid, why: 'no in-stock variants in product payload' });
         } catch (e) {
           if (e instanceof PodError && (e.code === 'auth_failed' || e.code === 'not_configured')) throw e;
           failures.push({ id: pid, why: String((e as Error)?.message ?? e) });
@@ -407,24 +424,21 @@ export class PrintroveProvider implements PodProvider {
     return { listing_ref, variant_refs };
   }
 
-  async serviceability(pincode: string, weight_g: number): Promise<{ ok: boolean; eta_days: number | null }> {
+  async serviceability(pincode: string, weight_g: number): Promise<{ ok: boolean; eta_days: number | null; shipping_cost_rupees?: number | null }> {
     try {
+      // Real shape: {status, couriers:[{id,name,cost}]}. Serviceable = couriers non-empty; cost is the shipping charge in rupees; no ETA.
       const body = await this.call('GET', 'serviceability', { query: { country: 'India', pincode, weight: weight_g, cod: 'false' } });
-      const r = rec(body);
-      const d = rec(pick(r, ['data'])) ?? r;
-      const flag = pick(d, ['serviceable', 'is_serviceable', 'available', 'success']); // PROBE: serviceable flag
-      const list = this.items(body);
-      const ok = typeof flag === 'boolean' ? flag : list.length > 0;
-      const eta = num(pick(d, ['eta_days', 'etd', 'estimated_delivery_days', 'delivery_days', 'tat'])); // PROBE: ETA key
-      return { ok, eta_days: eta };
+      const couriers = Array.isArray(rec(body)?.couriers) ? (rec(body)?.couriers as unknown[]) : [];
+      const costs = couriers.map((c) => num(pick(rec(c), ['cost']))).filter((n): n is number => n !== null);
+      return { ok: couriers.length > 0, eta_days: null, shipping_cost_rupees: costs.length ? Math.min(...costs) : null };
     } catch (e) {
-      if (e instanceof PodError && (e.code === 'rejected' || e.code === 'not_found')) return { ok: false, eta_days: null };
+      if (e instanceof PodError && (e.code === 'rejected' || e.code === 'not_found')) return { ok: false, eta_days: null, shipping_cost_rupees: null };
       throw e;
     }
   }
 
   async findOrderByReference(reference_number: string): Promise<{ provider_order_id: string } | null> {
-    const isMatch = (o: unknown) => str(pick(rec(o), ['reference_number', 'reference'])) === reference_number; // PROBE: reference key
+    const isMatch = (o: unknown) => str(pick(rec(o), ['reference_number', 'reference'])) === reference_number; // PROBE: reference key on order rows (the ?reference_number= filter itself works)
     // The filter may be ignored, so verify client-side and keep paging until found.
     const list = await this.paginate('orders', { reference_number }, (items) => items.some(isMatch));
     const hit = list.find(isMatch);

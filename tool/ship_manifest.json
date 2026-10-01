@@ -8766,5 +8766,21 @@
         "note": "Studio publish returned. steps_failed must be 0 for a clean publish; present-but-nonzero means a publish step (partner upload, listing, variant map or shop product) is failing."
       }
     ]
+  },
+  "AUMFE-POD-CORE-2": {
+    "description": "[AUMFE-POD-CORE-2 2026-10-01] Printrove adapter fixed to the real API shapes captured by the probe on the owner's account: ISO token expiry, categories/products/variants (base_price rupees, colour/size/stock), per-variant print areas (px at 300 DPI) exposed as CatalogProduct.print_area_in, per-side print rates (estimatePrintCostRupees), serviceability = couriers non-empty with shipping cost, product-id kind table (adds oversized_tee, full_sleeve_tee, vneck_tee). Printrove login is now ONE Worker secret PRINTROVE_LOGIN (JSON {email,password}); PRINTROVE_EMAIL/PRINTROVE_PASSWORD kept as fallback. Still PROBE: create-design, create-product, create-order and get-order replies and status values.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "pod_partner_synced",
+        "property": "count",
+        "exists": true,
+        "min_events": 0,
+        "note": "Catalogue sync after PRINTROVE_LOGIN is set. count should be about 13 products (the mapped garment kinds); 0 or a failure means the real payload no longer matches lib/pod/printrove.ts mapProduct."
+      }
+    ]
   }
 }

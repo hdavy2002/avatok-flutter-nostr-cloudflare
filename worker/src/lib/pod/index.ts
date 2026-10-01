@@ -3,11 +3,11 @@
 import type { Env } from '../../types';
 import { readConfig } from '../../routes/config';
 import { ManualProvider } from './manual';
-import { PrintroveProvider, peekPrintroveToken } from './printrove';
+import { PrintroveProvider, peekPrintroveToken, printroveLogin } from './printrove';
 import type { PodProvider, PodProviderId } from './types';
 
 export * from './types';
-export { PRINT_SPECS, maxSharpInches, fitForProduct } from './specs';
+export { PRINT_SPECS, maxSharpInches, fitForProduct, estimatePrintCostRupees, areaFor } from './specs';
 export { splitAddressForPartner, deliveryPhone10 } from './address';
 
 export const POD_PROVIDER_IDS: PodProviderId[] = ['manual', 'printrove'];
@@ -23,7 +23,7 @@ export async function getPodProvider(env: Env, id?: PodProviderId): Promise<PodP
 /** True when the partner's secrets are present (manual always is). Never exposes the secret values. */
 export function podProviderConfigured(env: Env, id: PodProviderId): boolean {
   if (id === 'manual') return true;
-  return Boolean(env.PRINTROVE_EMAIL?.trim() && env.PRINTROVE_PASSWORD?.trim());
+  return printroveLogin(env) !== null;
 }
 
 /** Cached-login status for the admin page without a network call: null when nothing is cached (or manual). */

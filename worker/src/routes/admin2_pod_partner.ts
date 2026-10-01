@@ -82,7 +82,7 @@ const PROVIDER_LABELS: Record<PodProviderId, { label: string; supportsApi: boole
 
 type CatalogRow = {
   provider: string; provider_product_id: string; kind: string; name: string; category: string | null;
-  variants_json: string; size_chart_json: string | null; synced_at: number;
+  variants_json: string; size_chart_json: string | null; raw_json: string | null; synced_at: number;
 };
 
 async function catalogStats(env: Env, provider: PodProviderId): Promise<{ count: number; synced_at: number | null }> {
@@ -152,13 +152,14 @@ async function syncPartner(req: Request, env: Env, a: { uid: string }): Promise<
   const now = Date.now();
   const stmt = env.DB_META.prepare(
     `INSERT INTO pod_catalog (provider, provider_product_id, kind, name, category, variants_json, size_chart_json, raw_json, synced_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,NULL,?8)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?8)
      ON CONFLICT(provider, provider_product_id) DO UPDATE SET kind=excluded.kind, name=excluded.name, category=excluded.category,
-       variants_json=excluded.variants_json, size_chart_json=excluded.size_chart_json, synced_at=excluded.synced_at`,
+       variants_json=excluded.variants_json, size_chart_json=excluded.size_chart_json, raw_json=excluded.raw_json, synced_at=excluded.synced_at`,
   );
   const writes = items.map((p) => stmt.bind(
     p.provider, p.provider_product_id, p.kind, p.name, p.category, JSON.stringify(p.variants),
     p.size_chart ? JSON.stringify(p.size_chart) : null, now,
+    p.print_area_in ? JSON.stringify({ print_area_in: p.print_area_in }) : null, // raw_json carries the partner's own print areas
   ));
   for (let i = 0; i < writes.length; i += BATCH) await env.DB_META.batch(writes.slice(i, i + BATCH));
   // Products the partner no longer lists drop out of the catalogue (this sync is the whole truth for the provider).
@@ -233,11 +234,15 @@ async function getCatalog(req: Request, env: Env): Promise<Response> {
     if (!/no such table/i.test(String((e as { message?: string })?.message ?? e))) throw e;
   }
   const items: CatalogProduct[] = rows.length
-    ? rows.map((r) => ({
-      provider, provider_product_id: r.provider_product_id, kind: r.kind, name: r.name, category: r.category,
-      variants: parseJsonColumn<CatalogVariant[]>(env, r.variants_json, [], "variants_json"),
-      size_chart: parseJsonColumn<CatalogProduct["size_chart"]>(env, r.size_chart_json, null, "size_chart_json"),
-    }))
+    ? rows.map((r) => {
+      const area = parseJsonColumn<{ print_area_in?: CatalogProduct["print_area_in"] } | null>(env, r.raw_json, null, "raw_json")?.print_area_in;
+      return {
+        provider, provider_product_id: r.provider_product_id, kind: r.kind, name: r.name, category: r.category,
+        variants: parseJsonColumn<CatalogVariant[]>(env, r.variants_json, [], "variants_json"),
+        size_chart: parseJsonColumn<CatalogProduct["size_chart"]>(env, r.size_chart_json, null, "size_chart_json"),
+        ...(area ? { print_area_in: area } : {}),
+      };
+    })
     : builtInCatalog().filter((p) => !kind || p.kind === kind); // nothing synced yet: the built-in manual catalogue
   return json({ items }, 200, noStore);
 }

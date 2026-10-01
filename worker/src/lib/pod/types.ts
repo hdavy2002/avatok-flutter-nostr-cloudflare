@@ -2,9 +2,14 @@
 // No partner field name (Printrove or otherwise) may appear outside lib/pod/<partner>.ts.
 export type PodProviderId = 'manual' | 'printrove';
 export type PrintSide = 'front' | 'back';
-export type CatalogVariant = { provider_variant_id: string; colour: string; colour_hex: string | null; size: string; base_cost_paise: number | null; sku?: string };
+/** Per-side print pricing the partner charges on top of the garment: max(min_price_rupees, rate_per_sq_in_rupees x w_in x h_in). */
+export type PrintCostRates = { rate_per_sq_in_rupees: number; min_price_rupees: number };
+export type CatalogVariant = { provider_variant_id: string; colour: string; colour_hex: string | null; size: string; base_cost_paise: number | null; sku?: string;
+  weight_g?: number; print_cost?: { front?: PrintCostRates; back?: PrintCostRates } };
 export type CatalogProduct = { provider: PodProviderId; provider_product_id: string; kind: string; name: string; category: string | null;
-  variants: CatalogVariant[]; size_chart: Array<{ size: string; chest_in?: number; length_in?: number }> | null };
+  variants: CatalogVariant[]; size_chart: Array<{ size: string; chest_in?: number; length_in?: number }> | null;
+  /** The partner's own printable area per side in inches ([w, h]); authoritative over PRINT_SPECS (the fallback) when present. */
+  print_area_in?: { front?: [number, number]; back?: [number, number] } };
 export type PrintPlacement = { side: PrintSide; width_in: number; height_in: number; top_in: number; left_in: number }; // relative to the print area's top-left
 export type ListingInput = { name: string; provider_product_id: string; design_ref: string; placement: PrintPlacement;
   variants: Array<{ provider_variant_id: string; sku: string }> };
@@ -27,7 +32,7 @@ export interface PodProvider {
   syncCatalog(): Promise<CatalogProduct[]>;
   uploadDesign(file: Uint8Array, name: string): Promise<{ design_ref: string }>;
   createListing(input: ListingInput): Promise<{ listing_ref: string; variant_refs: Record<string, string> }>; // provider_variant_id -> listing variant id
-  serviceability(pincode: string, weight_g: number): Promise<{ ok: boolean; eta_days: number | null }>;
+  serviceability(pincode: string, weight_g: number): Promise<{ ok: boolean; eta_days: number | null; shipping_cost_rupees?: number | null }>;
   findOrderByReference(reference_number: string): Promise<{ provider_order_id: string } | null>;
   createOrder(order: FulfilmentOrder): Promise<{ provider_order_id: string; raw: unknown }>;
   getOrder(provider_order_id: string): Promise<NormalisedStatus>;
