@@ -102,3 +102,44 @@ describe('normalizeProductInput', () => {
     expect(normalizeProductInput({ status: 'bogus' }, { partial: true }).errors).toHaveLength(1);
   });
 });
+
+// [SAATHUM-SHOP-EDITOR-2 2026-10-02] Product flags: New arrival / Bestseller, automatic badge, ?tag= filter.
+import { cardBadge, flagOf, matchesTag } from './shop_logic';
+
+describe('product flags', () => {
+  it('flagOf reads 1 as true and anything else (including a missing column) as false', () => {
+    expect(flagOf(1)).toBe(true);
+    expect(flagOf(0)).toBe(false);
+    expect(flagOf(undefined)).toBe(false);
+    expect(flagOf(null)).toBe(false);
+  });
+  it('automatic badge: NEW, else BESTSELLER, else SALE when marked down, else none', () => {
+    expect(cardBadge(prod({ mrp_rupees: null, is_new: 1, is_bestseller: 1 }))).toBe('new');
+    expect(cardBadge(prod({ mrp_rupees: null, is_bestseller: 1 }))).toBe('best');
+    expect(cardBadge(prod({ mrp_rupees: 699 }))).toBe('sale');
+    expect(cardBadge(prod({ mrp_rupees: null }))).toBe('');
+  });
+  it('an explicit badge overrides the automatic one', () => {
+    expect(cardBadge(prod({ badge: 'sale', is_new: 1 }))).toBe('sale');
+    expect(toShopCard(prod({ badge: 'best', is_new: 1 })).badge).toBe('best');
+  });
+  it('the card exposes the flags; a row without the columns gets false/false', () => {
+    const c = toShopCard(prod({ is_new: 1, is_bestseller: 0 }));
+    expect([c.is_new, c.is_bestseller]).toEqual([true, false]);
+    const old = toShopCard(prod());
+    expect([old.is_new, old.is_bestseller]).toEqual([false, false]);
+  });
+  it('matchesTag: new / best use the flags, sale = marked down or badge sale', () => {
+    expect(matchesTag(prod({ is_new: 1 }), 'new')).toBe(true);
+    expect(matchesTag(prod({ is_bestseller: 1 }), 'new')).toBe(false);
+    expect(matchesTag(prod({ is_bestseller: 1 }), 'best')).toBe(true);
+    expect(matchesTag(prod(), 'best')).toBe(false);
+    expect(matchesTag(prod({ mrp_rupees: 699 }), 'sale')).toBe(true);
+    expect(matchesTag(prod({ mrp_rupees: null, badge: 'sale' }), 'sale')).toBe(true);
+    expect(matchesTag(prod({ mrp_rupees: null }), 'sale')).toBe(false);
+  });
+  it('normalizeProductInput accepts is_new / is_bestseller booleans and rejects junk', () => {
+    expect(normalizeProductInput({ is_new: true, is_bestseller: false }, { partial: true })).toEqual({ value: { is_new: true, is_bestseller: false }, errors: [] });
+    expect(normalizeProductInput({ is_new: 'maybe' }, { partial: true }).errors[0].field).toBe('is_new');
+  });
+});

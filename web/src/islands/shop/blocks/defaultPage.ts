@@ -1,3 +1,5 @@
+// [SAATHUM-SHOP-EDITOR-2 2026-10-02] The default page now ALWAYS has the five mockup sections (Hero, Shop by collection, New arrivals,
+// Featured banner, Bestsellers) so the editor and the live page both show the whole structure; the banner carries the mockup copy.
 // [SAATHUM-SHOP-EDITOR-1 2026-10-01] THE default /shop home page — exactly what the page showed before it became editable
 // (the owner-approved mockup copy, plus whatever the old Promote-to-cards hero / featured-banner settings held).
 //
@@ -15,6 +17,7 @@ export interface DefaultHeroInput {
   hotspots?: { product_id: string; x: number; y: number }[];
 }
 export interface DefaultBannerInput {
+  /** '' = no product picked (the banner button then uses its own link). */
   product_id: string; eyebrow?: string; title?: string; text?: string; cta_label?: string; image_url?: string | null;
 }
 export interface DefaultInputs { brandName: string; hero?: DefaultHeroInput | null; banner?: DefaultBannerInput | null }
@@ -55,26 +58,25 @@ export function buildDefaultPage({ brandName, hero: h0, banner: b0 }: DefaultInp
     {
       type: 'ProductRail',
       props: {
-        id: 'new-arrivals', title: 'New arrivals', subtitle: 'Fresh off the press this week.', linkLabel: 'View all', linkHref: '/shop/all?sort=new',
+        id: 'new-arrivals', title: 'New arrivals', subtitle: 'Fresh off the press this week.', linkLabel: 'View all', linkHref: '/shop/all?tag=new',
         source: 'new_arrivals', collection: '', products: [], count: 4, hideWhenEmpty: false,
         emptyTitle: 'New T-shirts are coming soon', emptyText: 'We are printing our first designs. Please check back shortly.',
         emptyButtonLabel: 'Explore pujas and havans', emptyButtonHref: '/marketplace',
       },
     },
   ];
-  if (b0?.product_id) {
-    content.push({
-      type: 'FeaturedBanner',
-      props: {
-        id: 'banner', eyebrow: b0.eyebrow ?? '', title: b0.title ?? '', text: b0.text ?? '',
-        ctaLabel: b0.cta_label || 'See the tee →', product: b0.product_id, image: b0.image_url || '',
-      },
-    });
-  }
+  content.push({
+    type: 'FeaturedBanner',
+    props: {
+      id: 'banner', eyebrow: b0?.eyebrow || 'Featured · Navratri drop', title: b0?.title || 'The Lotus & Diya tee — light for every home.',
+      text: b0?.text || 'Hand-drawn folk lotus with a lit diya at its heart. Off-white cotton, soft red and gold ink.',
+      ctaLabel: b0?.cta_label || 'See the tee →', ctaHref: '/shop/all', product: b0?.product_id || '', image: b0?.image_url || '',
+    },
+  });
   content.push({
     type: 'ProductRail',
     props: {
-      id: 'bestsellers', title: 'Bestsellers', subtitle: 'What devotees are wearing the most.', linkLabel: 'View all', linkHref: '/shop/all',
+      id: 'bestsellers', title: 'Bestsellers', subtitle: 'What devotees are wearing the most.', linkLabel: 'View all', linkHref: '/shop/all?tag=best',
       source: 'bestsellers', collection: '', products: [], count: 4, hideWhenEmpty: true,
       emptyTitle: '', emptyText: '', emptyButtonLabel: '', emptyButtonHref: '',
     },

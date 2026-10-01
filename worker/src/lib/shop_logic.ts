@@ -20,6 +20,9 @@ export interface ProductRow {
   sizes_json: string;
   images_json: string;
   badge: string;
+  /** [SAATHUM-SHOP-EDITOR-2] 1 = shows in New arrivals / Bestsellers. Absent (undefined) until migration 2026-10-02-saathum-shop-flags.sql is applied — read as 0. */
+  is_new?: number | null;
+  is_bestseller?: number | null;
   status: string;
   printrove_ref: string | null;
   sold_count: number;
@@ -80,6 +83,8 @@ export type ShopCard = {
   mrp_rupees: number | null;
   off_pct: number | null;
   badge: "" | "new" | "best" | "sale";
+  is_new: boolean;
+  is_bestseller: boolean;
   colours: ShopColour[];
   sizes: string[];
   image_url: string | null;
@@ -139,10 +144,33 @@ export function offPct(price: number, mrp: number | null): number | null {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
+/** [SAATHUM-SHOP-EDITOR-2] A flag column as a boolean; a missing column (migration not applied yet) is false. */
+export const flagOf = (v: unknown): boolean => Number(v) === 1;
+
+export const hasDiscount = (row: Pick<ProductRow, "price_rupees" | "mrp_rupees">): boolean =>
+  row.mrp_rupees !== null && row.mrp_rupees !== undefined && Number(row.mrp_rupees) > Number(row.price_rupees);
+
+/** The card badge. An explicit badge wins; '' = Automatic: NEW if flagged new, else BESTSELLER if flagged, else SALE if marked down, else none. */
+export function cardBadge(row: ProductRow): "" | "new" | "best" | "sale" {
+  const explicit = (["new", "best", "sale"] as const).find((b) => b === row.badge);
+  if (explicit) return explicit;
+  if (flagOf(row.is_new)) return "new";
+  if (flagOf(row.is_bestseller)) return "best";
+  return hasDiscount(row) ? "sale" : "";
+}
+
+/** `?tag=` of the public listing: new / best filter on the flags, sale = marked down or badge sale. */
+export function matchesTag(row: ProductRow, tag: string): boolean {
+  if (tag === "new") return flagOf(row.is_new);
+  if (tag === "best") return flagOf(row.is_bestseller);
+  if (tag === "sale") return row.badge === "sale" || hasDiscount(row);
+  return true;
+}
+
 export function toShopCard(row: ProductRow, collection?: { slug: string; name: string } | null): ShopCard {
   const images = parseImages(row.images_json);
   const mrp = row.mrp_rupees === null || row.mrp_rupees === undefined ? null : Number(row.mrp_rupees);
-  const badge = (["new", "best", "sale"] as const).find((b) => b === row.badge) ?? "";
+  const badge = cardBadge(row);
   return {
     id: row.id,
     slug: row.slug,
@@ -151,6 +179,8 @@ export function toShopCard(row: ProductRow, collection?: { slug: string; name: s
     mrp_rupees: mrp,
     off_pct: offPct(Number(row.price_rupees), mrp),
     badge,
+    is_new: flagOf(row.is_new),
+    is_bestseller: flagOf(row.is_bestseller),
     colours: parseColours(row.colours_json),
     sizes: parseSizes(row.sizes_json),
     image_url: images[0]?.url ?? null,
@@ -273,6 +303,8 @@ export type ProductInput = {
   sizes?: string[];
   images?: ShopImage[];
   badge?: string;
+  is_new?: boolean;
+  is_bestseller?: boolean;
   status?: string;
   printrove_ref?: string | null;
   seo_title?: string | null;
@@ -380,6 +412,14 @@ export function normalizeProductInput(body: Record<string, unknown>, opts: { par
     const b = body.badge === null ? "" : String(body.badge);
     if (!(BADGES as readonly string[]).includes(b)) errors.push({ field: "badge", message: "Badge must be none, new, best or sale." });
     else v.badge = b;
+  }
+  for (const k of ["is_new", "is_bestseller"] as const) {
+    if (has(k)) {
+      const b = body[k];
+      if (b === true || b === 1) v[k] = true;
+      else if (b === false || b === 0 || b === null) v[k] = false;
+      else errors.push({ field: k, message: "Choose yes or no." });
+    }
   }
   if (has("status")) {
     if (!(STATUSES as readonly string[]).includes(String(body.status))) errors.push({ field: "status", message: "Status must be live, draft, hidden or archived." });

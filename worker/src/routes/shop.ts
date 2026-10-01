@@ -15,7 +15,7 @@ import { readConfig } from "./config";
 import { shopOrdersRoute } from "./shop_orders";
 import { PAGE_KEY, parseRecord, resolvePage, type Resolved } from "../lib/shop_page";
 import {
-  computeShopQuote, parseColours, parseImages, parseSizes, toShopCard,
+  computeShopQuote, flagOf, matchesTag, parseColours, parseImages, parseSizes, toShopCard,
   type CouponRow, type ProductRow, type ShopCard, type ShopCartItem,
 } from "../lib/shop_logic";
 
@@ -105,13 +105,10 @@ function pick(ids: string[], live: Map<string, ProductRow>, limit: number): Prod
 // GET /api/shop/home
 // ---------------------------------------------------------------------------
 async function home(env: Env): Promise<Response> {
-  const now = Date.now();
-  const [liveRows, cols, settingsRows, newIds, bestIds] = await Promise.all([
+  const [liveRows, cols, settingsRows] = await Promise.all([
     loadLive(env),
     loadCollections(env),
     env.DB_META.prepare("SELECT key, value_json FROM shop_settings WHERE key IN ('hero','featured_banner','page_home')").all<{ key: string; value_json: string }>(),
-    slotIds(env, "new_arrivals", now),
-    slotIds(env, "bestsellers", now),
   ]);
   const live = new Map(liveRows.map((p) => [p.id, p]));
   const cmap = collectionMap(cols);
@@ -128,23 +125,23 @@ async function home(env: Env): Promise<Response> {
   const counts = new Map<string, number>();
   for (const p of liveRows) if (p.collection_id) counts.set(p.collection_id, (counts.get(p.collection_id) ?? 0) + 1);
 
-  const newPicked = pick(newIds, live, 4);
-  const newArrivals = newPicked.length ? newPicked : [...liveRows].sort(byNewest).slice(0, 4);
-  const bestPicked = pick(bestIds, live, 4);
-  const bestsellers = bestPicked.length ? bestPicked : [...liveRows].sort(byBest).slice(0, 4);
+  // [SAATHUM-SHOP-EDITOR-2] The product flags are the only source of the two rows (the old shop_slots rows no longer drive them).
+  const newArrivals = liveRows.filter((p) => flagOf(p.is_new)).sort(byNewest).slice(0, 4);
+  const bestsellers = liveRows.filter((p) => flagOf(p.is_bestseller)).sort(byBest).slice(0, 4);
 
   const fb = parseSetting<Record<string, unknown> | null>(settings.get("featured_banner"), null);
   const fbProduct = fb && typeof fb.product_id === "string" ? live.get(fb.product_id) : undefined;
-  const featured = fb && fbProduct ? {
+  // [SAATHUM-SHOP-EDITOR-2] The banner no longer needs a product: the legacy fields still feed the default page when they hold a title.
+  const featured = fb && (fbProduct || String(fb.title ?? "").trim()) ? {
     eyebrow: String(fb.eyebrow ?? ""), title: String(fb.title ?? ""), text: String(fb.text ?? ""),
     cta_label: String(fb.cta_label ?? ""), image_url: typeof fb.image_url === "string" && fb.image_url ? fb.image_url : null,
-    product: cardOf(fbProduct, cmap),
+    product: fbProduct ? cardOf(fbProduct, cmap) : null,
   } : null;
 
   // [SAATHUM-SHOP-EDITOR-1] The owner's edited page (null = the site renders its built-in default from the fields below).
   const page = parseRecord(settings.get(PAGE_KEY)).published;
   const resolved: Resolved = page
-    ? resolvePage(page, { live: liveRows, cols, newIds, bestIds })
+    ? resolvePage(page, { live: liveRows, cols })
     : { products: {}, rails: {} };
 
   return json({
@@ -198,7 +195,7 @@ async function products(env: Env, url: URL): Promise<Response> {
     if (fFits.length && !fFits.includes(p.fit.toLowerCase())) return false;
     if (fPrints.length && !fPrints.includes(p.print_type.toLowerCase())) return false;
     if (fFor.length && !fFor.includes(p.audience.toLowerCase())) return false;
-    if (fTag && p.badge !== fTag) return false;
+    if (fTag && !matchesTag(p, fTag)) return false;
     if (minP !== null && Number.isFinite(minP) && p.price_rupees < minP) return false;
     if (maxP !== null && Number.isFinite(maxP) && p.price_rupees > maxP) return false;
     if (text) {
@@ -208,7 +205,7 @@ async function products(env: Env, url: URL): Promise<Response> {
     return true;
   });
 
-  if (sort === "new") rows.sort(byNewest);
+  if (sort === "new" || (sort === "feat" && fTag === "new")) rows.sort(byNewest);
   else if (sort === "lo") rows.sort((a, b) => a.price_rupees - b.price_rupees || byNewest(a, b));
   else if (sort === "hi") rows.sort((a, b) => b.price_rupees - a.price_rupees || byNewest(a, b));
   else rows.sort(byBest); // 'best' and 'feat'

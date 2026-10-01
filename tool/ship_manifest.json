@@ -8625,5 +8625,21 @@
         "note": "Owner published the shop-home page from the editor. Absent while admin2_view(screen=shop-editor) fires means publishing is failing."
       }
     ]
+  },
+  "SAATHUM-SHOP-EDITOR-2": {
+    "description": "[SAATHUM-SHOP-EDITOR-2 2026-10-02] Shop home always shows all five mockup sections (hero, Shop by collection, New arrivals, Featured banner, Bestsellers); the editor shows every block with placeholders. Products get New arrival / Bestseller flags (migration 2026-10-02-saathum-shop-flags.sql) that drive the rows and /shop/all?tag=new|best; collections can be created with a photo.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_shop_product_saved",
+        "property": "product_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Owner saved a product (with the New arrival / Bestseller flags). Absent while the shop admin is in use means product saving is failing."
+      }
+    ]
   }
 }

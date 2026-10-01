@@ -7,8 +7,13 @@ export const prerender = false;
 import ShopListing from '../../components/ShopListing.astro';
 import { loadListing } from '../../lib/shopListingData';
 import { SHOP_ALL_SEO } from '../../lib/seo/catalog';
+import { TAG_LABEL } from '../../lib/shopFilters';
 
 const { filters, result } = await loadListing(Astro.url);
 Astro.response.headers.set('Cache-Control', result ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store');
+// [SAATHUM-SHOP-EDITOR-2] ?tag=new|best|sale = the shop home's "View all" lists: the heading and crumb read "New arrivals" / "Bestsellers" / "On sale".
+const tagLabel = filters.tag ? TAG_LABEL[filters.tag] : '';
 ---
-<ShopListing content={SHOP_ALL_SEO} heading="All T-shirts" crumb={[{ label: 'Shop', href: '/shop' }, { label: 'All T-shirts' }]} filters={filters} result={result} />
+<ShopListing content={SHOP_ALL_SEO} heading={tagLabel || 'All T-shirts'}
+  crumb={tagLabel ? [{ label: 'Shop', href: '/shop' }, { label: 'All T-shirts', href: '/shop/all' }, { label: tagLabel }] : [{ label: 'Shop', href: '/shop' }, { label: 'All T-shirts' }]}
+  filters={filters} result={result} />

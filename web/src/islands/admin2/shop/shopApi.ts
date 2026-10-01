@@ -17,7 +17,10 @@ export type Badge = '' | 'new' | 'best' | 'sale';
 export interface AdminProduct {
   id: string; slug: string; name: string;
   price_rupees: number; mrp_rupees: number | null; off_pct?: number | null;
+  /** The badge shown on the card (explicit, or the automatic one). */
   badge: Badge; colours: Colour[]; sizes: string[];
+  /** [SAATHUM-SHOP-EDITOR-2] What the admin chose in the Badge select ('' = Automatic) and the two row flags. */
+  badge_setting?: Badge; is_new?: boolean; is_bestseller?: boolean;
   image_url: string | null;
   collection: { slug: string; name: string } | null;
   status: ProductStatus; collection_id: string | null;
@@ -90,7 +93,9 @@ export const getKpis = () => adminApi<Kpis>(`${SHOP}/kpis`);
 export const listProducts = (status: string) => adminApi<{ items: AdminProduct[]; counts: Record<string, number> }>(`${SHOP}/products`, { query: { status } });
 export const getProduct = (id: string) => adminApi<{ product: AdminProduct }>(`${SHOP}/products/${encodeURIComponent(id)}`);
 export const saveProduct = (id: string | null, body: unknown) =>
-  adminApi<{ product: AdminProduct }>(id ? `${SHOP}/products/${encodeURIComponent(id)}` : `${SHOP}/products`, { method: id ? 'PUT' : 'POST', body });
+  adminApi<{ product: AdminProduct; warning?: string }>(id ? `${SHOP}/products/${encodeURIComponent(id)}` : `${SHOP}/products`, { method: id ? 'PUT' : 'POST', body });
+/** [SAATHUM-SHOP-EDITOR-2] Toggle New arrival / Bestseller on one product (a partial PUT). */
+export const setProductFlags = (id: string, flags: { is_new?: boolean; is_bestseller?: boolean }) => saveProduct(id, flags);
 export const archiveProduct = (id: string) => adminApi<{ ok?: boolean }>(`${SHOP}/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const restoreProduct = (id: string) => adminApi<{ ok?: boolean }>(`${SHOP}/products/${encodeURIComponent(id)}/restore`, { method: 'POST' });
 export const promoteProduct = (id: string, slots: string[], badge: Badge) =>

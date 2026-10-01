@@ -16,9 +16,7 @@ import {
 export default function CollectionsPanel() {
   const [items, setItems] = useState<AdminCollection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [edit, setEdit] = useState<AdminCollection | null>(null);
+  const [edit, setEdit] = useState<AdminCollection | 'new' | null>(null);
   const [del, setDel] = useState<AdminCollection | null>(null);
   const dragFrom = useRef<number | null>(null);
 
@@ -28,15 +26,6 @@ export default function CollectionsPanel() {
     catch (e) { captureException(e, { where: 'admin2_shop_collections_load' }); setError(errMessage(e, 'Could not load the collections.')); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-
-  async function add() {
-    const v = name.trim();
-    if (!v) return;
-    setAdding(true);
-    try { await createCollection({ name: v }); setName(''); toast.success('Collection added'); await load(); }
-    catch (e) { captureException(e, { where: 'admin2_shop_collection_add' }); toast.error(errMessage(e, 'Could not add it.')); }
-    finally { setAdding(false); }
-  }
 
   async function reorder(list: AdminCollection[]) {
     const prev = items;
@@ -90,13 +79,14 @@ export default function CollectionsPanel() {
             ))}
           </div>
         )}
+        {/* [SAATHUM-SHOP-EDITOR-2] A new collection is made in the same form as editing one — name, one line and the tile photo — so it is ready for the shop home straight away. */}
         <div className="sh-coupon">
-          <input placeholder="New collection name, e.g. Ram Darbar" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} style={{ textTransform: 'none' }} />
-          <button type="button" className="sh-btn sh-btn--teal" disabled={adding} onClick={() => void add()}>Add</button>
+          <button type="button" className="sh-btn sh-btn--teal" onClick={() => setEdit('new')}>+ New collection</button>
         </div>
+        <p style={{ marginTop: 10 }}><small>A collection appears on the shop home once at least one live product is in it.</small></p>
       </div>
 
-      <EditModal c={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />
+      <EditModal target={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />
       <Modal open={!!del} onClose={() => setDel(null)}>
         <h2>Delete “{del?.name}”?</h2>
         <p>It disappears from the shop home and the filters. It has no products, so nothing else changes.</p>
@@ -117,7 +107,9 @@ export default function CollectionsPanel() {
   );
 }
 
-function EditModal({ c, onClose, onSaved }: { c: AdminCollection | null; onClose: () => void; onSaved: () => void }) {
+function EditModal({ target, onClose, onSaved }: { target: AdminCollection | 'new' | null; onClose: () => void; onSaved: () => void }) {
+  const c = target === 'new' ? null : target;
+  const creating = target === 'new';
   const [name, setName] = useState('');
   const [blurb, setBlurb] = useState('');
   const [image, setImage] = useState<string | null>(null);
@@ -128,8 +120,8 @@ function EditModal({ c, onClose, onSaved }: { c: AdminCollection | null; onClose
   const fileRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     setName(c?.name ?? ''); setBlurb(c?.blurb ?? ''); setImage(c?.image_url ?? null); setActive(c ? !!c.active : true); setErr('');
-  }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!c) return null;
+  }, [target === 'new' ? 'new' : c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!target) return null;
 
   async function pick(f: File | undefined) {
     if (!f) return;
@@ -142,14 +134,18 @@ function EditModal({ c, onClose, onSaved }: { c: AdminCollection | null; onClose
     e.preventDefault();
     if (name.trim().length < 2) { setErr('Give the collection a name.'); return; }
     setBusy(true);
-    try { await updateCollection(c!.id, { name: name.trim(), blurb: blurb.trim(), image_url: image, active }); toast.success('Collection saved'); onSaved(); }
+    try {
+      if (creating) { await createCollection({ name: name.trim(), blurb: blurb.trim(), image_url: image }); toast.success('Collection added'); }
+      else { await updateCollection(c!.id, { name: name.trim(), blurb: blurb.trim(), image_url: image, active }); toast.success('Collection saved'); }
+      onSaved();
+    }
     catch (er) { captureException(er, { where: 'admin2_shop_collection_save' }); setErr(errMessage(er, 'Could not save it.')); }
     finally { setBusy(false); }
   }
   return (
     <Modal open onClose={onClose}>
       <form onSubmit={submit}>
-        <h2>Edit collection</h2>
+        <h2>{creating ? 'New collection' : 'Edit collection'}</h2>
         <p>The photo and one line appear on the tile on the shop home.</p>
         <div className="sh-form">
           <label className="full">Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -168,7 +164,7 @@ function EditModal({ c, onClose, onSaved }: { c: AdminCollection | null; onClose
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
           </div>
         </div>
-        <label className="sh-opt" style={{ marginTop: 14 }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Show on the shop home</label>
+        {!creating && <label className="sh-opt" style={{ marginTop: 14 }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Show on the shop home</label>}
         {err && <p className="sh-err" role="alert">{err}</p>}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>

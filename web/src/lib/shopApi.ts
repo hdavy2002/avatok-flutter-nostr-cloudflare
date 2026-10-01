@@ -18,6 +18,9 @@ export interface ShopCard {
   mrp_rupees: number | null;
   off_pct: number | null;
   badge: '' | 'new' | 'best' | 'sale';
+  /** [SAATHUM-SHOP-EDITOR-2] The product flags behind the New arrivals / Bestsellers rows. */
+  is_new?: boolean;
+  is_bestseller?: boolean;
   colours: ShopColour[];
   sizes: string[];
   image_url: string | null;
@@ -57,7 +60,8 @@ export interface ShopFeaturedBanner {
   text: string;
   cta_label: string;
   image_url: string | null;
-  product: ShopCard;
+  /** null = no product picked (the banner then uses its own link / photo). */
+  product: ShopCard | null;
 }
 
 export interface ShopHome {

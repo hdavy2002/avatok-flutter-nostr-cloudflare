@@ -6,7 +6,9 @@
 //
 // NOTE FOR AI:
 //  - REAL DATA ONLY from GET /api/shop/home. Never add sample products "so it looks full". With no live products the page still
-//    renders its structure: hero with the mockup copy, an empty-state box under New arrivals; empty hide-when-empty sections are omitted.
+//    renders its structure: hero with the mockup copy, an empty-state box under New arrivals and the featured banner (mockup copy);
+//    "Shop by collection" appears once a collection has a live product and Bestsellers once a product is flagged Bestseller.
+//    [SAATHUM-SHOP-EDITOR-2] New arrivals / Bestsellers = the product flags (New arrival / Bestseller in Admin -> Shop -> Products).
 //  - Photos: hero / collection / banner / product photos come from the API and fill the same boxes with object-fit:cover; a missing
 //    photo shows the mockup's striped `.sh-ph` placeholder (spec §0.2).
 //  - SSR (prerender = false) with the same 60 s public cache header + edge cache as /marketplace (middleware.ts).
@@ -56,11 +58,11 @@ if (!page) {
   const fb = home?.featured_banner ?? null;
   const products: ShopResolved['products'] = {};
   for (const h of spots) products[h.product.id] = h.product;
-  if (fb) products[fb.product.id] = fb.product;
+  if (fb?.product) products[fb.product.id] = fb.product;
   page = buildDefaultPage({
     brandName: BRAND.name,
     hero: { ...hero, hotspots: spots.map((h) => ({ product_id: h.product.id, x: h.x, y: h.y })) },
-    banner: fb ? { product_id: fb.product.id, eyebrow: fb.eyebrow, title: fb.title, text: fb.text, cta_label: fb.cta_label, image_url: fb.image_url } : null,
+    banner: fb ? { product_id: fb.product?.id ?? '', eyebrow: fb.eyebrow, title: fb.title, text: fb.text, cta_label: fb.cta_label, image_url: fb.image_url } : null,
   });
   resolved = { products, rails: { 'new-arrivals': home?.new_arrivals ?? [], bestsellers: home?.bestsellers ?? [] } };
 }
@@ -113,7 +115,7 @@ const railHasItems = (id: string) => (resolved.rails[id]?.length ?? 0) > 0;
                 {it.type === 'CollectionGrid' && <CollectionGridBlock {...it.props} ctx={ctx} />}
                 {it.type === 'ProductRail' && railHasItems(it.props.id) && <ProductRailBlock client:idle {...it.props} ctx={{ ...slimCtx(it, ctx), last: i === lastIdx }} />}
                 {it.type === 'ProductRail' && !railHasItems(it.props.id) && <ProductRailBlock {...it.props} ctx={{ ...slimCtx(it, ctx), last: i === lastIdx }} />}
-                {it.type === 'FeaturedBanner' && <FeaturedBannerBlock {...it.props} ctx={slimCtx(it, ctx)} />}
+                {it.type === 'FeaturedBanner' && isVisible(it, ctx) && <FeaturedBannerBlock {...it.props} ctx={slimCtx(it, ctx)} />}
                 {it.type === 'PhotoBanner' && <PhotoBannerBlock {...it.props} />}
                 {it.type === 'TextSection' && <TextSectionBlock {...it.props} />}
               </Fragment>

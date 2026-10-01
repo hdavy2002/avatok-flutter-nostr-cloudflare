@@ -179,3 +179,12 @@
   .shop-admin .sh-colhex{width:92px}
   .shop-admin .sh-search{min-width:0;width:100%}
 }
+
+/* [SAATHUM-SHOP-EDITOR-2] Product flags: the two checkboxes at the top of the product form and the toggles in the products table */
+.shop-admin .sh-form .sh-flags{flex-direction:row;flex-wrap:wrap;gap:12px 28px;padding:12px 14px;border-radius:14px;background:#fff3d6;border:2px solid #f0d9a0}
+.shop-admin .sh-form .sh-flags label.sh-opt{flex-direction:row;align-items:center;gap:10px;font:800 15px Nunito}
+.shop-admin .sh-form .sh-flags input{width:20px;height:20px;padding:0;border:0;accent-color:var(--red)}
+.shop-admin .sh-form label small{font:600 13px Nunito;color:#6b4a2b}
+.shop-admin .sh-form label small a{color:var(--teal);text-decoration:underline}
+.shop-admin .sh-flag{padding:5px 10px;border-radius:999px;border:2px solid var(--line);background:#fff;color:#8a7560;font:800 12px Nunito;cursor:pointer}
+.shop-admin .sh-flag.is-on{background:#173f3f;border-color:#173f3f;color:#fff}

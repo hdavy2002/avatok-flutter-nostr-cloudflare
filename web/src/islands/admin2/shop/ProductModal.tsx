@@ -36,6 +36,8 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'live' | 'draft' | 'hidden'>('live');
   const [badge, setBadge] = useState<'' | 'new' | 'best' | 'sale'>('');
+  const [isNew, setIsNew] = useState(false);
+  const [isBest, setIsBest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [err, setErr] = useState('');
@@ -61,7 +63,9 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
       setImages(p?.images?.length ? p.images.map((i) => ({ ...i })) : (p?.image_url ? [{ url: p.image_url, label: 'Front' }] : []));
       setDescription(p?.description ?? '');
       setStatus(p && p.status !== 'archived' ? p.status : 'live');
-      setBadge(p?.badge ?? '');
+      setBadge(p?.badge_setting ?? p?.badge ?? '');
+      setIsNew(!!p?.is_new);
+      setIsBest(!!p?.is_bestseller);
     };
     fill(product);
     let off = false;
@@ -115,11 +119,12 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
       const body = {
         name: name.trim(), collection_id: collectionId, description: description.trim(), fit, print_type: printType, audience,
         price_rupees: priceN, mrp_rupees: mrpN, colours: colourList, sizes: sizeList, images, badge, status,
+        is_new: isNew, is_bestseller: isBest,
         printrove_ref: ref.trim() || null,
       };
       const r = await saveProduct(product?.id ?? null, body);
       capture('admin2_shop_product_saved', { product_id: r.product?.id ?? product?.id, created: !editing, status });
-      toast.success(editing ? 'Changes saved' : 'Product published');
+      if (r.warning) toast.error(r.warning); else toast.success(editing ? 'Changes saved' : 'Product published');
       onSaved();
     } catch (er) {
       captureException(er, { where: 'admin2_shop_product_save' });
@@ -134,11 +139,17 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
         <p>Photos, price and stock per size. SEO title and share card are written automatically.</p>
         <div className="sh-form">
           <label className="full">Product name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ram Darbar Tee" /></label>
+          {/* [SAATHUM-SHOP-EDITOR-2] These two flags decide who shows in the shop home's New arrivals and Bestsellers rows (and their "View all" lists). */}
+          <div className="full sh-field sh-flags">
+            <label className="sh-opt"><input type="checkbox" checked={isNew} onChange={(e) => setIsNew(e.target.checked)} /> Show in New arrivals</label>
+            <label className="sh-opt"><input type="checkbox" checked={isBest} onChange={(e) => setIsBest(e.target.checked)} /> Mark as Bestseller (premium)</label>
+          </div>
           <label>Collection
             <select value={collectionId} onChange={(e) => setCollectionId(e.target.value)}>
-              {cols.length === 0 && <option value="">No collections yet</option>}
+              {cols.length === 0 && <option value="">No collections yet — create one in Categories</option>}
               {cols.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {cols.length === 0 && <small>No collections yet — <a href="/admin/shop/collections">create one in Categories</a>, then come back.</small>}
           </label>
           <label>Fit<select value={fit} onChange={(e) => setFit(e.target.value as 'Regular' | 'Oversized')}><option>Regular</option><option>Oversized</option></select></label>
           <label>Print type<select value={printType} onChange={(e) => setPrintType(e.target.value)}>{PRINT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></label>
@@ -200,7 +211,7 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
           <label className="full">Description<textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Original artwork, fabric, the story behind the design…" /></label>
           <label>Status<select value={status} onChange={(e) => setStatus(e.target.value as 'live' | 'draft' | 'hidden')}><option value="live">Live</option><option value="draft">Draft</option><option value="hidden">Hidden</option></select></label>
           <label>Price shown<input value="+18% GST at checkout" disabled readOnly /></label>
-          <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as '' | 'new' | 'best' | 'sale')}><option value="">None</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select></label>
+          <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as '' | 'new' | 'best' | 'sale')}><option value="">Automatic</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select><small>Automatic: NEW if shown in New arrivals, else BESTSELLER, else SALE when marked down.</small></label>
         </div>
         {err && <p className="sh-err" role="alert">{err}</p>}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>

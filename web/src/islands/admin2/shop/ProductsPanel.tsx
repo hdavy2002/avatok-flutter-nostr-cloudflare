@@ -9,7 +9,7 @@ import { toast } from '../../../components/ui/sonner';
 import { LoadError, Modal, Thumb } from './ShopUI';
 import ProductModal from './ProductModal';
 import {
-  SLOTS, archiveProduct, errMessage, inr, listProducts, promoteProduct, restoreProduct, slotShort,
+  SLOTS, archiveProduct, errMessage, inr, listProducts, promoteProduct, restoreProduct, setProductFlags, slotShort,
   type AdminProduct, type Badge, type ProductStatus,
 } from './shopApi';
 
@@ -44,6 +44,21 @@ export default function ProductsPanel({ rev }: { rev: number }) {
 
   useEffect(() => { void load(); }, [load, rev]);
 
+  /** [SAATHUM-SHOP-EDITOR-2] One click flips New arrival / Bestseller (these two flags are what the shop home's rows show). */
+  async function flip(p: AdminProduct, key: 'is_new' | 'is_bestseller') {
+    const next = !p[key];
+    setItems((cur) => cur.map((x) => (x.id === p.id ? { ...x, [key]: next } : x)));
+    try {
+      const r = await setProductFlags(p.id, { [key]: next });
+      if (r.warning) { toast.error(r.warning); void load(); return; }
+      toast.success(next ? (key === 'is_new' ? 'Added to New arrivals' : 'Marked as Bestseller') : (key === 'is_new' ? 'Removed from New arrivals' : 'No longer a Bestseller'));
+    } catch (e) {
+      captureException(e, { where: 'admin2_shop_product_flag', key });
+      toast.error(errMessage(e, 'Could not change it.'));
+      setItems((cur) => cur.map((x) => (x.id === p.id ? { ...x, [key]: !next } : x)));
+    }
+  }
+
   async function restore(p: AdminProduct) {
     try { await restoreProduct(p.id); toast.success(`“${p.name}” restored as a draft`); void load(); }
     catch (e) { captureException(e, { where: 'admin2_shop_product_restore' }); toast.error(errMessage(e, 'Could not restore it.')); }
@@ -62,21 +77,27 @@ export default function ProductsPanel({ rev }: { rev: number }) {
       {error ? <LoadError message={error} onRetry={() => void load()} /> : (
         <div className="sh-tbl-wrap">
           <table className="sh-table">
-            <thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Sizes</th><th>Promoted on</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Sizes</th><th>Shows in</th><th>Promoted on</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>Loading…</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30 }}>Loading…</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>No products here yet. Tap “+ Add product”.</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30 }}>No products here yet. Tap “+ Add product”.</td></tr>
               ) : items.map((p) => {
                 const chip = CHIP[p.status] ?? CHIP.live;
-                const on = (p.promoted_on ?? []).map(slotShort);
+                const on = (p.promoted_on ?? []).filter((k) => k !== 'new_arrivals' && k !== 'bestsellers').map(slotShort);
                 return (
                   <tr key={p.id}>
                     <td><Thumb url={p.image_url} /><b>{p.name}</b></td>
                     <td>{p.collection?.name ?? '—'}</td>
                     <td><b>{inr(p.price_rupees)}</b>{p.mrp_rupees ? <><br /><small><s>{inr(p.mrp_rupees)}</s></small></> : null}</td>
                     <td><small>{(p.sizes ?? []).join(' · ')}</small></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {p.status === 'archived' ? '—' : (<>
+                        <button type="button" className={'sh-flag' + (p.is_new ? ' is-on' : '')} aria-pressed={!!p.is_new} title="Show in New arrivals" onClick={() => void flip(p, 'is_new')}>New arrival</button>{' '}
+                        <button type="button" className={'sh-flag' + (p.is_bestseller ? ' is-on' : '')} aria-pressed={!!p.is_bestseller} title="Mark as Bestseller" onClick={() => void flip(p, 'is_bestseller')}>Bestseller</button>
+                      </>)}
+                    </td>
                     <td style={{ maxWidth: 220 }}><small>{on.join(', ') || '—'}</small></td>
                     <td><span className={`sh-st ${chip.cls}`}>{chip.label}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -135,7 +156,7 @@ function PromoteModal({ p, onClose, onDone }: { p: AdminProduct | null; onClose:
   const [slots, setSlots] = useState<string[]>([]);
   const [badge, setBadge] = useState<Badge>('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setSlots(p?.promoted_on ?? []); setBadge(p?.badge ?? ''); }, [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSlots(p?.promoted_on ?? []); setBadge(p?.badge_setting ?? p?.badge ?? ''); }, [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) return null;
   async function save() {
     setBusy(true);
@@ -161,7 +182,7 @@ function PromoteModal({ p, onClose, onDone }: { p: AdminProduct | null; onClose:
         ))}
       </div>
       <div className="sh-form">
-        <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as Badge)}><option value="">None</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select></label>
+        <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as Badge)}><option value="">Automatic</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select></label>
         <label>Show until<input value="Always" disabled readOnly /></label>
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>

@@ -28,6 +28,8 @@ const VIEWPORTS = [
   { width: 820, label: 'Tablet (820)', icon: 'Tablet' as const },
   { width: 390, label: 'Phone (390)', icon: 'Smartphone' as const },
 ];
+// The first block is selected on load so the right-hand panel shows its fields (not an empty "Page" box).
+const initialUi = { itemSelector: { index: 0 } };
 const AUTOSAVE_MS = 2000;
 const RESOLVE_MS = 700;
 
@@ -216,6 +218,7 @@ export function PageEditorView({ api }: { api: PageApi }) {
               viewports={VIEWPORTS}
               iframe={{ enabled: true, waitForStyles: true }}
               headerTitle="Shop page"
+              ui={initialUi}
               overrides={overrides}
             />
             </UiContext.Provider>

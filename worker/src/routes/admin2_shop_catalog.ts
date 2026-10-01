@@ -14,7 +14,7 @@ import {
   type DefaultBanner, type DefaultHero, type PageData,
 } from "../lib/shop_page";
 import {
-  SLOTS, isValidImageUrl, normalizeProductInput, parseImages, slugify, toShopCard,
+  SLOTS, flagOf, isValidImageUrl, normalizeProductInput, parseImages, slugify, toShopCard,
   type FieldError, type ProductRow, type CouponRow,
 } from "../lib/shop_logic";
 
@@ -93,7 +93,33 @@ async function promotedMap(env: Env): Promise<Map<string, string[]>> {
   return m;
 }
 
-function adminProduct(p: ProductRow, cols: Map<string, { slug: string; name: string }>, promoted: string[]) {
+// [SAATHUM-SHOP-EDITOR-2] "New arrivals" and "Bestsellers" are the two product flags (shop_products.is_new / is_bestseller), not shop_slots rows.
+const FLAG_SLOTS = { new_arrivals: "is_new", bestsellers: "is_bestseller" } as const;
+const isFlagSlot = (s: string): s is keyof typeof FLAG_SLOTS => s === "new_arrivals" || s === "bestsellers";
+
+function isMissingColumn(e: unknown): boolean {
+  return /no such column|has no column named/i.test(String((e as { message?: string })?.message ?? e));
+}
+
+/** Writes the two flags. Returns false when the columns do not exist yet (migration 2026-10-02-saathum-shop-flags.sql not applied). */
+async function writeFlags(env: Env, id: string, flags: { is_new?: boolean; is_bestseller?: boolean }, now: number): Promise<boolean> {
+  const sets: string[] = [];
+  const binds: unknown[] = [id, now];
+  if (flags.is_new !== undefined) { binds.push(flags.is_new ? 1 : 0); sets.push(`is_new=?${binds.length}`); }
+  if (flags.is_bestseller !== undefined) { binds.push(flags.is_bestseller ? 1 : 0); sets.push(`is_bestseller=?${binds.length}`); }
+  if (!sets.length) return true;
+  try {
+    await env.DB_META.prepare(`UPDATE shop_products SET ${sets.join(", ")}, updated_at=?2 WHERE id=?1`).bind(...binds).run();
+    return true;
+  } catch (e) {
+    if (isMissingColumn(e)) return false;
+    throw e;
+  }
+}
+const FLAGS_PENDING = "The New arrival / Bestseller flags need the 2026-10-02 shop-flags database update, which has not been applied yet.";
+
+function adminProduct(p: ProductRow, cols: Map<string, { slug: string; name: string }>, slotRows: string[]) {
+  const promoted = [...slotRows.filter((x) => !isFlagSlot(x)), ...(flagOf(p.is_new) ? ["new_arrivals"] : []), ...(flagOf(p.is_bestseller) ? ["bestsellers"] : [])];
   return {
     ...toShopCard(p, p.collection_id ? cols.get(p.collection_id) ?? null : null),
     description: p.description,
@@ -106,6 +132,7 @@ function adminProduct(p: ProductRow, cols: Map<string, { slug: string; name: str
     status: p.status,
     collection_id: p.collection_id,
     promoted_on: promoted,
+    badge_setting: (["new", "best", "sale"] as const).find((b) => b === p.badge) ?? "",
     printrove_ref: p.printrove_ref,
     sold_count: Number(p.sold_count),
     updated_at: Number(p.updated_at),
@@ -198,11 +225,12 @@ const createProduct = guarded("admin2.shop.products.create", async (req, env, a)
     v.badge ?? "", status, v.printrove_ref ?? null, v.seo_title ?? seo.title, v.seo_description ?? seo.desc,
     status === "archived" ? now : null, now,
   ).run();
+  const flagsOk = await writeFlags(env, id, { is_new: v.is_new, is_bestseller: v.is_bestseller }, now);
   await audit(env, a.uid, "shop_product_create", id, { name: base.name, price_rupees: v.price_rupees, status });
   safeTrack(env, a.uid, "admin2_shop_product_saved", { action: "create", product_id: id, status });
   const row = await loadProduct(env, id);
   const cols = await allCollections(env);
-  return json({ product: adminProduct(row!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), []) }, 201);
+  return json({ product: adminProduct(row!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), []), ...(flagsOk ? {} : { warning: FLAGS_PENDING }) }, 201);
 });
 
 const updateProduct = guarded("admin2.shop.products.update", async (req, env, a, [id]) => {
@@ -263,10 +291,11 @@ const updateProduct = guarded("admin2.shop.products.update", async (req, env, a,
   ];
   if (next.status === "archived" && row.status !== "archived") stmts.push(env.DB_META.prepare("DELETE FROM shop_slots WHERE product_id=?1").bind(id));
   await env.DB_META.batch(stmts);
+  const flagsOk = await writeFlags(env, id, { is_new: v.is_new, is_bestseller: v.is_bestseller }, now);
   await audit(env, a.uid, "shop_product_update", id, { changes: Object.keys(v) });
   safeTrack(env, a.uid, "admin2_shop_product_saved", { action: "update", product_id: id, status: next.status });
   const [fresh, cols, promoted] = await Promise.all([loadProduct(env, id), allCollections(env), promotedMap(env)]);
-  return json({ product: adminProduct(fresh!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), promoted.get(id) ?? []) });
+  return json({ product: adminProduct(fresh!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), promoted.get(id) ?? []), ...(flagsOk ? {} : { warning: FLAGS_PENDING }) });
 });
 
 const archiveProduct = guarded("admin2.shop.products.archive", async (req, env, a, [id]) => {
@@ -315,17 +344,19 @@ const promoteProduct = guarded("admin2.shop.products.promote", async (req, env, 
   const uniq = [...new Set(slots)];
   const now = Date.now();
   const stmts = [env.DB_META.prepare("DELETE FROM shop_slots WHERE product_id=?1").bind(id)];
-  for (const s of uniq) {
+  for (const s of uniq.filter((x) => !isFlagSlot(x))) {
     stmts.push(env.DB_META.prepare(
       "INSERT INTO shop_slots (slot, product_id, sort, until_at) VALUES (?1,?2,(SELECT COALESCE(MAX(sort),-1)+1 FROM shop_slots WHERE slot=?1),?3)",
     ).bind(s, id, until));
   }
   stmts.push(env.DB_META.prepare("UPDATE shop_products SET badge=?2, updated_at=?3 WHERE id=?1").bind(id, badge, now));
   await env.DB_META.batch(stmts);
+  const flagsOk = await writeFlags(env, id, { is_new: uniq.includes("new_arrivals"), is_bestseller: uniq.includes("bestsellers") }, now);
+  if (!flagsOk) return err(409, "flags_pending", FLAGS_PENDING);
   await audit(env, a.uid, "shop_product_promote", id, { slots: uniq, badge });
   safeTrack(env, a.uid, "admin2_shop_product_promoted", { product_id: id, slots: uniq, badge });
   const [fresh, cols] = await Promise.all([loadProduct(env, id), allCollections(env)]);
-  return json({ product: adminProduct(fresh!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), uniq) });
+  return json({ product: adminProduct(fresh!, new Map(cols.map((c) => [c.id, { slug: c.slug, name: c.name }])), uniq.filter((x) => !isFlagSlot(x))) });
 });
 
 // ---------------------------------------------------------------------------
@@ -460,7 +491,12 @@ const reorderCollections = guarded("admin2.shop.collections.reorder", async (req
 const getSlots = guarded("admin2.shop.slots.get", async (req, env) => {
   const r = await env.DB_META.prepare("SELECT slot, product_id FROM shop_slots ORDER BY slot, sort ASC").all<{ slot: string; product_id: string }>();
   const slots: Record<string, string[]> = Object.fromEntries(SLOTS.map((s) => [s, [] as string[]]));
-  for (const x of r.results ?? []) (slots[x.slot] ??= []).push(x.product_id);
+  for (const x of r.results ?? []) if (!isFlagSlot(x.slot)) (slots[x.slot] ??= []).push(x.product_id);
+  // [SAATHUM-SHOP-EDITOR-2] New arrivals / Bestsellers come from the product flags.
+  const flagged = await env.DB_META.prepare("SELECT * FROM shop_products WHERE status<>'archived'").all<ProductRow>();
+  const rows = flagged.results ?? [];
+  slots.new_arrivals = rows.filter((p) => flagOf(p.is_new)).sort((x, y) => Number(y.created_at) - Number(x.created_at)).map((p) => p.id);
+  slots.bestsellers = rows.filter((p) => flagOf(p.is_bestseller)).sort((x, y) => Number(y.sold_count) - Number(x.sold_count)).map((p) => p.id);
   return json({ slots }, 200, noStore);
 });
 
@@ -476,6 +512,23 @@ const putSlot = guarded("admin2.shop.slots.put", async (req, env, a, [slot]) => 
     const found = new Set((r.results ?? []).map((x) => x.id));
     const missing = ids.filter((i) => !found.has(i));
     if (missing.length) return err(400, "unknown_product", "One of those products does not exist.", { field: "product_ids", missing });
+  }
+  if (isFlagSlot(slot)) {
+    // The rows are driven by the product flags: flag the listed products, unflag every other one.
+    const col = FLAG_SLOTS[slot];
+    const now = Date.now();
+    try {
+      await env.DB_META.batch([
+        env.DB_META.prepare(`UPDATE shop_products SET ${col}=0, updated_at=?1 WHERE ${col}=1`).bind(now),
+        ...ids.map((id) => env.DB_META.prepare(`UPDATE shop_products SET ${col}=1, updated_at=?2 WHERE id=?1`).bind(id, now)),
+      ]);
+    } catch (e) {
+      if (isMissingColumn(e)) return err(409, "flags_pending", FLAGS_PENDING);
+      throw e;
+    }
+    await audit(env, a.uid, "shop_slot_set", slot, { product_ids: ids, via: "flags" });
+    safeTrack(env, a.uid, "admin2_shop_product_promoted", { slot, count: ids.length });
+    return json({ slot, product_ids: ids });
   }
   const prev = await env.DB_META.prepare("SELECT product_id, until_at FROM shop_slots WHERE slot=?1").bind(slot).all<{ product_id: string; until_at: number | null }>();
   const until = new Map((prev.results ?? []).map((x) => [x.product_id, x.until_at]));
@@ -612,9 +665,14 @@ async function defaultPageFromSettings(env: Env): Promise<PageData> {
   const hero = read("hero") as (DefaultHero & { hotspots?: Array<{ product_id: string; x: number; y: number }> }) | null;
   const fb = read("featured_banner") as (Partial<DefaultBanner> & { product_id?: string | null }) | null;
   let banner: DefaultBanner | null = null;
-  if (fb && typeof fb.product_id === "string" && fb.product_id) {
-    const live = await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND status='live'").bind(fb.product_id).first();
-    if (live) banner = { product_id: fb.product_id, eyebrow: String(fb.eyebrow ?? ""), title: String(fb.title ?? ""), text: String(fb.text ?? ""), cta_label: String(fb.cta_label ?? ""), image_url: typeof fb.image_url === "string" && fb.image_url ? fb.image_url : null };
+  if (fb) {
+    let pid = "";
+    if (typeof fb.product_id === "string" && fb.product_id) {
+      const live = await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND status='live'").bind(fb.product_id).first();
+      if (live) pid = fb.product_id;
+    }
+    // [SAATHUM-SHOP-EDITOR-2] The banner no longer needs a product; the page always has one (the mockup copy fills any empty field).
+    if (pid || String(fb.title ?? "").trim()) banner = { product_id: pid, eyebrow: String(fb.eyebrow ?? ""), title: String(fb.title ?? ""), text: String(fb.text ?? ""), cta_label: String(fb.cta_label ?? ""), image_url: typeof fb.image_url === "string" && fb.image_url ? fb.image_url : null };
   }
   return buildDefaultPage({ brandName: BRAND.name, hero, banner });
 }

@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ShopCard, ShopFacets, ShopListParams } from '../../lib/shopApi';
 import { listProducts } from '../../lib/shopApi';
 import { inr } from '../../lib/shopUi';
-import { FILTER_GROUPS as GROUPS, type FilterGroup as Group, type FilterSort as Sort, type FilterState } from '../../lib/shopFilters';
+import { FILTER_GROUPS as GROUPS, TAG_LABEL, type FilterGroup as Group, type FilterSort as Sort, type FilterState } from '../../lib/shopFilters';
 import { capture, captureException } from '../../lib/analytics';
 import { ProductCard } from './ProductCard';
 import '../../styles/shop.css';
@@ -78,8 +78,15 @@ export default function ShopFilters({ initialItems, initialTotal, facets, initia
   );
 
   const chips: { key: string; label: string; g?: Group; v?: string }[] = [];
+  // [SAATHUM-SHOP-EDITOR-2] Removing the tag chip reloads the page without ?tag= so the heading and crumb go back to "All T-shirts".
+  const dropTag = () => {
+    try {
+      const qs = toQuery({ ...f, tag: '' }, pMin, pMax, baseCollection);
+      window.location.assign(window.location.pathname + (qs ? `?${qs}` : ''));
+    } catch { setF((s) => ({ ...s, tag: '' })); }
+  };
   GROUPS.forEach((g) => f[g].forEach((v) => chips.push({ key: `${g}|${v}`, label: labelOf(g, v), g, v })));
-  const noFilters = !priceActive && GROUPS.every((g) => f[g].length === 0);
+  const noFilters = !priceActive && !f.tag && GROUPS.every((g) => f[g].length === 0);
 
   return (
     <div className="sh-list">
@@ -126,12 +133,15 @@ export default function ShopFilters({ initialItems, initialTotal, facets, initia
           </label>
         </div>
         <div className="sh-chips" id="fChips" style={{ marginBottom: 16 }}>
+          {f.tag && <button className="sh-chip" type="button" onClick={dropTag}>{TAG_LABEL[f.tag]} ×</button>}
           {chips.map((c) => <button key={c.key} className="sh-chip" type="button" onClick={() => toggle(c.g!, c.v!, c.label)}>{c.label} ×</button>)}
           {priceActive && <span className="sh-chip">{inr(lo)}–{inr(hi)}</span>}
         </div>
         <div className="sh-grid" id="shAll">
           {items.length
             ? items.map((p) => <ProductCard key={p.id} p={p} source="card" />)
+            : f.tag && !priceActive && GROUPS.every((g) => f[g].length === 0)
+              ? <div className="sh-empty"><b>Nothing in {TAG_LABEL[f.tag]} yet</b><p>Designs will show up here as soon as they are marked.</p><a className="sh-btn sh-btn--ghost" href="/shop/all">See all T-shirts</a></div>
             : noFilters
               ? <div className="sh-empty"><b>New T-shirts are coming soon</b><p>We are printing our first designs. Please check back shortly.</p><a className="sh-btn sh-btn--ghost" href="/shop">Back to the shop</a></div>
               : <div className="sh-empty"><b>No T-shirts match these filters</b><p>Try a wider price range or fewer filters.</p><button className="sh-btn sh-btn--ghost" type="button" onClick={clearAll}>Clear filters</button></div>}
@@ -147,6 +157,7 @@ function describe(f: FilterState): string {
   if (f.min != null) parts.push(`min=${f.min}`);
   if (f.max != null) parts.push(`max=${f.max}`);
   if (f.sort !== 'feat') parts.push(`sort=${f.sort}`);
+  if (f.tag) parts.push(`tag=${f.tag}`);
   return parts.join('&');
 }
 
@@ -156,6 +167,7 @@ function toParams(f: FilterState, pMin: number, pMax: number): ShopListParams {
     min: f.min != null && f.min > pMin ? f.min : undefined,
     max: f.max != null && f.max < pMax ? f.max : undefined,
     sort: f.sort !== 'feat' ? f.sort : undefined,
+    tag: f.tag || undefined,
   };
 }
 
@@ -170,5 +182,6 @@ function toQuery(f: FilterState, pMin: number, pMax: number, baseCollection?: st
   if (f.min != null && f.min > pMin) u.set('min', String(f.min));
   if (f.max != null && f.max < pMax) u.set('max', String(f.max));
   if (f.sort !== 'feat') u.set('sort', f.sort);
+  if (f.tag) u.set('tag', f.tag);
   return u.toString();
 }

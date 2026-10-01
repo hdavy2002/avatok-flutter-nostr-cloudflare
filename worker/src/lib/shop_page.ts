@@ -12,7 +12,7 @@
 //  - Product / collection references are by id / slug and are resolved at render time; one that has since been archived or
 //    hidden simply does not render (it never breaks the page).
 import type { Env } from "../types";
-import { isValidImageUrl, toShopCard, type FieldError, type ProductRow, type ShopCard } from "./shop_logic";
+import { flagOf, hasDiscount, isValidImageUrl, toShopCard, type FieldError, type ProductRow, type ShopCard } from "./shop_logic";
 
 export const PAGE_KEY = "page_home";
 export const PAGE_MAX_BYTES = 200_000;
@@ -124,7 +124,7 @@ function normalizeProps(type: string, p: Record<string, unknown>, at: string, er
       };
     }
     case "FeaturedBanner":
-      return { eyebrow: clean(p.eyebrow, 60), title: clean(p.title, 120), text: clean(p.text, 300), ctaLabel: clean(p.ctaLabel, 40), product: clean(p.product, 64), image: img("image") };
+      return { eyebrow: clean(p.eyebrow, 60), title: clean(p.title, 120), text: clean(p.text, 300), ctaLabel: clean(p.ctaLabel, 40), ctaHref: href("ctaHref"), product: clean(p.product, 64), image: img("image") };
     case "PhotoBanner":
       return {
         image: img("image"), heading: clean(p.heading, 120), text: clean(p.text, 300), ctaLabel: clean(p.ctaLabel, 40), ctaHref: href("ctaHref"),
@@ -174,6 +174,7 @@ export type DefaultBanner = { product_id: string; eyebrow?: string; title?: stri
 
 export function buildDefaultPage(i: { brandName: string; hero?: DefaultHero | null; banner?: DefaultBanner | null }): PageData {
   const hero = i.hero ?? {};
+  const b = i.banner;
   const content: PageItem[] = [
     {
       type: "ShopHero",
@@ -203,28 +204,29 @@ export function buildDefaultPage(i: { brandName: string; hero?: DefaultHero | nu
     {
       type: "ProductRail",
       props: {
-        id: "new-arrivals", title: "New arrivals", subtitle: "Fresh off the press this week.", linkLabel: "View all", linkHref: "/shop/all?sort=new",
+        id: "new-arrivals", title: "New arrivals", subtitle: "Fresh off the press this week.", linkLabel: "View all", linkHref: "/shop/all?tag=new",
         source: "new_arrivals", collection: "", products: [], count: 4, hideWhenEmpty: false,
         emptyTitle: "New T-shirts are coming soon", emptyText: "We are printing our first designs. Please check back shortly.",
         emptyButtonLabel: "Explore pujas and havans", emptyButtonHref: "/marketplace",
       },
     },
-  ];
-  const b = i.banner;
-  if (b?.product_id) {
-    content.push({
+    {
       type: "FeaturedBanner",
-      props: { id: "banner", eyebrow: b.eyebrow ?? "", title: b.title ?? "", text: b.text ?? "", ctaLabel: b.cta_label || "See the tee →", product: b.product_id, image: b.image_url || "" },
-    });
-  }
-  content.push({
-    type: "ProductRail",
-    props: {
-      id: "bestsellers", title: "Bestsellers", subtitle: "What devotees are wearing the most.", linkLabel: "View all", linkHref: "/shop/all",
-      source: "bestsellers", collection: "", products: [], count: 4, hideWhenEmpty: true,
-      emptyTitle: "", emptyText: "", emptyButtonLabel: "", emptyButtonHref: "",
+      props: {
+        id: "banner", eyebrow: b?.eyebrow || "Featured · Navratri drop", title: b?.title || "The Lotus & Diya tee — light for every home.",
+        text: b?.text || "Hand-drawn folk lotus with a lit diya at its heart. Off-white cotton, soft red and gold ink.",
+        ctaLabel: b?.cta_label || "See the tee →", ctaHref: "/shop/all", product: b?.product_id || "", image: b?.image_url || "",
+      },
     },
-  });
+    {
+      type: "ProductRail",
+      props: {
+        id: "bestsellers", title: "Bestsellers", subtitle: "What devotees are wearing the most.", linkLabel: "View all", linkHref: "/shop/all?tag=best",
+        source: "bestsellers", collection: "", products: [], count: 4, hideWhenEmpty: true,
+        emptyTitle: "", emptyText: "", emptyButtonLabel: "", emptyButtonHref: "",
+      },
+    },
+  ];
   return { root: { props: {} }, content, zones: {} };
 }
 
@@ -232,7 +234,7 @@ export function buildDefaultPage(i: { brandName: string; hero?: DefaultHero | nu
 // Resolution: what the blocks need to render on the server
 // ---------------------------------------------------------------------------
 export type CollectionRow = { id: string; slug: string; name: string; blurb: string; image_url: string | null; sort: number; active: number };
-export type Snapshot = { live: ProductRow[]; cols: CollectionRow[]; newIds: string[]; bestIds: string[] };
+export type Snapshot = { live: ProductRow[]; cols: CollectionRow[] };
 
 const byNewest = (a: ProductRow, b: ProductRow) => Number(b.created_at) - Number(a.created_at);
 const byBest = (a: ProductRow, b: ProductRow) => Number(b.sold_count) - Number(a.sold_count) || byNewest(a, b);
@@ -265,18 +267,16 @@ export function resolvePage(data: PageData, snap: Snapshot): Resolved {
       const n = Math.min(12, Math.max(1, Number(p.count) || 4));
       let rows: ProductRow[] = [];
       switch (p.source) {
-        case "new_arrivals": {
-          const picked = pickIds(snap.newIds, live, n);
-          rows = picked.length ? picked : [...snap.live].sort(byNewest).slice(0, n);
+        // [SAATHUM-SHOP-EDITOR-2] The product flags are the only source: New arrivals = flagged new (newest first),
+        // Bestsellers = flagged bestseller (most sold first). Nothing flagged = an empty row (the live page shows its coming-soon box / hides it).
+        case "new_arrivals":
+          rows = snap.live.filter((x) => flagOf(x.is_new)).sort(byNewest).slice(0, n);
           break;
-        }
-        case "bestsellers": {
-          const picked = pickIds(snap.bestIds, live, n);
-          rows = picked.length ? picked : [...snap.live].sort(byBest).slice(0, n);
+        case "bestsellers":
+          rows = snap.live.filter((x) => flagOf(x.is_bestseller)).sort(byBest).slice(0, n);
           break;
-        }
         case "sale":
-          rows = snap.live.filter((x) => x.badge === "sale" || discount(x) > 0).sort((a, b) => discount(b) - discount(a) || byNewest(a, b)).slice(0, n);
+          rows = snap.live.filter((x) => x.badge === "sale" || hasDiscount(x)).sort((a, b) => discount(b) - discount(a) || byNewest(a, b)).slice(0, n);
           break;
         case "collection": {
           const cid = colBySlug.get(String(p.collection));
@@ -292,19 +292,12 @@ export function resolvePage(data: PageData, snap: Snapshot): Resolved {
   return { products, rails };
 }
 
-export async function loadSnapshot(env: Env, now = Date.now()): Promise<Snapshot> {
-  const slot = async (name: string): Promise<string[]> => {
-    const r = await env.DB_META.prepare(
-      "SELECT product_id FROM shop_slots WHERE slot=?1 AND (until_at IS NULL OR until_at>?2) ORDER BY sort ASC",
-    ).bind(name, now).all<{ product_id: string }>();
-    return (r.results ?? []).map((x) => x.product_id);
-  };
-  const [liveR, colR, newIds, bestIds] = await Promise.all([
+export async function loadSnapshot(env: Env): Promise<Snapshot> {
+  const [liveR, colR] = await Promise.all([
     env.DB_META.prepare("SELECT * FROM shop_products WHERE status='live'").all<ProductRow>(),
     env.DB_META.prepare("SELECT id, slug, name, blurb, image_url, sort, active FROM shop_collections WHERE active=1 ORDER BY sort ASC, name ASC").all<CollectionRow>(),
-    slot("new_arrivals"), slot("bestsellers"),
   ]);
-  return { live: liveR.results ?? [], cols: colR.results ?? [], newIds, bestIds };
+  return { live: liveR.results ?? [], cols: colR.results ?? [] };
 }
 
 export async function readPageRecord(env: Env): Promise<PageRecord> {

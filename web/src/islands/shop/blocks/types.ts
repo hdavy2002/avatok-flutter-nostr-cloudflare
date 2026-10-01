@@ -31,11 +31,14 @@ export interface ProductRailProps {
   title: Txt; subtitle: Txt; linkLabel: Txt; linkHref: string;
   source: RailSource; collection: string; products: { product: string }[]; count: number;
   hideWhenEmpty: boolean;
-  emptyTitle: Txt; emptyText: Txt; emptyButtonLabel: string; emptyButtonHref: string;
+  emptyTitle: Txt; emptyText: Txt; emptyButtonLabel: Txt; emptyButtonHref: string;
 }
 
 export interface FeaturedBannerProps {
-  eyebrow: Txt; title: Txt; text: Txt; ctaLabel: Txt; product: string; image: string;
+  eyebrow: Txt; title: Txt; text: Txt; ctaLabel: Txt;
+  /** Where the button goes when no product is picked (a /path or https link). A picked product's page wins. */
+  ctaHref: string;
+  product: string; image: string;
 }
 
 export interface PhotoBannerProps {

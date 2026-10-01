@@ -1,6 +1,6 @@
 // [SAATHUM-SHOP-EDITOR-1 2026-10-01] Small helpers shared by the shop-page blocks (no Puck, no React).
 import { createElement, Fragment, type ReactNode } from 'react';
-import type { BlockCtx, PageItem } from './types';
+import type { BlockCtx, CollectionGridProps, CollectionInfo, PageItem } from './types';
 
 /** Is this text prop non-empty? Inside the Puck canvas an inline-editable field is a React node, which counts as present. */
 export function has(v: unknown): boolean {
@@ -30,10 +30,28 @@ export function railSourceKey(blockId: string, source: string): string {
   return `home_${source}`;
 }
 
-/** Does this block put anything on the page? (A hidden empty rail / empty collection grid does not.) */
+export interface CollectionTile { c: CollectionInfo; image: string | null; name: string; blurb: string }
+
+/**
+ * The tiles of a "Shop by collection" block. No tiles configured = every active collection in the admin's order with its own photo.
+ * [SAATHUM-SHOP-EDITOR-2] On the LIVE page only collections that hold at least one live product are shown (the owner: "once products are
+ * under a collection I should start to see it"); the editor shows every active collection so a new one can be checked straight away.
+ */
+export function collectionTiles(p: Pick<CollectionGridProps, 'tiles'>, collections: CollectionInfo[], editing = false): CollectionTile[] {
+  const tiles: CollectionTile[] = (p.tiles ?? []).length
+    ? p.tiles.map((x) => {
+        const c = collections.find((k) => k.slug === x.collection);
+        return c ? { c, image: x.image || c.image_url, name: x.label || c.name, blurb: x.blurb || c.blurb } : null;
+      }).filter((x): x is CollectionTile => !!x)
+    : collections.map((c) => ({ c, image: c.image_url, name: c.name, blurb: c.blurb }));
+  return editing ? tiles : tiles.filter((x) => x.c.count > 0);
+}
+
+/** Does this block put anything on the page? (A hidden empty rail / a collection grid with no qualifying collection / a title-less banner does not.) */
 export function isVisible(item: PageItem, ctx: BlockCtx): boolean {
   if (item.type === 'ProductRail') return (ctx.resolved.rails[item.props.id]?.length ?? 0) > 0 || !item.props.hideWhenEmpty;
-  if (item.type === 'CollectionGrid') return ctx.collections.length > 0;
+  if (item.type === 'CollectionGrid') return collectionTiles(item.props, ctx.collections).length > 0;
+  if (item.type === 'FeaturedBanner') return has(item.props.title);
   return true;
 }
 

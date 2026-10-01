@@ -98,7 +98,12 @@ const summary = (v: unknown, fallback: string) => (typeof v === 'string' && v.tr
 
 export const shopPageConfig = {
   root: {
-    fields: {},
+    // The right-hand panel shows these when no block is selected (it used to be an empty "Page" box).
+    fields: {
+      guide: { type: 'custom', label: 'How to edit this page', render: () => (
+        <p className="pe-guide">Click any section on the page to change its words, link and photo here. Click words directly on the page to type over them. Nothing goes live until you press Publish.</p>
+      ) },
+    },
     render: ({ children }: { children?: ReactNode }) => (
       <div className="folk-site" data-design="saathum-reference-v5"><main className="sh">{children}</main></div>
     ),
@@ -140,7 +145,7 @@ export const shopPageConfig = {
           getItemSummary: (i: any) => summary(i.label || i.collection, 'Tile'),
         },
       },
-      defaultProps: { title: 'Shop by collection', subtitle: 'Every design starts from a story.', linkLabel: 'All collections', tiles: [] },
+      defaultProps: { title: 'Shop by collection', subtitle: 'Every design starts from a story — a deity, a temple, a mantra.', linkLabel: 'All collections', tiles: [] },
       render: GridEd,
     },
     ProductRail: {
@@ -151,7 +156,7 @@ export const shopPageConfig = {
         source: {
           type: 'select', label: 'Which products',
           options: [
-            { label: 'New arrivals (as set in Promote)', value: 'new_arrivals' }, { label: 'Bestsellers (as set in Promote)', value: 'bestsellers' },
+            { label: 'New arrivals (products marked New arrival)', value: 'new_arrivals' }, { label: 'Bestsellers (products marked Bestseller)', value: 'bestsellers' },
             { label: 'On sale', value: 'sale' }, { label: 'One collection', value: 'collection' }, { label: 'Hand-picked', value: 'manual' },
           ],
         },
@@ -160,7 +165,7 @@ export const shopPageConfig = {
         count: { type: 'number', label: 'How many (1–12)', min: 1, max: 12 },
         hideWhenEmpty: { type: 'radio', label: 'When there are no products', options: [{ label: 'Hide this row', value: true }, { label: 'Show the message below', value: false }] },
         emptyTitle: text('Message title'), emptyText: textarea('Message text'),
-        emptyButtonLabel: { type: 'text', label: 'Message button text' }, emptyButtonHref: { type: 'text', label: 'Message button goes to' },
+        emptyButtonLabel: text('Message button text'), emptyButtonHref: { type: 'text', label: 'Message button goes to' },
       },
       defaultProps: {
         title: 'More to wear', subtitle: 'Picked for you.', linkLabel: 'View all', linkHref: '/shop/all', source: 'new_arrivals', collection: '', products: [], count: 4, hideWhenEmpty: true,
@@ -172,9 +177,14 @@ export const shopPageConfig = {
       label: 'Featured banner',
       fields: {
         eyebrow: text('Small line above the title'), title: text('Title'), text: textarea('Text'), ctaLabel: text('Button text'),
-        product: productField('Product the button opens'), image: imageField('Banner photo (empty = the product photo)'),
+        ctaHref: { type: 'text', label: 'Button goes to (a /path or https link)' },
+        product: productField('Product the button opens (optional — overrides the link)'), image: imageField('Banner photo (empty = the product photo)'),
       },
-      defaultProps: { eyebrow: 'Featured', title: 'A headline for this banner', text: 'A sentence or two.', ctaLabel: 'See the tee →', product: '', image: '' },
+      defaultProps: {
+        eyebrow: 'Featured · Navratri drop', title: 'The Lotus & Diya tee — light for every home.',
+        text: 'Hand-drawn folk lotus with a lit diya at its heart. Off-white cotton, soft red and gold ink.',
+        ctaLabel: 'See the tee →', ctaHref: '/shop/all', product: '', image: '',
+      },
       render: BannerEd,
     },
     PhotoBanner: {

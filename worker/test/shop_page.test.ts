@@ -107,16 +107,33 @@ describe('resolvePage', () => {
     archived_at: null, created_at: 1, updated_at: 1, ...o,
   });
   const snap: Snapshot = {
-    live: [row({ id: 'a', slug: 'a', created_at: 10, sold_count: 1, collection_id: 'c1' }), row({ id: 'b', slug: 'b', created_at: 30, sold_count: 9, mrp_rupees: 1000 }), row({ id: 'c', slug: 'c', created_at: 20, sold_count: 5, badge: 'sale' })] as any,
+    live: [
+      row({ id: 'a', slug: 'a', created_at: 10, sold_count: 1, collection_id: 'c1', is_new: 1 }),
+      row({ id: 'b', slug: 'b', created_at: 30, sold_count: 9, mrp_rupees: 1000, is_new: 1, is_bestseller: 1 }),
+      row({ id: 'c', slug: 'c', created_at: 20, sold_count: 5, badge: 'sale', is_bestseller: 1 }),
+      row({ id: 'd', slug: 'd', created_at: 40, sold_count: 0 }),
+    ] as any,
     cols: [{ id: 'c1', slug: 'shiva', name: 'Shiva', blurb: '', image_url: null, sort: 0, active: 1 }],
-    newIds: [], bestIds: ['c'],
   };
-  const rail = (props: any) => resolvePage(page({ type: 'ProductRail', props: { id: 'r', count: 4, products: [], ...props } }) as any, snap).rails.r.map((p) => p.id);
+  const rail = (props: any, s: Snapshot = snap) => resolvePage(page({ type: 'ProductRail', props: { id: 'r', count: 4, products: [], ...props } }) as any, s).rails.r.map((p) => p.id);
 
-  it('new arrivals: newest first when no slot is set; bestsellers: the slot first', () => {
-    expect(rail({ source: 'new_arrivals' })).toEqual(['b', 'c', 'a']);
-    expect(rail({ source: 'new_arrivals', count: 2 })).toEqual(['b', 'c']);
-    expect(rail({ source: 'bestsellers' })).toEqual(['c']);
+  it('new arrivals = products flagged New arrival, newest first (not the newest products)', () => {
+    expect(rail({ source: 'new_arrivals' })).toEqual(['b', 'a']);
+    expect(rail({ source: 'new_arrivals', count: 1 })).toEqual(['b']);
+  });
+  it('bestsellers = products flagged Bestseller, most sold first', () => {
+    expect(rail({ source: 'bestsellers' })).toEqual(['b', 'c']);
+  });
+  it('nothing flagged = empty rows (the page shows its coming-soon box / hides the row)', () => {
+    const none: Snapshot = { ...snap, live: snap.live.map((p) => ({ ...p, is_new: 0, is_bestseller: 0 })) as any };
+    expect(rail({ source: 'new_arrivals' }, none)).toEqual([]);
+    expect(rail({ source: 'bestsellers' }, none)).toEqual([]);
+  });
+  it('missing flag columns (migration not applied) read as 0 and never throw', () => {
+    const old: Snapshot = { ...snap, live: snap.live.map(({ is_new, is_bestseller, ...rest }: any) => rest) as any };
+    expect(rail({ source: 'new_arrivals' }, old)).toEqual([]);
+    expect(rail({ source: 'bestsellers' }, old)).toEqual([]);
+    expect(rail({ source: 'sale' }, old)).toEqual(['b', 'c']);
   });
   it('sale, collection and manual sources', () => {
     expect(rail({ source: 'sale' })).toEqual(['b', 'c']);
@@ -128,8 +145,32 @@ describe('resolvePage', () => {
     const r = resolvePage(page(
       { type: 'ShopHero', props: { ...hero, hotspots: [{ product: 'a', x: 1, y: 1 }, { product: 'gone', x: 2, y: 2 }] } },
       { type: 'FeaturedBanner', props: { id: 'b', product: 'b' } },
+      { type: 'FeaturedBanner', props: { id: 'b2', product: '' } },
     ) as any, snap);
     expect(Object.keys(r.products).sort()).toEqual(['a', 'b']);
     expect(r.products.a.collection).toEqual({ slug: 'shiva', name: 'Shiva' });
+    expect(r.products.b.is_new).toBe(true);
+    expect(r.products.b.is_bestseller).toBe(true);
+  });
+});
+
+describe('the default page (SAATHUM-SHOP-EDITOR-2)', () => {
+  const d = buildDefaultPage({ brandName: BRAND.name });
+  it('has all five mockup sections, in order, even with nothing configured', () => {
+    expect(d.content.map((c) => [c.type, c.props.id])).toEqual([
+      ['ShopHero', 'hero'], ['CollectionGrid', 'collections'], ['ProductRail', 'new-arrivals'], ['FeaturedBanner', 'banner'], ['ProductRail', 'bestsellers'],
+    ]);
+  });
+  it('the banner carries the mockup copy and needs no product', () => {
+    const b = d.content[3].props as any;
+    expect(b.eyebrow).toBe('Featured · Navratri drop');
+    expect(b.title).toBe('The Lotus & Diya tee — light for every home.');
+    expect(b.ctaLabel).toBe('See the tee →');
+    expect(b.ctaHref).toBe('/shop/all');
+    expect(b.product).toBe('');
+  });
+  it('the View all links point at the flagged lists', () => {
+    expect((d.content[2].props as any).linkHref).toBe('/shop/all?tag=new');
+    expect((d.content[4].props as any).linkHref).toBe('/shop/all?tag=best');
   });
 });
