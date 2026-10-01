@@ -60,7 +60,7 @@ type Phase =
 
 type Authed = 'unknown' | 'in' | 'out';
 
-function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { listingId: string; checkoutHref: string; freeWatch: boolean; onNeedAuth: () => void }) {
+function LiveOverlayInner({ listingId, checkoutHref, freeWatch, freeVideo, onNeedAuth }: { listingId: string; checkoutHref: string; freeWatch: boolean; freeVideo: boolean; onNeedAuth: () => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'hidden' });
   const [isFree, setIsFree] = useState(freeWatch);
   const [isReplay, setIsReplay] = useState(false);
@@ -77,18 +77,23 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
       let publicState: 'none' | 'live' | 'ended';
       let free = freeWatch;
       let replay = false;
-      let available = false; // [SAATHUM-FREEVID-ANYTIME-1] free + video saved = watchable anytime
+      // [SAATHUM-FREEVID-ANYTIME-1] free + video saved = watchable anytime.
+      // [SAATHUM-FREEVID-FLOW-1] Seeded from the server-rendered page so a stale cached
+      // live-state (public, max-age 30s) can never hide the player.
+      let available = freeVideo;
       try {
         const ls = await getLiveState(listingId, ctrl.signal);
         publicState = ls.state;
         free = free || Boolean(ls.free);
         replay = Boolean(ls.replay);
-        available = Boolean(ls.available);
+        available = available || Boolean(ls.available);
         setIsFree(free);
       } catch (err) {
         if (ctrl.signal.aborted) return;
         captureException(err, { surface: 'saathum_live_overlay', listing_id: listingId });
-        return;
+        // [SAATHUM-FREEVID-FLOW-1] A free video still plays without the public read.
+        if (!(free && available)) return;
+        publicState = 'none';
       }
       // [SAATHUM-LIVE-PREVIEW-1 2026-09-29] /book/<id>?preview=live lets an ADMIN see the
       // paid-buyer player before the event date. The server decides who is an admin;
@@ -297,7 +302,7 @@ function LiveOverlayInner({ listingId, checkoutHref, freeWatch, onNeedAuth }: { 
   );
 }
 
-export default function LiveOverlay({ listingId, checkoutHref, freeWatch = false }: { listingId: string; checkoutHref: string; freeWatch?: boolean }) {
+export default function LiveOverlay({ listingId, checkoutHref, freeWatch = false, freeVideo = false }: { listingId: string; checkoutHref: string; freeWatch?: boolean; freeVideo?: boolean }) {
   const [withClerk, setWithClerk] = useState(false);
   return (
     <IslandBoundary island="event-page-live-overlay">
@@ -306,7 +311,7 @@ export default function LiveOverlay({ listingId, checkoutHref, freeWatch = false
           <LazyClerkIsland>{null}</LazyClerkIsland>
         </Suspense>
       )}
-      <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} freeWatch={freeWatch} onNeedAuth={() => setWithClerk(true)} />
+      <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} freeWatch={freeWatch} freeVideo={freeVideo} onNeedAuth={() => setWithClerk(true)} />
     </IslandBoundary>
   );
 }

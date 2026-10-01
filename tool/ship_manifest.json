@@ -8302,5 +8302,21 @@
         "note": "A signed-out visitor clicks a free card, signs in, and the video plays."
       }
     ]
+  },
+  "SAATHUM-FREEVID-FLOW-1": {
+    "description": "[SAATHUM-FREEVID-FLOW-1 2026-10-01] Signed-in visitors skip the sign-in hop on free cards; event page shows the free player on first load (no dependence on cached live-state).",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "saathum_video_play",
+        "property": "surface",
+        "equals": "event_page",
+        "min_events": 1,
+        "note": "Free video plays on first load of the event page."
+      }
+    ]
   }
 }

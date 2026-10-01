@@ -13,6 +13,7 @@
 //  - Telemetry is the caller's: pass `onAction` (homepage → home_booknow_click,
 //    marketplace → marketplace_card_click).
 import { FREE_WATCH_PARAM } from '../../lib/authRedirect'; // [SAATHUM-FREEVID-CARD-1]
+import { hasClerkSessionHint } from '../../lib/sessionHint'; // [SAATHUM-FREEVID-FLOW-1]
 import { useState, type MouseEvent } from 'react';
 import type { Card } from '../../lib/types';
 import { toCardView, scheduleStateOf, durationLabel } from '../../lib/card';
@@ -321,6 +322,19 @@ export function Countdown({ startsAt, now }: { startsAt: number; now: number }) 
 
 /** The one listing card, shared by the homepage "Book now" shelf and /marketplace.
  *  Each caller reports clicks with its own event name through `onAction`. */
+/** [SAATHUM-FREEVID-FLOW-1] Already signed in (session cookie) -> straight to the event page
+ *  (the player starts there); signed out -> the email sign-in, which returns there. Skipping
+ *  the sign-in hop removes the flash of the login page for a signed-in visitor. */
+function freeWatchDest(it: Item): string {
+  return hasClerkSessionHint() ? `${it.href}?${FREE_WATCH_PARAM}=1` : it.bookHref;
+}
+function goFreeWatch(e: MouseEvent<HTMLElement>, it: Item): void {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.location.assign(freeWatchDest(it));
+}
+
 export function BookCard({ it, now, origin, onAction }: { it: Item; now: number; origin: string; onAction?: (action: string) => void }) {
   const track = (action: string) => { onAction?.(action); };
   const copy = copyFor({ event_type: it.eventType });
@@ -338,13 +352,13 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
     const sel = typeof window !== 'undefined' ? window.getSelection() : null;
     if (sel && !sel.isCollapsed && sel.toString().trim()) return;
     track('card');
-    const dest = it.freeNow ? it.bookHref : it.href; // [SAATHUM-FREEVID-CARD-1]
+    const dest = it.freeNow ? freeWatchDest(it) : it.href; // [SAATHUM-FREEVID-CARD-1]
     if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(dest, '_blank', 'noopener');
     else window.location.assign(dest);
   };
   return (
     <article className="bn-card bn-card--click" data-listing-id={it.id} onClick={openCard}>
-      <a className={it.freeNow ? 'bn-art bn-art--watch' : 'bn-art'} href={it.freeNow ? it.bookHref : it.href} tabIndex={-1} aria-hidden="true" onClick={() => track(it.freeNow ? 'art_watch_free' : 'art')}>
+      <a className={it.freeNow ? 'bn-art bn-art--watch' : 'bn-art'} href={it.freeNow ? it.bookHref : it.href} tabIndex={-1} aria-hidden="true" onClick={(e) => { track(it.freeNow ? 'art_watch_free' : 'art'); if (it.freeNow) goFreeWatch(e, it); }}>
         {it.image
           ? <img src={it.image} srcSet={it.imageSrcSet ?? undefined} sizes="(min-width: 1400px) 25vw, (min-width: 641px) 46vw, 92vw" alt="" loading="lazy" decoding="async" />
           : <span className="bn-art-empty" />}
@@ -427,7 +441,7 @@ export function BookCard({ it, now, origin, onAction }: { it: Item; now: number;
           </div>
         </div>
         <div className="bn-btns">
-          <a className="bn-btn bn-btn--book" href={it.bookHref} title={it.freeNow ? 'Watch for free' : undefined} onClick={() => track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book')}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
+          <a className="bn-btn bn-btn--book" href={it.bookHref} title={it.freeNow ? 'Watch for free' : undefined} onClick={(e) => { track(it.freeWatch ? 'watch_free' : it.isLiveStream ? 'book_live' : 'book'); if (it.freeNow) goFreeWatch(e, it); }}>{it.freeWatch ? 'Watch free' : it.isLiveStream ? 'Book & watch live' : copy.ctaShort} <span aria-hidden="true">→</span></a>
           <a className="bn-btn bn-btn--ben" href={it.benefitsHref} onClick={() => track('benefits')}>{copy.readMore}</a>
         </div>
         <div className="bn-foot">

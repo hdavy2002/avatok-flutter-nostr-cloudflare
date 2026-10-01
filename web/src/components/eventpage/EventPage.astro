@@ -159,6 +159,9 @@ const price = listing.effective_price ?? listing.price ?? null;
 // the video (live or replay) — no booking, no checkout, no WhatsApp step. The worker sends
 // `free_watch` on the listing; absent = paid, so an older worker changes nothing here.
 const freeWatch = Boolean(listing.free_watch);
+// [SAATHUM-FREEVID-FLOW-1] Free + video saved: the island can show the player without waiting
+// on the (cached) public live-state call.
+const freeVideo = freeWatch && Boolean((listing as { free_video?: unknown }).free_video);
 // The marker tells the sign-in page to come straight back (see lib/authRedirect.ts).
 const freeSignInHref = `/sign-in?redirect_url=${encodeURIComponent(`/book/${listing.id}?freewatch=1`)}`;
 const freeWatchable = freeWatch && scheduleState !== 'cancelled' && scheduleState !== 'expired';
@@ -276,7 +279,7 @@ const sticker = (name: string) => publicImage(`/assets/saathum-booking-stickers/
             island renders nothing on the server, so it has zero size and the
             IntersectionObserver behind client:visible never fired: the overlay
             and the paid-buyer player never mounted for anyone. */}
-        <LiveOverlay client:load listingId={listing.id} checkoutHref={checkoutHref} freeWatch={freeWatch} />
+        <LiveOverlay client:load listingId={listing.id} checkoutHref={checkoutHref} freeWatch={freeWatch} freeVideo={freeVideo} />
       </div>
       {showThumbs && (
         <div class="ep-thumbs">
