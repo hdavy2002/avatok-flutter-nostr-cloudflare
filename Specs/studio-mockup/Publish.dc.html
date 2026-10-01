@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Studio — publish</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@600;700&amp;family=Nunito:wght@600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f2e0bd}
+a{color:#173f3f}a:hover{color:#0b2424}
+.ad{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e7a44;--line:#e3cfa9;--card:#fffdf8;
+ box-sizing:border-box;width:100%;min-height:100%;padding:28px clamp(16px,3vw,40px) 48px;background:linear-gradient(160deg,#f8ead0 0%,#f2e0bd 100%);color:#5a1f14;font-family:Nunito,system-ui,sans-serif}
+.ad *{box-sizing:border-box}
+.ad h1,.ad h2,.ad h3{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:#5a1f14}
+.lay{display:grid;grid-template-columns:270px minmax(0,1fr);gap:24px;max-width:1440px;margin:0 auto;align-items:start}
+.side{background:#fffaf0;border:5px solid #fff;border-radius:22px;padding:14px;box-shadow:0 10px 24px #5a2c0f1f}
+.side h3{font:900 13px Nunito;letter-spacing:.12em;text-transform:uppercase;color:#8a4f1f;margin:12px 10px 6px}
+.side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;font:800 15px Nunito;color:#5a1f14;text-decoration:none}
+.side a.on{background:#173f3f;color:#fff}
+.pill{margin-left:auto;font:900 12px Nunito;background:#F6B93B;color:#3a1a0a;padding:3px 8px;border-radius:999px}
+.dt{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.dt h1{font-size:34px}
+.dt p{font:600 16px Nunito;color:#6b4a2b;margin:6px 0 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 20px;border-radius:14px;font:900 15px Nunito;letter-spacing:.02em;border:0;cursor:pointer;text-decoration:none}
+.red{background:#b3261e;color:#fff;box-shadow:0 3px 0 #7a150f}
+.teal{background:#173f3f;color:#fff;box-shadow:0 3px 0 #0b2424}
+.ghost{background:#fff;color:#173f3f;border:2px solid #173f3f}
+.sm{min-height:38px;font-size:14px;padding:0 14px;border-radius:12px}
+.panel{background:#fffdf8;border:6px solid #fff;border-radius:22px;padding:22px;box-shadow:0 14px 30px #5a2c0f26;margin-bottom:18px}
+.panel h2{font-size:22px;margin-bottom:6px}
+.panel>p.lead{font:600 15px Nunito;color:#6b4a2b;margin:0 0 16px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:#fffdf8;border:5px solid #fff;border-radius:20px;padding:16px;box-shadow:0 8px 20px #5a2c0f1a}
+.kpi small{font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#6f5f4a}
+.kpi b{display:block;font:900 30px Nunito;color:#5a1f14;margin-top:4px}
+.kpi em{font-style:normal;font:800 14px Nunito;color:#1e7a44}
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tabs a,.tabs span{padding:9px 14px;border-radius:999px;background:#fff;border:2px solid #e3cfa9;font:800 14px Nunito;color:#5a1f14;text-decoration:none}
+.tabs .on{background:#5a1f14;border-color:#5a1f14;color:#fff}
+.steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.steps a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:#fff;border:2px solid #e3cfa9;font:800 14px Nunito;color:#6b4a2b;text-decoration:none}
+.steps a b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#f3e7d2;color:#5a1f14;font:900 13px Nunito}
+.steps a.done{border-color:#1e7a44;color:#1e7a44}.steps a.done b{background:#1e7a44;color:#fff}
+.steps a.on{background:#173f3f;border-color:#173f3f;color:#fff}.steps a.on b{background:#F6B93B;color:#3a1a0a}
+.ph{display:grid;place-items:center;text-align:center;padding:10px;border-radius:14px;font:800 14px Nunito;color:#6b4a2b;background:repeating-linear-gradient(135deg,#f3e2c4 0 14px,#efd9b4 14px 28px);border:2px dashed #d9bd8c}
+.ph.dark{background:repeating-linear-gradient(135deg,#2c2522 0 14px,#3a312c 14px 28px);color:#f3e2c4;border-color:#5c4c40}
+.ph.maroon{background:repeating-linear-gradient(135deg,#5e1a1d 0 14px,#6e2326 14px 28px);color:#f8e7cf;border-color:#8a3a3d}
+.chk{background:repeating-conic-gradient(#e9e2d6 0 25%,#fff 0 50%) 0 0/22px 22px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font:800 13px Nunito;background:#f3e7d2;color:#5a1f14}
+.ok{background:#e3f3e8;color:#1e5e36}
+.bad{background:#fbe3e1;color:#8f1d16}
+.warn{background:#fff1c7;color:#6b4a00}
+.info{background:#e2eeee;color:#173f3f}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.card{background:#fff;border:2px solid #e3cfa9;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.card.sel{border:3px solid #173f3f;box-shadow:0 0 0 4px #173f3f22}
+.card h3{font-size:18px}
+.card p{font:600 14px/1.5 Nunito;color:#3c4a4c;margin:0}
+.lbl{display:flex;flex-direction:column;gap:6px;font:900 13px Nunito;letter-spacing:.06em;text-transform:uppercase;color:#7a4a1e}
+.fld{min-height:46px;padding:10px 14px;border-radius:12px;border:2px solid #e3cfa9;background:#fff;font:700 15px Nunito;color:#5a1f14;text-transform:none;letter-spacing:0;width:100%}
+textarea.fld{min-height:110px;line-height:1.5;resize:vertical}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sw{display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 7px;border-radius:999px;border:2px solid #e3cfa9;background:#fff;font:800 14px Nunito;color:#5a1f14}
+.sw i{display:inline-block;width:24px;height:24px;border-radius:50%;border:2px solid #0002}
+.sw.on{border-color:#173f3f;box-shadow:0 0 0 3px #173f3f22}
+.tbl{width:100%;border-collapse:separate;border-spacing:0;background:#fffdf8;border:5px solid #fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 24px #5a2c0f1f}
+.tbl th{background:#f6e3c4;text-align:left;font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a4a1e;padding:12px 14px}
+.tbl td{padding:12px 14px;border-top:1px solid #e3cfa9;font:700 15px Nunito;color:#3c4a4c;vertical-align:middle}
+.tbl td b{color:#5a1f14}
+.list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.list li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:14px;background:#fff;border:2px solid #efe0c4;font:700 15px/1.45 Nunito;color:#3c4a4c}
+.list li b{color:#5a1f14}
+.dot{flex:none;display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;font:900 15px Nunito}
+.dot.ok{background:#1e7a44;color:#fff}.dot.bad{background:#b3261e;color:#fff}.dot.warn{background:#F6B93B;color:#3a1a0a}.dot.wait{background:#e2eeee;color:#173f3f}
+.note{font:700 14px/1.5 Nunito;color:#6b4a2b;background:#fff3c4;border:2px dashed #c9a13a;border-radius:14px;padding:10px 14px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px}
+.tog{display:inline-block;width:52px;height:30px;border-radius:999px;background:#d8c7a8;position:relative;flex:none}
+.tog::after{content:"";position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:50%;background:#fff}
+.tog.on{background:#1e7a44}.tog.on::after{left:26px}
+@media (max-width:900px){.lay{grid-template-columns:1fr}.side{display:flex;overflow-x:auto;gap:4px;padding:8px}.side h3{display:none}.side a{white-space:nowrap}.kpis,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g2,.g3{grid-template-columns:1fr}}
+
+.stage{position:relative;width:620px;height:680px;margin:0 auto}
+.art{background:radial-gradient(circle at 50% 50%,#F6B93B 0 7%,transparent 7.5%),radial-gradient(circle at 50% 50%,transparent 0 30%,#F6B93B 30.5% 32%,transparent 32.5%),repeating-conic-gradient(from 0deg at 50% 50%,#F6B93B 0 5deg,transparent 5deg 30deg),radial-gradient(circle at 50% 50%,transparent 0 46%,#b3261e 46.5% 49%,transparent 49.5%);display:grid;place-items:center}
+.art span{font:900 13px Nunito;color:#fff;background:#173f3fcc;padding:4px 8px;border-radius:8px}
+.ctl{display:flex;flex-direction:column;gap:8px;padding:14px 0;border-top:1px solid #efe0c4}
+.ctl:first-of-type{border-top:0;padding-top:0}
+.ctl h3{font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a4a1e}
+.rng{width:100%;accent-color:#b3261e;height:28px}
+.pad{display:grid;grid-template-columns:repeat(3,52px);gap:6px}
+.pad .btn{min-height:44px;padding:0}
+.big{font:900 22px Nunito;color:#5a1f14}
+.opt{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:2px solid #e3cfa9;background:#fff;font:800 15px Nunito;color:#5a1f14}
+.opt.on{border-color:#173f3f;background:#173f3f;color:#fff}
+.ph.tee{height:330px;color:#fff;border-style:solid}
+</style>
+</helmet>
+<div class="ad">
+<div class="lay">
+<nav class="side" aria-label="Admin menu">
+<h3>Admin</h3>
+<a href="#">Analytics</a>
+<a href="#">Events</a>
+<a href="#">Free videos</a>
+<a href="#">Bookings</a>
+<a href="#">Payments</a>
+<a href="#">Payment verification</a>
+<a href="#">Refunds</a>
+<a href="#">Users</a>
+<a href="#">Prices</a>
+<a href="#">Chadhava</a>
+<a href="#">UPI settings</a>
+<a href="#">AI assistant</a>
+<h3>Shop</h3>
+<a href="Orders.dc.html">Orders</a>
+<a class="on" href="Main.dc.html">Studio<span class="pill">New</span></a>
+<a href="#">Edit shop page</a>
+<a href="#">Products</a>
+<a href="#">Categories</a>
+<a href="#">Promote to cards</a>
+<a href="#">Coupons</a>
+<a href="#">Shop settings</a>
+<a href="PrintPartner.dc.html">Print partner<span class="pill">New</span></a>
+</nav>
+<main>
+<div class="dt"><div><h1>Studio</h1><p>Step 6 · Check the print details, set prices, publish.</p></div><div class="row"><a class="btn ghost sm" href="Main.dc.html">All designs</a><span class="chip">Draft saved · trishul-gold.png</span></div></div><div class="steps"><a class="done" href="Upload.dc.html"><b>✓</b>Upload artwork</a><a class="done" href="Product.dc.html"><b>✓</b>Product</a><a class="done" href="Editor.dc.html"><b>✓</b>Design on shirt</a><a class="done" href="Models.dc.html"><b>✓</b>Models</a><a class="done" href="Photos.dc.html"><b>✓</b>Model photos</a><a class="on" href="Publish.dc.html"><b>6</b>Publish</a></div>
+<div class="g2">
+<div class="panel"><h2>What Printrove will print</h2>
+<ul class="list">
+<li><span class="dot ok">✓</span><div><b>Product</b><br>Men's round-neck T-shirt · Black, Maroon, Navy</div></li>
+<li><span class="dot ok">✓</span><div><b>Print</b><br>Front · Circle 11 × 11 in · 2.5 in below the top of the print area</div></li>
+<li><span class="dot ok">✓</span><div><b>Print file</b><br>3300 × 3300 px PNG, see-through outside the circle · 372 DPI</div></li>
+<li><span class="dot ok">✓</span><div><b>Within Printrove limits</b><br>Print area 15.6 × 19.6 in · file under 5000 × 5000 px · RGB</div></li>
+</ul></div>
+<div class="panel"><div class="foot" style="margin:0 0 12px"><h2>Words</h2><button class="btn ghost sm" type="button">Write with AI</button></div>
+<label class="lbl">Product name<input class="fld" value="Trishul Gold — Round-neck Tee"></label>
+<label class="lbl" style="margin-top:12px">Description<textarea class="fld">Gold trishul in a clean circle, printed to order for you. [FABRIC FROM PRINTROVE].</textarea></label>
+<div class="g2" style="margin-top:12px"><label class="lbl">Collection<select class="fld"><option>Shiva</option></select></label><label class="lbl">Badge<select class="fld"><option>New</option></select></label></div></div>
+</div>
+<div class="panel"><h2>Sizes and prices</h2><p class="lead">Size chart comes from Printrove. Shipping is free and included; GST 18% is added at checkout.</p>
+<div style="overflow-x:auto;border-radius:20px"><table class="tbl"><thead><tr><th>Size</th><th>Chest</th><th>Length</th><th>Printrove cost</th><th>Your price ₹</th><th>GST</th><th>Buyer pays</th></tr></thead><tbody><tr><td><b>S</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="799"></td><td>₹144</td><td><b>₹943</b></td></tr><tr><td><b>M</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="799"></td><td>₹144</td><td><b>₹943</b></td></tr><tr><td><b>L</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="799"></td><td>₹144</td><td><b>₹943</b></td></tr><tr><td><b>XL</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="799"></td><td>₹144</td><td><b>₹943</b></td></tr><tr><td><b>2XL</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="849"></td><td>₹153</td><td><b>₹1002</b></td></tr><tr><td><b>3XL</b></td><td>[FROM PRINTROVE]</td><td>[FROM PRINTROVE]</td><td>[PRINTROVE COST]</td><td><input class="fld" style="min-height:38px;width:110px" value="899"></td><td>₹162</td><td><b>₹1061</b></td></tr></tbody></table></div></div>
+<div class="panel"><h2>Publish</h2><p class="lead">Each step can be retried on its own. Nothing goes live until all are green.</p>
+<div class="g2"><ul class="list">
+<li><span class="dot ok">✓</span><div><b>Upload print file to Printrove</b><br>Design no. [PRINTROVE DESIGN ID]</div></li>
+<li><span class="dot ok">✓</span><div><b>Create the product at Printrove</b><br>Placement and file saved there</div></li>
+<li><span class="dot ok">✓</span><div><b>Link 18 sizes and colours</b><br>3 colours × 6 sizes, each tied to Printrove's item</div></li>
+</ul><ul class="list">
+<li><span class="dot wait">4</span><div><b>Create the shop product</b><br>Live · Shiva collection · 5 photos</div></li>
+<li><span class="dot wait">5</span><div><b>Show on New arrivals</b></div></li>
+</ul></div>
+<div class="row" style="margin-top:14px"><button class="btn red" type="button">Publish now</button><button class="btn ghost" type="button">Save as draft</button></div></div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
