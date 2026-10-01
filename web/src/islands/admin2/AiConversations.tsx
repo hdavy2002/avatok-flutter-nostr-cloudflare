@@ -12,7 +12,7 @@ import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { errMessage, istDateTime } from './adminApi';
 import { ErrorBox, ListSkeleton } from './peopleKit';
-import { aiApi, type AdminAiConversationDetail, type AdminAiConversationRow, type AdminAiMessage, type ConvStatus } from './aiApi';
+import { aiApi, type AdminAiAgentFilter, type AdminAiCard, type AdminAiConversationDetail, type AdminAiConversationRow, type AdminAiMessage, type ConvStatus } from './aiApi';
 import { Chip, HINT, LABEL, TEXTAREA } from './AiKit';
 
 const BADGES: { key: string; label: string; variant: 'destructive' | 'accent' | 'secondary' | 'outline' }[] = [
@@ -25,6 +25,14 @@ const badgeMeta = (k: string) => BADGES.find((b) => b.key === k) ?? { key: k, la
 const STATUSES: { key: ConvStatus; label: string }[] = [
   { key: 'open', label: 'Open' }, { key: 'resolved', label: 'Resolved' }, { key: 'needs_human', label: 'Needs human' },
 ];
+const AGENT_FILTERS: { key: AdminAiAgentFilter; label: string }[] = [
+  { key: 'preeti', label: 'Preeti · support' }, { key: 'pandit', label: 'Pandit ji · astro' },
+  { key: 'voice', label: 'Meera · voice' }, { key: 'all', label: 'All' },
+];
+const agentLabel = (a?: string): string => (!a || a === 'preeti' ? 'Preeti' : a === 'pandit' ? 'Pandit ji' : a === 'meera' ? 'Meera' : `${a.charAt(0).toUpperCase()}${a.slice(1)} · voice`);
+function AgentChip({ agent }: { agent?: string }) {
+  return <Badge variant="outline" className="px-2 py-0 text-[11px]">{agentLabel(agent)}</Badge>;
+}
 const SELECT = 'h-10 rounded-md border border-input bg-background px-3 font-dashbody text-[14px] font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function rowTime(ms: number): string {
@@ -49,11 +57,45 @@ function useIsDesktop(): boolean {
 }
 
 /* ── chat pieces ────────────────────────────────────────────────────────── */
+const CARD_LINK = 'mt-2 flex items-center gap-2 rounded-lg border border-border/70 bg-background p-2 text-[13px] text-foreground no-underline hover:bg-muted';
+function CardRow({ c }: { c: AdminAiCard }) {
+  if (c.type === 'event' || c.type === 'article') {
+    return (
+      <a href={c.type === 'event' ? c.read_more_url : c.url} target="_blank" rel="noreferrer" className={CARD_LINK}>
+        {c.image && <img src={c.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />}
+        <span className="min-w-0">
+          <b className="block truncate">{c.title}</b>
+          <span className="text-muted-foreground">
+            {c.type === 'event' ? `${c.price_rupees != null ? `₹${c.price_rupees}` : 'Free'}${c.live_now ? ' · live now' : ''}` : 'Article'}
+          </span>
+        </span>
+      </a>
+    );
+  }
+  // Pandit ji's product / puja cards: title, price, wear days.
+  const price = c.price_rupees ?? c.price;
+  const days = Array.isArray(c.wear_days) ? c.wear_days.join(', ') : c.wear_days || c.wear_day || '';
+  const bits = [price != null ? `₹${price}` : '', days ? `wear: ${days}` : ''].filter(Boolean).join(' · ');
+  const inner = (
+    <>
+      {c.image && <img src={c.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />}
+      <span className="min-w-0">
+        <b className="block truncate">{c.title || c.name || 'Suggestion'}</b>
+        <span className="block truncate text-muted-foreground">{bits || String(c.type)}</span>
+      </span>
+    </>
+  );
+  return c.url ? <a href={c.url} target="_blank" rel="noreferrer" className={CARD_LINK}>{inner}</a> : <div className={CARD_LINK}>{inner}</div>;
+}
+
 function Bubble({ m }: { m: AdminAiMessage }) {
   if (m.role === 'tool' || m.role === 'system') {
     return (
-      <p className="mx-auto w-fit max-w-[90%] rounded-full bg-muted px-3 py-1 text-center text-[12px] font-bold text-muted-foreground">
-        {m.role === 'tool' ? `${m.tool_name ?? 'tool'}: ${m.tool_summary ?? m.text}` : m.text}
+      <p className={cn(
+        'mx-auto w-fit max-w-[90%] break-words rounded-full px-3 py-1 text-center text-[12px] font-bold text-muted-foreground',
+        m.role === 'tool' ? 'border border-dashed border-border bg-transparent' : 'bg-muted',
+      )}>
+        {m.role === 'tool' ? `tool · ${m.tool_name ?? 'call'}${m.tool_summary || m.text ? ` — ${m.tool_summary ?? m.text}` : ''}` : m.text}
       </p>
     );
   }
@@ -68,18 +110,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
         {note && <span className="mb-0.5 block text-[11px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Admin note</span>}
         {m.text}
         {m.blocked && <span className="mt-1 block text-[11.5px] font-bold text-destructive">Blocked by the safety filter</span>}
-        {m.cards.map((c, i) => (
-          <a key={i} href={c.type === 'event' ? c.read_more_url : c.url} target="_blank" rel="noreferrer"
-            className="mt-2 flex items-center gap-2 rounded-lg border border-border/70 bg-background p-2 text-[13px] text-foreground no-underline hover:bg-muted">
-            {c.image && <img src={c.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />}
-            <span className="min-w-0">
-              <b className="block truncate">{c.title}</b>
-              <span className="text-muted-foreground">
-                {c.type === 'event' ? `${c.price_rupees != null ? `₹${c.price_rupees}` : 'Free'}${c.live_now ? ' · live now' : ''}` : 'Article'}
-              </span>
-            </span>
-          </a>
-        ))}
+        {m.cards.map((c, i) => <CardRow key={i} c={c} />)}
         <span className="mt-1 block text-right text-[11px] font-semibold opacity-70">{rowTime(m.created_at)}</span>
       </div>
     </div>
@@ -143,7 +174,7 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
       <div className="flex items-center gap-2 border-b border-border/60 bg-card px-3 py-2.5">
         {phone && <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>}
         <div className="min-w-0 flex-1">
-          <p className="truncate font-dashbody text-[16px] font-extrabold text-foreground">{who(c)}</p>
+          <p className="flex items-center gap-2"><span className="min-w-0 truncate font-dashbody text-[16px] font-extrabold text-foreground">{who(c)}</span><AgentChip agent={c.agent} /></p>
           <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
           {c.email && <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</p>}
         </div>
@@ -203,6 +234,7 @@ export default function AiConversations() {
   const [applied, setApplied] = useState('');
   const [badge, setBadge] = useState('');
   const [status, setStatus] = useState('');
+  const [agent, setAgent] = useState<AdminAiAgentFilter>('all');
   const [items, setItems] = useState<AdminAiConversationRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -212,7 +244,7 @@ export default function AiConversations() {
   const sentinel = useRef<HTMLDivElement>(null);
 
   useEffect(() => { const t = setTimeout(() => setApplied(q.trim()), 350); return () => clearTimeout(t); }, [q]);
-  const query = useMemo(() => ({ q: applied || undefined, badge: badge || undefined, status: status || undefined }), [applied, badge, status]);
+  const query = useMemo(() => ({ q: applied || undefined, badge: badge || undefined, status: status || undefined, agent: agent === 'all' ? undefined : agent }), [applied, badge, status, agent]);
 
   const load = useCallback(async () => {
     const my = ++seq.current;
@@ -268,7 +300,8 @@ export default function AiConversations() {
   }, [cursor, loadMore, items.length]);
 
   const onChanged = (c: AdminAiConversationRow) => setItems((cur) => cur.map((x) => (x.id === c.id ? { ...x, ...c } : x)));
-  const filtered = !!(applied || badge || status);
+  const filtered = !!(applied || badge || status || agent !== 'all');
+  const pickAgent = (k: AdminAiAgentFilter) => { setAgent(k); capture('admin_ai_conversations_filter', { agent: k, badge: badge || null, status: status || null }); };
 
   const list = (
     <div className="flex h-full min-h-0 flex-col border-border bg-card md:border-r">
@@ -276,6 +309,9 @@ export default function AiConversations() {
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email, UTR or text" aria-label="Search conversations" className="pl-9" />
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Agent">
+          {AGENT_FILTERS.map((a) => <Chip key={a.key} active={agent === a.key} onClick={() => pickAgent(a.key)}>{a.label}</Chip>)}
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filters">
           {BADGES.map((b) => <Chip key={b.key} active={badge === b.key} onClick={() => setBadge(badge === b.key ? '' : b.key)}>{b.label}</Chip>)}
@@ -289,7 +325,7 @@ export default function AiConversations() {
             <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
               <MessagesSquare className="h-8 w-8 text-muted-foreground" aria-hidden />
               <p className="font-dash text-[17px] font-bold text-foreground">{filtered ? 'Nothing matches' : 'No conversations yet'}</p>
-              <p className={HINT}>{filtered ? 'Try a different search or clear the filters.' : 'They appear here as visitors chat with her.'}</p>
+              <p className={HINT}>{filtered ? 'Try a different search or clear the filters.' : 'They appear here as visitors chat with the guides.'}</p>
             </div>
           ) : (
             <ul>
@@ -307,6 +343,7 @@ export default function AiConversations() {
                     {c.email && <span className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</span>}
                     <span className="truncate text-[13.5px] font-semibold text-muted-foreground">{c.last_text || '…'}</span>
                     <span className="flex flex-wrap items-center gap-1">
+                      <AgentChip agent={c.agent} />
                       {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant} className="px-2 py-0 text-[11px]">{badgeMeta(b).label}</Badge>)}
                       <Badge variant={c.status === 'open' ? 'outline' : c.status === 'resolved' ? 'muted' : 'destructive'} className="px-2 py-0 text-[11px]">
                         {STATUSES.find((s) => s.key === c.status)?.label ?? c.status}

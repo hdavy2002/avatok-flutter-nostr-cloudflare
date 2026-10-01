@@ -33,8 +33,19 @@ export type ConvStatus = 'open' | 'resolved' | 'needs_human';
 export interface AdminAiConversationRow {
   id: string; name: string | null; e164: string | null; email: string | null; uid: string | null; visitor_label: string;
   last_text: string; last_message_at: number; badges: string[]; status: ConvStatus; lead_score: number; message_count: number;
+  /** 'preeti' | 'pandit' | a voice guide id. Older API builds omit it (treated as Preeti). */
+  agent?: string;
 }
-export interface AdminAiMessage { id: number; role: 'visitor' | 'preeti' | 'tool' | 'admin_note' | 'system'; text: string; cards: PreetiCard[]; tool_name: string | null; tool_summary: string | null; blocked: boolean; created_at: number }
+/** Product / puja card Pandit ji stores in cards_json. Fields are read defensively: the writer may add or rename some. */
+export interface AgentProductCard {
+  type: 'product' | 'puja' | 'design' | 'shirt';
+  title?: string; name?: string; image?: string | null; url?: string | null;
+  price_rupees?: number | null; price?: number | null;
+  wear_days?: string[] | string | null; wear_day?: string | null;
+}
+export type AdminAiCard = PreetiCard | AgentProductCard;
+export type AdminAiAgentFilter = 'all' | 'preeti' | 'pandit' | 'voice';
+export interface AdminAiMessage { id: number; role: 'visitor' | 'preeti' | 'pandit' | 'tool' | 'admin_note' | 'system'; text: string; cards: AdminAiCard[]; tool_name: string | null; tool_summary: string | null; blocked: boolean; created_at: number }
 export interface AdminAiConversationDetail {
   conversation: AdminAiConversationRow & { first_page: string | null; last_page: string | null; admin_note: string | null };
   messages: AdminAiMessage[];
@@ -73,7 +84,7 @@ export const aiApi = {
   incidents: async () => asList<AdminAiIncident>(await adminCall<unknown>(`${B}/incidents`)),
   createIncident: (b: { listing_id: string | null; message: string; expires_at: number | null }) => adminCall<unknown>(`${B}/incidents`, { method: 'POST', body: b }),
   deleteIncident: (id: string) => adminCall<unknown>(`${B}/incidents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  conversations: (q: { q?: string; badge?: string; status?: string; cursor?: string }) =>
+  conversations: (q: { q?: string; badge?: string; status?: string; agent?: string; cursor?: string }) =>
     adminCall<{ items: AdminAiConversationRow[]; next_cursor?: string }>(`${B}/conversations`, { query: q }),
   conversation: (id: string) => adminCall<AdminAiConversationDetail>(`${B}/conversations/${encodeURIComponent(id)}`),
   patchConversation: (id: string, p: { status?: ConvStatus; admin_note?: string }) =>

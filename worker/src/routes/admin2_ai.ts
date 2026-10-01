@@ -479,11 +479,11 @@ export async function adminAiIncidentDelete(req: Request, env: Env, id: string):
 // ---------------------------------------------------------------------------
 const CONV_SELECT = `
   SELECT c.id, c.uid, c.visitor_id, c.name, c.e164, c.email, c.first_page, c.last_page, c.lead_score, c.badges_json, c.status,
-         c.admin_note, c.message_count, c.last_message_at,
+         c.admin_note, c.message_count, c.last_message_at, COALESCE(c.agent,'preeti') AS agent,
          (SELECT m.text FROM ai_messages m WHERE m.conversation_id=c.id AND m.role IN ('visitor','preeti') ORDER BY m.id DESC LIMIT 1) AS last_text
     FROM ai_conversations c`;
 
-function convRow(r: any): AdminAiConversationRow & { first_page: string | null; last_page: string | null; admin_note: string | null } {
+function convRow(r: any): AdminAiConversationRow & { first_page: string | null; last_page: string | null; admin_note: string | null; agent: string } {
   const label = r.name || r.e164 || r.email || `Visitor ${String(r.visitor_id ?? "").slice(-4)}`;
   const status = r.status === "resolved" || r.status === "needs_human" ? r.status : "open";
   return {
@@ -492,6 +492,7 @@ function convRow(r: any): AdminAiConversationRow & { first_page: string | null; 
     badges: parseJson<string[]>(r.badges_json, []), status, lead_score: Number(r.lead_score ?? 0),
     message_count: Number(r.message_count ?? 0),
     first_page: r.first_page ?? null, last_page: r.last_page ?? null, admin_note: r.admin_note ?? null,
+    agent: String(r.agent ?? "preeti"),
   };
 }
 
@@ -502,6 +503,7 @@ export async function adminAiConversationsList(req: Request, env: Env): Promise<
   const badge = u.searchParams.get("badge") ?? "";
   const status = u.searchParams.get("status") ?? "";
   const cursor = u.searchParams.get("cursor") ?? "";
+  const agent = u.searchParams.get("agent") ?? ""; // optional: preeti | pandit | voice (every voice guide); omitted = all
   const where: string[] = []; const binds: unknown[] = [];
   const bind = (v: unknown) => { binds.push(v); return `?${binds.length}`; };
 
@@ -509,6 +511,11 @@ export async function adminAiConversationsList(req: Request, env: Env): Promise<
   if (badge) {
     if (!["hot_lead", "needs_human", "booking_check", "angry"].includes(badge)) return err(400, "invalid_badge", "Unknown badge.");
     where.push(`c.badges_json LIKE ${bind(`%"${badge}"%`)}`);
+  }
+  if (agent) {
+    if (!["preeti", "pandit", "voice"].includes(agent)) return err(400, "invalid_agent", "Unknown agent.");
+    if (agent === "voice") where.push("COALESCE(c.agent,'preeti') NOT IN ('preeti','pandit')");
+    else where.push(`COALESCE(c.agent,'preeti')=${bind(agent)}`);
   }
   if (status) {
     if (!["open", "resolved", "needs_human"].includes(status)) return err(400, "invalid_status", "Unknown status.");
