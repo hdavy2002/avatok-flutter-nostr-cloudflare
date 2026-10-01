@@ -46,7 +46,7 @@ const MANUAL: ProviderInfo = { id: "manual", label: "By hand", supportsApi: fals
 
 export async function providerInfo(env: Env): Promise<ProviderInfo> {
   try {
-    // TODO(AUMFE-POD-CORE-1): shopPodProvider is declared by CORE in config.ts; read defensively until it lands.
+    // shopPodProvider is declared in config.ts DEFAULTS (AUMFE-POD-CORE-1); read loosely so a bad override falls back to manual.
     const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
     if (String(cfg.shopPodProvider ?? "manual") === "manual") return MANUAL;
     const p = await getPodProvider(env);
@@ -58,7 +58,7 @@ export async function providerInfo(env: Env): Promise<ProviderInfo> {
 }
 
 async function podConfig(env: Env): Promise<{ autoSend: boolean; pollMinutes: number }> {
-  // TODO(AUMFE-POD-CORE-1): shopPodAutoSend / shopPodPollMinutes are declared by CORE in config.ts.
+  // shopPodAutoSend / shopPodPollMinutes are declared in config.ts DEFAULTS (AUMFE-POD-CORE-1).
   const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
   const pm = Number(cfg.shopPodPollMinutes);
   return { autoSend: cfg.shopPodAutoSend === true, pollMinutes: Number.isFinite(pm) && pm > 0 ? pm : 30 };
