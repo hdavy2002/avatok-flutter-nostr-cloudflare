@@ -105,6 +105,12 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
 
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<number>(S.UNSTARTED);
+  // [SAATHUM-PLAYER-RESUME-COVER-1 2026-10-01] On resume YouTube flashes its own pause/play
+  // glyph in the middle of the frame for ~1s. Keep our cover up a moment longer on resume.
+  const [resumeHold, setResumeHold] = useState(false);
+  const prevStateRef = useRef<number>(S.UNSTARTED);
+  const wasPausedRef = useRef(false);
+  const resumeTimer = useRef<number | undefined>(undefined);
   const [started, setStarted] = useState(false);
   const [err, setErr] = useState<number | null>(null);
   const [time, setTime] = useState(0);
@@ -155,6 +161,15 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
           onStateChange: (e: { data: number }) => {
             if (cancelled) return;
             setState(e.data);
+            // Only a resume after a PAUSE (not a mid-play buffering hiccup) gets the hold.
+            if (e.data === S.PLAYING && prevStateRef.current !== S.PLAYING && wasPausedRef.current) {
+              wasPausedRef.current = false;
+              setResumeHold(true);
+              window.clearTimeout(resumeTimer.current);
+              resumeTimer.current = window.setTimeout(() => setResumeHold(false), 1100);
+            }
+            if (e.data === S.PAUSED) { wasPausedRef.current = true; window.clearTimeout(resumeTimer.current); setResumeHold(false); }
+            prevStateRef.current = e.data;
             const p = playerRef.current;
             if (e.data === S.PLAYING) {
               setStarted(true);
@@ -321,7 +336,7 @@ export const YouTubeGuardedPlayer = forwardRef<GuardedPlayerHandle, YouTubeGuard
   // paused, YouTube paints its grey play button and the video title over the frame (we cannot
   // style inside its iframe, and with a crop the button sits off-centre and peeks out from
   // behind ours). So our poster also covers the frame while PAUSED, not only before first play.
-  const showPoster = err == null && (!started || state === S.PAUSED);
+  const showPoster = err == null && (!started || state === S.PAUSED || resumeHold);
   const posterSrc = poster || youtubeThumb(videoId);
   const btn = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-grand-cream transition-colors hover:bg-accent-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grand-gold';
   const hideCls = !controlsVisible && playing ? 'pointer-events-none opacity-0' : 'opacity-100';
