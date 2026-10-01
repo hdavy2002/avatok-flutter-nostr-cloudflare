@@ -231,8 +231,29 @@ async function createGuest(email: string): Promise<string> {
 
 // ───────────────────────────── React surface ─────────────────────────────
 
+// [SAATHUM-CLERK-SINGLE-BRIDGE-1 2026-10-01] Clerk allows ONE <ClerkProvider> per page.
+// Several islands (event-page live overlay, Preeti chat) each mounted their own
+// session-only <ClerkIsland>{null}</ClerkIsland> just to fill the token bridge above;
+// whichever hydrated second threw "multiple <ClerkProvider>", its IslandBoundary
+// rendered nothing, and the free video player vanished until a lucky refresh.
+// ClerkSessionBridge is the shared, de-duplicated version: the first bridge to render
+// claims the provider, every later one renders nothing and reads the same module-level
+// bridge (getActiveToken). A real <ClerkIsland> with children on the page also counts.
+let _providerOwner: symbol | null = null;
+let _fullIslandSeen = false;
+
+/** Session-only Clerk mount (no UI): fills the token bridge once per page. */
+export function ClerkSessionBridge() {
+  const [me] = useState(() => Symbol('clerk-bridge'));
+  if (_providerOwner === null && !_fullIslandSeen) _providerOwner = me;
+  useEffect(() => () => { if (_providerOwner === me) _providerOwner = null; }, [me]);
+  if (_providerOwner !== me) return null;
+  return <ClerkIsland>{null}</ClerkIsland>;
+}
+
 /** Wrap any auth-aware island. Provides Clerk context + mounts the GuestGate host. */
 export function ClerkIsland({ children }: { children: ReactNode }) {
+  if (children != null) _fullIslandSeen = true; // [SAATHUM-CLERK-SINGLE-BRIDGE-1]
   if (!CLERK_PUBLISHABLE_KEY) {
     // No key yet (e.g. first preview) — still mount the gate host so guest auth
     // works; Clerk sign-in just won't be available.

@@ -43,7 +43,8 @@ import { hasClerkSessionHint } from '../../lib/sessionHint';
 // even though only a signed-in buyer (or admin preview) on a live/ended event
 // ever needs a token. Clerk now loads only in that case, lazily.
 const loadClerk = () => import('../../lib/clerk');
-const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
+// [SAATHUM-CLERK-SINGLE-BRIDGE-1] One session-only Clerk provider per page, shared by all islands.
+const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkSessionBridge })));
 import { ApiError } from '../../lib/apiClient';
 import { getLiveState, getWatch, postWatchViewOnce } from '../saathum-checkout/api';
 import { signInUrlForFreeWatch } from '../../lib/authRedirect';
@@ -348,7 +349,7 @@ export default function LiveOverlay({ listingId, checkoutHref, freeWatch = false
     <IslandBoundary island="event-page-live-overlay">
       {withClerk && (
         <Suspense fallback={null}>
-          <LazyClerkIsland>{null}</LazyClerkIsland>
+          <LazyClerkIsland />
         </Suspense>
       )}
       <LiveOverlayInner listingId={listingId} checkoutHref={checkoutHref} freeWatch={freeWatch} freeVideo={freeVideo} onNeedAuth={() => setWithClerk(true)} />

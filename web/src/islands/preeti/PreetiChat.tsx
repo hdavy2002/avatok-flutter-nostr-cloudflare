@@ -15,7 +15,8 @@ import type { KeyboardEvent as RKeyboardEvent, ReactNode } from 'react';
 // loads only when the Clerk session cookie says someone is signed in, and then
 // in the background after the widget has already rendered.
 const loadClerk = () => import('../../lib/clerk');
-const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkIsland })));
+// [SAATHUM-CLERK-SINGLE-BRIDGE-1] One session-only Clerk provider per page, shared by all islands.
+const LazyClerkIsland = lazy(() => loadClerk().then((m) => ({ default: m.ClerkSessionBridge })));
 import { ApiError } from '../../lib/apiClient';
 import { hasClerkSessionHint } from '../../lib/sessionHint';
 import { cfImage } from '../../lib/config';
@@ -511,7 +512,7 @@ export default function PreetiChat({ kind, pageRef }: { kind: PageKind; pageRef?
       {withClerk && (
         <Quiet>
           <Suspense fallback={null}>
-            <LazyClerkIsland>{null}</LazyClerkIsland>
+            <LazyClerkIsland />
           </Suspense>
         </Quiet>
       )}
