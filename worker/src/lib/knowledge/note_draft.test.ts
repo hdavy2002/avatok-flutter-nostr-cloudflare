@@ -6,6 +6,7 @@ import {
 } from './note_draft';
 import { decideSync, designChanged, onShopProductChanged, type ProductSnapshot } from './product_sync';
 import type { MatchReason, NoteRow } from './catalog';
+import { normKey } from './common';
 
 const P = (o: Partial<Passage> & { id: string }): Passage => ({ title: 'T', text: 'text', weekday: null, deity: null, ...o });
 const hanuman = P({ id: 'deity-hanuman', title: 'Hanuman', text: 'Hanuman is traditionally worshipped on Tuesday and Saturday. Devotees chant Om Hanumate Namah.', deity: 'hanuman' });
@@ -75,6 +76,30 @@ describe('validateDraft', () => {
   });
 });
 
+describe('vision evidence', () => {
+  const generic = { ...ctx, subjectText: 'Product name: Classic Tee' };
+  const seenRaw = () => ({ ...goodRaw(), match_reasons: [{ step: 'deity', fact: 'Hanuman ji shown on the print', seen_in_image: true }, { step: 'print_colour', fact: 'Red print is linked to Mangal and Tuesday.', source_id: 'graha-mangal' }] });
+  it('a deity seen in the image is subject evidence even when the product text never names it', () => {
+    const noImage = validateDraft(seenRaw(), { ...generic, passages: [mangal] });
+    if (!noImage.ok) throw new Error('x');
+    expect(noImage.fields.deity).toBeNull();                       // seen_in_image ignored without an image
+    expect(noImage.fields.match_reasons.map((r) => r.step)).toEqual(['print_colour']);
+    const withImage = validateDraft(seenRaw(), { ...generic, passages: [mangal], imageProvided: true });
+    if (!withImage.ok) throw new Error('x');
+    expect(withImage.fields.deity).toBe('hanuman');
+    expect(withImage.fields.match_reasons[0]).toMatchObject({ step: 'deity', seen_in_image: true });
+  });
+  it('the image scan result also counts, but an unseen deity still does not', () => {
+    const raw = { ...goodRaw(), match_reasons: [] };
+    const a = validateDraft(raw, { ...generic, passages: [mangal], imageProvided: true, observedDeity: 'Hanuman' });
+    if (!a.ok) throw new Error('x');
+    expect(a.fields.deity).toBe('hanuman');
+    const b = validateDraft(raw, { ...generic, passages: [mangal], imageProvided: true, observedDeity: 'shiva' });
+    if (!b.ok) throw new Error('x');
+    expect(b.fields.deity).toBeNull();
+  });
+});
+
 describe('sortReasons / supportedWearDays', () => {
   it('sorts design-first, stable within a step', () => {
     const rs: MatchReason[] = [
@@ -95,15 +120,20 @@ describe('helpers', () => {
     expect(parseModelJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(parseModelJson('nope')).toBeNull();
   });
-  it('lockedFrom: hints beat the existing row; a single offered shirt colour is used', () => {
-    const existing = { design_type: 'deity', design_elements_json: '["Om"]', print_colours_json: '[]', shirt_colour: null, deity: 'shiva', graha: null, chakra: null } as unknown as NoteRow;
-    const l = lockedFrom(existing, { deity: 'hanuman' }, ['White']);
-    expect(l).toMatchObject({ deity: 'hanuman', design_elements: ['Om'], shirt_colour: 'white' });
-    expect(l.print_colours).toBeUndefined();
+  it('lockedFrom locks only what the admin sent in hints, lower-cased', () => {
+    expect(lockedFrom(undefined)).toEqual({});
+    expect(lockedFrom({})).toEqual({});
+    expect(lockedFrom({ deity: ' Hanuman ', wear_days: ['Tuesday', 'funday'], print_colours: ['Red'] })).toEqual({ deity: 'hanuman', wear_days: ['tuesday'], print_colours: ['red'] });
+  });
+  it('normKey', () => {
+    expect(normKey(' Tuesday ')).toBe('tuesday');
+    expect(normKey(null)).toBe('');
+    expect(normKey(5)).toBe('');
   });
   it('groundingQueries goes deity, chakra, colours', () => {
     const s: Subject = { kind: 'shop_product', id: 'p', name: 'Hanuman tee', text: '', shirtColours: ['White'], imageUrls: [] };
     const q = groundingQueries(s, { deity: 'hanuman', print_colours: ['red'] });
+    expect(groundingQueries({ ...s, name: 'Classic Tee' }, {}, { deity: 'hanuman' })[0]).toContain('hanuman');
     expect(q).toHaveLength(3);
     expect(q[0]).toContain('deity');
     expect(q[1]).toContain('chakra');
@@ -238,5 +268,40 @@ describe('draftNote', () => {
     env.VEC_CATALOG = { deleteByIds: async (ids: string[]) => { deleted.push(ids); } };
     await draftNote(env, 'shop_product', 'p', { deps: { retrieve, generate: async () => ({ text: JSON.stringify(goodRaw()), inTok: 1, outTok: 1, model: 'm', ms: 1 }) } });
     expect(deleted).toEqual([['cat:shop_product:p']]);
+  });
+
+  it('sends the design image, drafts deity from it for a generic product name, and puts image tokens in the cost event', async () => {
+    const { env, writes } = envFor(null);
+    const calls: Array<{ system: string; image: unknown }> = [];
+    const generate = async (_e: any, system: string, _u: string, image?: unknown) => {
+      calls.push({ system, image });
+      const scan = system.includes('report ONLY what is clearly visible');
+      return { text: JSON.stringify(scan ? { design_type: 'deity', deity: 'hanuman', print_colours: ['red'] } : { ...goodRaw(), match_reasons: [{ step: 'deity', fact: 'Hanuman ji shown on the print', seen_in_image: true }] }), inTok: 1500, outTok: 200, model: 'm', ms: 1 };
+    };
+    const queries: string[][] = [];
+    const image = async () => ({ mime: 'image/png', b64: 'AAAA', source: 'studio_art' as const, bytes: 3 });
+    await draftNote(env, 'shop_product', 'p', { deps: { generate, image, retrieve: async (_e, q) => { queries.push(q); return [mangal, hanuman]; } } });
+    expect(calls).toHaveLength(2);
+    expect(calls.every((c) => !!c.image)).toBe(true);
+    expect(calls[1].system).toContain('STRONGEST evidence');
+    expect(queries[0][0]).toContain('hanuman');                     // retrieval used the scan, not just the name
+    const ins = writes.find((w) => /INSERT INTO product_tradition_notes/.test(w.sql))!;
+    expect(ins.args[7]).toBe('hanuman');
+  });
+  it('drafts without vision when there is no usable image', async () => {
+    const { env } = envFor(null);
+    const calls: unknown[] = [];
+    const generate = async (_e: any, _s: string, _u: string, image?: unknown) => { calls.push(image); return { text: JSON.stringify(goodRaw()), inTok: 1, outTok: 1, model: 'm', ms: 1 }; };
+    await draftNote(env, 'shop_product', 'p', { deps: { generate, retrieve, image: async () => null } });
+    expect(calls).toEqual([null]);
+  });
+  it('re-drafting does not lock the previous values; only hints lock', async () => {
+    const prev = { id: 'ptn-0', status: 'draft', deity: 'shiva', design_type: 'deity', design_elements_json: '[]', print_colours_json: '[]' } as any;
+    const a = envFor(prev);
+    await draftNote(a.env, 'shop_product', 'p', { deps: { retrieve, image: async () => null, generate: async () => ({ text: JSON.stringify(goodRaw()), inTok: 1, outTok: 1, model: 'm', ms: 1 }) } });
+    expect(a.writes.find((w) => /INSERT INTO product_tradition_notes/.test(w.sql))!.args[7]).toBe('hanuman');
+    const b = envFor(prev);
+    await draftNote(b.env, 'shop_product', 'p', { hints: { deity: 'Shiva' }, deps: { retrieve, image: async () => null, generate: async () => ({ text: JSON.stringify(goodRaw()), inTok: 1, outTok: 1, model: 'm', ms: 1 }) } });
+    expect(b.writes.find((w) => /INSERT INTO product_tradition_notes/.test(w.sql))!.args[7]).toBe('shiva');
   });
 });

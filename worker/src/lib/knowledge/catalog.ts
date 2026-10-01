@@ -6,7 +6,7 @@ import { BRAND } from "../brand";
 import { embedOne, embedTexts } from "./embed";
 import { CATALOG_INDEX } from "./indexes";
 import {
-  APP, buildFilter, cleanMeta, clampK, logIndex, parseStrings, parseJsonArray,
+  APP, buildFilter, cleanMeta, clampK, logIndex, normKey, parseStrings, parseJsonArray,
   trackSearchFail, trackSearchOk, trackSearchUnbound,
 } from "./common";
 import { trackException } from "../../hooks";
@@ -28,7 +28,7 @@ export interface NoteRow {
   vector_id: string | null; updated_at: number;
 }
 
-export interface MatchReason { step: "deity" | "chakra" | "print_colour" | "shirt_colour"; fact: string; source_id?: string }
+export interface MatchReason { step: "deity" | "chakra" | "print_colour" | "shirt_colour"; fact: string; source_id?: string; seen_in_image?: boolean }
 
 export interface CatalogFilters { kind?: SubjectKind; deity?: string; graha?: string; chakra?: string; design_type?: string; wear_day?: string }
 export interface CatalogQuery { query: string; filters?: CatalogFilters; k?: number }
@@ -64,11 +64,11 @@ export function noteEmbedText(title: string, n: NoteRow): string {
 }
 
 export function catalogMetadata(n: NoteRow, live: { active: boolean; in_stock: boolean }) {
-  const wear = parseStrings(n.wear_days_json);
+  const wear = parseStrings(n.wear_days_json).map((d) => normKey(d));
   const colours = parseStrings(n.print_colours_json);
   return cleanMeta({
-    subject_id: n.subject_id, kind: n.subject_kind, deity: n.deity, graha: n.graha, chakra: n.chakra,
-    design_type: n.design_type, wear_day: wear[0], wear_days: wear.join(","), print_colour: colours[0],
+    subject_id: n.subject_id, kind: n.subject_kind, deity: normKey(n.deity), graha: normKey(n.graha), chakra: normKey(n.chakra),
+    design_type: normKey(n.design_type), wear_day: wear[0], wear_days: wear.join(","), print_colour: colours[0],
     in_stock: live.in_stock, active: live.active,
   });
 }
@@ -76,7 +76,7 @@ export function catalogMetadata(n: NoteRow, live: { active: boolean; in_stock: b
 export function catalogFilter(f: CatalogFilters = {}) {
   return buildFilter({
     active: true, in_stock: true,
-    kind: f.kind, deity: f.deity, graha: f.graha, chakra: f.chakra, design_type: f.design_type, wear_day: f.wear_day,
+    kind: f.kind, deity: normKey(f.deity), graha: normKey(f.graha), chakra: normKey(f.chakra), design_type: normKey(f.design_type), wear_day: normKey(f.wear_day),
   });
 }
 
@@ -85,7 +85,7 @@ export function parseReasons(s: unknown): MatchReason[] {
   for (const r of parseJsonArray(s)) {
     const o = r as Record<string, unknown>;
     if (o && typeof o.fact === "string" && ["deity", "chakra", "print_colour", "shirt_colour"].includes(String(o.step))) {
-      out.push({ step: o.step as MatchReason["step"], fact: o.fact, ...(typeof o.source_id === "string" ? { source_id: o.source_id } : {}) });
+      out.push({ step: o.step as MatchReason["step"], fact: o.fact, ...(typeof o.source_id === "string" ? { source_id: o.source_id } : {}), ...(o.seen_in_image === true ? { seen_in_image: true } : {}) });
     }
   }
   return out;
@@ -108,7 +108,7 @@ export function hydrateCatalog(
     seen.add(kk);
     out.push({
       subject_kind: p.kind, subject_id: p.id, title: subj.title, price_inr: subj.price_inr, image_url: subj.image_url, url: subj.url,
-      wear_days: parseStrings(note.wear_days_json), deity: note.deity, chakra: note.chakra,
+      wear_days: parseStrings(note.wear_days_json).map((d) => normKey(d)), deity: note.deity ? normKey(note.deity) : null, chakra: note.chakra ? normKey(note.chakra) : null,
       tradition_note: note.tradition_note, why: parseReasons(note.match_reasons_json), score: m.score,
     });
     if (out.length >= k) break;

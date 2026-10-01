@@ -5,7 +5,7 @@ import type { Env } from "../../types";
 import { chunkText, embedOne, embedTexts } from "./embed";
 import { TRADITION_INDEX } from "./indexes";
 import {
-  APP, buildFilter, cleanMeta, clampK, logIndex, trackSearchFail, trackSearchOk, trackSearchUnbound,
+  APP, buildFilter, cleanMeta, clampK, logIndex, normKey, trackSearchFail, trackSearchOk, trackSearchUnbound,
 } from "./common";
 import { trackException } from "../../hooks";
 
@@ -30,12 +30,12 @@ export const traditionChunks = (r: Pick<TraditionRow, "title" | "text">): string
 export function traditionMetadata(row: Pick<TraditionRow, "id" | "topic" | "lang" | "graha" | "weekday" | "deity">, n: number) {
   return cleanMeta({
     entry_id: row.id, chunk: n, topic: row.topic, lang: row.lang || "en",
-    graha: row.graha, weekday: row.weekday, deity: row.deity, status: "approved",
+    graha: normKey(row.graha), weekday: normKey(row.weekday), deity: normKey(row.deity), status: "approved",
   });
 }
 
 export const traditionFilter = (q: Omit<TraditionQuery, "query" | "k">) =>
-  buildFilter({ status: "approved", topic: q.topic, graha: q.graha, weekday: q.weekday, deity: q.deity });
+  buildFilter({ status: "approved", topic: normKey(q.topic), graha: normKey(q.graha), weekday: normKey(q.weekday), deity: normKey(q.deity) });
 
 /**
  * Merge Vectorize matches with D1 rows: keep approved rows only, best chunk per entry, ordered by score.

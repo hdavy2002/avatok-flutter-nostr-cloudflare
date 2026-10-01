@@ -20,6 +20,7 @@ import {
   indexTraditionEntry, removeTraditionEntry, searchTradition, indexSubjectNote, removeSubject, searchCatalog, getNote, isSubjectKind,
 } from "../lib/knowledge";
 import type { SubjectKind } from "../lib/knowledge";
+import { normKey } from "../lib/knowledge/common";
 import { draftNote, DraftError, listLiveWithoutNote } from "../lib/knowledge";
 
 const APP = BRAND.slug;
@@ -81,7 +82,7 @@ type TradFields = { topic: string; title: string; text: string; source: string; 
 function tradFields(b: Record<string, any>): TradFields {
   return {
     topic: s(b.topic, 80), title: s(b.title, 200), text: typeof b.text === "string" ? b.text.trim().slice(0, MAX_TEXT) : "",
-    source: s(b.source, 300), lang: s(b.lang, 10) || "en", graha: sn(b.graha, 40), weekday: sn(b.weekday, 20), deity: sn(b.deity, 60),
+    source: s(b.source, 300), lang: s(b.lang, 10) || "en", graha: normKey(b.graha, 40) || null, weekday: normKey(b.weekday, 20) || null, deity: normKey(b.deity, 60) || null,
   };
 }
 
@@ -177,13 +178,13 @@ const noteGet = wrap("noteGet", async (req, env, [kind, id]) => {
 const notePut = wrap("notePut", async (req, env, [kind, id], uid) => {
   const k = kindOf(kind); if (!k) return err(400, "bad_kind", "kind must be shop_product or event.");
   const b = await body(req); if (!b) return err(400, "bad_json", "Send a JSON body.");
-  const dt = sn(b.design_type, 20);
+  const dt = normKey(b.design_type, 20) || null;
   if (dt && !DESIGN_TYPES.includes(dt)) return err(400, "bad_design_type", `design_type must be one of ${DESIGN_TYPES.join(", ")}.`);
   const cur = await getNote(env, k, id);
   const now = Date.now();
   const vals = [
-    dt, jsonArr(b.design_elements), jsonArr(b.print_colours), sn(b.shirt_colour, 60), sn(b.deity, 60), sn(b.graha, 40), sn(b.chakra, 40),
-    jsonArr(b.wear_days), jsonArr(b.occasions), sn(b.mantra, 300), s(b.tradition_note, 4000), s(b.story, 8000), jsonArr(b.sources),
+    dt, jsonArr(b.design_elements), jsonArr(b.print_colours), sn(b.shirt_colour, 60), normKey(b.deity, 60) || null, normKey(b.graha, 40) || null, normKey(b.chakra, 40) || null,
+    jsonArr(Array.isArray(b.wear_days) ? b.wear_days.map((d: unknown) => normKey(d, 20)).filter(Boolean) : []), jsonArr(b.occasions), sn(b.mantra, 300), s(b.tradition_note, 4000), s(b.story, 8000), jsonArr(b.sources),
     JSON.stringify(Array.isArray(b.match_reasons) ? b.match_reasons.slice(0, 12) : []),
   ];
   if (cur) {

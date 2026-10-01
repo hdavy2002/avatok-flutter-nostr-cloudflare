@@ -11,6 +11,10 @@ export const clampK = (k: unknown): number => {
   return Number.isFinite(n) && n > 0 ? Math.min(n, SEARCH_MAX_K) : SEARCH_DEFAULT_K;
 };
 
+/** Key form of a weekday / graha / deity / chakra / design_type: trimmed and lower-case, "" when not a string.
+ *  Written AND filtered through this so Vectorize's exact-match metadata filter never misses on case. */
+export const normKey = (v: unknown, max = 80): string => (typeof v === "string" ? v.trim().toLowerCase().slice(0, max) : "");
+
 export const parseJsonArray = (s: unknown): unknown[] => {
   if (typeof s !== "string" || !s) return [];
   try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; }

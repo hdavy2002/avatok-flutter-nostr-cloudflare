@@ -57,16 +57,18 @@ describe('builders', () => {
   });
   it('tradition filter always pins status=approved', () => {
     expect(traditionFilter({})).toEqual({ status: 'approved' });
-    expect(traditionFilter({ deity: 'Shiva' })).toEqual({ status: 'approved', deity: 'Shiva' });
+    expect(traditionFilter({ deity: ' Shiva ' })).toEqual({ status: 'approved', deity: 'shiva' });
   });
   it('catalog filter always pins active+in_stock', () => {
     expect(catalogFilter()).toEqual({ active: true, in_stock: true });
-    expect(catalogFilter({ chakra: 'Heart' })).toEqual({ active: true, in_stock: true, chakra: 'Heart' });
+    expect(catalogFilter({ chakra: 'heart' })).toEqual({ active: true, in_stock: true, chakra: 'heart' });
   });
   it('catalog metadata stores the FIRST wear day / print colour and all wear days', () => {
     const m = catalogMetadata(note({ wear_days_json: '["Tuesday","Saturday"]', print_colours_json: '["Saffron","Gold"]' }), { active: true, in_stock: false });
-    expect(m).toMatchObject({ wear_day: 'Tuesday', wear_days: 'Tuesday,Saturday', print_colour: 'Saffron', in_stock: false, active: true, kind: 'shop_product' });
+    expect(m).toMatchObject({ wear_day: 'tuesday', wear_days: 'tuesday,saturday', deity: 'hanuman', print_colour: 'Saffron', in_stock: false, active: true, kind: 'shop_product' });
     expect(traditionMetadata({ id: 'x', topic: 't', lang: 'en', graha: null, weekday: null, deity: null }, 2)).toMatchObject({ status: 'approved', chunk: 2 });
+    expect(traditionMetadata({ id: 'x', topic: 't', lang: 'en', graha: 'Mangal', weekday: 'Tuesday', deity: 'Hanuman' }, 0)).toMatchObject({ graha: 'mangal', weekday: 'tuesday', deity: 'hanuman' });
+    expect(catalogFilter({ wear_day: 'Tuesday', deity: 'Hanuman' })).toMatchObject({ wear_day: 'tuesday', deity: 'hanuman' });
   });
   it('id helpers round-trip', () => {
     expect(parseTradVectorId('trad:abc:def:3')).toEqual({ id: 'abc:def', n: 3 });
@@ -78,12 +80,12 @@ describe('builders', () => {
 
 const trow = (over: Partial<TraditionRow> = {}): TraditionRow => ({
   id: 'e1', topic: 'graha', title: 'Tuesday', text: 'Hanuman is worshipped on Tuesday.', source: 'Book', lang: 'en',
-  graha: 'Mangal', weekday: 'Tuesday', deity: 'Hanuman', status: 'approved', chunk_count: 1, ...over,
+  graha: 'mangal', weekday: 'tuesday', deity: 'hanuman', status: 'approved', chunk_count: 1, ...over,
 });
 function note(over: Partial<NoteRow> = {}): NoteRow {
   return {
     id: 'ptn-1', subject_kind: 'shop_product', subject_id: 'prd-1', design_type: 'deity', design_elements_json: '[]', print_colours_json: '[]',
-    shirt_colour: null, deity: 'Hanuman', graha: null, chakra: null, wear_days_json: '["Tuesday"]', occasions_json: '[]', mantra: null,
+    shirt_colour: null, deity: 'hanuman', graha: null, chakra: null, wear_days_json: '["tuesday"]', occasions_json: '[]', mantra: null,
     tradition_note: 'Wear on Tuesday.', story: '', sources_json: '[]', match_reasons_json: '[{"step":"deity","fact":"Hanuman rules Tuesday"}]',
     status: 'approved', drafted_at: 1, approved_by: 'u', approved_at: 1, vector_id: null, updated_at: 1, ...over,
   };
@@ -122,7 +124,7 @@ describe('hydrateCatalog', () => {
       notes, lv, 5,
     );
     expect(hits.map((h) => h.subject_id)).toEqual(['a']);
-    expect(hits[0]).toMatchObject({ title: 'A', price_inr: 499, wear_days: ['Tuesday'], why: [{ step: 'deity', fact: 'Hanuman rules Tuesday' }] });
+    expect(hits[0]).toMatchObject({ title: 'A', price_inr: 499, wear_days: ['tuesday'], why: [{ step: 'deity', fact: 'Hanuman rules Tuesday' }] });
   });
 });
 
@@ -164,7 +166,7 @@ describe('search entry points', () => {
   it('searchTradition filters by status=approved and hydrates from D1', async () => {
     const { env, queries } = fakeEnv({ rows: [trow()], matches: [{ id: 'trad:e1:0', score: 0.8 }, { id: 'trad:old:0', score: 0.9 }] });
     const hits = await searchTradition(env, { query: 'what to wear on tuesday', deity: 'Hanuman' });
-    expect(queries[0].filter).toEqual({ status: 'approved', deity: 'Hanuman' });
+    expect(queries[0].filter).toEqual({ status: 'approved', deity: 'hanuman' });
     expect(hits.map((h) => h.id)).toEqual(['e1']);
   });
 });
