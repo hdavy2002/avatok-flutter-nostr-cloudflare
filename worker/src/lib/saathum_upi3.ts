@@ -32,7 +32,31 @@ export async function reserveUniqueAmount(
   a: { account: string; totalRupees: number; checkoutId: string; now: number; expiresAt: number },
   rand: () => number = Math.random,
 ): Promise<Reservation | null> {
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] A slot held by a shop order in review is protected like an event's. If the
+  // shop tables are not migrated yet the guard silently falls back to the original (events-only) one, so event
+  // bookings can never break on deploy order.
+  try { return await reserveUniqueAmountInner(env, a, rand, true); }
+  catch (err) {
+    if (!isMissingShopTable(err)) throw err;
+    return reserveUniqueAmountInner(env, a, rand, false);
+  }
+}
+
+/** True for D1/SQLite "no such table: shop_orders". */
+export function isMissingShopTable(err: unknown): boolean {
+  return /no such table:?\s*(main\.)?shop_/i.test(String((err as Error)?.message ?? err));
+}
+
+async function reserveUniqueAmountInner(
+  env: Env,
+  a: { account: string; totalRupees: number; checkoutId: string; now: number; expiresAt: number },
+  rand: () => number,
+  withShop: boolean,
+): Promise<Reservation | null> {
   const db = metaDb(env);
+  // The review-queue holder check, with the shop's table added when it exists.
+  const shopSelect = withShop ? ` OR EXISTS (SELECT 1 FROM shop_orders s WHERE s.order_id=r.checkout_id AND s.pay_status='review_pending')` : "";
+  const shopUpsert = withShop ? ` AND NOT EXISTS (SELECT 1 FROM shop_orders s WHERE s.order_id=saathum_amount_reservations.checkout_id AND s.pay_status='review_pending')` : "";
   const totalPaise = a.totalRupees * 100;
   const kMax = Math.min(MAX_ROUNDING_DISCOUNT_PAISE, totalPaise - 1);
   if (kMax < 1) return null;
@@ -41,7 +65,7 @@ export async function reserveUniqueAmount(
   const taken = await db.prepare(
     `SELECT r.amount_paise FROM saathum_amount_reservations r
       WHERE r.receiving_account_key=?1 AND r.amount_paise BETWEEN ?2 AND ?3
-        AND (r.reserved_until >= ?4 OR EXISTS (SELECT 1 FROM saathum_checkouts c WHERE c.checkout_id=r.checkout_id AND c.status='review_pending'))`,
+        AND (r.reserved_until >= ?4 OR EXISTS (SELECT 1 FROM saathum_checkouts c WHERE c.checkout_id=r.checkout_id AND c.status='review_pending')${shopSelect})`,
   ).bind(a.account, totalPaise - kMax, totalPaise - 1, a.now).all<{ amount_paise: number }>();
   const takenSet = new Set((taken.results ?? []).map((r) => Number(r.amount_paise)));
   const free: number[] = [];
@@ -56,7 +80,7 @@ export async function reserveUniqueAmount(
        ON CONFLICT(receiving_account_key,amount_paise) DO UPDATE SET
          checkout_id=excluded.checkout_id, reserved_until=excluded.reserved_until, created_at=excluded.created_at
        WHERE saathum_amount_reservations.reserved_until < ?5
-         AND NOT EXISTS (SELECT 1 FROM saathum_checkouts c WHERE c.checkout_id=saathum_amount_reservations.checkout_id AND c.status='review_pending')`,
+         AND NOT EXISTS (SELECT 1 FROM saathum_checkouts c WHERE c.checkout_id=saathum_amount_reservations.checkout_id AND c.status='review_pending')${shopUpsert}`,
     ).bind(a.account, amount, a.checkoutId, reservedUntil, a.now).run();
     if (Number((res as any).meta?.changes ?? 0) === 1) return { amountPaise: amount, roundingDiscountPaise: k };
     // lost a race for this slot -> try another
@@ -151,13 +175,27 @@ async function alert(env: Env, text: string): Promise<boolean> {
   return r.ok;
 }
 
+/** [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] The same owner alert, exported for the shop's order/problem alerts. */
+export { alert as sendAdminAlert };
+
 /** Persist the buyer-facing 3-minute rule so the DB (admin queue, cron) agrees with what reads compute. */
 export async function persistAwaitingBank(env: Env, now = Date.now()): Promise<number> {
   const r = await metaDb(env).prepare(
     `UPDATE saathum_checkouts SET status='review_pending', reason_code='awaiting_bank', updated_at=?1
       WHERE status='awaiting_payment' AND paid_claimed_at IS NOT NULL AND paid_claimed_at <= ?2 AND confirmed_at IS NULL`,
   ).bind(now, now - PAID_CLAIM_REVIEW_MS).run();
-  return Number((r as any).meta?.changes ?? 0);
+  let changes = Number((r as any).meta?.changes ?? 0);
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Same 3-minute rule for shop orders; independent so it can never break the event sweep.
+  try {
+    const sr = await metaDb(env).prepare(
+      `UPDATE shop_orders SET pay_status='review_pending', reason_code='awaiting_bank', updated_at=?1
+        WHERE pay_status='awaiting_payment' AND paid_claimed_at IS NOT NULL AND paid_claimed_at <= ?2 AND confirmed_at IS NULL`,
+    ).bind(now, now - PAID_CLAIM_REVIEW_MS).run();
+    changes += Number((sr as any).meta?.changes ?? 0);
+  } catch (err) {
+    if (!isMissingShopTable(err)) await trackException(env, err, { route: "saathum_upi3.persist_shop", handled: true, app_name: APP });
+  }
+  return changes;
 }
 
 const paise = (n: number) => `Rs. ${(n / 100).toFixed(2)}`;
@@ -181,6 +219,25 @@ export async function alertStaleReviews(env: Env, now = Date.now()): Promise<num
       `${BRAND.nameCompact} payment needs manual review\n${row.title ?? "Booking"} - ${paise(row.amount_paise)}\nReason: ${row.reason_code ?? "awaiting_bank"}\nRef: ${row.checkout_id.slice(0, 8)}\nOpen the admin payments review queue.`);
     if (ok) sent++;
     else await db.prepare(`UPDATE saathum_checkouts SET review_alerted_at=NULL WHERE checkout_id=?1`).bind(row.checkout_id).run();
+  }
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Shop orders in review get the same one-shot owner ping; failures here never affect events.
+  try {
+    const shopRows = await db.prepare(
+      `SELECT order_id, order_no, amount_paise, reason_code FROM shop_orders
+        WHERE pay_status='review_pending' AND review_alerted_at IS NULL AND confirmed_at IS NULL
+          AND (CASE WHEN reason_code='awaiting_bank' AND paid_claimed_at IS NOT NULL THEN paid_claimed_at + ?2 ELSE updated_at END) <= ?1
+        ORDER BY updated_at ASC LIMIT 10`,
+    ).bind(now - REVIEW_ALERT_AFTER_MS, PAID_CLAIM_REVIEW_MS).all<{ order_id: string; order_no: string; amount_paise: number; reason_code: string | null }>();
+    for (const row of shopRows.results ?? []) {
+      const claim = await db.prepare(`UPDATE shop_orders SET review_alerted_at=?2 WHERE order_id=?1 AND review_alerted_at IS NULL`).bind(row.order_id, now).run();
+      if (Number((claim as any).meta?.changes ?? 0) !== 1) continue;
+      const ok = await alert(env,
+        `${BRAND.nameCompact} shop payment needs manual review\nOrder ${row.order_no} - ${paise(row.amount_paise)}\nReason: ${row.reason_code ?? "awaiting_bank"}\nOpen admin > Shop > Orders.`);
+      if (ok) sent++;
+      else await db.prepare(`UPDATE shop_orders SET review_alerted_at=NULL WHERE order_id=?1`).bind(row.order_id).run();
+    }
+  } catch (err) {
+    if (!isMissingShopTable(err)) await trackException(env, err, { route: "saathum_upi3.review_alerts_shop", handled: true, app_name: APP });
   }
   return sent;
 }

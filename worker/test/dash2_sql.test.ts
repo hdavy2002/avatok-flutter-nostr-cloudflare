@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
-import { buildPaymentsQuery, EVENTS_SQL, phoneSwapStatements } from "../src/lib/me_dashboard_data";
+import { buildPaymentsQuery, withoutShopBranch, EVENTS_SQL, phoneSwapStatements } from "../src/lib/me_dashboard_data";
 import { encodeCursor } from "../src/lib/me_dashboard_logic";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as { DatabaseSync: new (path: string) => any };
@@ -87,7 +87,13 @@ function setup() {
 
 async function payments(db: any, uid: string, f: Parameters<typeof buildPaymentsQuery>[2] = {}) {
   const { sql, binds } = buildPaymentsQuery(uid, NOW, f);
-  return (await db.prepare(sql).bind(...binds).all()).results as any[];
+  try {
+    return (await db.prepare(sql).bind(...binds).all()).results as any[];
+  } catch (e) {
+    // shop_* not migrated in this DB: production falls back to the event-only SQL (me_dashboard.paymentsQuery)
+    if (!/no such table: shop_/.test(String((e as Error)?.message))) throw e;
+    return (await db.prepare(withoutShopBranch(sql)).bind(...binds).all()).results as any[];
+  }
 }
 
 describe("payments read model", () => {

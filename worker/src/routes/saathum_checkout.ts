@@ -43,6 +43,8 @@ import { reserveUniqueAmount, releaseAmount, dropReservation } from "../lib/saat
 import { AMOUNT_COOLDOWN_MS } from "../lib/saathum_checkout_logic";
 import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
 import { isAdminUid } from "../lib/admin_calendar_exempt"; // [SAATHUM-LIVE-PREVIEW-1]
+// [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] The UPI rail also matches Shop orders; these helpers are the shop side of the dispatcher.
+import { shopReferenceClaimed, findShopMatchCandidates, confirmShopOrder } from "./shop_orders";
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -621,7 +623,7 @@ export async function saathumCheckoutReceiptPdf(req: Request, env: Env, id: stri
  * reads). Only non-empty values overwrite; the phone stays on the checkout's own address
  * (user_addresses has no phone column). Best-effort: never fails the checkout.
  */
-async function saveToProfile(env: Env, uid: string, v: { sankalp?: any; address?: any | null }, now: number): Promise<void> {
+export async function saveToProfile(env: Env, uid: string, v: { sankalp?: any; address?: any | null }, now: number): Promise<void> {
   const db = metaDb(env);
   const stmts: D1PreparedStatement[] = [];
   const gotra = typeof v.sankalp?.gotra === "string" && v.sankalp.gotra.trim() ? v.sankalp.gotra.trim().slice(0, 60) : null;
@@ -824,6 +826,9 @@ export async function matchSaathumReceipt(env: Env, r: SmsReceiptEvidence): Prom
     `SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND (payer_reference=?2 OR matched_message_hash=?3) LIMIT 1`,
   ).bind(r.receiving_account_key, r.bank_reference, r.message_hash).first<{ checkout_id: string }>();
   if (claimed) return { result: "reference_claimed", checkout_id: claimed.checkout_id };
+  // [SAATHUM-SHOP-API-ORDERS-1] A reference/SMS already carried by a SHOP order is equally "claimed" (never matched twice).
+  const claimedShop = await shopReferenceClaimed(env, r);
+  if (claimedShop) return { result: "reference_claimed", checkout_id: claimedShop };
   const candidates = await db.prepare(
     `SELECT checkout_id FROM saathum_checkouts
       WHERE receiving_account_key=?1 AND amount_paise=?2 AND status IN ('awaiting_payment','review_pending')
@@ -832,8 +837,16 @@ export async function matchSaathumReceipt(env: Env, r: SmsReceiptEvidence): Prom
       LIMIT 3`,
   ).bind(r.receiving_account_key, r.amount_paise, r.received_at_end_ms, r.received_at_ms, LATE_SMS_GRACE_MS).all<{ checkout_id: string }>();
   const list = candidates.results ?? [];
-  if (list.length === 0) return { result: "no_candidate" };
-  if (list.length > 1) return { result: "ambiguous" };
+  // [SAATHUM-SHOP-API-ORDERS-1] Exactly ONE candidate across events AND shop orders (amounts are unique per account across both).
+  const shopIds = await findShopMatchCandidates(env, r);
+  if (list.length + shopIds.length === 0) return { result: "no_candidate" };
+  if (list.length + shopIds.length > 1) return { result: "ambiguous" };
+  if (shopIds.length === 1) {
+    const shopOut = await confirmShopOrder(env, shopIds[0], {
+      via: "sms_auto", bankReference: r.bank_reference, payerVpa: r.payer_vpa ?? null, messageHash: r.message_hash,
+    });
+    return { result: shopOut, checkout_id: shopIds[0] };
+  }
   const id = list[0].checkout_id;
   const out = await confirmSaathumCheckout(env, id, {
     via: "sms_auto", bankReference: r.bank_reference, payerVpa: r.payer_vpa ?? null, messageHash: r.message_hash,

@@ -7,6 +7,7 @@ import { requireAdmin } from './admin_money';
 import { hmacSha256Hex,sha256Hex,constantTimeEqual } from '../lib/payments/types';
 import { SMOKE_LISTING,UUID,policy,currentIntent,readIntent,legacyIntent,publicIntent,createIntent,saveReference,normalizeReference,parseReference,parsePayerVpa,receiptCandidates,parseAmountPaise,isHdfcSender,hasAccountSuffix,matchIntent,boundedBody,timestampInterval,storeEvidence } from '../lib/hdfc_sms_smoke';
 import { finalizeSaathumCheckoutByIntent,matchSaathumReceipt } from './saathum_checkout';
+import { finalizeWaitingShopOrder,shopOrderConfirmedForReference } from './shop_orders'; // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01]
 import { resolveSmsDevice,touchSourceHealth } from '../lib/saathum_upi3'; // [SAATHUM-UPI-3LAYER 2026-09-29]
 import { trackException } from '../hooks';
 export const UPI_SMOKE_TEST_LISTING_ID=SMOKE_LISTING;
@@ -113,6 +114,7 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
    try{
     const waiting=await db.prepare(`SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND amount_paise=?3 AND status IN ('awaiting_payment','review_pending') AND confirmed_at IS NULL`).bind(receipt.receiving_account_key,receipt.bank_reference,receipt.amount_paise).first<{checkout_id:string}>();
     if(waiting)await finalizeSaathumCheckoutByIntent(env,waiting.checkout_id);
+    await finalizeWaitingShopOrder(env,receipt); // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] shop order waiting on this UTR+amount (never throws)
     // [SAATHUM-UPI-3LAYER 2026-09-29] No UTR needed: the payable amount is unique per open
     // checkout, so exactly one waiting candidate confirms; 0 or >1 stays unmatched for the admin
     // queue. A reference any checkout already carries is never matched again, so the same SMS
@@ -126,6 +128,7 @@ export async function hdfcSmsIncoming(req:Request,env:Env):Promise<Response>{
   // [SAATHUM-UPI-3LAYER 2026-09-29] Confirmed a Saa Thum checkout (this delivery or an earlier one).
   const saathumHit=await db.prepare(`SELECT 1 AS x FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND status='confirmed'`).bind(receipt.receiving_account_key,receipt.bank_reference).first().catch(()=>null);
   if(saathumHit)return ack(receipt.message_hash,'accepted','confirmed',null);
+  if(await shopOrderConfirmedForReference(env,receipt.receiving_account_key,receipt.bank_reference))return ack(receipt.message_hash,'accepted','confirmed',null); // [SAATHUM-SHOP-API-ORDERS-1]
   const unassigned=await db.prepare(`SELECT intent_id FROM hdfc_sms_smoke_intents WHERE receiving_account_key=?1 AND payer_vpa IS NULL AND payer_reference IS NULL AND superseded_by IS NULL AND recover_until>=?2
    AND amount_paise=?3 AND created_at<=?4 AND expires_at>=?5 AND NOT EXISTS(SELECT 1 FROM hdfc_sms_smoke_receipts WHERE claimed_intent_id=hdfc_sms_smoke_intents.intent_id) LIMIT 1`).bind(p.account,now,receipt.amount_paise,receipt.received_at_end_ms,receipt.received_at_ms).first();
   return ack(receipt.message_hash,'accepted',unassigned?'awaiting_reference':'unmatched',unassigned?'reference_required':'no_match');

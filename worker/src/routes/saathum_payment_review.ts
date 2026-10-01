@@ -61,18 +61,47 @@ export async function adminSaathumReviewList(req: Request, env: Env): Promise<Re
   }
   // Bank SMS the automatic matcher could not place: accepted/needs-review evidence not linked to any checkout.
   const p = await hdfcPolicy(env).catch(() => null);
-  const unmatched = p
-    ? await db.prepare(
-      `SELECT r.message_hash,r.amount_paise,r.payer_vpa,r.bank_reference,r.received_at_ms,
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] An SMS already claimed by a SHOP order is not "unmatched" either. If the shop
+  // table is not migrated the query is re-run exactly as before (events only).
+  const shopClaimed = ` AND NOT EXISTS (SELECT 1 FROM shop_orders s WHERE s.receiving_account_key=r.receiving_account_key
+                AND (s.matched_message_hash=r.message_hash OR (r.bank_reference IS NOT NULL AND s.payer_reference=r.bank_reference)))`;
+  type UnmatchedRow = { message_hash: string; amount_paise: number; payer_vpa: string | null; bank_reference: string | null; received_at_ms: number; source_device: string | null };
+  const runUnmatched = (withShop: boolean) => db.prepare(
+    `SELECT r.message_hash,r.amount_paise,r.payer_vpa,r.bank_reference,r.received_at_ms,
               (SELECT device_id FROM hdfc_sms_receipts x WHERE x.message_hash=r.message_hash) AS source_device
          FROM hdfc_sms_smoke_receipts r
         WHERE r.receiving_account_key=?1 AND r.disposition IN ('accepted','review_required') AND r.claimed_intent_id IS NULL
           AND r.received_at_ms>=?2
           AND NOT EXISTS (SELECT 1 FROM saathum_checkouts c WHERE c.receiving_account_key=r.receiving_account_key
-                AND (c.matched_message_hash=r.message_hash OR (r.bank_reference IS NOT NULL AND c.payer_reference=r.bank_reference)))
+                AND (c.matched_message_hash=r.message_hash OR (r.bank_reference IS NOT NULL AND c.payer_reference=r.bank_reference)))${withShop ? shopClaimed : ""}
         ORDER BY r.received_at_ms DESC LIMIT 100`,
-    ).bind(p.account, now - 3 * 86_400_000).all<{ message_hash: string; amount_paise: number; payer_vpa: string | null; bank_reference: string | null; received_at_ms: number; source_device: string | null }>().catch(() => null)
-    : null;
+  ).bind(p!.account, now - 3 * 86_400_000).all<UnmatchedRow>().catch(() => null);
+  let unmatched = p ? await runUnmatched(true) : null;
+  if (p && !unmatched) unmatched = await runUnmatched(false);
+  // Shop orders waiting on the admin (review_pending, or "I've paid" past the 3-minute rule not yet persisted by the cron).
+  const shopRows = await db.prepare(
+    `SELECT order_id,order_no,uid,contact_name,amount_paise,reason_code,created_at,paid_claimed_at,utr,payer_reference,expires_at
+       FROM shop_orders
+      WHERE confirmed_at IS NULL AND (pay_status='review_pending'
+         OR (pay_status='awaiting_payment' AND paid_claimed_at IS NOT NULL AND paid_claimed_at<=?1))
+      ORDER BY COALESCE(paid_claimed_at,created_at) ASC LIMIT 100`,
+  ).bind(now - PAID_CLAIM_REVIEW_MS).all<{
+    order_id: string; order_no: string; uid: string; contact_name: string | null; amount_paise: number; reason_code: string | null;
+    created_at: number; paid_claimed_at: number | null; utr: string | null; payer_reference: string | null; expires_at: number;
+  }>().catch(() => null);
+  const shop_orders = [];
+  for (const r of shopRows?.results ?? []) {
+    const [email, whatsapp] = await Promise.all([
+      emailFor(env, r.uid).catch(() => null),
+      verifiedWhatsAppNumber(env, r.uid).catch(() => null),
+    ]);
+    shop_orders.push({
+      order_id: r.order_id, order_no: r.order_no, uid: r.uid, buyer_name: r.contact_name, whatsapp, email,
+      pay_amount_paise: r.amount_paise, status: "review_pending",
+      reason_code: externalReason({ status: "review_pending", expires_at: r.expires_at, reason_code: r.reason_code, paid_claimed_at: r.paid_claimed_at }, now),
+      created_at: r.created_at, paid_claimed_at: r.paid_claimed_at, utr: r.utr ?? r.payer_reference,
+    });
+  }
   const src = await db.prepare(`SELECT device_id,source,last_heartbeat_at,last_sms_at,last_error,alerted_at,stale_alert_open FROM sms_source_health ORDER BY source`).all<SourceHealthRow>().catch(() => null);
   // [SAATHUM-UPI-3LAYER 2026-09-29] Corroboration warning (never a block): checkouts auto-confirmed ONLY by the
   // third-party SMS forwarder (matched evidence came from device 'forwarder') that neither the Google Messages
@@ -104,6 +133,7 @@ export async function adminSaathumReviewList(req: Request, env: Env): Promise<Re
   const silence = await forwarderSilence(env, now).catch(() => null);
   return json({
     checkouts,
+    shop_orders, // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01]
     unmatched_sms: (unmatched?.results ?? []).map((u) => ({
       message_hash: u.message_hash, amount_paise: u.amount_paise, payer_vpa: u.payer_vpa, bank_reference: u.bank_reference,
       received_at_ms: u.received_at_ms, source_device: u.source_device,

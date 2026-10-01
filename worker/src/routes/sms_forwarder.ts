@@ -18,6 +18,7 @@ import { requireAdmin } from './admin_money';
 import { constantTimeEqual, sha256Hex } from '../lib/payments/types';
 import { parseAmountPaise, parseReference, parsePayerVpa, hasAccountSuffix, isHdfcSender, policy, storeEvidence } from '../lib/hdfc_sms_smoke';
 import { finalizeSaathumCheckoutByIntent, matchSaathumReceipt } from './saathum_checkout';
+import { finalizeWaitingShopOrder, shopOrderConfirmedForReference } from './shop_orders'; // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01]
 import { touchSourceHealth } from '../lib/saathum_upi3';
 import { trackException } from '../hooks';
 import {
@@ -134,12 +135,15 @@ export async function smsForwarderIncoming(req: Request, env: Env, pathToken: st
         const waiting = await db.prepare(`SELECT checkout_id FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND amount_paise=?3 AND status IN ('awaiting_payment','review_pending') AND confirmed_at IS NULL`)
           .bind(receipt.receiving_account_key, receipt.bank_reference, receipt.amount_paise).first<{ checkout_id: string }>();
         if (waiting) await finalizeSaathumCheckoutByIntent(env, waiting.checkout_id);
+        await finalizeWaitingShopOrder(env, receipt); // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] shop order waiting on this UTR+amount (never throws)
         if (!receipt.claimed_intent_id) await matchSaathumReceipt(env, receipt as any);
       } catch (err) { await trackException(env, err, { route: '/api/sms/forward', handled: true, app_name: APP }); }
     }
-    const confirmed = receipt.bank_reference
+    const confirmedEvent = receipt.bank_reference
       ? await db.prepare(`SELECT 1 AS x FROM saathum_checkouts WHERE receiving_account_key=?1 AND payer_reference=?2 AND status='confirmed'`).bind(receipt.receiving_account_key, receipt.bank_reference).first().catch(() => null)
       : null;
+    // [SAATHUM-SHOP-API-ORDERS-1] A confirmed SHOP order for this reference is also a confirmed ack.
+    const confirmed = confirmedEvent || (receipt.bank_reference ? await shopOrderConfirmedForReference(env, receipt.receiving_account_key, receipt.bank_reference) : false);
     return json({ ok: true, ignored: false, match_state: confirmed ? 'confirmed' : 'unmatched', sender_rule: rule });
   } catch (err) {
     await trackException(env, err, { route: '/api/sms/forward', handled: true, app_name: APP });

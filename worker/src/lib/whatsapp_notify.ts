@@ -39,7 +39,9 @@ const MAX_SEND_ATTEMPTS = 6;
 /** Buyer-facing booking reference, same as the web checkout shows (SAA- + first 8 of the checkout id). */
 export const bookingRef = (checkoutId: string) => `SAA-${checkoutId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
-export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected" | "weather_delay"; // [SAATHUM-UPI-3LAYER 2026-09-29] [SAATHUM-WEATHER-NOTICE-1 2026-09-29]
+export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected" | "weather_delay" // [SAATHUM-UPI-3LAYER 2026-09-29] [SAATHUM-WEATHER-NOTICE-1 2026-09-29]
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Shop order messages (queued by lib/shop_notify.ts with listing_id='shop').
+  | "shop_order_confirmed" | "shop_order_rejected" | "shop_order_printing" | "shop_order_shipped" | "shop_order_delivered" | "shop_order_refunded";
 // [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
 // existing bulk admin-save fan-out, "late_buyer" is the single-checkout send
 // fired the moment a booking confirms while the show is already live/linked.

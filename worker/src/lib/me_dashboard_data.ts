@@ -42,17 +42,32 @@ export const PAYMENT_LINES_CTE = `lines AS (
          COALESCE((SELECT h.updated_at FROM hdfc_sms_payment_intents h WHERE h.commercial_order_id=o.id AND h.uid=o.buyer_id AND h.status='confirmed' ORDER BY h.updated_at DESC LIMIT 1),
                   o.created_at) AS paid_at,
          ${intentFor("bank_reference")} AS utr,
-         o.created_at AS created_at
+         o.created_at AS created_at,
+         'event' AS kind, NULL AS shop_title
     FROM orders o
     LEFT JOIN commercial_policy_snapshots ps ON ps.order_id=o.id
    WHERE o.buyer_id=?1 AND o.amount>0 AND o.status IN ('held','released','refunded')
      AND o.listing_id<>'${SMOKE_LISTING_ID}'
   UNION ALL
-  SELECT h.intent_id, NULL, h.listing_id, h.uid, h.amount_paise, 'pending', NULL, h.bank_reference, h.created_at
+  SELECT h.intent_id, NULL, h.listing_id, h.uid, h.amount_paise, 'pending', NULL, h.bank_reference, h.created_at, 'event', NULL
     FROM hdfc_sms_payment_intents h
    WHERE h.uid=?1 AND h.listing_id<>'${SMOKE_LISTING_ID}' AND h.commercial_order_id IS NULL
      AND (h.status IN ('payment_received','review_pending') OR (h.status='pending' AND h.expires_at>?2))
+  /*SHOP_START*/
+  UNION ALL
+  -- [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Confirmed Shop orders. amount_paise is what was actually collected; a refunded
+  -- order reads 'refunded'. listing_id is the literal 'shop' (no listings row), so event-only joins below yield NULLs.
+  SELECT s.order_id, NULL, 'shop', s.uid, s.amount_paise,
+         CASE WHEN s.fulfil_status='refunded' THEN 'refunded' ELSE 'paid' END, s.confirmed_at, s.utr, s.created_at,
+         'shop', 'Shop order ' || s.order_no
+    FROM shop_orders s
+   WHERE s.uid=?1 AND s.pay_status='confirmed'
+  /*SHOP_END*/
 )`;
+
+/** The same payments SQL without the Shop branch -- the fallback used only while shop_orders is not migrated yet,
+ * so event Billing can never break on deploy order. */
+export const withoutShopBranch = (sql: string): string => sql.replace(/\/\*SHOP_START\*\/[\s\S]*?\/\*SHOP_END\*\//, "");
 
 /** Latest refund row per payment for the account (?1 = uid). */
 const REFUND_CTE = `rf AS (
@@ -67,7 +82,10 @@ export const PAYMENT_ROWS_SQL = `WITH ${PAYMENT_LINES_CTE}, ${REFUND_CTE}
 SELECT * FROM (
   SELECT x.id, x.order_id, x.listing_id, x.amount_paise, x.base_status, x.paid_at, x.utr, x.created_at,
          COALESCE(x.paid_at, x.created_at) AS sort_ts,
-         l.title AS event_title, l.category AS category, c.label AS category_label, l.kind AS listing_kind,
+         x.kind AS kind,
+         COALESCE(x.shop_title, l.title) AS event_title,
+         CASE WHEN x.kind='shop' THEN 'shop' ELSE l.category END AS category,
+         CASE WHEN x.kind='shop' THEN 'Shop' ELSE c.label END AS category_label, l.kind AS listing_kind,
          ${startsMsSql("l")} AS event_starts_at,
          -- [REFUND-POLICY-SRV-1] event_type drives the per-type refund-request window
          -- (lib/refund_window.ts) — havan/puja=24h, satsang/sermon/meditation=72h.
@@ -84,6 +102,8 @@ SELECT * FROM (
 ) p`;
 
 export type PaymentRow = {
+  /** [SAATHUM-SHOP-API-ORDERS-1] 'shop' for a Shop order, 'event' for every existing row. */
+  kind: "event" | "shop";
   id: string; order_id: string | null; listing_id: string; amount_paise: number;
   base_status: "paid" | "pending" | "refunded"; paid_at: number | null; utr: string | null;
   created_at: number; sort_ts: number; event_title: string | null; category: string | null;

@@ -27,8 +27,11 @@ import {
   PHONE_SENDS_PER_WINDOW, PHONE_SEND_WINDOW_MS, validateProfilePatch, parseYoutubeVideoId, type TimeOfDay,
 } from "../lib/me_dashboard_logic";
 import {
-  buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, type PaymentRow,
+  buildPaymentsQuery, EVENTS_SQL, PAYMENT_OWNER_SQL, shapeListing, startsMsSql, phoneSwapStatements, withoutShopBranch, type PaymentRow,
 } from "../lib/me_dashboard_data";
+import { isMissingShopTable } from "../lib/saathum_upi3"; // [SAATHUM-SHOP-API-ORDERS-1]
+import { shopReceiptPdf } from "./shop_orders";
+import { orderItems, type ShopOrderRow } from "../lib/shop_orders_logic";
 import { renderReceiptPdf } from "../lib/me_receipt_pdf";
 import { refundWindowHours } from "../lib/refund_window"; // [REFUND-POLICY-SRV-1]
 import { cropOf, cropsFor, isMissingColumnError, parseCropField } from "../lib/freevid_compat"; // [SAATHUM-FREEVID-API-1]
@@ -172,9 +175,18 @@ export async function meEvents(req: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------
 // Payments
 // ---------------------------------------------------------------------------
+/** [SAATHUM-SHOP-API-ORDERS-1] Run a payments query; if the Shop table is not migrated yet, re-run it without the Shop branch. */
+async function paymentsQuery<T>(env: Env, sql: string, binds: unknown[], mode: "all" | "first"): Promise<T> {
+  const run = (q: string) => mode === "all"
+    ? env.DB_META.prepare(q).bind(...binds).all<PaymentRow>()
+    : env.DB_META.prepare(q).bind(...binds).first<PaymentRow>();
+  try { return (await run(sql)) as T; }
+  catch (e) { if (!isMissingShopTable(e)) throw e; return (await run(withoutShopBranch(sql))) as T; }
+}
+
 function paymentLine(p: PaymentRow) {
   return {
-    id: p.id, listing_id: p.listing_id, event_title: p.event_title, category: p.category,
+    id: p.id, kind: p.kind ?? "event", listing_id: p.listing_id, event_title: p.event_title, category: p.category,
     category_label: p.category_label, event_starts_at: p.event_starts_at,
     amount_paise: Number(p.amount_paise), status: p.status,
     paid_at: p.base_status === "pending" ? null : p.paid_at,
@@ -187,7 +199,7 @@ function paymentLine(p: PaymentRow) {
 async function loadPayment(env: Env, uid: string, id: string): Promise<PaymentRow | null> {
   if (!id || id.length > 200) return null;
   const { sql, binds } = buildPaymentsQuery(uid, Date.now(), { id, limit: 1 });
-  return env.DB_META.prepare(sql).bind(...binds).first<PaymentRow>();
+  return paymentsQuery<PaymentRow | null>(env, sql, binds, "first");
 }
 
 export async function mePayments(req: Request, env: Env): Promise<Response> {
@@ -203,7 +215,7 @@ export async function mePayments(req: Request, env: Env): Promise<Response> {
     minPaise: rupeesParamToPaise(u.get("min")), maxPaise: rupeesParamToPaise(u.get("max")),
     cursor, limit: PAGE_SIZE + 1,
   });
-  const rows = (await env.DB_META.prepare(sql).bind(...binds).all<PaymentRow>()).results ?? [];
+  const rows = (await paymentsQuery<D1Result<PaymentRow>>(env, sql, binds, "all")).results ?? [];
   const page = rows.slice(0, PAGE_SIZE);
   const last = page[page.length - 1];
   return json({
@@ -230,6 +242,19 @@ export async function mePaymentDetail(req: Request, env: Env, id: string): Promi
   const p = await loadPayment(env, a.uid, id);
   if (!p) return err(404, "not_found", "We couldn't find that payment.");
   const refund = refundOf(p);
+  // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] A Shop order: items + its own receipt; refunds are by hand, never self-service.
+  if (p.kind === "shop") {
+    const so = await env.DB_META.prepare("SELECT * FROM shop_orders WHERE order_id=?1 AND uid=?2").bind(p.id, a.uid).first<ShopOrderRow>();
+    return json({
+      ...paymentLine(p),
+      ...(p.utr ? { utr: p.utr } : {}),
+      order_id: null,
+      ...(refund ? { refund } : {}),
+      items: so ? orderItems(so) : [],
+      can_request_refund: false,
+      receipt_url: `/api/shop/orders/${encodeURIComponent(p.id)}/receipt.pdf`,
+    }, 200, { "cache-control": "private, no-store" });
+  }
   return json({
     ...paymentLine(p),
     // payer_vpa: the UPI rail's intent table records no payer VPA, so it is omitted.
@@ -255,6 +280,8 @@ export async function meRefundRequest(req: Request, env: Env, id: string): Promi
   if (reason === undefined) return err(400, "invalid_reason", "The reason must be text.");
   const p = await loadPayment(env, a.uid, id);
   if (!p) return err(404, "not_found", "We couldn't find that payment.");
+  // [SAATHUM-SHOP-API-ORDERS-1] Shop orders have no self-service refund (no returns; wrong item is reported from My orders).
+  if (p.kind === "shop") return err(409, "not_refundable_here", `Shop orders can't be refunded from Billing. Report a problem from My orders or contact ${BRAND.emails.support}.`);
   // [AGENT-LIVE-1 M1/M6] agl_ orders move money only through the agent-live authority.
   if (p.id.startsWith("agl_") || (p.order_id ?? "").startsWith("agl_")) {
     return err(409, "not_refundable_here", `This booking can't be refunded from the dashboard. Please contact ${BRAND.emails.support}.`);
@@ -319,6 +346,7 @@ async function ensureReceiptRow(env: Env, uid: string, paymentId: string, now: n
 }
 
 export async function meReceiptPdf(req: Request, env: Env, id: string): Promise<Response> {
+  if (id.startsWith("shp_")) return shopReceiptPdf(req, env, id); // [SAATHUM-SHOP-API-ORDERS-1] Shop receipts live with the shop
   const a = await authed(req, env); if (a instanceof Response) return a;
   const p = await loadPayment(env, a.uid, id);
   if (!p) return err(404, "not_found", "We couldn't find that payment.");
