@@ -8942,7 +8942,7 @@
       {
         "event": "admin_ai_conversations_filter",
         "property": "agent",
-        "expect_present": true
+        "exists": true
       }
     ]
   }
