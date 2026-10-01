@@ -10,6 +10,7 @@ import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { uploadCover } from '../eventsApi';
 import { Modal } from './ShopUI';
+import TraditionNotePanel from '../knowledge/TraditionNotePanel'; // [AUMFE-KNOWLEDGE-ADMIN-UI-1]
 import {
   PHOTO_LABELS, digitsOnly, errMessage, getProduct, listCollections, saveProduct,
   type AdminCollection, type AdminProduct, type Colour, type ProductImage,
@@ -213,6 +214,7 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
           <label>Price shown<input value="+18% GST at checkout" disabled readOnly /></label>
           <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as '' | 'new' | 'best' | 'sale')}><option value="">Automatic</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select><small>Automatic: NEW if shown in New arrivals, else BESTSELLER, else SALE when marked down.</small></label>
         </div>
+        {editing && product && <TraditionNotePanel kind="shop_product" id={product.id} title={product.name} />}{/* [AUMFE-KNOWLEDGE-ADMIN-UI-1] */}
         {err && <p className="sh-err" role="alert">{err}</p>}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>

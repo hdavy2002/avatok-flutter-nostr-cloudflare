@@ -1,0 +1,11 @@
+---
+// [AUMFE-KNOWLEDGE-ADMIN-UI-1 2026-10-01] Admin 2 "Tradition library" — the reviewed text and product notes the AI quotes from.
+// Worker: routes/admin2_knowledge.ts.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import KnowledgeAdmin from '../../islands/admin2/knowledge/KnowledgeAdmin.tsx';
+---
+
+<Admin2 title="Tradition library" active="knowledge" subtitle="The reviewed tradition text and product notes the AI is allowed to use. Nothing reaches customers until you approve it.">
+  <KnowledgeAdmin client:load />
+</Admin2>

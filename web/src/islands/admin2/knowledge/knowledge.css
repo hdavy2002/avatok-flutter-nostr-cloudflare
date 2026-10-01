@@ -1,0 +1,50 @@
+/* [AUMFE-KNOWLEDGE-ADMIN-UI-1 2026-10-01] Styles for TraditionNotePanel. The panel mounts inside the shop product
+ * modal (.shop-admin, chandan palette) AND inside an Admin 2 sheet, so it brings its own surface and the same
+ * owner-approved shop tokens as fallbacks. Type rules: Nunito labels 700-900, body >= 15px, labels >= 13px,
+ * touch targets >= 44px, no negative tracking. */
+.kn{--kn-ink:var(--ink,#5a1f14);--kn-sub:var(--sub,#6b4a2b);--kn-red:var(--red,#b3261e);--kn-redDk:var(--redDk,#7a150f);--kn-teal:var(--teal,#173f3f);
+  --kn-line:var(--line,#e3cfa9);--kn-chip:var(--chip,#f3e7d2);--kn-card:var(--card,#fffdf8);--kn-green:var(--green,#1e8a4c);--kn-gold:var(--gold,#F6B93B);
+  box-sizing:border-box;color:var(--kn-ink);font-family:Nunito,system-ui,sans-serif;background:var(--kn-card);border:2px solid var(--kn-line);border-radius:18px;padding:18px;margin-top:18px;text-align:left}
+.kn *{box-sizing:border-box}
+.kn-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.kn-head h3{font:700 20px Comfortaa,Nunito,sans-serif;margin:0;color:var(--kn-ink);letter-spacing:0}
+.kn-lede{font:600 15px/1.5 Nunito,sans-serif;color:var(--kn-sub);margin:0 0 14px}
+.kn-status{display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border-radius:999px;font:900 13px Nunito,sans-serif;letter-spacing:.04em;text-transform:uppercase;background:var(--kn-chip);color:var(--kn-sub);border:1px solid var(--kn-line)}
+.kn-status.is-draft{background:#fff3c4;border-color:#c9a13a;color:#6b4a2b}
+.kn-status.is-approved{background:#e4f3e9;border-color:#9fd3b2;color:var(--kn-green)}
+.kn-status.is-rejected{background:#fde8e6;border-color:#e6a8a3;color:var(--kn-red)}
+.kn-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.kn-full{grid-column:1/-1}
+.kn-field{display:flex;flex-direction:column;gap:6px;font:800 14px Nunito,sans-serif;color:var(--kn-ink);min-width:0}
+.kn-field input,.kn-field select,.kn-field textarea,.kn-chips input{width:100%;min-height:48px;border-radius:12px;border:2px solid var(--kn-line);background:#fff;padding:0 14px;font:700 16px Nunito,sans-serif;color:var(--kn-ink)}
+.kn-field textarea{padding:12px 14px;line-height:1.5;resize:vertical;min-height:110px}
+.kn-field input:focus-visible,.kn-field select:focus-visible,.kn-field textarea:focus-visible,.kn-chips input:focus-visible{outline:3px solid var(--kn-teal);outline-offset:1px}
+.kn-hint{font:600 13px/1.4 Nunito,sans-serif;color:var(--kn-sub)}
+.kn-chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kn-chips input{flex:1 1 160px;width:auto}
+.kn-chip{display:inline-flex;align-items:center;gap:2px;min-height:44px;padding:0 4px 0 14px;border-radius:999px;background:var(--kn-chip);border:1px solid var(--kn-line);font:800 15px Nunito,sans-serif;color:var(--kn-ink)}
+.kn-chip button{width:44px;height:44px;border:0;background:none;border-radius:999px;font:900 20px Nunito,sans-serif;color:var(--kn-sub);cursor:pointer}
+.kn-days{display:flex;flex-wrap:wrap;gap:8px}
+.kn-day{min-width:56px;min-height:48px;padding:0 12px;border-radius:12px;border:2px solid var(--kn-line);background:#fff;font:900 15px Nunito,sans-serif;color:var(--kn-ink);cursor:pointer}
+.kn-day[aria-pressed="true"]{background:var(--kn-teal);border-color:var(--kn-teal);color:#fff}
+.kn-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:14px;font:900 16px Nunito,sans-serif;cursor:pointer;border:0}
+.kn-btn:disabled{opacity:.55;cursor:not-allowed}
+.kn-btn--red{background:var(--kn-red);color:#fff;box-shadow:0 3px 0 var(--kn-redDk)}
+.kn-btn--teal{background:var(--kn-teal);color:#fff;box-shadow:0 3px 0 #0b2424}
+.kn-btn--ghost{background:#fff;color:var(--kn-teal);border:2px solid var(--kn-teal)}
+.kn-btn--danger{background:#fff;color:var(--kn-red);border:2px solid var(--kn-red)}
+.kn-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.kn-warn{margin-top:14px;padding:12px 14px;border-radius:12px;background:#fff3c4;border:1px dashed #c9a13a;font:700 15px/1.45 Nunito,sans-serif;color:#6b4a2b}
+.kn-warn .kn-actions{margin-top:10px}
+.kn-err{margin-top:12px;color:var(--kn-red);font:800 15px/1.4 Nunito,sans-serif}
+.kn-why{margin-top:18px;border-radius:16px;background:var(--kn-cream,#fbf3e4);border:2px solid var(--kn-line);padding:14px 16px}
+.kn-why h4{margin:0 0 4px;font:700 18px Comfortaa,Nunito,sans-serif;color:var(--kn-ink);letter-spacing:0}
+.kn-why ol{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:10px;counter-reset:why}
+.kn-why li{display:grid;grid-template-columns:32px 1fr;gap:10px;align-items:start;counter-increment:why}
+.kn-why li::before{content:counter(why);display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--kn-teal);color:#fff;font:900 15px Nunito,sans-serif}
+.kn-why b{display:block;font:900 13px Nunito,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#9a5a26}
+.kn-why span{font:600 16px/1.45 Nunito,sans-serif;color:var(--kn-ink)}
+.kn-sources{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.kn-sources li{font:600 14px/1.4 Nunito,sans-serif;color:var(--kn-sub);padding-left:14px;position:relative}
+.kn-sources li::before{content:"";position:absolute;left:0;top:.6em;width:6px;height:6px;border-radius:50%;background:var(--kn-gold)}
+@media (max-width:640px){.kn{padding:14px}.kn-grid{grid-template-columns:1fr}.kn-actions .kn-btn{flex:1 1 100%}}
