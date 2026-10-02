@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin — review moderation</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1280px; height: 780px; background: #fff8e8; font-family: 'Nunito', sans-serif; color: #17343c; display: grid; grid-template-columns: 230px minmax(0, 1fr);">
+<aside class="side" style="border-right: 1px solid #e6d9b8; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; background: #fffaf0;">
+<span class="logo" style="padding: 0 14px 16px;">Aum Fe admin</span>
+<a href="#">Dashboard</a><a href="AdminPromote.dc.html">Users</a><a href="#">Consultants</a><a href="#">Consultant bookings</a><a class="on" href="#">Reviews <span class="chip red" style="margin-left: auto;">4</span></a><a href="#">Wallets</a>
+</aside>
+<main style="padding: 28px 36px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><h1 style="font-size: 30px;">Reviews</h1><div style="display: flex; gap: 8px;"><button class="slot on" style="padding: 0 14px;">Pending · 4</button><button class="slot" style="padding: 0 14px;">Approved</button><button class="slot" style="padding: 0 14px;">Rejected</button><button class="slot" style="padding: 0 14px;">Seed</button></div></div>
+<div class="card" style="padding: 0; overflow: hidden; background: #fff;">
+<table class="t">
+<thead><tr><th>Consultant</th><th>Customer · session</th><th>Stars</th><th>Review</th><th></th></tr></thead>
+<tbody>
+<tr><td><strong>Gurdev Singh Bedi</strong></td><td>Rohit S. · 6 Oct, 30 min ✓</td><td><span class="stars">★★★★★</span></td><td style="max-width: 360px;">Told me exactly when to move jobs and why. No scary talk.</td><td style="white-space: nowrap;"><button class="btn small">Approve</button> <button class="btn small ghost">Reject</button></td></tr>
+<tr><td><strong>Kamla Bisht</strong></td><td>Pooja N. · 7 Oct, 30 min ✓</td><td><span class="stars">★★★★★</span></td><td style="max-width: 360px;">She had already studied my palm. Felt very personal.</td><td style="white-space: nowrap;"><button class="btn small">Approve</button> <button class="btn small ghost">Reject</button></td></tr>
+<tr><td><strong>Anjali Desai</strong></td><td>Divya I. · 7 Oct, 30 min ✓</td><td><span class="stars">★★★☆☆</span></td><td style="max-width: 360px;">Good reading but the call dropped twice on my side.</td><td style="white-space: nowrap;"><button class="btn small">Approve</button> <button class="btn small ghost">Reject</button></td></tr>
+<tr><td><strong>Meenakshi Raghavan</strong></td><td>Sandeep G. · 8 Oct, 30 min ✓</td><td><span class="stars">★★★★☆</span></td><td style="max-width: 360px;">Changed one letter in my business name. Let's see!</td><td style="white-space: nowrap;"><button class="btn small">Approve</button> <button class="btn small ghost">Reject</button></td></tr>
+</tbody>
+</table>
+</div>
+<p class="hint">Only approved reviews count toward a consultant's rating and appear on their page, newest first, 5 per page. Seed reviews never show on the public site.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":780}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

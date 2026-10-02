@@ -156,6 +156,7 @@ export interface Env {
   AGENT_VOICE_ROOMS: DurableObjectNamespace;
   /** [AUMFE-VOICE-RUNTIME-1] voice guide call (browser <-> Gemini Live relay), one DO per call. */
   VOICE_SESSION: DurableObjectNamespace;
+  CONSULT_CALL: DurableObjectNamespace; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants 1:1 audio signalling, one per booking
   // Durable Object — [AVA-PSTN-AGENT-1] live Gemini agent on CELL (Vobiz DID)
   // calls via bidirectional media streams. One instance per PSTN agent session
   // (`pstn-<CallUUID>`); speaks the Vobiz JSON frame protocol to the caller and

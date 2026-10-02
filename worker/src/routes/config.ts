@@ -2078,6 +2078,9 @@ export interface PlatformConfig {
   // [AUMFE-GUIDE-BRAIN-1] Master switch for Pandit ji, the text guide (/api/guides/pandit/*). While false only uids in
   // AGENT_ADMIN_UIDS can chat (owner testing). Boolean -> NOT in numericKeys.
   panditChatEnabled: boolean;
+  // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants (human astrologers etc., paid 1:1 audio). While false only previewers
+  // (ADMIN_UIDS / AGENT_ADMIN_UIDS) see /consultants and can book. Boolean -> NOT in numericKeys.
+  consultantsEnabled: boolean;
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -2823,7 +2826,8 @@ const DEFAULTS: PlatformConfig = {
   // [AUMFE-VOICE-RUNTIME-1] voice guides — dark until the owner flips it (admins can test meanwhile).
   voiceAgentsEnabled: false,
   guidesPublic: false, // [AUMFE-PREVIEW-GATE-1] dark until a payment gateway approves; previewers see it meanwhile
-  panditChatEnabled: false, // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
+  panditChatEnabled: false,
+  consultantsEnabled: false, // [AUMFE-CONSULT-FOUNDATION-1] dark until the owner flips it (previewers can use it meanwhile) // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,
   panditDailyMaxMessages: 40,

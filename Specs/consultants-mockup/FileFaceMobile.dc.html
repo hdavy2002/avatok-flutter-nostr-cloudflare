@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Customer file and call — face reading, mobile</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;family=Baloo+2:wght@600;700;800&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cat-face" style="width: 390px; height: 1600px; background: #fff8e8; font-family: 'Nunito', sans-serif; color: #17343c; position: relative; display: flex; flex-direction: column;">
+<header class="topbar" style="padding: 12px 16px;"><a href="DeskToday.dc.html" style="font-weight: 800; text-decoration: none;">← Today</a><span class="chip red">Face reading</span></header>
+<div style="padding: 16px 16px 130px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 2px;"><h1 style="font-size: 26px; color: #7d1820;">Arun Mehta</h1><span class="muted" style="font-size: 15px;">41 · Male · Rishikesh · repeat customer</span></div>
+<section class="card frame" style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><h3 style="color: #7d1820;">Face map</h3><div style="display: flex; gap: 6px;"><button class="slot on" style="padding: 0 10px; min-height: 36px;">Map</button><button class="slot" style="padding: 0 10px; min-height: 36px;">Photo</button><button class="slot" style="padding: 0 10px; min-height: 36px;">Side</button></div></div>
+<div class="preview" style="height: 330px; display: flex; align-items: center; justify-content: center;">
+<span style="position: absolute; top: 12px; left: 14px; font-size: 13px; font-weight: 800; color: #f0c7c3;">[Customer's photo with landmark mask]</span>
+<span class="wm face" style="position: relative; width: 220px; height: 282px; opacity: 1;"></span>
+</div>
+</section>
+<section class="card frame" style="display: flex; flex-direction: column; gap: 12px;">
+<h3 style="color: #7d1820;">What the reader sees</h3>
+<div class="kv">
+<span class="k">Face shape</span><span class="v">Square, broad jaw</span><button class="edit">Edit</button>
+<span class="k">Lalaat</span><span class="v">High, two clear lines</span><button class="edit">Edit</button>
+<span class="k">Netra</span><span class="v">Deep-set, even spacing</span><button class="edit">Edit</button>
+<span class="k">Nasika</span><span class="v">Straight, firm tip <span class="edited">edited by Kamla ji</span></span><button class="edit">Undo</button>
+<span class="k">Chibuk</span><span class="v">Strong, rounded</span><button class="edit">Edit</button>
+<span class="k">Symmetry</span><span class="v">Left side slightly higher</span><button class="edit">Edit</button>
+</div>
+</section>
+<section class="card frame" style="display: flex; flex-direction: column; gap: 10px;">
+<h3 style="color: #7d1820;">Readings</h3>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;"><button class="slot on" style="padding: 0 12px;">Personality</button><button class="slot" style="padding: 0 12px;">Career</button><button class="slot" style="padding: 0 12px;">Wealth</button><button class="slot" style="padding: 0 12px;">Marriage</button><button class="slot" style="padding: 0 12px;">Family</button></div>
+<p style="font-size: 16px;">[Personality reading returned by the face-reading API appears here — editable before the call.]</p>
+<button class="edit" style="align-self: flex-start;">Edit reading</button>
+</section>
+<section class="card frame" style="display: flex; flex-direction: column; gap: 8px;">
+<h3 style="color: #7d1820;">Last session's notes</h3>
+<p style="font-size: 16px;">12 Sep · palmistry: strong fate line, advised patience on the shop lease until after Diwali.</p>
+</section>
+<section class="card frame" style="display: flex; flex-direction: column; gap: 8px;">
+<h3 style="color: #7d1820;">Private notes</h3>
+<textarea aria-label="Private notes" style="min-height: 100px; border: 1.5px solid #cdbb8f; border-radius: 12px; padding: 10px; font: 16px 'Nunito', sans-serif;"></textarea>
+</section>
+</div>
+<div style="position: absolute; left: 12px; right: 12px; bottom: 16px;">
+<div class="callbar" style="background: #7d1820;">
+<div style="width: 44px; height: 44px; border-radius: 50%; background: #fff; color: #7d1820; font-family: 'Comfortaa', sans-serif; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">AM</div>
+<div style="display: flex; flex-direction: column; flex-grow: 1; line-height: 1.2;"><strong style="font-size: 16px;">Arun Mehta</strong><span style="font-size: 14px; color: #f6dcb5;">● 03:12 of 30:00</span></div>
+<button class="round" aria-label="Mute"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"></path></svg></button>
+<button class="round end" aria-label="End call" style="background: #c82c25;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c5-5 13-5 18 0l-2 3-4-2v-3a10 10 0 0 0-6 0v3l-4 2z"></path></svg></button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1600}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

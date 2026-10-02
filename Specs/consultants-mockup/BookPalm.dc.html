@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Booking — palm photo capture</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #2a1a12; font-family: 'Nunito', sans-serif; color: #fff; display: flex; flex-direction: column;">
+<div style="padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+<div class="steps"><span class="on"></span><span class="on"></span><span></span><span></span></div>
+<span style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #d7dcf0;">Step 2 of 4 · Palm photo</span>
+<h2 style="color: #fff; font-size: 22px;">Your right palm (dominant)</h2>
+</div>
+<div style="flex-grow: 1; margin: 0 16px; border-radius: 20px; background: linear-gradient(180deg, #4a3f36, #2e2620); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+<span style="position: absolute; top: 14px; left: 14px; font-size: 13px; font-weight: 800; color: #d7dcf0;">Camera preview</span>
+<svg width="250" height="380" viewBox="0 0 250 380" fill="none" aria-hidden="true">
+<path d="M70 370 C60 300 40 250 28 200 C20 170 34 160 46 178 L72 228 L66 70 C66 52 92 52 92 70 L98 190 L104 40 C104 20 132 20 132 40 L134 190 L142 52 C142 34 168 34 168 52 L166 200 L180 96 C182 80 206 82 204 100 L194 240 C190 300 180 340 172 370" stroke="#f6e7c4" stroke-width="3" stroke-dasharray="10 8" stroke-linecap="round"></path>
+</svg>
+<div style="position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+<span class="chip" style="background: #f6e7c4; color: #6b4e12; align-self: flex-start;">✓ One hand found</span>
+<span class="chip" style="background: #f6e7c4; color: #6b4e12; align-self: flex-start;">✓ Sharp</span>
+<span class="chip" style="background: #fbe7c2; color: #6b4e12; align-self: flex-start;">Move closer — fill the outline</span>
+</div>
+</div>
+<div style="padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 14px; align-items: center;">
+<p style="font-size: 15px; color: #d7dcf0; text-align: center;">Open your hand, fingers apart, in daylight. Remove rings. The button turns on when the photo is good enough to read.</p>
+<div style="display: flex; align-items: center; gap: 28px;">
+<button class="btn ghost small" style="color: #fff; border-color: #fff;">Upload instead</button>
+<button aria-label="Take photo" style="width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: #c82c25; opacity: .55; cursor: not-allowed;"></button>
+<a class="btn ghost small" href="BookSlotPay.dc.html" style="color: #fff; border-color: #fff;">Skip left palm</a>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consultant desk — rate calculator</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 390px; height: 1000px; background: #fff8e8; font-family: 'Nunito', sans-serif; color: #17343c; display: flex; flex-direction: column;">
+<header class="topbar" style="padding: 12px 16px;"><a href="DeskToday.dc.html" style="font-weight: 800; text-decoration: none;">← Desk</a><strong style="font-size: 17px;">Your rate</strong><span style="width: 50px;"></span></header>
+<div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<div class="field"><label for="len">Session length</label><select id="len"><option>30 minutes</option></select></div>
+<div class="field"><label for="rate">Your rate (₹)</label><input id="rate" value="{{rateText}}" style="font-weight: 900; font-size: 20px;"></div>
+</div>
+<input type="range" min="300" max="3000" step="50" value="{{rate}}" onChange="{{setRate}}" aria-label="Rate per session" style="width: 100%; accent-color: #07545b;">
+<span class="hint">Allowed range for palmistry: ₹300 – ₹3,000 (set by admin).</span>
+<div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #fff;">
+<span class="label">What the customer pays</span>
+<div style="display: flex; justify-content: space-between; font-size: 16px;"><span>Your rate</span><span>₹{{rateFmt}}</span></div>
+<div style="display: flex; justify-content: space-between; font-size: 16px;"><span>GST 18% (added)</span><span>+ ₹{{gst}}</span></div>
+<div style="height: 1px; background: #e6d9b8;"></div>
+<div style="display: flex; justify-content: space-between; font-size: 22px; font-weight: 900; color: #07545b;"><span>Customer pays</span><span>₹{{total}}</span></div>
+</div>
+<div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #f6ead0; border-color: #e2cf9f;">
+<span class="label">What reaches your wallet</span>
+<div style="display: flex; justify-content: space-between; font-size: 16px;"><span>Customer pays</span><span>₹{{total}}</span></div>
+<div style="display: flex; justify-content: space-between; font-size: 16px;"><span>GST to government</span><span>− ₹{{gst}}</span></div>
+<div style="display: flex; justify-content: space-between; font-size: 16px;"><span>Platform fee 20%</span><span>− ₹{{fee}}</span></div>
+<div style="height: 1px; background: #e2cf9f;"></div>
+<div style="display: flex; justify-content: space-between; font-size: 22px; font-weight: 900; color: #6b4e12;"><span>You receive</span><span>₹{{payout}}</span></div>
+</div>
+<p class="hint">Paid into your wallet when the call completes. Withdraw to UPI any time.</p>
+<button class="btn">Save rate</button>
+<p class="hint" style="text-align: center;">New rate applies to bookings made after you save.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { rate: 700 }; }
+renderVals() {
+const r = Number(this.state.rate) || 0;
+const f = (n) => Math.round(n).toLocaleString('en-IN');
+return {
+rate: r,
+rateText: f(r),
+rateFmt: f(r),
+gst: f(r * 0.18),
+total: f(r * 1.18),
+fee: f(r * 0.20),
+payout: f(r * 0.80),
+setRate: (e) => this.setState({ rate: e.target.value })
+};
+}
+}
+</script>
+</body>
+</html>

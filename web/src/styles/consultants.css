@@ -1,0 +1,123 @@
+/* [AUMFE-CONSULT-FOUNDATION-1 2026-10-02] Real Consultants look — ported 1:1 from the approved mockup
+ * (Specs/consultants-mockup/aumfe.css). Every rule is scoped under .consult-ui so it never leaks into the rest of the site.
+ * Owner rules: NO green anywhere; hero = plain category colour (no patterns); big round portrait, no garland/arch;
+ * never tiny fonts (min 13px). Category theme = add .cat-astro / .cat-numero / .cat-palm / .cat-face / .cat-tarot.
+ * NOTE FOR AI: shared by every consultant surface — append new rules at the end, never restyle existing ones. */
+.consult-ui{--cream:#fff8e8;--teal:#07545b;--ink:#17343c;--red:#c82c25;--sage:#f3e3c0;--gold:#d1ae70;--neel:#dfe2f3;--neel-line:#b9bfe0;--muted:#4d6268;--line:#e6d9b8;--paper:#fffdf6}
+.consult-ui *, .consult-ui{box-sizing:border-box}
+.consult-ui{margin:0;font:16px/1.45 'Nunito',system-ui,sans-serif;color:var(--ink);background:var(--cream)}
+.consult-ui h1, .consult-ui h2, .consult-ui h3, .consult-ui h4{font-family:'Comfortaa',system-ui,sans-serif;font-weight:700;color:var(--teal);margin:0;letter-spacing:0;line-height:1.18}
+.consult-ui p{margin:0}
+.consult-ui a{color:var(--teal)}
+.consult-ui .caps{text-transform:uppercase;letter-spacing:.06em;word-spacing:.2em}
+.consult-ui .ribbon{height:22px;background-color:var(--gold);background-image:repeating-linear-gradient(90deg,#c82c25 0 6px,#d1ae70 6px 14px,#07545b 14px 18px,#d1ae70 18px 30px);background-size:30px 6px;background-repeat:repeat-x;background-position:center;border-block:1px solid #b8955a}
+.consult-ui .band{background:var(--neel);border-block:1px solid var(--neel-line)}
+.consult-ui .sticker{display:block;border-radius:50%;border:6px solid #fff;object-fit:cover;box-shadow:0 0 0 1px #e9dfc6,0 12px 18px -6px rgba(23,52,60,.35),0 26px 30px -18px rgba(23,52,60,.35);background:#fff}
+.consult-ui .shadow-disc{border-radius:50%;background:radial-gradient(closest-side,rgba(23,52,60,.28),rgba(23,52,60,0));height:16px;margin:-6px auto 0}
+.consult-ui .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--sage);color:var(--teal);font-size:13px;font-weight:800}
+.consult-ui .chip.gold{background:#f6e7c4;color:#6b4e12}
+.consult-ui .chip.red{background:#fbe1dc;color:#9a1f19}
+.consult-ui .chip.neel{background:var(--neel);color:#2f3a7a}
+.consult-ui .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:999px;border:0;background:var(--teal);color:#fff;font:800 16px 'Nunito',sans-serif;text-decoration:none;cursor:pointer}
+.consult-ui .btn.red{background:var(--red)}
+.consult-ui .btn.ghost{background:transparent;color:var(--teal);border:1.5px solid var(--teal)}
+.consult-ui .btn.small{min-height:40px;padding:0 16px;font-size:14px}
+.consult-ui .card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px}
+.consult-ui .card h3{font-size:18px}
+.consult-ui .label{font-size:13px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.consult-ui .muted{color:var(--muted)}
+.consult-ui .stars{color:#c48a12;font-size:16px;letter-spacing:.08em}
+.consult-ui .field{display:flex;flex-direction:column;gap:6px}
+.consult-ui .field label{font-size:14px;font-weight:800}
+.consult-ui .field input, .consult-ui .field select, .consult-ui .field textarea{min-height:48px;border:1.5px solid #cdbb8f;border-radius:12px;padding:10px 14px;font:16px 'Nunito',sans-serif;background:#fff;color:var(--ink)}
+.consult-ui .field textarea{min-height:88px}
+.consult-ui .hint{font-size:13px;color:var(--muted)}
+.consult-ui .steps{display:flex;gap:6px}
+.consult-ui .steps span{flex:1;height:6px;border-radius:3px;background:#e7dcc0}
+.consult-ui .steps span.on{background:var(--teal)}
+.consult-ui .kv{display:grid;grid-template-columns:auto 1fr auto;gap:10px 12px;align-items:center;font-size:15px}
+.consult-ui .kv .k{color:var(--muted);font-weight:700}
+.consult-ui .kv .v{font-weight:800}
+.consult-ui .edit{font-size:13px;font-weight:800;color:var(--teal);text-decoration:underline;background:none;border:0;cursor:pointer;padding:6px}
+.consult-ui .edited{display:inline-block;font-size:12px;font-weight:800;color:#6b4e12;background:#f6e7c4;border-radius:6px;padding:1px 6px;margin-left:6px}
+.consult-ui .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--cream);border-bottom:1px solid var(--line)}
+.consult-ui .logo{font-family:'Comfortaa',sans-serif;font-weight:700;font-size:22px;color:var(--teal);letter-spacing:.02em}
+.consult-ui .slot{min-height:44px;border-radius:12px;border:1.5px solid #cdbb8f;background:#fff;font:800 15px 'Nunito',sans-serif;color:var(--ink)}
+.consult-ui .slot.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+.consult-ui .slot.off{background:#f1ead8;color:#a39678;border-color:#e6dcc3;text-decoration:line-through}
+.consult-ui .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center}
+.consult-ui .cal .d{height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.consult-ui .cal .free{background:#f6ead0;color:var(--teal)}
+.consult-ui .cal .full{color:#b3a68a}
+.consult-ui .cal .sel{background:var(--teal);color:#fff}
+.consult-ui .cal .h{font-size:13px;color:var(--muted);font-weight:800}
+.consult-ui .callbar{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--teal);color:#fff;border-radius:18px;box-shadow:0 10px 24px rgba(7,84,91,.35)}
+.consult-ui .callbar .round{width:48px;height:48px;border-radius:50%;border:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.16);color:#fff;cursor:pointer}
+.consult-ui .callbar .end{background:var(--red)}
+.consult-ui .tarot{border-radius:12px;border:2px solid var(--gold);background:linear-gradient(160deg,#2f3a7a,#17343c);color:#f6e7c4;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px 6px;text-align:center;font-weight:800;font-size:13px}
+.consult-ui .tarot .num{font-family:'Comfortaa',sans-serif;font-size:20px}
+.consult-ui .tarot.back{background:repeating-linear-gradient(45deg,#07545b 0 8px,#0b6a72 8px 16px);border-color:#d1ae70}
+.consult-ui table.t{width:100%;border-collapse:collapse;font-size:15px}
+.consult-ui table.t th{text-align:left;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:10px 12px;border-bottom:1.5px solid var(--line)}
+.consult-ui table.t td{padding:12px;border-bottom:1px solid #efe5cb;vertical-align:middle}
+.consult-ui .side a{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;text-decoration:none;color:var(--ink);font-weight:800}
+.consult-ui .side a.on{background:var(--sage);color:var(--teal)}
+.consult-ui .ribbon{height:22px;background:url(/images/consultants/motifs/kangura.svg) repeat-x center/40px 22px;border:0}
+.consult-ui .toran{height:60px;background:url(/images/consultants/motifs/toran.svg) repeat-x top left/120px 60px}
+.consult-ui .buti{background-image:url(/images/consultants/motifs/buti-gold.svg);background-size:56px 56px}
+.consult-ui .divider{height:28px;background:url(/images/consultants/motifs/lotus-divider.svg) no-repeat center/120px 28px}
+.consult-ui .deva{font-family:'Baloo 2','Nunito',sans-serif;font-weight:700;letter-spacing:0}
+.consult-ui .card{border-color:#e2cf9f}
+.consult-ui .frame{border:2px solid var(--gold);box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 6.5px var(--gold)}
+.consult-ui.cat-astro, .consult-ui .cat-astro{--c1:#1f2a5c;--c2:#e8892b;--c3:#f2c14e;--tint:#eceffa;--deep:#1f2a5c}
+.consult-ui.cat-numero, .consult-ui .cat-numero{--c1:#6e1a26;--c2:#d28a12;--c3:#f2c14e;--tint:#fbf0d6;--deep:#6e1a26}
+.consult-ui.cat-palm, .consult-ui .cat-palm{--c1:#5a2a12;--c2:#b0561c;--c3:#f6dcb5;--tint:#f6ead8;--deep:#5a2a12}
+.consult-ui.cat-face, .consult-ui .cat-face{--c1:#7d1820;--c2:#c8611f;--c3:#f6dcb5;--tint:#fbe9e2;--deep:#7d1820}
+.consult-ui.cat-tarot, .consult-ui .cat-tarot{--c1:#16305e;--c2:#2f6db5;--c3:#f2c14e;--tint:#e8edf8;--deep:#16305e}
+.consult-ui .hero-cat{position:relative;overflow:hidden;color:#fff8e8;background-color:var(--c1)}
+.consult-ui .hero-cat h1, .consult-ui .hero-cat h2{color:#fff8e8}
+.consult-ui .hero-cat .corner{position:absolute;width:190px;height:190px;background:url(/images/consultants/motifs/mandala-corner.svg) no-repeat;background-size:contain;opacity:.9;pointer-events:none}
+.consult-ui .hero-cat .corner.tl{left:0;top:0}
+.consult-ui .hero-cat .corner.tr{right:0;top:0;transform:scaleX(-1)}
+.consult-ui .hero-cat .corner.bl{left:0;bottom:0;transform:scaleY(-1)}
+.consult-ui .hero-cat .corner.br{right:0;bottom:0;transform:scale(-1,-1)}
+.consult-ui .wm{position:absolute;pointer-events:none;background-repeat:no-repeat;background-size:contain;background-position:center}
+.consult-ui .wm.astro{background-image:url(/images/consultants/motifs/motif-astro.svg)}
+.consult-ui .wm.numero{background-image:url(/images/consultants/motifs/motif-numero.svg)}
+.consult-ui .wm.palm{background-image:url(/images/consultants/motifs/motif-palm.svg)}
+.consult-ui .wm.face{background-image:url(/images/consultants/motifs/motif-face.svg)}
+.consult-ui .wm.tarot{background-image:url(/images/consultants/motifs/motif-tarot.svg)}
+.consult-ui .arch-wrap{position:relative;flex-shrink:0}
+.consult-ui .arch-wrap .arch{position:absolute;inset:0;background:url(/images/consultants/motifs/jharokha.svg) no-repeat center bottom/contain}
+.consult-ui .arch-wrap .garland{position:absolute;left:50%;transform:translateX(-50%);background:url(/images/consultants/motifs/garland.svg) no-repeat center/contain}
+.consult-ui .arch-wrap .port{position:absolute;left:50%;transform:translateX(-50%);border-radius:50%;object-fit:cover;border:6px solid #fff8e8;box-shadow:0 16px 26px -8px rgba(0,0,0,.55)}
+.consult-ui .sa-pill{display:inline-flex;align-items:center;gap:10px;padding:6px 16px;border-radius:999px;background:rgba(255,248,232,.14);border:1.5px solid var(--c3);color:var(--c3);font-weight:800;font-size:15px}
+.consult-ui .sa-pill .deva{font-size:19px;line-height:1}
+.consult-ui .sec{padding:56px 72px}
+.consult-ui .sec-h{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;margin-bottom:28px}
+.consult-ui .sec-h h2{font-size:32px;color:var(--deep,var(--teal))}
+.consult-ui .sec-h .deva{font-size:20px;color:var(--c2,var(--red))}
+.consult-ui .sec-h::after{content:'';display:block;width:120px;height:28px;margin-top:4px;background:url(/images/consultants/motifs/lotus-divider.svg) no-repeat center/120px 28px}
+.consult-ui .tint{background-color:var(--tint)}
+.consult-ui .prep{background:#fffdf6;border:1.5px solid #e2cf9f;border-radius:16px;padding:18px;display:flex;gap:14px;align-items:flex-start}
+.consult-ui .prep .ic{width:46px;height:46px;flex-shrink:0;border-radius:50%;background:var(--c1);color:var(--c3);display:flex;align-items:center;justify-content:center;font-family:'Baloo 2',sans-serif;font-weight:800;font-size:20px;box-shadow:0 0 0 3px #fffdf6,0 0 0 4.5px var(--gold)}
+.consult-ui .prep h3{font-size:18px;color:var(--deep)}
+.consult-ui .prep p{font-size:15px;color:var(--muted)}
+.consult-ui .preview{border-radius:18px;background-color:var(--c1);background-image:url(/images/consultants/motifs/buti-light.svg);background-size:56px 56px;border:3px solid var(--gold);box-shadow:inset 0 0 0 6px var(--c1),inset 0 0 0 7.5px var(--gold);color:#fff8e8;position:relative;overflow:hidden}
+.consult-ui .step{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px}
+.consult-ui .step .n{width:58px;height:58px;border-radius:50%;background:var(--c2);color:#fff;font-family:'Baloo 2',sans-serif;font-weight:800;font-size:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px #fff8e8,0 0 0 6px var(--gold)}
+.consult-ui .qa{border-bottom:1.5px dashed #dcc78f;padding:14px 0}
+.consult-ui .qa summary{font-weight:900;font-size:17px;cursor:pointer;color:var(--deep)}
+.consult-ui .qa p{margin-top:8px;font-size:16px}
+.consult-ui .promise{border-radius:18px;padding:22px 24px;background:#fff3d6;border:2px solid var(--gold);display:flex;gap:16px;align-items:center}
+.consult-ui .btn.cat{background:var(--c2)}
+.consult-ui .cal .sel{background:var(--c1)}
+.consult-ui .slot.on{background:var(--c1,var(--teal));border-color:var(--c1,var(--teal))}
+.consult-ui .mini-guide{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;text-decoration:none;color:var(--ink)}
+.consult-ui .icard{position:relative;border-radius:12px;background:#fff3d6;border:3px solid #b8862b;box-shadow:inset 0 0 0 5px #fff3d6,inset 0 0 0 6.5px #b8862b,0 14px 22px -10px rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;padding:16px 10px 12px;color:#16305e;overflow:hidden}
+.consult-ui .icard::before{content:'';position:absolute;left:8px;right:8px;top:8px;height:14px;background:url(/images/consultants/motifs/kangura.svg) repeat-x center/26px 14px;border-radius:4px}
+.consult-ui .icard .pos{margin-top:12px;font-family:'Baloo 2',sans-serif;font-weight:800;font-size:16px;color:#7a1f2b}
+.consult-ui .icard .art{width:72%;aspect-ratio:1;background:url(/images/consultants/motifs/motif-tarot.svg) no-repeat center/contain;filter:sepia(.2)}
+.consult-ui .icard .nm{font-weight:900;font-size:15px;line-height:1.2}
+.consult-ui .icard.rev .art{transform:rotate(180deg)}
+.consult-ui .cardback{border-radius:12px;background:url(/images/consultants/motifs/tarot-back.svg) no-repeat center/100% 100%;box-shadow:0 10px 18px -8px rgba(0,0,0,.45)}

@@ -9154,5 +9154,21 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-FOUNDATION-1": {
+    "description": "[AUMFE-CONSULT-FOUNDATION-1 2026-10-02] Real Consultants foundation: D1 schema + seed, shared types (worker+web), pricing/slots, /api/consultants dispatcher, ConsultCallDO binding, consultantsEnabled flag, cron hook, consultants.css, portraits.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_list_viewed",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }

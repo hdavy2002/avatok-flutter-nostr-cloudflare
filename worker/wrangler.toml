@@ -568,6 +568,11 @@ class_name = "AgentLiveRoom"
 name = "VOICE_SESSION"
 class_name = "VoiceSessionDO"
 
+# [AUMFE-CONSULT-FOUNDATION-1] Real Consultants 1:1 audio (plain WebRTC signalling + presence clock), one per booking.
+[[durable_objects.bindings]]
+name = "CONSULT_CALL"
+class_name = "ConsultCallDO"
+
 # [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
 # Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
 # `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
@@ -701,6 +706,11 @@ new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]
 [[migrations]]
 tag = "v25"
 new_sqlite_classes = ["VoiceSessionDO"]
+
+# [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call DO.
+[[migrations]]
+tag = "v26"
+new_sqlite_classes = ["ConsultCallDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -1099,6 +1109,10 @@ class_name = "AgentLiveRoom"
 name = "VOICE_SESSION"
 class_name = "VoiceSessionDO"
 
+[[env.staging.durable_objects.bindings]]
+name = "CONSULT_CALL"
+class_name = "ConsultCallDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -1205,3 +1219,7 @@ new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]
 [[env.staging.migrations]]
 tag = "v25"
 new_sqlite_classes = ["VoiceSessionDO"]
+
+[[env.staging.migrations]]
+tag = "v26"
+new_sqlite_classes = ["ConsultCallDO"]

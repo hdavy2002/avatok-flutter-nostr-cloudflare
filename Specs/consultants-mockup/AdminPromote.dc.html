@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin — promote a user to consultant</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1280px; height: 900px; background: #fff8e8; font-family: 'Nunito', sans-serif; color: #17343c; display: grid; grid-template-columns: 230px minmax(0, 1fr);">
+<aside class="side" style="border-right: 1px solid #e6d9b8; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; background: #fffaf0;">
+<span class="logo" style="padding: 0 14px 16px;">Aum Fe admin</span>
+<a href="#">Dashboard</a><a class="on" href="#">Users</a><a href="#">Consultants</a><a href="#">Consultant bookings</a><a href="AdminReviews.dc.html">Reviews <span class="chip red" style="margin-left: auto;">4</span></a><a href="#">Wallets</a>
+</aside>
+<main style="padding: 28px 36px; display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><div><span class="label">Users › Kamla Bisht</span><h1 style="font-size: 30px; margin-top: 4px;">Make consultant</h1></div><span class="chip">WhatsApp verified · +91 94•• •• 1180</span></div>
+<div style="display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px;">
+<div class="card" style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+<img class="sticker" src="/images/consultants/kamla-bisht.jpg" alt="Kamla Bisht" style="width: 200px; height: 200px;">
+<button class="btn small ghost">Replace portrait</button>
+<span class="hint" style="text-align: center;">Square photo, face centred. We crop it into the round sticker.</span>
+<div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+<span class="label">Status</span>
+<div style="display: flex; gap: 8px;"><button class="slot on" style="flex: 1;">Draft</button><button class="slot" style="flex: 1;">Live</button><button class="slot" style="flex: 1;">Paused</button></div>
+</div>
+</div>
+<div class="card" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-content: start;">
+<div class="field"><label for="pn">Public name</label><input id="pn" value="Kamla Bisht"></div>
+<div class="field"><label for="slug">Page address</label><input id="slug" value="aumfe.com/consultant/kamla-bisht"></div>
+<div class="field" style="grid-column: span 2;"><span style="font-size: 14px; font-weight: 800;">Disciplines</span><div style="display: flex; gap: 8px; flex-wrap: wrap;"><button class="slot" style="padding: 0 14px;">Astrology</button><button class="slot" style="padding: 0 14px;">Numerology</button><button class="slot on" style="padding: 0 14px;">Palmistry</button><button class="slot on" style="padding: 0 14px;">Face reading</button><button class="slot" style="padding: 0 14px;">Tarot</button></div></div>
+<div class="field"><label for="yrs">Years of practice</label><input id="yrs" value="28"></div>
+<div class="field"><label for="lang">Languages</label><input id="lang" value="Garhwali, Hindi"></div>
+<div class="field" style="grid-column: span 2;"><label for="bio">Short bio</label><textarea id="bio">Samudrika Shastra from Dehradun. She reads your palm lines and face before the call, then talks you through what they show.</textarea></div>
+<div class="field"><label for="min">Rate floor (₹ per session)</label><input id="min" value="300"></div>
+<div class="field"><label for="max">Rate ceiling (₹ per session)</label><input id="max" value="3000"></div>
+<div style="grid-column: span 2; display: flex; gap: 12px; justify-content: flex-end; margin-top: 6px;"><button class="btn ghost">Save draft</button><button class="btn">Save and publish</button></div>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

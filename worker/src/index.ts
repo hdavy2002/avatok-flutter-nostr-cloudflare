@@ -289,6 +289,9 @@ import { avaLiveToken, avaLiveHeartbeat, avaLiveClose } from "./routes/ava_live"
 import { mePreview } from "./routes/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
+import { consultRoute } from "./routes/consultants"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants REST
+import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
+import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun, avaGenuiAction } from "./routes/ava_apps"; // AvaApps (Composio)
 import { avaGenuiThumb } from "./routes/genui_thumb"; // GenUI preview-thumbnail proxy
@@ -355,6 +358,7 @@ export { DialerGateDO } from "./do/dialer_gate_do"; // [AVA-CAMP-B1-GATE] per-us
 export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaign SQLite-backed DO (call_fsm state, pacing; dark behind campaignDialerEnabled)
 export { AgentSeatAuthorityDO } from "./do/agent_seat_authority"; // [AGENT-LIVE-1] single global seat/capacity authority (WS-B)
 export { AgentLiveRoom } from "./do/agent_live_room"; // [AGENT-LIVE-1] per-booking live room DO bridging browser <-> OpenAI gpt-live-1 (WS-E1)
+export { ConsultCallDO } from "./do/consult_call"; // [AUMFE-CONSULT-FOUNDATION-1]
 export { VoiceSessionDO } from "./do/voice_session"; // [AUMFE-VOICE-RUNTIME-1] voice guides — browser <-> Gemini Live relay
 // [DYNW-CORE-1] Dynamic Workers capability entrypoints. Top-level exports are
 // REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
@@ -467,6 +471,7 @@ export default {
         runPlayVoidedPurchaseSweep(env)
           .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
+        runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         recoverAiMediaJobs(env)
           .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
         sweepAvaReadableCopies(env)
@@ -838,6 +843,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     // [AUMFE-VOICE-RUNTIME-1] voice guides: single-use ticket -> VoiceSessionDO (Gemini Live relay).
     if (p === "/api/voice/ws" && req.headers.get("Upgrade") === "websocket") return await voiceWs(req, env, continentHint(req));
+    // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants: single-use ticket -> ConsultCallDO (WebRTC signalling).
+    if (p === "/api/consultants/ws" && req.headers.get("Upgrade") === "websocket") return await consultWs(req, env);
 
     try {
       // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
@@ -1070,6 +1077,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/me/preview" && req.method === "GET") return await mePreview(req, env); // [AUMFE-PREVIEW-GATE-1]
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
+      if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"
           || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {

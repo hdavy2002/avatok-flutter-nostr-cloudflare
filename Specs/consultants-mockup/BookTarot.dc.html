@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Booking — shuffle and draw your tarot cards</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="aumfe.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&amp;family=Nunito:wght@400;700;800;900&amp;family=Baloo+2:wght@600;700;800&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cat-tarot" style="width: 390px; height: 1100px; background: #fff8e8; font-family: 'Nunito', sans-serif; color: #17343c; display: flex; flex-direction: column;">
+<header class="topbar" style="padding: 12px 16px; gap: 12px; justify-content: flex-start;">
+<img class="sticker" src="/images/consultants/anjali-desai.jpg" alt="" style="width: 44px; height: 44px; border-width: 3px;">
+<div style="display: flex; flex-direction: column; line-height: 1.2;"><strong style="font-size: 16px;">Anjali Desai</strong><span class="hint">Tarot · 30 min</span></div>
+</header>
+<div style="padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; flex-direction: column; gap: 8px;"><div class="steps"><span class="on"></span><span class="on"></span><span></span><span></span></div><span class="label">Step 2 of 4 · Draw your cards</span></div>
+<div class="field"><label for="q">Your question</label><input id="q" value="Should I take the Hyderabad job?"></div>
+<div class="preview" style="padding: 18px 12px; display: flex; flex-direction: column; gap: 14px; align-items: center;">
+<span class="deva" style="font-size: 19px; color: #f2c14e;">पत्ते चुनें · tap three cards</span>
+<div style="display: grid; grid-template-columns: repeat(3, 104px); gap: 10px;">
+<sc-for list="{{slots}}" as="s" hint-placeholder-count="3">
+<sc-if value="{{s.filled}}" hint-placeholder-val="{{false}}">
+<div class="icard" style="width: 104px; height: 170px; padding: 12px 6px 8px;"><span class="pos" style="font-size: 14px;">{{s.pos}}</span><span class="art"></span><span class="nm" style="font-size: 13px;">Card {{s.num}}</span></div>
+</sc-if>
+<sc-if value="{{s.empty}}" hint-placeholder-val="{{true}}">
+<div style="width: 104px; height: 170px; border-radius: 12px; border: 2px dashed #f2c14e; display: flex; align-items: center; justify-content: center; text-align: center; color: #f2c14e; font-weight: 800; font-size: 14px; padding: 6px;"><span><span class="deva" style="font-size: 17px;">{{s.pos}}</span><br>{{s.label}}</span></div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; justify-content: center; height: 130px; position: relative;">
+<sc-for list="{{deck}}" as="c" hint-placeholder-count="9">
+<button class="cardback" onClick="{{c.pick}}" aria-label="{{c.aria}}" style="{{c.style}}"></button>
+</sc-for>
+</div>
+<div style="display: flex; gap: 10px; justify-content: center;"><button class="btn small ghost" onClick="{{shuffle}}">Shuffle again</button></div>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 15px; font-weight: 700;"><input type="checkbox" checked style="width: 22px; height: 22px;"> Add a yes-or-no card for my question</label>
+<a class="btn cat" href="BookSlotPay.dc.html">{{cta}}</a>
+<p class="hint" style="text-align: center;">These exact cards are saved for Anjali to read before your call.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { picked: [], seed: 1 }; }
+renderVals() {
+const picked = this.state.picked;
+const pos = [['प्रेम', 'Love'], ['कार्य', 'Work'], ['धन', 'Money']];
+const slots = pos.map((p, i) => ({ pos: p[0], label: p[1], filled: i < picked.length, empty: i >= picked.length, num: picked[i] || '' }));
+const deck = [];
+for (let i = 0; i < 9; i++) {
+const num = ((this.state.seed * 31 + i * 17) % 78) + 1;
+const rot = (i - 4) * 7;
+const used = picked.indexOf(num) >= 0;
+deck.push({
+aria: 'Card ' + (i + 1),
+style: 'position: absolute; top: ' + (Math.abs(i - 4) * 5 + (used ? -18 : 0)) + 'px; left: calc(50% - 40px + ' + ((i - 4) * 30) + 'px); width: 80px; height: 120px; border: 0; padding: 0; cursor: pointer; transform: rotate(' + rot + 'deg); opacity: ' + (used ? 0.35 : 1) + ';',
+pick: () => { if (used || picked.length >= 3) return; this.setState({ picked: picked.concat([num]) }); }
+});
+}
+return {
+slots: slots,
+deck: deck,
+shuffle: () => this.setState({ picked: [], seed: this.state.seed + 1 }),
+cta: picked.length < 3 ? 'Pick ' + (3 - picked.length) + ' more' : 'Continue — pick a time'
+};
+}
+}
+</script>
+</body>
+</html>
