@@ -9094,5 +9094,28 @@
         "note": "One per paid call at close; tokens = minutes_charged * 6 at the default price, released = unused hold."
       }
     ]
+  },
+  "AUMFE-VOICE-AGENTS-DB-1": {
+    "description": "[AUMFE-VOICE-AGENTS-DB-1 2026-10-02] Voice guides are DATA the owner edits in Admin -> Voice guides: D1 tables voice_agents / voice_agent_prompts (versioned persona + greeting, publish) / voice_agent_docs (knowledge files, links, pasted text indexed into Vectorize aumfe-agent-kb, binding VEC_AGENT_KB, search_knowledge tool when a guide has ready docs). Tools stay in code as tool packs (astrology, knowledge_only). Registry reads D1 with a 60 s cache and falls back to the code Meera. Visibility: live -> canSeeGuides, preview -> previewers, draft -> admin test calls only (ticket ?test=1, never billed). Price per guide (price_per_min_tokens, else config). Admin API /api/admin/v2/voice-agents/**. Needs: D1 migrations 2026-10-02-voice-agents.sql + -seed.sql applied, and the Vectorize index created, before the admin screen works.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "voice_agent_saved",
+        "property": "agent_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "One per admin save (create, edit, prompt draft/publish, archive)."
+      },
+      {
+        "event": "voice_kb_indexed",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "One per knowledge document indexed; ok=false means the row is 'failed' with the reason shown in admin."
+      }
+    ]
   }
 }

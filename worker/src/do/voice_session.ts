@@ -18,7 +18,7 @@ import type { ClientMsg, ServerMsg, VoiceAgentDef, VoiceCard, VoiceTool, VoiceTo
 import { trackUserContact, trackException } from "../hooks";
 import { readConfig, type PlatformConfig } from "../routes/config";
 import { BRAND } from "../lib/brand";
-import { getAgent, toPublic } from "../lib/voice_agents/registry";
+import { agentPriceTokens, getAgent, toPublic } from "../lib/voice_agents/registry";
 import { memoryTools } from "../lib/voice_agents/memory_tools";
 import { startSession, endSession, buildBriefing, listMemories } from "../lib/agent_memory";
 import {
@@ -26,7 +26,7 @@ import {
   nowIstString, parseUsage, rememberLines, scrubSecrets, translateGemini, type GemEvent, type GemToolCall, type LiveUsage,
 } from "../lib/voice_agents/session_logic";
 import {
-  applyCharge, balanceEndS, chargedPaise, cleanFreeSeconds, closeBilling, newBilling, nextChargeDue, priceTokensPerMin,
+  applyCharge, balanceEndS, chargedPaise, cleanFreeSeconds, closeBilling, newBilling, nextChargeDue,
   remainingSeconds, runwayHoldTokens, runwayTopUpTokens, type BillingState,
 } from "../lib/voice_agents/billing";
 import { chargeMinute, holdRunway, readSpendable, releaseHold, resolvePayer } from "../lib/voice_agents/billing_wallet";
@@ -36,6 +36,7 @@ const GEMINI_WS = "https://generativelanguage.googleapis.com/ws/google.ai.genera
 const HDR_UID = "x-voice-uid";
 const HDR_AGENT = "x-voice-agent";
 const HDR_EMAIL = "x-voice-email";
+const HDR_TEST = "x-voice-test"; // [AUMFE-VOICE-AGENTS-DB-1] admin test call: set by routes/voice.ts from the ticket only
 
 const IDLE_MS = 120_000;            // no frame/message from the browser for this long -> end (idle)
 const SETUP_TIMEOUT_MS = 20_000;    // Gemini must answer setup within this
@@ -63,6 +64,8 @@ export class VoiceSessionDO {
   private uid = "";
   private email: string | null = null;
   private agent!: VoiceAgentDef;
+  private test = false;              // [AUMFE-VOICE-AGENTS-DB-1] admin test call: never billed, cost recorded as 0
+  private pricePaise = 0;             // nominal price per minute shown to the customer (guide price, else config)
   private cfg!: PlatformConfig;
   private model = "";
   private sessionId = "";
@@ -120,10 +123,12 @@ export class VoiceSessionDO {
     if (req.headers.get("Upgrade") !== "websocket") return new Response("websocket required", { status: 426 });
     if (this.client || this.begun) return new Response("session already open", { status: 409 });
     const uid = req.headers.get(HDR_UID) || "";
-    const agent = getAgent(req.headers.get(HDR_AGENT));
+    const test = req.headers.get(HDR_TEST) === "1";
+    const agent = await getAgent(this.env, req.headers.get(HDR_AGENT), { fresh: test });
     if (!uid || !agent) return new Response("bad session", { status: 400 });
     if (!this.env.GEMINI_API_KEY) return new Response("voice unavailable", { status: 503 });
     this.begun = true;
+    this.test = test;
     this.uid = uid;
     this.agent = agent;
     const em = req.headers.get(HDR_EMAIL);
@@ -167,7 +172,11 @@ export class VoiceSessionDO {
 
     // [AUMFE-VOICE-BILLING-1] paid call: resolve the payer, check the wallet, hold the runway. Before `ready`, so a
     // customer without funds never hears a greeting. persist() awaits reserveP so a hold is always released.
-    const priceTokens = priceTokensPerMin(this.cfg.voiceAgentPricePerMinPaise);
+    // [AUMFE-VOICE-AGENTS-DB-1] price source = the guide's own price_per_min_tokens (0 = free), else the config default;
+    // an admin test call is never charged (no wallet read, no hold, billing "test").
+    const ownPrice = this.agent.pricePerMinTokens;
+    this.pricePaise = ownPrice != null ? agentPriceTokens(this.agent, 0) * 100 : this.cfg.voiceAgentPricePerMinPaise;
+    const priceTokens = this.test ? 0 : agentPriceTokens(this.agent, this.cfg.voiceAgentPricePerMinPaise);
     if (priceTokens > 0) {
       let fail: { code: string; message: string } | null = null;
       this.reserveP = this.openBilling(priceTokens).then((f) => { fail = f; });
@@ -189,10 +198,10 @@ export class VoiceSessionDO {
     this.sendClient({
       type: "ready", session_id: this.sessionId, agent: toPublic(this.agent), remembers,
       max_seconds: this.cfg.voiceAgentMaxSeconds, free_seconds: freeS,
-      price_per_min_paise: this.cfg.voiceAgentPricePerMinPaise, billing: this.bill ? "live" : "test",
+      price_per_min_paise: this.pricePaise, billing: this.bill ? "live" : "test",
     });
     this.setAgentState("connecting");
-    this.ev("voice_session_started", { agent: this.agent.id, model: this.model, has_briefing: !!briefing, remembers: remembers.length });
+    this.ev("voice_session_started", { agent: this.agent.id, test: this.test, model: this.model, has_briefing: !!briefing, remembers: remembers.length });
 
     this.tick = setInterval(() => { void this.onTick(); }, 1000);
     this.setupTimer = setTimeout(() => {
@@ -553,7 +562,7 @@ export class VoiceSessionDO {
       this.lastMeterS = elapsed;
       this.sendClient({
         type: "meter", seconds: elapsed,
-        cost_paise: bill ? chargedPaise(bill) : meterCostPaise(elapsed, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise),
+        cost_paise: bill ? chargedPaise(bill) : this.test ? 0 : meterCostPaise(elapsed, this.cfg.voiceAgentFreeSeconds, this.pricePaise),
         remaining_seconds: remaining,
       });
     }
@@ -626,7 +635,7 @@ export class VoiceSessionDO {
     if (billed) {
       this.ev("voice_session_billed", { uid: this.uid, session_id: this.sessionId, minutes_charged: billed.minutes, tokens: billed.tokens, released: billed.released });
     }
-    const costPaise = this.bill ? chargedPaise(this.bill) : meterCostPaise(seconds, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise);
+    const costPaise = this.bill ? chargedPaise(this.bill) : this.test ? 0 : meterCostPaise(seconds, this.cfg.voiceAgentFreeSeconds, this.pricePaise);
     const transcript = buildTranscript(this.captions.lines, this.agent.name);
     try {
       await endSession(this.env, this.uid, this.sessionId, transcript, { minutes: seconds / 60, costPaise, ctx: this.state });

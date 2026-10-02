@@ -19,7 +19,7 @@ export function canUseVoice(enabled: boolean, uid: string, adminUidsRaw: string 
   return parseUidList(adminUidsRaw).includes(uid);
 }
 
-export interface TicketRecord { uid: string; agent: string; email?: string | null; ts: number }
+export interface TicketRecord { uid: string; agent: string; email?: string | null; ts: number; /** admin test call: never billed */ test?: boolean }
 
 /** KV value -> record, or null when it is missing/garbled/expired (KV TTL is a floor of 60 s, so re-check age). */
 export function parseTicket(raw: unknown, now: number, maxAgeMs = 90_000): TicketRecord | null {
@@ -28,7 +28,7 @@ export function parseTicket(raw: unknown, now: number, maxAgeMs = 90_000): Ticke
   if (typeof r.uid !== "string" || !r.uid || typeof r.agent !== "string" || !r.agent) return null;
   const ts = typeof r.ts === "number" ? r.ts : 0;
   if (!ts || now - ts > maxAgeMs || now < ts - 5000) return null;
-  return { uid: r.uid, agent: r.agent, email: typeof r.email === "string" ? r.email : null, ts };
+  return { uid: r.uid, agent: r.agent, email: typeof r.email === "string" ? r.email : null, ts, ...(r.test === true ? { test: true } : {}) };
 }
 
 // ---------------------------------------------------------------------------

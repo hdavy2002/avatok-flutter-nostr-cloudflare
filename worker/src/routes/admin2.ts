@@ -29,6 +29,7 @@ import { ADMIN2_POD_PARTNER_ROUTES } from "./admin2_pod_partner"; // [AUMFE-POD-
 import { ADMIN2_STUDIO_ROUTES } from "./admin2_studio"; // [AUMFE-POD-STUDIO-API-1]
 import { ADMIN2_POD_FULFIL_ROUTES } from "./admin2_pod_fulfil"; // [AUMFE-POD-FULFIL-1]
 import { ADMIN2_WALLET_ROUTES } from "./admin2_wallets"; // [AUMFE-WALLET-ADMIN-1]
+import { ADMIN2_VOICE_AGENT_ROUTES } from "./admin2_voice_agents"; // [AUMFE-VOICE-AGENTS-DB-1]
 
 const APP = "saathum";
 
@@ -249,6 +250,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   ...ADMIN2_POD_FULFIL_ROUTES, // [AUMFE-POD-FULFIL-1]
   ...ADMIN2_AI_ROUTES, // [SAATHUM-PREETI-1]
   ...ADMIN2_KNOWLEDGE_ROUTES, // [AUMFE-KNOWLEDGE-VECTOR-1]
+  ...ADMIN2_VOICE_AGENT_ROUTES, // [AUMFE-VOICE-AGENTS-DB-1]
   ...ADMIN2_FREE_VIDEO_ROUTES, // [SAATHUM-FREEVIDEOS-API-1]
 ];
 

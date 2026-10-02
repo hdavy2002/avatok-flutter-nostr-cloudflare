@@ -620,6 +620,8 @@ export interface Env {
   // worker runs before the indexes exist (searches then return []).
   VEC_CATALOG?: VectorizeIndex;
   VEC_TRADITION?: VectorizeIndex;
+  // [AUMFE-VOICE-AGENTS-DB-1] per-voice-guide knowledge files (index aumfe-agent-kb).
+  VEC_AGENT_KB?: VectorizeIndex;
 }
 
 /** Stable async marketplace replay job.  The negotiation id is the durable

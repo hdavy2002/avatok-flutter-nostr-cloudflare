@@ -10,10 +10,9 @@ import { requireUser, isFail } from "../authz";
 import { track, trackException } from "../hooks";
 import { contactFor } from "../lib/identity";
 import { readConfig } from "./config";
-import { getAgent, listAgentsPublic, toPublic } from "../lib/voice_agents/registry";
+import { agentPriceTokens, agentVisibleTo, getAgent, listAgentsPublic, toPublic } from "../lib/voice_agents/registry";
 import { canUseVoice, parseTicket } from "../lib/voice_agents/session_logic";
-import { previewerUidsRaw } from "../lib/preview"; // [AUMFE-PREVIEW-GATE-1]
-import { priceTokensPerMin } from "../lib/voice_agents/billing";
+import { isAdminUid, isPreviewer, previewerUidsRaw } from "../lib/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { readSpendable, resolvePayer } from "../lib/voice_agents/billing_wallet";
 
 const APP = "aumfe_voice";
@@ -23,6 +22,7 @@ const TICKET_TTL_S = 60; // KV's minimum expirationTtl
 export const VOICE_HDR_UID = "x-voice-uid";
 export const VOICE_HDR_AGENT = "x-voice-agent";
 export const VOICE_HDR_EMAIL = "x-voice-email";
+export const VOICE_HDR_TEST = "x-voice-test"; // [AUMFE-VOICE-AGENTS-DB-1] admin test call: never billed
 
 function newTicket(): string {
   const b = new Uint8Array(24);
@@ -39,7 +39,7 @@ export async function voiceAgentsList(req: Request, env: Env): Promise<Response>
     if (!isFail(u)) uid = u.uid;
   }
   return json({
-    agents: listAgentsPublic(),
+    agents: await listAgentsPublic(env, uid || null), // [AUMFE-VOICE-AGENTS-DB-1] D1 guides, filtered by status + previewer
     enabled: cfg.voiceAgentsEnabled === true,
     can_use: uid ? canUseVoice(cfg.voiceAgentsEnabled === true, uid, previewerUidsRaw(env), cfg.guidesPublic === true) : false,
     signed_in: !!uid,
@@ -54,17 +54,25 @@ export async function voiceTicket(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return json({ error: u.error }, u.status);
   let body: { agent?: unknown } = {};
   try { body = (await req.json()) as { agent?: unknown }; } catch { return json({ error: "bad_json" }, 400); }
-  const agent = getAgent(body.agent);
+  // [AUMFE-VOICE-AGENTS-DB-1] ?test=1 = an admin test call of ANY non-archived guide (even a draft), never billed.
+  const wantTest = new URL(req.url).searchParams.get("test") === "1";
+  if (wantTest && !isAdminUid(env, u.uid)) return json({ error: "admin_only" }, 403);
+  const agent = await getAgent(env, body.agent, { fresh: wantTest });
   if (!agent) return json({ error: "unknown_agent" }, 404);
 
   const cfg = await readConfig(env);
-  if (!canUseVoice(cfg.voiceAgentsEnabled === true, u.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
+  const previewer = isPreviewer(env, u.uid);
+  if (!agentVisibleTo(agent.status, { canSee: cfg.guidesPublic === true || previewer, previewer, adminTest: wantTest })) {
+    return json({ error: "unknown_agent" }, 404);
+  }
+  if (!wantTest && !canUseVoice(cfg.voiceAgentsEnabled === true, u.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
     void track(env, u.uid, "voice_ticket_denied", APP, { agent: agent.id, reason: "disabled" });
     return json({ error: "voice_agents_disabled" }, 403);
   }
 
   // [AUMFE-VOICE-BILLING-1] Voice is paid (1 token = Rs 1): no ticket unless the wallet covers at least one minute.
-  const priceTokens = priceTokensPerMin(cfg.voiceAgentPricePerMinPaise);
+  // [AUMFE-VOICE-AGENTS-DB-1] The price is the guide's own (voice_agents.price_per_min_tokens), else the config default.
+  const priceTokens = wantTest ? 0 : agentPriceTokens(agent, cfg.voiceAgentPricePerMinPaise);
   if (priceTokens > 0) {
     const spendable = await readSpendable(env, await resolvePayer(env, u.uid));
     if (spendable === null) return json({ error: "wallet_unavailable" }, 503);
@@ -82,10 +90,10 @@ export async function voiceTicket(req: Request, env: Env): Promise<Response> {
   const ticket = newTicket();
   await env.TOKENS.put(
     TICKET_PREFIX + ticket,
-    JSON.stringify({ uid: u.uid, agent: agent.id, email, ts: Date.now() }),
+    JSON.stringify({ uid: u.uid, agent: agent.id, email, ts: Date.now(), ...(wantTest ? { test: true } : {}) }),
     { expirationTtl: TICKET_TTL_S },
   );
-  void track(env, u.uid, "voice_ticket_issued", APP, { agent: agent.id });
+  void track(env, u.uid, "voice_ticket_issued", APP, { agent: agent.id, test: wantTest });
   const host = new URL(req.url).host;
   return json({
     ticket,
@@ -108,20 +116,27 @@ export async function voiceWs(req: Request, env: Env, hint?: DurableObjectLocati
     return new Response("ticket check failed", { status: 503 });
   }
   if (!rec) return new Response("ticket invalid or expired", { status: 401 });
-  const agent = getAgent(rec.agent);
+  const test = rec.test === true;
+  if (test && !isAdminUid(env, rec.uid)) return new Response("admin only", { status: 403 });
+  const agent = await getAgent(env, rec.agent, { fresh: test });
   if (!agent) return new Response("unknown agent", { status: 404 });
 
-  // Re-check the gate: the flag may have been switched off since the ticket was minted.
+  // Re-check the gate: the flag (or the guide's status) may have changed since the ticket was minted.
   const cfg = await readConfig(env);
-  if (!canUseVoice(cfg.voiceAgentsEnabled === true, rec.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
+  const previewer = isPreviewer(env, rec.uid);
+  if (!agentVisibleTo(agent.status, { canSee: cfg.guidesPublic === true || previewer, previewer, adminTest: test })) {
+    return new Response("unknown agent", { status: 404 });
+  }
+  if (!test && !canUseVoice(cfg.voiceAgentsEnabled === true, rec.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
     return new Response("voice agents disabled", { status: 403 });
   }
 
   // Headers are set here from the ticket; anything the client sent under these names is discarded.
   const headers = new Headers(req.headers);
-  headers.delete(VOICE_HDR_UID); headers.delete(VOICE_HDR_AGENT); headers.delete(VOICE_HDR_EMAIL);
+  headers.delete(VOICE_HDR_UID); headers.delete(VOICE_HDR_AGENT); headers.delete(VOICE_HDR_EMAIL); headers.delete(VOICE_HDR_TEST);
   headers.set(VOICE_HDR_UID, rec.uid);
   headers.set(VOICE_HDR_AGENT, agent.id);
+  if (test) headers.set(VOICE_HDR_TEST, "1");
   if (rec.email) headers.set(VOICE_HDR_EMAIL, encodeURIComponent(rec.email));
 
   const sid = crypto.randomUUID();

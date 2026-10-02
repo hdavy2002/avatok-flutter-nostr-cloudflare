@@ -52,6 +52,11 @@ export interface VoiceAgentDef {
   tools: VoiceTool[];
   /** Tiny avatar letter/tint for the UI until real art exists. */
   ui: { initial: string; tint: string; blurb: string };
+  // [AUMFE-VOICE-AGENTS-DB-1] Set for agents loaded from D1 (voice_agents). Absent on the code fallback.
+  /** Owner price in wallet tokens per started minute. undefined = use config voiceAgentPricePerMinPaise; 0 = free. */
+  pricePerMinTokens?: number;
+  avatarUrl?: string | null;
+  status?: "draft" | "preview" | "live" | "archived";
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +68,11 @@ export interface VoiceAgentDef {
 //    Browser -> server binary: PCM16 little-endian, mono, 16 kHz, ~20-100 ms chunks.
 //    Server -> browser binary: PCM16 little-endian, mono, 24 kHz.
 
-export interface VoiceAgentPublic { id: string; name: string; subject: string; initial: string; tint: string; blurb: string }
+export interface VoiceAgentPublic {
+  id: string; name: string; subject: string; initial: string; tint: string; blurb: string;
+  // [AUMFE-VOICE-AGENTS-DB-1] additive: the guide card price + picture (price null = use the platform default price).
+  price_per_min_tokens?: number | null; avatar_url?: string | null;
+}
 
 export interface VoiceCard { title: string; items: { label: string; value: string }[] }
 
