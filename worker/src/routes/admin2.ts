@@ -28,6 +28,7 @@ import { ADMIN2_SHOP_ORDER_ROUTES } from "./admin2_shop_orders"; // [SAATHUM-SHO
 import { ADMIN2_POD_PARTNER_ROUTES } from "./admin2_pod_partner"; // [AUMFE-POD-CORE-1]
 import { ADMIN2_STUDIO_ROUTES } from "./admin2_studio"; // [AUMFE-POD-STUDIO-API-1]
 import { ADMIN2_POD_FULFIL_ROUTES } from "./admin2_pod_fulfil"; // [AUMFE-POD-FULFIL-1]
+import { ADMIN2_WALLET_ROUTES } from "./admin2_wallets"; // [AUMFE-WALLET-ADMIN-1]
 
 const APP = "saathum";
 
@@ -238,6 +239,7 @@ export const ADMIN2_ROUTES: Admin2RouteDef[] = [
   ...ADMIN2_PEOPLE_ROUTES,
   // --- users (agent E) ---
   ...ADMIN2_USER_ROUTES,
+  ...ADMIN2_WALLET_ROUTES, // [AUMFE-WALLET-ADMIN-1]
   // --- chadhava (agent A2) ---
   ...ADMIN2_CHADHAVA_ROUTES,
   ...ADMIN2_SHOP_CATALOG_ROUTES, // [SAATHUM-SHOP-API-CATALOG-1]

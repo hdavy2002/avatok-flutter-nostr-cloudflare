@@ -7411,6 +7411,31 @@
     ],
     "_verified_at": "worker/src/routes/admin2_users.ts tel() -> track(env, adminUid, 'admin2_user_action', 'saathum', {action, ok, target_uid}); web/src/pages/admin/users/index.astro active='customers' in layouts/Admin2.astro; worker/test/admin2_users.test.ts"
   },
+  "AUMFE-WALLET-ADMIN-1": {
+    "description": "[AUMFE-WALLET-ADMIN-1] Admin 2 Wallets (menu item Wallets, route /admin/wallets, ?wallet=<uid> opens one panel; Users panel links to it). Worker routes/admin2_wallets.ts (one spread line in routes/admin2.ts): GET /api/admin/v2/wallets?q&filter=has_balance,zero_balance,topped_up,spent_voice&sort=last_activity|balance|name&from&to&cursor (GROUP BY uid over the DB_WALLET wallet_transactions mirror: balance = newest balance_after, topped_up, spent, spent_voice, last_activity; names/emails/phones enriched from DB_META + Clerk; search resolves candidate uids first), GET /api/admin/v2/wallets/:uid (LIVE balance via walletOp balance + last 100 statement rows + profile link), POST /api/admin/v2/wallets/:uid/adjust {amount_tokens (+add/-deduct, integer, |n|<=100000), reason>=5 chars} with a required Idempotency-Key header -> ledger.adjust (WalletDO + double-entry adjustment row), refuses a deduct below zero, writes admin_audit (action wallet_adjust) and emits admin_wallet_adjusted {admin_uid, uid, amount, reason}. No migration (no new table). Web islands/admin2/Wallets.tsx: search + filter chips + table, animated panel under the row with live balance, statement and Add money / Deduct form with confirm dialog. Admin-only, not flag-gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin2_view",
+        "property": "screen",
+        "in": [
+          "wallets"
+        ],
+        "min_events": 1,
+        "note": "An admin opened /admin/wallets."
+      },
+      {
+        "event": "admin_wallet_adjusted",
+        "property": "uid",
+        "exists": true,
+        "min_events": 1,
+        "note": "Worker event after an admin adds or deducts money: {admin_uid, uid, amount, reason, ok}; ok=false also for a refused deduct below zero."
+      }
+    ],
+    "_verified_at": "worker/src/routes/admin2_wallets.ts adminV2WalletAdjust -> track(env, a.uid, 'admin_wallet_adjusted', 'saathum', {admin_uid, uid, amount, reason, ok}); web/src/pages/admin/wallets.astro active='wallets' in layouts/Admin2.astro; worker/test/admin2_wallets.test.ts"
+  },
   "SAATHUM-EVENT-FIELDS-1": {
     "description": "[SAATHUM-EVENT-FIELDS-1] Admin New event form: 'Start from an article' dropdown (all Puja & Havan Guide articles) pre-fills title, deity, intention, blurb, long description, duration, price (from /api/pricing) and uploads the article photo as cover; new Book-now card fields (intention pill, location, prasad courier, 7-day replay, linked article); auto SEO title/description written to attrs.seo on every admin save (admin override kept, clear = auto) and used by listingContent(); WhatsApp share button in the form. Admin-only, not flag-gated.",
     "two_sided": false,

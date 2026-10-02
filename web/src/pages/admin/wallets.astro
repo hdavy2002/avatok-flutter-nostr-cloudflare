@@ -1,0 +1,11 @@
+---
+// [AUMFE-WALLET-ADMIN-1] Every wallet: balance, topped up, spent, last activity, and "add money".
+// Search by name, email, phone or user ID. ?wallet=<uid> opens one wallet's panel.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Wallets from '../../islands/admin2/Wallets.tsx';
+---
+
+<Admin2 title="Wallets" active="wallets" subtitle="Who has money in their wallet, who topped up, what they spent. Add or deduct money for a user.">
+  <Wallets client:load />
+</Admin2>

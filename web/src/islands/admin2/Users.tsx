@@ -456,6 +456,10 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
             <Tile label="Pending" tone={m.pending ? 'gold' : undefined} value={m.pending} hint={m.pending ? `${formatPaise(m.pending_paise)} waiting` : 'None'} />
           </section>
 
+          <a href={`/admin/wallets?wallet=${encodeURIComponent(uid)}`} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-bold text-accent no-underline hover:underline">
+            <Wallet className="h-4 w-4" /> Open wallet (balance, top-ups, add money) <ExternalLink className="h-3 w-3" />
+          </a>
+
           <section aria-label="Actions" className="rounded-xl border border-border/60 bg-card p-4">
             <h3 className="mb-2 font-dash text-[15px] font-bold text-foreground">Account actions</h3>
             {canAct ? (

@@ -2,10 +2,10 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, type LucideIcon,
 } from 'lucide-react';
 
-export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'freevideos'
+export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -19,6 +19,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'verify', label: 'Payment verification', short: 'Verify', href: '/admin/verify', icon: ShieldCheck }, // [SAATHUM-UPI3]
   { key: 'refunds', label: 'Refunds', short: 'Refunds', href: '/admin/refunds', icon: Undo2 },
   { key: 'customers', label: 'Users', short: 'Users', href: '/admin/users', icon: Users }, // [ADMIN2-USERS] key stays 'customers'
+  { key: 'wallets', label: 'Wallets', short: 'Wallets', href: '/admin/wallets', icon: Wallet }, // [AUMFE-WALLET-ADMIN-1]
   { key: 'prices', label: 'Prices', short: 'Prices', href: '/admin/prices', icon: Tags },
   { key: 'chadhava', label: 'Chadhava', short: 'Chadhava', href: '/admin/chadhava', icon: Gift }, // [SAATHUM-CHADHAVA]
   { key: 'upi', label: 'UPI settings', short: 'UPI', href: '/admin/upi', icon: QrCode }, // [SAATHUM-UPI-SETTINGS]
