@@ -25,7 +25,8 @@ export interface PanditChart { lagna: string; moon_sign: string; nakshatra: stri
 
 export interface PanditMemory { id: string; text: string }
 
-export interface PanditMessage { role: 'user' | 'assistant'; text: string; cards?: Card[] }
+/** 'notice' is web-only: a small system line (topic closed, daily limit). The worker never sends it. */
+export interface PanditMessage { role: 'user' | 'assistant' | 'notice'; text: string; cards?: Card[] }
 
 export interface PanditState {
   enabled: boolean;
@@ -44,7 +45,8 @@ export type PanditStreamEvent =
   | { type: 'tool'; name: string }
   | { type: 'card'; card: Card }
   | { type: 'done' }
-  | { type: 'error'; code: string; message: string };
+  | { type: 'topic_closed'; message: string }
+  | { type: 'error'; code: 'daily_limit' | 'spend_cap' | 'blocked' | 'empty_reply' | 'chat_failed' | string; message: string };
 
 /** What the birth-details form sends to PUT /api/me/astro-profile (worker lib/agent_memory.upsertProfile). */
 export interface ProfileInput {

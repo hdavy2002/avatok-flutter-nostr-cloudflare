@@ -18,7 +18,7 @@ import { capture, captureException } from '../../lib/analytics';
 import { finishUrl, getPhoneStatus } from '../auth/passwordless';
 import { RichText } from '../preeti/richText';
 import { ApiError } from '../../lib/apiClient';
-import { deleteMemory, errMessage, getState, saveConsent, saveProfile, SignedOutError, streamChat } from './api';
+import { closeTopic, deleteMemory, errMessage, getState, saveConsent, saveProfile, SignedOutError, streamChat } from './api';
 import { BirthCard, CardView, KundliPanel, MemoryPanel, PanditAvatar, PanelsDrawer, SignInGate, WhySheet } from './parts';
 import type { Card, PanditChart, PanditMemory, PanditMessage, PanditProfile, PanditState, ProfileInput } from './types';
 import './pandit.css';
@@ -27,6 +27,9 @@ const GUEST_JWT_KEY = 'saathum_guest_jwt';
 
 function lsGet(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
 function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v); } catch { /* blocked storage: the choice just is not remembered */ } }
+/* [AUMFE-PANDIT-COST-1] Daily message cap: the worker answers error code daily_limit; the input then stays off until the next IST day. */
+const LIMIT_KEY = 'pandit_daily_limit';
+const istDay = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /* ── auth state (hooks chosen once per build: with or without a Clerk key) ─────────────── */
@@ -115,6 +118,7 @@ function Pandit() {
   // Only an explicit pick is sent; until then Pandit ji follows whatever language the person writes in.
   const [langPicked, setLangPicked] = useState(false);
   const [listening, setListening] = useState(false);
+  const [limitDay, setLimitDay] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const whyOpener = useRef<HTMLElement | null>(null);
@@ -129,6 +133,8 @@ function Pandit() {
   /* first paint: page view, saved language, ?ask= prefill */
   useEffect(() => {
     capture('pandit_page_view', { surface: 'pandit' });
+    const lim = lsGet(LIMIT_KEY);
+    if (lim === istDay()) setLimitDay(lim);
     const saved = Number(lsGet(LANG_KEY));
     const raw = lsGet(LANG_KEY);
     if (raw !== null && raw !== '' && Number.isInteger(saved) && saved >= 0 && saved < LANGS.length) { setLangIdx(saved); setLangPicked(true); }
@@ -197,7 +203,7 @@ function Pandit() {
 
   const send = useCallback(async (raw: string) => {
     const text = raw.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || limitDay === istDay()) return;
     stickRef.current = true;
     setDraft('');
     setMessages((cur) => [...cur, { role: 'user', text }, { role: 'assistant', text: '', cards: [] }]);
@@ -219,6 +225,17 @@ function Pandit() {
             const key = `${ev.card.kind}:${ev.card.subject_id}`;
             if (!shownCards.current.has(key)) { shownCards.current.add(key); capture('pandit_card_shown', { kind: ev.card.kind, subject_id: ev.card.subject_id }); }
             patchLast((m) => ({ ...m, cards: [...(m.cards ?? []), ev.card] }));
+          } else if (ev.type === 'topic_closed') {
+            // The topic hit its turn cap: keep the chat on screen, show a small notice, and start fresh on the next message.
+            capture('pandit_topic_closed_seen', { reason: 'cap' });
+            setConvId(undefined); shownCards.current = new Set();
+            setMessages((cur) => [...cur, { role: 'notice', text: ev.message }]);
+          } else if (ev.type === 'error' && ev.code === 'daily_limit') {
+            // Calm, not an error: drop the unsent bubbles, say it kindly, lock the input until tomorrow (IST).
+            capture('pandit_daily_limit_seen', {});
+            lsSet(LIMIT_KEY, istDay()); setLimitDay(istDay());
+            setMessages((cur) => [...cur.slice(0, -2), { role: 'notice', text: ev.message }]);
+            setDraft(text);
           } else if (ev.type === 'error') {
             captureException(new Error(`pandit_stream_${ev.code}`), { where: 'pandit_stream', code: ev.code });
             patchLast((m) => ({ ...m, text: m.text || ev.message || 'Pandit ji could not answer just now. Please try again.' }));
@@ -243,7 +260,7 @@ function Pandit() {
       setStreaming(false);
       void refresh();
     }
-  }, [convId, streaming, patchLast, refresh]);
+  }, [convId, streaming, patchLast, refresh, limitDay, langIdx, langPicked]);
 
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
 
@@ -283,7 +300,13 @@ function Pandit() {
 
   function newTopic() {
     if (streaming) return;
+    const closing = convId;
     setConvId(undefined); setMessages([]); shownCards.current = new Set();
+    // The worker summarises the old chat into memory and resolves it; the screen does not wait for that.
+    if (closing) {
+      capture('pandit_new_topic', { reason: 'manual' });
+      void closeTopic(closing).then(() => refresh()).catch((e) => { if (!(e instanceof SignedOutError)) captureException(e, { where: 'pandit_close_topic' }); });
+    }
   }
 
   function pickLang(i: number) { setLangIdx(i); setLangPicked(true); lsSet(LANG_KEY, String(i)); capture('pandit_language_picked', { lang: LANGS[i].code }); }
@@ -367,6 +390,7 @@ function Pandit() {
     </>
   );
   const lastIdx = messages.length - 1;
+  const locked = limitDay === istDay();
 
   return (
     <div className="pd pd-view-chat">
@@ -404,7 +428,9 @@ function Pandit() {
                 <div className="pd-bubble pd-bubble-bot">Pranam{name ? ` ${name} ji` : ' ji'}! Aaj main aapki kya madad kar sakta hoon? Kaam, parivaar, sehat ya mann ki shanti — jo bhi poochhna ho, poochhiye.</div>
               )}
               {messages.map((m, i) => (
-                m.role === 'user' ? (
+                m.role === 'notice' ? (
+                  <p key={i} className="pd-notice" role="status">{m.text}</p>
+                ) : m.role === 'user' ? (
                   <div key={i} className="pd-bubble pd-bubble-user">{m.text}</div>
                 ) : (
                   <div key={i} className="pd-bot-block">
@@ -426,12 +452,12 @@ function Pandit() {
 
             <div className="pd-composer">
               <div className="pd-quick">
-                {((langPicked ? QUICK_BY_LANG[LANGS[langIdx].code] : undefined) ?? QUICK_DEFAULT).map((q) => <button key={q} type="button" disabled={streaming} onClick={() => void send(q)}>{q}</button>)}
+                {((langPicked ? QUICK_BY_LANG[LANGS[langIdx].code] : undefined) ?? QUICK_DEFAULT).map((q) => <button key={q} type="button" disabled={streaming || locked} onClick={() => void send(q)}>{q}</button>)}
               </div>
               <form className="pd-input-row" onSubmit={onSubmit}>
                 <label className="pd-input-label">
                   <span className="pd-sr">Message</span>
-                  <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={LANGS[langIdx].placeholder} maxLength={2000} autoComplete="off" enterKeyHint="send" />
+                  <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={LANGS[langIdx].placeholder} maxLength={2000} autoComplete="off" enterKeyHint="send" disabled={locked} />
                 </label>
                 {canSpeak && (
                   <button type="button" className={`pd-round pd-round-mic ${listening ? 'pd-on' : ''}`} aria-label={listening ? 'Stop listening' : 'Speak'} aria-pressed={listening} onClick={listen}>
@@ -443,11 +469,12 @@ function Pandit() {
                     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" fill="#fffaf0" /></svg>
                   </button>
                 ) : (
-                  <button type="submit" className="pd-round pd-round-send" aria-label="Send" disabled={!draft.trim()}>
+                  <button type="submit" className="pd-round pd-round-send" aria-label="Send" disabled={!draft.trim() || locked}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fffaf0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z" /></svg>
                   </button>
                 )}
               </form>
+              {locked && <p className="pd-limit" role="status">Pandit ji is resting for today. Please come back tomorrow.</p>}
               <p className="pd-fine">Traditional spiritual guidance — not a guarantee, and not medical, legal or financial advice.</p>
             </div>
           </div>

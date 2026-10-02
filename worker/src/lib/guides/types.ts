@@ -28,6 +28,7 @@ export type ChatEvent =
   | { type: "tool"; name: string }
   | { type: "card"; card: GuideCard }
   | { type: "done" }
+  | { type: "topic_closed"; message: string } // [AUMFE-PANDIT-COST-1] the topic hit its turn cap (or was closed); the next message starts a new conversation
   | { type: "error"; code: string; message: string };
 
 export interface ChatMessageOut {

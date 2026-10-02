@@ -9026,5 +9026,19 @@
         "exists": true
       }
     ]
+  },
+  "AUMFE-PANDIT-COST-1": {
+    "description": "[AUMFE-PANDIT-COST-1 2026-10-02] Pandit ji cost cut: shorter replies, 8-message history + rolling summary, topic cut-off at 20 customer messages (summary + facts to memory), 40/day cap, fact extraction every 4th message, cache-ordered system prompt. Flags panditHistoryMessages / panditTopicMaxTurns / panditDailyMaxMessages.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": ["panditHistoryMessages", "panditTopicMaxTurns", "panditDailyMaxMessages"],
+    "success": [
+      {
+        "event": "pandit_chat_turn",
+        "property": "history_messages",
+        "exists": true
+      }
+    ]
   }
 }

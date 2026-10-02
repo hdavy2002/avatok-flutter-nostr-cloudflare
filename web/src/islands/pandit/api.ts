@@ -36,6 +36,10 @@ export function errMessage(e: unknown, fallback: string): string {
 
 export const getState = () => authed<PanditState>('/api/guides/pandit/state');
 
+/** [AUMFE-PANDIT-COST-1] "New topic": the worker summarises the chat into memory and resolves it. Best effort. */
+export const closeTopic = (conversation_id: string) =>
+  authed<{ ok: boolean; closed: boolean; saved: boolean }>('/api/guides/pandit/close', { method: 'POST', body: { conversation_id } });
+
 export const saveProfile = (p: ProfileInput) => authed<unknown>('/api/me/astro-profile', { method: 'PUT', body: p });
 export const saveConsent = (consent: boolean) => authed<unknown>('/api/me/memory-consent', { method: 'POST', body: { consent } });
 export const deleteMemory = (id: string) => authed<{ ok: boolean }>(`/api/me/memories/${encodeURIComponent(id)}`, { method: 'DELETE' });

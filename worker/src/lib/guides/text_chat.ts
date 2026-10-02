@@ -4,22 +4,23 @@
 import type { Env } from "../../types";
 import { BRAND } from "../brand";
 import { track, trackException } from "../../hooks";
-import { geminiFetch } from "../gemini_egress";
 import { buildBriefing, getProfile, hasConsent, remember } from "../agent_memory";
 import { memoryTools } from "../voice_agents/memory_tools";
 import type { VoiceTool } from "../voice_agents/types";
 import { budgetState, recordSpend } from "../preeti/spend";
 import { costMicroUsd, preetiModel, recordGeneration, type Usage } from "../preeti/gemini";
 import { PANDIT } from "./personas";
+import { limitsFromConfig, selectContext, shouldCloseTopic, shouldExtractFacts, stepWithRetry, istDayStartMs, dailyLimitReached, dailyLimitMessage, topicClosedMessage, type PanditLimits } from "./cost";
+import { parseFacts, post, thinking, usageOf } from "./gemini_io";
+import { closeTopic, rollSummaryIfDue } from "./topic";
+import { parseUidList } from "../voice_agents/session_logic";
 import { sharedGuideTools } from "./brain";
-import { AGENT_ID, ROLE_ASSISTANT, ROLE_CUSTOMER, ROLE_TOOL, createConversation, getOwnedConversation, insertRow, loadMessages } from "./store";
+import { AGENT_ID, ROLE_ASSISTANT, ROLE_CUSTOMER, ROLE_TOOL, countCustomerMessages, countCustomerMessagesSince, createConversation, getOwnedConversation, insertRow, loadContextRows } from "./store";
 import type { ChatEvent, GuideCard, GuideToolCtx } from "./types";
 
-const GLA = "https://generativelanguage.googleapis.com";
 const APP = BRAND.slug;
 export const MAX_TOOL_ROUNDS = 4;
 export const MAX_USER_CHARS = 1500;
-const HISTORY_TURNS = 20;
 const TOOL_RESULT_MAX = 4000;
 
 const SAFETY = ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]
@@ -27,7 +28,7 @@ const SAFETY = ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_C
 
 export interface Part { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: unknown; [k: string]: unknown }
 export interface Content { role: "user" | "model"; parts: Part[] }
-export interface ModelStep { parts: Part[]; usage: Usage; blocked: boolean }
+export interface ModelStep { parts: Part[]; usage: Usage; blocked: boolean; finishReason?: string }
 export type StepFn = (contents: Content[], finalRound: boolean) => Promise<ModelStep>;
 
 export interface LoopResult { text: string; usage: Usage; toolsUsed: string[]; blocked: boolean; rounds: number }
@@ -88,37 +89,8 @@ export async function runToolLoop(a: {
 // ---------------------------------------------------------------------------
 // Gemini transport
 // ---------------------------------------------------------------------------
-function apiKey(env: Env): string {
-  const k = (env.GEMINI_API_KEY ?? "").trim();
-  if (!k) throw new Error("GEMINI_API_KEY missing");
-  return k;
-}
-
-function usageOf(j: any): Usage {
-  const u = j?.usageMetadata ?? {};
-  return {
-    inTok: Number(u.promptTokenCount ?? 0) + Number(u.toolUsePromptTokenCount ?? 0),
-    outTok: Number(u.candidatesTokenCount ?? 0) + Number(u.thoughtsTokenCount ?? 0),
-  };
-}
-
-const thinking = (model: string) => (model.startsWith("gemini-3") ? { thinkingConfig: { thinkingLevel: "low" } } : { thinkingConfig: { thinkingBudget: 0 } });
-
-async function post(env: Env, model: string, method: string, body: unknown, query = ""): Promise<Response> {
-  let last: Response | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await geminiFetch(env, `${GLA}/v1beta/models/${encodeURIComponent(model)}:${method}${query}`, {
-      method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": apiKey(env) }, body: JSON.stringify(body),
-    });
-    if (r.ok || (r.status !== 429 && r.status < 500)) return r;
-    last = r;
-    await new Promise((res) => setTimeout(res, 400));
-  }
-  return last!;
-}
-
 /** One SSE `data:` line -> merged into the accumulator. Pure; exported for tests. */
-export function applySseLine(line: string, acc: { parts: Part[]; usage: Usage; blocked: boolean }, onText: (t: string) => void): void {
+export function applySseLine(line: string, acc: { parts: Part[]; usage: Usage; blocked: boolean; finishReason?: string }, onText: (t: string) => void): void {
   if (!line.startsWith("data:")) return;
   const raw = line.slice(5).trim();
   if (!raw || raw === "[DONE]") return;
@@ -127,6 +99,7 @@ export function applySseLine(line: string, acc: { parts: Part[]; usage: Usage; b
   if (j?.usageMetadata) acc.usage = usageOf(j);
   if (j?.promptFeedback?.blockReason) acc.blocked = true;
   const c = j?.candidates?.[0];
+  if (typeof c?.finishReason === "string") acc.finishReason = c.finishReason;
   if (c?.finishReason === "SAFETY" || c?.finishReason === "PROHIBITED_CONTENT") acc.blocked = true;
   for (const p of (c?.content?.parts ?? []) as Part[]) {
     acc.parts.push(p);
@@ -139,7 +112,7 @@ async function streamOnce(env: Env, model: string, body: unknown, onText: (t: st
   if (!r.ok || !r.body) throw new Error(`gemini ${r.status}: ${(await r.text().catch(() => "")).slice(0, 300)}`);
   const reader = r.body.getReader();
   const dec = new TextDecoder();
-  const acc = { parts: [] as Part[], usage: { inTok: 0, outTok: 0 }, blocked: false };
+  const acc: ModelStep = { parts: [] as Part[], usage: { inTok: 0, outTok: 0 }, blocked: false };
   let buf = "";
   for (;;) {
     const { done, value } = await reader.read();
@@ -155,22 +128,7 @@ async function streamOnce(env: Env, model: string, body: unknown, onText: (t: st
 // ---------------------------------------------------------------------------
 // Durable facts after a turn
 // ---------------------------------------------------------------------------
-/** Model output -> up to 3 safe one-line facts. Pure; exported for tests. */
-export function parseFacts(raw: string): string[] {
-  let arr: unknown;
-  try { arr = JSON.parse(raw.replace(/^```(?:json)?|```$/g, "").trim()); } catch { return []; }
-  if (!Array.isArray(arr)) return [];
-  const out: string[] = [];
-  for (const x of arr) {
-    if (typeof x !== "string") continue;
-    const t = x.replace(/\s+/g, " ").trim();
-    if (t.length < 6 || t.length > 160) continue;
-    if (/\d{9,}/.test(t) || /password|otp|cvv|card number/i.test(t)) continue; // never keep numbers that look like ids / cards / secrets
-    out.push(t);
-    if (out.length >= 3) break;
-  }
-  return out;
-}
+export { parseFacts };
 
 async function extractFacts(env: Env, uid: string, conversationId: string, model: string, userText: string, reply: string): Promise<void> {
   if (!(await hasConsent(env, uid))) return; // remember() would refuse anyway; do not pay for a model call that cannot be kept
@@ -198,12 +156,20 @@ const istNow = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0
 
 export const SPEND_CAP_MESSAGE = "Pandit ji is resting for now. Please try again a little later.";
 
+export interface PanditTurnArgs {
+  uid: string; conversationId?: string | null; text: string; lang?: string | null; limits?: PanditLimits; emit: (e: ChatEvent) => void;
+}
+
 /**
  * Run one customer message end to end. `emit` receives wire events in order. Never throws: failures become an `error`
- * event (and a PostHog exception). `done` is emitted before the after-turn memory extraction so the customer is not kept waiting.
+ * event (and a PostHog exception). `done` is emitted before the after-turn work (topic close, rolling summary, fact
+ * extraction) so the customer is not kept waiting.
+ * [AUMFE-PANDIT-COST-1] Cost controls: per-day message cap, short history + rolling summary, short output, a topic cut-off
+ * after `limits.topicMaxTurns` customer messages, and fact extraction only every 4th message.
  */
-export async function runPanditTurn(env: Env, a: { uid: string; conversationId?: string | null; text: string; lang?: string | null; emit: (e: ChatEvent) => void }): Promise<void> {
+export async function runPanditTurn(env: Env, a: PanditTurnArgs): Promise<void> {
   const { uid, emit } = a;
+  const limits = a.limits ?? limitsFromConfig(null);
   const text = a.text.trim().slice(0, MAX_USER_CHARS);
   let conversationId = "";
   const t0 = Date.now();
@@ -214,22 +180,32 @@ export async function runPanditTurn(env: Env, a: { uid: string; conversationId?:
       emit({ type: "error", code: "spend_cap", message: SPEND_CAP_MESSAGE });
       return;
     }
+    if (!parseUidList(env.AGENT_ADMIN_UIDS).includes(uid)) { // owner/admin testers are exempt from the daily cap
+      const sent = await countCustomerMessagesSince(env, uid, istDayStartMs(Date.now()));
+      if (dailyLimitReached(sent, limits.dailyMaxMessages)) {
+        void track(env, uid, "pandit_daily_limit", APP, { sent, cap: limits.dailyMaxMessages, lang: a.lang ?? null });
+        emit({ type: "error", code: "daily_limit", message: dailyLimitMessage(a.lang) });
+        return;
+      }
+    }
     const profile = await getProfile(env, uid);
-    const owned = a.conversationId ? await getOwnedConversation(env, uid, a.conversationId) : null;
+    const found = a.conversationId ? await getOwnedConversation(env, uid, a.conversationId) : null;
+    const owned = found && found.status !== "resolved" ? found : null; // a closed topic never takes another message (e.g. a second tab)
     conversationId = owned?.id ?? (await createConversation(env, uid, profile?.name ?? null));
     emit({ type: "meta", conversation_id: conversationId });
 
-    const history = (await loadMessages(env, conversationId, HISTORY_TURNS));
+    const ctx = selectContext(await loadContextRows(env, conversationId), limits.historyMessages);
     await insertRow(env, conversationId, { role: ROLE_CUSTOMER, text });
+    const turns = await countCustomerMessages(env, conversationId);
 
     const briefing = await buildBriefing(env, uid, AGENT_ID);
-    const system = PANDIT.systemPrompt({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null });
+    const system = PANDIT.systemPrompt({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null, summary: ctx.summary });
     const tools: VoiceTool[] = [...sharedGuideTools(), ...memoryTools];
     const decls = tools.map((t) => t.decl);
     const model = await preetiModel(env);
 
     const contents: Content[] = [];
-    for (const m of history) {
+    for (const m of ctx.window) {
       const role = m.role === "user" ? "user" : "model";
       const last = contents[contents.length - 1];
       if (last && last.role === role) last.parts.push({ text: `\n${m.text}` }); else contents.push({ role, parts: [{ text: m.text }] });
@@ -238,31 +214,39 @@ export async function runPanditTurn(env: Env, a: { uid: string; conversationId?:
     if (lastC && lastC.role === "user") lastC.parts.push({ text: `\n${text}` }); else contents.push({ role: "user", parts: [{ text }] });
 
     const cards: GuideCard[] = [];
-    const ctx: GuideToolCtx = {
+    const ctxTools: GuideToolCtx = {
       env, uid, sessionId: conversationId, agentId: AGENT_ID,
       showGuideCard: (c) => { cards.push(c); emit({ type: "card", card: c }); },
       // Meera's small info cards ("Your chart", ...) are voice-screen only; the chat gets product/puja cards via showGuideCard.
     };
 
+    let promptTokens = 0, retries = 0;
     const step: StepFn = async (cs, finalRound) => {
-      const s0 = Date.now();
-      const body = {
-        systemInstruction: { parts: [{ text: system }] },
-        contents: cs,
-        tools: [{ functionDeclarations: decls }],
-        toolConfig: { functionCallingConfig: { mode: finalRound ? "NONE" : "AUTO" } },
-        generationConfig: { maxOutputTokens: 900, temperature: 0.6, ...thinking(model) },
-        safetySettings: SAFETY,
+      const call = async (maxOutputTokens: number): Promise<ModelStep> => {
+        const s0 = Date.now();
+        const body = {
+          systemInstruction: { parts: [{ text: system }] },
+          contents: cs,
+          tools: [{ functionDeclarations: decls }],
+          toolConfig: { functionCallingConfig: { mode: finalRound ? "NONE" : "AUTO" } },
+          generationConfig: { maxOutputTokens, temperature: 0.6, ...thinking(model) },
+          safetySettings: SAFETY,
+        };
+        const res = await streamOnce(env, model, body, (t) => emit({ type: "delta", text: t }));
+        if (!promptTokens) promptTokens = res.usage.inTok;
+        const cost = costMicroUsd(model, res.usage);
+        await recordGeneration(env, { uid, traceId: conversationId, model, usage: res.usage, costUsdMicro: cost, span: "pandit_chat", latencyMs: Date.now() - s0, conversationId, isTest: false });
+        await recordSpend(env, cost);
+        return res;
       };
-      const res = await streamOnce(env, model, body, (t) => emit({ type: "delta", text: t }));
-      const cost = costMicroUsd(model, res.usage);
-      await recordGeneration(env, { uid, traceId: conversationId, model, usage: res.usage, costUsdMicro: cost, span: "pandit_chat", latencyMs: Date.now() - s0, conversationId, isTest: false });
-      await recordSpend(env, cost);
+      // Thinking tokens share maxOutputTokens on Gemini 3: when the small budget leaves no visible answer, retry once with a big one.
+      const { step: res, first } = await stepWithRetry(call);
+      if (first) { retries++; res.usage = { inTok: res.usage.inTok + first.usage.inTok, outTok: res.usage.outTok + first.usage.outTok }; }
       return res;
     };
 
     const result = await runToolLoop({
-      step, tools, ctx, contents,
+      step, tools, ctx: ctxTools, contents,
       onTool: (name) => emit({ type: "tool", name }),
       onToolError: (name, err) => void trackException(env, err, { uid, route: "/api/guides/pandit/chat", handled: true, app_name: APP, extra: { tool: name } }),
     });
@@ -280,10 +264,27 @@ export async function runPanditTurn(env: Env, a: { uid: string; conversationId?:
     });
     void track(env, uid, "pandit_chat_turn", APP, {
       conversation_id: conversationId, ms: Date.now() - t0, tools: result.toolsUsed.length, rounds: result.rounds, cards: cards.length, blocked: result.blocked, ok: true,
+      history_messages: ctx.window.length, prompt_tokens: promptTokens, output_tokens: result.usage.outTok, total_in_tokens: result.usage.inTok,
+      turn_no: turns, has_summary: !!ctx.summary, max_tokens_retries: retries, reply_chars: reply.length,
     });
     emit({ type: "done" });
-    try { await extractFacts(env, uid, conversationId, model, text, reply); } catch (e) {
-      await trackException(env, e, { uid, route: "/api/guides/pandit/chat:extract", handled: true, app_name: APP });
+
+    if (shouldCloseTopic(turns, limits.topicMaxTurns)) {
+      const r = await closeTopic(env, uid, { conversationId, reason: "cap", turns });
+      if (r.closed) emit({ type: "topic_closed", message: topicClosedMessage(a.lang, r.saved) });
+      return; // closeTopic already extracted the durable facts in the same call as the summary
+    }
+    // After-turn work, each isolated so one failure cannot stop the other.
+    try {
+      const after = selectContext(await loadContextRows(env, conversationId), limits.historyMessages);
+      await rollSummaryIfDue(env, uid, conversationId, after, model);
+    } catch (e) {
+      await trackException(env, e, { uid, route: "/api/guides/pandit/chat:summary", handled: true, app_name: APP });
+    }
+    if (shouldExtractFacts(turns)) {
+      try { await extractFacts(env, uid, conversationId, model, text, reply); } catch (e) {
+        await trackException(env, e, { uid, route: "/api/guides/pandit/chat:extract", handled: true, app_name: APP });
+      }
     }
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/guides/pandit/chat", handled: true, app_name: APP, extra: { conversation_id: conversationId } });

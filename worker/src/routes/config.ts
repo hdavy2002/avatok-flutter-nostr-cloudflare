@@ -2075,6 +2075,14 @@ export interface PlatformConfig {
   // [AUMFE-GUIDE-BRAIN-1] Master switch for Pandit ji, the text guide (/api/guides/pandit/*). While false only uids in
   // AGENT_ADMIN_UIDS can chat (owner testing). Boolean -> NOT in numericKeys.
   panditChatEnabled: boolean;
+  // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
+  // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
+  // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
+  panditHistoryMessages: number;
+  // Customer messages after which a conversation is summarised into memory and closed (the next message starts a new one).
+  panditTopicMaxTurns: number;
+  // Customer messages per user per IST day across conversations (AGENT_ADMIN_UIDS exempt).
+  panditDailyMaxMessages: number;
   // [AUMFE-VOICE-RUNTIME-1] Gemini Live model id for the voice guides (Developer API, BidiGenerateContent).
   // STRING -> NOT in numericKeys; declared in stringKeys below.
   voiceAgentModel: string;
@@ -2812,6 +2820,9 @@ const DEFAULTS: PlatformConfig = {
   // [AUMFE-VOICE-RUNTIME-1] voice guides — dark until the owner flips it (admins can test meanwhile).
   voiceAgentsEnabled: false,
   panditChatEnabled: false, // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
+  panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
+  panditTopicMaxTurns: 20,
+  panditDailyMaxMessages: 40,
   voiceAgentModel: "gemini-3.8-live",
   voiceAgentMaxSeconds: 900,
   voiceAgentFreeSeconds: 180,
@@ -3111,6 +3122,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-POD-CORE-1] numeric — must be here or `flags.sh set shopPodPollMinutes=30` 400s `bad type`.
     "shopPodPollMinutes",
     // [AUMFE-VOICE-RUNTIME-1] numeric — must be here or `flags.sh set voiceAgentMaxSeconds=600` 400s `bad type`.
+    "panditHistoryMessages", "panditTopicMaxTurns", "panditDailyMaxMessages", // [AUMFE-PANDIT-COST-1]
     "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
   ]);
   const stringKeys = new Set([

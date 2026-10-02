@@ -136,6 +136,8 @@
 .pd-round-mic.pd-on { background: #f7e1dc; border-color: #c82c25; color: #c82c25; }
 .pd-round-send { background: #07545b; border: 0; }
 .pd-round-send:disabled { opacity: .5; }
+.pd-notice { align-self: center; margin: 4px 0; padding: 6px 14px; max-width: 90%; text-align: center; font-size: 14px; line-height: 1.4; color: #6b5636; background: #f6ecd6; border: 1px solid #e3cfa3; border-radius: 999px; }
+.pd-limit { margin: 0; text-align: center; font-size: 14px; color: #6b5636; }
 .pd-ghost-btn { min-height: 44px; padding: 0 14px; background: #fff; border: 1px solid #d1ae70; border-radius: 10px; font-weight: 800; font-size: 15px; color: #07545b; }
 .pd-ghost-btn:disabled { opacity: .55; }
 
