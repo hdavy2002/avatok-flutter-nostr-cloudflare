@@ -27,7 +27,7 @@ import { cn } from '../../lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { Skeleton } from '../../components/ui/skeleton';
-import { DASH_NAV, DASH_LOGOUT, type DashKey } from './nav';
+import { useDashNav, DASH_LOGOUT, type DashKey } from './nav';
 import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
 
@@ -131,6 +131,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
 
 function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; ready: boolean }) {
   const reduce = useReducedMotion();
+  const nav = useDashNav();
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col border-r border-border/50 bg-card px-4 py-5 lg:flex">
       <div className="px-2"><Logo /></div>
@@ -153,7 +154,7 @@ function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; rea
       </div>
 
       <nav aria-label="Dashboard" className="mt-6 flex flex-1 flex-col gap-1">
-        {DASH_NAV.map((it) => {
+        {nav.map((it) => {
           const on = it.key === active;
           const Icon = it.icon;
           return (
@@ -196,7 +197,8 @@ function Sidebar({ active, who, ready }: { active: DashKey; who: Who | null; rea
 }
 
 function Rail({ active }: { active: DashKey }) {
-  const items = [...DASH_NAV.map((i) => ({ ...i, logout: false })), { key: 'logout', label: DASH_LOGOUT.label, short: '', href: DASH_LOGOUT.href, icon: DASH_LOGOUT.icon, logout: true }];
+  const nav = useDashNav();
+  const items = [...nav.map((i) => ({ ...i, logout: false })), { key: 'logout', label: DASH_LOGOUT.label, short: '', href: DASH_LOGOUT.href, icon: DASH_LOGOUT.icon, logout: true }];
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w,72px)] flex-col items-center border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
       <Logo compact />
@@ -234,6 +236,7 @@ function Rail({ active }: { active: DashKey }) {
 
 function PhoneBars({ active, who }: { active: DashKey; who: Who | null }) {
   const reduce = useReducedMotion();
+  const nav = useDashNav();
   return (
     <>
       <header
@@ -248,9 +251,9 @@ function PhoneBars({ active, who }: { active: DashKey; who: Who | null }) {
       <nav
         aria-label="Dashboard"
         className="fixed inset-x-0 bottom-0 z-40 grid border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
-        style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)', gridTemplateColumns: `repeat(${DASH_NAV.length}, minmax(0, 1fr))` }}
+        style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)', gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
       >
-        {DASH_NAV.map((it) => {
+        {nav.map((it) => {
           const on = it.key === active;
           const Icon = it.icon;
           return (
