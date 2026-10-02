@@ -1,0 +1,233 @@
+---
+// [AUMFE-HELP-LEGAL-PREVIEW-1] ADMIN-ONLY preview of the PROPOSED new legal sections for the voice
+// guides and the wallet. They are NOT on the public Terms / Privacy / Refunds pages and must not be
+// copied there until a payment gateway is approved and the owner has settled the [CONFIRM WITH OWNER]
+// items below.
+//
+// NOTE FOR AI:
+//  - Server-rendered (prerender = false) behind the Admin 2 shell (client admin guard via
+//    GET /api/admin/whoami; noindex). Nothing here is prerendered, so no static HTML under dist/
+//    contains this text.
+//  - Styles are the folk legal ones (styles/legal-folk.css, scoped under `.folk-site .lg`), the same
+//    classes pages/terms.astro, privacy.astro and refunds.astro use.
+//  - CLAUDE.md "THERE IS NO COMPANY": no entity is named or implied. Text says "we" and uses
+//    BRAND.name only. Emails are plain text "name (@) domain", never mailto.
+//  - Money: 1 token = ₹1 and Meera is ₹6 per started minute (owner decisions, 2026-10-02). Adding
+//    money to the wallet is "coming soon" — there is no top-up yet.
+//  - NOTE for whoever publishes: today's Refunds section 1 says "There are no tokens, wallets, credits
+//    or extra charges added at checkout." That is about event checkout and stays true, but add
+//    "This does not apply to voice calls, which are paid from your wallet" when "Wallet and tokens"
+//    goes live, so the two do not read as a contradiction.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import PreviewRibbon from '../../../components/PreviewRibbon.tsx';
+import { BRAND } from '../../../lib/brand';
+import '../../../styles/saathum-folk.css';
+import '../../../styles/legal-folk.css';
+
+const toc = [
+  { id: 'terms-voice', label: 'Terms: Voice guides, AI and paid calls' },
+  { id: 'terms-wallet', label: 'Terms and Refunds: Wallet and tokens' },
+  { id: 'refunds-minutes', label: 'Refunds: Voice call minutes' },
+  { id: 'privacy-voice', label: 'Privacy: Voice calls, recordings and memory' },
+];
+---
+
+<Admin2
+  title="Legal preview"
+  heading="Legal preview: proposed new sections"
+  subtitle="Hidden until a payment gateway is approved. These sections are not on the public Terms, Privacy or Refunds pages."
+  active="preview-legal"
+>
+  <meta name="robots" content="noindex,nofollow" slot="head" />
+  <div class="mb-5"><PreviewRibbon client:load force /></div>
+
+  <div class="folk-site" data-design="reference-v5">
+    <div class="lg pv-legal">
+      <div class="lg-body-inner">
+        <aside class="lg-rail">
+          <nav class="lg-toc" aria-label="Proposed sections">
+            <b>Proposed sections</b>
+            <ol>
+              {toc.map((item) => <li><a href={`#${item.id}`}>{item.label}</a></li>)}
+            </ol>
+          </nav>
+          <div class="lg-rail-card">
+            <div>
+              <b>Before this goes live</b>
+              <span>Three items marked CONFIRM WITH OWNER need a decision. Nothing here is published.</span>
+            </div>
+          </div>
+        </aside>
+
+        <article class="lg-article"><div class="lg-prose">
+          <p>
+            These are the new sections we plan to add for voice guides and the wallet, shown in the
+            same look as the live legal pages. Each one says which page it will be added to.
+          </p>
+
+          <!-- ============ TERMS: VOICE GUIDES ============ -->
+          <div class="lg-note lg-note--plain">
+            <div>
+              <span class="lg-tag">Will be added to: Terms of Service</span>
+              <p>New section, placed after the existing section on using the site.</p>
+            </div>
+          </div>
+
+          <h2 id="terms-voice"><span class="lg-n">NEW</span>Voice guides, AI and paid calls</h2>
+          <p>
+            {BRAND.name} offers guides you can talk to: Meera speaks with you by voice, Pandit ji
+            chats with you in writing, and Preeti helps you around the site. All of them are
+            <strong>AI</strong>. They are not people, and we will always tell you so.
+          </p>
+          <p>
+            <strong>Guidance only.</strong> A guide shares what Hindu tradition says about your
+            question, to help you think it through. It does not promise any outcome, and nothing a
+            guide says is a prediction you should rely on.
+          </p>
+          <p>
+            <strong>Not professional advice.</strong> A guide does not give medical, legal or
+            financial advice. For those, please speak to a qualified professional. In an emergency,
+            call your local emergency number.
+          </p>
+          <p>
+            <strong>Adults only.</strong> Voice guides are for people aged 18 or over.
+          </p>
+          <p>
+            <strong>How minutes are charged.</strong> Voice calls with Meera are paid from your
+            wallet at ₹6 (6 tokens) for every minute you start. A call that ends within 10 seconds is
+            free. You need at least one minute's balance to begin a call. The price is shown before
+            you start.
+          </p>
+          <p>
+            <strong>When your balance runs out.</strong> The call ends politely. You are never
+            charged for more than your wallet holds. Pandit ji and Preeti are free.
+          </p>
+          <p>
+            <strong>Fair use.</strong> Please use the guides in good faith. Do not use them to
+            harass, to ask for anything unlawful, or to copy or resell what they say. We may limit or
+            stop access if the service is being misused.
+          </p>
+
+          <!-- ============ TERMS + REFUNDS: WALLET ============ -->
+          <div class="lg-note lg-note--plain">
+            <div>
+              <span class="lg-tag">Will be added to: Terms of Service and Refunds</span>
+              <p>Same section in both places, or in Terms with a link from Refunds.</p>
+            </div>
+          </div>
+
+          <h2 id="terms-wallet"><span class="lg-n">NEW</span>Wallet and tokens</h2>
+          <p>
+            Your {BRAND.name} wallet holds <strong>tokens</strong>. <strong>1 token is worth ₹1.</strong>
+            Tokens pay for voice calls. They are not money in a bank account, they earn no interest,
+            and they can be used only on {BRAND.name}.
+          </p>
+          <p>
+            <strong>Not transferable.</strong> Tokens belong to your account. You cannot send them to
+            another person or sell them.
+          </p>
+          <p>
+            <strong>Adding money.</strong> Adding money to the wallet is coming soon. Until then
+            there is no top-up.
+          </p>
+          <p>
+            <strong>Credits from us.</strong> Sometimes our team adds tokens to your wallet, for
+            example to put right a problem on our side. These show in your wallet like any other
+            tokens. If a credit was made by mistake, we may take it back and we will tell you.
+          </p>
+          <p>
+            <strong>Refunds go back as tokens.</strong> When we refund a call, the tokens return to
+            your wallet.
+          </p>
+          <p>
+            <strong>Unused balance.</strong> [CONFIRM WITH OWNER: what happens to unused tokens. Can
+            they be refunded to the bank, do they expire, and what happens if an account is closed?]
+          </p>
+
+          <!-- ============ REFUNDS: VOICE CALL MINUTES ============ -->
+          <div class="lg-note lg-note--plain">
+            <div>
+              <span class="lg-tag">Will be added to: Refunds &amp; Cancellations</span>
+              <p>New section, after "Wrong or duplicate payments".</p>
+            </div>
+          </div>
+
+          <h2 id="refunds-minutes"><span class="lg-n">NEW</span>Voice call minutes</h2>
+          <p>
+            Calls are charged for each <strong>started minute</strong>. If you speak for 2 minutes
+            and 20 seconds, that is 3 minutes.
+          </p>
+          <p>
+            <strong>Under 10 seconds is free.</strong> If the call ends within 10 seconds, nothing is
+            charged.
+          </p>
+          <p>
+            <strong>If something goes wrong on our side.</strong> If a call fails because of a
+            technical problem on our side, we credit the minutes back to your wallet as tokens.
+            [CONFIRM WITH OWNER: the exact rule, for example whether it is automatic or on request,
+            and the time limit to ask.]
+          </p>
+          <p>
+            <strong>Minutes you used.</strong> A call that worked is not refunded because you did not
+            like the guidance, or because the outcome was not what you hoped for. Guidance is not a
+            guarantee.
+          </p>
+          <p>
+            To ask about a call, write to support (@) {BRAND.domain} with the date and time and what
+            happened.
+          </p>
+
+          <!-- ============ PRIVACY ============ -->
+          <div class="lg-note lg-note--plain">
+            <div>
+              <span class="lg-tag">Will be added to: Privacy Policy</span>
+              <p>New section, after the section on information we collect.</p>
+            </div>
+          </div>
+
+          <h2 id="privacy-voice"><span class="lg-n">NEW</span>Voice calls, recordings and memory</h2>
+          <p>
+            <strong>We keep text, not audio.</strong> We write down your calls and chats as text
+            transcripts and store them privately. We do not keep an audio recording of your voice.
+          </p>
+          <p>
+            <strong>Who processes your voice.</strong> To run a call, AI services process your voice
+            live, so they can hear you and speak back. We choose these services carefully and share
+            only what is needed to run the call.
+          </p>
+          <p>
+            <strong>Summaries and remembered facts.</strong> If you allow it, we also keep short
+            summaries of your talks and a few facts about you, such as your birth details and what you
+            asked about, so your guides do not make you repeat yourself. Pandit ji, Preeti and Meera
+            share this one memory. If you do not allow it, they do not remember.
+          </p>
+          <p>
+            <strong>You are in control.</strong> You can see what is remembered, delete any single
+            item, or tell a guide to "forget me" and everything is erased.
+          </p>
+          <p>
+            <strong>How long we keep it.</strong> Transcripts and memories are kept for up to 12
+            months, then deleted. Our staff open a transcript only for support or safety, and we never
+            sell your talks.
+          </p>
+          <p>
+            <strong>Palm photos.</strong> If you use a guide that reads your palm with your camera,
+            the photo is used for your reading. [CONFIRM WITH OWNER: whether the photo is kept, for how
+            long, and who can see it.]
+          </p>
+        </div></article>
+      </div>
+    </div>
+  </div>
+</Admin2>
+
+<style is:global>
+  .pv-legal .lg-body-inner { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .pv-legal .lg-rail { position: sticky; top: 16px; }
+  .pv-legal .lg-note { margin-top: 36px; }
+  @media (max-width: 900px) {
+    .pv-legal .lg-body-inner { grid-template-columns: 1fr; }
+    .pv-legal .lg-rail { position: static; }
+  }
+</style>

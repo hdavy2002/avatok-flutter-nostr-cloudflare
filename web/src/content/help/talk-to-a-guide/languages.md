@@ -25,4 +25,4 @@ You do not need to pick a language first. If you start in English and feel more 
 - Use headphones if there is background noise.
 - Names of places and people are easiest to catch when spoken clearly.
 
-[Which more languages, and any limits?] [CONFIRM WITH OWNER: full language list at launch]
+If a language is not understood well, say so and switch to Hindi or English. We add more languages over time.

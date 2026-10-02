@@ -17,7 +17,9 @@ A Guide is a voice you can talk to, right in your browser or the app. You speak,
 
 ## Every Guide has one subject
 
-Each Guide has a name and covers one subject. **Astrology** is the first to launch. Palmistry, Numerology, Tarot, Marriage (kundli milan) and Vastu are planned for later.
+Each Guide has a name and covers one subject. **Meera** (Astrology, by voice) is the first to launch. Palmistry (with your camera), Numerology, Tarot, Marriage (kundli milan) and Vastu guides are coming, with prices to be announced.
+
+You can also chat in writing with **Pandit ji**, and get help on the site from **Preeti**. Both are free. See [Pandit ji, Preeti and Meera: who does what](/help/talk-to-a-guide/who-does-what).
 
 ## Clearly an AI
 
@@ -31,3 +33,4 @@ A Guide gives tradition-based guidance to help you think things through. It does
 
 - [Starting your first talk](/help/talk-to-a-guide/start-a-talk)
 - [What it costs](/help/talk-to-a-guide/pricing-minutes)
+- [Your wallet and tokens](/help/talk-to-a-guide/wallet-and-tokens)

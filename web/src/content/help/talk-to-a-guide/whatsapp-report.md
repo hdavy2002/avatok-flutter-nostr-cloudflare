@@ -23,4 +23,4 @@ It is sent to you on **WhatsApp**, to the number you signed up with.
 
 Check that the number on your account is right and that WhatsApp is installed. Then write to support (@) {{brand.domain}}.
 
-[CONFIRM WITH OWNER: whether the report is free or included in the minutes]
+The summary is sent after the talk. It does not use any extra tokens.

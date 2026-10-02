@@ -1,6 +1,6 @@
 ---
 title: "The call dropped, or I cannot hear the Guide"
-description: "What to do if a talk with a Guide on {{brand.name}} drops or you cannot hear: check your microphone, network, and reopen. Your paid minutes are safe."
+description: "What to do if a talk with a Guide on {{brand.name}} drops or you cannot hear: check your microphone, network, and reopen. Your wallet is safe."
 section: talk-to-a-guide
 order: 16
 updated: 2026-10-01
@@ -22,10 +22,10 @@ draft: true
 
 The Guide **remembers where you left off**, so you can carry on without starting again.
 
-## Your minutes are safe
+## Your wallet is safe
 
-**Unused paid minutes stay** with you.
+Tokens you have not used stay in your wallet. A talk that ends within 10 seconds is free, and Meera is charged per started minute only.
 
 ## Still stuck?
 
-Write to support (@) {{brand.domain}} and tell us what you saw. See also [Talking to a human](/help/talk-to-a-guide/talk-to-a-human).
+Write to support (@) {{brand.domain}} and tell us what you saw and when. If a talk failed because of a problem on our side, we look at crediting the tokens back. See [Paying and refunds](/help/talk-to-a-guide/paying-and-refunds). See also [Talking to a human](/help/talk-to-a-guide/talk-to-a-human).

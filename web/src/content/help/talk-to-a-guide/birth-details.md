@@ -25,4 +25,4 @@ That is very common. The Guide works from your **moon chart** instead, and tells
 
 ## Changing them
 
-If you entered something wrong, you can correct it. [CONFIRM WITH OWNER: where in the app to edit birth details]
+If you entered something wrong, you can correct it. Open your birth details from your profile, correct them and save. Or ask Pandit ji or Meera to note the correction.

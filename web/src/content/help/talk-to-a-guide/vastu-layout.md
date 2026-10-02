@@ -24,4 +24,4 @@ A compass app on your phone works well. Stand in the middle of the room and note
 
 The Guide can only work from what you share, so a clearer plan gives clearer guidance.
 
-The Vastu Guide is not available yet. It launches after Astrology.
+The Vastu Guide is coming. Its price will be announced.

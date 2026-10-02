@@ -11,9 +11,11 @@ draft: true
 
 <!-- [AUMFE-HELP-GUIDES-1] Hidden until the Guides launch. Remove "draft: true" from every file in this folder to publish. -->
 
-## Text transcripts
+## Text transcripts, not audio
 
-Your talks are written down as **text transcripts** and stored privately.
+Your talks are written down as **text transcripts** and stored privately. We do not keep an audio recording of your voice. The AI services that run the call process your voice live, to hear you and to speak back.
+
+Transcripts are kept for up to **12 months**.
 
 ## Who can look
 
@@ -27,4 +29,3 @@ We do not sell your talks and we do not share them.
 
 You can see and delete what the Guides remember, and ask to be forgotten. See [See or delete your memories](/help/talk-to-a-guide/see-or-delete-memories). To delete your whole account, see [Deleting your account](/help/account-and-safety/delete-your-account).
 
-[CONFIRM WITH OWNER: whether audio is kept at all, and how long transcripts are kept]

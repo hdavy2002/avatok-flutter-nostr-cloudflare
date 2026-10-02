@@ -13,7 +13,7 @@ draft: true
 
 ## See your memories
 
-You can open the list of everything the Guides remember about you and read it. [CONFIRM WITH OWNER: where this list lives in the app and web]
+You can open the list of everything the Guides remember about you and read it. Ask Pandit ji or Meera "what do you remember about me?" and they will tell you.
 
 ## Delete one
 

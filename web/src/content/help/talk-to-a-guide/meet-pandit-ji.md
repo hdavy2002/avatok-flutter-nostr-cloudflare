@@ -21,9 +21,9 @@ draft: true
 ## Two guides, two ways to talk
 
 - **Pandit ji** is a virtual pandit you **type** to. He explains your kundli in simple words, tells you what tradition says about a day, a deity or a mantra, and can show you pujas and T-shirt designs that fit, as cards inside the chat.
-- **Meera** is a guide you **speak** to, like a phone call. See [What are Guides, and who am I talking to?](/help/talk-to-a-guide/what-are-guides).
+- **Meera** is a guide you **speak** to, like a phone call. Pandit ji is **free**; Meera is **₹6 per started minute** from your wallet. See [What are Guides, and who am I talking to?](/help/talk-to-a-guide/what-are-guides).
 
-They are two separate people with their own manner. Behind the scenes they share one brain and one memory of you, so neither makes you start again. See [Different Guides, one memory](/help/talk-to-a-guide/different-guides-share).
+They are two separate people with their own manner. Behind the scenes they share one brain and one memory of you, so neither makes you start again. See [Pandit ji, Preeti and Meera: who does what](/help/talk-to-a-guide/who-does-what) and [Different Guides, one memory](/help/talk-to-a-guide/different-guides-share).
 
 ## Who is Pandit ji?
 

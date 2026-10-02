@@ -23,6 +23,6 @@ Allow your camera, then hold your palm up inside the **outline** on the screen. 
 
 ## About the photo
 
-The photo is used for your reading. [CONFIRM storage policy: whether it is kept, for how long, and who can see it]
+The photo is used for your reading. [CONFIRM WITH OWNER: palm-photo retention, whether it is kept, for how long, and who can see it]
 
-The Palmistry Guide is not available yet. It launches after Astrology.
+The Palmistry Guide is coming. Its price will be announced.

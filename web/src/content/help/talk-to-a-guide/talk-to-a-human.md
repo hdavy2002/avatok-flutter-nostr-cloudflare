@@ -21,7 +21,7 @@ A Guide is an AI. Whenever you want a person, you can reach our support team.
 - Use the [contact form](/contact)
 - [CONFIRM WITH OWNER: support WhatsApp number or link]
 
-Tell us what you need and, if it is about a payment, include your 12-digit UPI transaction number.
+Tell us what you need and, if it is about a payment, tell us the date and the amount.
 
 ## Complaints
 
