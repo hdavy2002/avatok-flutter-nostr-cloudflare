@@ -69,6 +69,8 @@ const DEVICE_ID_KEY = 'saathum_device_id';
 // new one, and it is what the 401 retry in the admin workbench uses.
 let _clerkGetToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
+// Readiness and account changes invalidate optional-auth data in other islands.
+export const ACTIVE_SESSION_CHANGED = 'site:active-session-changed';
 let _openGate: ((resolve: (jwt: string) => void, reject: (e: unknown) => void) => void) | null = null;
 
 /* [LIST-EMBED-1 2026-09-05] The app's WebView has no Clerk session — the app
@@ -275,7 +277,7 @@ export function ClerkIsland({ children }: { children: ReactNode }) {
 
 /** Keeps the module-level Clerk bridges in sync with the live session. */
 function ClerkBridge() {
-  const { isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, sessionId, userId, getToken } = useAuth();
   const { user, isLoaded: localeUserLoaded } = useUser();
   useEffect(() => { if (localeUserLoaded) setLocaleAccount(user?.id ?? null); }, [localeUserLoaded, user?.id]);
   useEffect(() => {
@@ -295,7 +297,13 @@ function ClerkBridge() {
       _clerkSignedIn = false;
       try { delete (window as any).__siteToken; } catch { /* ignore */ }
     };
-  }, [isSignedIn, getToken]);
+  }, [isSignedIn, getToken, sessionId, userId]);
+
+  // Separate from getToken's identity: token refreshes must not refetch preview.
+  // Runs after the token bridge above is updated, including a late first load.
+  useEffect(() => {
+    window.dispatchEvent(new Event(ACTIVE_SESSION_CHANGED));
+  }, [isLoaded, isSignedIn, sessionId, userId]);
 
   // §1.3 person identity — identify once we know who is signed in; reset on
   // sign-out so the next visitor doesn't inherit the previous person's id.

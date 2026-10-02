@@ -1,7 +1,9 @@
 // [MEERA-HOME-DESIGN] Static haveli-inspired homepage ad; never a live conversation UI.
 // ADMIN-PREVIEW ONLY: no HTML or data fetch until usePreview().guides is true.
 // Keep the parent client:idle mount and the existing guide impression/click telemetry.
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ClerkSessionBridge } from '../../lib/clerk';
+import { hasClerkSessionHint } from '../../lib/sessionHint';
 import PreviewRibbon from '../../components/PreviewRibbon';
 import { usePreview } from '../../lib/preview';
 import { ARTWORK_QUALITY, publicImage, publicImageSrcSet } from '../../lib/config';
@@ -26,6 +28,14 @@ function Lotus() {
 }
 
 export default function HomeGuidesAd() {
+  const [withClerk, setWithClerk] = useState(false);
+  useEffect(() => { setWithClerk(hasClerkSessionHint()); }, []);
+  // Own auth readiness instead of depending on Preeti's independent hydration.
+  // The shared bridge de-duplicates its provider with the other homepage islands.
+  return <>{withClerk && <ClerkSessionBridge />}<HomeGuidesContent /></>;
+}
+
+function HomeGuidesContent() {
   const { guides, preview } = usePreview();
   const data = useGuides(guides);
   const ref = useRef<HTMLElement>(null);
