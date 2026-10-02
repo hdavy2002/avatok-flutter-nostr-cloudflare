@@ -9224,5 +9224,21 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-W4-1": {
+    "description": "[AUMFE-CONSULT-W4-1 2026-10-02] Real Consultants consultant desk API (profile, availability, rate, bookings, customers, earnings) + admin API (consultants, attach, photo, bookings, manual confirm/refund/cancel, review moderation).",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_admin_action",
+        "property": "action",
+        "equals": "publish"
+      }
+    ]
   }
 }
