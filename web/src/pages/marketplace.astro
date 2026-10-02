@@ -28,6 +28,7 @@ import BookingArtwork from '../components/BookingArtwork.astro';
 import FolkIcon from '../components/FolkIcon.astro';
 import MarketplaceV2 from '../islands/marketplace/MarketplaceV2';
 import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
+import ExploreGuides from '../islands/guides/ExploreGuides';
 import { API_BASE, publicImage } from '../lib/config';
 import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
 import { rituals, ritualBySlug } from '../lib/ritualGuides';
@@ -151,6 +152,8 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
           </div>
         </section>
       </MarketplaceV2>
+      {/* [AUMFE-GUIDES-FRONT-1] "Talk to a guide" (#guides) — admin-preview only, renders nothing for customers. */}
+      <ExploreGuides client:idle />
       <div class="grand-divider" aria-hidden="true"></div>
 
       <!-- ⑩ HOW BOOKING WORKS + PROMISES -->
