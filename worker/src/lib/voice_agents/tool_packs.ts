@@ -7,6 +7,9 @@
 import { sharedGuideTools } from "../guides/brain";
 import type { VoiceTool } from "./types";
 import { astrologyBaseRules } from "./agents/astrology";
+import { numerologyPack } from "./packs/numerology";
+import { tarotPack } from "./packs/tarot";
+import { marriagePack } from "./packs/marriage";
 
 export interface VoiceToolPack {
   id: string;
@@ -44,7 +47,10 @@ export const TOOL_PACKS: Record<string, VoiceToolPack> = {
     tools: [],
     baseRules: () => knowledgeOnlyRules(),
   },
-  // Later packs: numerology, tarot, marriage, palmistry, vastu.
+  numerology: numerologyPack, // [AUMFE-VOICE-PACKS-1]
+  tarot: tarotPack, // [AUMFE-VOICE-PACKS-1]
+  marriage: marriagePack, // [AUMFE-VOICE-PACKS-1]
+  // Later packs: palmistry, vastu.
 };
 
 export function getToolPack(id: unknown): VoiceToolPack | null {
