@@ -15,6 +15,8 @@ describe("ticket gate", () => {
     expect(canUseVoice(false, "u9", "u1,u2")).toBe(false);
     expect(canUseVoice(false, "u2", "u1,u2")).toBe(true);
     expect(canUseVoice(true, "", "u1")).toBe(false);
+    expect(canUseVoice(false, "u9", "", true)).toBe(true); // [AUMFE-PREVIEW-GATE-1] guidesPublic
+    expect(canUseVoice(false, "", "", true)).toBe(false);
   });
   it("rejects missing, garbled and stale tickets", () => {
     const now = 1_000_000;

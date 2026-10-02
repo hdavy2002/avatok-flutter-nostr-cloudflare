@@ -12,9 +12,10 @@ export function parseUidList(raw: string | undefined | null): string[] {
 }
 
 /** Open to everyone when voiceAgentsEnabled; otherwise only uids on the admin list (owner testing). */
-export function canUseVoice(enabled: boolean, uid: string, adminUidsRaw: string | undefined | null): boolean {
+export function canUseVoice(enabled: boolean, uid: string, adminUidsRaw: string | undefined | null, guidesPublic = false): boolean {
   if (!uid) return false;
-  if (enabled) return true;
+  if (enabled || guidesPublic) return true; // [AUMFE-PREVIEW-GATE-1] guidesPublic is the shared public switch
+  // adminUidsRaw: pass previewerUidsRaw(env) (ADMIN_UIDS + AGENT_ADMIN_UIDS) so every previewer qualifies.
   return parseUidList(adminUidsRaw).includes(uid);
 }
 

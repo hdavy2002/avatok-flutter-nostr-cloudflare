@@ -14,6 +14,7 @@ import { chatLang } from "../lib/guides/personas";
 import { getProfile, listMemories } from "../lib/agent_memory";
 import { readConfig } from "./config";
 import { canUsePandit } from "../lib/guides/access";
+import { previewerUidsRaw } from "../lib/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { loadChartSummary } from "../lib/guides/chart";
 import { countCustomerMessages, getOwnedConversation, latestConversation, loadMessages } from "../lib/guides/store";
 import { limitsFromConfig, type PanditLimits } from "../lib/guides/cost";
@@ -38,7 +39,7 @@ export async function guidesRoute(req: Request, env: Env, p: string): Promise<Re
   const uid = u.uid;
   const cfg = await readConfig(env);
   const enabled = cfg.panditChatEnabled === true;
-  const canUse = canUsePandit(enabled, uid, env.AGENT_ADMIN_UIDS);
+  const canUse = canUsePandit(enabled, uid, previewerUidsRaw(env), cfg.guidesPublic === true);
 
   if (isState) return stateResponse(env, uid, enabled, canUse);
 

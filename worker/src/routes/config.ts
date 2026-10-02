@@ -2072,6 +2072,9 @@ export interface PlatformConfig {
   // [AUMFE-VOICE-RUNTIME-1] Master switch for the voice guides (Gemini Live). While false only uids in
   // AGENT_ADMIN_UIDS can open a call (owner testing). Boolean -> NOT in numericKeys.
   voiceAgentsEnabled: boolean;
+  // [AUMFE-PREVIEW-GATE-1] Public switch for everything new (voice guides, wallet UI, home ad band, Explore guides, new help/legal
+  // sections). While false only previewers (ADMIN_UIDS / AGENT_ADMIN_UIDS) see them. Boolean -> NOT in numericKeys.
+  guidesPublic: boolean;
   // [AUMFE-GUIDE-BRAIN-1] Master switch for Pandit ji, the text guide (/api/guides/pandit/*). While false only uids in
   // AGENT_ADMIN_UIDS can chat (owner testing). Boolean -> NOT in numericKeys.
   panditChatEnabled: boolean;
@@ -2819,6 +2822,7 @@ const DEFAULTS: PlatformConfig = {
   shopPodPollMinutes: 30,
   // [AUMFE-VOICE-RUNTIME-1] voice guides — dark until the owner flips it (admins can test meanwhile).
   voiceAgentsEnabled: false,
+  guidesPublic: false, // [AUMFE-PREVIEW-GATE-1] dark until a payment gateway approves; previewers see it meanwhile
   panditChatEnabled: false, // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,

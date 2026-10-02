@@ -286,6 +286,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
 import { avaLiveToken, avaLiveHeartbeat, avaLiveClose } from "./routes/ava_live"; // fast online voice + [AVABRAIN-VOICE-BILL-1] lease lifecycle
+import { mePreview } from "./routes/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -1066,6 +1067,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
       // [DASH2-API 2026-09-25] Saathum customer dashboard (Dashboard 2) — routes/me_dashboard.ts.
+      if (p === "/api/me/preview" && req.method === "GET") return await mePreview(req, env); // [AUMFE-PREVIEW-GATE-1]
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]

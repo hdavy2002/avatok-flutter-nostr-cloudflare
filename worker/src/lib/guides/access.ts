@@ -3,6 +3,7 @@
 // two flags can diverge.
 import { canUseVoice } from "../voice_agents/session_logic";
 
-export function canUsePandit(enabled: boolean, uid: string, adminUidsRaw: string | undefined | null): boolean {
-  return canUseVoice(enabled, uid, adminUidsRaw);
+// [AUMFE-PREVIEW-GATE-1] allowed = panditChatEnabled || guidesPublic || previewer (pass previewerUidsRaw(env)).
+export function canUsePandit(enabled: boolean, uid: string, adminUidsRaw: string | undefined | null, guidesPublic = false): boolean {
+  return canUseVoice(enabled, uid, adminUidsRaw, guidesPublic);
 }

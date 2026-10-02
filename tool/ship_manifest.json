@@ -9032,7 +9032,11 @@
     "shipped": "2026-10-02",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": ["panditHistoryMessages", "panditTopicMaxTurns", "panditDailyMaxMessages"],
+    "flags": [
+      "panditHistoryMessages",
+      "panditTopicMaxTurns",
+      "panditDailyMaxMessages"
+    ],
     "success": [
       {
         "event": "pandit_chat_turn",

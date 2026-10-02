@@ -12,6 +12,7 @@ import { contactFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { getAgent, listAgentsPublic, toPublic } from "../lib/voice_agents/registry";
 import { canUseVoice, parseTicket } from "../lib/voice_agents/session_logic";
+import { previewerUidsRaw } from "../lib/preview"; // [AUMFE-PREVIEW-GATE-1]
 
 const APP = "aumfe_voice";
 const TICKET_PREFIX = "voice_ticket:";
@@ -38,7 +39,7 @@ export async function voiceAgentsList(req: Request, env: Env): Promise<Response>
   return json({
     agents: listAgentsPublic(),
     enabled: cfg.voiceAgentsEnabled === true,
-    can_use: uid ? canUseVoice(cfg.voiceAgentsEnabled === true, uid, env.AGENT_ADMIN_UIDS) : false,
+    can_use: uid ? canUseVoice(cfg.voiceAgentsEnabled === true, uid, previewerUidsRaw(env), cfg.guidesPublic === true) : false,
     signed_in: !!uid,
     price_per_min_paise: cfg.voiceAgentPricePerMinPaise,
     free_seconds: cfg.voiceAgentFreeSeconds,
@@ -55,7 +56,7 @@ export async function voiceTicket(req: Request, env: Env): Promise<Response> {
   if (!agent) return json({ error: "unknown_agent" }, 404);
 
   const cfg = await readConfig(env);
-  if (!canUseVoice(cfg.voiceAgentsEnabled === true, u.uid, env.AGENT_ADMIN_UIDS)) {
+  if (!canUseVoice(cfg.voiceAgentsEnabled === true, u.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
     void track(env, u.uid, "voice_ticket_denied", APP, { agent: agent.id, reason: "disabled" });
     return json({ error: "voice_agents_disabled" }, 403);
   }
@@ -99,7 +100,7 @@ export async function voiceWs(req: Request, env: Env, hint?: DurableObjectLocati
 
   // Re-check the gate: the flag may have been switched off since the ticket was minted.
   const cfg = await readConfig(env);
-  if (!canUseVoice(cfg.voiceAgentsEnabled === true, rec.uid, env.AGENT_ADMIN_UIDS)) {
+  if (!canUseVoice(cfg.voiceAgentsEnabled === true, rec.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
     return new Response("voice agents disabled", { status: 403 });
   }
 
