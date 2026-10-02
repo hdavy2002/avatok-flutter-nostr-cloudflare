@@ -8,7 +8,7 @@ import {
   selectContext, shouldCloseTopic, shouldExtractFacts, stepWithRetry, topicClosedMessage, type CtxRow,
 } from "./cost";
 import { GUIDE_RULES, sharedGuideTools } from "./brain";
-import { PANDIT, panditDynamicPrompt, panditStaticPrompt } from "./personas";
+import { CONTEXT_MARK, PANDIT, panditDynamicPrompt, panditStaticPrompt } from "./personas";
 import { transcriptOf } from "./topic";
 import { cleanFacts } from "./gemini_io";
 
@@ -33,12 +33,24 @@ describe("selectContext: history window + summary", () => {
     expect(c.due).toBeNull();
   });
 
-  it("at keep+slack it is still not due; one more message makes it due and folds all but the last `keep`", () => {
-    const edge = selectContext(convo(8 + SUMMARY_SLACK), 8);
-    expect(edge.due).toBeNull();
-    const over = selectContext(convo(8 + SUMMARY_SLACK + 1), 8);
-    expect(over.due!.rows).toHaveLength(SUMMARY_SLACK + 1);
-    expect(over.due!.coversThroughId).toBe(SUMMARY_SLACK + 1);
+  it("window is 8..16: not due at 15 pending, due at 16, and it folds all but the newest 8", () => {
+    expect(SUMMARY_SLACK).toBe(8);
+    expect(selectContext(convo(15), 8).due).toBeNull();
+    const at = selectContext(convo(16), 8);
+    expect(at.due!.rows).toHaveLength(8);
+    expect(at.due!.coversThroughId).toBe(8);
+    expect(at.window).toHaveLength(16); // still all verbatim until the summary lands
+  });
+
+  it("after a roll the next summary is ~4 turns (8 messages) away", () => {
+    const rows: CtxRow[] = [...convo(16), { id: 17, role: "system", text: `${SUMMARY_PREFIX}s`, tool_summary: "8" }];
+    const c = selectContext(rows, 8);
+    expect(c.pending).toHaveLength(8);
+    expect(c.window).toHaveLength(8);
+    expect(c.due).toBeNull();
+    const later = selectContext([...rows, ...convo(7, 18)], 8); // 15 pending
+    expect(later.due).toBeNull();
+    expect(selectContext([...rows, ...convo(8, 18)], 8).due).not.toBeNull(); // 16 pending
   });
 
   it("the verbatim window never exceeds keep+slack and always opens with the customer", () => {
@@ -61,7 +73,7 @@ describe("selectContext: history window + summary", () => {
     expect(c.coveredThroughId).toBe(14);
     expect(c.pending.map((m) => m.id)).toEqual([15, 16, 17, 18, 19, 20, 22, 23]);
     expect(c.window.every((m) => m.id > 14)).toBe(true);
-    expect(c.due).toBeNull(); // 8 pending, not over keep+slack
+    expect(c.due).toBeNull(); // 8 pending
   });
 
   it("summary rows and tool rows never enter the verbatim window", () => {
@@ -106,21 +118,33 @@ describe("cadence", () => {
   });
 });
 
-describe("system prompt ordering (cache-friendly)", () => {
+describe("cache-friendly prompt: static systemInstruction + tools, per-request context in contents", () => {
   const a = { briefing: "BRIEFING-A", nowIst: "2026-10-02 10:00", profile: { name: "Anu", language: "hi" }, lang: "hi", summary: "SUMMARY-A" };
-  const b = { briefing: "", nowIst: "2026-10-02 23:59", profile: null, lang: "en", summary: null };
-  const full = (i: typeof a | typeof b) => PANDIT.systemPrompt(i as never);
+  const b = { briefing: "", nowIst: "2026-10-02 23:59", profile: { name: "Ravi", language: null }, lang: "en", summary: null };
 
-  it("static block first, identical across requests; per-request parts only after it", () => {
-    const st = panditStaticPrompt();
-    expect(full(a).startsWith(st)).toBe(true);
-    expect(full(b).startsWith(st)).toBe(true);
-    expect(st).toContain(GUIDE_RULES);
-    for (const volatile of ["2026-10-02", "BRIEFING-A", "SUMMARY-A", "Anu", "IST"]) expect(st).not.toContain(volatile);
-    const f = full(a);
-    expect(f.indexOf(GUIDE_RULES)).toBeLessThan(f.indexOf("2026-10-02 10:00"));
-    expect(f.indexOf("2026-10-02 10:00")).toBeLessThan(f.indexOf("BRIEFING-A"));
-    expect(f.indexOf("BRIEFING-A")).toBeLessThan(f.indexOf("SUMMARY-A"));
+  it("systemInstruction is identical for two different users and requests, and carries no per-user or per-request data", () => {
+    const s1 = PANDIT.systemPrompt();
+    const s2 = PANDIT.systemPrompt();
+    expect(s1).toBe(s2);
+    expect(s1).toContain(GUIDE_RULES);
+    for (const volatile of ["2026-10-02", "BRIEFING-A", "SUMMARY-A", "Anu", "Ravi", " IST.", "chat_summary", "customer_memory"]) expect(s1).not.toContain(volatile);
+    expect(s1).not.toMatch(/\b20\d\d-\d\d-\d\d\b/); // no dates
+    expect(s1).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);   // no uuids
+  });
+
+  it("tool declarations do not vary per call", () => {
+    const decls = () => JSON.stringify(sharedGuideTools().map((t) => t.decl));
+    expect(decls()).toBe(decls());
+  });
+
+  it("per-request parts live only in the context message, marked as not from the customer", () => {
+    const c = PANDIT.contextMessage(a as never);
+    expect(c.startsWith(CONTEXT_MARK)).toBe(true);
+    expect(c.indexOf("2026-10-02 10:00")).toBeLessThan(c.indexOf("BRIEFING-A"));
+    expect(c.indexOf("BRIEFING-A")).toBeLessThan(c.indexOf("SUMMARY-A"));
+    expect(c).toContain("Anu");
+    expect(PANDIT.contextMessage(b as never)).toContain("Ravi");
+    expect(PANDIT.contextMessage(b as never)).not.toContain("SUMMARY-A");
   });
 
   it("the summary is fenced and escaped as data", () => {
@@ -134,9 +158,10 @@ describe("system prompt ordering (cache-friendly)", () => {
     expect(st).toMatch(/2 to 3 short sentences/);
     expect(st).toMatch(/about 50 words/);
     expect(st).toMatch(/at most ONE question/i);
+    expect(st).toContain(CONTEXT_MARK);
   });
 
-  it("size note for the commit message: static prefix + tool declarations", () => {
+  it("size note: static prefix = system instruction + tool declarations", () => {
     const stTok = Math.round(panditStaticPrompt().length / 4);
     const toolTok = Math.round(JSON.stringify(sharedGuideTools().map((t) => t.decl)).length / 4);
     console.info(`static system ~${stTok} tokens, shared tool decls ~${toolTok} tokens (memory tools not counted)`);

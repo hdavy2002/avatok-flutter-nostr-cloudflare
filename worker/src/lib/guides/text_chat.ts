@@ -199,7 +199,8 @@ export async function runPanditTurn(env: Env, a: PanditTurnArgs): Promise<void> 
     const turns = await countCustomerMessages(env, conversationId);
 
     const briefing = await buildBriefing(env, uid, AGENT_ID);
-    const system = PANDIT.systemPrompt({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null, summary: ctx.summary });
+    const system = PANDIT.systemPrompt();
+    const context = PANDIT.contextMessage({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null, summary: ctx.summary });
     const tools: VoiceTool[] = [...sharedGuideTools(), ...memoryTools];
     const decls = tools.map((t) => t.decl);
     const model = await preetiModel(env);
@@ -212,6 +213,7 @@ export async function runPanditTurn(env: Env, a: PanditTurnArgs): Promise<void> 
     }
     const lastC = contents[contents.length - 1];
     if (lastC && lastC.role === "user") lastC.parts.push({ text: `\n${text}` }); else contents.push({ role: "user", parts: [{ text }] });
+    contents[0].parts.unshift({ text: `${context}\n\n` }); // contents[0] is always a user turn; the context leads it
 
     const cards: GuideCard[] = [];
     const ctxTools: GuideToolCtx = {

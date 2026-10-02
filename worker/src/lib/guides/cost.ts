@@ -21,9 +21,9 @@ export const MAIN_MAX_TOKENS = 450;
 export const RETRY_MAX_TOKENS = 1400;
 
 export const SUMMARY_PREFIX = "[summary] ";
-/** The rolling summary runs when more than keep+SLACK messages are unsummarised, folding all but the last `keep` into it
- *  (so it fires every ~2 turns instead of every turn). */
-export const SUMMARY_SLACK = 4;
+/** Verbatim window is keep..keep+SLACK (8..16). The rolling summary runs when keep+SLACK (16) messages have piled up since the
+ *  last one, folding all but the newest `keep` into it: about one summary call every 4 turns. */
+export const SUMMARY_SLACK = 8;
 export const FACTS_EVERY = 4;
 
 // ---------------------------------------------------------------------------
@@ -58,10 +58,10 @@ export function selectContext(rows: CtxRow[], keep: number): PromptContext {
     if (r.role === "visitor" && r.text) pending.push({ role: "user", text: r.text, id: r.id });
     else if (r.role === "preeti" && r.text) pending.push({ role: "assistant", text: r.text, id: r.id });
   }
-  const window = pending.slice(-(keep + SUMMARY_SLACK));
+  const window = pending.slice(-(keep + SUMMARY_SLACK)); // <= 16
   while (window.length && window[0].role === "assistant") window.shift(); // Gemini wants the conversation to open with the customer
   let due: PromptContext["due"] = null;
-  if (pending.length > keep + SUMMARY_SLACK) {
+  if (pending.length >= keep + SUMMARY_SLACK) {
     const rowsToFold = pending.slice(0, pending.length - keep);
     due = { rows: rowsToFold, coversThroughId: rowsToFold[rowsToFold.length - 1].id };
   }

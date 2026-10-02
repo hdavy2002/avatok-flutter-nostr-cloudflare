@@ -55,7 +55,7 @@ describe("shared tools", () => {
     expect(new Set(names).size).toBe(names.length);
     for (const t of sharedGuideTools()) expect(Object.keys((t.decl.parameters as any)?.properties ?? {})).not.toContain("uid");
     expect(GUIDE_RULES).toMatch(/never promise/i);
-    expect(PANDIT.systemPrompt({ briefing: "BR", nowIst: "now", profile: { name: "Anu", language: "hi" } })).toContain(GUIDE_RULES);
+    expect(PANDIT.systemPrompt()).toContain(GUIDE_RULES);
     expect(PANDIT.id).toBe("pandit"); expect(PANDIT.channel).toBe("text");
   });
   it("search_catalog returns <=3 items and emits cards on both channels", async () => {
