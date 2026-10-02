@@ -9186,5 +9186,21 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-W2-1": {
+    "description": "[AUMFE-CONSULT-W2-1 2026-10-02] Real Consultants W2: AstrologyAPI precompute of the consultant's customer file (astrology, numerology, palmistry, face, tarot cards), photo upload to private R2 with vision id check, desk file/card-edit/rerun/notes endpoints.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_prepare",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }
