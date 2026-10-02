@@ -73,7 +73,7 @@ function CardRow({ c }: { c: AdminAiCard }) {
     );
   }
   // Pandit ji's product / puja cards: title, price, wear days.
-  const price = c.price_inr ?? c.price_rupees ?? c.price;
+  const price = (c as { price_inr?: number | null }).price_inr ?? c.price_rupees ?? c.price;
   const days = Array.isArray(c.wear_days) ? c.wear_days.join(', ') : c.wear_days || c.wear_day || '';
   const bits = [price != null ? `₹${price}` : '', days ? `wear: ${days}` : ''].filter(Boolean).join(' · ');
   const inner = (
@@ -89,6 +89,16 @@ function CardRow({ c }: { c: AdminAiCard }) {
 }
 
 function Bubble({ m }: { m: AdminAiMessage }) {
+  // [AUMFE-PANDIT-TRIM-1] Pandit ji's rolling summaries are stored as system rows prefixed "[summary] ".
+  // The customer never sees them; admins get a labelled, readable card instead of a raw pill.
+  if (m.role === 'system' && m.text.startsWith('[summary] ')) {
+    return (
+      <div className="mx-auto w-full max-w-[92%] rounded-xl border border-border bg-muted/60 px-3 py-2">
+        <p className="text-[13px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Chat summary · hidden from the customer</p>
+        <p className="mt-1 whitespace-pre-line text-[14px] text-foreground">{m.text.slice('[summary] '.length)}</p>
+      </div>
+    );
+  }
   if (m.role === 'tool' || m.role === 'system') {
     return (
       <p className={cn(

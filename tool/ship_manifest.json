@@ -9140,5 +9140,19 @@
         "note": "One per Preeti memory session (first guide turn of a signed-in previewer, or after an idle gap)."
       }
     ]
+  },
+  "AUMFE-PANDIT-TRIM-1": {
+    "description": "[AUMFE-PANDIT-TRIM-1 2026-10-02] Pandit ji: max 3 lookups per answer + chart summary in context; no voice input; English default; admin labels hidden chat summaries.",
+    "shipped": "2026-10-01",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "pandit_chat_turn",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }

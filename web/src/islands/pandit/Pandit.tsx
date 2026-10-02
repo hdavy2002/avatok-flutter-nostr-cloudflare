@@ -214,7 +214,7 @@ function Pandit() {
     const t0 = nowMs();
     let gotFirst = false;
     try {
-      await streamChat({ conversation_id: convId, text, lang: langPicked ? LANGS[langIdx].code : undefined }, {
+      await streamChat({ conversation_id: convId, text, lang: LANGS[langIdx].code }, { // [AUMFE-PANDIT-TRIM-1] English unless the customer picks another
         signal: ac.signal,
         onEvent: (ev) => {
           if (ev.type === 'meta') setConvId(ev.conversation_id);
@@ -452,18 +452,14 @@ function Pandit() {
 
             <div className="pd-composer">
               <div className="pd-quick">
-                {((langPicked ? QUICK_BY_LANG[LANGS[langIdx].code] : undefined) ?? QUICK_DEFAULT).map((q) => <button key={q} type="button" disabled={streaming || locked} onClick={() => void send(q)}>{q}</button>)}
+                {(QUICK_BY_LANG[LANGS[langIdx].code] ?? QUICK_DEFAULT).map((q) => <button key={q} type="button" disabled={streaming || locked} onClick={() => void send(q)}>{q}</button>)}
               </div>
               <form className="pd-input-row" onSubmit={onSubmit}>
                 <label className="pd-input-label">
                   <span className="pd-sr">Message</span>
                   <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={LANGS[langIdx].placeholder} maxLength={2000} autoComplete="off" enterKeyHint="send" disabled={locked} />
                 </label>
-                {canSpeak && (
-                  <button type="button" className={`pd-round pd-round-mic ${listening ? 'pd-on' : ''}`} aria-label={listening ? 'Stop listening' : 'Speak'} aria-pressed={listening} onClick={listen}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-                  </button>
-                )}
+                {/* [AUMFE-PANDIT-TRIM-1] No voice input on Pandit ji (owner decision 2026-10-02): Meera is the voice guide. */}
                 {streaming ? (
                   <button type="button" className="pd-round pd-round-send" aria-label="Stop reply" onClick={stop}>
                     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" fill="#fffaf0" /></svg>

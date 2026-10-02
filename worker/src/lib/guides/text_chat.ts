@@ -1,6 +1,7 @@
 // [AUMFE-GUIDE-BRAIN-1 2026-10-01] Streaming text runner for Pandit ji on Gemini (REST streamGenerateContent, alt=sse).
 // Reuses Preeti's model resolver, cost table, $ai_generation recorder and monthly spend cap (lib/preeti/*) but NOT her chat
 // engine. The function-calling loop runs over the SAME VoiceTool objects Meera uses (guides/brain.ts + memory_tools.ts).
+import { loadChartSummary } from "./chart";
 import type { Env } from "../../types";
 import { BRAND } from "../brand";
 import { track, trackException } from "../../hooks";
@@ -20,6 +21,8 @@ import type { ChatEvent, GuideCard, GuideToolCtx } from "./types";
 
 const APP = BRAND.slug;
 export const MAX_TOOL_ROUNDS = 4;
+/** [AUMFE-PANDIT-TRIM-1] Hard cap on tool calls per answer; past it the model must answer with what it has. */
+export const MAX_TOOL_CALLS = 3;
 export const MAX_USER_CHARS = 1500;
 const TOOL_RESULT_MAX = 4000;
 
@@ -46,16 +49,17 @@ export function boundResult(result: unknown, max = TOOL_RESULT_MAX): unknown {
  * The last allowed round is made with calls disabled so the customer always gets words.
  */
 export async function runToolLoop(a: {
-  step: StepFn; tools: VoiceTool[]; ctx: GuideToolCtx; contents: Content[]; maxRounds?: number;
+  step: StepFn; tools: VoiceTool[]; ctx: GuideToolCtx; contents: Content[]; maxRounds?: number; maxCalls?: number;
   onTool?: (name: string) => void; onToolError?: (name: string, err: unknown) => void;
 }): Promise<LoopResult> {
   const maxRounds = a.maxRounds ?? MAX_TOOL_ROUNDS;
+  const maxCalls = a.maxCalls ?? MAX_TOOL_CALLS;
   const usage: Usage = { inTok: 0, outTok: 0 };
   const toolsUsed: string[] = [];
   const text: string[] = [];
   let blocked = false, rounds = 0;
   for (let round = 0; round <= maxRounds; round++) {
-    const finalRound = round === maxRounds;
+    const finalRound = round === maxRounds || toolsUsed.length >= maxCalls;
     const res = await a.step(a.contents, finalRound);
     usage.inTok += res.usage.inTok; usage.outTok += res.usage.outTok;
     if (res.blocked) blocked = true;
@@ -68,6 +72,10 @@ export async function runToolLoop(a: {
     for (const c of calls) {
       const name = String(c.functionCall!.name);
       const args = (c.functionCall!.args ?? {}) as Record<string, unknown>;
+      if (toolsUsed.length >= maxCalls) { // every call needs a response; over the cap it is a polite refusal, not a run
+        responses.push({ functionResponse: { name, response: { result: { error: "lookup_limit_reached", note: "Answer now with what you already have." } } } });
+        continue;
+      }
       toolsUsed.push(name);
       a.onTool?.(name);
       const tool = a.tools.find((t) => t.decl.name === name);
@@ -198,9 +206,12 @@ export async function runPanditTurn(env: Env, a: PanditTurnArgs): Promise<void> 
     await insertRow(env, conversationId, { role: ROLE_CUSTOMER, text });
     const turns = await countCustomerMessages(env, conversationId);
 
-    const briefing = await buildBriefing(env, uid, AGENT_ID);
+    const [briefing, chart] = await Promise.all([
+      buildBriefing(env, uid, AGENT_ID),
+      profile?.dob ? loadChartSummary(env, uid).catch((e) => { void trackException(env, e, { uid, route: "/api/guides/pandit/chat:chart", handled: true, app_name: APP }); return null; }) : Promise.resolve(null),
+    ]);
     const system = PANDIT.systemPrompt();
-    const context = PANDIT.contextMessage({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null, summary: ctx.summary });
+    const context = PANDIT.contextMessage({ briefing, nowIst: istNow(), profile: profile ? { name: profile.name, language: profile.language } : null, lang: a.lang ?? null, summary: ctx.summary, chart });
     const tools: VoiceTool[] = [...sharedGuideTools(), ...memoryTools];
     const decls = tools.map((t) => t.decl);
     const model = await preetiModel(env);
