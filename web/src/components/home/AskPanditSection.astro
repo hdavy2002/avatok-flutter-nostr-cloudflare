@@ -1,18 +1,15 @@
 ---
-// [PANDIT-HOME-DESIGN] Static consultation preview; the real chat stays on /pandit.
-// Promotional examples only. Every consultation entry opens the existing sign-in gate on /pandit.
+// [PANDIT-BOXED-LAYOUT] Promotional preview only; consultation and sign-in stay on /pandit.
 import '../../styles/ask-pandit.css';
 import { ARTWORK_QUALITY, publicImage, publicImageSrcSet } from '../../lib/config';
 
-const panditPhoto = publicImage('/images/pandit-ji.jpg', { width: 160, fit: 'cover' });
-const recommendationsImage = '/assets/pandit-home/recommendations.png';
-const decorationImage = '/assets/pandit-home/decorations.png';
-const examples = ['Which colour today?', 'Which puja is right for me?'];
-
+const illustrations = '/assets/pandit-boxed/illustrations.png';
+const artwork = publicImage(illustrations, { width: 900, fit: 'scale-down', quality: ARTWORK_QUALITY });
+const artworkSrcSet = publicImageSrcSet(illustrations, [420, 640, 900, 1280], { fit: 'scale-down', quality: ARTWORK_QUALITY });
 const recommendations = [
-  { title: 'Shani Chakra Tee', detail: 'Your colour & chakra' },
-  { title: 'Shani Puja', detail: 'A personal suggestion' },
-  { title: 'Shanti Havan', detail: 'A practice for peace' },
+  { title: 'Chakra T-shirt', detail: 'Your colour & chakra', x: 1, y: 0 },
+  { title: 'Shani Puja', detail: 'A personal suggestion', x: 0, y: 1 },
+  { title: 'Shanti Havan', detail: 'A practice for peace', x: 1, y: 1 },
 ];
 const steps = [
   ['Share birth details', 'Quick and secure'],
@@ -21,88 +18,69 @@ const steps = [
 ];
 ---
 <section class="ap-band" id="ask-pandit" aria-labelledby="ap-title" data-home-section="ask-pandit">
-  <div class="ap-border" aria-hidden="true"></div>
-  <div class="ap-scene">
-    <div class="ap-landscape" aria-hidden="true">
-      <svg viewBox="0 0 1400 250" preserveAspectRatio="none" focusable="false">
-        <path d="M0 210 65 161 150 191 247 155 340 206 420 172 519 216 600 188 675 209 775 167 850 197 980 151 1080 203 1200 143 1300 192 1400 151V250H0Z" fill="#f4dfc3" opacity=".6"></path>
-        <path d="m0 235 110-37 160 44 190-37 153 31 160-41 151 45 170-37 147 32 159-24v39H0Z" fill="#ead0ad" opacity=".4"></path>
-        <g fill="none" stroke="#dd9d60" stroke-width="2" opacity=".55">
-          <path d="M17 245V175H75V245M12 175H80L65 162H27ZM23 162 32 110H60L69 162M29 110 46 63 63 110M46 63V35M37 47H55M23 146H69M27 131H64M30 117H62M37 245V199Q46 183 55 199V245M85 245V204H127V245M82 204 106 183 131 204M94 184 106 148 118 184M106 148V129"></path>
-          <path d="M1300 245V180H1360V245M1295 180 1310 166H1350L1365 180M1309 166 1320 105H1340L1351 166M1317 105 1330 66 1343 105M1330 66V39M1321 50H1339M1311 148H1349M1315 130H1345M1320 245V204Q1330 188 1340 204V245"></path>
-        </g>
-      </svg>
-    </div>
-    <div class="ap-decoration ap-decoration-lotus" aria-hidden="true">
-      <img src={publicImage(decorationImage, { width: 640, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1774" height="887" loading="lazy" decoding="async" />
-    </div>
-    <div class="ap-decoration ap-decoration-bells" aria-hidden="true">
-      <img src={publicImage(decorationImage, { width: 640, fit: 'scale-down', quality: ARTWORK_QUALITY })} alt="" width="1774" height="887" loading="lazy" decoding="async" />
-    </div>
-    <div class="ap-inner">
-      <div class="ap-copy">
-        <p class="ap-eyebrow">Ask Pandit ji</p>
-        <h2 id="ap-title" class="ap-title"><span>Your stars.</span><span>Your colours.</span><span>Your path.</span></h2>
-        <p class="ap-lede">Guidance from your birth chart,<br class="ap-desktop-break" /> in your own language.</p>
-        <div class="ap-chips">
-          {examples.map((q) => <a class="ap-chip" href="/pandit" data-home-cta="ask-pandit-example">{q}</a>)}
-        </div>
-        <a class="ap-cta" href="/pandit" data-home-cta="ask-pandit-start">
-          <span>Start my free consultation</span><span class="ap-arrow" aria-hidden="true">⟶</span>
-        </a>
-        <p class="ap-cta-note">
-          <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path d="M20.7 11.6a8.7 8.7 0 0 1-12.9 7.7L3 20.7l1.4-4.5a8.7 8.7 0 1 1 16.3-4.6Z"></path><path d="m8.4 7.2 1.5 2.6-1 1.3c.8 1.5 1.7 2.4 3.2 3.1l1.2-1 2.6 1.5c.2 1.5-1 2.1-2.1 2-3.5-.5-6.8-3.6-7.2-7.1-.1-1.2.6-2.4 1.8-2.4Z"></path></svg>
-          <span>Sign in with WhatsApp · 2 minutes</span>
-        </p>
+  <div class="ap-inner">
+    <div class="ap-frame">
+      <div class="ap-ornament" aria-hidden="true">
+        <span class="ap-edge ap-edge-top"></span><span class="ap-edge ap-edge-bottom"></span>
+        <span class="ap-edge ap-edge-left"></span><span class="ap-edge ap-edge-right"></span>
+        <span class="ap-corner ap-corner-tl"></span><span class="ap-corner ap-corner-tr"></span>
+        <span class="ap-corner ap-corner-bl"></span><span class="ap-corner ap-corner-br"></span>
       </div>
-      <div class="ap-preview-wrap">
-        <svg class="ap-arch" viewBox="0 0 600 800" preserveAspectRatio="none" fill="none" aria-hidden="true" focusable="false">
-          <path d="M26 796Q4 796 4 773V157Q4 122 28 110Q35 77 75 77Q80 39 125 39H208Q221 19 253 19Q281 18 300 4Q319 18 347 19Q379 19 392 39H475Q520 39 525 77Q565 77 572 110Q596 122 596 157V773Q596 796 574 796Z" fill="#fffaf2" stroke="#f50062" stroke-width="3.5"></path>
-          <path d="M28 788Q12 788 12 771V158Q12 126 36 116Q42 85 82 85Q88 47 130 47H213Q227 27 255 27Q282 26 300 13Q318 26 345 27Q373 27 387 47H470Q512 47 518 85Q558 85 564 116Q588 126 588 158V771Q588 788 572 788Z" stroke="#f6a20b" stroke-width="3"></path>
-        </svg>
-        <div class="ap-crest" aria-hidden="true">
-          <svg viewBox="0 0 120 70" focusable="false">
-            <path d="M60 61C25 68 12 49 12 30c23 0 38 10 48 31Z" fill="#e93b1a" stroke="#ffba20" stroke-width="2"></path>
-            <path d="M60 61c35 7 48-12 48-31-23 0-38 10-48 31Z" fill="#e93b1a" stroke="#ffba20" stroke-width="2"></path>
-            <path d="M60 60C32 54 28 30 34 13c20 12 26 27 26 47Zm0 0c28-6 32-30 26-47C66 25 60 40 60 60Z" fill="#f50062" stroke="#ffba20" stroke-width="2"></path>
-            <path d="M60 59C44 43 44 20 60 2c16 18 16 41 0 57Z" fill="#e93b1a" stroke="#ffba20" stroke-width="2"></path>
-            <path d="M2 28 8 22l6 6-6 6Zm104 0 6-6 6 6-6 6Z" fill="#193baa"></path>
-          </svg>
-        </div>
-        <div class="ap-preview" aria-label="Example consultation with Pandit ji">
-          <div class="ap-preview-head">
-            <img class="ap-avatar" src={panditPhoto} alt="Pandit ji" width="72" height="72" loading="lazy" decoding="async" />
-            <div class="ap-preview-who"><strong>Pandit ji</strong><span><i aria-hidden="true"></i> Here to guide you</span></div>
-          </div>
-          <p class="ap-rule-label">Example consultation</p>
-          <div class="ap-conversation">
-            <div class="ap-user-message"><span class="ap-speaker">You</span><p class="ap-bubble ap-bubble-user">Pandit ji, what should I wear? Is there a puja I can do too?</p></div>
-            <div class="ap-pandit-message">
-              <img class="ap-avatar ap-avatar-small" src={panditPhoto} alt="" width="42" height="42" loading="lazy" decoding="async" />
-              <div><span class="ap-speaker ap-speaker-pandit">Pandit ji</span><p class="ap-bubble ap-bubble-bot">For your Saturday practice, consider a navy chakra tee. You can also explore Shani puja or a havan.</p></div>
+      <div class="ap-content">
+        <header class="ap-heading">
+          <div class="ap-divider" aria-hidden="true"><span></span><i></i><span></span></div>
+          <p class="ap-eyebrow">Ask Pandit ji</p>
+          <h2 class="ap-title" id="ap-title"><span>A little guidance.</span><span>A path that feels yours.</span></h2>
+          <p class="ap-lede">Your birth chart. Your colours.<br class="ap-mobile-break" /> Your spiritual practice.</p>
+          <div class="ap-divider ap-divider-small" aria-hidden="true"><span></span><i></i><span></span></div>
+        </header>
+        <div class="ap-showcase">
+          <div class="ap-consultation" role="group" aria-labelledby="ap-example-title">
+            <h3 class="ap-rule-label" id="ap-example-title">Example consultation</h3>
+            <div class="ap-preview">
+              <figure class="ap-pandit">
+                <span class="ap-art ap-portrait" aria-hidden="true">
+                  <img src={artwork} srcset={artworkSrcSet} sizes="(max-width: 760px) 220px, (max-width: 1000px) 320px, 360px" style="--ap-art-x: 0; --ap-art-y: 0" alt="" width="1254" height="1254" loading="lazy" decoding="async" />
+                </span>
+                <figcaption>Pandit ji</figcaption>
+              </figure>
+              <div class="ap-conversation">
+                <a class="ap-bubble ap-bubble-user" href="/pandit" data-home-cta="ask-pandit-example" aria-label="Ask Pandit ji what to wear or which puja to explore">
+                  <span class="ap-speaker">You</span>
+                  <p>Pandit ji, what should I wear? Is there a puja for me?</p>
+                </a>
+                <div class="ap-bubble ap-bubble-pandit">
+                  <span class="ap-speaker">Pandit ji</span>
+                  <p>You could explore a navy chakra tee, Shani puja or a havan for your Saturday practice.</p>
+                </div>
+              </div>
             </div>
           </div>
-          <p class="ap-rule-label ap-suggested">Suggested for you</p>
-          <div class="ap-preview-cards">
-            {recommendations.map((card, index) => (
-              <div class="ap-card">
-                <span class="ap-card-art" aria-hidden="true">
-                  <img src={publicImage(recommendationsImage, { width: 640, fit: 'scale-down', quality: ARTWORK_QUALITY })} srcset={publicImageSrcSet(recommendationsImage, [420, 640, 900], { fit: 'scale-down', quality: ARTWORK_QUALITY })} sizes="(max-width: 700px) 240px, 540px" style={`--ap-art-index: ${index}`} alt="" width="2172" height="724" loading="lazy" decoding="async" />
-                </span>
-                <span class="ap-card-copy"><strong>{card.title}</strong><span class="ap-card-detail">{card.detail}</span></span>
-              </div>
-            ))}
+          <div class="ap-suggestions" role="group" aria-labelledby="ap-suggested-title">
+            <h3 class="ap-suggested" id="ap-suggested-title">Suggested for you</h3>
+            <div class="ap-cards">
+              {recommendations.map((card) => (
+                <a class="ap-card" href="/pandit" data-home-cta="ask-pandit-preview" aria-label={`Explore ${card.title} with Pandit ji`}>
+                  <span class="ap-art ap-card-art" aria-hidden="true">
+                    <img src={artwork} srcset={artworkSrcSet} sizes="(max-width: 760px) 280px, (max-width: 1000px) 440px, 360px" style={`--ap-art-x: ${card.x}; --ap-art-y: ${card.y}`} alt="" width="1254" height="1254" loading="lazy" decoding="async" />
+                  </span>
+                  <span class="ap-card-copy"><strong>{card.title}</strong><span class="ap-card-detail">{card.detail}</span></span>
+                </a>
+              ))}
+            </div>
           </div>
-          <a class="ap-preview-cta" href="/pandit" data-home-cta="ask-pandit-preview">
-            <span>Sign in to ask Pandit ji</span><span aria-hidden="true">⟶</span>
-          </a>
         </div>
+        <div class="ap-action">
+          <a class="ap-cta" href="/pandit" data-home-cta="ask-pandit-start"><span>Start my free consultation</span><span class="ap-arrow" aria-hidden="true">⟶</span></a>
+          <p class="ap-cta-note">
+            <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path d="M20.7 11.6a8.7 8.7 0 0 1-12.9 7.7L3 20.7l1.4-4.5a8.7 8.7 0 1 1 16.3-4.6Z"></path><path d="m8.4 7.2 1.5 2.6-1 1.3c.8 1.5 1.7 2.4 3.2 3.1l1.2-1 2.6 1.5c.2 1.5-1 2.1-2.1 2-3.5-.5-6.8-3.6-7.2-7.1-.1-1.2.6-2.4 1.8-2.4Z"></path></svg>
+            <span>Sign in with WhatsApp · 2 minutes</span>
+          </p>
+        </div>
+        <ol class="ap-steps" aria-label="Your consultation in three steps">
+          {steps.map(([title, detail], index) => <li><span class="ap-step-n" aria-hidden="true">{index + 1}</span><div><strong>{title}</strong><span>{detail}</span></div></li>)}
+        </ol>
       </div>
     </div>
-    <div class="ap-border ap-border-middle" aria-hidden="true"></div>
   </div>
-  <ol class="ap-steps" aria-label="Your consultation in three steps">
-    {steps.map(([title, detail], index) => <li><span class="ap-step-n" aria-hidden="true">{index + 1}</span><div><strong>{title}</strong><span>{detail}</span></div></li>)}
-  </ol>
-  <div class="ap-border" aria-hidden="true"></div>
 </section>

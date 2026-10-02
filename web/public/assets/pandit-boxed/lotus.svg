@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 39"><defs><linearGradient id="petal" x2=".8" y2="1"><stop stop-color="#ffd0a0"/><stop offset=".45" stop-color="#ff9784"/><stop offset="1" stop-color="#e94e61"/></linearGradient><g id="lotus" stroke="#ffd07a" stroke-width=".65" stroke-linejoin="round">
+<path d="M20 32C5 34 1 25 0 20c11-2 17 3 20 12Zm0 0c15 2 19-7 20-12-11-2-17 3-20 12Z" fill="#ef795c"/>
+<path d="M20 31C6 31 2 18 4 10c10 2 16 12 16 21Zm0 0c14 0 18-13 16-21-10 2-16 12-16 21Z" fill="#ff9a83"/>
+<path d="M20 31C8 28 7 14 12 4c8 6 9 18 8 27Zm0 0c12-3 13-17 8-27-8 6-9 18-8 27Z" fill="#f46670"/>
+<path d="M20 31C11 21 12 10 20 0c8 10 9 21 0 31Z" fill="url(#petal)"/>
+<g fill="none" opacity=".85"><path d="M20 29V5M18 29 12 9M22 29l6-20M16 29 6 14M24 29l10-15M14 30 4 23M26 30l10-7"/></g>
+<path d="M8 33q12 6 24 0M13 36h14" fill="none" stroke="#edab40" stroke-width="1.2"/>
+</g><g id="leaf"><path d="M0 0Q-8-3-7-13Q1-11 0 0Z" fill="#d99a37" stroke="#f6c863" stroke-width=".5"/><path d="M0 0-5-10" stroke="#805237" stroke-width=".6"/></g><g id="blueflower" fill="#5480b4" stroke="#adacd1" stroke-width=".45"><path d="M0-1C-9-5-4-13 0-6 5-13 10-5 2-1 12 1 6 9 1 3-2 13-9 6-3 1-12 3-11-6-3-3Z"/><circle r="1.6" fill="#fbc75d"/></g></defs><use href="#lotus"/></svg>
