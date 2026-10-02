@@ -1,0 +1,24 @@
+---
+// /desk/availability — [AUMFE-CONSULT-F3-1 2026-10-02] Real Consultants. Weekly hours, days off, slot length.
+// Per-person data: never cached or indexed. Brand name only through BRAND.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import DeskApp from '../../islands/consult-desk/Desk.tsx';
+import '../../styles/consultants.css';
+import { BRAND } from '../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+---
+<Base title={`Availability · ${BRAND.name}`} noindex={true} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&family=Nunito:wght@400;700;800;900&family=Baloo+2:wght@600;700;800&display=swap" />
+  </Fragment>
+  <div class="consult-ui cd-page">
+    <DeskApp client:load page="availability" />
+  </div>
+</Base>

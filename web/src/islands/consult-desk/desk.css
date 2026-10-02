@@ -1,0 +1,96 @@
+/* [AUMFE-CONSULT-F3-1 2026-10-02] Consultant desk + call screens — layout rules the mockup expresses inline.
+ * Scoped under .consult-ui (styles/consultants.css holds the shared look). One breakpoint: 1180px (sidebar + call column).
+ * Min font 13px. No green. */
+.consult-ui.cd-page{min-height:100vh;background:var(--cream)}
+.consult-ui .cd-center{min-height:70vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.consult-ui .cd-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr)}
+.consult-ui .cd-side{display:none}
+.consult-ui .cd-aside{display:none}
+.consult-ui .cd-col{min-width:0;display:flex;flex-direction:column}
+.consult-ui .cd-top{padding:12px 16px;gap:10px}
+.consult-ui .cd-main{padding:16px 16px 110px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:760px;margin:0 auto;min-width:0}
+.consult-ui .cd-main-nonav{padding-bottom:150px}
+.consult-ui .cd-bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff;padding:6px 0 calc(12px + env(safe-area-inset-bottom,0px))}
+.consult-ui .cd-bottomnav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;text-decoration:none;color:var(--muted);font-size:13px;font-weight:800}
+.consult-ui .cd-bottomnav a.on{color:var(--teal);font-weight:900}
+.consult-ui .cd-grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.consult-ui .cd-row{display:flex;gap:10px;align-items:center}
+.consult-ui .cd-link-card{display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--ink);gap:12px}
+.consult-ui .side{border-right:1px solid var(--line);padding:20px 14px;flex-direction:column;gap:4px;background:#fffaf0}
+.consult-ui .cd-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.consult-ui .cd-tabs .slot{padding:0 12px;min-height:40px}
+.consult-ui .cd-ta{width:100%;min-height:110px;border:1.5px solid #cdbb8f;border-radius:12px;padding:10px;font:16px 'Nunito',sans-serif;color:var(--ink);background:#fff}
+.consult-ui .cd-in{min-height:44px;border:1.5px solid #cdbb8f;border-radius:10px;padding:6px 10px;font:16px 'Nunito',sans-serif;color:var(--ink);background:#fff;min-width:0;width:100%}
+.consult-ui .cd-kv-row{display:contents}
+.consult-ui .cd-kv-edit{grid-column:1/-1;display:flex;gap:8px;align-items:center}
+.consult-ui .kv .v{min-width:0;overflow-wrap:anywhere}
+.consult-ui .cd-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:150px;z-index:60;background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;font-weight:800;font-size:15px;max-width:calc(100vw - 32px)}
+.consult-ui .cd-dark{background:#17343c;border-color:#17343c;color:#f6e7c4}
+.consult-ui .cd-dark h3{color:#f6e7c4}
+.consult-ui .cd-spread{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.consult-ui .cd-spread .icard{height:190px;padding:14px 6px 10px}
+.consult-ui .cd-spread .icard .nm{font-size:14px}
+.consult-ui .cd-deckrow{display:flex;gap:8px;align-items:center}
+.consult-ui .cd-deckrow .cardback{width:56px;height:86px;flex-shrink:0}
+.consult-ui .cd-deckrow .cardback+.cardback{margin-left:-40px}
+.consult-ui .cd-flip{perspective:700px}
+.consult-ui .cd-shuffle .cardback{animation:cdShuffle .5s ease-in-out 2}
+@keyframes cdShuffle{0%,100%{transform:translateX(0)}50%{transform:translateX(18px) rotate(6deg)}}
+@media (prefers-reduced-motion:reduce){.consult-ui .cd-shuffle .cardback{animation:none}}
+.consult-ui .cd-lo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.consult-ui .cd-lo>button{min-height:72px;border-radius:12px;border:1.5px solid #e2cf9f;background:#fff;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px}
+.consult-ui .cd-lo>button.miss{background:#f6ead0;color:#a39678;border-style:dashed}
+.consult-ui .cd-lo .deva{font-size:24px;line-height:1.1}
+.consult-ui .cd-bar{display:flex;height:30px;border-radius:8px;overflow:hidden;font-size:13px;font-weight:800;color:#fff}
+.consult-ui .cd-bar span{display:flex;align-items:center;padding-left:8px;white-space:nowrap;overflow:hidden;min-width:0}
+.consult-ui .cd-photo{position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,#e9c7a6,#d6a982);display:flex;align-items:center;justify-content:center;min-height:300px}
+.consult-ui .cd-photo img{display:block;width:100%;max-height:440px;object-fit:contain}
+.consult-ui .cd-photo svg.ov{position:absolute;inset:0;margin:auto;height:92%;opacity:.8;pointer-events:none}
+.consult-ui .cd-dosha{padding:12px;border-radius:16px;border:1px solid;display:flex;flex-direction:column;gap:4px;min-width:0}
+.consult-ui .cd-chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.consult-ui .cd-table-wrap{overflow-x:auto}
+.consult-ui .cd-json{margin:0;padding:12px;border-radius:12px;background:#f6ead0;font:13px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto}
+
+/* call bar (phone) */
+.consult-ui .cd-callwrap{position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;max-width:736px;margin:0 auto}
+.consult-ui .cd-callwrap .callbar{width:100%}
+.consult-ui .cd-callwrap .callbar .txt{display:flex;flex-direction:column;flex-grow:1;line-height:1.2;min-width:0;text-align:left;background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0}
+.consult-ui .cd-sheet{margin-bottom:10px;background:#dfe2f3;border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;box-shadow:0 14px 30px rgba(23,52,60,.3);max-height:70vh;overflow:auto}
+.consult-ui .cd-av{border-radius:50%;background:#fff;border:6px solid #fff;display:flex;align-items:center;justify-content:center;font-family:'Comfortaa',sans-serif;font-weight:700;color:var(--teal);box-shadow:0 12px 18px -6px rgba(23,52,60,.35),0 0 0 12px rgba(7,84,91,.08)}
+.consult-ui .cd-round{width:60px;height:60px;border-radius:50%;border:0;background:#fff;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(23,52,60,.18)}
+.consult-ui .cd-round.end{background:var(--red)}
+.consult-ui .cd-round.on{background:var(--ink);color:#fff}
+.consult-ui .cd-round:disabled{opacity:.5;cursor:default}
+
+@media (min-width:1180px){
+  .consult-ui .cd-shell{grid-template-columns:230px minmax(0,1fr)}
+  .consult-ui .cd-shell.cd-has-aside{grid-template-columns:230px minmax(0,1fr) 380px}
+  .consult-ui .cd-side{display:flex;position:sticky;top:0;height:100vh;align-self:start}
+  .consult-ui .cd-aside{display:flex;flex-direction:column;gap:18px;border-left:1px solid var(--line);background:#dfe2f3;padding:24px 22px;position:sticky;top:0;height:100vh;overflow:auto;align-self:start}
+  .consult-ui .cd-main{max-width:none;padding:24px 28px 60px;margin:0}
+  .consult-ui .cd-main-nonav{padding-bottom:60px}
+  .consult-ui .cd-bottomnav{display:none}
+  .consult-ui .cd-grid2{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .consult-ui .cd-callwrap{display:none}
+  .consult-ui .cd-mobile-only{display:none!important}
+  .consult-ui .cd-top{padding:14px 28px}
+}
+@media (max-width:1179px){
+  .consult-ui .cd-desktop-only{display:none!important}
+}
+
+/* customer call screen */
+.consult-ui .cs-page{min-height:100vh;background:#dfe2f3;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:20px;padding:40px 16px calc(32px + env(safe-area-inset-bottom,0px))}
+.consult-ui .cs-col{width:100%;max-width:460px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center}
+.consult-ui .cs-ring{border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px rgba(7,84,91,.10),0 0 0 22px rgba(7,84,91,.06)}
+.consult-ui .cs-ring.wait{animation:csPulse 2.4s ease-in-out infinite}
+@keyframes csPulse{0%,100%{box-shadow:0 0 0 10px rgba(7,84,91,.10),0 0 0 22px rgba(7,84,91,.06)}50%{box-shadow:0 0 0 16px rgba(7,84,91,.12),0 0 0 32px rgba(7,84,91,.05)}}
+@media (prefers-reduced-motion:reduce){.consult-ui .cs-ring.wait{animation:none}}
+.consult-ui .cs-strip{display:flex;gap:10px;overflow-x:auto;width:100%;padding:4px 2px}
+.consult-ui .cs-strip .icard{flex:0 0 108px;height:160px;padding:14px 6px 10px}
+.consult-ui .cs-strip .icard .nm{font-size:13px}
+
+/* face reading: deep red headings like the mockup */
+.consult-ui .cat-face h1,.consult-ui .cat-face .card h3{color:#7d1820}
+.consult-ui .cat-face .cd-dark h3{color:#f6e7c4}
+.consult-ui .cd-bottomnav a svg{flex-shrink:0}

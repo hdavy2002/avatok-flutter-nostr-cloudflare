@@ -9273,5 +9273,21 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-F3-1": {
+    "description": "[AUMFE-CONSULT-F3-1 2026-10-02] Real Consultants desk + 1:1 audio call: /desk (today, rate calculator, availability, customers), /desk/bookings/:id (prepared file cards, every value editable, tarot reveal, private notes, live call), customer call screen /guides/session/:id, call engine web/src/lib/consultCall.ts (WebRTC, Wake Lock, Media Session).",
+    "shipped": "2026-10-02",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_call_client",
+        "property": "event",
+        "equals": "connected"
+      }
+    ]
   }
 }
