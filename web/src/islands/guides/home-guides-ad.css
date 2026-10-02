@@ -1,0 +1,119 @@
+/* [MEERA-HOME-DESIGN] Homepage-only styles: marketplace guides remain independent. */
+.mg-home.mg-home { --mg-wine: #870923; --mg-orange: #ce4900; --mg-gold: #c79535; background: #fff; color: var(--mg-wine); padding: 28px clamp(12px, 3vw, 44px); font-family: Nunito, sans-serif; }
+.mg-home.mg-home *, .mg-home.mg-home *::before, .mg-home.mg-home *::after { box-sizing: border-box; }
+.mg-home.mg-home .mg-inner { max-width: 1280px; margin: 0 auto; }
+.mg-home.mg-home .mg-preview { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.mg-home.mg-home .mg-frame { overflow: hidden; border: 2px solid #862e23; border-radius: 22px; padding: 5px; background: #fff; box-shadow: 0 0 0 1px #dcac55 inset; }
+.mg-home.mg-home .mg-floral-border { height: 58px; border: 1px solid #c58b36; border-radius: 14px 14px 0 0; background: #fff url('/assets/meera-home/floral-border.svg') center / auto 58px repeat-x; }
+.mg-home.mg-home .mg-floral-border-bottom { border-radius: 0 0 14px 14px; transform: rotate(180deg); }
+.mg-home.mg-home .mg-content::before, .mg-home.mg-home .mg-content::after { content: ''; position: absolute; top: 0; width: 100px; height: 100px; background: url('/assets/meera-home/jali-corner.svg') top left / contain no-repeat; pointer-events: none; }
+.mg-home.mg-home .mg-content::before { left: 0; }
+.mg-home.mg-home .mg-content::after { right: 0; transform: scaleX(-1); }
+.mg-home.mg-home .mg-content { padding: 10px 24px 22px; position: relative; }
+.mg-home.mg-home .mg-main { display: grid; grid-template-columns: 1.08fr 1fr; align-items: center; gap: 8px; }
+.mg-home.mg-home .mg-copy { position: relative; z-index: 1; padding: 28px 0 24px 44px; }
+.mg-home.mg-home .mg-copy::before { position: absolute; content: ''; width: 68px; height: 280px; left: -24px; top: 43%; background: url('/assets/meera-home/floral-sprig.svg') center / contain no-repeat; pointer-events: none; }
+.mg-home.mg-home .mg-eyebrow { display: flex; align-items: center; gap: 12px; max-width: 385px; margin-bottom: 16px; color: #870923; font-size: 13px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+.mg-home.mg-home .mg-eyebrow > span:first-child { flex: 0 0 auto; }
+.mg-home.mg-home .mg-rule { height: 1px; background: var(--mg-gold); flex: 1; }
+.mg-home.mg-home .mg-lotus { width: 37px; height: 28px; flex: 0 0 auto; color: var(--mg-gold); }
+.mg-home.mg-home .mg-copy h2 { margin: 0; color: var(--mg-wine); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(34px, 3.6vw, 51px); font-weight: 700; line-height: 1.12; letter-spacing: -.035em; }
+.mg-home.mg-home .mg-copy h2 > span { display: block; color: var(--mg-orange); margin-top: 3px; }
+.mg-home.mg-home .mg-intro { max-width: 510px; margin: 24px 0 30px; font-size: clamp(16px, 1.55vw, 20px); line-height: 1.55; color: #870923; }
+.mg-home.mg-home .mg-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 18px 26px; }
+.mg-home.mg-home .mg-cta { display: inline-flex; justify-content: center; align-items: center; gap: 18px; padding: 15px 28px; border: 1px solid #e6a22d; border-radius: 999px; color: #6c2118; background: linear-gradient(105deg, #ffb716, #ffa40a); box-shadow: 0 3px 0 #bd79192b; font-size: 20px; font-weight: 900; line-height: 1.2; text-decoration: none; }
+.mg-home.mg-home .mg-cta:hover { background: #ffcc63; }
+.mg-home.mg-home .mg-all { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 5px; color: #882a25; text-decoration: none; font-size: 16px; font-weight: 700; }
+.mg-home.mg-home .mg-all:hover { text-decoration: underline; }
+.mg-home.mg-home a:focus-visible { outline: 3px solid #9d311c; outline-offset: 5px; }
+.mg-home.mg-home .mg-price { margin: 23px 0 4px; color: #783321; font-size: 16px; line-height: 1.4; }
+.mg-home.mg-home .mg-guidance-note { margin: 0; color: #885b46; font-size: 13px; line-height: 1.5; }
+.mg-home.mg-home .mg-visual { position: relative; min-width: 0; align-self: start; padding: 0 3px 8px; }
+.mg-home.mg-home .mg-portrait { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: #fff; }
+.mg-home.mg-home .mg-example { position: relative; z-index: 1; margin: -36px 18px 0; padding: 14px 26px 16px; border: 1px solid #d38a35; border-radius: 19px 19px 16px 16px; background: #fff; outline: 1px solid #ebc183; outline-offset: 4px; box-shadow: 0 3px 10px #935a2114; }
+.mg-home.mg-home .mg-example::before, .mg-home.mg-home .mg-example::after { content: ''; position: absolute; width: 24px; height: 56px; bottom: 6px; background: url('/assets/meera-home/floral-sprig.svg') center / contain no-repeat; pointer-events: none; }
+.mg-home.mg-home .mg-example::before { left: 5px; transform: rotate(-18deg); }
+.mg-home.mg-home .mg-example::after { right: 5px; transform: scaleX(-1) rotate(-18deg); }
+.mg-home.mg-home .mg-example-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mg-home.mg-home .mg-name { margin: 0; color: #8c2423; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; line-height: 1.1; font-weight: 700; }
+.mg-home.mg-home .mg-role { margin: 2px 0 0; color: #862c22; font-size: 14px; line-height: 1.3; }
+.mg-home.mg-home .mg-example-label { color: #8f372b; font-size: 10px; text-align: right; }
+.mg-home.mg-home .mg-waveform { display: block; width: 78%; max-width: 292px; height: 40px; margin: 9px auto 6px; color: #c94d2f; }
+.mg-home.mg-home .mg-quote { margin: 0; color: #843226; font-family: Georgia, 'Times New Roman', serif; font-size: 14px; font-style: italic; text-align: center; line-height: 1.45; }
+.mg-home.mg-home .mg-more { margin-top: 13px; }
+.mg-home.mg-home .mg-divider { display: flex; align-items: center; gap: 12px; }
+.mg-home.mg-home .mg-divider > span { height: 1px; background: #d6a04b; flex: 1; }
+.mg-home.mg-home .mg-divider .mg-lotus { width: 31px; height: 23px; }
+.mg-home.mg-home .mg-more h3 { margin: 2px 0 14px; text-align: center; font-size: 16px; letter-spacing: .07em; font-weight: 600; line-height: 1.4; color: #8a3325; }
+.mg-home.mg-home .mg-guides-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.mg-home.mg-home .mg-guide { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; padding: 12px 8px 14px; border: 1px solid #c48a38; border-radius: 16px; color: #fff6d9; box-shadow: inset 0 0 0 4px #ffffff0b; }
+.mg-home.mg-home .mg-guide-palmistry { background: #c51c0b; }
+.mg-home.mg-home .mg-guide-numerology { background: #b94a00; }
+.mg-home.mg-home .mg-guide-tarot { background: #6714a0; }
+.mg-home.mg-home .mg-guide-marriage { background: #b90057; }
+.mg-home.mg-home .mg-guide-vastu { background: #0643ad; }
+.mg-home.mg-home .mg-guide-art { display: block; width: 104px; height: 104px; object-fit: contain; }
+.mg-home.mg-home .mg-guide-copy { text-align: center; }
+.mg-home.mg-home .mg-guide h4 { margin: 3px 0 2px; font-size: 17px; line-height: 1.35; font-weight: 700; color: inherit; }
+.mg-home.mg-home .mg-guide p { margin: 0; font-size: 13px; line-height: 1.4; color: #ffebc4; }
+@media (min-width: 1250px) {
+  .mg-home.mg-home .mg-copy h2 { font-size: 51px; }
+}
+@media (max-width: 1000px) and (min-width: 761px) {
+  .mg-home.mg-home .mg-content { padding-right: 16px; padding-left: 16px; }
+  .mg-home.mg-home .mg-copy { padding-left: 20px; }
+  .mg-home.mg-home .mg-copy::before { width: 38px; left: -19px; opacity: .8; }
+  .mg-home.mg-home .mg-intro { margin: 18px 0 22px; }
+  .mg-home.mg-home .mg-actions { gap: 16px; }
+  .mg-home.mg-home .mg-cta { font-size: 18px; padding: 13px 24px; }
+  .mg-home.mg-home .mg-example { margin-left: 9px; margin-right: 9px; padding-left: 18px; padding-right: 18px; }
+  .mg-home.mg-home .mg-quote { font-size: 12px; }
+  .mg-home.mg-home .mg-guides-grid { gap: 10px; }
+}
+@media (max-width: 760px) {
+  .mg-home.mg-home { padding: 18px 12px; }
+  .mg-home.mg-home .mg-inner { max-width: 520px; }
+  .mg-home.mg-home .mg-frame { padding: 4px; border-radius: 16px; }
+  .mg-home.mg-home .mg-floral-border { height: 29px; background-size: auto 31px; border-radius: 8px 8px 0 0; }
+  .mg-home.mg-home .mg-floral-border-bottom { border-radius: 0 0 8px 8px; }
+  .mg-home.mg-home .mg-content { padding: 0 10px 13px; }
+  .mg-home.mg-home .mg-content::before, .mg-home.mg-home .mg-content::after { display: none; }
+  .mg-home.mg-home .mg-main { display: flex; flex-direction: column; gap: 0; }
+  .mg-home.mg-home .mg-copy { width: 100%; padding: 19px 3px 8px; }
+  .mg-home.mg-home .mg-copy::before { display: none; }
+  .mg-home.mg-home .mg-eyebrow { gap: 9px; max-width: 310px; font-size: 10px; letter-spacing: .16em; margin-bottom: 9px; }
+  .mg-home.mg-home .mg-eyebrow .mg-lotus { width: 26px; height: 20px; }
+  .mg-home.mg-home .mg-copy h2 { font-size: clamp(28px, 7.4vw, 39px); line-height: 1.08; letter-spacing: -.035em; }
+  .mg-home.mg-home .mg-intro { margin: 12px 0 16px; max-width: none; font-size: 14px; line-height: 1.45; }
+  .mg-home.mg-home .mg-actions { flex-direction: column; gap: 11px; align-items: stretch; }
+  .mg-home.mg-home .mg-cta { padding: 12px 22px; font-size: 18px; }
+  .mg-home.mg-home .mg-all { font-size: 13px; text-align: center; }
+  .mg-home.mg-home .mg-price { margin-top: 11px; text-align: center; font-size: 12px; }
+  .mg-home.mg-home .mg-guidance-note { text-align: center; font-size: 11px; }
+  .mg-home.mg-home .mg-visual { width: 100%; max-width: 430px; padding: 0 0 6px; align-self: center; }
+  .mg-home.mg-home .mg-example { margin: -24px 9px 0; padding: 9px 17px 12px; border-radius: 14px; outline-offset: 3px; }
+  .mg-home.mg-home .mg-name { font-size: 24px; }
+  .mg-home.mg-home .mg-role { font-size: 12px; }
+  .mg-home.mg-home .mg-example-label { font-size: 9px; }
+  .mg-home.mg-home .mg-waveform { height: 30px; margin: 7px auto 5px; }
+  .mg-home.mg-home .mg-quote { font-size: 12px; }
+  .mg-home.mg-home .mg-example::before, .mg-home.mg-home .mg-example::after { width: 18px; height: 38px; }
+  .mg-home.mg-home .mg-more { margin-top: 7px; }
+  .mg-home.mg-home .mg-divider { gap: 9px; }
+  .mg-home.mg-home .mg-divider .mg-lotus { width: 24px; height: 18px; }
+  .mg-home.mg-home .mg-more h3 { margin: 1px 0 10px; font-size: 12px; letter-spacing: .035em; }
+  .mg-home.mg-home .mg-guides-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .mg-home.mg-home .mg-guide { flex-direction: row; justify-content: flex-start; gap: 4px; padding: 7px 5px; border-radius: 10px; }
+  .mg-home.mg-home .mg-guide:last-child:nth-child(odd) { grid-column: 1 / -1; justify-content: center; gap: 15px; }
+  .mg-home.mg-home .mg-guide-art { width: 52px; height: 61px; flex: 0 0 52px; }
+  .mg-home.mg-home .mg-guide-copy { text-align: left; }
+  .mg-home.mg-home .mg-guide h4 { margin: 0 0 2px; font-size: 12px; }
+  .mg-home.mg-home .mg-guide p { font-size: 10px; }
+}
+@media (max-width: 350px) {
+  .mg-home.mg-home { padding-left: 8px; padding-right: 8px; }
+  .mg-home.mg-home .mg-content { padding-left: 7px; padding-right: 7px; }
+  .mg-home.mg-home .mg-guide { gap: 2px; }
+  .mg-home.mg-home .mg-guide-art { width: 43px; flex-basis: 43px; }
+  .mg-home.mg-home .mg-guide h4 { font-size: 11px; }
+}
