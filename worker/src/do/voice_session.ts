@@ -25,6 +25,11 @@ import {
   CaptionTracker, buildTranscript, b64decode, b64encode, capToolResult, emptyUsage, liveCostUsd, meterCostPaise,
   nowIstString, parseUsage, rememberLines, scrubSecrets, translateGemini, type GemEvent, type GemToolCall, type LiveUsage,
 } from "../lib/voice_agents/session_logic";
+import {
+  applyCharge, balanceEndS, chargedPaise, cleanFreeSeconds, closeBilling, newBilling, nextChargeDue, priceTokensPerMin,
+  remainingSeconds, runwayHoldTokens, runwayTopUpTokens, type BillingState,
+} from "../lib/voice_agents/billing";
+import { chargeMinute, holdRunway, readSpendable, releaseHold, resolvePayer } from "../lib/voice_agents/billing_wallet";
 
 const APP = "aumfe_voice";
 const GEMINI_WS = "https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
@@ -41,8 +46,10 @@ const MAX_AUDIO_FRAME = 64 * 1024;  // PCM16 16 kHz: ~2 s; real frames are 20-10
 const MAX_TEXT_CHARS = 1000;
 const MAX_IMAGE_B64 = 700_000;
 const MAX_RECONNECTS = 2;
+const CHARGE_RETRY_GIVE_UP_S = 20;  // [AUMFE-VOICE-BILLING-1] a wallet that keeps erroring must not give free minutes forever
+const HOLD_SLACK_MS = 300_000;      // wallet-side expiry of the runway hold = call cap + this (safety net if the DO dies)
 
-type EndReason = "customer" | "time_up" | "error" | "idle" | "server";
+type EndReason = "customer" | "time_up" | "balance_out" | "error" | "idle" | "server";
 type AgentState = "connecting" | "listening" | "thinking" | "speaking";
 
 export class VoiceSessionDO {
@@ -69,6 +76,14 @@ export class VoiceSessionDO {
   private setupTimer: ReturnType<typeof setTimeout> | null = null;
   private lastMeterS = -METER_EVERY_S;
   private endingSoonSent = false;
+
+  // [AUMFE-VOICE-BILLING-1] paid-call billing. bill === null means unpriced (price 0) -> "test" billing, nothing charged.
+  private bill: BillingState | null = null;
+  private payer = "";
+  private held = 0;                                    // tokens in the runway hold
+  private reserveP: Promise<void> | null = null;      // resolves when the start-of-call hold attempt is settled
+  private chargeP: Promise<void> | null = null;       // a minute charge is in flight
+  private chargeFailSinceS = -1;
 
   private finished = false;
   private begun = false;
@@ -150,14 +165,31 @@ export class VoiceSessionDO {
     }
     if (this.finished) return; // browser left while we were loading
 
+    // [AUMFE-VOICE-BILLING-1] paid call: resolve the payer, check the wallet, hold the runway. Before `ready`, so a
+    // customer without funds never hears a greeting. persist() awaits reserveP so a hold is always released.
+    const priceTokens = priceTokensPerMin(this.cfg.voiceAgentPricePerMinPaise);
+    if (priceTokens > 0) {
+      let fail: { code: string; message: string } | null = null;
+      this.reserveP = this.openBilling(priceTokens).then((f) => { fail = f; });
+      await this.reserveP;
+      if (fail) {
+        const f = fail as { code: string; message: string };
+        if (f.code === "insufficient_balance") { this.sendClient({ type: "error", code: f.code, message: f.message }); await this.finish("error"); } // expected, not an exception
+        else await this.failWith(f.code, f.message, new Error(`voice billing start: ${f.code}`));
+        return;
+      }
+      if (this.finished) return;
+    }
+    const freeS = cleanFreeSeconds(this.cfg.voiceAgentFreeSeconds);
+
     this.tools = new Map();
     for (const t of [...this.agent.tools, ...memoryTools]) if (!this.tools.has(t.decl.name)) this.tools.set(t.decl.name, t);
     this.setupSystem = this.agent.systemPrompt({ briefing, brandName: BRAND.name, nowIst: nowIstString() });
 
     this.sendClient({
       type: "ready", session_id: this.sessionId, agent: toPublic(this.agent), remembers,
-      max_seconds: this.cfg.voiceAgentMaxSeconds, free_seconds: this.cfg.voiceAgentFreeSeconds,
-      price_per_min_paise: this.cfg.voiceAgentPricePerMinPaise, billing: "test",
+      max_seconds: this.cfg.voiceAgentMaxSeconds, free_seconds: freeS,
+      price_per_min_paise: this.cfg.voiceAgentPricePerMinPaise, billing: this.bill ? "live" : "test",
     });
     this.setAgentState("connecting");
     this.ev("voice_session_started", { agent: this.agent.id, model: this.model, has_briefing: !!briefing, remembers: remembers.length });
@@ -167,6 +199,49 @@ export class VoiceSessionDO {
       if (!this.setupDone && !this.finished) void this.failWith("setup_timeout", "The guide could not connect. Please try again.", new Error("gemini setup timeout"));
     }, SETUP_TIMEOUT_MS);
     await this.connectGemini("");
+  }
+
+  // -------------------------------------------------------------------------
+  // [AUMFE-VOICE-BILLING-1] Billing
+  // -------------------------------------------------------------------------
+  /** Read the wallet and take the runway hold. Returns a failure to show the customer, or null when the call may start. */
+  private async openBilling(priceTokens: number): Promise<{ code: string; message: string } | null> {
+    this.payer = await resolvePayer(this.env, this.uid);
+    const spendable = await readSpendable(this.env, this.payer);
+    if (spendable === null) return { code: "wallet_unavailable", message: "Could not check your wallet. Please try again." };
+    if (spendable < priceTokens) return { code: "insufficient_balance", message: `You need at least \u20B9${priceTokens} in your wallet to talk to ${this.agent.name}.` };
+    const hold = runwayHoldTokens(spendable, priceTokens);
+    const expires = Date.now() + this.cfg.voiceAgentMaxSeconds * 1000 + HOLD_SLACK_MS;
+    const r = await holdRunway(this.env, this.payer, this.sessionId, hold, hold, expires);
+    if (!r.ok) {
+      return r.reason === "insufficient"
+        ? { code: "insufficient_balance", message: `You need at least \u20B9${priceTokens} in your wallet to talk to ${this.agent.name}.` }
+        : { code: "wallet_unavailable", message: "Could not check your wallet. Please try again." };
+    }
+    this.held = hold;
+    this.bill = newBilling(priceTokens, this.cfg.voiceAgentFreeSeconds, spendable);
+    return null;
+  }
+
+  /** Charge every started minute that is due at `elapsedS`, one at a time (op id voice:<sid>:m<N> makes a replay harmless). */
+  private async chargeDue(elapsedS: number): Promise<"ok" | "insufficient" | "error"> {
+    for (;;) {
+      const b = this.bill;
+      if (!b) return "ok";
+      const n = nextChargeDue(b, elapsedS);
+      if (n === null) return "ok";
+      const r = await chargeMinute(this.env, this.payer, this.sessionId, n, b.priceTokens, this.agent.name, b.priceTokens);
+      this.ev("voice_charge", { uid: this.uid, session_id: this.sessionId, minute: n, tokens: b.priceTokens, ok: r.ok, ...(r.ok ? {} : { reason: r.reason }) });
+      if (!r.ok) return r.reason;
+      const spendable = (await readSpendable(this.env, this.payer)) ?? Math.max(0, b.spendable - b.priceTokens);
+      this.bill = applyCharge(this.bill!, n, spendable);
+      // Keep the hold at min(spendable, 5 min). The hold is not consumed by the charge, so this rarely adds anything.
+      const topUp = runwayTopUpTokens(this.held, spendable, b.priceTokens);
+      if (topUp > 0 && !this.finished) {
+        const h = await holdRunway(this.env, this.payer, this.sessionId, topUp, this.held + topUp, Date.now() + this.cfg.voiceAgentMaxSeconds * 1000 + HOLD_SLACK_MS);
+        if (h.ok) this.held += topUp;
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -451,16 +526,38 @@ export class VoiceSessionDO {
     if (!this.callStartedAt) return;
     const elapsed = Math.floor((now - this.callStartedAt) / 1000);
     const max = this.cfg.voiceAgentMaxSeconds;
-    const remaining = Math.max(0, max - elapsed);
+
+    // [AUMFE-VOICE-BILLING-1] charge started minutes. Capped at max-1: the instant the cap is reached the call is over,
+    // so it must not open (and bill) a further minute.
+    const b0 = this.bill;
+    if (b0 && !this.chargeP && nextChargeDue(b0, Math.min(elapsed, Math.max(0, max - 1))) !== null) {
+      const p = this.chargeDue(Math.min(elapsed, Math.max(0, max - 1)));
+      this.chargeP = p.then(() => undefined, () => undefined);
+      let out: "ok" | "insufficient" | "error" = "error";
+      try { out = await p; } catch (e) {
+        void trackException(this.env, e, { uid: this.uid, route: "VoiceSessionDO.charge", handled: true, app_name: APP, extra: { session_id: this.sessionId } });
+      }
+      this.chargeP = null;
+      if (this.finished) return;
+      if (out === "insufficient") { await this.finish("balance_out"); return; }
+      if (out === "error") {
+        if (this.chargeFailSinceS < 0) this.chargeFailSinceS = elapsed;
+        if (elapsed - this.chargeFailSinceS >= CHARGE_RETRY_GIVE_UP_S) { await this.finish("error"); return; }
+      } else this.chargeFailSinceS = -1;
+    }
+
+    const bill = this.bill;
+    const balEnd = bill ? balanceEndS(bill) : Infinity;
+    const remaining = remainingSeconds(elapsed, max, balEnd);
     if (elapsed - this.lastMeterS >= METER_EVERY_S) {
       this.lastMeterS = elapsed;
       this.sendClient({
         type: "meter", seconds: elapsed,
-        cost_paise: meterCostPaise(elapsed, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise),
+        cost_paise: bill ? chargedPaise(bill) : meterCostPaise(elapsed, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise),
         remaining_seconds: remaining,
       });
     }
-    if (!this.endingSoonSent && max > ENDING_SOON_S && remaining <= ENDING_SOON_S) {
+    if (!this.endingSoonSent && Math.min(max, balEnd) > ENDING_SOON_S && remaining <= ENDING_SOON_S) {
       this.endingSoonSent = true;
       this.sendClient({ type: "ending_soon", remaining_seconds: remaining });
       this.sendGem({
@@ -470,7 +567,10 @@ export class VoiceSessionDO {
         },
       });
     }
-    if (remaining <= 0) await this.finish("time_up");
+    if (remaining <= 0) {
+      if (elapsed >= max) await this.finish("time_up");
+      else if (!this.chargeP) await this.finish("balance_out"); // the boundary charge above already had its chance
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -497,12 +597,36 @@ export class VoiceSessionDO {
     if (gem) this.closeSocket(gem, 1000, "done");
 
     const seconds = this.callStartedAt ? Math.max(0, Math.round((Date.now() - this.callStartedAt) / 1000)) : 0;
+    const elapsedFloor = this.callStartedAt ? Math.max(0, Math.floor((Date.now() - this.callStartedAt) / 1000)) : 0;
     if (!this.sessionId) return; // never got as far as a session row
-    this.state.waitUntil(this.persist(reason, seconds));
+    this.state.waitUntil(this.persist(reason, seconds, elapsedFloor));
   }
 
-  private async persist(reason: EndReason, seconds: number): Promise<void> {
-    const costPaise = meterCostPaise(seconds, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise);
+  /** [AUMFE-VOICE-BILLING-1] Settle the wallet exactly once: finish any in-flight/due charge, then release the hold. */
+  private async settleBilling(reason: EndReason, elapsedFloor: number): Promise<{ minutes: number; tokens: number; released: number } | null> {
+    await this.reserveP?.catch(() => undefined);
+    await this.chargeP?.catch(() => undefined);
+    if (this.bill && reason !== "balance_out" && reason !== "error") {
+      // A call that ended just after a minute boundary but before the next tick still owes that minute (never past the cap).
+      try { await this.chargeDue(Math.min(elapsedFloor, Math.max(0, this.cfg.voiceAgentMaxSeconds - 1))); } catch (e) {
+        void trackException(this.env, e, { uid: this.uid, route: "VoiceSessionDO.finalCharge", handled: true, app_name: APP, extra: { session_id: this.sessionId } });
+      }
+    }
+    // The hold may exist even when the call never started billing (payer set), so release whenever we have a payer.
+    const released = this.payer ? await releaseHold(this.env, this.payer, this.sessionId) : 0;
+    if (!this.bill) return null;
+    const { state, firstClose } = closeBilling(this.bill);
+    this.bill = state;
+    if (!firstClose) return null;
+    return { minutes: state.minutesCharged, tokens: state.tokensCharged, released };
+  }
+
+  private async persist(reason: EndReason, seconds: number, elapsedFloor: number): Promise<void> {
+    const billed = await this.settleBilling(reason, elapsedFloor);
+    if (billed) {
+      this.ev("voice_session_billed", { uid: this.uid, session_id: this.sessionId, minutes_charged: billed.minutes, tokens: billed.tokens, released: billed.released });
+    }
+    const costPaise = this.bill ? chargedPaise(this.bill) : meterCostPaise(seconds, this.cfg.voiceAgentFreeSeconds, this.cfg.voiceAgentPricePerMinPaise);
     const transcript = buildTranscript(this.captions.lines, this.agent.name);
     try {
       await endSession(this.env, this.uid, this.sessionId, transcript, { minutes: seconds / 60, costPaise, ctx: this.state });
@@ -512,7 +636,7 @@ export class VoiceSessionDO {
     const ok = reason !== "error" && reason !== "server" && this.firstAudioAt > 0;
     this.ev("voice_session_ended", {
       seconds, reason, tool_calls: this.toolCalls, ok, agent: this.agent.id, uid: this.uid,
-      cost_paise: costPaise, billing: "test", turns: this.turns, reconnects: this.reconnects, model: this.model,
+      cost_paise: costPaise, billing: this.bill ? "live" : "test", turns: this.turns, reconnects: this.reconnects, model: this.model,
     });
     const usd = liveCostUsd(this.usage, this.inBytes, this.outBytes);
     const round6 = (n: number) => Math.round(n * 1e6) / 1e6;

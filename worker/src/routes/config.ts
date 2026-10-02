@@ -2093,7 +2093,7 @@ export interface PlatformConfig {
   voiceAgentMaxSeconds: number;
   // [AUMFE-VOICE-RUNTIME-1] Free seconds at the start of each call before metering counts cost. NUMERIC -> numericKeys.
   voiceAgentFreeSeconds: number;
-  // [AUMFE-VOICE-RUNTIME-1] Price per minute in paise after the free seconds (wave 2 only reports it, never charges).
+  // [AUMFE-VOICE-RUNTIME-1] Price per minute in paise after the free seconds. [AUMFE-VOICE-BILLING-1] CHARGED from the wallet per started minute (1 token = 100 paise).
   // NUMERIC -> numericKeys.
   voiceAgentPricePerMinPaise: number;
 }
@@ -2829,8 +2829,9 @@ const DEFAULTS: PlatformConfig = {
   panditDailyMaxMessages: 40,
   voiceAgentModel: "gemini-3.8-live",
   voiceAgentMaxSeconds: 900,
-  voiceAgentFreeSeconds: 180,
-  voiceAgentPricePerMinPaise: 2000,
+  // [AUMFE-VOICE-BILLING-1] voice is always paid (owner 2026-10-02): no free seconds, Rs 6/min (600 paise = 6 tokens). Free seconds are still honoured if an operator sets them.
+  voiceAgentFreeSeconds: 0,
+  voiceAgentPricePerMinPaise: 600,
 };
 
 /**

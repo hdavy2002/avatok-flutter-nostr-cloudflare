@@ -13,6 +13,8 @@ import { readConfig } from "./config";
 import { getAgent, listAgentsPublic, toPublic } from "../lib/voice_agents/registry";
 import { canUseVoice, parseTicket } from "../lib/voice_agents/session_logic";
 import { previewerUidsRaw } from "../lib/preview"; // [AUMFE-PREVIEW-GATE-1]
+import { priceTokensPerMin } from "../lib/voice_agents/billing";
+import { readSpendable, resolvePayer } from "../lib/voice_agents/billing_wallet";
 
 const APP = "aumfe_voice";
 const TICKET_PREFIX = "voice_ticket:";
@@ -59,6 +61,17 @@ export async function voiceTicket(req: Request, env: Env): Promise<Response> {
   if (!canUseVoice(cfg.voiceAgentsEnabled === true, u.uid, previewerUidsRaw(env), cfg.guidesPublic === true)) {
     void track(env, u.uid, "voice_ticket_denied", APP, { agent: agent.id, reason: "disabled" });
     return json({ error: "voice_agents_disabled" }, 403);
+  }
+
+  // [AUMFE-VOICE-BILLING-1] Voice is paid (1 token = Rs 1): no ticket unless the wallet covers at least one minute.
+  const priceTokens = priceTokensPerMin(cfg.voiceAgentPricePerMinPaise);
+  if (priceTokens > 0) {
+    const spendable = await readSpendable(env, await resolvePayer(env, u.uid));
+    if (spendable === null) return json({ error: "wallet_unavailable" }, 503);
+    if (spendable < priceTokens) {
+      void track(env, u.uid, "voice_ticket_denied", APP, { agent: agent.id, reason: "insufficient_balance", balance_tokens: spendable, price_per_min_tokens: priceTokens });
+      return json({ error: "insufficient_balance", balance_tokens: spendable, price_per_min_tokens: priceTokens }, 402);
+    }
   }
 
   let email: string | null = null;

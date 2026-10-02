@@ -18,7 +18,11 @@ export interface ReadyInfo {
 export interface CallSummary {
   seconds: number; costPaise: number; billing: 'test' | 'live'; reason: string; sessionId: string | null; remembers: string[];
 }
-export interface CallError { kind: 'mic_denied' | 'mic_missing' | 'mic_unsupported' | 'mic_failed' | 'server' | 'closed'; message: string }
+export interface CallError {
+  kind: 'mic_denied' | 'mic_missing' | 'mic_unsupported' | 'mic_failed' | 'server' | 'closed' | 'insufficient_balance'; message: string;
+  /* [AUMFE-VOICE-BILLING-1] only for insufficient_balance: wallet tokens (1 token = Rs 1), the minute price, and who she is. */
+  balanceTokens?: number; priceTokens?: number; agentName?: string;
+}
 
 const MAX_CAPTIONS = 40;
 
@@ -129,7 +133,11 @@ export function useVoiceCall() {
       case 'ending_soon': setEndingSoon(m.remaining_seconds); break;
       case 'ended': finalize(m.reason, m.session_id); break;
       case 'error':
-        setError({ kind: 'server', message: m.message });
+        if (m.code === 'insufficient_balance') {
+          // the wallet dropped below one minute between the ticket and the start of the call
+          const price = readyRef.current?.pricePerMinPaise;
+          setError({ kind: 'insufficient_balance', message: m.message, agentName: agentRef.current?.name, priceTokens: price ? Math.ceil(price / 100) : undefined });
+        } else setError({ kind: 'server', message: m.message });
         if (!readyRef.current) finalize('error');
         break;
       case 'interrupted': break; // the client already flushed playback
@@ -186,6 +194,12 @@ export function useVoiceCall() {
     } catch (e) {
       const status = errStatus(e);
       const code = errCode(e);
+      if (status === 402 && code === 'insufficient_balance') {
+        const body = (e as { body?: { balance_tokens?: unknown; price_per_min_tokens?: unknown } }).body ?? {};
+        const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+        capture('voice_call_blocked_balance', { agent: a.id, balance_tokens: num(body.balance_tokens) ?? -1 });
+        return fail({ kind: 'insufficient_balance', message: '', balanceTokens: num(body.balance_tokens), priceTokens: num(body.price_per_min_tokens), agentName: a.name });
+      }
       const msg = status === 403 || code === 'voice_disabled' || code === 'forbidden'
         ? 'This guide is not open to you yet. We will let you know when she is ready.'
         : errMessage(e, 'We could not start the call. Please try again in a moment.');

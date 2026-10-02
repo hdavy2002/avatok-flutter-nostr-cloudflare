@@ -22,7 +22,7 @@ export type ServerMsg =
   | { type: 'tool'; name: string; status: 'start' | 'done' | 'error'; card?: VoiceCard }
   | { type: 'meter'; seconds: number; cost_paise: number; remaining_seconds: number }
   | { type: 'ending_soon'; remaining_seconds: number }
-  | { type: 'ended'; reason: 'customer' | 'time_up' | 'error' | 'idle' | 'server'; session_id: string }
+  | { type: 'ended'; reason: 'customer' | 'time_up' | 'balance_out' | 'error' | 'idle' | 'server'; session_id: string }
   | { type: 'error'; code: string; message: string };
 
 export type AgentState = 'connecting' | 'listening' | 'thinking' | 'speaking';

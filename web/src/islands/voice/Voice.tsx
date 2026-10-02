@@ -24,8 +24,8 @@ import type { AgentSessionRow, AgentsResponse, AstroProfile, MemoryItem, VoiceAg
 import './voice.css';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
-const DEFAULT_FREE_SECONDS = 180; // spec voiceAgentFreeSeconds default; only used if the agents API omits it
-const DEFAULT_PRICE_PAISE = 2000; // spec voiceAgentPricePerMinPaise default; same rule
+const DEFAULT_FREE_SECONDS = 0; // voiceAgentFreeSeconds default (voice is always paid); only used if the agents API omits it
+const DEFAULT_PRICE_PAISE = 600; // voiceAgentPricePerMinPaise default (Rs 6/min); same rule
 const RECENT_MS = 30 * 24 * 3600 * 1000;
 
 /* ── small helpers ─────────────────────────────────────────────────────── */
@@ -167,8 +167,22 @@ function micHelp(kind: CallError['kind']): { title: string; body: string } | nul
   }
 }
 
+/* [AUMFE-VOICE-BILLING-1] Calm "not enough in your wallet" card. Money-in is switched off for now, so the button is a disabled promise. */
+function LowBalance({ error }: { error: CallError }) {
+  const price = error.priceTokens && error.priceTokens > 0 ? error.priceTokens : 6;
+  const who = error.agentName || 'your guide';
+  return (
+    <div className="vc-note" role="alert">
+      <strong>You need at least ₹{price} in your wallet to talk to {who}</strong>
+      {typeof error.balanceTokens === 'number' && <p>Your wallet has ₹{error.balanceTokens} right now.</p>}
+      <button type="button" className="vc-btn" disabled aria-disabled="true">Add money — coming soon</button>
+    </div>
+  );
+}
+
 function ErrorNote({ error }: { error: CallError | null }) {
   if (!error) return null;
+  if (error.kind === 'insufficient_balance') return <LowBalance error={error} />;
   const help = micHelp(error.kind);
   const title = help?.title ?? (error.kind === 'closed' ? 'The call did not connect' : 'Something went wrong');
   const body = help?.body ?? (error.message || 'The connection dropped before the call began. Please try again in a moment.');
@@ -290,7 +304,11 @@ function Prep({ agent, profile, firstName, pricing, busy, error, onBack, onStart
           </label>
           {problem && <p className="vc-problem" role="alert">{problem}</p>}
           <ErrorNote error={error} />
-          <p className="vc-price-line">First {minutesText(pricing.freeSeconds)} free, then {rupees(pricing.paisePerMin)}/min</p>
+          <p className="vc-price-line">
+            {pricing.freeSeconds > 0
+              ? <>First {minutesText(pricing.freeSeconds)} free, then {rupees(pricing.paisePerMin)}/min</>
+              : <>{rupees(pricing.paisePerMin)} per minute, from your wallet. A call under 10 seconds is free.</>}
+          </p>
           <button type="submit" className="vc-btn vc-btn-red vc-btn-block" disabled={busy}>{busy ? 'Getting ready…' : 'Start talking'}</button>
           <p className="vc-fine">Your browser will ask to use your microphone.</p>
         </form>
@@ -503,8 +521,11 @@ function After({ call, onAgain, onBack }: { call: VoiceCall; onAgain: () => void
         <h1 id="vc-after-h" className="vc-title vc-title-sm">Thank you for talking with {agent.name}</h1>
         <dl className="vc-facts">
           <div><dt>Time</dt><dd>{mmss(s.seconds)}</dd></div>
-          <div><dt>Cost</dt><dd>{s.billing === 'test' ? 'Test call — no charge' : rupees(s.costPaise)}</dd></div>
+          <div><dt>Cost</dt><dd>{s.billing === 'test' ? 'Test call — no charge' : s.costPaise > 0 ? `Charged ${rupees(s.costPaise)} from your wallet` : 'No charge'}</dd></div>
         </dl>
+        {s.reason === 'balance_out' && (
+          <p className="vc-muted" role="status">Your wallet balance ran out, so we closed the call gently. You can talk again once you add money — coming soon.</p>
+        )}
         <div className="vc-summary">
           <h2>Your summary</h2>
           {summaryText ? <p>{summaryText}</p> : <p className="vc-muted">{gaveUp ? 'Your summary is still being written. You will find it here the next time you visit.' : 'Your summary will appear here shortly…'}</p>}

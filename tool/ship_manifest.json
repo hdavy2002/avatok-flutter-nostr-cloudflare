@@ -9044,5 +9044,30 @@
         "exists": true
       }
     ]
+  },
+  "AUMFE-VOICE-BILLING-1": {
+    "description": "[AUMFE-VOICE-BILLING-1 2026-10-02] Voice calls are PAID from the wallet (1 token = Rs 1): Rs 6/min (voiceAgentPricePerMinPaise=600), charged per STARTED minute (minute 1 at second 10, so a call that ends in its first 10 s is free), idempotent op ids voice:<session>:m<N> via chargeAmount(forceMeter), runway hold min(balance, 5 min) released exactly once on close. POST /api/voice/ticket answers 402 insufficient_balance below one minute; the call ends with reason balance_out when the wallet cannot cover the next minute. voiceAgentFreeSeconds default is now 0.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "voiceAgentsEnabled"
+    ],
+    "success": [
+      {
+        "event": "voice_charge",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "One per started minute; ok=false means the wallet refused (call ends with reason balance_out)."
+      },
+      {
+        "event": "voice_session_billed",
+        "property": "minutes_charged",
+        "exists": true,
+        "min_events": 1,
+        "note": "One per paid call at close; tokens = minutes_charged * 6 at the default price, released = unused hold."
+      }
+    ]
   }
 }
