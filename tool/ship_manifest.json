@@ -9202,5 +9202,27 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-W3-1": {
+    "description": "[AUMFE-CONSULT-W3-1 2026-10-02] Real Consultants call lane: call ticket, ConsultCallDO WebRTC signalling, settlement (earn + no-show rules), WhatsApp/email notifications + reminders, review by token.",
+    "shipped": "2026-10-02",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_call_ended",
+        "property": "reason",
+        "exists": true,
+        "min_events": 1
+      },
+      {
+        "event": "consult_settled",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }
