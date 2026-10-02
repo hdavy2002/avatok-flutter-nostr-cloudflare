@@ -41,7 +41,7 @@ interface Props {
   /** Every ritual article (raw /assets image paths) — poster fallback, "Read benefits", empty-state guide link. */
   guides: GuideLink[];
   /** "Browse by deity" portraits; `image` is a raw /assets path. */
-  deities: DeityLink[];
+  deities?: DeityLink[];
   /** Astro-rendered intention band (named slot). */
   intentions?: ReactNode;
   /** [SAATHUM-FREEVIDEOS-WEB-1] Astro-rendered "Free videos" row (named slot), shown right after the Upcoming events grid. */
@@ -257,7 +257,6 @@ const CHIPS: { key: '' | TypeKey; label: string; color?: string }[] = [
 const WHEN_LABELS: [string, string][] = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'Weekend'], ['month', 'This month']];
 const PAGE = 12;
 
-const PinIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>;
 
 function relTime(ms: number): string {
   const m = Math.max(1, Math.round(ms / 60_000));
@@ -312,7 +311,7 @@ function itemsFrom(cards: Card[], guides: GuideLink[], t: number = Date.now()): 
 // ---------------------------------------------------------------- component
 type Status = 'loading' | 'ready' | 'error';
 
-export default function MarketplaceV2({ guides, deities, intentions, afterEvents, initialCards, serverNow, serverMs, initialSearch, origin: originProp }: Props) {
+export default function MarketplaceV2({ guides, afterEvents, initialCards, serverNow, serverMs, initialSearch, origin: originProp }: Props) {
   // [MKT-SSR-1] Every initial value below is computed from props only (never from
   // window or the client clock), so the first client render matches the server
   // HTML exactly and hydration keeps the cards on screen.
@@ -534,21 +533,6 @@ export default function MarketplaceV2({ guides, deities, intentions, afterEvents
     return { towns, devotees, rating: w > 0 ? sum / w : null, upcoming, cities };
   }, [items, Math.floor(now / 60_000)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const temples = useMemo(() => {
-    const m = new Map<string, { city: string; n: number }>();
-    for (const i of items) {
-      const city = (i.location ?? '').trim();
-      if (!city) continue;
-      const k = norm(city);
-      const cur = m.get(k);
-      if (cur) cur.n++; else m.set(k, { city, n: 1 });
-    }
-    return [...m.values()].sort((a, b) => b.n - a.n || a.city.localeCompare(b.city)).slice(0, 10);
-  }, [items]);
-
-  const deityCounts = useMemo(() => deities.map((d) => items.filter((i) => matchesQuery(i, d.name, [])).length), [deities, items]);
-  const festivalCounts = useMemo(() => festivals.map((f) => items.filter((i) => festivalMatch(i, f)).length), [festivals, items]);
-
   const searching = isSearching(filters);
   const ready = status === 'ready';
   const visible = results.slice(0, shown);
@@ -736,67 +720,6 @@ export default function MarketplaceV2({ guides, deities, intentions, afterEvents
 
       {/* [SAATHUM-FREEVIDEOS-WEB-1] Free videos row — its own section under the events grid. */}
       {afterEvents}
-
-      {/* ⑤ BROWSE BY DEITY */}
-      {deities.length > 0 && (
-        <section className="mk-deities" aria-labelledby="mk-deity-title">
-          <div className="mk-wrap">
-            <div className="grand-section-heading"><h2 id="mk-deity-title"><span aria-hidden="true">✽</span> Browse by deity</h2><a className="mk-seeall mk-seeall--teal" href="/rituals/">All deities →</a></div>
-            <div className="mk-deity-row">
-              {deities.map((d, i) => (
-                <a key={d.name} className="mk-deity" {...filterLink({ q: d.name }, () => capture('marketplace_search', { q: d.name, source: 'deity' }))}>
-                  <span className="mk-deity-ring"><img src={publicImage(d.image, { width: 300, fit: 'scale-down' })} alt="" loading="lazy" decoding="async" /></span>
-                  <b>{d.name}</b>
-                  {ready && deityCounts[i] > 0 && <small>{plural(deityCounts[i], 'event')}</small>}
-                </a>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ⑥ BY INTENTION — static, rendered by Astro */}
-      {intentions}
-
-      {/* ⑦ FESTIVAL CALENDAR + TEMPLES */}
-      <section className="mk-two" aria-label="Festivals and temples">
-        <div className={'mk-wrap mk-two-inner' + (festivals.length === 0 ? ' mk-two-inner--one' : '')}>
-          {festivals.length > 0 && (
-            <div className="mk-panel">
-              <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> Festival calendar</h2><a className="mk-seeall mk-seeall--teal" {...filterLink({ type: 'festival' }, () => capture('marketplace_tab', { type: 'festival', source: 'festival_panel' }))}>All festivals →</a></div>
-              <ol className="mk-fest">
-                {festivals.map((f, i) => {
-                  const d = new Date(festivalStartMs(f) + IST_OFFSET);
-                  const n = festivalCounts[i];
-                  return (
-                    <li key={f.start + f.keyword}>
-                      <a {...filterLink({ q: f.keyword }, () => capture('marketplace_search', { q: f.keyword, source: 'festival' }))}>
-                        <span className="mk-fest-date"><b>{String(d.getUTCDate()).padStart(2, '0')}</b><small>{d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}</small></span>
-                        <span className="mk-fest-copy"><b>{f.name}</b><span>{f.note}</span></span>
-                        <span className="mk-fest-count">{ready && n > 0 ? <>{plural(n, 'event')} →</> : <span aria-label={'Find ' + f.keyword + ' events'}>→</span>}</span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          )}
-          <div className="mk-panel">
-            <div className="grand-section-heading"><h2><span aria-hidden="true">✽</span> {temples.length > 0 ? 'Live from these temples' : 'Performed live at the altar'}</h2></div>
-            {temples.length > 0 && (
-              <div className="mk-temples">
-                {temples.map((t) => (
-                  <a key={t.city} {...filterLink({ q: t.city }, () => capture('marketplace_search', { q: t.city, source: 'temple' }))}>
-                    <PinIcon />{t.city}<small aria-label={plural(t.n, 'event')}>{t.n}</small>
-                  </a>
-                ))}
-              </div>
-            )}
-            <p className="mk-panel-note">Every event names its temple and priest. Wherever you are, the sankalp is spoken at that altar.</p>
-            <a className="grand-button mk-panel-btn" href="/how-it-works">How a live havan works <span aria-hidden="true">→</span></a>
-          </div>
-        </div>
-      </section>
 
     </>
   );

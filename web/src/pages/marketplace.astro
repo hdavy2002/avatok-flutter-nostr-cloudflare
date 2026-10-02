@@ -24,8 +24,6 @@ export const prerender = false;
 import Base from '../layouts/Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import BookingArtwork from '../components/BookingArtwork.astro';
-import FolkIcon from '../components/FolkIcon.astro';
 import MarketplaceV2 from '../islands/marketplace/MarketplaceV2';
 import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
 import ExploreGuides from '../islands/guides/ExploreGuides';
@@ -47,22 +45,7 @@ const type = (params.get('type') ?? '').trim().toLowerCase();
 const when = (params.get('when') ?? '').trim().toLowerCase();
 
 const guides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
-// "Browse by deity" — portrait = that deity's ritual art (raw path; the island transforms it).
-const deities = [
-  { name: 'Ganesha', slug: 'ganapati-havan' }, { name: 'Lakshmi', slug: 'lakshmi-havan' }, { name: 'Shiva', slug: 'mahamrityunjaya-havan' },
-  { name: 'Saraswati', slug: 'saraswati-havan' }, { name: 'Hanuman', slug: 'hanuman-havan' }, { name: 'Vishnu', slug: 'satyanarayana-havan' },
-  { name: 'Krishna', slug: 'krishna-havan' }, { name: 'Parvati', slug: 'swayamvara-parvati-havan' }, { name: 'Durga', slug: 'durga-puja' }, { name: 'Rama', slug: 'rama-havan' },
-].flatMap(d => { const r = ritualBySlug(d.slug); return r ? [{ name: d.name, image: r.image }] : []; });
 const heroImage = ritualBySlug('lakshmi-havan')?.image ?? '/assets/grand/hero.png';
-// Same six intention tiles as the homepage; each searches the marketplace.
-const intentions = [
-  { name: 'puja', label: 'Blessings for studies', term: 'Studies' },
-  { name: 'festival', label: 'New beginnings', term: 'Fresh start' },
-  { name: 'aarti', label: 'Abundance at home', term: 'Prosperity' },
-  { name: 'yoga', label: 'Health & calm', term: 'Health' },
-  { name: 'satsang', label: 'Family harmony', term: 'Family' },
-  { name: 'bhajan', label: 'Pujas for festivals', term: 'Festival' },
-] as const;
 const typeOptions = [['', 'All categories'], ['havan', 'Havan'], ['puja', 'Puja'], ['satsang', 'Satsang'], ['sermon', 'Sermon'], ['meditation', 'Meditation'], ['festival', 'Festival specials']];
 const whenOptions = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'This weekend'], ['month', 'This month']];
 const trending = ['Lakshmi', 'Navratri', 'Ganesh', 'Mahamrityunjaya', 'Satyanarayan', 'Exams'];
@@ -136,46 +119,16 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       <!-- ②–⑨ Data-driven sections (tabs, live strip, rails, deities, festivals,
            temples, all events, empty state). The intention band is static and
            slotted in between. -->
-      <MarketplaceV2 client:load guides={guides} deities={deities}
+      <MarketplaceV2 client:load guides={guides}
         initialCards={initialCards} serverNow={serverNow} serverMs={serverMs}
         initialSearch={Astro.url.search} origin={Astro.url.origin}>
         <!-- [SAATHUM-FREEVIDEOS-WEB-1] "Free videos" row: its own section right after the Upcoming
              events grid (MarketplaceV2 renders this slot there). client:visible = loads when scrolled to. -->
         <FreeVideosRow slot="afterEvents" client:visible surface="marketplace" />
-        <section slot="intentions" class="grand-experiences mk-intent" aria-labelledby="mk-intent-title">
-          <div class="grand-section-heading"><h2 id="mk-intent-title"><span aria-hidden="true">✽</span> Unsure which ritual fits? Begin with your prayer. <span aria-hidden="true">✽</span></h2></div>
-          <div class="grand-category-grid">
-            {intentions.map(c => <a class="grand-category" href={'/marketplace?q=' + encodeURIComponent(c.term) + '#all-events'}>
-              <BookingArtwork kind="category" name={c.name} alt="" sizes="(max-width: 600px) 46vw, (max-width: 1100px) 30vw, 15vw" />
-              <div class="grand-category-copy"><h3>{c.label}</h3><span class="grand-arrow" aria-hidden="true">↗</span></div>
-            </a>)}
-          </div>
-        </section>
       </MarketplaceV2>
       {/* [AUMFE-GUIDES-FRONT-1] "Talk to a guide" (#guides) — admin-preview only, renders nothing for customers. */}
       <ExploreGuides client:idle />
       <div class="grand-divider" aria-hidden="true"></div>
-
-      <!-- ⑩ HOW BOOKING WORKS + PROMISES -->
-      <section class="grand-moments mk-how" aria-labelledby="mk-how-title">
-        <div class="grand-moments-inner">
-          <div class="grand-section-heading"><h2 id="mk-how-title"><span aria-hidden="true">✽</span> Book in about a minute</h2></div>
-          <ol class="mk-steps">
-            <li><FolkIcon kind="search" /><span class="mk-step-n">01</span><b>Choose</b><span>Find a havan, puja or satsang on a date that works for you.</span></li>
-            <li><FolkIcon kind="ticket" /><span class="mk-step-n">02</span><b>Book &amp; pay</b><span>Only your name is needed. Pay with UPI — the price shown is the price paid.</span></li>
-            <li><FolkIcon kind="live" /><span class="mk-step-n">03</span><b>Receive the video</b><span>It reaches your inbox once the ritual ends. Prasad comes by courier.</span></li>
-          </ol>
-        </div>
-      </section>
-
-      <section class="mk-promise" aria-label="What every booking includes">
-        <ul>
-          <li><FolkIcon kind="ticket" /><b>A shared sankalp</b><span>The pujari says the event's sankalp on behalf of each devotee taking part.</span></li>
-          <li><FolkIcon kind="live" /><b>A video that is yours</b><span>Save it to any phone, in any country.</span></li>
-          <li><FolkIcon kind="puja" /><b>Prasad delivered</b><span>Sent by courier within India and overseas.</span></li>
-          <li><FolkIcon kind="search" /><b>Cancel at no cost</b><span>Until 24 hrs before (3 days for satsang, sermon &amp; meditation) — see our <a href="/refunds">refund policy</a>.</span></li>
-        </ul>
-      </section>
 
       <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
     </main>
