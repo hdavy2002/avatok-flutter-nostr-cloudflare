@@ -9170,5 +9170,21 @@
         "equals": true
       }
     ]
+  },
+  "AUMFE-CONSULT-W1-1": {
+    "description": "[AUMFE-CONSULT-W1-1 2026-10-02] Real Consultants W1: public read API (list/detail/reviews/slots), booking create/paid/pay-wallet/mine/cancel, UPI rail + wallet confirmation, hold-expiry cron, intake validation.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_booking_paid",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }

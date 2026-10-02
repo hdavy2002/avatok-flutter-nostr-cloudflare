@@ -45,6 +45,8 @@ import { templeForListing } from "../lib/temples"; // [SAATHUM-TEMPLE-FIELD-1]
 import { isAdminUid } from "../lib/admin_calendar_exempt"; // [SAATHUM-LIVE-PREVIEW-1]
 // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] The UPI rail also matches Shop orders; these helpers are the shop side of the dispatcher.
 import { shopReferenceClaimed, findShopMatchCandidates, confirmShopOrder } from "./shop_orders";
+// [AUMFE-CONSULT-W1-1] ...and Real Consultants bookings.
+import { consultReferenceClaimed, findConsultMatchCandidates, confirmConsultBooking } from "../lib/consultants/payment";
 
 const APP = "saathum";
 const failure = (error: string, status = 400, extra: Record<string, unknown> = {}) => json({ error, message: extra.message ?? error, ...extra }, status);
@@ -829,6 +831,8 @@ export async function matchSaathumReceipt(env: Env, r: SmsReceiptEvidence): Prom
   // [SAATHUM-SHOP-API-ORDERS-1] A reference/SMS already carried by a SHOP order is equally "claimed" (never matched twice).
   const claimedShop = await shopReferenceClaimed(env, r);
   if (claimedShop) return { result: "reference_claimed", checkout_id: claimedShop };
+  const claimedConsult = await consultReferenceClaimed(env, r); // [AUMFE-CONSULT-W1-1]
+  if (claimedConsult) return { result: "reference_claimed", checkout_id: claimedConsult };
   const candidates = await db.prepare(
     `SELECT checkout_id FROM saathum_checkouts
       WHERE receiving_account_key=?1 AND amount_paise=?2 AND status IN ('awaiting_payment','review_pending')
@@ -839,8 +843,13 @@ export async function matchSaathumReceipt(env: Env, r: SmsReceiptEvidence): Prom
   const list = candidates.results ?? [];
   // [SAATHUM-SHOP-API-ORDERS-1] Exactly ONE candidate across events AND shop orders (amounts are unique per account across both).
   const shopIds = await findShopMatchCandidates(env, r);
-  if (list.length + shopIds.length === 0) return { result: "no_candidate" };
-  if (list.length + shopIds.length > 1) return { result: "ambiguous" };
+  const consultIds = await findConsultMatchCandidates(env, r); // [AUMFE-CONSULT-W1-1]
+  if (list.length + shopIds.length + consultIds.length === 0) return { result: "no_candidate" };
+  if (list.length + shopIds.length + consultIds.length > 1) return { result: "ambiguous" };
+  if (consultIds.length === 1) { // [AUMFE-CONSULT-W1-1]
+    const out = await confirmConsultBooking(env, consultIds[0], { via: "sms_auto", bankReference: r.bank_reference, payerVpa: r.payer_vpa ?? null, messageHash: r.message_hash });
+    return { result: out, checkout_id: consultIds[0] };
+  }
   if (shopIds.length === 1) {
     const shopOut = await confirmShopOrder(env, shopIds[0], {
       via: "sms_auto", bankReference: r.bank_reference, payerVpa: r.payer_vpa ?? null, messageHash: r.message_hash,
