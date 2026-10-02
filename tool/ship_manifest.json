@@ -9240,5 +9240,22 @@
         "equals": "publish"
       }
     ]
+  },
+  "AUMFE-CONSULT-F1-1": {
+    "description": "[AUMFE-CONSULT-F1-1 2026-10-02] Real Consultants web pages: homepage 'Talk to a real guide' band (ConsultantsBand), /guides list, /guides/<slug> category pages (hero, ready-before-call, calendar + slots, reviews, FAQ, other guides, mobile book bar). Admin-preview only while consultantsEnabled is off.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_page_viewed",
+        "property": "slug",
+        "exists": true,
+        "min_events": 1
+      }
+    ]
   }
 }

@@ -1,0 +1,254 @@
+/* [AUMFE-CONSULT-F1-1 2026-10-02] Layout for the homepage band, /guides and /guides/<slug>. Colours/components come from
+ * styles/consultants.css (.consult-ui + .cat-*). Mobile-first; desktop layout from 1024px (band: 720px / 1100px).
+ * .cp-d = desktop-only, .cp-m = mobile-only (text variants from the Guide*M mockups).
+ * Owner rules: NO green; hero = plain category colour; never a font below 13px; never negative letter-spacing.
+ * NOTE FOR AI: classes are cp-* on purpose — never restyle the shared consultants.css rules from here. */
+@media (max-width: 1023.98px) { .consult-ui .cp-d { display: none !important; } }
+@media (min-width: 1024px) { .consult-ui .cp-m { display: none !important; } }
+
+.consult-ui.cp-page { display: flex; flex-direction: column; min-width: 0; }
+.consult-ui .cp-toran { height: 48px; background-size: 96px 48px; }
+.consult-ui .cp-back { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--cream); border-bottom: 1px solid var(--line); }
+.consult-ui .cp-back a { font-weight: 800; text-decoration: none; color: var(--deep, var(--teal)); min-height: 44px; display: inline-flex; align-items: center; }
+.consult-ui .cp-previewbar { padding: 8px 16px; background: var(--cream); }
+.consult-ui .cp-state { min-height: 46vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 48px 20px; }
+.consult-ui .cp-state h1 { font-size: 32px; }
+.consult-ui .cp-state p { font-size: 17px; max-width: 520px; color: var(--muted); }
+.consult-ui .cp-state .deva { font-size: 22px; color: var(--red); }
+
+/* hero */
+.consult-ui .cp-hero { padding: 24px 16px 30px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.consult-ui .cp-hero-photo { display: flex; justify-content: center; position: relative; width: 100%; }
+.consult-ui .cp-portrait { width: min(290px, 100%); height: auto; aspect-ratio: 1; border-width: 8px; box-shadow: 0 22px 40px -14px rgba(0,0,0,.55); }
+.consult-ui .cp-hero-text { display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; min-width: 0; }
+.consult-ui .cp-hero h1 { font-size: 32px; line-height: 1.1; overflow-wrap: anywhere; }
+.consult-ui .cp-blurb { font-size: 17px; color: var(--hb); }
+.consult-ui .cp-meta { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; font-size: 15px; font-weight: 800; color: var(--hm); }
+.consult-ui .cp-sub { font-size: 15px; color: var(--hs); }
+.consult-ui .cp-pills { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.consult-ui .cp-pill-off { opacity: .75; text-decoration: none; }
+.consult-ui .cp-pill-off:hover, .consult-ui .cp-pill-off:focus-visible { opacity: 1; }
+.consult-ui .cp-bookcard { display: none; flex-direction: column; gap: 14px; padding: 26px; position: relative; color: var(--ink); }
+.consult-ui .cp-price { display: flex; align-items: baseline; gap: 8px; }
+.consult-ui .cp-price > span:first-child { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 42px; color: var(--deep); }
+.consult-ui .cp-price .muted { font-size: 15px; }
+.consult-ui .cp-nextfree { font-size: 16px; }
+
+/* sections */
+.consult-ui .cp-sec { padding: 36px 16px; }
+.consult-ui .cp-sec .sec-h { margin-bottom: 20px; }
+.consult-ui .cp-sec .sec-h h2 { font-size: 26px; }
+.consult-ui .cp-sec .sec-h p { font-size: 16px; max-width: 660px; }
+.consult-ui .cp-cardhead { display: flex; flex-direction: column; gap: 2px; }
+.consult-ui .cp-cardhead .deva { font-size: 17px; color: var(--c2); }
+.consult-ui .cp-cardhead h2 { font-size: 23px; color: var(--deep); }
+
+/* ready before your call */
+.consult-ui .cp-ready { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
+.consult-ui .cp-prepgrid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.consult-ui .cp-d-flex { display: flex; }
+@media (max-width: 1023.98px) { .consult-ui .cp-d-flex { display: none; } }
+.consult-ui .cp-preview { padding: 20px; display: flex; flex-direction: column; gap: 12px; align-items: center; margin-bottom: 18px; }
+.consult-ui .cp-ptitle { font-size: 19px; color: var(--hm); text-align: center; }
+.consult-ui .cp-pcap { font-size: 14px; color: var(--hs); text-align: center; }
+.consult-ui .cp-kundli { width: min(250px, 100%); height: auto; }
+.consult-ui .cp-stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; text-align: center; }
+.consult-ui .cp-stats3 > div { display: flex; flex-direction: column; }
+.consult-ui .cp-stats3 span { font-size: 13px; color: var(--hs); font-weight: 800; }
+.consult-ui .cp-stats3 b { font-size: 17px; font-weight: 900; }
+.consult-ui .cp-stats-big { margin-top: 8px; }
+.consult-ui .cp-stats-big b { font-size: 26px; color: var(--hm); }
+.consult-ui .cp-loshu { display: grid; grid-template-columns: repeat(3, 78px); grid-template-rows: repeat(3, 78px); border: 3px solid #f2c14e; }
+.consult-ui .cp-loshu > span { border: 1px solid rgba(242,193,78,.5); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.consult-ui .cp-loshu .cp-num { font-size: 34px; color: #fff8e8; }
+.consult-ui .cp-loshu .cp-miss { font-size: 13px; color: var(--hs); font-weight: 800; }
+.consult-ui .cp-palmmap { position: relative; width: 230px; height: 300px; opacity: 1; max-width: 100%; }
+.consult-ui .cp-facemap { position: relative; width: 230px; height: 294px; opacity: 1; max-width: 100%; }
+.consult-ui .cp-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; width: 100%; font-size: 14px; font-weight: 800; }
+.consult-ui .cp-zones { display: flex; gap: 18px; font-size: 14px; font-weight: 800; text-align: center; justify-content: center; flex-wrap: wrap; }
+.consult-ui .cp-zones .deva { font-size: 17px; color: var(--hm); }
+.consult-ui .cp-tarot-preview { padding: 22px 14px; }
+.consult-ui .cp-spread { display: grid; grid-template-columns: repeat(3, 104px); gap: 10px; }
+.consult-ui .cp-spread .icard { width: 104px; height: 170px; padding: 12px 6px 8px; }
+.consult-ui .cp-spread .icard .pos { font-size: 14px; }
+.consult-ui .cp-spread .icard .nm { font-size: 13px; }
+
+/* what you can ask */
+.consult-ui .cp-ask { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.consult-ui .cp-ask-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 16px 8px; }
+.consult-ui .cp-ask-tile .deva { font-size: 22px; color: var(--c2); }
+.consult-ui .cp-ask-tile strong { font-size: 15px; }
+
+/* keep ready + how it works */
+.consult-ui .cp-sec.cp-two { padding: 8px 16px 36px; display: flex; flex-direction: column; gap: 18px; }
+.consult-ui .cp-keep { padding: 22px; display: flex; flex-direction: column; gap: 12px; }
+.consult-ui .cp-keep ul { margin: 0; padding-left: 20px; font-size: 16px; display: flex; flex-direction: column; gap: 6px; }
+.consult-ui .cp-note { padding: 12px 14px; font-size: 15px; }
+.consult-ui .cp-photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: center; font-size: 14px; }
+.consult-ui .cp-photos > div { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.consult-ui .cp-phototile { width: 100%; min-height: 110px; padding: 6px; border-radius: 12px; background: #f6ead0; border: 2px solid #b0561c; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #b0561c; font-size: 15px; }
+.consult-ui .cp-phototile.bad { background: #fbe1dc; border-color: #9a1f19; color: #9a1f19; }
+.consult-ui .cp-howcard { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.consult-ui .cp-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 10px; }
+.consult-ui .cp-steps strong { font-size: 15px; }
+.consult-ui .cp-steps .hint { display: none; }
+
+/* calendar + reviews */
+.consult-ui .cp-sec.cp-calrev { display: flex; flex-direction: column; gap: 18px; }
+.consult-ui .cp-cal { display: flex; flex-direction: column; gap: 14px; padding: 20px; background: var(--paper); align-self: start; min-width: 0; }
+.consult-ui .cp-cal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.consult-ui .cp-cal-title { display: flex; flex-direction: column; }
+.consult-ui .cp-cal-title .deva { font-size: 15px; color: var(--c2); }
+.consult-ui .cp-cal-title h3 { font-size: 20px; color: var(--deep); }
+.consult-ui .cp-cal-nav { display: flex; gap: 6px; }
+.consult-ui .cp-cal-nav .btn:disabled, .consult-ui .cp-pager .btn:disabled { opacity: .4; cursor: default; }
+.consult-ui .cal button.d { border: 0; font-family: inherit; cursor: pointer; width: 100%; }
+.consult-ui .cal .d.free:hover, .consult-ui .cal .d.free:focus-visible { outline: 2px solid var(--c1); outline-offset: -2px; }
+.consult-ui .cp-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.consult-ui .cp-slots .slot { cursor: pointer; }
+.consult-ui .cp-cal-note { font-size: 15px; color: var(--muted); }
+.consult-ui .cp-reviews { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.consult-ui .cp-reviews-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.consult-ui .cp-reviews-head .cp-cardhead h2 { font-size: 23px; }
+.consult-ui .cp-review { display: flex; flex-direction: column; gap: 8px; background: var(--paper); }
+.consult-ui .cp-review-top { display: flex; justify-content: space-between; gap: 10px; }
+.consult-ui .cp-review p { font-size: 16px; overflow-wrap: anywhere; }
+.consult-ui .cp-pager { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; font-weight: 800; }
+.consult-ui .cp-pager .btn.cat { background: var(--c1); }
+
+/* faq + promise + other guides */
+.consult-ui .cp-faqwrap { display: flex; flex-direction: column; gap: 18px; padding-bottom: 36px; }
+.consult-ui .cp-faqwrap .qa summary { font-size: 17px; }
+.consult-ui .cp-promise { flex-direction: column; align-items: flex-start; gap: 8px; }
+.consult-ui .cp-promise .deva { font-size: 20px; color: #7a1f2b; }
+.consult-ui .cp-promise h3 { font-size: 20px; color: #7a1f2b; }
+.consult-ui .cp-promise p { font-size: 15px; }
+.consult-ui .cp-other { padding: 8px 16px 36px; background: var(--cream); }
+.consult-ui .cp-other-h { display: none; }
+.consult-ui .cp-other-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.consult-ui .cp-mini .sticker { width: 92px; height: 92px; border-width: 4px; }
+.consult-ui .cp-mini strong { font-size: 15px; }
+
+/* sticky book bar (mobile) */
+.consult-ui .cp-bar { position: sticky; bottom: 0; z-index: 20; padding: 12px 16px 18px; background: var(--cream); border-top: 2px solid var(--gold); display: flex; align-items: center; gap: 12px; box-shadow: 0 -8px 20px -12px rgba(23,52,60,.35); }
+.consult-ui .cp-bar-price { display: flex; flex-direction: column; }
+.consult-ui .cp-bar-price > span:first-child { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 22px; color: var(--deep); }
+
+/* homepage band */
+.consult-ui.cp-band-wrap { background: var(--cream); }
+.consult-ui .cp-band-topribbon { display: block; }
+.consult-ui .cp-band-inner { display: flex; flex-direction: column; gap: 26px; padding: 36px 16px 32px; }
+.consult-ui .cp-band-head { display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.consult-ui .cp-band-head h2 { font-size: 28px; color: var(--teal); }
+.consult-ui .cp-band-head p { font-size: 17px; }
+.consult-ui .cp-band-all { font-weight: 800; font-size: 16px; }
+.consult-ui .cp-band-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 14px; }
+.consult-ui .cp-band-list a, .consult-ui .cp-index-card a { display: flex; flex-direction: column; align-items: center; text-align: center; text-decoration: none; color: var(--ink); }
+.consult-ui .cp-band-list .sticker { width: 136px; height: 136px; max-width: 100%; }
+.consult-ui .cp-band-name { margin-top: 12px; font-size: 17px; font-weight: 900; line-height: 1.2; overflow-wrap: anywhere; }
+.consult-ui .cp-band-role { font-size: 15px; font-weight: 700; color: var(--teal); }
+.consult-ui .cp-band-meta { font-size: 14px; color: var(--muted); }
+.consult-ui .cp-band-chip { margin-top: 8px; }
+.consult-ui .cp-band-note { text-align: center; font-size: 15px; color: var(--muted); }
+.consult-ui .cp-band-btn { align-self: center; }
+.consult-ui .cp-band .cp-previewbar { background: transparent; padding: 12px 16px 0; }
+
+/* /guides index */
+.consult-ui .cp-index { padding-bottom: 48px; }
+.consult-ui .cp-index .sec-h h1 { font-size: 30px; color: var(--deep, var(--teal)); }
+.consult-ui .cp-index-grid { list-style: none; margin: 0 auto 18px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 1100px; }
+.consult-ui .cp-index-card { padding: 22px 16px; }
+.consult-ui .cp-index-card .sticker { width: 144px; height: 144px; }
+
+@media (min-width: 720px) {
+  .consult-ui .cp-band-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+  .consult-ui .cp-band-list .sticker { width: 150px; height: 150px; }
+  .consult-ui .cp-index-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .consult-ui .cp-band-inner { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 40px; align-items: center; padding: 40px 64px; }
+  .consult-ui .cp-band-topribbon { display: none; }
+  .consult-ui .cp-band-head { text-align: left; gap: 14px; }
+  .consult-ui .cp-band-head h2 { font-size: 36px; line-height: 1.15; }
+  .consult-ui .cp-band-head p { font-size: 18px; line-height: 1.45; }
+  .consult-ui .cp-band-list .sticker { width: 168px; height: 168px; }
+  .consult-ui .cp-band-name { margin-top: 14px; font-size: 18px; }
+  .consult-ui .cp-index-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .consult-ui .cp-toran { height: 60px; background-size: 120px 60px; }
+  .consult-ui .cp-back { display: none; }
+  .consult-ui .cp-previewbar { padding: 10px clamp(24px, 5vw, 72px); }
+  .consult-ui .cp-hero { padding: 56px clamp(24px, 5vw, 72px); display: grid; grid-template-columns: minmax(0, 42fr) minmax(0, 41fr) minmax(0, 38fr); gap: 44px; align-items: center; text-align: left; }
+  .consult-ui .cp-portrait { width: min(400px, 100%); border-width: 10px; }
+  .consult-ui .cp-hero-text { align-items: flex-start; gap: 16px; }
+  .consult-ui .cp-hero h1 { font-size: 54px; }
+  .consult-ui .cp-blurb { font-size: 19px; max-width: 520px; }
+  .consult-ui .cp-meta { justify-content: flex-start; gap: 22px; font-size: 16px; }
+  .consult-ui .cp-pills { justify-content: flex-start; }
+  .consult-ui .cp-bookcard { display: flex; }
+  .consult-ui .cp-bar { display: none; }
+
+  .consult-ui .cp-sec { padding: 56px clamp(24px, 5vw, 72px); }
+  .consult-ui .cp-sec .sec-h { margin-bottom: 28px; }
+  .consult-ui .cp-sec .sec-h h2 { font-size: 32px; }
+  .consult-ui .cp-sec .sec-h p { font-size: 17px; max-width: 640px; }
+  .consult-ui .cp-cardhead .deva { font-size: 18px; }
+  .consult-ui .cp-cardhead h2 { font-size: var(--hs, 26px); }
+
+  .consult-ui .cp-ready { grid-template-columns: minmax(0, 41fr) minmax(0, 59fr); gap: 36px; align-items: start; }
+  .consult-ui .cp-prepgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .consult-ui .cp-prepgrid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 24px; }
+  .consult-ui .cp-preview { padding: 28px; gap: 16px; margin-bottom: 0; }
+  .consult-ui .cp-ptitle { font-size: 22px; }
+  .consult-ui .cp-kundli { width: min(340px, 100%); }
+  .consult-ui .cp-loshu { grid-template-columns: repeat(3, 104px); grid-template-rows: repeat(3, 104px); outline: 1.5px solid #f2c14e; outline-offset: 5px; }
+  .consult-ui .cp-loshu .cp-num { font-size: 44px; }
+  .consult-ui .cp-loshu .cp-miss { font-size: 15px; }
+  .consult-ui .cp-stats-big b { font-size: 30px; }
+  .consult-ui .cp-palmmap { width: 300px; height: 392px; }
+  .consult-ui .cp-facemap { width: 300px; height: 384px; }
+  .consult-ui .cp-legend { gap: 8px 18px; font-size: 15px; }
+  .consult-ui .cp-zones { font-size: 15px; gap: 8px; width: 100%; flex-wrap: nowrap; }
+  .consult-ui .cp-zones > span { flex: 1; }
+  .consult-ui .cp-zones .deva { font-size: 18px; }
+  .consult-ui .cp-tarot-preview { padding: 36px 40px; gap: 22px; }
+  .consult-ui .cp-spread { grid-template-columns: repeat(3, minmax(0, 210px)) 40px minmax(0, 210px); gap: 26px; align-items: end; width: 100%; justify-content: center; }
+  .consult-ui .cp-spread .icard { width: 100%; height: auto; aspect-ratio: 210 / 330; padding: 16px 10px 12px; }
+  .consult-ui .cp-spread .icard .pos { font-size: 16px; }
+  .consult-ui .cp-spread .icard .nm { font-size: 15px; }
+
+  .consult-ui .cp-ask { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+  .consult-ui .cp-ask-tile { padding: 22px 12px; gap: 6px; }
+  .consult-ui .cp-ask-tile .deva { font-size: 24px; }
+  .consult-ui .cp-ask-tile strong { font-size: 16px; }
+
+  .consult-ui .cp-sec.cp-two { padding-top: 24px; padding-bottom: 56px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+  .consult-ui .cp-keep { padding: 28px; gap: 14px; }
+  .consult-ui .cp-keep ul { font-size: 17px; padding-left: 22px; gap: 8px; }
+  .consult-ui .cp-photos + ul { gap: 6px; }
+  .consult-ui .cp-note { padding: 14px 16px; font-size: 16px; }
+  .consult-ui .cp-howcard { padding: 28px; gap: 22px; }
+  .consult-ui .cp-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .consult-ui .cp-steps strong { font-size: 16px; }
+  .consult-ui .cp-steps .hint { display: block; }
+
+  .consult-ui .cp-sec.cp-calrev { display: grid; grid-template-columns: minmax(360px, 480px) minmax(0, 1fr); gap: 40px; align-items: start; }
+  .consult-ui .cp-cal { padding: 26px; }
+  .consult-ui .cp-cal-title .deva { font-size: 16px; }
+  .consult-ui .cp-cal-title h3 { font-size: 22px; }
+  .consult-ui .cp-reviews-head .cp-cardhead h2 { font-size: 28px; }
+
+  .consult-ui .cp-faqwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: 48px; align-items: start; padding-bottom: 56px; }
+  .consult-ui .cp-promise { gap: 10px; }
+  .consult-ui .cp-promise .deva { font-size: 22px; }
+  .consult-ui .cp-promise h3 { font-size: 22px; }
+  .consult-ui .cp-promise p { font-size: 16px; }
+  .consult-ui .cp-other { padding: 40px clamp(24px, 5vw, 72px) 48px; background: var(--tint); }
+  .consult-ui .cp-other-h { display: flex; margin-bottom: 20px; }
+  .consult-ui .cp-other-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+  .consult-ui .cp-mini .sticker { width: 120px; height: 120px; border-width: 6px; }
+  .consult-ui .cp-mini strong { font-size: 17px; margin-top: 8px; }
+  .consult-ui .cp-mini span { font-size: 15px; }
+}

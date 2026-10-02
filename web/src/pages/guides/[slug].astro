@@ -1,0 +1,47 @@
+---
+// /guides/<slug> — [AUMFE-CONSULT-F1-1 2026-10-02] one consultant's category page (island: ConsultantPage).
+// ADMIN-PREVIEW ONLY while dark: noindex, never cached; the island shows "Opening soon" when the worker hides the guide.
+// ?d=<discipline> picks the category when the consultant offers several (island validates it).
+//
+// NOTE FOR AI:
+//  - Same folk shell as /pandit (Base chrome={false}, .folk-site, SiteHeader/SiteFooter folk).
+//  - Brand name only through BRAND. Fonts: Comfortaa, Nunito, Baloo 2 (preloaded like the other folk pages).
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import { publicImage, clerkFapiHost } from '../../lib/config';
+import { HOME_HEADER_LINKS } from '../../lib/homeNavigation';
+import ConsultantPage from '../../components/consultants/ConsultantPage';
+import '../../styles/saathum-folk.css';
+import { BRAND } from '../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const slug = String(Astro.params.slug ?? '');
+const disc = Astro.url.searchParams.get('d');
+const clerkHost = clerkFapiHost();
+---
+<Base
+  title={`Your guide · ${BRAND.name}`}
+  description="One-to-one private audio calls with real astrologers, numerologists, palmists, face readers and tarot readers."
+  noindex={true}
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#fff8e8" />
+    {clerkHost && <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />}
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content">
+      <ConsultantPage client:load slug={slug} initialDiscipline={disc} />
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>
