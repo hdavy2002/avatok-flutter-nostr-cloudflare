@@ -1,0 +1,10 @@
+---
+// [AUMFE-CONSULT-F4-1] Admin: real consultants — list + "Make consultant" form. ?uid= / ?email= pre-fill the attach field.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Consultants from '../../islands/admin2/consultants/Consultants.tsx';
+---
+
+<Admin2 title="Consultants" active="consultants" subtitle="The human guides who take paid audio sessions. Make a user a consultant, set their profile and go live.">
+  <Consultants client:load />
+</Admin2>

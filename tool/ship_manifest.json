@@ -9289,5 +9289,21 @@
         "equals": "connected"
       }
     ]
+  },
+  "AUMFE-CONSULT-F4-1": {
+    "description": "[AUMFE-CONSULT-F4-1 2026-10-02] Real Consultants admin screens (Consultants list + Make consultant form, Consultant bookings with confirm/cancel/mark-refunded dialogs, Consultant reviews moderation; nav group Consultants) and the public no-sign-in review page /guides/review/[token].",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_review_page",
+        "property": "state",
+        "equals": "submitted"
+      }
+    ]
   }
 }

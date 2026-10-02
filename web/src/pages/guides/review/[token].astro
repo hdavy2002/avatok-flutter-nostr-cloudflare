@@ -1,0 +1,20 @@
+---
+// /guides/review/[token] — [AUMFE-CONSULT-F4-1] Public "leave a review" page from the thank-you message. No sign-in: the token is the
+// credential (worker GET/POST /api/consultants/review/:token). Per-person link: never cached, never indexed.
+export const prerender = false;
+import Base from '../../../layouts/Base.astro';
+import ReviewPage from '../../../islands/admin2/consultants/ReviewPage.tsx';
+import { BRAND } from '../../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const { token = '' } = Astro.params;
+---
+<Base title={`Leave a review · ${BRAND.name}`} noindex={true} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&family=Nunito:wght@400;700;800;900&display=swap" />
+  </Fragment>
+  <ReviewPage client:load token={token} />
+</Base>

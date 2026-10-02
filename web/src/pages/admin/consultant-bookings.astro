@@ -1,0 +1,10 @@
+---
+// [AUMFE-CONSULT-F4-1] Admin: consultant bookings — payment evidence, confirm / cancel / mark refunded.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import ConsultantBookings from '../../islands/admin2/consultants/ConsultantBookings.tsx';
+---
+
+<Admin2 title="Consultant bookings" active="consultant-bookings" subtitle="Every consultant session: who booked, what was paid, and the money actions. Refunds are never automatic.">
+  <ConsultantBookings client:load />
+</Admin2>

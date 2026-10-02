@@ -1,0 +1,10 @@
+---
+// [AUMFE-CONSULT-F4-1] Admin: consultant review moderation (pending / approved / rejected / seed).
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import ConsultantReviews from '../../islands/admin2/consultants/ConsultantReviews.tsx';
+---
+
+<Admin2 title="Consultant reviews" heading="Reviews" active="consultant-reviews" subtitle="Approve or reject what customers wrote after a session.">
+  <ConsultantReviews client:load />
+</Admin2>
