@@ -9117,5 +9117,28 @@
         "note": "One per knowledge document indexed; ok=false means the row is 'failed' with the reason shown in admin."
       }
     ]
+  },
+  "AUMFE-PREETI-BRAIN-1": {
+    "description": "[AUMFE-PREETI-BRAIN-1 2026-10-02] Preeti shares ONE brain with Pandit ji and Meera, ADMIN-PREVIEW ONLY (signed-in uid that lib/preview.ts canSeeGuides lets through; anonymous visitors unchanged, core rules byte-identical). Preview turns: the old no-astrology rule is replaced by hand-offs (suggest_guide -> Pandit ji free text /pandit, Meera paid voice /talk?guide=astrology; Preeti never does readings), search_catalog + search_tradition (the shared guide tools) recommend T-shirts/pujas/havans as item cards, agent_memory briefing in the prompt, remember tool, one agent_memory session (agent preeti, channel chat) per active stretch closed + summarised on idle (next turn or the 5-minute maintenance tick). New cards: type item and type guide (web renders them separately). Telemetry: preeti_recommendation_shown {item_id, kind, uid, conversation_id}, preeti_guide_suggested, preeti_memory_session_started/closed, preeti_memory_remember, preeti_turn {guides, memory}.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "preeti_recommendation_shown",
+        "property": "item_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "One per catalogue item or guide hand-off card Preeti shows a previewer."
+      },
+      {
+        "event": "preeti_memory_session_started",
+        "property": "session_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "One per Preeti memory session (first guide turn of a signed-in previewer, or after an idle gap)."
+      }
+    ]
   }
 }

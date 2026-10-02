@@ -36,7 +36,12 @@ export interface PreetiSession {
 export type PreetiCard =
   | { type: "event"; id: string; title: string; image: string | null; starts_at_ms: number | null;
       price_rupees: number | null; live_now: boolean; booking_open: boolean; read_more_url: string; book_url: string }
-  | { type: "article"; slug: string; title: string; image: string | null; url: string };
+  | { type: "article"; slug: string; title: string; image: string | null; url: string }
+  // [AUMFE-PREETI-BRAIN-1] admin-preview only: a catalogue item (T-shirt / product / puja or havan) from search_catalog,
+  // and a hand-off card to a guide (Pandit ji free text, Meera paid voice) from suggest_guide.
+  | { type: "item"; kind: "product" | "puja"; id: string; title: string; image: string | null; price_rupees: number | null;
+      deity: string | null; read_more_url: string }
+  | { type: "guide"; guide: "pandit" | "meera"; name: string; blurb: string; free: boolean; url: string };
 
 export type PreetiStreamEvent =
   | { type: "delta"; text: string }

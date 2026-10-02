@@ -4,6 +4,8 @@
 import type { Env } from "../../types";
 import { CORS } from "../../util";
 import { track, trackException } from "../../hooks";
+import { canSeeGuides } from "../preview";
+import { closePreetiSession, openMemory, type ActiveSession } from "./brain";
 import { currentBrand, fillPlaceholders, scrubFormerNames } from "./brand_runtime";
 import { resolveArticleCard, resolveEventCard, ritualIndex } from "./cards";
 import type { PageCtx, PreetiCard, PreetiStreamEvent } from "./contracts";
@@ -85,7 +87,16 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   // D1/KV round trips (≈4s of silence before the first word on 2026-09-30).
   const brand = await currentBrand(env); // in-isolate cache: normally instant
   const convRow = conv;
-  const [cfg, rawHistory, budget, model0, persona, articles] = await Promise.all([
+  // [AUMFE-PREETI-BRAIN-1] Shared brain (hand-offs, recommendations, memory) is admin-preview only: a signed-in previewer.
+  // No uid is never a previewer, even if guidesPublic is on, so anonymous visitors always get today's Preeti.
+  const guidesCheck = async (): Promise<boolean> => {
+    if (!uid) return false;
+    try { return await canSeeGuides(env, uid); } catch (e) {
+      await trackException(env, e, { route: "preeti.guides_gate", handled: true, app_name: APP, extra: { conversation_id: convRow.id } });
+      return false;
+    }
+  };
+  const [cfg, rawHistory, budget, model0, persona, articles, guides] = await Promise.all([
     getAgentConfig(env),
     modelHistory(env, convRow.id, 20, historyBefore), // history BEFORE saving this turn
     budgetState(env),
@@ -94,6 +105,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
       ? getPromptBody(env, a.promptOverrideId).then(async (b) => b ?? (await activePrompt(env)).body)
       : activePrompt(env).then((p) => p.body),
     ritualIndex(brand),
+    guidesCheck(),
   ]);
   const history = rawHistory.map((h) => ({ role: h.role, text: scrubFormerNames(h.text, brand) }));
   // Saving the visitor turn runs alongside the model call; awaited before Preeti's reply is stored,
@@ -127,7 +139,18 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
   const cards: PreetiCard[] = [];
   const toolRows: { name: string; summary: string }[] = [];
   let handover = false;
-  const toolCtx: ToolCtx = { env, brand, agentName: cfg.name, cfg, conv, uid, traceId };
+  const toolCtx: ToolCtx = { env, brand, agentName: cfg.name, cfg, conv, uid, traceId, guides };
+
+  // [AUMFE-PREETI-BRAIN-1] Customer memory: signed-in previewer, real (non-test) chat only. One session per active stretch of
+  // chat; an idle gap closes + summarises the old one after this reply. Consent is enforced inside agent_memory.
+  let briefing = "";
+  let stale: ActiveSession | null = null;
+  if (guides && uid && !isTest) {
+    const m = await openMemory(env, uid, conv.id, conv.last_message_at);
+    toolCtx.memorySessionId = m.sessionId; briefing = m.briefing; stale = m.stale;
+  }
+  const closeStale = async () => { if (stale && uid) { const s = stale; stale = null; await closePreetiSession(env, uid, conv!.id, s, "idle_turn", conv!.last_message_at); } };
+  let markerCards = 0;
 
   // Serialise async emission (cards need D1) behind a promise chain so ordering is preserved.
   let chain: Promise<void> = Promise.resolve();
@@ -135,11 +158,17 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
     for (const o of outs) {
       chain = chain.then(async () => {
         if (o.kind === "text") { await send({ type: "delta", text: o.text }); return; }
-        if (cards.length >= 2) return;
+        if (markerCards >= 2) return;
         const card = o.card === "event" ? await resolveEventCard(env, brand, o.ref) : await resolveArticleCard(brand, o.ref);
-        if (card) { cards.push(card); await send({ type: "card", card }); }
+        if (card) { markerCards++; cards.push(card); await send({ type: "card", card }); }
       }).catch((e) => trackException(env, e, { route: "preeti.emit", handled: true, app_name: APP, extra: { conversation_id: conv!.id } }));
     }
+  };
+
+  // [AUMFE-PREETI-BRAIN-1] cards made by tools (catalogue items, guide hand-offs), kept in order behind the text chain.
+  toolCtx.showCard = (card) => {
+    chain = chain.then(async () => { cards.push(card); await send({ type: "card", card }); })
+      .catch((e) => trackException(env, e, { route: "preeti.tool_card", handled: true, app_name: APP, extra: { conversation_id: conv!.id } }));
   };
 
   let usage = { inTok: 0, outTok: 0 }; let blocked = false; let model = "";
@@ -149,6 +178,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
     const system = buildSystemPrompt({
       brand, agentName: cfg.name, persona, page, signedIn: !!uid,
       firstName: conv.name ? conv.name.trim().split(/\s+/)[0] : null, hasPhone: !!conv.e164, now: Date.now(), articles,
+      guides, briefing,
     });
 
     let notes = "";
@@ -190,6 +220,7 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
     // Failure with nothing said: still record the visitor turn's cost (may be tiny) and stop.
     const cost = costMicroUsd(model || "x", usage);
     if (cost > 0) await recordSpend(env, cost);
+    await closeStale();
     return { conv };
   }
 
@@ -218,9 +249,11 @@ async function runTurn(env: Env, a: TurnArgs, send: Send): Promise<{ conv: ConvR
     conversation_id: conv.id, outcome: failed ? "partial_error" : blocked ? "blocked" : "ok", model, input_tokens: usage.inTok, output_tokens: usage.outTok,
     cost_micro_usd: cost, tools: toolsUsed.join(","), tool_rounds: rounds, grounded, cards: cards.length, lead: meta?.lead ?? null,
     mood: meta?.mood ?? null, lang: meta?.lang ?? null, page_kind: page.kind, signed_in: !!uid, is_test: isTest, handover: !!(handover || toolCtx.handoverUrl),
+    guides, memory: !!toolCtx.memorySessionId,
     latency_ms: Date.now() - t0,
   }, traceId);
   await send({ type: "done", message_id: messageId });
+  await closeStale(); // after `done`: the customer is not kept waiting for the idle-session summary
   return { conv };
 }
 

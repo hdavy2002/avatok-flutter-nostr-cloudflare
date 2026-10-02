@@ -64,7 +64,7 @@ export async function loadEventRow(env: Env, id: string): Promise<EventRow | nul
   return await env.DB_META.prepare(`${EVENT_SELECT} WHERE l.id=?1`).bind(id).first<EventRow>().catch(() => null);
 }
 
-function absUrl(brand: BrandRuntime, u: string): string {
+export function absUrl(brand: BrandRuntime, u: string): string {
   if (/^https?:\/\//i.test(u)) return u;
   if (u.startsWith("/")) return brand.site + u;
   return `${BRAND.mediaOrigin}/${u}`;

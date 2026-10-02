@@ -9,7 +9,8 @@ import { track, trackException } from "../../hooks";
 import { notEndedSql, toMs } from "../listing_schedule";
 import { bookingRef, formatIst, verifiedWhatsAppNumber } from "../whatsapp_notify";
 import { sendWhatsAppText } from "../whatsapp_send";
-import type { BrandRuntime } from "./contracts";
+import { GUIDE_TOOL_NAMES, GUIDE_TOOL_SUMMARY, guideDeclarations, runGuideTool } from "./brain";
+import type { BrandRuntime, PreetiCard } from "./contracts";
 import { EVENT_SELECT, eventReadMore, eventState, loadEventRow, seatsTaken, type EventRow } from "./cards";
 import { getConv, updateConversation, type AgentConfigRow, type ConvRow } from "./store";
 
@@ -23,6 +24,14 @@ export interface ToolCtx {
   conv: ConvRow; uid: string | null; traceId: string;
   /** set by handover_to_human so the stream can emit the handover event */
   handoverUrl?: string;
+  // [AUMFE-PREETI-BRAIN-1] shared-brain turn: admin-preview only (signed-in uid that canSeeGuides lets through). All off by default.
+  guides?: boolean;
+  /** agent_memory session for this stretch of chat (guides + uid + not a test). */
+  memorySessionId?: string | null;
+  /** chat.ts sends the card to the widget (and stores it on the reply). */
+  showCard?: (card: PreetiCard) => void;
+  /** cards already shown this turn (dedupe + cap) */
+  shown?: Set<string>;
 }
 
 export const TOOL_DECLARATIONS = [
@@ -66,6 +75,11 @@ export const TOOL_DECLARATIONS = [
     }, required: ["reason", "summary"] },
   },
 ];
+
+/** The function declarations for THIS turn: today's five, plus the shared-brain tools only when guides is on. */
+export function toolDeclarations(ctx: ToolCtx): unknown[] {
+  return ctx.guides ? [...TOOL_DECLARATIONS, ...guideDeclarations(ctx)] : TOOL_DECLARATIONS;
+}
 
 const clip = (s: unknown, n: number) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -260,6 +274,7 @@ export const TOOL_SUMMARY: Record<string, (r: any) => string> = {
   get_event_incidents: (r) => `${r?.incidents?.length ?? 0} incidents`,
   check_booking: (r) => (r?.ok ? `found ${r.bookings?.length ?? 0} (status ${r.bookings?.[0]?.status ?? "?"})` : r?.locked ? "locked" : "no match"),
   handover_to_human: () => "handover requested",
+  ...GUIDE_TOOL_SUMMARY,
 };
 
 export async function runTool(ctx: ToolCtx, name: string, args: any): Promise<unknown> {
@@ -273,7 +288,9 @@ export async function runTool(ctx: ToolCtx, name: string, args: any): Promise<un
         await doHandover(ctx, String(args?.reason ?? "other"), String(args?.summary ?? ""));
         return { ok: true, instruction: "Tell the customer warmly that the human team has been notified and they can tap the WhatsApp button that appears; the team is available 24/7. Do not include any link yourself." };
       }
-      default: return { error: "unknown_tool" };
+      default:
+        if (GUIDE_TOOL_NAMES.has(name)) return await runGuideTool(ctx, name, args);
+        return { error: "unknown_tool" };
     }
   } catch (e) {
     await trackException(ctx.env, e, { route: `preeti.tool.${name}`, handled: true, app_name: APP, extra: { conversation_id: ctx.conv.id } });

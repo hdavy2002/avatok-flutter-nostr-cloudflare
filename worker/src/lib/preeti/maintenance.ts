@@ -3,10 +3,13 @@
 // (site sync) is runPreetiDailyMaintenance in knowledge.ts and is called separately from scheduled().
 import type { Env } from "../../types";
 import { track } from "../../hooks";
+import { closeIdlePreetiSessions } from "./brain";
 import { checkSpendAlerts } from "./spend";
 import { purgeOldChats } from "./store";
 
 export async function runPreetiChatMaintenance(env: Env): Promise<void> {
+  // [AUMFE-PREETI-BRAIN-1] every tick (cheap): close + summarise memory sessions of chats that went quiet for 30 minutes.
+  await closeIdlePreetiSessions(env);
   const day = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
   const key = `preeti_chat_maint:${day}`;
   if (await env.TOKENS.get(key)) return;
