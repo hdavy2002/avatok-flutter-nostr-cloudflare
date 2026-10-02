@@ -10,7 +10,7 @@ import { emailFor } from "../../lib/identity";
 import { metaDb } from "../../db/shard";
 import { peopleQuery } from "../admin2_people";
 import { isConsultAdmin } from "../../lib/consultants/access";
-import { consultantById, consultantByUid, consultantBySlug, newId, type ConsultantRow } from "../../lib/consultants/store";
+import { consultantById, consultantByUid, consultantBySlug, newId, ratingFor, type ConsultantRow } from "../../lib/consultants/store";
 import { validateAdminPatch, slugOk, REFUNDABLE, CANCELLABLE } from "../../lib/consultants/validate";
 import { DISCIPLINES } from "../../lib/consultants/types";
 
@@ -38,9 +38,25 @@ async function audit(env: Env, adminUid: string, action: string, target: string,
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50);
 const parseArr = (s: string): unknown[] => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
 
+/** First name the customer typed in the booking form (astrology/numerology/tarot carry one). */
+function intakeName(raw: unknown): string | null {
+  try {
+    const i = JSON.parse(String(raw || "{}"));
+    const n = i?.birth?.name ?? i?.name ?? i?.birth_name ?? null;
+    return typeof n === "string" && n.trim() ? n.trim() : null;
+  } catch { return null; }
+}
 function consultantAdminView(r: ConsultantRow, extra: Record<string, unknown> = {}) {
   const { disciplines_json, languages_json, ...rest } = r;
-  return { ...rest, disciplines: parseArr(disciplines_json), languages: parseArr(languages_json), ...extra };
+  return { ...rest, rate: r.rate_rupees, disciplines: parseArr(disciplines_json), languages: parseArr(languages_json), ...extra };
+}
+/** [AUMFE-CONSULT-LAND-1] The admin screens also show the attached user's email and the (non-seed) rating. */
+async function consultantAdminFull(env: Env, r: ConsultantRow): Promise<Record<string, unknown>> {
+  const [email, rating] = await Promise.all([
+    r.uid ? emailFor(env, r.uid).catch(() => null) : Promise.resolve(null),
+    ratingFor(env, r.id, false).catch(() => ({ rating_avg: null, rating_count: 0 })),
+  ]);
+  return consultantAdminView(r, { attached_email: email, ...rating });
 }
 
 export async function adminRoutes(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
@@ -69,7 +85,7 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
         `SELECT c.*, (SELECT COUNT(*) FROM consult_bookings b WHERE b.consultant_id = c.id AND b.status IN ('confirmed','in_call','completed')) AS paid_bookings
            FROM consultants c ORDER BY c.sort_order ASC, c.created_at ASC LIMIT 500`,
       ).all<ConsultantRow & { paid_bookings: number }>();
-      return json({ consultants: (rs.results ?? []).map((r) => consultantAdminView(r)) });
+      return json({ consultants: await Promise.all((rs.results ?? []).map((r) => consultantAdminFull(env, r))) });
     };
   } else if (a === "consultants" && !id && method === "POST") {
     action = "create";
@@ -94,7 +110,7 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
         v.rate_rupees ?? 500, v.rate_floor ?? 300, v.rate_ceil ?? 5000, v.slot_minutes ?? 30, v.buffer_minutes ?? 0, v.status ?? "draft", v.sort_order ?? 100, now, now).run();
       await audit(env, adminUid, "create", cid, { slug, name });
       fire("create", { consultant_id: cid });
-      return json({ consultant: consultantAdminView((await consultantById(env, cid))!) }, 201);
+      return json({ consultant: await consultantAdminFull(env, (await consultantById(env, cid))!) }, 201);
     };
   } else if (a === "consultants" && id && !sub && method === "PATCH") {
     action = "patch";
@@ -109,7 +125,7 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
       await db.prepare(`UPDATE consultants SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...keys.map((k) => v.value[k]), Date.now(), id).run();
       await audit(env, adminUid, "patch", id, { fields: v.value });
       fire("patch", { consultant_id: id, fields: keys });
-      return json({ consultant: consultantAdminView((await consultantById(env, id))!) });
+      return json({ consultant: await consultantAdminFull(env, (await consultantById(env, id))!) });
     };
   } else if (a === "consultants" && id && sub === "attach" && method === "POST") {
     action = "attach";
@@ -134,7 +150,7 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
       await db.prepare("UPDATE consultants SET uid = ?, updated_at = ? WHERE id = ?").bind(uid, Date.now(), id).run();
       await audit(env, adminUid, "attach", id, { uid });
       fire("attach", { consultant_id: id });
-      return json({ consultant: consultantAdminView((await consultantById(env, id))!), email: await emailFor(env, uid).catch(() => null) });
+      return json({ consultant: await consultantAdminFull(env, (await consultantById(env, id))!), email: await emailFor(env, uid).catch(() => null) });
     };
   } else if (a === "consultants" && id && sub === "detach" && method === "POST") {
     action = "detach";
@@ -144,7 +160,7 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
       await db.prepare("UPDATE consultants SET uid = NULL, updated_at = ? WHERE id = ?").bind(Date.now(), id).run();
       await audit(env, adminUid, "detach", id, { uid: c.uid });
       fire("detach", { consultant_id: id });
-      return json({ consultant: consultantAdminView((await consultantById(env, id))!) });
+      return json({ consultant: await consultantAdminFull(env, (await consultantById(env, id))!) });
     };
   } else if (a === "consultants" && id && sub === "photo" && method === "POST") {
     action = "photo";
@@ -191,9 +207,11 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
       return json({
         bookings: rows.map((r) => ({
           id: r.id, ref: r.ref, status: r.status, discipline: r.discipline, consultant: { id: r.consultant_id, name: r.consultant_name, slug: r.consultant_slug },
-          customer: { uid: r.uid, email: emails.get(String(r.uid)) ?? null },
+          customer: { uid: r.uid, email: emails.get(String(r.uid)) ?? null, name: intakeName(r.intake_json) },
+          payment: { utr: r.utr, payer_vpa: r.payer_vpa, confirm_source: r.confirm_source, confirmed_at: r.confirmed_at, unique_amount_paise: r.amount_paise, note: r.review_note },
+          refund: r.refund_utr ? { utr: r.refund_utr, at: r.refunded_at, note: null } : null,
           slot_start_ms: r.slot_start_ms, slot_end_ms: r.slot_end_ms,
-          price: { rate: r.rate_rupees, gst: r.gst_rupees, total: r.total_rupees, fee: r.fee_rupees, payout: r.payout_rupees },
+          price: { rate: r.rate_rupees, gst: r.gst_rupees, total: r.total_rupees, fee: r.fee_rupees, payout: r.payout_rupees, gst_rate_pct: 18, fee_rate_pct: 20 },
           pay_method: r.pay_method, utr: r.utr, payer_vpa: r.payer_vpa, paid_claimed_at: r.paid_claimed_at, confirm_source: r.confirm_source, review_note: r.review_note,
           refund_utr: r.refund_utr, refunded_at: r.refunded_at, cancel_reason: r.cancel_reason, prep_status: r.prep_status, created_at: r.created_at, expires_at: r.expires_at,
         })),
@@ -207,12 +225,12 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
       if (!["held", "awaiting_review"].includes(b.status)) return err(409, "not_awaiting_payment", { status: b.status });
       const note = text((await readJson(req)).note, 300);
       // Lane W1 owns the confirm transition (idempotent: stamps receipt, notifies customer + consultant, queues prep).
-      // @ts-expect-error W1 lands confirmConsultBooking
       const { confirmConsultBooking } = await import("../../lib/consultants/payment");
-      const result = await confirmConsultBooking(env, id, { source: "admin", by: adminUid, note: note || undefined });
+      const result = await confirmConsultBooking(env, id, { via: "admin", bankReference: null, adminUid, note: note || null });
       await audit(env, adminUid, "confirm_payment", id, { note });
       fire("confirm_payment", { booking_id: id });
-      return json({ ok: true, result: result ?? null });
+      if (result !== "confirmed") return err(409, result === "lost" ? "already_settled" : "confirm_failed", { result });
+      return json({ ok: true, result });
     };
   } else if (a === "bookings" && id && sub === "refund" && method === "POST") {
     action = "refund";
@@ -257,38 +275,27 @@ export async function adminRoutes(req: Request, env: Env, p: string, ctx?: Execu
     handler = async () => {
       const st = url.searchParams.get("status") || "pending";
       if (!["pending", "approved", "rejected", "seed"].includes(st)) return err(400, "bad_status");
-      const page = Math.max(0, Math.floor(Number(url.searchParams.get("page") || 0)) || 0);
+      const page = Math.max(1, Math.floor(Number(url.searchParams.get("page") || 1)) || 1); // [AUMFE-CONSULT-LAND-1] 1-based, as the admin UI pages
       const where = st === "seed" ? "r.seed = 1" : "r.seed = 0 AND r.status = ?";
-      const rs = await db.prepare(
-        `SELECT r.id, r.booking_id, r.consultant_id, c.name AS consultant_name, r.stars, r.text, r.display_name, r.discipline, r.status, r.seed, r.moderated_by, r.moderated_at, r.created_at
-           FROM consult_reviews r LEFT JOIN consultants c ON c.id = r.consultant_id WHERE ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
-      ).bind(...(st === "seed" ? [] : [st]), PAGE + 1, page * PAGE).all<any>();
-      const rows = rs.results ?? [];
-      return json({ reviews: rows.slice(0, PAGE), page, has_more: rows.length > PAGE });
-    };
-  } else if (a === "reviews" && id && !sub && method === "PATCH") {
-    action = "review_moderate";
-    handler = async () => {
-      const st = (await readJson(req)).status;
-      if (!["pending", "approved", "rejected"].includes(st as string)) return err(400, "bad_status");
-      const r = await db.prepare("SELECT id, status FROM consult_reviews WHERE id = ?").bind(id).first<{ id: string; status: string }>();
-      if (!r) return err(404, "not_found");
-      await db.prepare("UPDATE consult_reviews SET status = ?, moderated_by = ?, moderated_at = ? WHERE id = ?").bind(st, adminUid, Date.now(), id).run();
-      await audit(env, adminUid, "review_moderate", id, { from: r.status, to: st });
-      fire("review_moderate", { review_id: id, to: st });
-      if (st === "approved" && r.status !== "approved") {
-        try {
-          // Lane W3 owns the customer/consultant thank-you on approval.
-          // @ts-expect-error W3 lands notifyReviewApproved
-          const { notifyReviewApproved } = await import("../../lib/consultants/notify");
-          await notifyReviewApproved(env, id);
-        } catch (e) {
-          await trackException(env, e, { route: "/api/consultants/admin/reviews/:id", method, handled: true, app_name: APP, extra: { area: "consult_admin", step: "notifyReviewApproved" } });
-        }
-      }
-      return json({ ok: true, status: st });
+      const [rs, cnt] = await Promise.all([
+        db.prepare(
+          `SELECT r.id, r.booking_id, r.consultant_id, c.name AS consultant_name, c.slug AS consultant_slug, r.stars, r.text, r.display_name, r.discipline, r.status, r.seed, r.moderated_by, r.moderated_at, r.created_at
+             FROM consult_reviews r LEFT JOIN consultants c ON c.id = r.consultant_id WHERE ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
+        ).bind(...(st === "seed" ? [] : [st]), PAGE, (page - 1) * PAGE).all<any>(),
+        db.prepare(
+          `SELECT SUM(CASE WHEN seed = 0 AND status = 'pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN seed = 0 AND status = 'approved' THEN 1 ELSE 0 END) AS approved,
+                  SUM(CASE WHEN seed = 0 AND status = 'rejected' THEN 1 ELSE 0 END) AS rejected, SUM(CASE WHEN seed = 1 THEN 1 ELSE 0 END) AS seed FROM consult_reviews`,
+        ).first<Record<string, number | null>>(),
+      ]);
+      const counts = { pending: Number(cnt?.pending || 0), approved: Number(cnt?.approved || 0), rejected: Number(cnt?.rejected || 0), seed: Number(cnt?.seed || 0) };
+      const total = counts[st as keyof typeof counts];
+      const reviews = (rs.results ?? []).map((r) => ({
+        ...r, seed: r.seed === 1, consultant: { name: r.consultant_name, slug: r.consultant_slug }, customer_name: r.display_name, verified: !!r.booking_id,
+      }));
+      return json({ reviews, page, pages: Math.max(1, Math.ceil(total / PAGE)), has_more: page * PAGE < total, counts });
     };
   }
+
 
   if (!handler) return null;
   try {

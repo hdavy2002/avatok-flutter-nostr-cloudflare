@@ -112,7 +112,7 @@ interface SpreadCard { position: string; id: number; name: string; reversed: boo
 function useDeck(): string[] {
   const { cards } = useFile();
   const d = findKey(effective(cards.spread), ['deck', 'deck_names', 'tarot_deck', 'all_cards'], 3);
-  if (Array.isArray(d) && d.length >= 78) return d.map((x, i) => str(isObj(x) ? x.name : x) || cardNameFallback(i));
+  if (Array.isArray(d) && d.length >= 78) return d.map((x, i) => str(isObj(x) ? x.name : x) || cardNameFallback(i + 1));
   return FALLBACK_DECK;
 }
 
@@ -122,12 +122,12 @@ function useSpread(deck: string[]): SpreadCard[] {
   if (isObj(sp) && Array.isArray(sp.cards)) {
     return (sp.cards as J[]).filter(isObj).map((c, i) => {
       const id = Number(c.id ?? c.card ?? c.card_id ?? -1);
-      return { position: str(c.position) || POS[i]?.label || `Card ${i + 1}`, id, name: str(c.name) || deck[id] || cardNameFallback(id), reversed: c.reversed === true };
+      return { position: str(c.position) || POS[i]?.label || `Card ${i + 1}`, id, name: str(c.name) || deck[id - 1] || cardNameFallback(id), reversed: c.reversed === true };
     });
   }
   if (file.intake.kind !== 'tarot') return [];
   const it = file.intake;
-  return POS.map((p) => ({ position: p.label, id: it.cards[p.key], name: deck[it.cards[p.key]] ?? cardNameFallback(it.cards[p.key]), reversed: it.reversed?.[p.key] === true }));
+  return POS.map((p) => ({ position: p.label, id: it.cards[p.key], name: deck[it.cards[p.key] - 1] ?? cardNameFallback(it.cards[p.key]), reversed: it.reversed?.[p.key] === true }));
 }
 
 function Ic({ c, style }: { c: { name: string; id: number; reversed: boolean; label?: string }; style?: CSSProperties }) {
@@ -160,11 +160,11 @@ export function SpreadCard() {
   const card = cards.spread;
   const cur = effective(card);
   const [edit, setEdit] = useState<number | null>(null);
-  const [pick, setPick] = useState(0);
+  const [pick, setPick] = useState(1);
   const [rev, setRev] = useState(false);
   const hasOv = !!card && card.override !== null && card.override !== undefined;
   const write = async (idx: number) => {
-    const next: SpreadCard[] = spread.map((c, i) => (i === idx ? { ...c, id: pick, name: deck[pick] ?? cardNameFallback(pick), reversed: rev } : c));
+    const next: SpreadCard[] = spread.map((c, i) => (i === idx ? { ...c, id: pick, name: deck[pick - 1] ?? cardNameFallback(pick), reversed: rev } : c));
     if (await save('spread', { ...(isObj(cur) ? cur : {}), cards: next })) setEdit(null);
   };
   return (
@@ -188,7 +188,7 @@ export function SpreadCard() {
       {edit !== null ? (
         <div className="card" style={{ background: '#fff', color: 'var(--ink)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="field"><label htmlFor="pick-card">Card for {spread[edit]?.position}</label>
-            <select id="pick-card" value={pick} onChange={(e) => setPick(Number(e.target.value))}>{deck.map((n, i) => <option key={i} value={i}>{cardNumeral(i) ? `${cardNumeral(i)} · ` : ''}{n}</option>)}</select></div>
+            <select id="pick-card" value={pick} onChange={(e) => setPick(Number(e.target.value))}>{deck.map((n, i) => <option key={i} value={i + 1}>{cardNumeral(i + 1) ? `${cardNumeral(i + 1)} · ` : ''}{n}</option>)}</select></div>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 800 }}><input type="checkbox" checked={rev} onChange={(e) => setRev(e.target.checked)} style={{ width: 22, height: 22 }} /> Reversed</label>
           <div className="cd-row"><button type="button" className="btn small" onClick={() => void write(edit)}>Save</button><button type="button" className="btn small ghost" onClick={() => setEdit(null)}>Cancel</button></div>
         </div>
@@ -229,7 +229,7 @@ export function YesNoCard() {
   const cid = file.intake.kind === 'tarot' && file.intake.yes_no ? file.intake.yes_no.card : Number(findKey(cur, ['card', 'card_id', 'id'], 2));
   const answer = str(findKey(cur, ['answer', 'yes_no', 'result', 'verdict', 'response'], 2));
   const desc = textOf(findKey(cur, ['description', 'text', 'prediction', 'reading', 'meaning'], 2) ?? '');
-  const cardObj = Number.isFinite(cid) && cid >= 0 ? { id: cid, name: deck[cid] ?? cardNameFallback(cid), reversed: false } : null;
+  const cardObj = Number.isFinite(cid) && cid >= 1 ? { id: cid, name: deck[cid - 1] ?? cardNameFallback(cid), reversed: false } : null;
   if (!q && !card) return null;
   return (
     <Section cardKey="yes_no" title="Yes / no question">
@@ -252,13 +252,13 @@ export function DrawMore() {
   const deck = useDeck();
   const spread = useSpread(deck);
   const used = useMemo(() => new Set(spread.map((c) => c.id)), [spread]);
-  const [order, setOrder] = useState<number[]>(() => deck.map((_, i) => i).filter((i) => !used.has(i)));
+  const [order, setOrder] = useState<number[]>(() => deck.map((_, i) => i + 1).filter((i) => !used.has(i)));
   const [drawn, setDrawn] = useState<Drawn[]>([]);
   const [shuffling, setShuffling] = useState(false);
   const [shown, setShown] = useState<Record<number, boolean>>({});
   const shuffle = () => {
     setShuffling(true);
-    const a = deck.map((_, i) => i).filter((i) => !used.has(i) && !drawn.some((d) => d.id === i));
+    const a = deck.map((_, i) => i + 1).filter((i) => !used.has(i) && !drawn.some((d) => d.id === i));
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     setOrder(a);
     setTimeout(() => setShuffling(false), 1000);
@@ -285,7 +285,7 @@ export function DrawMore() {
       {drawn.length ? (
         <div className="cd-deckrow" style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
           {drawn.map((d) => {
-            const name = deck[d.id] ?? cardNameFallback(d.id);
+            const name = deck[d.id - 1] ?? cardNameFallback(d.id);
             return d.up ? (
               <div key={d.n} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 104 }}>
                 <div className={`icard${d.reversed ? ' rev' : ''}`} style={{ width: 104, height: 160, padding: '14px 4px 8px' }}><span className="pos">Extra {d.n}</span><span className="art" /><span className="nm" style={{ fontSize: 13 }}>{name}</span></div>

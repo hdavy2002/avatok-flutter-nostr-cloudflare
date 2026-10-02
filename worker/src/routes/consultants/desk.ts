@@ -206,6 +206,8 @@ export async function deskRoutes(req: Request, env: Env, p: string, ctx?: Execut
     return json({
       this_month: { month: ym, ...thisMonth },
       last_month: { month: istDate(lastStart).slice(0, 7), ...lastMonth },
+      // [AUMFE-CONSULT-LAND-1] flat fields the desk Today screen reads
+      month_total_rupees: thisMonth.payout, month_sessions: thisMonth.completed,
     });
   } catch (e) {
     await trackException(env, e, { route: `/api/consultants/desk/${route}`, method, handled: true, app_name: APP, extra: { area: "consult_desk", uid } });

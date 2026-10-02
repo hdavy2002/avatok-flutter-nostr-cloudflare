@@ -9305,5 +9305,21 @@
         "equals": "submitted"
       }
     ]
+  },
+  "AUMFE-CONSULT-LAND-1": {
+    "description": "[AUMFE-CONSULT-LAND-1 2026-10-02] Real Consultants integration fixes: admin API shapes aligned with the admin screens (rate, attached email, rating, nested payment/refund, 1-based review pages + counts), W1 confirm called with the rail's evidence shape, desk earnings flat fields, tarot card ids 1..78 on the desk.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_admin_action",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }
