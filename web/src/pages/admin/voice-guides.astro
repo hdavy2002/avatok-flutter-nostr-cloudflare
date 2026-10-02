@@ -1,0 +1,11 @@
+---
+// [AUMFE-VOICE-ADMIN-1] Admin 2 "Voice guides" — create and run the AI voice guides (card, prompt, knowledge, test, calls).
+// Worker: /api/admin/v2/voice-agents/* (AUMFE-VOICE-AGENTS-DB-1).
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import VoiceGuides from '../../islands/admin2/voiceguides/VoiceGuides.tsx';
+---
+
+<Admin2 title="Voice guides" active="voice-guides" subtitle="Create voice guides, set their persona, teach them, and read their calls.">
+  <VoiceGuides client:load />
+</Admin2>
