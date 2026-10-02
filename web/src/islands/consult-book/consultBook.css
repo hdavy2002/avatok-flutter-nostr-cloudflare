@@ -1,0 +1,122 @@
+/* [AUMFE-CONSULT-F2-1 2026-10-02] Booking wizard + "My consultations" — layout rules only. Colours, buttons, cards, chips,
+ * steps bars, fields, slots, icards, cardback come from styles/consultants.css (mockup port, scope .consult-ui).
+ * Owner rules: no green, min font 13px, never negative tracking. Everything is scoped under .consult-ui. */
+.cb-page{background:#fff8e8;min-height:70vh;padding:0 0 40px}
+.consult-ui.cb-root{max-width:560px;margin:0 auto;background:var(--cream);min-height:70vh}
+@media (min-width:640px){.consult-ui.cb-root{margin:24px auto;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 18px 40px -24px rgba(23,52,60,.35)}}
+.consult-ui .cb-head{padding:12px 16px;gap:12px;justify-content:flex-start}
+.consult-ui .cb-head strong{font-size:16px}
+.consult-ui .cb-head .sticker{width:44px;height:44px;border-width:3px;flex-shrink:0}
+.consult-ui .cb-head-txt{display:flex;flex-direction:column;line-height:1.2}
+.consult-ui .cb-body{padding:18px 16px 24px;display:flex;flex-direction:column;gap:18px}
+.consult-ui .cb-body.wide{gap:22px}
+.consult-ui .cb-prog{display:flex;flex-direction:column;gap:8px}
+.consult-ui .cb-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.consult-ui .cb-note{padding:12px 14px;display:flex;gap:10px;align-items:center;background:#f6ead0;border-color:#e2cf9f}
+.consult-ui .cb-note span{font-size:15px;font-weight:700}
+.consult-ui .cb-check{display:flex;gap:10px;align-items:center;font-weight:700;font-size:15px}
+.consult-ui .cb-check input{width:22px;height:22px;min-height:0;flex-shrink:0;accent-color:var(--c1,var(--teal))}
+.consult-ui .cb-chips{display:flex;flex-wrap:wrap;gap:8px}
+.consult-ui .cb-chips .slot{padding:0 14px;cursor:pointer}
+.consult-ui .cb-label{font-size:14px;font-weight:800}
+.consult-ui .cb-more{padding:14px}
+.consult-ui .cb-more summary{font-weight:800;font-size:16px;cursor:pointer}
+.consult-ui .cb-more[open] summary{margin-bottom:12px}
+.consult-ui .cb-more .cb-stack{display:flex;flex-direction:column;gap:14px}
+.consult-ui .cb-stack{display:flex;flex-direction:column;gap:14px}
+.consult-ui .cb-err{color:#9a1f19;font-weight:800;font-size:15px}
+.consult-ui .cb-center{text-align:center}
+.consult-ui .cb-input{min-height:48px;border:1.5px solid #cdbb8f;border-radius:12px;padding:10px 14px;font:16px 'Nunito',sans-serif;background:#fff;color:var(--ink);width:100%}
+.consult-ui .btn[disabled]{opacity:.55;cursor:not-allowed}
+.consult-ui .btn.block{width:100%}
+.consult-ui .edit.left{align-self:flex-start}
+/* numerology preview strip */
+.consult-ui .cb-numprev{padding:16px;display:flex;gap:14px;align-items:center}
+.consult-ui .cb-numprev .col{display:flex;flex-direction:column;align-items:center}
+.consult-ui .cb-numprev .cap{font-size:13px;color:#f0c9cf;font-weight:800}
+.consult-ui .cb-numprev .deva{font-size:32px;color:#f2c14e}
+.consult-ui .cb-numprev .txt{font-size:15px;color:#fff8e8}
+/* day strip + times */
+.consult-ui .cb-days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.consult-ui .cb-days .slot{min-width:62px;display:flex;flex-direction:column;justify-content:center;padding:6px 0;line-height:1.15;flex-shrink:0;cursor:pointer}
+.consult-ui .cb-times{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.consult-ui .cb-times .slot{cursor:pointer}
+.consult-ui .cb-times .slot:disabled,.consult-ui .cb-days .slot:disabled{cursor:not-allowed}
+.consult-ui .cb-price{display:flex;flex-direction:column;gap:10px}
+.consult-ui .cb-price .row{display:flex;justify-content:space-between;gap:12px;font-size:16px}
+.consult-ui .cb-price .tot{font-size:20px;font-weight:900}
+.consult-ui .cb-price hr{border:0;height:1px;background:#e6d9b8;margin:0;width:100%}
+.consult-ui .cb-method{display:flex;gap:12px;align-items:center;padding:14px;cursor:pointer}
+.consult-ui .cb-method.on{border-color:var(--teal);border-width:2px}
+.consult-ui .cb-method input{width:22px;height:22px;flex-shrink:0;accent-color:var(--teal)}
+.consult-ui .cb-method b{font-weight:800;font-size:16px}
+.consult-ui .cb-method[aria-disabled=true]{opacity:.6;cursor:not-allowed}
+.consult-ui .cb-agree{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.consult-ui .cb-agree input{width:22px;height:22px;flex-shrink:0;accent-color:var(--teal)}
+/* tarot */
+.consult-ui .cb-tarot{padding:18px 12px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.consult-ui .cb-tarot .hd{font-size:19px;color:#f2c14e}
+.consult-ui .cb-tgrid{display:grid;grid-template-columns:repeat(3,104px);gap:10px;justify-content:center}
+.consult-ui .cb-tgrid .yn{grid-column:2}
+.consult-ui .cb-tgrid .icard{width:104px;height:170px;padding:12px 6px 8px}
+.consult-ui .cb-tgrid .icard .pos{font-size:14px}
+.consult-ui .cb-tgrid .icard .nm{font-size:13px}
+.consult-ui .cb-empty{width:104px;height:170px;border-radius:12px;border:2px dashed #f2c14e;display:flex;align-items:center;justify-content:center;text-align:center;color:#f2c14e;font-weight:800;font-size:14px;padding:6px}
+.consult-ui .cb-empty .deva{font-size:17px}
+.consult-ui .cb-fan{display:flex;justify-content:center;height:130px;position:relative}
+.consult-ui .cb-fan .cardback{position:absolute;width:80px;height:120px;border:0;padding:0;cursor:pointer}
+.consult-ui .cb-fan .cardback:disabled{cursor:default}
+/* photo capture */
+.consult-ui .cb-cam{display:flex;flex-direction:column;min-height:calc(100svh - 70px);color:#fff}
+.consult-ui .cb-cam.cat-palm{background:#2a1a12}
+.consult-ui .cb-cam.cat-face{background:#2a0d10}
+.consult-ui .cb-cam h2{color:#fff;font-size:22px}
+.consult-ui .cb-cam-top{padding:16px;display:flex;flex-direction:column;gap:8px}
+.consult-ui .cb-cam-top .label{color:#d7dcf0}
+.consult-ui .cat-face .cb-cam-top .label,.consult-ui .cb-cam.cat-face p{color:#f0c7c3}
+.consult-ui .cb-cam p{font-size:15px;color:#d7dcf0;text-align:center}
+.consult-ui .cb-frame{flex-grow:1;min-height:340px;margin:0 16px;border-radius:20px;background:linear-gradient(180deg,#4a3f36,#2e2620);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.consult-ui .cat-face .cb-frame{background:linear-gradient(180deg,#4a2a2c,#34191b);border:2px solid #d1ae70}
+.consult-ui .cb-frame video,.consult-ui .cb-frame .shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.consult-ui .cb-frame video.mirror{transform:scaleX(-1)}
+.consult-ui .cb-frame .tag{position:absolute;top:14px;left:14px;font-size:13px;font-weight:800;color:#d7dcf0;z-index:2}
+.consult-ui .cb-outline{position:relative;z-index:1;pointer-events:none}
+.consult-ui .cb-chipcol{position:absolute;left:16px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:2}
+.consult-ui .cb-chipcol .chip{background:#f6e7c4;color:#6b4e12;align-self:flex-start}
+.consult-ui .cb-chipcol .chip.warn{background:#fbe7c2}
+.consult-ui .cb-chipcol .chip.bad{background:#fbe1dc;color:#9a1f19}
+.consult-ui .cb-cam-foot{padding:18px 16px 24px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.consult-ui .cb-cam-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+.consult-ui .cb-cam .btn.ghost{color:#fff;border-color:#fff}
+.consult-ui .cb-shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#c82c25;cursor:pointer;padding:0}
+.consult-ui .cb-shutter:disabled{opacity:.55;cursor:not-allowed}
+/* UPI panel */
+.consult-ui .cb-pay{display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center}
+.consult-ui .cb-qr{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;width:min(260px,100%);display:flex;flex-direction:column;align-items:center;gap:8px}
+.consult-ui .cb-qr img{width:100%;height:auto;display:block}
+.consult-ui .cb-amt{display:flex;flex-direction:column;gap:2px}
+.consult-ui .cb-amt b{font-family:'Comfortaa',sans-serif;font-size:30px;color:var(--teal)}
+.consult-ui .cb-upi{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:16px}
+.consult-ui .cb-how{text-align:left;margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.consult-ui .cb-utr{display:flex;gap:10px;width:100%}
+.consult-ui .cb-utr input{flex:1;min-width:0}
+.consult-ui .cb-wait{text-align:left;display:flex;flex-direction:column;gap:10px;width:100%}
+.consult-ui .cb-wait div{display:flex;gap:10px;align-items:center;font-size:16px;color:var(--muted)}
+.consult-ui .cb-wait div.ok{color:var(--ink);font-weight:800}
+.consult-ui .cb-wait i{width:24px;height:24px;border-radius:50%;border:2px solid var(--gold);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;flex-shrink:0}
+/* done */
+.consult-ui .cb-done{padding:32px 16px;display:flex;flex-direction:column;gap:18px;align-items:center;text-align:center}
+.consult-ui .cb-done .sticker{width:150px;height:150px}
+.consult-ui .cb-done h1{font-size:28px}
+.consult-ui .cb-done .when{font-family:'Comfortaa',sans-serif;font-weight:700;font-size:22px;color:var(--teal)}
+.consult-ui .cb-done .notes{width:100%;display:flex;flex-direction:column;gap:10px;text-align:left}
+.consult-ui .cb-done .notes div{display:flex;gap:10px;align-items:center;font-size:16px}
+.consult-ui .cb-done .acts{width:100%;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+/* my consultations */
+.consult-ui.cb-list{max-width:760px;margin:0 auto;background:transparent;display:flex;flex-direction:column;gap:14px}
+.consult-ui .cb-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.consult-ui .cb-row .sticker{width:56px;height:56px;border-width:3px;flex-shrink:0}
+.consult-ui .cb-row .who{display:flex;flex-direction:column;flex:1;min-width:180px;line-height:1.25}
+.consult-ui .cb-row .who strong{font-size:17px}
+.consult-ui .cb-row .acts{display:flex;gap:8px;flex-wrap:wrap}
+.consult-ui .cb-state{padding:28px 16px;text-align:center}

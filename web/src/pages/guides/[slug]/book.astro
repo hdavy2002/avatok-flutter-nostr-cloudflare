@@ -1,0 +1,45 @@
+---
+// /guides/<slug>/book — [AUMFE-CONSULT-F2-1 2026-10-02] the Real Consultants booking wizard (details -> photos/cards ->
+// time + pay -> done). ADMIN-PREVIEW ONLY while consultantsEnabled is dark: the island and the API both gate on it.
+//
+// NOTE FOR AI:
+//  - Same folk shell as /shop/checkout (Base chrome={false}, .folk-site, SiteHeader/SiteFooter folk).
+//  - Per-person data: never cached, never indexed. Brand name/domain only through BRAND.
+//  - All interactive work is the ConsultBook island (islands/consult-book/). F1 owns pages/guides/[slug].astro.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import SiteHeader from '../../../components/SiteHeader.astro';
+import SiteFooter from '../../../components/SiteFooter.astro';
+import { publicImage, clerkFapiHost } from '../../../lib/config';
+import { HOME_HEADER_LINKS } from '../../../lib/homeNavigation';
+import { ConsultBook } from '../../../islands/consult-book/ConsultBook.tsx';
+import '../../../styles/saathum-folk.css';
+import { BRAND } from '../../../lib/brand';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const slug = String(Astro.params.slug ?? '');
+const clerkHost = clerkFapiHost();
+---
+<Base
+  title={`Book a consultation · ${BRAND.name}`}
+  description={`Book a one-to-one audio consultation on ${BRAND.domain}.`}
+  noindex={true}
+  chrome={false}
+  indiaLandingLanguage={false}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#fff8e8" />
+    {clerkHost && <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />}
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&display=swap" />
+  </Fragment>
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <main id="main-content" class="cb-page">
+      <ConsultBook client:load slug={slug} />
+    </main>
+    <SiteFooter folk indiaLandingLanguage={false} />
+  </div>
+</Base>

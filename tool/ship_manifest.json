@@ -9257,5 +9257,21 @@
         "min_events": 1
       }
     ]
+  },
+  "AUMFE-CONSULT-F2-1": {
+    "description": "[AUMFE-CONSULT-F2-1 2026-10-02] Real Consultants booking wizard on the web: /guides/<slug>/book (details per discipline, tarot shuffle-and-draw, palm/face camera capture with quality checks, time + questions, UPI/wallet pay, done + .ics) and /dashboard/consultations. Web-only, admin-preview while consultantsEnabled is dark. Telemetry: consult_book_step {step, discipline}, consult_photo_capture {kind, ok, reason}, consult_tarot_drawn, consult_pay_started {method}, consult_pay_result {method, ok, reason}.",
+    "shipped": "2026-10-02",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "consultantsEnabled"
+    ],
+    "success": [
+      {
+        "event": "consult_pay_result",
+        "property": "ok",
+        "equals": true
+      }
+    ]
   }
 }

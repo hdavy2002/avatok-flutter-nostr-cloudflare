@@ -1,0 +1,11 @@
+---
+// /dashboard/consultations — [AUMFE-CONSULT-F2-1 2026-10-02] the customer's Real Consultants bookings, ADMIN-PREVIEW ONLY
+// while consultantsEnabled is dark (the island sends non-previewers to /dashboard when the API refuses them).
+// Dashboard 2 owns the auth guard + ClerkProvider; `active` reuses "my-events" (islands/admin2/nav.ts belongs to F4).
+export const prerender = false;
+import Dashboard2 from '../../layouts/Dashboard2.astro';
+import MyConsultations from '../../islands/consult-book/MyConsultations.tsx';
+---
+<Dashboard2 title="My consultations" active="my-events" subtitle="Your calls with astrologers, numerologists, palmists, face readers and tarot readers.">
+  <MyConsultations client:load />
+</Dashboard2>
