@@ -1,201 +1,65 @@
-// Browser checks for the grand Saa Thum homepage. Run only from the web build workflow.
+// [CALLVAAL-NOTEBOOK-HOME-1] Browser review, GitHub Actions only.
 import { chromium } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
-// [WEB-OLD-PAGES-GONE-1] /organisers deleted — its browser check no longer runs.
 
 const root = resolve('dist');
-const manifest = JSON.parse(await readFile(resolve('src/lib/publicImageManifest.json'), 'utf8'));
-const borderSource = '/assets/bright/border.png';
-const borderImmutable = manifest[borderSource];
-assert(borderImmutable, 'immutable border asset is in the public image manifest');
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
 const server = createServer(async (request, response) => {
   try {
-    let pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
-    pathname = pathname.replace(/^\/cdn-cgi\/image\/[^/]+\//, '/');
+    let pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname).replace(/^\/cdn-cgi\/image\/[^/]+\//, '/');
     if (pathname.endsWith('/')) pathname += 'index.html';
-    else if (!extname(pathname)) pathname += '/index.html'; // [MKT-V2-4] extensionless routes (/how-it-works) → their built index.html
+    else if (!extname(pathname)) pathname += '/index.html';
     const file = resolve(root, '.' + pathname);
-    if (!file.startsWith(root + sep)) {
-      if (!response.headersSent && !response.writableEnded) response.writeHead(403).end();
-      return;
-    }
+    if (!file.startsWith(root + sep)) return void response.writeHead(403).end();
     const body = await readFile(file);
-    if (!response.headersSent && !response.writableEnded) {
-      response.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }).end(body);
-    }
-  } catch {
-    if (!response.headersSent && !response.writableEnded) response.writeHead(404).end();
-  }
+    response.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }).end(body);
+  } catch { if (!response.writableEnded) response.writeHead(404).end(); }
 });
 await new Promise(done => server.listen(4179, '127.0.0.1', done));
 const browser = await chromium.launch();
 await mkdir('homepage-review', { recursive: true });
 try {
-  for (const [name, width, height] of [['ultra-wide', 2560, 1400], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['desktop-breakpoint', 1122, 1000], ['tablet', 820, 1000], ['menu-breakpoint', 1100, 900], ['mobile', 390, 844], ['small-mobile', 320, 740]]) {
+  for (const [name, width, height] of [['wide', 1920, 1200], ['desktop', 1440, 1000], ['reference', 1154, 1000], ['tablet', 820, 1000], ['mobile', 390, 844], ['small-mobile', 360, 780]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
-    await page.route(/posthog|api\.avatok\.ai/, route => route.abort());
+    await page.route(/posthog|\/api\//, route => route.abort());
     await page.goto('http://127.0.0.1:4179/', { waitUntil: 'networkidle' });
     await page.evaluate(async () => {
       await document.fonts.ready;
-      const images = [...document.images];
-      images.forEach(image => image.loading = 'eager');
-      await Promise.all(images.map(image => image.decode().catch(() => undefined)));
-      await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
+      for (const image of document.images) image.loading = 'eager';
+      await Promise.all([...document.images].map(image => image.decode().catch(() => undefined)));
     });
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       content: document.documentElement.scrollWidth,
-      heading: document.querySelector('h1')?.innerText,
-      broken: [...document.images].filter(image => !image.complete || image.naturalWidth === 0).length,
-      hero: (() => { const r = document.querySelector('.grand-hero-art').getBoundingClientRect(); return { x:r.x, width:r.width, height:r.height }; })(),
+      broken: [...document.images].filter(image => !image.complete || !image.naturalWidth).length,
+      heading: document.querySelector('h1')?.textContent,
+      headingFont: getComputedStyle(document.querySelector('h1')).fontFamily,
+      bodyFont: getComputedStyle(document.body).fontFamily,
+      categories: [...document.querySelectorAll('.category-card')].map(el => Math.round(el.getBoundingClientRect().top)),
     }));
-    if (width > 1100) {
-      const headerGeometry = await page.locator('header').evaluate(header => {
-        const nav = header.querySelector('.avh-nav')?.getBoundingClientRect();
-        const auth = header.querySelector('.avh-right')?.getBoundingClientRect();
-        return { navRight: nav?.right ?? 0, authLeft: auth?.left ?? innerWidth };
-      });
-      assert(headerGeometry.navRight < headerGeometry.authLeft, name + ': header links and auth controls do not collide');
-      const headerType = await page.locator('header').evaluate(header => ({
-        // [BRAND-LOGO-1 2026-09-27] The brand is now one image (.avh-logo-mark), not icon + text.
-        logoSize: header.querySelector('.avh-logo-mark')?.getBoundingClientRect().height ?? 0,
-        navSize: parseFloat(getComputedStyle(header.querySelector('.avh-nav a')).fontSize),
-        barRight: header.querySelector('.avh-bar')?.getBoundingClientRect().right ?? 0,
-      }));
-      assert(headerType.logoSize >= 28, name + ': header logo remains large');
-      assert(headerType.navSize >= 16, name + ': header navigation remains readable');
-      assert(headerType.barRight <= width + 1, name + ': header bar stays inside viewport');
-    }
-    await page.locator('#experiences').scrollIntoViewIfNeeded();
-    await page.evaluate(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
-    await page.locator('.grand-category-grid').screenshot({ path: 'homepage-review/' + name + '-categories.png' });
-    await page.locator('.grand-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
-    await page.locator('.grand-belonging').screenshot({ path: 'homepage-review/' + name + '-belonging.png' });
-    await page.locator('.grand-organise').screenshot({ path: 'homepage-review/' + name + '-organise.png' });
-    await page.locator('#home-events').scrollIntoViewIfNeeded();
-    await page.locator('.grand-listing-grid').screenshot({ path: 'homepage-review/' + name + '-listings.png' });
-    await page.locator('footer').scrollIntoViewIfNeeded();
-    await page.locator('footer').screenshot({ path: 'homepage-review/' + name + '-footer.png' });
-    await page.evaluate(async () => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
-    await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
-    assert.equal(geometry.broken, 0, name + ': all artwork loads');
-    assert.match(geometry.heading, /A puja in your name,\s+at a quiet Himalayan temple/); // AUMFE-COPY-SEO-1
-    assert.match(await page.locator('.folk-site h1').evaluate(el => getComputedStyle(el).fontFamily), /Comfortaa/i, name + ': Comfortaa headings');
-    assert.match(await page.locator('.folk-site').first().evaluate(el => getComputedStyle(el).fontFamily), /Nunito/i, name + ': Nunito body');
-    assert(await page.locator('[data-grand-artwork="hero"]').isVisible(), name + ': grand hero is visible');
-    const categoryArt = await page.locator('.booking-artwork--category').evaluateAll(elements => elements.map(image => {
-      const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
-    }));
-    assert.equal(categoryArt.length, 6, name + ': six category scenes');
-    for (const [index, art] of categoryArt.entries()) {
-      assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': category scene paints #' + index);
-      assert(Math.abs(art.width - art.height) < 2, name + ': category scene remains square #' + index);
-      if (width <= 600) assert(art.width >= 110, name + ': phone category art stays legible #' + index);
-    }
-    // [SAATHUM-GUIDE-1 2026-09-25] Eight havan knowledge cards (art from /assets/rituals/).
-    const listingArt = await page.locator('.grand-havan .grand-listing-art img').evaluateAll(elements => elements.map(image => {
-      const rect = image.getBoundingClientRect(); return { width: rect.width, height: rect.height, naturalWidth: image.naturalWidth };
-    }));
-    assert.equal(listingArt.length, 8, name + ': eight havan cards');
-    for (const [index, art] of listingArt.entries()) {
-      assert(art.width > 0 && art.height > 0 && art.naturalWidth > 0, name + ': havan art paints #' + index);
-      assert(art.width > art.height, name + ': havan art is landscape #' + index);
-    }
-    assert.equal(await page.locator('.grand-listing').evaluateAll(els => els.filter(el => getComputedStyle(el).transform !== 'none').length), 0, name + ': listings stay straight');
-    assert.equal(await page.locator('.folk-seal, .folk-handnote, .folk-event-stamp').count(), 0, name + ': no retired stamps');
-    assert.equal(await page.locator('.grand-elephant').count(), 2, name + ': organiser has two elephant artworks');
-    assert(await page.locator('[data-folk-artwork="satsang"]').isVisible(), name + ': guru art visible');
-    assert.equal(await page.locator('.grand-culture, .grand-intro').count(), 0, name + ': compact approved section order');
-    assert(await page.locator('.grand-belonging #joining').isVisible(), name + ': joining steps share the how-it-works band');
-    assert.notEqual(await page.locator('.grand-belonging-art .folk-artwork').evaluate(el => getComputedStyle(el).filter), 'none', name + ': guru art retains lifted shadow');
-    const footer = page.locator('footer');
-    // [SAATHUM-ARCHIVE-1 2026-09-25] Puja & Havan footer: Child Safety, Payouts, Careers archived.
-    for (const label of ['Our temples', 'Cookies', 'Refund policy', 'Contact']) { // [WEB-FOOTER-BROWSE-1] 'All pujas' left the footer
-      assert(await footer.getByRole('link', { name: label, exact: true }).isVisible(), name + ': footer link visible: ' + label);
-    }
-    const footerBoxes = await footer.locator('.bf-col, .bf-legal-links').evaluateAll(elements => elements.map(el => {
-      const style = getComputedStyle(el);
-      return { background: style.backgroundColor, border: style.borderStyle, radius: style.borderRadius, shadow: style.boxShadow };
-    }));
-    for (const box of footerBoxes) {
-      assert.equal(box.background, 'rgba(0, 0, 0, 0)', name + ': footer menu background is open');
-      assert.equal(box.border, 'none', name + ': footer menu has no enclosing border');
-      assert.equal(box.radius, '0px', name + ': footer menu has no rounded panel');
-      assert.equal(box.shadow, 'none', name + ': footer menu has no card shadow');
-    }
-    assert.equal(await footer.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 248, 232)', name + ': cream reference footer');
-    assert(await footer.locator('.bf-col a').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 13), name + ': footer links remain readable');
-    const borderBackgrounds = await page.evaluate(async expectedPath => {
-      const decode = (element, pseudo) => new Promise(resolve => {
-        const css = getComputedStyle(element, pseudo).backgroundImage;
-        const match = css.match(/url\(["']?([^"')]+)["']?\)/);
-        if (!match) return resolve({ path: null, width: 0, height: 0 });
-        const image = new Image();
-        image.onload = () => resolve({ path: new URL(match[1], location.href).pathname.replace(/^\/cdn-cgi\/image\/[^/]+\//, '/'), width: image.naturalWidth, height: image.naturalHeight });
-        image.onerror = () => resolve({ path: null, width: 0, height: 0 });
-        image.src = new URL(match[1], location.href).href;
-      });
-      return Promise.all([decode(document.querySelector('.folk-ribbon'), null), decode(document.querySelector('footer'), '::after')]);
-    });
-    for (const [index, background] of borderBackgrounds.entries()) {
-      assert.equal(background.path, borderImmutable, name + ': immutable border URL #' + index);
-      assert(background.width > 0 && background.height > 0, name + ': border decodes #' + index);
-    }
-    if (width > 1100) {
-      const rows = await page.evaluate(() => ({
-        categories: [...document.querySelectorAll('.grand-category')].map(el => Math.round(el.getBoundingClientRect().top)),
-        listings: [...document.querySelectorAll('.grand-listing')].map(el => Math.round(el.getBoundingClientRect().top)),
-      }));
-      assert.equal(new Set(rows.categories).size, 1, name + ': all six categories occupy one row');
-      assert.equal(new Set(rows.listings).size, 2, name + ': eight havan cards occupy two rows of four'); // SAATHUM-GUIDE-1
-    }
-    if (width >= 1440) assert(await page.locator('.grand-belonging').evaluate(el => el.getBoundingClientRect().height <= 430), name + ': how-it-works strip remains compact');
-    if (width >= 1920) {
-      const heroWidth = geometry.hero.width;
-      assert(heroWidth > 600, name + ': wide hero artwork is generously sized');
-      assert(await page.locator('.grand-belonging-art img').evaluate(el => el.getBoundingClientRect().width >= 300), name + ': guru art is large');
-      assert(await page.locator('.grand-elephant img').first().evaluate(el => el.getBoundingClientRect().width >= 200), name + ': elephants are large');
-    }
-    if (width <= 1100) {
-      const mobileHeader = await page.locator('header').evaluate(header => {
-        const logo = header.querySelector('.avh-logo')?.getBoundingClientRect();
-        const burger = header.querySelector('.avh-burger')?.getBoundingClientRect();
-        return { logoRight: logo?.right ?? 0, burgerLeft: burger?.left ?? innerWidth, burgerRight: burger?.right ?? 0 };
-      });
-      assert(mobileHeader.logoRight + 8 < mobileHeader.burgerLeft, name + ': mobile logo clears menu button');
-      assert(mobileHeader.burgerRight <= width + 1, name + ': mobile menu button stays inside viewport');
-      await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-      assert(await page.locator('#avh-drawer').evaluate(dialog => dialog.open), name + ': mobile menu opens');
-      await page.keyboard.press('Escape');
-      await page.locator('#avh-drawer').waitFor({ state: 'hidden' });
-      assert(await page.getByRole('button', { name: 'Open menu', exact: true }).evaluate(el => el === document.activeElement), name + ': Escape restores focus');
-      await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-      // [MKT-V2-4] The menu no longer has an in-page anchor (By intention). A menu link now
-      // NAVIGATES, so the drawer cannot be inspected afterwards (the old page is gone — that
-      // was the 30s locator timeout in run 36289487658). Assert the navigation itself, then
-      // return to the homepage for the signed-in checks below.
-      await Promise.all([
-        page.waitForURL(/\/how-it-works\/?$/, { waitUntil: 'commit' }),
-        page.locator('#avh-drawer').getByRole('link', { name: 'How it works', exact: true }).click(),
-      ]);
-      assert(/\/how-it-works\/?$/.test(page.url()), name + ': menu link navigates');
-      await page.goto('http://127.0.0.1:4179/', { waitUntil: 'networkidle' });
-    }
-    await page.context().addCookies([{ name: '__client_uat', value: '1', url: 'http://127.0.0.1:4179' }]);
-    await page.reload({ waitUntil: 'networkidle' });
-    if (width <= 1100) await page.getByRole('button', { name: 'Open menu', exact: true }).click();
-    const authNav = page.locator(width <= 1100 ? '#avh-drawer' : 'header');
-    assert(await authNav.getByRole('link', { name: 'Dashboard', exact: true }).isVisible(), name + ': signed-in dashboard');
-    assert(await authNav.getByRole('link', { name: 'Sign out', exact: true }).isVisible(), name + ': signed-in sign-out');
-    assert(!(await authNav.getByRole('link', { name: 'Sign in', exact: true }).isVisible()), name + ': signed-out login hidden');
+    assert.equal(geometry.broken, 0, name + ': portraits load');
+    assert.match(geometry.heading, /Life ka sawaal/);
+    assert.match(geometry.headingFont, /Comfortaa/i);
+    assert.match(geometry.bodyFont, /Nunito/i);
+    assert.equal(await page.locator('.profile-card').count(), 3);
+    assert.equal(await page.locator('.category-card').count(), 6);
+    assert.equal(await page.locator('.steps li').count(), 4);
+    if (width >= 1154) assert.equal(new Set(geometry.categories).size, 2, name + ': reference 3 by 2 category grid');
+    const faq = page.locator('#faq details').first();
+    await faq.locator('summary').click();
+    assert(await faq.evaluate(el => el.open), name + ': FAQ opens');
+    await faq.locator('summary').click();
+    assert(!(await faq.evaluate(el => el.open)), name + ': FAQ closes');
+    const anchors = await page.locator('a[href^="#"]').evaluateAll(links => links.map(a => a.getAttribute('href').slice(1)).filter(id => id && !document.getElementById(id)));
+    assert.deepEqual(anchors, [], name + ': all in-page destinations exist');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
+    await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
     console.log(name, JSON.stringify(geometry));
     await page.close();
   }
-  // [WEB-OLD-PAGES-GONE-1] organisers browser check removed with the page.
 } finally { await browser.close(); server.close(); }
