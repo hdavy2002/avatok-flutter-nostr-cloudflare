@@ -31,6 +31,10 @@ try {
       for (const image of document.images) image.loading = 'eager';
       await Promise.all([...document.images].map(image => image.decode().catch(() => undefined)));
     });
+    // Save evidence before assertions so a layout failure still has screenshots.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
+    await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
     const geometry = await page.evaluate(() => ({
       viewport: innerWidth,
       content: document.documentElement.scrollWidth,
@@ -38,7 +42,8 @@ try {
       heading: document.querySelector('h1')?.textContent,
       headingFont: getComputedStyle(document.querySelector('h1')).fontFamily,
       bodyFont: getComputedStyle(document.body).fontFamily,
-      categories: [...document.querySelectorAll('.category-card')].map(el => Math.round(el.getBoundingClientRect().top)),
+      // Layout offsets exclude the intentional paper-card rotations.
+      categories: [...document.querySelectorAll('.category-card')].map(el => ({ top: el.offsetTop, left: el.offsetLeft })),
     }));
     assert(geometry.content <= width + 1, name + ': no horizontal overflow');
     assert.equal(geometry.broken, 0, name + ': portraits load');
@@ -48,7 +53,15 @@ try {
     assert.equal(await page.locator('.profile-card').count(), 3);
     assert.equal(await page.locator('.category-card').count(), 6);
     assert.equal(await page.locator('.steps li').count(), 4);
-    if (width >= 1154) assert.equal(new Set(geometry.categories).size, 2, name + ': reference 3 by 2 category grid');
+    if (width >= 1154) {
+      const rowTops = [...new Set(geometry.categories.map(card => card.top))];
+      assert.equal(rowTops.length, 2, name + ': reference grid has two rows');
+      for (const top of rowTops) {
+        const row = geometry.categories.filter(card => card.top === top);
+        assert.equal(row.length, 3, name + ': reference row has three cards');
+        assert.equal(new Set(row.map(card => card.left)).size, 3, name + ': reference row has three distinct columns');
+      }
+    }
     const faq = page.locator('#faq details').first();
     await faq.locator('summary').click();
     assert(await faq.evaluate(el => el.open), name + ': FAQ opens');
@@ -56,9 +69,6 @@ try {
     assert(!(await faq.evaluate(el => el.open)), name + ': FAQ closes');
     const anchors = await page.locator('a[href^="#"]').evaluateAll(links => links.map(a => a.getAttribute('href').slice(1)).filter(id => id && !document.getElementById(id)));
     assert.deepEqual(anchors, [], name + ': all in-page destinations exist');
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
-    await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
     console.log(name, JSON.stringify(geometry));
     await page.close();
   }
