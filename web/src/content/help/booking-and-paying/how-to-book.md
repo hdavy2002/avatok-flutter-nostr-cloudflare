@@ -20,7 +20,7 @@ draft: false
 
 ## Find a ritual
 
-Begin at [Our Pujas](/marketplace), or explore by intention from the [home page](/#experiences). Searching by deity (Ganesha, Lakshmi, Shiva…) or by festival (Diwali, Navratri, Shravan) works too.
+Begin at [Our Pujas](/marketplace), or explore pujas and havans in the [ritual guide](/rituals/). Searching by deity (Ganesha, Lakshmi, Shiva…) or by festival (Diwali, Navratri, Shravan) works too.
 
 ## What you see on a ritual page
 

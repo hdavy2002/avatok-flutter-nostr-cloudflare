@@ -26,7 +26,7 @@ A havan offers ghee and samagri into a sacred fire while Vedic mantras are chant
 
 ## Picking by the blessing you hope for
 
-You don't have to know the right ritual beforehand. The [home page](/#experiences) lets you browse by intention — studies, new beginnings, prosperity, health and calm, family, or festival pujas — and every ritual page explains what families traditionally offer it for, who it suits and when it is best held.
+You don't have to know the right ritual beforehand. The [ritual guide](/rituals/) lets you explore pujas and havans, and every ritual page explains what families traditionally offer it for, who it suits and when it is best held.
 
 Either way, the ritual takes place at the Himalayan temple named on the event page, performed by the pujari who serves there and filmed by our crew. See [Our temples](/temples).
 
