@@ -14,4 +14,12 @@ const paths: Record<string, string> = {
   lock: 'M14 28h36v30H14z M22 28V16a10 10 0 0 1 20 0v12 M32 40v8',
 };
 ---
-<svg class={className} viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={paths[kind] || paths.phone}/></svg>
+<svg class={className} viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {/* Decorative fills are enabled only by the category/topic card styles. */}
+  <g class="notebook-icon-accent" stroke="none">
+    <circle cx="31" cy="33" r="23" fill="var(--doodle-fill, #fff164)" />
+    <circle cx="49" cy="13" r="9" fill="var(--doodle-spark, #ffc3aa)" />
+    <path d="M7 40l5 4-2 9-7-4z" fill="var(--doodle-spark, #ffc3aa)" />
+  </g>
+  <path d={paths[kind] || paths.phone}/>
+</svg>
