@@ -2,60 +2,89 @@
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import { BRAND } from '../lib/brand';
+import { publicImage, publicImageSrcSet, ARTWORK_QUALITY } from '../lib/config';
 import { categories, profiles } from '../lib/callvaalHomeReference';
-import ReferenceCrop from '../components/home/ReferenceCrop.astro';
 import ModernIcon from '../components/home/ModernIcon.astro';
 import '../styles/callvaal-notebook.css';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Raasta nikalo. | ${identity.name}`;
 const description = 'Advice, experience, or someone to listen. Explore sample profiles for conversations with professionals and everyday people, paid by the minute.';
 const canonical = `${BRAND.webOrigin}/`;
+const sampleDetails = [
+  [4.8, 42, 120, 'Everyday health questions'], [4.9, 36, 95, 'Property and family matters'],
+  [4.8, 51, 160, 'ITR, GST and accounts'], [4.7, 28, 85, 'CVs and career changes'],
+  [4.8, 33, 110, 'Habits and stress support'], [4.7, 40, 130, 'Kundli and numerology'],
+  [4.9, 45, 110, 'Space to talk things through'], [4.8, 24, 70, 'Chords and music practice'],
+  [4.9, 38, 105, 'Spoken English practice'],
+];
+const footerGroups = [
+  ['Company', ['About us', 'How it works', 'Contact us', 'Help centre', 'FAQs', 'Careers', 'Press & media', 'Accessibility']],
+  ['Explore', ['All categories', 'Find your person', 'Doctors', 'Legal advice', 'CA & tax', 'Learning & skills', 'Wellbeing & listeners', 'Astrology']],
+  ['Partners', ['Join & earn', 'Partner requirements', 'Verification guide', 'Partner help', 'Rates & earnings', 'Payouts & taxes', 'Partner agreement', 'Partner code of conduct']],
+  ['Trust & Safety', ['Safety centre', 'Community guidelines', 'Report a user', 'Report a concern', 'Block & report guide', 'Grievance redressal', 'Professional standards', 'Emergency support']],
+  ['Legal & Payments', ['Terms of use', 'Privacy policy', 'Cookie policy', 'Refund policy', 'Cancellation policy', 'Payment & wallet terms', 'Service disclaimer', 'Data deletion']],
+] as const;
+const footerAnchors: Record<string, string> = { 'All categories': '#categories', 'Find your person': '#people', 'How it works': '#privacy-note', 'Join & earn': '#earn' };
+const spritePosition = (i: number) => `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`;
 ---
 <!doctype html>
 <html lang="en-IN">
-  <head>
-    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#51113f" /><meta name="robots" content="index,follow" />
-    <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
-    <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-    <meta property="og:image" content={`${BRAND.webOrigin}/assets/callvaal/notebook/approved-reference.png`} /><meta property="og:image:alt" content={`${identity.name}: sample profiles and conversations.`} />
-    <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${BRAND.webOrigin}/assets/callvaal/notebook/approved-reference.png`} />
-    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
-    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
-    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
-  </head>
-  <body>
-    <div class="notebook-site" data-design="callvaal-modern-conversations">
-      <a class="skip-link" href="#main-content">Skip to main content</a>
-      <header class="notebook-header">
-        <a class="wordmark" href="/" aria-label={`${identity.name} home`}><span class="brand-symbol"><ModernIcon name="phone" /></span>{identity.name}<span class="brand-domain">{identity.domain}</span></a>
-        <nav class="notebook-nav" aria-label="Main navigation"><a href="#categories">Categories</a><a href="#people">Find your person</a><a href="#earn">Earn with us</a></nav>
-        <a class="sign-in" href="/sign-in"><ModernIcon name="user" /> Sign in</a>
-      </header>
-      <main id="main-content">
-        <section class="notebook-hero" aria-labelledby="hero-title">
-          <div class="hero-copy"><h1 id="hero-title"><span class="hero-first-line">Baat karo.</span><br/> <mark>Raasta nikalo.</mark></h1><p class="hero-promise">Advice, experience, or someone to listen.</p><p class="hero-subtitle">Talk to professionals and everyday people. Pay for their time, by the minute.</p>
-            <form id="people-search" class="people-search" role="search"><label class="sr-only" for="people-query">What would you like to talk about?</label><span class="search-icon" aria-hidden="true"></span><input id="people-query" name="q" type="search" placeholder="Kis baare mein baat karni hai?" autocomplete="off" maxlength="120" /><button type="submit">Find your person</button></form>
-            <div class="trust-chips"><span><ModernIcon name="lock" />Private numbers</span><span><ModernIcon name="payment" />UPI payments</span><span><ModernIcon name="clock" />Pay per minute</span></div>
-          </div>
-          <div class="hero-art" aria-label="Real conversations, different perspectives">
-            <div class="hero-art-top"><span class="conversation-label"><span></span>A little conversation. A fresh perspective.</span><ModernIcon name="listener" /></div>
-            <div class="hero-portraits"><div class="hero-person hero-person-one"><ReferenceCrop rect={profiles[0].portrait} label="Illustrative portrait of a doctor"/><span>Advice that helps<ModernIcon name="doctors" /></span></div><div class="hero-person hero-person-two"><ReferenceCrop rect={profiles[3].portrait} label="Illustrative portrait of a career mentor"/><span>Experience to share<ModernIcon name="career" /></span></div></div>
-            <div class="conversation-note"><span class="note-icon"><ModernIcon name="phone" /></span><p>Ask. Understand. Decide.<small>One useful conversation at a time.</small></p><span class="note-arrow" aria-hidden="true">↗</span></div>
-          </div>
-        </section>
-        <section class="category-section" id="categories" aria-labelledby="categories-title"><h2 id="categories-title">Kis se baat karni hai?</h2><div class="category-grid">{categories.map(category => <button type="button" class="category-card" data-category={category.id} aria-pressed="false"><span class="category-icon"><ModernIcon name={category.id}/></span><span class="category-copy"><strong>{category.name}</strong><span>{category.topics.slice(0, 2).join(' · ')}<br/>{category.topics.slice(2).join(' · ')}</span></span><span class="category-arrow" aria-hidden="true">↗</span></button>)}</div><p class="listener-note">Listeners offer non-clinical support, not therapy or crisis care.</p></section>
-        <section class="privacy-section" id="privacy-note" aria-labelledby="privacy-title"><div class="privacy-copy"><span class="section-eyebrow"><ModernIcon name="lock"/> A private connection</span><h2 id="privacy-title">Aapka number. Sirf aapka.</h2><p>Neither person sees the other’s<br class="desktop-break"/> phone number.</p></div><ol class="privacy-diagram"><li><span class="privacy-step-icon"><ModernIcon name="phone"/></span><strong>01 · You tap Call</strong><span>Your number stays private</span></li><li><span class="privacy-step-icon privacy-lock"><ModernIcon name="lock"/></span><strong>02 · Your phone rings</strong><span>Both numbers are masked</span></li><li><span class="privacy-step-icon"><ModernIcon name="user"/></span><strong>03 · Their phone rings</strong><span>You’re connected privately</span></li></ol></section>
-        <section class="people-section" id="people" aria-labelledby="people-title"><div class="people-toolbar"><h2 id="people-title">Sahi insaan. Ek kaam ki baat.</h2><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label class="sr-only" for="category-filter">Category</label><select id="category-filter" aria-label="Category"><option value="">Category</option>{categories.map(category => <option value={category.id}>{category.name}</option>)}</select><label class="sr-only" for="language-filter">Language</label><select id="language-filter" aria-label="Language"><option value="">Language</option>{['Hindi', 'English', 'Kannada', 'Marathi'].map(language => <option>{language}</option>)}</select><label class="sr-only" for="price-filter">Price</label><select id="price-filter" aria-label="Price"><option value="">Price</option><option value="15">₹15/min or less</option><option value="20">₹20/min or less</option><option value="25">₹25/min or less</option></select></div><div class="sample-label"><span>Sample profiles</span><button type="button" data-reset-filters>View all people <span aria-hidden="true">→</span></button></div></div>
-          <p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
-          <div class="people-grid">{profiles.map(profile => <article class="profile-card" data-person data-category={profile.category} data-languages={profile.languages} data-price={profile.price} data-search={`${profile.name} ${profile.role} ${categories.find(category => category.id === profile.category)?.topics.join(' ')}`}><ReferenceCrop rect={profile.portrait} class="person-portrait" label={`Illustrative portrait of ${profile.name}`}/><div class="person-copy"><h3>{profile.name}</h3><p>{profile.role}</p><p>{profile.languages}</p><strong class="person-price">₹{profile.price}/min</strong><button type="button" class="sample-call" data-preview-action="call" aria-label={`Call ${profile.name} — preview only`}><svg class="call-phone" width="22" height="23" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.7 2.4c.7-.4 1.6-.1 2 .6l2.1 4c.4.8.2 1.5-.5 2l-1.4 1.1c.8 2.2 2.4 4 4.5 5l1.3-1.2c.6-.6 1.4-.7 2.1-.2l3.6 2.5c.7.5.9 1.4.4 2.1l-1.2 1.9c-.8 1.2-2.3 1.8-3.7 1.4C9.2 19.8 4.2 14.2 2.9 7.3c-.3-1.4.4-2.9 1.6-3.6z"/></svg> Call</button></div></article>)}</div>
-          <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">Illustrative profiles and prices</p>
-        </section>
-        <section class="earn-section" id="earn" aria-labelledby="earn-title"><svg class="earn-art" viewBox="0 0 180 150" fill="none" aria-hidden="true"><circle cx="89" cy="76" r="66" fill="#eee4ab"/><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="51" y="44" width="76" height="88" rx="8" fill="#fffdf6"/><path d="M66 63h32m-32 12h45M65 96l12 12 30-27M34 32h37v-19H23v29l11-10Zm98 20h24V26h-42v13M139 74h20m-20 6h20m-15-6c16 0 15 17-1 17l14 16M19 78h21l-2 25H22l-3-25m21 4h5c9 0 7 13-6 13M25 71v-7m8 7v-7"/><circle cx="117" cy="24" r="5" fill="#e68870"/></g></svg><div class="earn-copy"><h2 id="earn-title">Your knowledge. Your experience. Your time.</h2><p>Share what you know, or lend a listening ear. Earn for your time.</p></div><button type="button" class="join-button" data-preview-action="join">Join &amp; earn <span aria-hidden="true">→</span></button></section>
-      </main>
-      <footer class="notebook-footer"><div class="footer-content"><a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}</a><nav aria-label="Footer"><a href="/help">Help</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><p>Concept preview · Sample profiles &amp; prices</p></div></footer>
-    </div>
-    <dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Preview only — calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>
-    <script>import '../lib/notebookHome';</script>
-  </body>
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
+  <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
+  <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
+  <meta property="og:image" content={`${BRAND.webOrigin}/assets/callvaal/scrapbook/hero-collage.png`} /><meta property="og:image:alt" content={`${identity.name}: everyday conversations and useful advice.`} />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${BRAND.webOrigin}/assets/callvaal/scrapbook/hero-collage.png`} />
+  <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+<body>
+<div class="notebook-site" data-design="callvaal-scrapbook">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <header class="notebook-header">
+    <a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Open navigation"><ModernIcon name="menu" /></button>
+    <nav class="notebook-nav" id="main-navigation" aria-label="Main navigation"><a href="#categories">Categories</a><a href="#people">Find your person</a><a href="#earn">Earn with us</a><a class="sign-in" href="/sign-in"><ModernIcon name="user" /> Sign in</a></nav>
+  </header>
+  <main id="main-content">
+    <section class="notebook-hero" aria-labelledby="hero-title">
+      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark>Raasta nikalo.</mark></h1><p class="hero-promise">Advice, experience, or someone to listen.</p><p class="hero-subtitle">Talk to professionals and everyday people. Pay for their time, by the minute.</p>
+        <form id="people-search" class="people-search" role="search"><label class="sr-only" for="people-query">What would you like to talk about?</label><span class="search-icon" aria-hidden="true"></span><input id="people-query" name="q" type="search" placeholder="Kis baare mein baat karni hai?" autocomplete="off" maxlength="120" /><button type="submit">Find your person</button></form>
+        <div class="trust-chips"><span><ModernIcon name="lock" />Private numbers</span><span><span class="rupee-icon" aria-hidden="true">₹</span>UPI payments</span><span><ModernIcon name="clock" />Pay per minute</span></div>
+      </div>
+      <div class="hero-art"><img src={publicImage('/assets/callvaal/scrapbook/hero-collage.png', { width: 1280 })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/hero-collage.png', [420, 640, 900, 1280])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 40px) / 2), (max-width: 1824px) calc((100vw - 64px) / 2), 880px" alt="Torn-paper collage of an everyday caller, a doctor, chai, a kite and an auto-rickshaw" fetchpriority="high" width="1254" height="1254" /></div>
+    </section>
+    <section class="category-section" id="categories" aria-labelledby="categories-title"><h2 id="categories-title">Kis se <em>baat karni hai?</em></h2>
+      <div class="category-grid">{categories.map((category, i) => <button type="button" class="category-card" data-category={category.id} aria-pressed="false"><span class="category-sticker" aria-hidden="true" style={`background-position:${spritePosition(i)};--category-sheet:url(${publicImage('/assets/callvaal/scrapbook/category-stickers.png', { width: 1280, quality: ARTWORK_QUALITY })})`}></span><span class="category-copy"><strong>{category.name}</strong><span>{category.topics.map(topic => <span class="category-topic">{topic}</span>)}</span></span><span class="category-arrow" aria-hidden="true">→</span></button>)}</div>
+      <p class="listener-note">Listeners offer non-clinical support, not therapy or crisis care.</p>
+    </section>
+    <section class="privacy-section" id="privacy-note" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">Aapka number. <em>Sirf aapka.</em></h2><p class="privacy-intro">Neither person sees the other’s personal phone number.</p>
+      <ol class="privacy-diagram">
+        <li><p><b>1</b><span>Choose a person<br/>and tap Call.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>You</strong></li>
+        <li><p><b>2</b><span>{identity.name} calls you and<br/>your call partner separately.</span></p><div class="phone-frame"><ModernIcon name="lock" /><small>{identity.name}</small></div><strong>Private connection</strong></li>
+        <li><p><b>3</b><span>Both pick up.<br/>{identity.name} connects the calls.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>Call partner</strong></li>
+      </ol>
+      <div class="privacy-note paper-note">Number private.<br/>Baat apni.</div><div class="privacy-conversation-note paper-note">People.<br/>Conversations.<br/>A brighter you.</div><p class="privacy-bottom">No need to exchange personal numbers.<br/><button type="button" data-preview-action="privacy" data-preview-label="Number privacy">Learn about number privacy →</button></p>
+    </section>
+    <section class="people-section" id="people" aria-labelledby="people-title">
+      <h2 id="people-title">Sahi insaan. <em>Ek kaam ki baat.</em></h2>
+      <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label class="sr-only" for="category-filter">Category</label><select id="category-filter" aria-label="Category"><option value="">Category</option>{categories.map(category => <option value={category.id}>{category.name}</option>)}</select><label class="sr-only" for="language-filter">Language</label><select id="language-filter" aria-label="Language"><option value="">Language</option>{['Hindi', 'English', 'Kannada', 'Marathi'].map(language => <option>{language}</option>)}</select><label class="sr-only" for="price-filter">Price</label><select id="price-filter" aria-label="Price"><option value="">Price</option><option value="15">₹15/min or less</option><option value="20">₹20/min or less</option><option value="25">₹25/min or less</option></select></div><button class="view-all" type="button" data-reset-filters>View all people →</button></div>
+      <p class="sample-label">Sample profiles · Illustrative ratings, reviews, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
+      <div class="people-grid">{profiles.map((profile, i) => <article class="profile-card" data-person data-category={profile.category} data-languages={profile.languages} data-price={profile.price} data-search={`${profile.name} ${profile.role} ${sampleDetails[i][3]} ${categories.find(category => category.id === profile.category)?.topics.join(' ')}`}>
+        <div class="portrait-wrap"><img class="person-portrait" src={publicImage(`/assets/callvaal/scrapbook/portrait-${i + 1}.png`, { width: 1280 })} srcset={publicImageSrcSet(`/assets/callvaal/scrapbook/portrait-${i + 1}.png`, [420, 640, 900, 1280])} sizes="(max-width: 599px) calc(100vw - 44px), (max-width: 899px) calc((100vw - 84px) / 2), (max-width: 1824px) calc((100vw - 148px) / 3), 570px" alt={`Illustrative portrait of ${profile.name}`} width="1254" height="1254" loading="lazy" /><button type="button" class="favourite-button" data-favourite aria-pressed="false" aria-label={`Save ${profile.name} for this visit`}><ModernIcon name="bookmark" /></button></div>
+        <div class="person-copy"><h3>{profile.name}</h3><p>{profile.role}</p><p>{profile.languages}</p><p class="person-rating"><span aria-hidden="true">★</span> <b>{sampleDetails[i][0]}</b> <small>({sampleDetails[i][1]} reviews)</small></p><p class="person-talks"><ModernIcon name="user" /> Talked to {sampleDetails[i][2]} people</p><p class="person-topic">{sampleDetails[i][3]}</p><div class="person-actions"><strong class="person-price">₹{profile.price}/min</strong><button type="button" class="sample-call" data-preview-action="call" data-preview-label={profile.name} aria-label={`Call ${profile.name} — preview only`}><ModernIcon name="phone" /> Call</button></div></div>
+      </article>)}</div>
+      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">Illustrative profiles, ratings, reviews and conversation counts. Sample prices.</p>
+    </section>
+    <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art.png', { width: 900, quality: ARTWORK_QUALITY })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/earn-art.png', [420, 640, 900, 1280], { quality: ARTWORK_QUALITY })} sizes="(max-width: 599px) 260px, (max-width: 1824px) 30vw, 520px" alt="Notebook, pencil and a glass of chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Your knowledge. Your experience. Your time.</h2><p>Get paid to listen. Share advice from your experience.</p><p>Help someone with what you know — in your language, on your time.</p><ol class="earn-steps">{[['user','Create your profile'],['learning','Share your experience'],['clock','Choose availability'],['tax','Earn for your time']].map(([icon,label]) => <li><ModernIcon name={icon}/><span>{label}</span></li>)}</ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button><small>Professional services may require qualification checks.</small></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
+    <section class="download-section" id="apps" aria-labelledby="apps-title"><h2 id="apps-title">Search consultants on {identity.name}, wherever you are.</h2><p>On your phone. On your laptop.</p><div class="download-grid">{[['apple','iPhone','App Store'],['android','Android','Google Play'],['laptop','Mac','macOS'],['windows','Windows','Windows PC']].map(([icon,name,store]) => <button type="button" class="download-button" data-preview-action="download" data-preview-label={name}><ModernIcon name={icon}/><span><strong>{name}</strong><small>{store}</small></span></button>)}</div><small>Download links shown for design preview.</small></section>
+  </main>
+  <footer class="notebook-footer"><div class="footer-brand"><a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div><nav class="footer-columns" aria-label="Footer">{footerGroups.map(([heading, links]) => <details class="footer-group" open><summary>{heading}</summary><ul>{links.map(label => <li>{footerAnchors[label] ? <a href={footerAnchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-preview-action="page" data-preview-label={label}>{label}</button>}</li>)}</ul></details>)}</nav><p class="footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Concept preview</p></footer>
+  <nav class="mobile-bottom-nav" aria-label="Quick navigation">{[['home','#main-content','Home'],['grid','#categories','Categories'],['user','#people','People'],['tax','#earn','Earn'],['laptop','#apps','Apps']].map(([icon,href,label]) => <a href={href}><ModernIcon name={icon}/><span>{label}</span></a>)}</nav>
+</div>
+<dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>
+<script>import '../lib/notebookHome';</script>
+</body>
 </html>

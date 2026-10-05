@@ -4,7 +4,6 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
-import sharp from 'sharp';
 
 const root = resolve('dist');
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
@@ -25,7 +24,7 @@ await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
 try {
-  for (const [name, width, height] of [['reference', 1024, 1536], ['ultrawide', 2560, 1440], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['small-desktop', 1100, 900], ['tablet', 820, 1000], ['large-mobile', 480, 900], ['mobile', 390, 844], ['small-mobile', 360, 780], ['compact-mobile', 320, 740]]) {
+  for (const [name, width, height] of [['reference', 1024, 1536], ['ultrawide', 2560, 1440], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['small-desktop', 1100, 900], ['desktop-breakpoint', 900, 1000], ['tablet', 820, 1000], ['small-tablet', 768, 1000], ['tablet-breakpoint', 600, 1000], ['large-mobile', 480, 900], ['mobile', 390, 844], ['small-mobile', 360, 780], ['compact-mobile', 320, 740]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     const mutations = [];
     page.on('request', request => {
@@ -43,23 +42,12 @@ try {
         for (const image of document.images) image.loading = 'eager';
         await Promise.all([...document.images].map(image => image.decode().catch(() => undefined)));
         const artwork = new Image();
-        artwork.src = '/assets/callvaal/notebook/approved-reference.png';
+        artwork.src = '/assets/callvaal/scrapbook/category-stickers.png';
         await artwork.decode();
-        if (artwork.naturalWidth !== 1024 || artwork.naturalHeight !== 1536) throw new Error('Reference artwork did not load at original dimensions');
+        if (artwork.naturalWidth < 1024 || artwork.naturalWidth !== artwork.naturalHeight) throw new Error('Category sprite did not load as a high-resolution square');
       });
       await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
       await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
-      if (name === 'reference') {
-        const actual = await page.screenshot({ fullPage: false });
-        const expected = await readFile(resolve(root, 'assets/callvaal/notebook/approved-reference.png'));
-        await sharp({ create: { width: 2048, height: 1536, channels: 3, background: '#fff' } })
-          .composite([{ input: expected, left: 0, top: 0 }, { input: actual, left: 1024, top: 0 }])
-          .png().toFile('homepage-review/reference-side-by-side.png');
-        const difference = await sharp(expected).composite([{ input: actual, blend: 'difference' }]).png().toBuffer();
-        await writeFile('homepage-review/reference-difference.png', difference);
-        const stats = await sharp(difference).stats();
-        metrics.push({ referencePixelDifferenceMean: stats.channels.slice(0, 3).map(channel => channel.mean), note: 'Diagnostic only; not a claim of pixel equivalence.' });
-      }
       const geometry = await page.evaluate(() => ({
         viewport: innerWidth,
         content: document.documentElement.scrollWidth,
@@ -75,6 +63,12 @@ try {
           .filter(el => el.scrollWidth > el.clientWidth + 2)
           .map(el => ({ className: el.className, width: el.clientWidth, content: el.scrollWidth })),
         categories: [...document.querySelectorAll('.category-card')].map(el => ({ top: el.offsetTop, left: el.offsetLeft })),
+        profileColumns: getComputedStyle(document.querySelector('.people-grid')).gridTemplateColumns.split(' ').length,
+        photoLayout: [...document.querySelectorAll('.profile-card')].map(card => {
+          const photo = card.querySelector('.portrait-wrap').getBoundingClientRect();
+          const text = card.querySelector('.person-copy').getBoundingClientRect();
+          return { above: photo.bottom <= text.top + 1, fullWidth: Math.abs(photo.width - text.width) < 2 };
+        }),
       }));
       metrics.push({ name, ...geometry });
       assert(geometry.content <= width + 1, name + ': no horizontal overflow');
@@ -90,7 +84,9 @@ try {
         assert(geometry.profileTextSize >= 14, name + ': readable mobile profile text');
         assert(geometry.callButtonHeight >= 40, name + ': comfortable mobile call target');
       }
-      assert.equal(await page.locator('.profile-card').count(), 8);
+      assert.equal(await page.locator('.profile-card').count(), 9);
+      assert.equal(geometry.profileColumns, width >= 900 ? 3 : width >= 600 ? 2 : 1, name + ': responsive profile columns');
+      assert(geometry.photoLayout.every(photo => photo.above && photo.fullWidth), name + ': full-width photos above profile text');
       assert.equal(await page.locator('.category-card').count(), 9);
       if (width >= 1024) {
         const banner = await page.evaluate(() => {
@@ -125,10 +121,49 @@ try {
       await search.press('Enter');
       assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': local name search');
       await page.locator('[data-reset-filters]').first().click();
-      assert.equal(await page.locator('.profile-card:visible').count(), 8, name + ': reset restores samples');
+      assert.equal(await page.locator('.profile-card:visible').count(), 9, name + ': reset restores samples');
       await page.locator('.category-card').first().click();
       assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': category filters locally');
       await page.locator('[data-reset-filters]').first().click();
+      await page.locator('#language-filter').selectOption('Kannada');
+      assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': language filter works');
+      await page.locator('[data-reset-filters]').first().click();
+      await page.locator('#price-filter').selectOption('15');
+      assert.equal(await page.locator('.profile-card:visible').count(), 6, name + ': price filter works');
+      await page.locator('[data-reset-filters]').first().click();
+      await search.fill('no matching sample name');
+      await search.press('Enter');
+      assert(await page.locator('.no-results').isVisible(), name + ': empty state');
+      await page.locator('.no-results [data-reset-filters]').click();
+      const favourite = page.locator('[data-favourite]').first();
+      await favourite.click();
+      assert.equal(await favourite.getAttribute('aria-pressed'), 'true', name + ': bookmark selected');
+      await favourite.click();
+      assert.equal(await favourite.getAttribute('aria-pressed'), 'false', name + ': bookmark deselected');
+      if (width < 600) {
+        const menu = page.locator('.menu-toggle');
+        await menu.click();
+        assert.equal(await menu.getAttribute('aria-expanded'), 'true', name + ': mobile menu opens');
+        await page.keyboard.press('Escape');
+        assert.equal(await menu.getAttribute('aria-expanded'), 'false', name + ': Escape closes mobile menu');
+        await menu.click();
+        await page.locator('#main-navigation a[href="#categories"]').click();
+        assert.equal(await menu.getAttribute('aria-expanded'), 'false', name + ': navigation closes menu');
+        await page.locator('.footer-group summary').first().click();
+        assert(await page.locator('.footer-group').first().evaluate(el => el.open), name + ': mobile footer accordion');
+      }
+      assert.equal(await page.locator('.footer-group').count(), 5, name + ': five footer columns');
+      assert.equal(await page.locator('.footer-group li').count(), 40, name + ': complete footer');
+      for (const platform of ['iPhone', 'Android', 'Mac', 'Windows']) {
+        await page.locator(`[data-preview-action="download"][data-preview-label="${platform}"]`).click();
+        assert.match(await dialog.innerText(), /downloads are not available yet/);
+        await dialog.locator('[data-close-preview]').click();
+      }
+      const legalGroup = page.locator('.footer-group').last();
+      if (width < 600) await legalGroup.locator('summary').click();
+      await legalGroup.locator('[data-preview-label="Privacy policy"]').click();
+      assert.match(await dialog.innerText(), /not published for this service yet/);
+      await dialog.locator('[data-close-preview]').click();
       const anchors = await page.locator('a[href^="#"]').evaluateAll(links => links.map(a => a.getAttribute('href').slice(1)).filter(id => id && !document.getElementById(id)));
       assert.deepEqual(anchors, [], name + ': section links resolve');
       assert.deepEqual(mutations, [], name + ': preview never posts to backend');

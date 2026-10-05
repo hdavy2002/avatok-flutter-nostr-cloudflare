@@ -52,12 +52,16 @@ for (const category of ['Doctors', 'Legal advice', 'CA &amp; tax', 'Career &amp;
 }
 assert.match(visibleText, /non-clinical support/);
 assert.match(visibleText, /not therapy or crisis care/);
-const reference = resolve(root, 'assets/callvaal/notebook/approved-reference.png');
-assert(existsSync(reference), 'Approved reference sprite ships');
-assert.equal(createHash('sha256').update(readFileSync(reference)).digest('hex'), '58da029da753f2d7f41cf3af83360527e23479d92964823eef4e8b76fd310ed0', 'Source artwork bytes remain exact');
-const photo = await sharp(reference).metadata();
-assert.equal(photo.width, 1024);
-assert.equal(photo.height, 1536);
+for (const asset of ['hero-collage.png', 'category-stickers.png', 'earn-art.png', ...Array.from({ length: 9 }, (_, i) => `portrait-${i + 1}.png`)]) {
+  const file = resolve(root, 'assets/callvaal/scrapbook', asset);
+  assert(existsSync(file), 'Scrapbook artwork ships: ' + asset);
+  const art = await sharp(file).metadata();
+  assert(art.width >= 1024 && art.height >= 1024, 'Scrapbook artwork has sufficient resolution: ' + asset);
+  if (asset === 'category-stickers.png') assert.equal(art.width, art.height, 'Three-by-three sprite is square: ' + asset);
+}
+assert.equal((html.match(/data-person(?:=""|\s|>)/g) || []).length, 9, 'Nine illustrative profiles');
+assert.match(visibleText, /Illustrative ratings, reviews, conversation counts and prices/);
+assert.doesNotMatch(bodyHtml, /href="\/(?:privacy|terms|refunds|help)"/, 'Do not send new-service users to unrelated old policies');
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
@@ -143,7 +147,7 @@ assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert(ogImageUrl.includes('/assets/callvaal/notebook/'), 'Homepage shares its neutral notebook artwork');
+assert(ogImageUrl.includes('/assets/callvaal/scrapbook/'), 'Homepage shares its scrapbook artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(BRAND.webOrigin + '/') + '"'), 'Homepage canonical is the root URL');

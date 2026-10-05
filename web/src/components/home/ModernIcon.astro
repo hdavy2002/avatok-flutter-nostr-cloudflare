@@ -2,6 +2,13 @@
 interface Props { name: string; }
 const { name } = Astro.props;
 const paths: Record<string, string> = {
+  menu: 'M5 8h22M5 16h22M5 24h22',
+  bookmark: 'M8 3h16v26l-8-6-8 6V3',
+  grid: 'M4 4h9v9H4zM19 4h9v9h-9zM4 19h9v9H4zM19 19h9v9h-9z',
+  laptop: 'M6 4h20v19H6zM2 27h28M13 23v4m6-4v4',
+  windows: 'M3 6l11-2v11H3V6m15-3 11-2v14H18V3M3 18h11v11L3 27v-9m15 0h11v14l-11-2V18',
+  apple: 'M19 7c0-4 3-5 5-5 0 3-2 5-5 5M17 10c-5-4-12-1-12 6 0 6 4 14 8 13 3-2 4-2 7 0 4 1 8-6 9-10-5-2-5-7-1-9-4-4-7-1-11 0',
+  android: 'M8 12h16v14H8zM8 12a8 8 0 0 1 16 0M10 6 7 2m15 4 3-4M4 13v10m24-10v10M12 26v4m8-4v4M12 9h.1M20 9h.1',
   doctors: 'M9 3v5a5 5 0 0 0 10 0V3M7 3h4m6 0h4M14 13v3a5 5 0 0 0 10 0v-3m-3-3a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
   legal: 'M16 4v23M9 27h14M5 9h22M9 9l-5 10h10L9 9m14 0-5 10h10L23 9M13 5h6',
   tax: 'M6 3h20v26H6zM11 8h10m-10 4h10m-8-4c7 0 7 9-1 9l8 7',

@@ -27,4 +27,5 @@ export const profiles = [
   { name: 'Kavya', role: 'Astrology', category: 'astrology', languages: 'Hindi, Kannada', price: 15, portrait: [286, 1119, 108, 116] },
   { name: 'Neha', role: 'Listener', category: 'listener', languages: 'Hindi, Marathi', price: 10, portrait: [523, 1119, 109, 116] },
   { name: 'Dev', role: 'Guitar & music', category: 'learning', languages: 'English, Hindi', price: 12, portrait: [761, 1119, 109, 116] },
+  { name: 'Priya', role: 'English tutor', category: 'learning', languages: 'Hindi, English', price: 15, portrait: [761, 1119, 109, 116] },
 ] satisfies Array<{ name: string; role: string; category: string; languages: string; price: number; portrait: ReferenceRect }>;

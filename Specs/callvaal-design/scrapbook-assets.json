@@ -1,0 +1,70 @@
+{
+  "issue": "CALLVAAL-SCRAPBOOK-1",
+  "date": "2026-10-05",
+  "tool": "built-in image_gen",
+  "approvedLayout": "Specs/callvaal-design/references/07-approved-scrapbook.png",
+  "scope": "Homepage-only recreation, regenerated illustrations and fictional portraits; calls, partner registration, downloads and new policy pages remain preview-only.",
+  "assets": [
+    {
+      "file": "hero-collage.png",
+      "source": "exec-490a6cda-fbfe-4341-887e-7e9cb52dc1a3.png",
+      "prompt": "Recreate approved right-side Indian torn-paper collage alone, transparent background, male caller and female doctor on separate calls, kite, lock-phone doodle, chai, ledger and auto-rickshaw; preserve composition, regenerate crisp human faces."
+    },
+    {
+      "file": "category-stickers.png",
+      "source": "exec-514da04d-bbb7-4c50-a41f-91301ae5e6a0.png",
+      "prompt": "Transparent 3x3 equal-cell Indian scrapbook sticker atlas: clinic notebook/stethoscope, law book/scales, rupee bahi-khata/calculator, briefcase/CV, Indian terrace house, books/guitar, calm Indian woman, kundli/pen, two cutting-chai glasses with speech bubbles. No UI or captions."
+    },
+    {
+      "file": "earn-art.png",
+      "source": "exec-544e8613-bed6-4804-add3-3765b76c4c55.png",
+      "prompt": "Transparent notebook, pencil, cutting chai and lavender paper collage. Notebook handwritten Skills, Experience, Conversations, Income, A brighter you; front note Something worth sharing."
+    },
+    {
+      "file": "portrait-1.png",
+      "source": "exec-2ed97bc7-9613-45fb-ae0b-a147eb4972b6.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-2.png",
+      "source": "exec-c03a3206-5065-4463-bb0c-da47a5ba8678.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-3.png",
+      "source": "exec-add8d900-3e85-4a75-8c2c-46cd372e7bdf.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-4.png",
+      "source": "exec-f3d67443-0766-43f1-9c8c-e4d0b7e641d2.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-5.png",
+      "source": "exec-5b105597-cd97-46d0-97d9-1edfdbb41d14.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-6.png",
+      "source": "exec-842ee5c4-2954-481d-8e0e-0d85e78e295a.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-7.png",
+      "source": "exec-4347e336-b906-473c-abae-a964267174fe.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-8.png",
+      "source": "exec-cba73cc0-273c-45b1-9f89-665893c41706.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    },
+    {
+      "file": "portrait-9.png",
+      "source": "exec-f607f5b9-3911-4c92-99df-388f87b3662e.png",
+      "prompt": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+    }
+  ],
+  "photoInstructions": "Nine individually regenerated square photographs from the 3x3 portrait reference. One fictional Indian professional per photograph, preserve reference face/clothing, sharp skin/eyes/hair, warm cream workplace, natural daylight, centered chest-up, no text, no UI."
+}
