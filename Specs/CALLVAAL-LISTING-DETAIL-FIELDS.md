@@ -91,7 +91,7 @@ Medical framing: no cure, diagnosis-accuracy or health-outcome guarantees. The q
 
 | Feature | Current implementation | Future wiring boundary |
 | --- | --- | --- |
-| Navigation | Shared header/footer, mobile menu with expanded state/Escape, footer disclosure groups, nested-route-safe links and cookie-derived auth navigation | Existing About, Contact, Help, Terms, Privacy, Cookies, Refunds, Grievance and Disclaimer routes remain real links. Only destinations without published routes use preview dialogs. |
+| Navigation | Shared header/footer, mobile menu with expanded state/Escape, footer disclosure groups, nested-route-safe links and cookie-derived auth navigation | Preserve the original homepage footer contract: All categories, Find your person, How it works and Join & earn link to homepage anchors; Contact us uses the centrally configured support email. The nine Explore category buttons filter in place on the homepage and navigate to its validated category filter from other routes. All other footer labels open concept-preview dialogs, including policy/help labels; legacy routes are not represented as published policies for this concept service. |
 | Profile discovery | Homepage portrait/name/primary action for Dr. Ananya open `/people/dr-ananya`; other profiles keep existing previews | Real listing routing/search contracts TBD |
 | Save | Per-visit in-memory button toggle and polite status | No persistence, account write or saved-list backend; future storage must be per-account |
 | Share | Web Share when available, clipboard fallback and selectable clean profile URL | No messages sent automatically; no incoming query/hash copied |

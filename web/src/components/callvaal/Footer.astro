@@ -1,5 +1,6 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
+import { BRAND } from '../../lib/brand';
 import { categories } from '../../lib/callvaalHomeReference';
 import '../../styles/callvaal-chrome.css';
 const identity = brandConfig.homepageIdentity;
@@ -13,23 +14,33 @@ const groups = [
 const anchors: Record<string, string> = {
   'All categories': '/#categories', 'Find your person': '/#people',
   'How it works': '/#privacy-note', 'Join & earn': '/#earn',
-  'Safety centre': '/talk-safely', 'About us': '/about', 'Contact us': '/contact',
-  'Help centre': '/help', 'Terms of use': '/terms', 'Privacy policy': '/privacy',
-  'Cookie policy': '/cookies', 'Refund policy': '/refunds',
-  'Grievance redressal': '/grievance', 'Service disclaimer': '/disclaimer',
 };
 ---
 <footer class="cv-footer" data-callvaal-chrome>
   <div class="cv-footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
   <nav class="cv-footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group" open><summary>{heading}</summary><ul>{links.map(label => {
     const category = heading === 'Explore' ? categories.find(category => category.name === label) : undefined;
-    return <li>{category ? <a href={`/?category=${category.id}#people`}>{label}</a> : anchors[label] ? <a href={anchors[label]}>{label}</a> : <button type="button" data-footer-preview={label}>{label}</button>}</li>;
+    return <li>{category ? <button type="button" data-category-select data-category={category.id} aria-pressed="false">{label}</button> : anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-footer-preview={label}>{label}</button>}</li>;
   })}</ul></details>)}</nav>
   <p class="cv-footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Concept preview</p>
 </footer>
 <dialog class="cv-preview-dialog" id="cv-footer-dialog" aria-labelledby="cv-footer-dialog-title" aria-describedby="cv-footer-dialog-description"><h2 id="cv-footer-dialog-title">Concept preview</h2><p id="cv-footer-dialog-description">This page is not published for this service yet.</p><form method="dialog"><button autofocus>Close</button></form></dialog>
 <script>
   import { capture } from '../../lib/analytics';
+  // The homepage owns filter state and its analytics. Other routes carry the
+  // same category controls back to the homepage's validated filter.
+  if (!document.querySelector('#category-filter')) {
+    document.querySelectorAll<HTMLButtonElement>('.cv-footer [data-category-select]').forEach(button => {
+      button.removeAttribute('aria-pressed');
+      button.addEventListener('click', () => {
+        const category = button.dataset.category;
+        if (!category) return;
+        const href = `/?category=${encodeURIComponent(category)}#people`;
+        capture('nav_click', { surface: 'callvaal-chrome', section: 'footer', label: category, href });
+        window.location.assign(href);
+      });
+    });
+  }
   const mobile = window.matchMedia('(max-width: 699px)');
   const groups = document.querySelectorAll<HTMLDetailsElement>('.cv-footer-group');
   function updateGroups() { groups.forEach(group => { group.open = !mobile.matches; }); }
