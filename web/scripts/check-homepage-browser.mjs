@@ -77,8 +77,8 @@ try {
       assert(geometry.content <= width + 1, name + ': no horizontal overflow');
       assert.equal(geometry.broken, 0, name + ': source art loads');
       assert.match(geometry.heading, /Baat karo\./);
-      assert.match(geometry.headingFont, /Fredoka/i);
-      assert.match(geometry.bodyFont, /Nunito/i);
+      assert.match(geometry.headingFont, /Nunito/i);
+      assert.match(geometry.bodyFont, /Comfortaa/i);
       if (width >= 1088) {
         assert(Math.abs(geometry.siteWidth - Math.min(width - 64, 1760)) < 2, name + ': desktop uses available width up to readable cap');
       }
