@@ -20,7 +20,15 @@ const boundaries = {
   kavya: ['For reflection and entertainment.', 'No guaranteed predictions or outcomes;', 'not medical, legal or financial advice.'],
   priya: ['Practice and feedback only.', 'No job, interview, exam or fluency outcomes are guaranteed.'],
 };
-const text = html => html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
+const decodeEntities = value => value
+  .replace(/&#(\d+);/g, (_match, codePoint) => String.fromCodePoint(Number(codePoint)))
+  .replace(/&#x([\da-f]+);/gi, (_match, codePoint) => String.fromCodePoint(Number.parseInt(codePoint, 16)))
+  .replaceAll('&amp;', '&')
+  .replaceAll('&quot;', '"')
+  .replaceAll('&#39;', "'")
+  .replaceAll('&lt;', '<')
+  .replaceAll('&gt;', '>');
+const text = html => decodeEntities(html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 const cards = [...home.matchAll(/<article\b[^>]*\bdata-person(?:="")?[^>]*>[\s\S]*?<\/article>/g)].map(match => match[0]);
 for (const [id, name, category, rate, languages, assets] of profiles) {
   const path = `/people/${id}`;
