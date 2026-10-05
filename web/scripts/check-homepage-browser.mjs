@@ -189,7 +189,7 @@ try {
       assert.equal(await page.locator('.proof-card').count(), 4, name + ': four social proof cards');
       assert.deepEqual(await page.locator('.proof-card strong').allTextContents(), ['5,000+', 'Any Indian language', 'Pan India', 'Private numbers'], name + ': exact social proof card labels');
       assert.match(await page.locator('.proof-card').first().innerText(), /Launch target/, name + ': 5,000+ is explicitly a target');
-      assert.match(await page.locator('.social-proof-section').innerText(), /Illustrative preview/, name + ': preview disclosure is visible');
+      assert.match(await page.locator('.social-proof-section').innerText(), /Illustrative preview/i, name + ': preview disclosure is visible');
       assert.match(await page.locator('.activity-preview').innerText(), /Sample activity[\s\S]*Live updates coming later/, name + ': activity disclosure is visible');
       assert.equal(await page.locator('.activity-sequence').count(), 2, name + ': ticker uses a duplicated sequence');
       assert.equal(await page.locator('.activity-sequence').nth(1).getAttribute('aria-hidden'), 'true', name + ': duplicate ticker content is hidden from AT');
