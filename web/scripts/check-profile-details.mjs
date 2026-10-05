@@ -30,8 +30,10 @@ for (const [id, name, category, rate, languages, assets] of profiles) {
   const html = normalizeBuiltImages(readFileSync(resolve(root, `people/${id}/index.html`), 'utf8'), { root });
   const main = html.match(/<main\b[^>]*id="profile-main"[^>]*>[\s\S]*?<\/main>/)?.[0];
   assert(main, `${id}: shared profile main`);
-  assert(html.includes(`<title>${name} — `) && html.includes(`| ${identity.name}</title>`), `${id}: category title with central identity`);
-  assert.match(html, /<meta\b[^>]*name="robots"[^>]*content="noindex,nofollow"/, `${id}: sample stays noindex`);
+  const title = text(html.match(/<title\b[^>]*>[\s\S]*?<\/title>/)?.[0] || '');
+  assert(title.startsWith(`${name} — `) && title.endsWith(`| ${identity.name}`), `${id}: category title with central identity`);
+  const robots = html.match(/<meta\b[^>]*name="robots"[^>]*>/)?.[0] || '';
+  assert.match(robots, /content="noindex,\s*follow"/, `${id}: sample stays noindex while allowing link discovery`);
   assert.equal((html.match(/<h1[ >]/g) || []).length, 1, `${id}: one h1`);
   assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${id}: shared header`);
   assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${id}: shared footer`);
