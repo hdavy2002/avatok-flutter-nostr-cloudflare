@@ -42,6 +42,10 @@ try {
         await document.fonts.ready;
         for (const image of document.images) image.loading = 'eager';
         await Promise.all([...document.images].map(image => image.decode().catch(() => undefined)));
+        const artwork = new Image();
+        artwork.src = '/assets/callvaal/notebook/approved-reference.png';
+        await artwork.decode();
+        if (artwork.naturalWidth !== 1024 || artwork.naturalHeight !== 1536) throw new Error('Reference artwork did not load at original dimensions');
       });
       await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
       await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
@@ -75,6 +79,13 @@ try {
       assert.equal(await page.locator('.profile-card').count(), 8);
       assert.equal(await page.locator('.category-card').count(), 9);
       if (width >= 1024) {
+        const banner = await page.evaluate(() => {
+          const heading = document.querySelector('#earn h2');
+          const range = document.createRange();
+          range.selectNodeContents(heading);
+          return { textRight: range.getBoundingClientRect().right, buttonLeft: document.querySelector('#earn button').getBoundingClientRect().left };
+        });
+        assert(banner.textRight < banner.buttonLeft, name + ': earning headline does not overlap button');
         const rowTops = [...new Set(geometry.categories.map(card => card.top))];
         assert.equal(rowTops.length, 3, name + ': three category rows');
         for (const top of rowTops) {
