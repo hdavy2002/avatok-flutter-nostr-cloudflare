@@ -1,0 +1,99 @@
+---
+export const prerender = true;
+import brandConfig from '../../../Specs/brand.json';
+import '../styles/callvaal-notebook.css';
+
+const identity = brandConfig.homepageIdentity;
+const title = `Talking safely with strangers | ${identity.name}`;
+const description = `A short, practical guide to choosing what personal details to share while talking to someone new on ${identity.name}.`;
+---
+
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#46113e" />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <div class="notebook-site safety-site" data-design="callvaal-scrapbook">
+      <a class="skip-link" href="#main-content">Skip to main content</a>
+      <header class="notebook-header">
+        <a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a>
+      </header>
+      <main class="safety-guide" id="main-content">
+        <p class="safety-guide__eyebrow">Safety guide</p>
+        <h1>Rules for talking safely with strangers</h1>
+        <p class="safety-guide__status">We’re preparing a fuller guide. For now, please keep these basics in mind:</p>
+        <ul>
+          <li>Never share OTPs, passwords, financial details, or your home address.</li>
+          <li>If a call feels wrong, end it. You do not owe anyone an explanation.</li>
+          <li>Report the call so the {identity.name} team can review what happened.</li>
+        </ul>
+        <a class="safety-guide__home" href="/">← Back to {identity.name}</a>
+      </main>
+      <footer class="notebook-footer safety-footer">
+        <div class="footer-brand"><a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
+        <p class="footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Guide preview</p>
+      </footer>
+    </div>
+  </body>
+</html>
+
+<style>
+  .safety-site { min-height: 100vh; }
+  .safety-site .wordmark { font-size: clamp(1.25rem, 7vw, 2rem); overflow-wrap: anywhere; }
+  .safety-site .logo-rays { font-size: 1.35em; }
+  .safety-guide {
+    width: min(42rem, 100%);
+    margin: clamp(2rem, 7vw, 6rem) auto;
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    border: 1px solid #eadde8;
+    border-radius: 1.25rem;
+    background: #fff;
+    box-shadow: 0 .5rem 2rem #46113e0d;
+    overflow-wrap: anywhere;
+  }
+  .safety-guide__eyebrow {
+    margin: 0 0 .5rem;
+    color: var(--text-accent);
+    font-family: Nunito, sans-serif;
+    font-size: var(--text-note);
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .safety-guide h1 {
+    margin: 0;
+    font-size: clamp(2rem, 7vw, 3.5rem);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+  .safety-guide__status { margin: 1.25rem 0; font-size: var(--text-body); line-height: 1.65; }
+  .safety-guide ul { margin: 0; padding-left: 1.5rem; }
+  .safety-guide li { margin-top: .875rem; font-size: var(--text-body); line-height: 1.65; }
+  .safety-guide__home {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 2.75rem;
+    margin-top: 1.75rem;
+    color: #714393;
+    font-size: var(--text-body);
+    font-weight: 800;
+    text-underline-offset: .2em;
+    overflow-wrap: anywhere;
+  }
+  .safety-footer { display: block; }
+  .safety-footer .footer-copyright { margin-top: 1rem; }
+  @media (max-width: 359px) {
+    .safety-guide { padding-inline: 1rem; }
+    .safety-guide h1 { font-size: 2rem; }
+  }
+</style>

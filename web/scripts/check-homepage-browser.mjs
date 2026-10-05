@@ -23,6 +23,7 @@ const browser = await chromium.launch();
 await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
+const homepageIdentity = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
 const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
 async function waitForPreviewClose(dialog, trigger, message) {
   // Native focus restoration can precede the application's queued close handler.
@@ -35,7 +36,7 @@ async function inspectReadability(page) {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
       [16, '.social-proof-section h2, .proof-card strong, .proof-card span, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, #apps h2, #apps>p, .download-button strong, .category-copy strong, .footer-group summary, .footer-group a, .footer-group button'],
-      [15, '.social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .download-button small, #apps>small, .category-topic, .category-caveat, .listener-note, .footer-brand p, .footer-copyright'],
+      [15, '.hero-safety-link, .social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .download-button small, #apps>small, .category-topic, .category-caveat, .listener-note, .footer-brand p, .footer-copyright'],
       [14, '.preview-kicker, .proof-card small, .activity-preview-label span, .category-credential, .verification-badge, .verification-badge span'],
     ];
     const fontFailures = [];
@@ -175,6 +176,14 @@ try {
       assert.deepEqual(geometry.clippedText, [], name + ': important text is not clipped inside its panel');
       assert.equal(geometry.broken, 0, name + ': source art loads');
       assert.match(geometry.heading, /Baat karo\./);
+      assert.match(await page.locator('.hero-promise').innerText(), /A second opinion\. Someone to listen\. A friend to vent to\./, name + ': hero presents non-consulting conversation use cases');
+      assert.match(await page.locator('.hero-subtitle').innerText(), /outside your circle[\s\S]*without showing them your phone number[\s\S]*You decide which personal details to share[\s\S]*more control for women and anyone seeking more privacy/, name + ': hero explains caller-controlled privacy and explicitly reassures women');
+      assert.doesNotMatch(await page.locator('.hero-subtitle').innerText(), /They only know what you choose to share/, name + ': hero avoids an absolute knowledge claim');
+      const safetyLink = page.locator('.hero-safety-link');
+      await expect(safetyLink, name + ': safety guide link is visible').toBeVisible();
+      await expect(safetyLink, name + ': safety guide route').toHaveAttribute('href', '/talk-safely');
+      await safetyLink.focus();
+      assert.notEqual(await safetyLink.evaluate(el => getComputedStyle(el).outlineStyle), 'none', name + ': safety guide link has visible keyboard focus');
       assert.match(geometry.headingFont, /Nunito/i);
       assert.match(geometry.bodyFont, /Comfortaa/i);
       assert.equal(await page.locator('.proof-card').count(), 4, name + ': four social proof cards');
@@ -407,6 +416,37 @@ try {
       assert.deepEqual(anchors, [], name + ': section links resolve');
       assert.deepEqual(mutations, [], name + ': preview never posts to backend');
       console.log(name, JSON.stringify(geometry));
+    } catch (error) {
+      failures.push({ name, error: String(error) });
+      console.error(name, error);
+    } finally { await page.close(); }
+  }
+  for (const [name, width, height, textScale] of [['safety-desktop', 1280, 900, 1], ['safety-compact-text-200', 320, 740, 2]]) {
+    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+    try {
+      await page.goto('http://127.0.0.1:4179/talk-safely', { waitUntil: 'networkidle' });
+      if (textScale === 2) await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      await page.evaluate(() => document.fonts.ready);
+      const guide = await page.evaluate(() => ({
+        bodyText: document.body.innerText.replace(/\s+/g, ' '),
+        contentWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth,
+        fonts: [...document.querySelectorAll('.safety-guide__status, .safety-guide li, .safety-guide__home')].map(element => parseFloat(getComputedStyle(element).fontSize)),
+      }));
+      assert.equal(await page.title(), `Talking safely with strangers | ${homepageIdentity.name}`, name + ': title uses configured homepage identity');
+      assert(guide.bodyText.includes(homepageIdentity.name), name + ': visible chrome uses configured homepage identity');
+      assert.match(guide.bodyText, /Rules for talking safely with strangers/, name + ': guide heading is visible');
+      for (const baseline of ['OTPs', 'passwords', 'financial details', 'home address', 'end it', 'Report the call']) assert(guide.bodyText.includes(baseline), name + ': interim rule is visible: ' + baseline);
+      assert.equal(await page.locator('meta[name="robots"]').getAttribute('content'), 'noindex,nofollow', name + ': placeholder is noindex');
+      assert.equal(await page.locator('.notebook-site[data-design="callvaal-scrapbook"]').count(), 1, name + ': guide uses notebook chrome');
+      assert(guide.fonts.length > 0 && guide.fonts.every(size => size >= 16 * textScale), name + ': guide keeps readable font floors');
+      assert(guide.contentWidth <= guide.viewportWidth + 1, name + ': guide has no horizontal overflow');
+      const backLink = page.locator('.safety-guide__home');
+      await expect(backLink, name + ': return-home link is visible').toBeVisible();
+      await expect(backLink, name + ': return-home route').toHaveAttribute('href', '/');
+      await backLink.focus();
+      assert.notEqual(await backLink.evaluate(element => getComputedStyle(element).outlineStyle), 'none', name + ': return-home link has visible focus');
+      await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
     } catch (error) {
       failures.push({ name, error: String(error) });
       console.error(name, error);

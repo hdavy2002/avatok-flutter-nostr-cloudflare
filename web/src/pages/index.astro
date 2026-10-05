@@ -9,7 +9,7 @@ import PlatformLogo from '../components/home/PlatformLogo.astro';
 import '../styles/callvaal-notebook.css';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Raasta nikalo. | ${identity.name}`;
-const description = 'Advice, experience, or someone to listen. Explore sample profiles for conversations with professionals and everyday people, paid by the minute.';
+const description = 'Get a second opinion, find someone to listen, or talk to a friend outside your circle without sharing your phone number.';
 const canonical = `${BRAND.webOrigin}/`;
 const sampleDetails = [
   [4.8, 42, 120, 'Second opinion on diagnosis'], [4.9, 36, 95, 'Tenant / landlord disputes'],
@@ -56,9 +56,10 @@ const spritePosition = (i: number) => `${(i % 3) * 50}% ${Math.floor(i / 3) * 50
   </header>
   <main id="main-content">
     <section class="notebook-hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark>Raasta nikalo.</mark></h1><p class="hero-promise">Advice, experience, or someone to listen.</p><p class="hero-subtitle">Talk to professionals and everyday people. Pay for their time, by the minute.</p>
+      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark>Raasta nikalo.</mark></h1><p class="hero-promise">A second opinion. Someone to listen. A friend to vent to.</p><p class="hero-subtitle">Talk to someone outside your circle—without showing them your phone number. You decide which personal details to share—more control for women and anyone seeking more privacy.</p>
         <form id="people-search" class="people-search" role="search"><label class="sr-only" for="people-query">What would you like to talk about?</label><span class="search-icon" aria-hidden="true"></span><input id="people-query" name="q" type="search" placeholder="Kis baare mein baat karni hai?" autocomplete="off" maxlength="120" /><button type="submit">Find your person</button></form>
-        <div class="trust-chips"><span><ModernIcon name="lock" />Private numbers</span><span><span class="rupee-icon" aria-hidden="true">₹</span>UPI payments</span><span><ModernIcon name="clock" />Pay per minute</span></div>
+        <div class="trust-chips"><span><ModernIcon name="lock" />Your number isn't shown</span><span><ModernIcon name="user" />Share only what you choose</span><span><ModernIcon name="clock" />Pay per minute</span></div>
+        <a class="hero-safety-link" href="/talk-safely">Rules for talking safely with strangers →</a>
       </div>
       <div class="hero-art"><img src={publicImage('/assets/callvaal/scrapbook/hero-collage.png', { width: 1280 })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/hero-collage.png', [420, 640, 900, 1280])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 40px) / 2), (max-width: 1824px) calc((100vw - 64px) / 2), 880px" alt="Torn-paper collage of an everyday caller, a doctor, chai, a kite and an auto-rickshaw" fetchpriority="high" width="1254" height="1254" /></div>
     </section>

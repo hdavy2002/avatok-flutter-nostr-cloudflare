@@ -25,6 +25,13 @@ assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading');
 assert(visibleText.includes(identity.name), 'Planned public brand is visible');
 assert.match(visibleText, /Baat karo\./);
 assert.match(visibleText, /Raasta nikalo\./);
+assert.match(visibleText, /A second opinion\. Someone to listen\. A friend to vent to\./, 'Hero offers private conversation use cases, not only consulting');
+assert.match(visibleText, /outside your circle/, 'Hero offers someone beyond the caller’s existing circle');
+assert.match(visibleText, /without showing them your phone number/, 'Hero makes the factual number-not-shown claim without promising absolute safety');
+assert.match(visibleText, /You decide which personal details to share/, 'Hero uses qualified caller-agency language');
+assert.match(visibleText, /more control for women and anyone seeking more privacy/, 'Hero explicitly reassures women and other privacy-seeking callers');
+assert.doesNotMatch(visibleText, /They only know what you choose to share/, 'Hero does not make an absolute claim about what another person knows');
+assert.match(bodyHtml, /<a\b[^>]*class="hero-safety-link"[^>]*href="\/talk-safely"[^>]*>Rules for talking safely with strangers →<\/a>/, 'Hero links to the stranger-safety guide');
 assert.match(visibleText, /Sample profiles/, 'Fictional profile cards are labelled');
 for (const label of ['5,000+', 'Verified people', 'Any Indian language', 'Pan India', 'Private numbers']) {
   assert(visibleText.includes(label), 'Social proof preview card: ' + label);
@@ -101,6 +108,18 @@ for (const asset of ['hero-collage.png', 'category-stickers.png', 'earn-art.png'
 assert.equal((html.match(/data-person(?:=""|\s|>)/g) || []).length, 9, 'Nine illustrative profiles');
 assert.match(visibleText, /Illustrative qualifications, verification badges, ratings, reviews, conversation counts and prices/);
 assert.doesNotMatch(bodyHtml, /href="\/(?:privacy|terms|refunds|help)"/, 'Do not send new-service users to unrelated old policies');
+const talkSafely = readFileSync(resolve(root, 'talk-safely/index.html'), 'utf8');
+const talkSafelyText = talkSafely.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+assert(talkSafelyText.includes(identity.name), 'Safety guide uses the centrally configured homepage identity');
+assert(talkSafely.includes(`<title>Talking safely with strangers | ${identity.name}</title>`), 'Safety guide title uses the homepage identity');
+assert.match(talkSafely, /data-design="callvaal-scrapbook"/, 'Safety guide uses the CallVaal notebook chrome');
+assert.match(talkSafely, /<meta\b[^>]*name="robots"[^>]*content="noindex,nofollow"/, 'Interim safety guide stays out of search results');
+for (const baseline of ['OTPs', 'passwords', 'financial details', 'home address', 'end it', 'Report the call']) {
+  assert(talkSafelyText.includes(baseline), 'Safety guide includes interim baseline: ' + baseline);
+}
+assert.match(talkSafely, /<a\b[^>]*class="safety-guide__home"[^>]*href="\/"/, 'Safety guide links back home');
+assert.equal((talkSafely.match(/<header\b/g) || []).length, 1, 'Safety guide has notebook header chrome');
+assert.equal((talkSafely.match(/<footer\b/g) || []).length, 1, 'Safety guide has notebook footer chrome');
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
