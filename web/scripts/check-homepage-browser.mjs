@@ -71,10 +71,14 @@ try {
         siteWidth: document.querySelector('.notebook-site').getBoundingClientRect().width,
         profileTextSize: parseFloat(getComputedStyle(document.querySelector('.person-copy p')).fontSize),
         callButtonHeight: document.querySelector('.sample-call').getBoundingClientRect().height,
+        clippedText: [...document.querySelectorAll('.person-copy,.category-copy,.hero-copy,.earn-copy,.notebook-nav')]
+          .filter(el => el.scrollWidth > el.clientWidth + 2)
+          .map(el => ({ className: el.className, width: el.clientWidth, content: el.scrollWidth })),
         categories: [...document.querySelectorAll('.category-card')].map(el => ({ top: el.offsetTop, left: el.offsetLeft })),
       }));
       metrics.push({ name, ...geometry });
       assert(geometry.content <= width + 1, name + ': no horizontal overflow');
+      assert.deepEqual(geometry.clippedText, [], name + ': important text is not clipped inside its panel');
       assert.equal(geometry.broken, 0, name + ': source art loads');
       assert.match(geometry.heading, /Baat karo\./);
       assert.match(geometry.headingFont, /Nunito/i);
@@ -93,9 +97,11 @@ try {
           const heading = document.querySelector('#earn h2');
           const range = document.createRange();
           range.selectNodeContents(heading);
-          return { textRight: range.getBoundingClientRect().right, buttonLeft: document.querySelector('#earn button').getBoundingClientRect().left };
+          const text = range.getBoundingClientRect();
+          const button = document.querySelector('#earn button').getBoundingClientRect();
+          return { separated: text.right <= button.left || text.left >= button.right || text.bottom <= button.top || text.top >= button.bottom };
         });
-        assert(banner.textRight < banner.buttonLeft, name + ': earning headline does not overlap button');
+        assert(banner.separated, name + ': earning headline does not overlap button');
         const rowTops = [...new Set(geometry.categories.map(card => card.top))];
         assert.equal(rowTops.length, 3, name + ': three category rows');
         for (const top of rowTops) {

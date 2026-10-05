@@ -1,0 +1,21 @@
+---
+interface Props { name: string; }
+const { name } = Astro.props;
+const paths: Record<string, string> = {
+  doctors: 'M9 3v5a5 5 0 0 0 10 0V3M7 3h4m6 0h4M14 13v3a5 5 0 0 0 10 0v-3m-3-3a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
+  legal: 'M16 4v23M9 27h14M5 9h22M9 9l-5 10h10L9 9m14 0-5 10h10L23 9M13 5h6',
+  tax: 'M6 3h20v26H6zM11 8h10m-10 4h10m-8-4c7 0 7 9-1 9l8 7',
+  career: 'M4 10h24v17H4zM11 10V5h10v5M4 16l12 4 12-4M14 17h4v5h-4z',
+  home: 'M4 29V9h24v20M2 9h28M6 5h20M8 5V2h7v3M12 29V18a4 4 0 0 1 8 0v11M7 13h2m14 0h2M2 29h28',
+  learning: 'M16 8C11 4 6 5 3 6v20c5-2 9-1 13 2 4-3 8-4 13-2V6c-3-1-8-2-13 2v20',
+  wellbeing: 'M5 19c0 6 22 6 22 0M10 17l6-5 6 5M16 12v-2M16 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6M7 25l-3 3m21-3 3 3',
+  astrology: 'M3 3h26v26H3zM3 3l26 26M29 3 3 29M16 3 3 16l13 13 13-13L16 3',
+  listener: 'M3 3h23v13H13l-7 5v-5H3V3M8 8h13M18 21h9l-1 8h-7l-1-8m9 1h2c4 0 3 5-2 5M21 18v-2m3 2v-2',
+  lock: 'M8 14h16v15H8zM11 14V9a5 5 0 0 1 10 0v5M16 20v4',
+  payment: 'M4 7h24v20H4zM4 12h24M8 21h6m6 0h4',
+  clock: 'M16 3a13 13 0 1 0 0 26 13 13 0 0 0 0-26M16 8v9l6 3',
+  phone: 'M10 3H6C2 14 18 30 29 26v-4l-7-4-4 4-8-8 4-4-4-7',
+  user: 'M16 3a6 6 0 1 0 0 12 6 6 0 0 0 0-12M5 29v-4a11 11 0 0 1 22 0v4',
+};
+---
+<svg class="modern-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={paths[name] || paths.phone}/></svg>
