@@ -62,6 +62,33 @@ const spritePosition = (i: number) => `${(i % 3) * 50}% ${Math.floor(i / 3) * 50
       </div>
       <div class="hero-art"><img src={publicImage('/assets/callvaal/scrapbook/hero-collage.png', { width: 1280 })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/hero-collage.png', [420, 640, 900, 1280])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 40px) / 2), (max-width: 1824px) calc((100vw - 64px) / 2), 880px" alt="Torn-paper collage of an everyday caller, a doctor, chai, a kite and an auto-rickshaw" fetchpriority="high" width="1254" height="1254" /></div>
     </section>
+    <section class="social-proof-section" aria-labelledby="social-proof-title">
+      <div class="social-proof-heading"><div><p class="preview-kicker">Illustrative preview</p><h2 id="social-proof-title">Bharat bhar mein, <em>baat kaam ki.</em></h2></div><p>What we are building towards at launch.</p></div>
+      <div class="proof-card-grid">
+        {[
+          ['coral', '5,000+', 'Verified people', 'Launch target'],
+          ['gold', 'Any Indian language', 'Talk naturally', 'Designed for multilingual conversations'],
+          ['violet', 'Pan India', 'People across India', 'Find relevant experience, wherever you are'],
+          ['rose', 'Private numbers', 'Your number stays yours', 'Calls connect without sharing personal numbers'],
+        ].map(([tone, value, label, note]) => <article class:list={['proof-card', `proof-card--${tone}`]}>
+          <svg class="proof-flower" aria-hidden="true" viewBox="0 0 64 64"><g fill="currentColor"><ellipse cx="32" cy="13" rx="8" ry="13"/><ellipse cx="51" cy="32" rx="13" ry="8"/><ellipse cx="32" cy="51" rx="8" ry="13"/><ellipse cx="13" cy="32" rx="13" ry="8"/></g><circle cx="32" cy="32" r="9" fill="#fffdf7"/></svg>
+          <strong>{value}</strong><span>{label}</span><small>{note}</small>
+        </article>)}
+      </div>
+      <div class="activity-preview">
+        <div class="activity-preview-label"><strong>Sample activity</strong><span>Live updates coming later</span></div>
+        <div class="activity-ticker" role="group" tabindex="0" aria-label="Illustrative sample activity from fictional people. Live activity updates are not available yet.">
+          <div class="activity-track">
+            <div class="activity-sequence">
+              <span><b>Meera from Jaipur</b> just booked a call with Dr. Naina</span><span><b>Arjun from Kochi</b> just talked to Kavya</span><span><b>Farah from Lucknow</b> just booked a call with Advocate Riya</span><span><b>Rohit from Pune</b> just talked to Neha</span><span><b>Ananya from Guwahati</b> just booked a call with Priya</span>
+            </div>
+            <div class="activity-sequence" aria-hidden="true">
+              <span><b>Meera from Jaipur</b> just booked a call with Dr. Naina</span><span><b>Arjun from Kochi</b> just talked to Kavya</span><span><b>Farah from Lucknow</b> just booked a call with Advocate Riya</span><span><b>Rohit from Pune</b> just talked to Neha</span><span><b>Ananya from Guwahati</b> just booked a call with Priya</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="category-section" id="categories" aria-labelledby="categories-title"><h2 id="categories-title">Kis se <em>baat karni hai?</em></h2>
       <div class="category-grid">{categories.map(category => <button type="button" class="category-card" data-category-select data-category={category.id} aria-pressed="false"><span class="category-sticker" aria-hidden="true" style={`background-position:${spritePosition(category.spriteIndex)};--category-sheet:url(${publicImage('/assets/callvaal/scrapbook/category-stickers.png', { width: 1280, quality: ARTWORK_QUALITY })})`}></span><span class="category-copy"><strong>{category.name}</strong>{category.verificationRegistry && <span class="category-credential">✓ Verified · {category.verificationRegistry}</span>}<span>{category.topics.map(topic => <span class="category-topic">{topic}</span>)}</span>{category.id === 'tax' && <span class="category-caveat">No stock or crypto tips.</span>}</span><span class="category-arrow" aria-hidden="true">→</span></button>)}</div>
       <p class="listener-note">Listeners offer non-clinical support, not therapy or crisis care.</p>

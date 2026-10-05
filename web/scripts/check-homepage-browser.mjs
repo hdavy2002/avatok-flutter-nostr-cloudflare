@@ -34,9 +34,9 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '#privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, #apps h2, #apps>p, .download-button strong, .category-copy strong, .footer-group summary, .footer-group a, .footer-group button'],
-      [15, '.sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .download-button small, #apps>small, .category-topic, .category-caveat, .listener-note, .footer-brand p, .footer-copyright'],
-      [14, '.category-credential, .verification-badge, .verification-badge span'],
+      [16, '.social-proof-section h2, .proof-card strong, .proof-card span, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, #apps h2, #apps>p, .download-button strong, .category-copy strong, .footer-group summary, .footer-group a, .footer-group button'],
+      [15, '.social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .download-button small, #apps>small, .category-topic, .category-caveat, .listener-note, .footer-brand p, .footer-copyright'],
+      [14, '.preview-kicker, .proof-card small, .activity-preview-label span, .category-credential, .verification-badge, .verification-badge span'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -49,7 +49,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '#privacy-note, .people-toolbar, .person-copy, .earn-copy, #apps, .category-copy, .footer-group[open]';
+    const panels = '.social-proof-section, .proof-card, .activity-preview, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #apps, .category-copy, .footer-group[open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -137,7 +137,7 @@ try {
       });
       await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
       await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
-      for (const [section, selector] of [['privacy', '#privacy-note'], ['people-toolbar', '.people-toolbar'], ['people-cards', '.people-grid'], ['earning', '#earn'], ['downloads', '#apps']]) {
+      for (const [section, selector] of [['social-proof', '.social-proof-section'], ['privacy', '#privacy-note'], ['people-toolbar', '.people-toolbar'], ['people-cards', '.people-grid'], ['earning', '#earn'], ['downloads', '#apps']]) {
         await page.locator(selector).screenshot({ path: `homepage-review/${name}-${section}.png` });
       }
       const geometry = await page.evaluate(() => ({
@@ -177,6 +177,26 @@ try {
       assert.match(geometry.heading, /Baat karo\./);
       assert.match(geometry.headingFont, /Nunito/i);
       assert.match(geometry.bodyFont, /Comfortaa/i);
+      assert.equal(await page.locator('.proof-card').count(), 4, name + ': four social proof cards');
+      assert.deepEqual(await page.locator('.proof-card strong').allTextContents(), ['5,000+', 'Any Indian language', 'Pan India', 'Private numbers'], name + ': exact social proof card labels');
+      assert.match(await page.locator('.proof-card').first().innerText(), /Launch target/, name + ': 5,000+ is explicitly a target');
+      assert.match(await page.locator('.social-proof-section').innerText(), /Illustrative preview/, name + ': preview disclosure is visible');
+      assert.match(await page.locator('.activity-preview').innerText(), /Sample activity[\s\S]*Live updates coming later/, name + ': activity disclosure is visible');
+      assert.equal(await page.locator('.activity-sequence').count(), 2, name + ': ticker uses a duplicated sequence');
+      assert.equal(await page.locator('.activity-sequence').nth(1).getAttribute('aria-hidden'), 'true', name + ': duplicate ticker content is hidden from AT');
+      const reducedTicker = await page.locator('.activity-ticker').evaluate(el => {
+        const track = el.querySelector('.activity-track');
+        const sequence = el.querySelector('.activity-sequence:not([aria-hidden="true"])');
+        const duplicate = el.querySelector('.activity-sequence[aria-hidden="true"]');
+        return { label: el.getAttribute('aria-label'), animation: getComputedStyle(track).animationName, duplicate: getComputedStyle(duplicate).display,
+          trackFits: track.scrollWidth <= el.clientWidth + 1, sequenceFits: sequence.scrollWidth <= track.clientWidth + 1,
+          overflow: document.documentElement.scrollWidth - innerWidth };
+      });
+      assert.match(reducedTicker.label, /Illustrative sample activity/, name + ': ticker has a useful accessible label');
+      assert.equal(reducedTicker.animation, 'none', name + ': reduced motion disables ticker animation');
+      assert.equal(reducedTicker.duplicate, 'none', name + ': reduced motion shows one readable activity sequence');
+      assert(reducedTicker.trackFits && reducedTicker.sequenceFits, name + ': reduced-motion ticker stays within its container');
+      assert(reducedTicker.overflow <= 1, name + ': social proof ticker does not overflow the page');
       if (width >= 1088) {
         assert(Math.abs(geometry.siteWidth - Math.min(width - 64, 1760)) < 2, name + ': desktop uses available width up to readable cap');
       }
@@ -355,6 +375,12 @@ try {
       if ([320, 452, 1024].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         await page.waitForTimeout(50);
+        const zoomedTickerFits = await page.locator('.activity-ticker').evaluate(el => {
+          const track = el.querySelector('.activity-track');
+          const sequence = el.querySelector('.activity-sequence:not([aria-hidden="true"])');
+          return track.scrollWidth <= el.clientWidth + 1 && sequence.scrollWidth <= track.clientWidth + 1;
+        });
+        assert(zoomedTickerFits, name + ': reduced-motion ticker stays contained at 200% text');
         await page.locator('#category-filter').selectOption('relationships');
         assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': 200% text category filter remains usable');
         await page.locator('[data-reset-filters]').first().click();

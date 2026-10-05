@@ -26,6 +26,21 @@ assert(visibleText.includes(identity.name), 'Planned public brand is visible');
 assert.match(visibleText, /Baat karo\./);
 assert.match(visibleText, /Raasta nikalo\./);
 assert.match(visibleText, /Sample profiles/, 'Fictional profile cards are labelled');
+for (const label of ['5,000+', 'Verified people', 'Any Indian language', 'Pan India', 'Private numbers']) {
+  assert(visibleText.includes(label), 'Social proof preview card: ' + label);
+}
+assert.match(visibleText, /Illustrative preview/, 'Social proof is visibly disclosed as illustrative');
+assert.match(visibleText, /Launch target/, '5,000+ is framed as a launch target');
+assert.match(visibleText, /Sample activity Live updates coming later/, 'Ticker is visibly disclosed as sample activity');
+assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/, 'Duplicated ticker sequence is hidden from assistive technology');
+assert(bodyHtml.indexOf('class="social-proof-section"') > bodyHtml.indexOf('class="notebook-hero"') && bodyHtml.indexOf('class="social-proof-section"') < bodyHtml.indexOf('class="category-section"'), 'Social proof sits between hero and categories');
+const homepageCss = readFileSync(resolve('src/styles/callvaal-notebook.css'), 'utf8');
+assert.match(homepageCss, /@keyframes sample-activity-scroll\{to\{transform:translateX\(-50%\)\}\}/, 'Ticker loops right-to-left without a timer');
+assert.match(homepageCss, /prefers-reduced-motion:reduce/, 'Ticker has a reduced-motion layout');
+assert.match(homepageCss, /\.activity-track\{width:100%;max-width:100%;animation:none/, 'Reduced-motion track stays within its container');
+assert.match(homepageCss, /\.activity-sequence\{width:100%;max-width:100%;flex:1 1 100%;min-width:0;/, 'Reduced-motion sequence can shrink at narrow zoomed widths');
+assert.match(homepageCss, /animation-play-state:paused/, 'Ticker pauses for pointer and keyboard users');
+assert.match(homepageCss, /\.activity-ticker:focus-visible\{outline:3px solid #7b388c;outline-offset:4px\}/, 'Ticker has a visible keyboard focus ring');
 assert.doesNotMatch(bodyHtml, /hero-havan|FolkArtwork|data-folk-artwork|AskPandit|grand-havan|bright\/border|logo-horizontal/);
 assert.doesNotMatch(visibleText, /Himalayan temple|prasad|pujas|havans|Aum Fe|Saa Thum/i);
 for (const heading of ['Kis se baat karni hai?', 'Aapka number. Sirf aapka.', 'Sahi insaan. Ek kaam ki baat.', 'Your knowledge. Your experience. Your time.']) {
