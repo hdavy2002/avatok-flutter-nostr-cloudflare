@@ -6,7 +6,8 @@ import { normalizeBuiltImages } from './built-image-source.mjs';
 
 const root = resolve('dist');
 const home = readFileSync(resolve(root, 'index.html'), 'utf8');
-const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
+const brand = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8'));
+const identity = brand.homepageIdentity;
 const profiles = [
   ['dr-ananya', 'Dr. Ananya', 'doctors', 25, 'Hindi, English', ['portrait-1', 'doctor-notes', 'doctor-consultation']],
   ['sana', 'Sana', 'counsellor', 15, 'Hindi, English', ['portrait-5', 'sana-notes', 'sana-conversation']],
@@ -39,7 +40,7 @@ for (const [id, name, category, rate, languages, assets] of profiles) {
   const main = html.match(/<main\b[^>]*id="profile-main"[^>]*>[\s\S]*?<\/main>/)?.[0];
   assert(main, `${id}: shared profile main`);
   const title = text(html.match(/<title\b[^>]*>[\s\S]*?<\/title>/)?.[0] || '');
-  assert(title.startsWith(`${name} — `) && title.endsWith(`| ${identity.name}`), `${id}: category title with central identity`);
+  assert(title.startsWith(`${name} — `) && title.includes(`| ${identity.name}`) && title.endsWith(`· ${brand.name}`), `${id}: category title with homepage and site identities`);
   const robots = html.match(/<meta\b[^>]*name="robots"[^>]*>/)?.[0] || '';
   assert.match(robots, /content="noindex,\s*follow"/, `${id}: sample stays noindex while allowing link discovery`);
   assert.equal((html.match(/<h1[ >]/g) || []).length, 1, `${id}: one h1`);
