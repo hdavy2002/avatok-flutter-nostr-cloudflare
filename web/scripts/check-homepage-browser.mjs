@@ -181,7 +181,7 @@ try {
       assert.deepEqual(readability.fontFailures, [], name + ': normal/control 16px, secondary 15px, verification 14px floors');
       assert.deepEqual(readability.clipping, [], name + ': section text does not clip');
       assert.deepEqual(readability.overlaps, [], name + ': controls, headings and text do not overlap');
-      assert.equal(readability.badges.length, 8, name + ': four category and four profile badges');
+      assert.equal(readability.badges.length, 7, name + ': four category and three verified profile badges');
       assert(readability.badges.every(badge => badge.visible && badge.wraps && badge.fits && !badge.arrowOverlap), name + ': complete badges remain visible and can wrap');
       assert(geometry.content <= width + 1, name + ': no horizontal overflow');
       assert.deepEqual(geometry.clippedText, [], name + ': important text is not clipped inside its panel');
@@ -237,6 +237,10 @@ try {
         assert.match(await tile.locator('.category-credential').innerText(), new RegExp(registry));
         const id = await tile.getAttribute('data-category');
         const badge = page.locator(`.profile-card[data-category="${id}"] .verification-badge`);
+        if (registry === 'RCI') {
+          assert.equal(await badge.count(), 0, name + ': category registry does not imply Sana is individually verified');
+          continue;
+        }
         assert.equal(await badge.count(), 1, name + ': one matching illustrative badge for ' + label);
         assert.match(await badge.innerText(), new RegExp(registry));
         assert.match(await badge.getAttribute('aria-label'), /illustrative/i, name + ': sample verification is accessible');
