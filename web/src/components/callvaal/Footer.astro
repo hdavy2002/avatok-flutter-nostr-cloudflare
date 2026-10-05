@@ -16,13 +16,13 @@ const anchors: Record<string, string> = {
   'How it works': '/#privacy-note', 'Join & earn': '/#earn',
 };
 ---
-<footer class="cv-footer" data-callvaal-chrome>
-  <div class="cv-footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
-  <nav class="cv-footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group" open><summary>{heading}</summary><ul>{links.map(label => {
+<footer class="cv-footer notebook-footer" data-callvaal-chrome>
+  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
+  <nav class="cv-footer-columns footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group footer-group" open><summary>{heading}</summary><ul>{links.map(label => {
     const category = heading === 'Explore' ? categories.find(category => category.name === label) : undefined;
-    return <li>{category ? <button type="button" data-category-select data-category={category.id} aria-pressed="false">{label}</button> : anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-footer-preview={label}>{label}</button>}</li>;
+    return <li>{category ? <button type="button" data-category-select data-category={category.id} aria-pressed="false">{label}</button> : anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-footer-preview={label} data-preview-action="page" data-preview-label={label}>{label}</button>}</li>;
   })}</ul></details>)}</nav>
-  <p class="cv-footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Concept preview</p>
+  <p class="cv-footer-copyright footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Concept preview</p>
 </footer>
 <dialog class="cv-preview-dialog" id="cv-footer-dialog" aria-labelledby="cv-footer-dialog-title" aria-describedby="cv-footer-dialog-description"><h2 id="cv-footer-dialog-title">Concept preview</h2><p id="cv-footer-dialog-description">This page is not published for this service yet.</p><form method="dialog"><button autofocus>Close</button></form></dialog>
 <script>
@@ -50,7 +50,8 @@ const anchors: Record<string, string> = {
   const dialog = document.querySelector<HTMLDialogElement>('#cv-footer-dialog');
   let trigger: HTMLButtonElement | null = null;
   document.querySelectorAll<HTMLButtonElement>('[data-footer-preview]').forEach(button => button.addEventListener('click', () => {
-    if (!dialog) return;
+    // Keep the homepage's established preview dialog and focus restoration.
+    if (document.querySelector('#preview-dialog') || !dialog) return;
     trigger = button;
     const heading = dialog.querySelector('h2');
     if (heading) heading.textContent = button.dataset.footerPreview || 'Concept preview';
