@@ -150,8 +150,8 @@ assert.equal((guide.match(/data-idea-card/g) || []).length, 51, 'All 51 rituals 
 assert.equal((guide.match(/data-format="havan"/g) || []).length, 29, '28 havan cards + the Havans filter');
 assert.equal((guide.match(/data-format="puja"/g) || []).length, 24, '23 puja cards + the Pujas filter');
 assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main heading');
-assert.match(guide, /class="bazaar-footer bazaar-footer--folk"/, 'Guide uses shared footer');
-assert.match(guide, /avh--sticky/, 'Guide uses shared header');
+assert.match(guide, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared CallVaal footer');
+assert.match(guide, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared CallVaal header');
 assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
 assert.match(guide, /CollectionPage/);
 assert.match(guide, /ItemList/);
@@ -173,8 +173,8 @@ for (const href of ritualLinks) {
  assert.equal((article.match(/<h1[ >]/g) || []).length, 1, 'One article heading: ' + href);
  assert.match(article, new RegExp('data-ritual-article="' + slug + '"'), 'Article identity: ' + href);
  for (const section of ['about','why-deity','blessings','who','when','altar','value','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
- assert.match(article, /avh--sticky/, 'Shared article header: ' + href);
- assert.match(article, /class="bazaar-footer bazaar-footer--folk"/, 'Shared article footer: ' + href);
+ assert.match(article, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared CallVaal article header: ' + href);
+ assert.match(article, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared CallVaal article footer: ' + href);
  assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
  // [SAATHUM-GUIDE-2] Havans are open shared events (power of many); pujas are private.
   // [PRICING-1] The price is a live [data-site-price] span fed by /api/pricing — never a hardcoded figure.
