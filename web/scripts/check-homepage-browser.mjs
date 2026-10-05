@@ -1,5 +1,5 @@
 // Owner-approved reference replica. Run only in manually dispatched GitHub CI.
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
@@ -24,6 +24,11 @@ await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
 const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
+async function waitForPreviewClose(dialog, trigger, message) {
+  // Native focus restoration can precede the application's queued close handler.
+  await expect(dialog, message + ': close handler completed').toHaveAttribute('data-preview-state', 'closed');
+  await expect(trigger, message + ': trigger focus restored').toBeFocused();
+}
 // Inspect computed sizes at every viewport so later media queries cannot silently undo floors.
 async function inspectReadability(page) {
   return page.evaluate(() => {
@@ -120,6 +125,7 @@ try {
     });
     try {
       await page.goto('http://127.0.0.1:4179/', { waitUntil: 'networkidle' });
+      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached', timeout: 10000 });
       await page.evaluate(async () => {
         await document.fonts.ready;
         for (const image of document.images) image.loading = 'eager';
@@ -222,15 +228,19 @@ try {
       assert(await dialog.evaluate(el => el.contains(document.activeElement)), name + ': dialog receives focus');
       await dialog.locator('[data-close-preview]').press('Enter');
       assert(!(await dialog.evaluate(el => el.open)), name + ': keyboard closes modal');
-      assert(await previewButton.evaluate(el => document.activeElement === el), name + ': keyboard close returns focus');
+      await waitForPreviewClose(dialog, previewButton, name + ': keyboard close');
       await previewButton.press('Enter');
       assert(await dialog.evaluate(el => el.open), name + ': keyboard opens modal');
       await page.keyboard.press('Escape');
       assert(!(await dialog.evaluate(el => el.open)), name + ': Escape closes dialog');
-      assert(await previewButton.evaluate(el => document.activeElement === el), name + ': focus returns');
-      await page.locator('#earn [data-preview-action]').click();
+      await waitForPreviewClose(dialog, previewButton, name + ': Escape close');
+      const joinButton = page.locator('#earn [data-preview-action]');
+      await joinButton.click();
       await dialog.locator('[data-close-preview]').click();
       assert(!(await dialog.evaluate(el => el.open)), name + ': close button works');
+      // close() hides the dialog synchronously; its close event restores focus later.
+      // Wait before filling search so that callback cannot steal the Enter keystroke.
+      await waitForPreviewClose(dialog, joinButton, name + ': close before search');
       const search = page.locator('#people-search input[name="q"]');
       await search.fill('Ananya');
       await search.press('Enter');
@@ -329,15 +339,19 @@ try {
       assert.deepEqual(openFooterReadability.overlaps, [], name + ': open footer does not overlap');
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), name + ': open footer has no horizontal overflow');
       for (const platform of ['iPhone', 'Android', 'Mac', 'Windows']) {
-        await page.locator(`[data-preview-action="download"][data-preview-label="${platform}"]`).click();
+        const downloadButton = page.locator(`[data-preview-action="download"][data-preview-label="${platform}"]`);
+        await downloadButton.click();
         assert.match(await dialog.innerText(), /downloads are not available yet/);
         await dialog.locator('[data-close-preview]').click();
+        await waitForPreviewClose(dialog, downloadButton, name + ': download close');
       }
       const legalGroup = page.locator('.footer-group').last();
       if (!(await legalGroup.evaluate(el => el.open))) await legalGroup.locator('summary').click();
-      await legalGroup.locator('[data-preview-label="Privacy policy"]').click();
+      const privacyButton = legalGroup.locator('[data-preview-label="Privacy policy"]');
+      await privacyButton.click();
       assert.match(await dialog.innerText(), /not published for this service yet/);
       await dialog.locator('[data-close-preview]').click();
+      await waitForPreviewClose(dialog, privacyButton, name + ': policy close');
       if ([320, 452, 1024].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         await page.waitForTimeout(50);

@@ -68,6 +68,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
     page: `${label} is not published for this service yet. This preview does not provide an active policy or support workflow.`,
   };
   if (description) description.textContent = descriptions[button.dataset.previewAction || 'page'] || descriptions.page;
+  dialog.dataset.previewState = 'open';
   dialog.showModal();
   capture('cta_click', { surface, section: button.closest('section')?.id, label: button.dataset.previewAction, sample_profiles: true });
 }));
@@ -77,7 +78,12 @@ dialog?.addEventListener('click', event => {
   const bounds = dialog.getBoundingClientRect();
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
 });
-dialog?.addEventListener('close', () => { dialogTrigger?.focus(); dialogTrigger = null; });
+dialog?.addEventListener('close', () => {
+  dialogTrigger?.focus();
+  dialogTrigger = null;
+  // Native close() updates .open before this queued focus-restoration callback.
+  dialog.dataset.previewState = 'closed';
+});
 document.querySelectorAll<HTMLButtonElement>('[data-favourite]').forEach(button => button.addEventListener('click', () => {
   button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
 }));
@@ -127,3 +133,5 @@ if ('IntersectionObserver' in window) {
   }, { threshold: .2 });
   document.querySelectorAll('main section').forEach(section => observer.observe(section));
 }
+// Browser checks wait for application listeners, not just the rendered HTML/assets.
+document.documentElement.dataset.homepageReady = 'true';
