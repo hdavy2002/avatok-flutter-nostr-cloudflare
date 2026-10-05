@@ -25,4 +25,9 @@
 @media(min-width:801px) and (max-width:900px){.notebook-header{padding-left:98px;padding-right:18px;gap:16px}.notebook-header .wordmark{width:185px}.header-sticky{width:82px}.header-kite{display:none}.notebook-nav{font-size:12px;gap:17px}.sign-in{font-size:13px;min-width:93px;padding-inline:9px}.hero-handnote{display:none}.trust-chips{font-size:11px;gap:5px}.trust-chips>span{white-space:nowrap;gap:5px}.trust-chips svg{height:26px}.category-copy>span{font-size:12px}.category-card:nth-child(9) .category-copy>span{font-size:11px}.privacy-section{height:260px}.privacy-copy{width:100%;padding-top:20px}.privacy-copy h2{font-size:32px}.privacy-copy p{font-size:23px}.privacy-diagram{top:108px;width:70%;right:12px}.number-note{left:55px;bottom:18px}.people-toolbar{flex-wrap:wrap}.people-toolbar h2{font-size:31px}.people-filters{flex:none}.sample-label{margin-left:auto}.people-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-card{height:136px;gap:13px}.person-portrait{width:120px;height:124px}.person-copy h3{font-size:17px}.person-copy p{font-size:14px;line-height:1.3}.person-price{font-size:19px}.earn-copy h2{font-size:18px;white-space:normal;letter-spacing:-.4px}.earn-copy p{font-size:13px;white-space:normal}.join-button{font-size:17px}}
 @media(max-width:800px){.hero-first-line{transform:scaleX(1.16)}.earn-copy h2{font-size:27px}.earn-copy p{font-size:15px}.hero-art{clip-path:polygon(0 0,82% 0,82% 8%,100% 8%,100% 100%,0 100%)}}
 @media(max-width:420px){.earn-copy h2{font-size:25px}}
+/* Owner-approved breathing room; keep artwork and card layouts unchanged. */
+.notebook-site{--section-space:32px}
+#main-content>section+section{margin-top:var(--section-space)}
+.earn-section{margin-bottom:var(--section-space)}
+@media(max-width:800px){.notebook-site{--section-space:24px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
