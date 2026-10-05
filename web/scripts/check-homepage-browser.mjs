@@ -25,7 +25,7 @@ await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
 try {
-  for (const [name, width, height] of [['reference', 1024, 1536], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['tablet', 820, 1000], ['mobile', 390, 844], ['small-mobile', 360, 780]]) {
+  for (const [name, width, height] of [['reference', 1024, 1536], ['ultrawide', 2560, 1440], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['small-desktop', 1100, 900], ['tablet', 820, 1000], ['large-mobile', 480, 900], ['mobile', 390, 844], ['small-mobile', 360, 780], ['compact-mobile', 320, 740]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     const mutations = [];
     page.on('request', request => {
@@ -68,6 +68,9 @@ try {
         heading: document.querySelector('h1')?.textContent,
         headingFont: getComputedStyle(document.querySelector('h1')).fontFamily,
         bodyFont: getComputedStyle(document.body).fontFamily,
+        siteWidth: document.querySelector('.notebook-site').getBoundingClientRect().width,
+        profileTextSize: parseFloat(getComputedStyle(document.querySelector('.person-copy p')).fontSize),
+        callButtonHeight: document.querySelector('.sample-call').getBoundingClientRect().height,
         categories: [...document.querySelectorAll('.category-card')].map(el => ({ top: el.offsetTop, left: el.offsetLeft })),
       }));
       metrics.push({ name, ...geometry });
@@ -76,6 +79,13 @@ try {
       assert.match(geometry.heading, /Baat karo\./);
       assert.match(geometry.headingFont, /Fredoka/i);
       assert.match(geometry.bodyFont, /Nunito/i);
+      if (width >= 1088) {
+        assert(Math.abs(geometry.siteWidth - Math.min(width - 64, 1760)) < 2, name + ': desktop uses available width up to readable cap');
+      }
+      if (width <= 480) {
+        assert(geometry.profileTextSize >= 14, name + ': readable mobile profile text');
+        assert(geometry.callButtonHeight >= 40, name + ': comfortable mobile call target');
+      }
       assert.equal(await page.locator('.profile-card').count(), 8);
       assert.equal(await page.locator('.category-card').count(), 9);
       if (width >= 1024) {
