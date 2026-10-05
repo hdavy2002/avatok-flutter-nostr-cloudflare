@@ -47,11 +47,35 @@ assert(meta(html, 'og:description'), 'Share description exists');
 assert(html.includes('href="/sign-in'), 'Sign-in route remains reachable');
 assert.match(html, /<dialog\b/, 'Unwired calls and joining have an accessible preview notice');
 assert.doesNotMatch(visibleText, /No app needed|Life ka sawaal|Become an expert/i);
-for (const category of ['Doctors', 'Legal advice', 'CA &amp; tax', 'Career &amp; business', 'Home &amp; property', 'Learning &amp; skills', 'Wellbeing', 'Astrology', 'Listener']) {
-  assert(visibleText.includes(category) || visibleText.includes(category.replaceAll('&amp;', '&')), 'Approved category: ' + category);
+// [CALLVAAL-READABLE-CATEGORIES-1] Check each discovery surface, not merely text anywhere.
+const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
+const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
+const categoryCards = [...bodyHtml.matchAll(/<button\b[^>]*class="category-card"[^>]*>([\s\S]*?)<\/button>/g)].map(match => match[1]);
+assert.deepEqual(categoryCards.map(card => plainText(card.match(/<strong\b[^>]*>([\s\S]*?)<\/strong>/)?.[1] || '')), categoryLabels, 'Exact nine category labels and order');
+const categorySelect = bodyHtml.match(/<select\b[^>]*id="category-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
+assert.deepEqual([...categorySelect.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/g)].map(match => plainText(match[1])).slice(1), categoryLabels, 'Dropdown matches category tiles');
+assert.doesNotMatch(plainText(visibleText), /Home & property|Learning & skills|Wellbeing/, 'Retired categories are absent');
+const registryLabels = ['NMC', 'Bar Council', 'ICAI', 'RCI'];
+const categoryCredentials = [...bodyHtml.matchAll(/<span\b[^>]*class="category-credential"[^>]*>([\s\S]*?)<\/span>/g)].map(match => plainText(match[1]));
+assert.equal(categoryCredentials.length, 4, 'Four category registry badges');
+assert.deepEqual(categoryCredentials, registryLabels.map(registry => `✓ Verified · ${registry}`), 'Credential categories use explicit verified labels');
+for (const [index, registry] of [[0, 'NMC'], [1, 'Bar Council'], [2, 'ICAI'], [5, 'RCI']]) {
+  assert(categoryCards[index].includes('category-credential') && plainText(categoryCards[index]).includes(registry), 'Registry belongs to correct category: ' + registry);
 }
+const profileBadges = [...bodyHtml.matchAll(/<div\b[^>]*class="person-heading"[^>]*>([\s\S]*?)<\/div>/g)].map(match => match[1]).filter(heading => heading.includes('class="verification-badge"')).map(plainText);
+assert.equal(profileBadges.length, 4, 'Four illustrative profile verification badges');
+for (const registry of registryLabels) assert(profileBadges.some(badge => badge.includes(registry)), 'Illustrative profile registry: ' + registry);
+const disclosure = [...bodyHtml.matchAll(/<p\b[^>]*class="(?:sample-label|profile-disclosure)"[^>]*>([\s\S]*?)<\/p>/g)].map(match => plainText(match[1])).join(' ');
+assert.match(disclosure, /illustrative/i);
+for (const detail of ['profiles', 'qualifications', 'verification badges']) assert(disclosure.includes(detail), 'Illustrative disclosure covers ' + detail);
+const footer = bodyHtml.match(/<footer\b[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
+assert.equal((footer.match(/<li[ >]/g) || []).length, 43, 'Complete 43-entry footer');
+const explore = [...footer.matchAll(/<details\b[^>]*>([\s\S]*?)<\/details>/g)].map(match => match[1]).find(group => /<summary[^>]*>Explore<\/summary>/.test(group)) || '';
+assert.equal((explore.match(/<li[ >]/g) || []).length, 11, 'Explore has two destinations and nine categories');
+assert.deepEqual([...explore.matchAll(/<button\b[^>]*data-category-select[^>]*>([\s\S]*?)<\/button>/g)].map(match => plainText(match[1])), categoryLabels, 'Footer exposes every category filter');
 assert.match(visibleText, /non-clinical support/);
 assert.match(visibleText, /not therapy or crisis care/);
+assert.match(visibleText, /No stock or crypto tips\./, 'Tax category retains its advice boundary');
 for (const asset of ['hero-collage.png', 'category-stickers.png', 'earn-art.png', ...Array.from({ length: 9 }, (_, i) => `portrait-${i + 1}.png`)]) {
   const file = resolve(root, 'assets/callvaal/scrapbook', asset);
   assert(existsSync(file), 'Scrapbook artwork ships: ' + asset);
@@ -60,7 +84,7 @@ for (const asset of ['hero-collage.png', 'category-stickers.png', 'earn-art.png'
   if (asset === 'category-stickers.png') assert.equal(art.width, art.height, 'Three-by-three sprite is square: ' + asset);
 }
 assert.equal((html.match(/data-person(?:=""|\s|>)/g) || []).length, 9, 'Nine illustrative profiles');
-assert.match(visibleText, /Illustrative ratings, reviews, conversation counts and prices/);
+assert.match(visibleText, /Illustrative qualifications, verification badges, ratings, reviews, conversation counts and prices/);
 assert.doesNotMatch(bodyHtml, /href="\/(?:privacy|terms|refunds|help)"/, 'Do not send new-service users to unrelated old policies');
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);

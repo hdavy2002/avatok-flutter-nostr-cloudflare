@@ -9,7 +9,8 @@ const category = document.querySelector<HTMLSelectElement>('#category-filter');
 const language = document.querySelector<HTMLSelectElement>('#language-filter');
 const price = document.querySelector<HTMLSelectElement>('#price-filter');
 const cards = [...document.querySelectorAll<HTMLElement>('[data-person]')];
-const categoryButtons = [...document.querySelectorAll<HTMLButtonElement>('.category-card')];
+const categoryButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-category-select]')];
+const selectedCategoryLabel = document.querySelector<HTMLElement>('[data-selected-category-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
 function filterPeople() {
@@ -25,6 +26,10 @@ function filterPeople() {
     if (match) count += 1;
   }
   categoryButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category?.value)));
+  if (selectedCategoryLabel) {
+    selectedCategoryLabel.hidden = !category?.value;
+    selectedCategoryLabel.textContent = category?.value ? `Selected category: ${category.selectedOptions[0]?.textContent || ''}` : '';
+  }
   if (noResults) noResults.hidden = count > 0;
   if (status) status.textContent = `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown. Calls are not available in this preview.`;
 }
@@ -34,12 +39,14 @@ document.querySelector('#people-search')?.addEventListener('submit', event => {
   capture('cta_click', { surface, section: 'hero', label: 'Find your person', sample_profiles: true });
 });
 for (const select of [category, language, price]) select?.addEventListener('change', filterPeople);
-categoryButtons.forEach(button => button.addEventListener('click', () => {
+function selectCategory(button: HTMLButtonElement) {
   if (category) category.value = button.dataset.category || '';
   if (query) query.value = '';
   filterPeople(); showPeople();
-  capture('cta_click', { surface, section: 'categories', label: button.dataset.category, sample_profiles: true });
-}));
+  const isFooter = Boolean(button.closest('footer'));
+  capture(isFooter ? 'nav_click' : 'cta_click', { surface, section: isFooter ? 'footer' : 'categories', label: button.dataset.category, sample_profiles: true });
+}
+categoryButtons.forEach(button => button.addEventListener('click', () => selectCategory(button)));
 document.querySelectorAll<HTMLButtonElement>('[data-reset-filters]').forEach(button => button.addEventListener('click', () => {
   for (const input of [query, category, language, price]) if (input) input.value = '';
   filterPeople();
@@ -54,7 +61,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
   const description = dialog.querySelector('#preview-description');
   if (title) title.textContent = button.dataset.previewAction === 'call' ? `Call ${label}` : label;
   const descriptions: Record<string, string> = {
-    call: 'This is an illustrative profile. Calls and payments are not available in this preview.',
+    call: 'This is an illustrative profile. Qualifications and verification badges are samples, not completed registry checks. Calls and payments are not available in this preview.',
     join: 'Partner registration is not available yet. This preview shows the intended joining experience.',
     download: `${label} downloads are not available yet. No app will be downloaded from this preview.`,
     privacy: 'The proposed connection calls both people separately and keeps their personal phone numbers hidden from each other. Calling is not available in this preview.',
