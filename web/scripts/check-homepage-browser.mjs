@@ -88,7 +88,22 @@ async function inspectReadability(page) {
       const arrow = el.closest('.category-card')?.querySelector('.category-arrow')?.getBoundingClientRect();
       return { text: el.textContent.trim(), visible: visible(el), wraps: style.whiteSpace !== 'nowrap', fits: textFits && rect.left >= card.left - 2 && rect.right <= card.right + 2 && rect.top >= card.top - 2 && rect.bottom <= card.bottom + 2, arrowOverlap: arrow ? intersects(rect, arrow) : false };
     });
-    return { fontFailures, fontCounts, clipping, overlaps, badges };
+    const viewportOverflow = {
+      viewport: innerWidth,
+      content: document.documentElement.scrollWidth,
+      elements: [...document.body.querySelectorAll('*')]
+        .filter(el => visible(el) && !el.closest('.sr-only, svg'))
+        .map(el => {
+          const rect = el.getBoundingClientRect();
+          return { element: el.id ? `#${el.id}` : el.className || el.tagName,
+            left: Math.round(rect.left * 100) / 100, right: Math.round(rect.right * 100) / 100,
+            width: Math.round(rect.width * 100) / 100, content: el.scrollWidth,
+            text: el.textContent.trim().replace(/\s+/g, ' ').slice(0, 100) };
+        })
+        .filter(el => el.left < -1 || el.right > innerWidth + 1)
+        .slice(0, 40),
+    };
+    return { fontFailures, fontCounts, clipping, overlaps, badges, viewportOverflow };
   });
 }
 try {
@@ -340,11 +355,13 @@ try {
           if (!(await group.evaluate(el => el.open))) await group.locator('summary').click();
         }
         const enlarged = await inspectReadability(page);
+        metrics.at(-1).enlargedReadability = enlarged;
+        await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
         assert.deepEqual(enlarged.fontFailures, [], name + ': 200% text preserves font floors');
         assert.deepEqual(enlarged.clipping, [], name + ': 200% text does not clip');
         assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
-        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), name + ': 200% text has no horizontal overflow');
-        await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
+        assert(enlarged.viewportOverflow.content <= enlarged.viewportOverflow.viewport + 1,
+          name + ': 200% text has no horizontal overflow: ' + JSON.stringify(enlarged.viewportOverflow));
       }
       const anchors = await page.locator('a[href^="#"]').evaluateAll(links => links.map(a => a.getAttribute('href').slice(1)).filter(id => id && !document.getElementById(id)));
       assert.deepEqual(anchors, [], name + ': section links resolve');

@@ -101,7 +101,7 @@ max-width:100%;padding:.625rem 1rem;line-height:1.5}
 .earn-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem 1rem}
 .earn-steps li{min-width:0;line-height:1.6}
 .earn-steps li+li{border:0;padding-left:0}
-.earn-note{display:block;grid-column:2;max-width:16rem;justify-self:end;padding:2rem 1.25rem;transform:rotate(-4deg)}
+.earn-note{display:block;grid-column:2;min-width:0;max-width:min(16rem,100%);overflow-wrap:anywhere;justify-self:end;padding:2rem 1.25rem;transform:rotate(-4deg)}
 .join-button{max-width:100%;white-space:normal;line-height:1.5}
 .download-button{min-width:0;flex-wrap:wrap;gap:1rem;padding:1rem;min-height:5rem}
 .download-button strong,.download-button small{line-height:1.6}
@@ -136,7 +136,7 @@ padding:.5rem 0;line-height:1.6;max-width:100%}
 .privacy-diagram li>p{grid-column:1;grid-row:1;justify-content:flex-start}
 .privacy-diagram .phone-frame{grid-column:2;grid-row:1/3;margin:auto}
 .privacy-diagram strong{grid-column:1;grid-row:2;margin-left:2.5rem}
-.earn-section{grid-template-columns:1fr}
+.earn-section{grid-template-columns:minmax(0,1fr)}
 .earn-art{max-width:18rem;margin:auto}
 .earn-note{grid-column:1}
 .footer-columns{grid-template-columns:repeat(2,minmax(0,1fr))}
