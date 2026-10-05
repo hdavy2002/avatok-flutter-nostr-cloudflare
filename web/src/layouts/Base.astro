@@ -5,15 +5,9 @@ import '../styles/global.css';
 // the long note at that file's old import site. A JS-side import is bundled by
 // Vite unconditionally; a late @import is silently dropped.
 import '../styles/motion.css';
-// [WEB-HEADER-1 2026-08-26] SiteHeader replaces Nav.astro site-wide. Nav's five
-// menu links pointed at homepage anchors deleted in the redesign (#features,
-// #receptionist, #number, #messaging, #faq — all verified absent), so the menu
-// was dead on every page that rendered it. SiteHeader carries the real menu and
-// matches the home page poster, so the site now has ONE header everywhere.
-// Nav.astro is left in the tree for now, unreferenced, in case a page needs the
-// old zine chrome back; delete it once that's ruled out.
-import SiteHeader from '../components/SiteHeader.astro';
-import SiteFooter from '../components/SiteFooter.astro';
+// Shared CallVaal chrome is static so pages can keep their own auth islands.
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
 import SeoHead from '../components/SeoHead.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
 import { ORG } from '../lib/org';
@@ -35,9 +29,9 @@ export interface Props {
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
   /**
-   * [WEB-HEADER-4] Forwarded to SiteHeader. Any page that mounts its OWN Clerk
-   * island MUST pass 'static' (or 'in' for signed-in-only pages) — two
-   * <ClerkProvider>s on one page throw and the header CTA silently disappears.
+   * Shared chrome uses plain links without an auth island. 'auto' uses the
+   * existing client-side session hint; 'in' and 'static' explicitly choose
+   * account/sign-out links or the public sign-in link respectively.
    */
   headerAuth?: 'auto' | 'in' | 'static';
   /**
@@ -189,7 +183,9 @@ const {
     </script>
     <style is:global>
       html[data-site-embed] header.avh,
-      html[data-site-embed] footer.bazaar-footer { display: none !important; }
+      html[data-site-embed] footer.bazaar-footer,
+      html[data-site-embed] [data-callvaal-chrome],
+      html[data-site-embed] .cv-mobile-booking { display: none !important; }
       /* The app's WebView is a phone screen with no browser chrome to absorb an
          overscroll, and a horizontal one there reads as a broken page. */
       html[data-site-embed], html[data-site-embed] body { overscroll-behavior-x: none; }
@@ -197,12 +193,12 @@ const {
     <slot name="head" />
   </head>
   <body data-i18n-namespace="web-common" class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <SiteHeader auth={headerAuth} indiaLandingLanguage={indiaLandingLanguage} />}
+    {chrome && <SiteHeader auth={navStatic ? 'static' : headerAuth} hideAuth={hideNavCtas} />}
     <script>
       import { initUiLocale } from '../lib/i18n/dom';
       initUiLocale();
     </script>
     <slot />
-    {chrome && <SiteFooter indiaLandingLanguage={indiaLandingLanguage} />}
+    {chrome && <SiteFooter />}
   </body>
 </html>

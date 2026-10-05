@@ -1,0 +1,70 @@
+---
+export const prerender = true;
+import Base from '../../layouts/Base.astro';
+import ModernIcon from '../../components/home/ModernIcon.astro';
+import DetailIcon from '../../components/callvaal/DetailIcon.astro';
+import brandConfig from '../../../../Specs/brand.json';
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+import '../../styles/callvaal-detail.css';
+const identity = brandConfig.homepageIdentity;
+const portrait = '/assets/callvaal/scrapbook/portrait-1.png';
+const gallery = [
+  { path: portrait, width: 1254, height: 1254, alt: 'Illustrative portrait of Dr. Ananya in her clinic' },
+  { path: '/assets/callvaal/scrapbook/doctor-notes.png', width: 1536, height: 1024, alt: 'Illustrative Dr. Ananya writing notes in her clinic' },
+  { path: '/assets/callvaal/scrapbook/doctor-consultation.png', width: 1536, height: 1024, alt: 'Illustrative Dr. Ananya listening during a consultation' },
+];
+const services = ['General health consultations', 'Lifestyle & diet guidance', 'Fever, cold, cough and common illnesses', 'Second opinion on diagnosis', 'Medication guidance (non-prescription advice)', 'Health check-up planning'];
+const tags = ['Preventive care', 'Lifestyle & nutrition', 'Common illnesses', 'Health guidance'];
+---
+<Base title={`Dr. Ananya — General physician | ${identity.name}`} description="An illustrative general physician profile. Explore this sample consultation experience; calls, bookings and payments are unavailable." image={portrait} noindex={true} keywords="" lang="en-IN">
+  <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
+  <a class="cv-detail-skip" href="#profile-main">Skip to profile</a>
+  <main class="cv-detail-main" id="profile-main" data-profile-id="dr-ananya">
+    <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/?category=doctors#people">Doctors</a><span aria-hidden="true">›</span><span aria-current="page">Dr. Ananya</span></nav>
+    <div class="cv-detail-layout">
+      <div class="cv-detail-content">
+        <section class="cv-profile-hero" aria-labelledby="profile-name">
+          <div class="cv-profile-photo">
+            <img src={publicImage(portrait, { width: 900 })} srcset={publicImageSrcSet(portrait, [420, 640, 900, 1280])} sizes="(max-width: 699px) calc(100vw - 32px), (max-width: 1099px) 32vw, 370px" width="1254" height="1254" alt="Illustrative portrait of Dr. Ananya" fetchpriority="high" />
+            <span class="cv-online" aria-label="Illustrative availability: online now"><span aria-hidden="true"></span>Online now</span>
+            <div class="cv-yellow-note" aria-hidden="true">People<br/>Healthier<br/>Happier<br/>Brighter<span>☺</span></div>
+          </div>
+          <div class="cv-identity">
+            <div class="cv-name-row"><div><h1 id="profile-name">Dr. Ananya</h1><p class="cv-role">General physician</p></div></div>
+            <span class="cv-verified" role="img" aria-label="Illustrative Verified NMC badge. This sample profile has not been verified."><span aria-hidden="true">✓ Verified · NMC</span></span>
+            <ul class="cv-profile-facts"><li><DetailIcon name="chat"/><span>Hindi, English</span></li><li><ModernIcon name="career"/><span>5+ years experience</span></li><li><span class="cv-star" aria-hidden="true">★</span><span><strong>4.8</strong> (42 reviews)</span></li><li><ModernIcon name="user"/><span>Talked to 120 people</span></li></ul>
+            <blockquote class="cv-profile-quote"><p>“I believe in simple, practical advice for a healthier, happier you.”</p><cite>– Dr. Ananya</cite></blockquote>
+          </div>
+          <div class="cv-profile-actions"><button type="button" data-profile-save aria-pressed="false" aria-label="Save Dr. Ananya for this visit"><ModernIcon name="bookmark"/><span data-save-label>Save</span></button><button type="button" data-profile-share aria-label="Share Dr. Ananya's sample profile"><DetailIcon name="share"/><span>Share</span></button></div>
+        </section>
+        <p class="cv-sample-disclosure">Sample profile · Availability, qualifications, NMC badge, reviews and prices are illustrative. No registry check has been completed.</p>
+        <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#services">Services</a><a href="#reviews">Reviews</a><a href="#gallery">Gallery</a></nav>
+        <div class="cv-information-grid">
+          <section class="cv-info-card" id="about" aria-labelledby="about-heading"><h2 id="about-heading">About Dr. Ananya</h2><p>Dr. Ananya is a general physician with over 5 years of experience in preventive and primary care. She focuses on listening carefully, explaining things in simple language, and helping you make informed choices about your health.</p><div class="cv-topic-tags-row"><ul class="cv-topic-tags cv-topic-tags-main">{tags.map(tag => <li>{tag}</li>)}</ul><details class="cv-more-topics"><summary><span class="cv-see-more">See more</span><span class="cv-see-less">See less</span></summary><ul class="cv-topic-tags">{tags.slice(2).map(tag => <li>{tag}</li>)}</ul></details></div></section>
+          <section class="cv-info-card" id="services" aria-labelledby="services-heading"><h2 id="services-heading">How I can help</h2><ul class="cv-service-list">{services.map(service => <li><span aria-hidden="true">✓</span>{service}</li>)}</ul></section>
+        </div>
+        <section class="cv-gallery-section" id="gallery" aria-labelledby="gallery-heading"><div class="cv-section-heading"><h2 id="gallery-heading">Gallery</h2><button type="button" data-gallery-index="0">View all <span aria-hidden="true">→</span></button></div><div class="cv-gallery-grid">{gallery.map((photo, index) => <button type="button" data-gallery-index={index} aria-label={`Open gallery photo ${index + 1}: ${photo.alt}`}><img src={publicImage(photo.path, { width: 640 })} srcset={publicImageSrcSet(photo.path, [420, 640, 900])} sizes={index === 0 ? "(max-width: 699px) calc(100vw - 32px), (max-width: 1099px) 28vw, 320px" : "(max-width: 699px) 43vw, (max-width: 1099px) 28vw, 320px"} alt={photo.alt} width={photo.width} height={photo.height} loading="lazy" /></button>)}</div></section>
+        <section class="cv-reviews-section" id="reviews" aria-labelledby="reviews-heading"><h2 id="reviews-heading">Reviews</h2><div class="cv-reviews-grid"><div class="cv-review-summary"><strong><span class="cv-star" aria-hidden="true">★</span> 4.8</strong><p>Based on 42 reviews</p></div>{[
+          { name: 'Riya S.', date: '12 Feb 2024', iso: '2024-02-12', initials: 'RS', text: 'Very patient and explains things so well. Felt comfortable and got helpful advice.' },
+          { name: 'Amit K.', date: '3 Feb 2024', iso: '2024-02-03', initials: 'AK', text: 'Listened carefully and gave practical suggestions. Highly recommend!' },
+        ].map(review => <article class="cv-review-card" aria-label={`Sample review by ${review.name}`}><span class="cv-review-avatar" aria-hidden="true">{review.initials}</span><div><div class="cv-review-heading"><h3>{review.name}</h3><time datetime={review.iso}>{review.date}</time></div><span class="cv-review-stars" aria-label="5 out of 5 stars">★★★★★</span><p>{review.text}</p></div></article>)}</div></section>
+        <section class="cv-before-section" aria-labelledby="before-heading"><h2 id="before-heading">Before you call</h2><div class="cv-before-grid">{[
+          ['notes', 'Keep your questions ready', 'Jot down your symptoms or concerns to make the most of your call.'],
+          ['pill', 'Have relevant reports handy', 'Lab reports or previous prescriptions can be useful.'],
+          ['user', 'Find a quiet place', 'For a better and more private conversation.'],
+        ].map(([icon, title, text]) => <div class="cv-before-card">{icon === 'user' ? <ModernIcon name="user"/> : <DetailIcon name={icon}/>}<div><h3>{title}</h3><p>{text}</p></div></div>)}</div></section>
+      </div>
+      <aside class="cv-booking-rail" aria-label="Sample consultation options">
+        <div class="cv-booking-card"><strong class="cv-rate">₹25/min</strong><button class="cv-call-button" type="button" data-profile-preview="call"><ModernIcon name="phone"/>Call now</button><button class="cv-book-button" type="button" data-profile-preview="book"><DetailIcon name="calendar"/>Book a time</button><p class="cv-next-slot"><DetailIcon name="calendar"/>Next available 4:30 PM</p><ul class="cv-booking-benefits"><li><ModernIcon name="lock"/><div><strong>Private number</strong><span>Your number stays private</span></div></li><li><DetailIcon name="shield"/><div><strong>Verified professional</strong><span>NMC verified · sample badge</span></div></li><li><DetailIcon name="shield"/><div><strong>Safe &amp; respectful space</strong><span>Real people, real conversations</span></div></li></ul><div class="cv-pink-note" aria-hidden="true">Apni health.<br/>Apne terms. ♡</div><small class="cv-booking-sample">Concept preview · No live calls or bookings</small></div>
+        <p class="cv-rail-scribble" aria-hidden="true">Baat se<br/>baat banti<br/>hai.</p>
+      </aside>
+    </div>
+    <p class="cv-detail-status" role="status" aria-live="polite" data-profile-status></p>
+  </main>
+  <div class="cv-mobile-booking" aria-label="Sample call options"><strong>₹25/min</strong><button class="cv-call-button" type="button" data-profile-preview="call"><ModernIcon name="phone"/>Call now</button></div>
+  <dialog class="cv-detail-dialog" id="cv-profile-preview" aria-labelledby="cv-profile-preview-title" aria-describedby="cv-profile-preview-description"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close preview">×</button><h2 id="cv-profile-preview-title">Call Dr. Ananya</h2><p id="cv-profile-preview-description">This is an illustrative profile. Calling, booking and payments are not available. No qualifications or NMC registry checks have been verified.</p><form method="dialog"><button class="cv-book-button">Got it</button></form></dialog>
+  <dialog class="cv-detail-dialog cv-gallery-dialog" id="cv-gallery-dialog" aria-labelledby="cv-gallery-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><figcaption id="cv-gallery-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous photo">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next photo">→</button></div></dialog>
+  <dialog class="cv-detail-dialog" id="cv-share-dialog" aria-labelledby="cv-share-title"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close share dialog">×</button><h2 id="cv-share-title">Share this sample profile</h2><p>Copy this link to share:</p><label class="cv-visually-hidden" for="cv-share-url">Profile link</label><input id="cv-share-url" type="url" readonly/><button type="button" class="cv-book-button" data-copy-link>Copy link</button><p role="status" data-share-status></p></dialog>
+  <script type="application/json" id="cv-gallery-data" set:html={JSON.stringify(gallery.map(photo => ({ src: publicImage(photo.path, { width: 1280 }), srcset: publicImageSrcSet(photo.path, [640, 900, 1280]), alt: photo.alt, width: photo.width, height: photo.height })))} />
+  <script>import '../../components/callvaal/profileDetail';</script>
+</Base>

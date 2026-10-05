@@ -1,0 +1,13 @@
+---
+interface Props { name: string; }
+const { name } = Astro.props;
+const paths: Record<string, string> = {
+ chat: 'M27 16a11 11 0 1 0-6 10l7 3-2-8a11 11 0 0 0 1-5',
+ share: 'M12 14 23 7m-11 11 11 7M8 12a4 4 0 1 0 0 8 4 4 0 0 0 0-8M26 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8M26 22a4 4 0 1 0 0 8 4 4 0 0 0 0-8',
+ calendar: 'M5 7h22v22H5zM5 13h22M10 3v8M22 3v8',
+ shield: 'M16 3 28 8v9c0 6-8 11-12 13C12 28 4 23 4 17V8L16 3M10 16l4 4 8-9',
+ notes: 'M7 3h12l7 7v19H7zM19 3v8h7M11 16h11M11 21h11M11 26h8',
+ pill: 'M7 26a7 7 0 0 1-1-10L17 5a7 7 0 0 1 10 10L16 26a7 7 0 0 1-9 0M12 10l10 10',
+};
+---
+<svg class="modern-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={paths[name]}/></svg>

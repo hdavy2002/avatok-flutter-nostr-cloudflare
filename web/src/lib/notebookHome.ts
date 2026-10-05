@@ -85,37 +85,17 @@ dialog?.addEventListener('close', () => {
   dialog.dataset.previewState = 'closed';
 });
 document.querySelectorAll<HTMLButtonElement>('[data-favourite]').forEach(button => button.addEventListener('click', () => {
-  button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+  const saved = button.getAttribute('aria-pressed') !== 'true';
+  button.setAttribute('aria-pressed', String(saved));
+  capture('cta_click', { surface, section: 'people', label: 'save_profile', saved, sample_profiles: true });
 }));
-const menuToggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
-const navigation = document.querySelector<HTMLElement>('#main-navigation');
-function closeMenu(returnFocus = false) {
-  menuToggle?.setAttribute('aria-expanded', 'false');
-  menuToggle?.setAttribute('aria-label', 'Open navigation');
-  if (navigation) navigation.dataset.open = 'false';
-  if (returnFocus) menuToggle?.focus();
+// Footer category links also work when arriving from a nested route.
+const requestedCategory = new URLSearchParams(window.location.search).get('category');
+if (category && requestedCategory && [...category.options].some(option => option.value === requestedCategory)) {
+  category.value = requestedCategory;
+  filterPeople();
 }
-menuToggle?.addEventListener('click', () => {
-  const open = menuToggle.getAttribute('aria-expanded') !== 'true';
-  menuToggle.setAttribute('aria-expanded', String(open));
-  menuToggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
-  if (navigation) navigation.dataset.open = String(open);
-});
-navigation?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => closeMenu()));
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && menuToggle?.getAttribute('aria-expanded') === 'true') closeMenu(true);
-});
-const mobileQuery = window.matchMedia('(max-width: 599px)');
-document.querySelectorAll('.footer-group summary').forEach(summary => summary.addEventListener('click', event => {
-  if (!mobileQuery.matches) event.preventDefault();
-}));
-function updateResponsiveNavigation() {
-  closeMenu();
-  document.querySelectorAll<HTMLDetailsElement>('.footer-group').forEach(group => { group.open = !mobileQuery.matches; });
-}
-mobileQuery.addEventListener('change', updateResponsiveNavigation);
-updateResponsiveNavigation();
-document.querySelectorAll<HTMLAnchorElement>('.notebook-site a').forEach(link => link.addEventListener('click', () => {
+document.querySelectorAll<HTMLAnchorElement>('.notebook-site main a, .mobile-bottom-nav a').forEach(link => link.addEventListener('click', () => {
   const section = link.closest<HTMLElement>('section, header, footer');
   capture(section?.tagName === 'HEADER' || section?.tagName === 'FOOTER' ? 'nav_click' : 'cta_click', {
     surface, section: section?.id || section?.tagName.toLowerCase(),

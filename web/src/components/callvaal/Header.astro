@@ -1,0 +1,60 @@
+---
+import brandConfig from '../../../../Specs/brand.json';
+import ModernIcon from '../home/ModernIcon.astro';
+import '../../styles/callvaal-chrome.css';
+interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; }
+const { hideAuth = false, auth = 'auto' } = Astro.props;
+const identity = brandConfig.homepageIdentity;
+---
+{/* Match the existing SiteHeader session hint before paint. This only selects
+    navigation links; it never authorizes a request or loads a Clerk island. */}
+<script is:inline>
+  (function () {
+    function syncAuthHint() {
+      try {
+        var match = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+        var signedIn = !!(match && match[1] && match[1] !== '0');
+        if (!signedIn) {
+          try { signedIn = !!localStorage.getItem('saathum_guest_jwt'); } catch (e) {}
+        }
+        document.documentElement.setAttribute('data-site-auth', signedIn ? 'in' : 'out');
+      } catch (e) {
+        document.documentElement.setAttribute('data-site-auth', 'out');
+      }
+    }
+    syncAuthHint();
+    window.addEventListener('pageshow', syncAuthHint);
+    window.addEventListener('focus', syncAuthHint);
+    window.addEventListener('storage', syncAuthHint);
+    window.addEventListener('site:active-session-changed', syncAuthHint);
+  })();
+</script>
+<header class="cv-header" data-callvaal-chrome data-auth-mode={auth}>
+  <a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a>
+  <div class="cv-mobile-actions"><a href="/#people" aria-label="Find your person"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></a><button class="cv-menu-toggle" type="button" aria-expanded="false" aria-controls="cv-main-navigation" aria-label="Open navigation"><ModernIcon name="menu" /></button></div>
+  <nav class="cv-navigation" id="cv-main-navigation" aria-label="Main navigation"><a href="/#categories">Categories</a><a href="/#people">Find your person</a><a href="/#earn">Earn with us</a>{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in"><ModernIcon name="user" />Sign in</a>}{auth !== 'static' && <><a class="cv-sign-in cv-auth-in" href="/dashboard"><ModernIcon name="user" />My account</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}</>}</nav>
+</header>
+<script>
+  import { capture } from '../../lib/analytics';
+  const toggle = document.querySelector<HTMLButtonElement>('.cv-menu-toggle');
+  const nav = document.querySelector<HTMLElement>('.cv-navigation');
+  function closeMenu(focus = false) {
+    toggle?.setAttribute('aria-expanded', 'false');
+    toggle?.setAttribute('aria-label', 'Open navigation');
+    if (nav) nav.dataset.open = 'false';
+    if (focus) toggle?.focus();
+  }
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+    if (nav) nav.dataset.open = String(open);
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && toggle?.getAttribute('aria-expanded') === 'true') closeMenu(true); });
+  document.addEventListener('click', event => { if (event.target instanceof Node && !document.querySelector('.cv-header')?.contains(event.target)) closeMenu(); });
+  document.querySelectorAll<HTMLAnchorElement>('.cv-header a').forEach(link => link.addEventListener('click', () => {
+    closeMenu();
+    capture('nav_click', { surface: 'callvaal-chrome', section: 'header', href: link.getAttribute('href') });
+  }));
+  window.matchMedia('(max-width: 699px)').addEventListener('change', () => closeMenu());
+</script>

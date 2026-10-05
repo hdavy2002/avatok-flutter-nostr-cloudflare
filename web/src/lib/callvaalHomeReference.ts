@@ -20,8 +20,9 @@ export const categories = [
   { id: 'astrology', name: 'Astrology', topics: ['Kundli', 'Numerology', 'Tarot', 'Horoscope', 'Vastu'], verificationRegistry: null, spriteIndex: 7, icon: [367, 653, 88, 72], color: '#eacdfb' },
   { id: 'practice', name: 'Practice', topics: ['Spoken English', 'Mock interview'], verificationRegistry: null, spriteIndex: 5, icon: [684, 557, 85, 76], color: '#fdcdea' },
 ] satisfies Array<{ id: CategoryId; name: string; topics: string[]; verificationRegistry: VerificationRegistry | null; spriteIndex: number; icon: ReferenceRect; color: string }>;
-export const profiles = [
-  { name: 'Dr. Ananya', role: 'General physician', category: 'doctors', verification: { registry: 'NMC', status: 'illustrative' }, languages: 'Hindi, English', price: 25, portrait: [40, 985, 108, 114] },
+export interface SampleProfile { detailPath?: string; name: string; role: string; category: CategoryId; verification: { registry: VerificationRegistry; status: 'illustrative' } | null; languages: string; price: number; portrait: ReferenceRect }
+export const profiles: SampleProfile[] = [
+  { detailPath: '/people/dr-ananya', name: 'Dr. Ananya', role: 'General physician', category: 'doctors', verification: { registry: 'NMC', status: 'illustrative' }, languages: 'Hindi, English', price: 25, portrait: [40, 985, 108, 114] },
   { name: 'Adv. Meera', role: 'Property law', category: 'legal', verification: { registry: 'Bar Council', status: 'illustrative' }, languages: 'Hindi, English', price: 25, portrait: [286, 985, 109, 114] },
   { name: 'CA Rohan', role: 'Income tax', category: 'tax', verification: { registry: 'ICAI', status: 'illustrative' }, languages: 'Hindi, English', price: 20, portrait: [524, 985, 108, 114] },
   { name: 'Arjun', role: 'Career mentor', category: 'career', verification: null, languages: 'Hindi, English', price: 15, portrait: [761, 985, 109, 114] },
@@ -30,4 +31,4 @@ export const profiles = [
   { name: 'Neha', role: 'Listener', category: 'listener', verification: null, languages: 'Hindi, Marathi', price: 10, portrait: [523, 1119, 109, 116] },
   { name: 'Dev', role: 'Relationship guide', category: 'relationships', verification: null, languages: 'English, Hindi', price: 12, portrait: [761, 1119, 109, 116] },
   { name: 'Priya', role: 'English & interview practice', category: 'practice', verification: null, languages: 'Hindi, English', price: 15, portrait: [761, 1119, 109, 116] },
-] satisfies Array<{ name: string; role: string; category: CategoryId; verification: { registry: VerificationRegistry; status: 'illustrative' } | null; languages: string; price: number; portrait: ReferenceRect }>;
+];
