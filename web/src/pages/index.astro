@@ -5,6 +5,7 @@ import { BRAND } from '../lib/brand';
 import { publicImage, publicImageSrcSet, ARTWORK_QUALITY } from '../lib/config';
 import { categories, profiles } from '../lib/callvaalHomeReference';
 import ModernIcon from '../components/home/ModernIcon.astro';
+import PlatformLogo from '../components/home/PlatformLogo.astro';
 import '../styles/callvaal-notebook.css';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Raasta nikalo. | ${identity.name}`;
@@ -25,6 +26,12 @@ const footerGroups = [
   ['Legal & Payments', ['Terms of use', 'Privacy policy', 'Cookie policy', 'Refund policy', 'Cancellation policy', 'Payment & wallet terms', 'Service disclaimer', 'Data deletion']],
 ] as const;
 const footerAnchors: Record<string, string> = { 'All categories': '#categories', 'Find your person': '#people', 'How it works': '#privacy-note', 'Join & earn': '#earn' };
+const platformDownloads = [
+  ['app-store', 'iPhone', 'App Store'],
+  ['google-play', 'Android', 'Google Play'],
+  ['macos-finder', 'Mac', 'macOS'],
+  ['windows', 'Windows', 'Windows PC'],
+] as const;
 const spritePosition = (i: number) => `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`;
 ---
 <!doctype html>
@@ -80,7 +87,7 @@ const spritePosition = (i: number) => `${(i % 3) * 50}% ${Math.floor(i / 3) * 50
       <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">Illustrative profiles, qualifications, verification badges, ratings, reviews and conversation counts. Sample prices. No qualifications or registry checks have been verified for these sample profiles.</p>
     </section>
     <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art.png', { width: 900, quality: ARTWORK_QUALITY })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/earn-art.png', [420, 640, 900, 1280], { quality: ARTWORK_QUALITY })} sizes="(max-width: 599px) 260px, (max-width: 1824px) 30vw, 520px" alt="Notebook, pencil and a glass of chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Your knowledge. Your experience. Your time.</h2><p>Get paid to listen. Share advice from your experience.</p><p>Help someone with what you know — in your language, on your time.</p><ol class="earn-steps">{[['user','Create your profile'],['learning','Share your experience'],['clock','Choose availability'],['tax','Earn for your time']].map(([icon,label]) => <li><ModernIcon name={icon}/><span>{label}</span></li>)}</ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button><small>Professional services may require qualification checks.</small></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
-    <section class="download-section" id="apps" aria-labelledby="apps-title"><h2 id="apps-title">Search consultants on {identity.name}, wherever you are.</h2><p>On your phone. On your laptop.</p><div class="download-grid">{[['apple','iPhone','App Store'],['android','Android','Google Play'],['laptop','Mac','macOS'],['windows','Windows','Windows PC']].map(([icon,name,store]) => <button type="button" class="download-button" data-preview-action="download" data-preview-label={name}><ModernIcon name={icon}/><span><strong>{name}</strong><small>{store}</small></span></button>)}</div><small>Download links shown for design preview.</small></section>
+    <section class="download-section" id="apps" aria-labelledby="apps-title"><h2 id="apps-title">Search consultants on {identity.name}, wherever you are.</h2><p>On your phone. On your laptop.</p><div class="download-grid">{platformDownloads.map(([logo,name,store]) => <button type="button" class="download-button" data-preview-action="download" data-preview-label={name}><PlatformLogo name={logo}/><span><strong>{name}</strong><small>{store}</small></span></button>)}</div><small>Download links shown for design preview.</small></section>
   </main>
   <footer class="notebook-footer"><div class="footer-brand"><a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div><nav class="footer-columns" aria-label="Footer">{footerGroups.map(([heading, links]) => <details class="footer-group" open><summary>{heading}</summary><ul>{links.map(label => {
     const footerCategory = heading === 'Explore' ? categories.find(category => category.name === label) : undefined;
