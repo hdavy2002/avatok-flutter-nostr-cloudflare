@@ -21,7 +21,12 @@ assert.doesNotMatch(read('src/lib/railwayHome.ts'), /classList\.add\('is-shown'\
 // publicImage()/publicImageSrcSet(), not a raw literal path — without pinning
 // it to art that no longer exists.
 const artworkSource = home.includes('OriginalArtwork') ? read('src/components/OriginalArtwork.astro') : '';
-assert.match(home + artworkSource, /publicImage(?:SrcSet)?\(/, 'Homepage imagery uses the public-image pipeline');
+if (home.includes('ReferenceCrop')) {
+  assert.match(read('src/components/home/ReferenceCrop.astro'), /approved-reference\.png|REFERENCE/, 'Exact source art uses the reviewed reference component');
+  // check-image-coverage enforces a byte-pinned exception for this one sprite.
+} else {
+  assert.match(home + artworkSource, /publicImage(?:SrcSet)?\(/, 'Homepage imagery uses the public-image pipeline');
+}
 // The locale-aware production branch may own fonts through its existing
 // header/layout path. Apply duplicate-owner assertions only when the shared
 // Fonts component is actually active in the current source tree.
@@ -47,7 +52,7 @@ if (built) {
   }
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const identity = JSON.parse(readFileSync(resolve(root, '../Specs/brand.json'), 'utf8')).homepageIdentity;
-  assert.equal(heading, `Life ka sawaal? ${identity.name}.`, 'Approved notebook heading reaches the built page');
+  assert.equal(heading, 'Baat karo. Raasta nikalo.', 'Approved replica heading reaches the built page');
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

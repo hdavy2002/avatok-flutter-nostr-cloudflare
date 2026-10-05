@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import ts from 'typescript';
+import { createHash } from 'node:crypto';
 import { configSource } from './config-source.mjs';
 import { validateBuiltImageSources } from './built-image-source.mjs';
 const web = resolve(new URL('..', import.meta.url).pathname);
@@ -18,6 +19,15 @@ function walk(dir) {
 function check(url, file) {
   url = url.replaceAll('&amp;', '&').trim();
   if (!url) return;
+  // Owner-approved exact-art sprite. This ONE image must remain lossless;
+  // the byte contract prevents this exception becoming a general bypass.
+  if (url === '/assets/callvaal/notebook/approved-reference.png') {
+    const bytes = readFileSync(join(web, 'dist', url.slice(1)));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),
+      '58da029da753f2d7f41cf3af83360527e23479d92964823eef4e8b76fd310ed0',
+      'Approved homepage sprite must be the unchanged reference PNG');
+    return;
+  }
   if (url.startsWith('#') || url.startsWith('%23')) return;
   // Font files are browser resources, not raster images, and are intentionally
   // served as immutable static assets rather than through image transforms.

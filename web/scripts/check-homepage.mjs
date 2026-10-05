@@ -23,15 +23,16 @@ const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')
 assert(identity?.name && identity?.domain, 'Homepage identity is centrally configured');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading');
 assert(visibleText.includes(identity.name), 'Planned public brand is visible');
-assert.match(visibleText, /Life ka sawaal\?/);
+assert.match(visibleText, /Baat karo\./);
+assert.match(visibleText, /Raasta nikalo\./);
 assert.match(visibleText, /Sample profiles/, 'Fictional profile cards are labelled');
 assert.doesNotMatch(bodyHtml, /hero-havan|FolkArtwork|data-folk-artwork|AskPandit|grand-havan|bright\/border|logo-horizontal/);
 assert.doesNotMatch(visibleText, /Himalayan temple|prasad|pujas|havans|Aum Fe|Saa Thum/i);
-for (const heading of ['Aaj kis cheez mein help chahiye?', 'Bas 4 simple steps.', 'Tumhari skill. Kisi ka solution.']) {
+for (const heading of ['Kis se baat karni hai?', 'Aapka number. Sirf aapka.', 'Sahi insaan. Ek kaam ki baat.', 'Your knowledge. Your experience. Your time.']) {
   assert(visibleText.includes(heading), 'Reference section: ' + heading);
 }
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['main-content', 'categories', 'how-it-works', 'become-expert', 'browse', 'languages', 'pricing', 'privacy-note', 'faq', 'launch-note']) {
+for (const id of ['main-content', 'categories', 'privacy-note', 'people', 'earn', 'preview-dialog']) {
   assert(ids.has(id), 'Homepage section exists: #' + id);
 }
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
@@ -44,11 +45,19 @@ assert(meta(html, 'description')?.length > 40, 'Homepage has useful neutral desc
 assert(meta(html, 'og:title')?.includes(identity.name), 'Share title uses homepage brand');
 assert(meta(html, 'og:description'), 'Share description exists');
 assert(html.includes('href="/sign-in'), 'Sign-in route remains reachable');
-assert.match(html, /<details\b/, 'FAQ works without JavaScript');
-const portraits = resolve(root, 'assets/callvaal/notebook/experts.png');
-assert(existsSync(portraits), 'Reference portrait sprite ships');
-const photo = await sharp(portraits).metadata();
-assert(Math.abs(photo.width / photo.height - 3) < .01, 'Three equal portrait panels');
+assert.match(html, /<dialog\b/, 'Unwired calls and joining have an accessible preview notice');
+assert.doesNotMatch(visibleText, /No app needed|Life ka sawaal|Become an expert/i);
+for (const category of ['Doctors', 'Legal advice', 'CA &amp; tax', 'Career &amp; business', 'Home &amp; property', 'Learning &amp; skills', 'Wellbeing', 'Astrology', 'Listener']) {
+  assert(visibleText.includes(category) || visibleText.includes(category.replaceAll('&amp;', '&')), 'Approved category: ' + category);
+}
+assert.match(visibleText, /non-clinical support/);
+assert.match(visibleText, /not therapy or crisis care/);
+const reference = resolve(root, 'assets/callvaal/notebook/approved-reference.png');
+assert(existsSync(reference), 'Approved reference sprite ships');
+assert.equal(createHash('sha256').update(readFileSync(reference)).digest('hex'), '58da029da753f2d7f41cf3af83360527e23479d92964823eef4e8b76fd310ed0', 'Source artwork bytes remain exact');
+const photo = await sharp(reference).metadata();
+assert.equal(photo.width, 1024);
+assert.equal(photo.height, 1536);
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);

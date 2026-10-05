@@ -1,0 +1,8 @@
+---
+import type { ReferenceRect } from '../../lib/callvaalHomeReference';
+interface Props { rect: ReferenceRect; label?: string; class?: string }
+const { rect, label, class: className = '' } = Astro.props;
+---
+<svg class={`reference-crop ${className}`} viewBox={rect.join(' ')} width={rect[2]} height={rect[3]} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'} focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <image href="/assets/callvaal/notebook/approved-reference.png" width="1024" height="1536" />
+</svg>
