@@ -39,6 +39,8 @@ body:has(.cv-detail-main)>.cv-header{padding-block:22px}
 .cv-profile-quote{width:100%;padding:16px 18px 9px;margin-top:18px!important;background:#f3edfb;border-radius:20px 24px 15px 22px;color:#50307e;font:1.2rem/1.45 Kalam,'Comic Sans MS',cursive}
 .cv-profile-quote cite{display:block;text-align:right;font-style:normal;padding-right:12px}.cv-profile-quote cite:after{content:'';display:block;width:62px;height:2px;background:#ffd000;transform:rotate(-9deg);margin:2px 0 0 auto}
 .cv-sample-disclosure{font-size:.75rem;color:#806c84;line-height:1.5;margin:14px 4px 12px!important}
+.cv-service-disclosure{font-size:.875rem;color:#675480;line-height:1.5;background:#f3edfb;border-radius:10px;padding:12px 16px;margin-top:16px!important}
+.cv-review-sample{display:block;font-size:.75rem;color:#806c84;margin-top:3px}
 .cv-profile-tabs{display:none}
 .cv-information-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
 .cv-info-card{min-width:0;background:#fff;border:1px solid #f0eaf0;border-radius:15px;padding:20px;box-shadow:0 4px 18px #43113905;scroll-margin-top:24px}
@@ -116,3 +118,6 @@ html[data-site-embed] .cv-booking-card>.cv-rate{display:block}
 html[data-site-embed] .cv-booking-card>.cv-call-button{display:flex}
 html[data-site-embed] .cv-booking-card>.cv-book-button{margin-top:12px}
 @media(prefers-reduced-motion:reduce){html:has(.cv-detail-main),.cv-detail-main *{scroll-behavior:auto;transition:none!important}}
+.cv-reviews-without-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:899px){.cv-reviews-without-summary{grid-template-columns:1fr}}
+@media(max-width:699px){.cv-name-row-unverified{padding-right:0}}

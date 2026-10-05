@@ -1,8 +1,8 @@
 # Listing detail shell and field registry
 
-Canonical design/form reference for issue **CALLVAAL-DETAIL-1**. Updated 2026-10-05.
+Canonical design/form reference for **CALLVAAL-DETAIL-1** and **CALLVAAL-CATEGORY-DETAILS-1**. Updated 2026-10-06.
 
-This document records the implemented Dr. Ananya concept and the intended contract for future category-specific listing forms. The keys below are a design registry, **not an implemented API, database schema, registration form or verification service**. Requiredness describes the future published listing contract where known; unresolved requirements are marked TBD. The current route is static and all personal details, availability, qualifications, badges, ratings, reviews, prices and conversation counts are illustrative.
+This document records five implemented static concepts: Dr. Ananya, Sana, Neha, Kavya and Priya, and the intended contract for future category-specific listing forms. The keys below are a design registry, **not an implemented API, database schema, registration form or verification service**. Requiredness describes the future published listing contract where known; unresolved requirements are marked TBD. All personal details, availability, qualifications, badges, ratings, reviews, prices and conversation counts are illustrative.
 
 The public identity comes from `Specs/brand.json` → `homepageIdentity`. Do not duplicate the brand name or domain in category schemas, forms or page copy.
 
@@ -14,16 +14,18 @@ Implemented sources:
 
 - `web/src/components/callvaal/Header.astro` and `Footer.astro`: permanent shared chrome used by both the homepage and `Base.astro` pages. Nested-page links resolve back to homepage anchors; footer categories resolve to a validated homepage category filter. Default auth navigation follows the existing cookie/guest-session hint through `html[data-site-auth]`, without a Clerk island: signed-out visitors see Sign in; signed-in visitors see My account and Sign out. Explicit `in`/`static` modes and hidden auth CTAs are respected. `chrome=false` and the existing app embed mechanism hide chrome when required. Embedded mobile profiles retain an in-flow price and Call now button when the fixed browser CTA is hidden.
 - `web/src/styles/callvaal-chrome.css`: shared typography, navigation, responsive footer and accessible menu styling.
-- `web/src/pages/people/dr-ananya.astro`: sample doctor detail content.
+- `web/src/pages/people/{dr-ananya,sana,neha,kavya,priya}.astro`: five static route wrappers.
+- `web/src/components/callvaal/ProfileDetail.astro`: shared typed renderer; absent availability, verification, experience or metrics are omitted.
+- `web/src/lib/callvaalProfileDetails.ts`: typed static fixtures, including per-category copy, illustrations, preparation, disclosures and preview text.
 - `web/src/styles/callvaal-detail.css`: responsive detail presentation.
 - `web/src/components/callvaal/profileDetail.ts`: non-live interactions.
-- `web/src/lib/callvaalHomeReference.ts`: homepage sample profile with a detail route.
+- `web/src/lib/callvaalHomeReference.ts`: homepage sample profiles with five detail routes.
 
-Do not copy this page per category and let the shell drift. Future forms should map category data into these common sections; extract a typed reusable detail renderer when the second real category implementation establishes the required differences. Such a renderer and forms are not implemented by this issue.
+Do not copy the renderer per category and let the shell drift. Future forms should map validated category data into its common sections. The renderer is implemented; forms and live wiring are not.
 
 ## Ownership and evidence rules
 
-**User-entered** means supplied by a future listing owner, with moderation/validation as appropriate. **Admin/verification** means supplied or approved by a verification process; a user must never be able to self-assert a verified badge. **System-derived** means calculated from platform records or operational state, never entered as promotional copy. Current samples are authored static fixtures, regardless of the future owner listed below.
+**User-entered / owner** means supplied by a future listing owner, with moderation/validation as appropriate. **Admin/verification** means supplied or approved by a verification process; a user must never be able to self-assert a verified badge or approved regulated scope. **System-derived** means calculated from platform records or operational state, never entered as promotional copy. **Reviewer** means an eligible review author's submission, independently moderated; listing owners cannot author their own testimonials. Current samples are authored static fixtures, regardless of the future owner listed below.
 
 No current field establishes a real professional credential, service availability or client outcome. Do not turn sample values into live claims during wiring. Reviews and conversation counts must come from real records, not owner-entered marketing fields.
 
@@ -92,7 +94,7 @@ Medical framing: no cure, diagnosis-accuracy or health-outcome guarantees. The q
 | Feature | Current implementation | Future wiring boundary |
 | --- | --- | --- |
 | Navigation | Shared header/footer, mobile menu with expanded state/Escape, footer disclosure groups, nested-route-safe links and cookie-derived auth navigation | Preserve the original homepage footer contract: All categories, Find your person, How it works and Join & earn link to homepage anchors; Contact us uses the centrally configured support email. The nine Explore category buttons filter in place on the homepage and navigate to its validated category filter from other routes. All other footer labels open concept-preview dialogs, including policy/help labels; legacy routes are not represented as published policies for this concept service. |
-| Profile discovery | Homepage portrait/name/primary action for Dr. Ananya open `/people/dr-ananya`; other profiles keep existing previews | Real listing routing/search contracts TBD |
+| Profile discovery | Homepage portrait/name/primary action for Dr. Ananya, Sana, Neha, Kavya and Priya open their `/people/{id}` routes; other profiles keep existing previews | Real listing routing/search contracts TBD |
 | Save | Per-visit in-memory button toggle and polite status | No persistence, account write or saved-list backend; future storage must be per-account |
 | Share | Web Share when available, clipboard fallback and selectable clean profile URL | No messages sent automatically; no incoming query/hash copied |
 | Gallery | Responsive image helpers, native dialog, previous/next and arrow keys, Escape/close, focus restoration | Upload pipeline and media moderation not included |
@@ -105,9 +107,77 @@ Medical framing: no cure, diagnosis-accuracy or health-outcome guarantees. The q
 | Analytics | Existing capture helper; fixed actions, sample profile/category/section identifiers, boolean state/photo index | Never send search input, report content, contacts or other form PII in these UI events |
 | Search indexing | Static route explicitly requests `noindex` through Base | Reassess only when real approved content exists |
 
-## Category extension placeholders
+## Implemented category samples and future form contract
 
-Every category below inherits the shared field registry and common shell. **Only the doctor sample is implemented.** Candidate category-specific fields below are intentionally undefined placeholders: no qualification, certification, allowed practice, eligibility or backend support is asserted. Field names, types, requiredness, validation, sources and display positions need a separate category specification before any form is built.
+Every category inherits the shared field registry and common shell. The original shared table's sample values describe Dr. Ananya; the following table records the four additional fixtures exactly. Each has three illustrative gallery images, six services, four topics, three preparation tips, two explicitly labelled fictional reviews, and sample pricing. None has a verification badge, experience claim, aggregate rating/count, conversation count, online status or next-available time. These missing values must stay omitted until authoritative evidence exists.
+
+| Route / category | Name / role | Languages / sample rate | Portrait and gallery assets | Category content |
+| --- | --- | --- | --- | --- |
+| `/people/sana` / `counsellor` | Sana / Counsellor | Hindi, English / INR 15 per minute | `portrait-5.png`, `sana-notes.png`, `sana-conversation.png` | Everyday stress, emotional wellbeing, life changes, communication; listening, reflection, boundaries and preparation for support |
+| `/people/neha` / `listener` | Neha / Listener | Hindi, Marathi / INR 10 per minute | `portrait-7.png`, `neha-tea.png`, `neha-conversation.png` | Feeling lonely, heartbreak, family pressure, everyday venting; friendly conversation and listening without advice |
+| `/people/kavya` / `astrology` | Kavya / Astrology | Hindi, Kannada / INR 15 per minute | `portrait-6.png`, `kavya-chart.png`, `kavya-tarot.png` | Kundli, numerology, tarot, horoscope; symbolic interpretation and Vastu concepts for reflection |
+| `/people/priya` / `practice` | Priya / English & interview practice | Hindi, English / INR 15 per minute | `portrait-9.png`, `priya-practice.png`, `priya-interview.png` | Spoken English, mock interviews, introductions, workplace conversations; rehearsal and specific feedback |
+
+The typed fixture uses `availabilityLabel`, `nextAvailableLabel`, `sampleDisclosure`, `previewDisclosure` and `benefits` for sample presentation. These are not owner-editable live availability or trust claims. Future forms map approved data to display values: `availabilityStatus`/`nextAvailableAt` are system-owned, and disclosure/benefit policy is admin-owned. `isSample: true` requires noindex and preview-only calling, booking and payment copy on all five routes.
+
+Shared future forms collect owner-editable identity, role, languages, about, quote, approved topics/services, proposed rate, and consented gallery uploads. Admin controls moderation, credentials, approved scope and boundaries; system controls IDs, publication/sample status, availability, counts and aggregates; reviewers control only their own eligible review content/rating. Private evidence, client concerns, birth details and practice prompts never become public listing fields or analytics properties.
+
+The following exact field keys define the intended future form inputs and ownership. They are documentation only; no forms, storage tables, endpoints or uploads are created. Required means required for future publication in that category, not collected by the current sample. Validation vocabulary, character limits, age/eligibility policy, consent/retention and evidence review must be resolved before live implementation.
+
+### Counsellor (`counsellor`) — Sana
+
+| Future field key | Type / requiredness | Owner and validation | Display / current mapping |
+| --- | --- | --- | --- |
+| `counsellor.supportAreas` | controlled-key array; required | Owner selects; admin permits only verified scope | About topics and services; everyday concerns in sample |
+| `counsellor.approach` | plain text; required | Owner, moderated; no diagnostic/outcome guarantees | About and quote |
+| `counsellor.qualifications` | qualification array; conditional on claimed professional role | Owner submits claims; admin reviews evidence | Approved public credentials only; absent in sample |
+| `counsellor.registrationEvidence` | private evidence reference; conditional on applicable regulated scope | Owner submits privately; admin verifies; never public or analytic | Not collected or displayed |
+| `counsellor.verifiedScope` | approved scope keys + explanation; required before live professional services | Admin/verification only; never inferred from category or owner prose | Services and scope disclosure; no clinical services verified in sample |
+| `counsellor.sessionBoundaries` | approved policy reference; required | Admin; owner acknowledges | Scope disclosure and preview |
+| `counsellor.emergencyDisclaimer` | approved policy reference; required | Admin; future live policy directs urgent cases to appropriate local emergency care | Sample: “Not emergency or crisis care.” |
+
+No RCI badge or qualification is asserted for Sana. The homepage category's illustrative registry label does not verify an individual. Future verified scope must be supported independently; the sample permits no prescribing, diagnosis, treatment or crisis handling workflow.
+
+### Listener (`listener`) — Neha
+
+| Future field key | Type / requiredness | Owner and validation | Display / current mapping |
+| --- | --- | --- | --- |
+| `listener.conversationTopics` | controlled-key array; required | Owner selects, moderated | About chips and friendly-conversation services |
+| `listener.listeningStyle` | plain text/controlled choices; required | Owner, moderated | About; listening without advice |
+| `listener.boundaries` | approved boundary keys + optional moderated note; required | Admin defines; owner acknowledges permitted scope | Before-call tips and services |
+| `listener.scopeDisclosure` | approved policy reference; required | Admin only | “Listening and companionship only. Not therapy, medical advice or crisis support.” |
+
+Listener content stays non-clinical, non-therapy and non-crisis. Do not turn sympathy, grief conversation or companionship into claims of treatment, confidential clinical care or guaranteed emotional improvement. No credential badge is implied by the role.
+
+### Astrology (`astrology`) — Kavya
+
+| Future field key | Type / requiredness | Owner and validation | Display / current mapping |
+| --- | --- | --- | --- |
+| `astrology.methods` | approved-key array; required | Owner selects, moderated | Kundli, numerology, tarot, horoscope; Vastu in services |
+| `astrology.readingTopics` | controlled-key array; required | Owner selects, moderated | Topics/services; reflective questions |
+| `astrology.readingStyle` | plain text; required | Owner, moderated; interpretations cannot be promises | About and quote |
+| `astrology.birthDetailsRequirement` | per-method requirement enum + explanation; required | Owner proposes; admin approves necessity and privacy policy | Preparation instructions only; sample explicitly collects none |
+| `astrology.birthDetails` | private client-provided date, time and place; conditional on a consented live method | Caller supplies only in a separately reviewed private booking flow; minimum necessary, never listing-owner public data | **Not collected, stored or displayed**; no analytics payload |
+| `astrology.outcomeDisclaimer` | approved policy reference; required | Admin only | Reflection/entertainment; no guaranteed predictions/outcomes; not medical, legal or financial advice |
+
+No fear-based certainty, cure, marriage/job/wealth result or deterministic prediction may be promised. Birth details are neither public profile fields nor testimonials.
+
+### Practice (`practice`) — Priya
+
+| Future field key | Type / requiredness | Owner and validation | Display / current mapping |
+| --- | --- | --- | --- |
+| `practice.skills` | controlled-key array; required | Owner selects, moderated | Spoken English and interview practice |
+| `practice.levels` | supported-level enum array; required for future publication | Owner selects, moderated; no level claim fabricated now | Future About/service detail; not specified in sample |
+| `practice.scenarios` | controlled-key array + moderated text; required | Owner, moderated | Introductions, everyday English, job interviews, workplace role-play |
+| `practice.feedbackStyle` | controlled choices + explanation; required | Owner, moderated; caller chooses comfort/preference | Clarity/delivery feedback; during or after an answer |
+| `practice.preparation` | short approved preparation prompts; optional | Admin/editorial with moderated owner additions | Bring a goal, scenario or short interview prompt; no uploads now |
+| `practice.outcomeDisclaimer` | approved policy reference; required | Admin only | Practice/feedback only; no job, interview, exam or fluency outcomes guaranteed |
+
+No placement, exam result, professional certification or fluency promise follows from a practice session. Future caller prompts and feedback are private session data, not public listing or analytics fields.
+
+## Remaining category extension placeholders
+
+Legal, tax, career and relationships retain the shared shell contract only. Their field names, requiredness, validation, ownership and evidence policy require separate category specifications before forms or detail pages are built.
 
 ### Legal (`legal`)
 
@@ -130,27 +200,6 @@ Every category below inherits the shared field registry and common shell. **Only
 | Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
 | `career.*` | TBD | TBD | Category content blocks TBD | Define later |
 
-### Counsellor (`counsellor`)
-
-| Field set | Type / requiredness | Owner/source | Display | State |
-| --- | --- | --- | --- | --- |
-| Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
-| `counsellor.*` | TBD | TBD; credentials must be admin/verification-owned | Category content blocks TBD | Define later; do not infer clinical or crisis capabilities |
-
-### Listener (`listener`)
-
-| Field set | Type / requiredness | Owner/source | Display | State |
-| --- | --- | --- | --- | --- |
-| Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
-| `listener.*` | TBD | TBD | Category content blocks TBD | Define later; preserve existing non-clinical, non-therapy, non-crisis framing |
-
-### Astrology (`astrology`)
-
-| Field set | Type / requiredness | Owner/source | Display | State |
-| --- | --- | --- | --- | --- |
-| Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
-| `astrology.*` | TBD | TBD | Category content blocks TBD | Define later; no outcome guarantees |
-
 ### Relationships & marriage (`relationships`)
 
 | Field set | Type / requiredness | Owner/source | Display | State |
@@ -158,13 +207,12 @@ Every category below inherits the shared field registry and common shell. **Only
 | Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
 | `relationships.*` | TBD | TBD | Category content blocks TBD | Define later |
 
-### Practice (`practice`)
-
-| Field set | Type / requiredness | Owner/source | Display | State |
-| --- | --- | --- | --- | --- |
-| Shared registry | As above | User/admin/system as above | Common shell | Design contract only |
-| `practice.*` | TBD | TBD | Category content blocks TBD | Define later |
-
 ## Next implementation boundary
 
 When building category forms, update this file first with the approved category fields and evidence policy, map each field to the common sections, and preserve the user/admin/system ownership separation. Decide the real API and storage contract independently; none is created here. Keep private verification evidence and user reports out of public fields and analytics. Replace sample metrics only with authoritative data, and retain noindex/sample disclosure until the route truly represents an approved live listing.
+
+## Verification contracts
+
+`web/scripts/check-profile-details.mjs` reads CI-built HTML for all five routes and their homepage cards: shared chrome/anchors, noindex, sample boundaries, preview controls, gallery assets, matching rates/languages, doctor regression and absence of copied medical credentials/metrics on the new samples. It is registered in the release aggregate and the existing post-build typecheck job. Workflow triggers are unchanged.
+
+`web/scripts/check-profile-details-browser.mjs` is opt-in for explicitly requested GitHub CI verification against built `dist`: desktop/mobile breakpoints, overflow/touch targets, save toggles, gallery arrows/wrap/focus, preview dialogs, clean share URLs and fallback/native-share mocks, mobile sections, and embedded call controls. It serves local build artifacts, blocks external/API requests and records screenshots under `web/profile-detail-review/`. Adding these contracts is not evidence that they have run; local builds and browser execution are prohibited for this task.

@@ -161,4 +161,5 @@ jobs:
         working-directory: web
         run: |
           node scripts/check-homepage.mjs
+          node scripts/check-profile-details.mjs
           node scripts/check-help.mjs

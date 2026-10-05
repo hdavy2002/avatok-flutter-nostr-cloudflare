@@ -1,9 +1,15 @@
 import { capture } from '../../lib/analytics';
 
-// Only fixed interaction names and the fictional profile id reach analytics.
-const metadata = { surface: 'callvaal-profile', profile_id: 'dr-ananya', sample_profile: true };
+// Only allowlisted fictional profile/category ids and fixed actions reach analytics.
+const profileElement = document.querySelector<HTMLElement>('[data-profile-id]');
+const sampleProfiles: Record<string, string> = { 'dr-ananya': 'doctors', sana: 'counsellor', neha: 'listener', kavya: 'astrology', priya: 'practice' };
+const profileId = profileElement?.dataset.profileId || '';
+const profileName = profileElement?.dataset.profileName || 'this sample profile';
+const categoryId = Object.prototype.hasOwnProperty.call(sampleProfiles, profileId) ? sampleProfiles[profileId] : undefined;
+const metadata = { surface: 'callvaal-profile', profile_id: profileId, category: categoryId, sample_profile: true };
 const status = document.querySelector<HTMLElement>('[data-profile-status]');
 function record(action: string, extra: Record<string, string | number | boolean> = {}) {
+  if (!categoryId) return;
   capture('cta_click', { ...metadata, label: action, ...extra });
 }
 const triggers = new WeakMap<HTMLDialogElement, HTMLElement>();
@@ -27,7 +33,7 @@ document.querySelector<HTMLButtonElement>('[data-profile-save]')?.addEventListen
   const button = event.currentTarget as HTMLButtonElement;
   const saved = button.getAttribute('aria-pressed') !== 'true';
   button.setAttribute('aria-pressed', String(saved));
-  button.setAttribute('aria-label', `${saved ? 'Unsave' : 'Save'} Dr. Ananya for this visit`);
+  button.setAttribute('aria-label', `${saved ? 'Unsave' : 'Save'} ${profileName} for this visit`);
   const label = button.querySelector('[data-save-label]');
   if (label) label.textContent = saved ? 'Saved' : 'Save';
   if (status) status.textContent = saved ? 'Sample profile saved for this visit.' : 'Sample profile removed from saved items.';
@@ -38,7 +44,7 @@ const preview = document.querySelector<HTMLDialogElement>('#cv-profile-preview')
 document.querySelectorAll<HTMLButtonElement>('[data-profile-preview]').forEach(button => button.addEventListener('click', () => {
   const heading = preview?.querySelector('h2');
   const action = button.dataset.profilePreview === 'book' ? 'book' : 'call';
-  if (heading) heading.textContent = action === 'book' ? 'Book a time with Dr. Ananya' : 'Call Dr. Ananya';
+  if (heading) heading.textContent = action === 'book' ? `Book a time with ${profileName}` : `Call ${profileName}`;
   openDialog(preview, button);
   record(`${action}_preview`);
 }));
@@ -73,7 +79,7 @@ const shareDialog = document.querySelector<HTMLDialogElement>('#cv-share-dialog'
 const shareInput = document.querySelector<HTMLInputElement>('#cv-share-url');
 const shareStatus = document.querySelector<HTMLElement>('[data-share-status]');
 // Drop all incoming query parameters and fragments; sharing never exposes them.
-const shareUrl = new URL('/people/dr-ananya', window.location.origin).href;
+const shareUrl = new URL(categoryId ? `/people/${profileId}` : '/', window.location.origin).href;
 async function copyLink() {
   try {
     await navigator.clipboard.writeText(shareUrl);
@@ -91,7 +97,7 @@ document.querySelector<HTMLButtonElement>('[data-profile-share]')?.addEventListe
   const button = event.currentTarget as HTMLButtonElement;
   record('share_profile');
   if (navigator.share) {
-    try { await navigator.share({ title: 'Dr. Ananya — sample profile', url: shareUrl }); return; }
+    try { await navigator.share({ title: `${profileName} — sample profile`, url: shareUrl }); return; }
     catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; }
   }
   if (shareInput) shareInput.value = shareUrl;
@@ -111,7 +117,7 @@ if ('IntersectionObserver' in window) {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
-      capture('profile_section_view', { ...metadata, section: entry.target.id });
+      if (categoryId) capture('profile_section_view', { ...metadata, section: entry.target.id });
       observer.unobserve(entry.target);
     }
   }, { threshold: .2 });

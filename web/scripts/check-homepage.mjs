@@ -85,8 +85,8 @@ for (const [index, registry] of [[0, 'NMC'], [1, 'Bar Council'], [2, 'ICAI'], [5
   assert(categoryCards[index].includes('category-credential') && plainText(categoryCards[index]).includes(registry), 'Registry belongs to correct category: ' + registry);
 }
 const profileBadges = [...bodyHtml.matchAll(/<div\b[^>]*class="person-heading"[^>]*>([\s\S]*?)<\/div>/g)].map(match => match[1]).filter(heading => heading.includes('class="verification-badge"')).map(plainText);
-assert.equal(profileBadges.length, 4, 'Four illustrative profile verification badges');
-for (const registry of registryLabels) assert(profileBadges.some(badge => badge.includes(registry)), 'Illustrative profile registry: ' + registry);
+assert.equal(profileBadges.length, 3, 'Three illustrative profile verification badges; Sana has no verified credential');
+for (const registry of ['NMC', 'Bar Council', 'ICAI']) assert(profileBadges.some(badge => badge.includes(registry)), 'Illustrative profile registry: ' + registry);
 const disclosure = [...bodyHtml.matchAll(/<p\b[^>]*class="(?:sample-label|profile-disclosure)"[^>]*>([\s\S]*?)<\/p>/g)].map(match => plainText(match[1])).join(' ');
 assert.match(disclosure, /illustrative/i);
 for (const detail of ['profiles', 'qualifications', 'verification badges']) assert(disclosure.includes(detail), 'Illustrative disclosure covers ' + detail);

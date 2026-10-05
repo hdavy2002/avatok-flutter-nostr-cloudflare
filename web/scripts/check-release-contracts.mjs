@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 const checks = [
   ['homepage and archive', 'check-homepage.mjs'],
+  ['sample profile details', 'check-profile-details.mjs'],
   ['help centre', 'check-help.mjs'],
   ['public SEO', 'check-seo.mjs'],
   ['Open Graph runtime', 'check-og-runtime.mjs'],

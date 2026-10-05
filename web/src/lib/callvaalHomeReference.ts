@@ -26,9 +26,9 @@ export const profiles: SampleProfile[] = [
   { name: 'Adv. Meera', role: 'Property law', category: 'legal', verification: { registry: 'Bar Council', status: 'illustrative' }, languages: 'Hindi, English', price: 25, portrait: [286, 985, 109, 114] },
   { name: 'CA Rohan', role: 'Income tax', category: 'tax', verification: { registry: 'ICAI', status: 'illustrative' }, languages: 'Hindi, English', price: 20, portrait: [524, 985, 108, 114] },
   { name: 'Arjun', role: 'Career mentor', category: 'career', verification: null, languages: 'Hindi, English', price: 15, portrait: [761, 985, 109, 114] },
-  { name: 'Sana', role: 'Counsellor', category: 'counsellor', verification: { registry: 'RCI', status: 'illustrative' }, languages: 'Hindi, English', price: 15, portrait: [40, 1119, 108, 116] },
-  { name: 'Kavya', role: 'Astrology', category: 'astrology', verification: null, languages: 'Hindi, Kannada', price: 15, portrait: [286, 1119, 108, 116] },
-  { name: 'Neha', role: 'Listener', category: 'listener', verification: null, languages: 'Hindi, Marathi', price: 10, portrait: [523, 1119, 109, 116] },
+  { detailPath: '/people/sana', name: 'Sana', role: 'Counsellor', category: 'counsellor', verification: null, languages: 'Hindi, English', price: 15, portrait: [40, 1119, 108, 116] },
+  { detailPath: '/people/kavya', name: 'Kavya', role: 'Astrology', category: 'astrology', verification: null, languages: 'Hindi, Kannada', price: 15, portrait: [286, 1119, 108, 116] },
+  { detailPath: '/people/neha', name: 'Neha', role: 'Listener', category: 'listener', verification: null, languages: 'Hindi, Marathi', price: 10, portrait: [523, 1119, 109, 116] },
   { name: 'Dev', role: 'Relationship guide', category: 'relationships', verification: null, languages: 'English, Hindi', price: 12, portrait: [761, 1119, 109, 116] },
-  { name: 'Priya', role: 'English & interview practice', category: 'practice', verification: null, languages: 'Hindi, English', price: 15, portrait: [761, 1119, 109, 116] },
+  { detailPath: '/people/priya', name: 'Priya', role: 'English & interview practice', category: 'practice', verification: null, languages: 'Hindi, English', price: 15, portrait: [761, 1119, 109, 116] },
 ];
