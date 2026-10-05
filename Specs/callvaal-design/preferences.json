@@ -1,0 +1,71 @@
+{
+  "purpose": "Persistent owner design preferences for CallVaal website and app pages. Consult before designing a new page; append decisions instead of silently replacing them.",
+  "updated": "2026-10-05",
+  "confirmed": {
+    "direction": "Modern, happy, approachable and India-focused; useful human conversations, not a dating service.",
+    "typography": {
+      "body": "Comfortaa",
+      "titles": "Nunito",
+      "status": "Explicit owner selection. Later reference images do not automatically replace this pairing."
+    },
+    "layout": [
+      "Generous breathing room between sections; avoid crowded layouts and too many explanatory sections.",
+      "Rounded cards, rounded inputs and pill-shaped controls.",
+      "Responsive composition that uses large monitors well without tiny text or enormous empty side margins.",
+      "Readable phone layouts and comfortable touch targets; do not merely shrink the desktop page."
+    ],
+    "brand_character": [
+      "India-relevant everyday motifs, not religious decoration.",
+      "Handwritten notes and white-bordered stickers are liked, but use selectively within the newer cleaner direction.",
+      "Real human portraits for people offering conversations.",
+      "Professional and everyday support: advice, experience or someone to listen; do not describe everybody as an expert."
+    ],
+    "avoid": [
+      "Romantic or dating-site signals, particularly hearts connecting a man and woman.",
+      "Christmas-like red-and-green combinations and excessive flowers/leaves.",
+      "A predominantly sepia or one-colour page.",
+      "Blue as the primary brand colour, unless the owner explicitly revises the earlier restriction.",
+      "Clinical guarantees or presenting non-clinical listeners as therapists."
+    ]
+  },
+  "new_reference_direction": {
+    "status": "Owner explicitly likes these references and wants a similar modern feel. The following visual traits are interpretations of the supplied images, not approved final design tokens.",
+    "surface_and_colour": [
+      "Warm off-white/cream surfaces, muted peach, butter yellow, sage/olive and restrained pastel accents.",
+      "Dark readable text and clear primary actions; soft shadows and subtle borders rather than heavy outlines.",
+      "Limited colour per section with ample neutral space; reference lavender/blue is inspiration, not permission to replace the primary palette."
+    ],
+    "components": [
+      "Soft rounded modular cards and grouped panels, especially for future dashboards.",
+      "Simple consistent line icons, small circular icon buttons, segmented filters and pill buttons.",
+      "Clean typography with an obvious title/body hierarchy, not oversized bubbly display text everywhere.",
+      "Selective editorial line-art illustrations; playful 3D characters only where useful, such as onboarding, not all styles mixed together.",
+      "Use real portraits and authentic content in profiles; take layout inspiration from the dashboard without copying its employee metrics or HR features."
+    ],
+    "alternate_type_reference": {
+      "display": "Alegreya (Bold / Regular)",
+      "supporting": "Montserrat (Bold / Medium / Regular)",
+      "status": "Shown inside a reference image only. Not yet selected instead of Comfortaa/Nunito."
+    },
+    "scope": "Guide future page designs and the next proposed visual refinement. Do not treat reference-image text as product requirements or silently replace the deployed homepage."
+  },
+  "references": [
+    {"file": "references/01-soft-modular-wellbeing.png", "focus": "Rounded pastel cards, light sans typography, line icons and simple mood illustrations."},
+    {"file": "references/02-editorial-wellbeing.png", "focus": "Cream/sage palette, editorial illustration and quiet visual hierarchy."},
+    {"file": "references/03-editorial-mobile-details.png", "focus": "Rounded mobile composition, simple navigation and generous spacing."},
+    {"file": "references/04-type-and-palette.png", "focus": "Reference-only Alegreya/Montserrat pairing and olive/coral/mustard palette."},
+    {"file": "references/05-playful-onboarding.png", "focus": "Minimal rounded forms, segmented controls, clear buttons and selective 3D illustration."},
+    {"file": "references/06-modern-dashboard.png", "focus": "Responsive modular dashboard, restrained yellow accents, portraits and compact line icons."}
+  ],
+  "decision_log": [
+    {"date": "2026-10-05", "decision": "Owner approved the India-sticker homepage and requested more space between sections; that version was deployed and its predecessor archived."},
+    {"date": "2026-10-05", "decision": "Owner requested improved large-screen responsiveness, then explicitly chose Comfortaa for text and Nunito for titles. These changes are prepared, not yet built or deployed."},
+    {"date": "2026-10-05", "decision": "Owner supplied six modern UI references and requested persistent preference logging for upcoming pages. Preserve explicit font choices while recording the references as inspiration."}
+  ],
+  "process": [
+    "Read this file and inspect the relevant reference images before designing additional pages.",
+    "Distinguish explicit owner decisions from inferred visual preferences and unselected alternatives.",
+    "When a new instruction conflicts with a confirmed preference, record the new decision and its scope.",
+    "Do not infer permission to build or deploy from reference uploads or preference logging."
+  ]
+}
