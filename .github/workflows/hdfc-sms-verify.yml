@@ -6,14 +6,14 @@ permissions:
   contents: read
 jobs:
   worker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - name: Install Worker dependencies
@@ -30,12 +30,21 @@ jobs:
         if: ${{ !cancelled() && steps.worker_dependencies.outcome == 'success' }}
         run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms*.py'
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Must match the exact @playwright/test dependency in web/package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
@@ -45,17 +54,12 @@ jobs:
         working-directory: web
         run: node --experimental-strip-types --test test/upi_smoke_controller.test.ts test/upi_customer_test_controller.test.ts
 
-      - name: Install isolated browser test tooling
-        working-directory: web
-        run: |
-          npm install --no-save --package-lock=false @playwright/test@1.56.1
-          npx playwright install --with-deps chromium
       - name: Customer booking and admin recovery browser interactions
         working-directory: web
-        run: npx playwright test --config=test/browser/playwright.config.ts
+        run: npx --no-install playwright test --config=test/browser/playwright.config.ts
       - name: Save browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hdfc-browser-failure
           path: |

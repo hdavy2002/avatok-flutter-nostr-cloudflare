@@ -8,8 +8,15 @@ const root = new URL('../src/', import.meta.url);
 const moduleURL = (code) => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 async function load(relative, replacements = {}) {
   let source = await readFile(new URL(relative, root), 'utf8');
-  for (const [from, to] of Object.entries(replacements)) source = source.replaceAll(`'${from}'`, `'${to}'`);
-  return moduleURL(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText);
+  for (const [from, to] of Object.entries(replacements)) {
+    source = source.replaceAll(`'${from}'`, `'${to}'`).replaceAll(`"${from}"`, `"${to}"`);
+  }
+  const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  const unresolved = [...output.matchAll(/(?:from\s*|import\s*\(?\s*)(["'])(\.{1,2}\/[^"']+)\1/g)].map(match => match[2]);
+  if (unresolved.length) {
+    throw new Error(`${relative}: unresolved relative import(s) in isolated CI loader: ${[...new Set(unresolved)].join(', ')}. Add an explicit adapter replacement.`);
+  }
+  return moduleURL(output);
 }
 const deadlineURL = await load('lib/requestDeadline.ts');
 const { withDeadline } = await import(deadlineURL);

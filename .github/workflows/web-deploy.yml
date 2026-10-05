@@ -24,9 +24,9 @@ concurrency:
 jobs:
   hdfc-safety:
     uses: ./.github/workflows/hdfc-sms-verify.yml
+  # Independent gates start together; deployment still requires both.
   build:
-    needs: hdfc-safety
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Guard explicit dispatch and production branch
         env:
@@ -39,16 +39,16 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # [SAATHUM-BRAND-CENTRAL-GUARD-2] never deploy a hand-typed brand name/domain
       - name: No new hand-typed brand name/domain
         run: python3 scripts/check_brand_literals.py && python3 scripts/gen_brand.py --check
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -104,46 +104,16 @@ jobs:
         working-directory: web
         run: node --test test/preview_session.test.mjs
 
-      - name: Check homepage links and archive
+      # Run independent post-build contracts to completion so one stale
+      # assertion cannot hide other actionable failures from the same run.
+      - name: Check all independent release contracts
         working-directory: web
-        run: node scripts/check-homepage.mjs
+        run: node scripts/check-release-contracts.mjs
 
-      # [WEB-HELP-1 2026-09-11] Help centre post-build smoke check — same
-      # working-directory pattern as the homepage check above it.
-      - name: Check help centre
-        working-directory: web
-        run: node scripts/check-help.mjs
-
-      - name: Check public SEO and AI discovery contracts
-        working-directory: web
-        run: |
-          node scripts/check-seo.mjs
-          node scripts/check-og-runtime.mjs
-
-      - name: Check performance and public image contracts
-        working-directory: web
-        run: |
-          node scripts/check-image-urls.mjs
-          node scripts/check-performance.mjs
-
-      - name: Check homepage in desktop and mobile browsers
-        working-directory: web
-        run: |
-          npm install --no-save --package-lock=false @playwright/test@1.56.1
-          npx playwright install --with-deps chromium
-          node scripts/check-homepage-browser.mjs
-
-      - name: Save homepage visual review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: homepage-visual-review
-          path: web/homepage-review
-          retention-days: 3
-
-      - name: Save verified production artifact
-        if: inputs.publish
-        uses: actions/upload-artifact@v4
+      # The same immutable build is tested and, only after all gates, deployed.
+      # Validation-only dispatches need the artifact too.
+      - name: Save web build for browser checks and deployment
+        uses: actions/upload-artifact@v6
         with:
           name: web-dist-${{ github.sha }}
           path: web/dist
@@ -151,28 +121,74 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+  browser-check:
+    needs: build
+    runs-on: ubuntu-24.04
+    # Keep this version equal to web/package.json. The image already contains
+    # the matching browsers and OS libraries; npm ci supplies the test package.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - name: Checkout browser contracts
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked browser dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Download build under test
+        uses: actions/download-artifact@v7
+        with:
+          name: web-dist-${{ github.sha }}
+          path: web/dist
+
+      - name: Check homepage in desktop and mobile browsers
+        working-directory: web
+        run: node scripts/check-homepage-browser.mjs
+
+      - name: Save homepage visual review
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: homepage-visual-review
+          path: web/homepage-review
+          retention-days: 3
+
   deploy:
     if: inputs.publish
-    needs: build
-    runs-on: ubuntu-latest
+    needs: [build, hdfc-safety, browser-check]
+    runs-on: ubuntu-24.04
     environment: production
     steps:
       - name: Checkout deployment configuration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Download verified production artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: web-dist-${{ github.sha }}
           path: web/dist
 
       - name: Deploy to Cloudflare Pages (avatok-app)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

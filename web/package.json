@@ -63,6 +63,7 @@
     "web-vitals": "6.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@shuding/opentype.js": "1.4.0-beta.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.17",

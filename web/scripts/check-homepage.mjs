@@ -61,8 +61,8 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Missing anchor: ' + href);
 }
-assert.equal((html.match(/<header\b/g) || []).length, 1);
-assert.equal((html.match(/<footer\b/g) || []).length, 1);
+assert.equal((html.match(/<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared CallVaal header');
+assert.equal((html.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared CallVaal footer');
 assert(meta(html, 'description')?.length > 40, 'Homepage has useful neutral description');
 assert(meta(html, 'og:title')?.includes(identity.name), 'Share title uses homepage brand');
 assert(meta(html, 'og:description'), 'Share description exists');
@@ -72,7 +72,7 @@ assert.doesNotMatch(visibleText, /No app needed|Life ka sawaal|Become an expert/
 // [CALLVAAL-READABLE-CATEGORIES-1] Check each discovery surface, not merely text anywhere.
 const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
-const categoryCards = [...bodyHtml.matchAll(/<button\b[^>]*class="category-card"[^>]*>([\s\S]*?)<\/button>/g)].map(match => match[1]);
+const categoryCards = [...bodyHtml.matchAll(/<button\b[^>]*data-callvaal-category-card(?:="")?[^>]*>([\s\S]*?)<\/button>/g)].map(match => match[1]);
 assert.deepEqual(categoryCards.map(card => plainText(card.match(/<strong\b[^>]*>([\s\S]*?)<\/strong>/)?.[1] || '')), categoryLabels, 'Exact nine category labels and order');
 const categorySelect = bodyHtml.match(/<select\b[^>]*id="category-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
 assert.deepEqual([...categorySelect.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/g)].map(match => plainText(match[1])).slice(1), categoryLabels, 'Dropdown matches category tiles');
@@ -90,7 +90,8 @@ for (const registry of registryLabels) assert(profileBadges.some(badge => badge.
 const disclosure = [...bodyHtml.matchAll(/<p\b[^>]*class="(?:sample-label|profile-disclosure)"[^>]*>([\s\S]*?)<\/p>/g)].map(match => plainText(match[1])).join(' ');
 assert.match(disclosure, /illustrative/i);
 for (const detail of ['profiles', 'qualifications', 'verification badges']) assert(disclosure.includes(detail), 'Illustrative disclosure covers ' + detail);
-const footer = bodyHtml.match(/<footer\b[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
+const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
+assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five stable footer groups');
 assert.equal((footer.match(/<li[ >]/g) || []).length, 43, 'Complete 43-entry footer');
 const explore = [...footer.matchAll(/<details\b[^>]*>([\s\S]*?)<\/details>/g)].map(match => match[1]).find(group => /<summary[^>]*>Explore<\/summary>/.test(group)) || '';
 assert.equal((explore.match(/<li[ >]/g) || []).length, 11, 'Explore has two destinations and nine categories');
@@ -214,11 +215,14 @@ assert.doesNotMatch(sitemap, new RegExp('<loc>' + reEscape(BRAND.webOrigin) + '/
 console.log('Homepage title, description, canonical and share image passed.');
 
 // [SHV2-S10] Attach the new /organisers contract check to THIS existing CI
-// step (web-deploy.yml "Check homepage links and archive"; typecheck.yml
+// step (web-deploy.yml release-contract aggregate; typecheck.yml
 // "Check public homepage and help before deployment") instead of adding a
-// new workflow step or trigger — B2 rule 8, S10 brief phase 1. Same pattern
-// check-performance.mjs already uses to fan out to its sub-checks.
+// new workflow trigger — B2 rule 8, S10 brief phase 1.
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] /organisers was DELETED (410), so check-organisers.mjs no longer runs.
 
 // [WEB-SEO-REBRAND-1 2026-09-27] Brand-leak guard rides this same CI step.
-execFileSync(process.execPath, ['scripts/check-brand-leaks.mjs'], { stdio: 'inherit' });
+// The aggregate release runner executes this independently so one homepage
+// assertion cannot hide a brand-leak failure. Direct callers retain the guard.
+if (process.env.CI_CONTRACT_AGGREGATE !== '1') {
+  execFileSync(process.execPath, ['scripts/check-brand-leaks.mjs'], { stdio: 'inherit' });
+}

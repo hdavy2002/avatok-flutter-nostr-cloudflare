@@ -18,7 +18,7 @@ const anchors: Record<string, string> = {
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
   <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
-  <nav class="cv-footer-columns footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group footer-group" open><summary>{heading}</summary><ul>{links.map(label => {
+  <nav class="cv-footer-columns footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(label => {
     const category = heading === 'Explore' ? categories.find(category => category.name === label) : undefined;
     return <li>{category ? <button type="button" data-category-select data-category={category.id} aria-pressed="false">{label}</button> : anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-footer-preview={label} data-preview-action="page" data-preview-label={label}>{label}</button>}</li>;
   })}</ul></details>)}</nav>
