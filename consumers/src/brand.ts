@@ -5,19 +5,19 @@
 
 export const BRAND = {
   /** How the name is written in sentences. */
-  name: "Aum Fe",
+  name: "Hello Fraands",
   /** Headings / logo text. */
-  nameUpper: "AUM FE",
+  nameUpper: "HELLO FRAANDS",
   /** Display name used inside customer-visible sentences ({brand} i18n token). Same as name unless the brand wants a variant. */
-  nameCompact: "Aum Fe",
+  nameCompact: "Hello Fraands",
   /** Lowercase, no spaces — hashtags, file names, UA markers. */
   slug: "aumfe",
-  nameHindi: "ॐ फ़े",
-  slogan: "Faith, brought home to you.",
+  nameHindi: "हेलो फ़्रैंड्स",
+  slogan: "Real people. Baat se baat banti hai.",
   /** One-sentence meaning of the name (front page). */
-  nameMeaningShort: "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
+  nameMeaningShort: "Hello Fraands is a friendly hello and an invitation to talk to a real person in your language.",
   /** Full story of the name (About page, help). */
-  nameMeaningLong: "Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.",
+  nameMeaningLong: "Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.",
   /** Bare host, no scheme. */
   domain: "hellofraands.com",
   /** https://<domain> — no trailing slash. */

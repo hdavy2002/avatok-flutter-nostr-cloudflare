@@ -3,14 +3,14 @@
 
 /// Public brand name and domain. See Specs/brand.json.
 abstract final class Brand {
-  static const String name = 'Aum Fe';
-  static const String nameUpper = 'AUM FE';
-  static const String nameCompact = 'Aum Fe';
+  static const String name = 'Hello Fraands';
+  static const String nameUpper = 'HELLO FRAANDS';
+  static const String nameCompact = 'Hello Fraands';
   static const String slug = 'aumfe';
-  static const String nameHindi = 'ॐ फ़े';
-  static const String slogan = 'Faith, brought home to you.';
-  static const String nameMeaningShort = 'Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.';
-  static const String nameMeaningLong = 'Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.';
+  static const String nameHindi = 'हेलो फ़्रैंड्स';
+  static const String slogan = 'Real people. Baat se baat banti hai.';
+  static const String nameMeaningShort = 'Hello Fraands is a friendly hello and an invitation to talk to a real person in your language.';
+  static const String nameMeaningLong = 'Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.';
   static const String domain = 'hellofraands.com';
   static const String webOrigin = 'https://hellofraands.com';
   static const String apiHost = 'api.aumfe.com';
