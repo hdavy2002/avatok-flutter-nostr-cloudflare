@@ -7,7 +7,7 @@ Generated with the built-in image generation tool on 2026-10-07. These are revie
 - `logo-c-monogram.png`: facing speech shapes forming an H in a plum square.
 - `logo-d-two-phones-h.png`: two facing telephone handsets joined as an H; a fourth exploratory concept.
 - `logo-e-two-phones-wave-bar.png`: two facing handsets with a flowing internal H crossbar.
-- `logo-f-creative-h.png`: abstract connected H with a smile-shaped negative-space detail; no phone motif.
+- `logo-f-creative-h.png`: clean geometric H with a straight central bar and a small marigold square; no phone motif.
 - `og-hello-fraands-1200x630.jpg`: social share card with the exact brand title and tagline. PNG source is included.
 - `favicon-master.png`: two speech bubbles on plum. Exports: 16, 32, 180 and 512 px PNG.
 
