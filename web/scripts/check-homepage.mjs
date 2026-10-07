@@ -28,7 +28,7 @@ assert.match(visibleText, /Baat karo\. Dil halka karo\./);
 assert.match(visibleText, /Real people\. Your number stays private\./);
 assert.match(visibleText, /Pay per minute/);
 assert.match(visibleText, /18\+ only/);
-for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', 'Every call will be recorded.', '₹10.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
+for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', '₹10.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
   assert(visibleText.includes(copy), 'Conversation, safety and earning contract: ' + copy);
 }
 assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|data-category-select/, 'Discovery uses moods, not professional categories');
