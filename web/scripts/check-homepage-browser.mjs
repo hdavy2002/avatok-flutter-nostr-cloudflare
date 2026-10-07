@@ -58,7 +58,7 @@ async function inspectReadability(page) {
       const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
         const text = walker.currentNode;
-        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, option, svg')) continue;
+        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .hf-safety-sr-only, option, svg')) continue;
         const range = document.createRange();
         range.selectNodeContents(text);
         for (const rect of range.getClientRects()) {
