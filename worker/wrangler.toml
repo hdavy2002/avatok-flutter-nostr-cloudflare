@@ -32,11 +32,15 @@ custom_domain = true
 # [SAATHUM-DEBRAND-1 2026-09-27] Same Worker, Saa Thum hostname. The website calls
 # this one; shipped apps keep api.avatok.ai. Both stay attached.
 [[routes]]
-pattern = "api.aumfe.com"
+pattern = "api.hellofraands.com"
 custom_domain = true
 
 [[routes]]
 pattern = "api.saathum.com"
+custom_domain = true
+
+[[routes]]
+pattern = "api.aumfe.com"
 custom_domain = true
 
 [vars]
@@ -81,7 +85,7 @@ DIDIT_WORKFLOW_ID = "21da9f1d-4fec-4639-a010-cb7299fe6528"
 UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"
 # [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com is a second custom domain on the
 # same avatok-blobs bucket; blossom.avatok.ai stays attached so old URLs keep working.
-BLOSSOM_BASE_URL = "https://media.aumfe.com"   # public R2 read host (no Worker in path)
+BLOSSOM_BASE_URL = "https://media.hellofraands.com"   # public R2 read host (no Worker in path)
 # [AVA-MEDIA-AUTHZ-1] Bucket name for SigV4 presigned reads of the private DIGITAL
 # bucket (routes/media.ts). MUST match [[r2_buckets]] binding="DIGITAL" bucket_name
 # above (PRODUCTION). Do not copy this value into [env.staging.vars] — staging has

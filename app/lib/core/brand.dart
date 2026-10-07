@@ -13,9 +13,9 @@ abstract final class Brand {
   static const String nameMeaningLong = 'Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.';
   static const String domain = 'hellofraands.com';
   static const String webOrigin = 'https://hellofraands.com';
-  static const String apiHost = 'api.aumfe.com';
-  static const String mediaHost = 'media.aumfe.com';
-  static const String mediaOrigin = 'https://media.aumfe.com';
+  static const String apiHost = 'api.hellofraands.com';
+  static const String mediaHost = 'media.hellofraands.com';
+  static const String mediaOrigin = 'https://media.hellofraands.com';
   static const String authHost = 'clerk.aumfe.com';
   static const String mailHost = 'mail.aumfe.com';
   /// Former domains. Their api./media. hosts stay attached forever.

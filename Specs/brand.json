@@ -15,8 +15,8 @@
   "nameMeaningLong": "Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.",
   "domain": "hellofraands.com",
   "hosts": {
-    "api": "api.aumfe.com",
-    "media": "media.aumfe.com",
+    "api": "api.hellofraands.com",
+    "media": "media.hellofraands.com",
     "auth": "clerk.aumfe.com",
     "mail": "mail.aumfe.com"
   },
