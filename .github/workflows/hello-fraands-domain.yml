@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -173,6 +173,20 @@ jobs:
                 hostname: name, service: former.service, zone_id: zoneId, zone_name: identity.domain,
               });
               console.log(`Attached ${attached.hostname} to Worker ${attached.service}`);
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-worker-routes') {
+            const formerApex = brand.hosts.api.split('.').slice(1).join('.');
+            if (!brand.legacyDomains.includes(formerApex)) throw new Error('Former apex is not a legacy domain');
+            const oldZoneId = current.find(item => item.name === formerApex)?.zone_tag;
+            if (!oldZoneId) throw new Error('Former website zone has no zone tag');
+            const routes = await request(`/zones/${oldZoneId}/workers/routes`);
+            const names = [formerApex, `www.${formerApex}`];
+            console.log(`Former zone has ${routes.length} Worker route(s)`);
+            for (const route of routes) {
+              if (names.some(name => route.pattern.includes(name))) {
+                console.log(`Route ${route.pattern}: ${route.script ?? 'none'}`);
+              }
             }
           }
           NODE
