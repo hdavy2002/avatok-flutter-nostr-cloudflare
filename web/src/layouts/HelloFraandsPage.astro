@@ -9,7 +9,8 @@ interface Link { href: string; label: string }
 interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string }
 const { title, summary, review = false, related = [], description = summary } = Astro.props;
 const identity = brandConfig.homepageIdentity;
-const canonical = `https://${identity.domain}${Astro.url.pathname}`;
+const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const canonical = `https://${identity.domain}${pathname}`;
 const pageTitle = `${title} | ${identity.name}`;
 const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-moods.png`;
 ---
