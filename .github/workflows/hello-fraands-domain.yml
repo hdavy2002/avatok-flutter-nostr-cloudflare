@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect]
         required: true
         default: inspect
 
@@ -28,9 +28,10 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
-          const identity = JSON.parse(readFileSync('Specs/brand.json', 'utf8')).homepageIdentity;
+          const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
+          const identity = brand.homepageIdentity;
           const root = 'https://api.cloudflare.com/client/v4';
           const projectPath = `/accounts/${CF_ACCOUNT_ID}/pages/projects/avatok-app`;
           async function request(path, method = 'GET', body) {
@@ -76,6 +77,62 @@ jobs:
                 });
                 console.log(`${name}: created proxied CNAME, record ${record.id}`);
               }
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-redirect' || REQUESTED_ACTION === 'ensure-redirect') {
+            // The legacy website is the apex of the still-active API host. Never
+            // redirect API, media, auth, or mail subdomains used by old clients.
+            const formerApex = brand.hosts.api.split('.').slice(1).join('.');
+            if (!brand.legacyDomains.includes(formerApex) || formerApex === identity.domain) {
+              throw new Error('Former website domain is not a configured legacy domain');
+            }
+            const oldNames = [formerApex, `www.${formerApex}`];
+            const oldDomain = current.find(item => item.name === formerApex);
+            if (!oldDomain?.zone_tag) throw new Error('Former Pages apex has no zone tag');
+            const zonePath = `/zones/${oldDomain.zone_tag}`;
+            const phasePath = `${zonePath}/rulesets/phases/http_request_dynamic_redirect/entrypoint`;
+            async function optionalRuleset() {
+              const response = await fetch(root + phasePath, {
+                headers: { Authorization: `Bearer ${CF_API_TOKEN}` },
+              });
+              if (response.status === 404) return null;
+              const json = await response.json();
+              if (!response.ok || !json.success) {
+                const errors = (json.errors || []).map(error => `${error.code}: ${error.message}`).join('; ');
+                throw new Error(`Cloudflare GET redirect rules failed (${response.status}): ${errors}`);
+              }
+              return json.result;
+            }
+            const existing = await optionalRuleset();
+            console.log(`Former zone redirect rules: ${existing?.rules?.length ?? 0}`);
+            for (const rule of existing?.rules ?? []) {
+              console.log(`Rule ${rule.id}: ${rule.ref ?? rule.description ?? ''}; ${rule.expression}; enabled=${rule.enabled}`);
+            }
+            const ref = 'website_domain_migration';
+            const already = existing?.rules?.find(rule => rule.ref === ref);
+            if (REQUESTED_ACTION === 'ensure-redirect' && !already) {
+              const expression = `http.host in {"${oldNames[0]}" "${oldNames[1]}"}`;
+              const rule = {
+                ref,
+                description: 'Redirect legacy website to current website, keeping path and query',
+                expression,
+                action: 'redirect',
+                action_parameters: { from_value: {
+                  target_url: { expression: `concat("https://${identity.domain}", http.request.uri.path)` },
+                  status_code: 301,
+                  preserve_query_string: true,
+                } },
+              };
+              if (existing) {
+                await request(`${zonePath}/rulesets/${existing.id}/rules`, 'POST', { ...rule, position: { before: '' } });
+              } else {
+                await request(`${zonePath}/rulesets`, 'POST', {
+                  name: 'Legacy website redirect', kind: 'zone', phase: 'http_request_dynamic_redirect', rules: [rule],
+                });
+              }
+              console.log(`Created 301 redirect for ${oldNames.join(', ')} to ${identity.domain}`);
+            } else if (already) {
+              console.log(`Migration redirect already exists: ${already.id}`);
             }
           }
           NODE
