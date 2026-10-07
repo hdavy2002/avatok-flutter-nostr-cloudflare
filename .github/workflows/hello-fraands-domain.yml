@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -153,6 +153,26 @@ jobs:
             if (REQUESTED_ACTION === 'ensure-media' && !domains.some(item => item.domain === name)) {
               await request(bucketPath, 'POST', { domain: name, enabled: true, zoneId });
               console.log(`Attached ${name} to existing public media bucket ${bucket}`);
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-api' || REQUESTED_ACTION === 'ensure-api') {
+            const zoneId = current.find(item => item.name === identity.domain)?.zone_tag;
+            if (!zoneId) throw new Error('New website zone has no zone tag');
+            const domainPath = `/accounts/${CF_ACCOUNT_ID}/workers/domains`;
+            const listed = await request(domainPath);
+            const domains = Array.isArray(listed) ? listed : (listed.result ?? []);
+            const former = domains.find(item => item.hostname === brand.hosts.api);
+            if (!former?.service) throw new Error('Configured API host is not attached to a Worker');
+            const name = `api.${identity.domain}`;
+            const already = domains.find(item => item.hostname === name);
+            console.log(`Existing API host ${former.hostname} serves Worker ${former.service}`);
+            console.log(`${name}: ${already ? `Worker ${already.service}` : 'not attached'}`);
+            if (already && already.service !== former.service) throw new Error('New API host serves a different Worker');
+            if (REQUESTED_ACTION === 'ensure-api' && !already) {
+              const attached = await request(domainPath, 'PUT', {
+                hostname: name, service: former.service, zone_id: zoneId, zone_name: identity.domain,
+              });
+              console.log(`Attached ${attached.hostname} to Worker ${attached.service}`);
             }
           }
           NODE
