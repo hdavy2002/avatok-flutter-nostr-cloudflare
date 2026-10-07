@@ -23,7 +23,7 @@ abstract final class Brand {
   static const List<String> legacyDomains = <String>['saathum.com', 'aumfe.com'];
   static const List<String> legacyMediaHosts = <String>['media.saathum.com', 'media.aumfe.com'];
   static const List<String> legacyApiHosts = <String>['api.saathum.com', 'api.aumfe.com'];
-  static const String supportEmail = 'support@aumfe.com';
+  static const String supportEmail = 'support@hellofraands.com';
   static const String noreplyEmail = 'noreply@aumfe.com';
   static const String helloEmail = 'hello@aumfe.com';
   /// PERMANENT — a Play package id can never change.

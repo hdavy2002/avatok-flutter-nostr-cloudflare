@@ -34,7 +34,7 @@ export const BRAND = {
   legacyMediaHosts: ["media.saathum.com", "media.aumfe.com"] as readonly string[],
   legacyApiHosts: ["api.saathum.com", "api.aumfe.com"] as readonly string[],
   emails: {
-    support: "support@aumfe.com",
+    support: "support@hellofraands.com",
     noreply: "noreply@aumfe.com",
     hello: "hello@aumfe.com",
   },

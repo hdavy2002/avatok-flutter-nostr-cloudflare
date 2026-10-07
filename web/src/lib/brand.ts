@@ -30,7 +30,7 @@ export const BRAND = {
   authOrigin: "https://clerk.hellofraands.com",
   mailHost: "mail.aumfe.com",
   emails: {
-    support: "support@aumfe.com",
+    support: "support@hellofraands.com",
     noreply: "noreply@aumfe.com",
     hello: "hello@aumfe.com",
   },
