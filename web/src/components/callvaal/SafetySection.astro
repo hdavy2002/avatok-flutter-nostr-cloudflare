@@ -1,0 +1,102 @@
+---
+import '../../styles/callvaal-safety-section.css';
+const rules = [
+  { title: 'No sexual or suggestive talk', text: 'No sexual requests, unwanted flirting or pressure. Keep the conversation comfortable for both people.', tag: 'Respect boundaries', icon: 'heart' },
+  { title: 'No harassment or abuse', text: 'No gaali, threats, hate or repeated unwanted contact. You can end a conversation whenever you need to.', tag: 'No abuse', icon: 'hand' },
+  { title: 'No buying or selling', text: 'No sales pitches, paid deals, scams or requests to send money outside the platform.', tag: 'No transactions', icon: 'bag' },
+  { title: 'No numbers or socials', text: 'Do not ask for or share phone numbers, social handles or personal contact details.', tag: 'Keep it here', icon: 'phone' },
+];
+---
+<section class="hf-safety" id="safety" aria-labelledby="safety-title">
+  <div class="hf-safety-intro">
+    <div class="hf-safety-copy">
+      <p class="hf-safety-eyebrow">Kaise safe hai</p>
+      <h2 id="safety-title">Dil khol ke bolo.<br /><em>Respect ke saath.</em></h2>
+      <p class="hf-safety-preview">Planned for launch · Preview</p>
+      <p>Good conversations need clear boundaries. Your number will stay private, and both people will hear a recording notice before connecting.</p>
+      <p>Every call will be recorded. AI will check recordings after the call and flag concerns for human review. Live monitoring is planned for a later stage.</p>
+    </div>
+    <figure class="hf-safety-art">
+      <svg viewBox="0 0 520 380" width="520" height="380" role="img" aria-labelledby="hf-safety-art-title hf-safety-art-desc">
+        <title id="hf-safety-art-title">A safer conversation, with clear boundaries</title>
+        <desc id="hf-safety-art-desc">Two illustrated phones linked by a conversation wave. A friendly shield represents review after the call. A host-only hash key ends and blocks a call. A call-ended stamp and three tally marks represent human-reviewed confirmed strikes. Planned features, not live controls.</desc>
+        <path d="M25 30 85 20 134 27 198 17 250 25 304 19 363 28 421 17 491 31 482 87 494 137 485 199 497 258 483 341 420 350 359 341 295 352 238 342 177 354 120 344 53 352 24 336 32 280 20 219 29 161 19 99Z" fill="#FFF0BB"/>
+        <g fill="none" stroke="#46113E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M62 85 54 73m23 3-1-15m360 26 14-9m-7 24 16-1M75 295l-11 8m379 2 10 9"/>
+          <path d="M170 171h18l8-19 12 41 13-61 13 76 12-53 11 30 11-15h20l11-22 12 42 11-62 12 60 12-26h12" stroke="#AF2362" stroke-width="4"/>
+        </g>
+        <path d="m47 109 22-12 29 5 26-12 34 6 24 20-8 39 9 27-13 30 6 36-26 11-33-7-32 10-22-15 5-39-12-30 9-34Z" fill="#F8D6E3"/>
+        <path d="m350 87 27 8 33-7 27 14 34-4 13 26-7 31 9 31-10 29 6 39-28 16-31-8-32 8-30-12 6-34-10-37 8-35Z" fill="#E6D9F4"/>
+        <g transform="translate(71 103) rotate(-12 48 80)">
+          <rect x="5" y="7" width="94" height="164" rx="19" fill="#46113E" opacity=".12"/>
+          <rect width="94" height="164" rx="19" fill="#F6B7CE" stroke="#46113E" stroke-width="3"/>
+          <rect x="10" y="22" width="74" height="114" rx="9" fill="#FFFDF7" stroke="#46113E" stroke-width="2"/>
+          <path d="M36 12h22" stroke="#46113E" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="47" cy="149" r="5" fill="#46113E"/>
+          <path d="M28 61c4-7 9-2 13 4l-5 7c6 10 10 14 19 17l6-6c8 2 15 7 10 13-14 17-56-23-43-35Z" fill="#C43776"/>
+        </g>
+        <g transform="translate(359 101) rotate(11 47 82)">
+          <rect x="5" y="7" width="94" height="164" rx="19" fill="#46113E" opacity=".12"/>
+          <rect width="94" height="164" rx="19" fill="#D5C1F0" stroke="#46113E" stroke-width="3"/>
+          <rect x="10" y="22" width="74" height="114" rx="9" fill="#FFFDF7" stroke="#46113E" stroke-width="2"/>
+          <path d="M36 12h22" stroke="#46113E" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="47" cy="149" r="5" fill="#46113E"/>
+          <path d="M28 61c4-7 9-2 13 4l-5 7c6 10 10 14 19 17l6-6c8 2 15 7 10 13-14 17-56-23-43-35Z" fill="#765397"/>
+        </g>
+        <g transform="translate(213 38)">
+          <path d="m47 0 42 16v38c0 27-19 45-42 57C24 99 5 81 5 54V16Z" fill="#E8DCF8" stroke="#46113E" stroke-width="3"/>
+          <path d="M35 41c0-17 25-18 25 0 0 9-11 11-11 20 0 8-12 8-12 0m8-23c8-7 13 6 3 9" fill="none" stroke="#46113E" stroke-width="3" stroke-linecap="round"/>
+          <path d="M31 79q16 13 32 0" fill="none" stroke="#46113E" stroke-width="3" stroke-linecap="round"/>
+          <rect x="-12" y="99" width="119" height="30" rx="15" fill="#46113E"/>
+          <text x="47" y="120" text-anchor="middle" fill="#FFFDF7" font-size="15" font-family="Nunito, sans-serif" font-weight="900">Post-call AI</text>
+        </g>
+        <g transform="translate(179 239) rotate(-6 34 34)">
+          <rect width="68" height="68" rx="15" fill="#FFFDF7" stroke="#B32667" stroke-width="3"/>
+          <text x="34" y="49" text-anchor="middle" fill="#B32667" font-family="Nunito, sans-serif" font-size="49" font-weight="900">#</text>
+        </g>
+        <path d="M153 300q-13 23 23 22m-8-7 9 7-10 5" fill="none" stroke="#AE2365" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="133" y="321" transform="rotate(-10 133 321)" text-anchor="middle" fill="#AE2365" font-family="Comfortaa, sans-serif" font-style="italic" font-size="15">block</text>
+        <text x="212" y="331" text-anchor="middle" fill="#46113E" font-family="Nunito, sans-serif" font-size="15" font-weight="900">Host only</text>
+        <g transform="translate(277 241) rotate(8 78 25)">
+          <rect width="155" height="48" rx="6" fill="#FFFDF7" stroke="#AE2941" stroke-width="3"/>
+          <text x="77" y="31" text-anchor="middle" fill="#AE2941" font-family="Nunito, sans-serif" font-size="23" font-weight="900">Call ended</text>
+        </g>
+        <g stroke="#46113E" stroke-width="3" stroke-linecap="round"><path d="m295 310-3 20m15-19-3 20m15-19-3 20m-8-16 12 12"/><path d="M355 329v-11c0-13 19-13 19 0v11l4 4h-27Zm7 10h5" fill="#F1C451"/></g>
+        <text x="260" y="368" text-anchor="middle" fill="#644464" font-family="Nunito, sans-serif" font-size="14">Illustration of planned safety features</text>
+      </svg>
+    </figure>
+  </div>
+  <aside class="hf-safety-key" aria-labelledby="hf-safety-key-title">
+    <span class="hf-safety-keycap" aria-hidden="true">#</span>
+    <div><h3 id="hf-safety-key-title">Host ho? Press <span aria-hidden="true">#</span><span class="hf-safety-sr-only">the hash key</span> to end &amp; block.</h3><p>At launch, hosts will be able to end the call, block that caller and flag the recording for review with one key. Callers can hang up and report a concern. A report is reviewed before a strike is confirmed.</p></div>
+    <span class="hf-safety-key-tag">Planned host control</span>
+  </aside>
+  <div class="hf-safety-rules">
+    {rules.map(rule => <article class="hf-safety-rule">
+      <svg viewBox="0 0 32 32" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={rule.title}>
+        <title>{rule.title}</title>
+        {rule.icon === 'heart' && <path d="M16 26S3 18 3 10a7 7 0 0 1 13-3 7 7 0 0 1 13 3c0 8-13 16-13 16ZM4 28 28 4"/>}
+        {rule.icon === 'hand' && <path d="M9 16V8a2 2 0 0 1 4 0v7-10a2 2 0 0 1 4 0v10-8a2 2 0 0 1 4 0v9-5a2 2 0 0 1 4 0v10c0 6-3 8-8 8-4 0-6-2-8-5l-5-7c-2-4 2-5 5-1Z"/>}
+        {rule.icon === 'bag' && <path d="M5 11h22l-2 18H7ZM11 11V8a5 5 0 0 1 10 0v3M3 29 29 3"/>}
+        {rule.icon === 'phone' && <><rect x="8" y="2" width="16" height="28" rx="3"/><path d="M13 6h6m-4 20h2M3 29 29 3"/></>}
+      </svg>
+      <div><h3>{rule.title}</h3><p>{rule.text}</p><span class="hf-safety-rule-tag">{rule.tag}</span></div>
+    </article>)}
+  </div>
+  <div class="hf-safety-process" aria-labelledby="hf-safety-process-title">
+    <h3 id="hf-safety-process-title">How safety will work at launch</h3>
+    <ol>
+      <li><span><svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="10" y="3" width="12" height="18" rx="6"/><path d="M6 15v2a10 10 0 0 0 20 0v-2M16 27v3m-5 0h10"/></svg><span class="hf-safety-sr-only">Step 1</span></span><div><strong>Notice before connection</strong><p>Both people hear that the call is recorded.</p></div></li>
+      <li><span><svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 16h4l3-8 4 17 4-22 4 26 3-17 3 4h3"/></svg><span class="hf-safety-sr-only">Step 2</span></span><div><strong>Record &amp; review</strong><p>AI checks every recording after the call.</p></div></li>
+      <li><span><svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="16" cy="9" r="6"/><path d="M4 28v-3a12 12 0 0 1 24 0v3M12 24l3 3 6-7"/></svg><span class="hf-safety-sr-only">Step 3</span></span><div><strong>A person checks flags</strong><p>Reports and AI flags go to human review.</p></div></li>
+      <li><span><svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5v22M15 5v22M24 5v22M20 10l9 12m-9 0 9-12"/></svg><span class="hf-safety-sr-only">Step 4</span></span><div><strong>Confirmed strikes count</strong><p>Three confirmed strikes lead to a ban.</p></div></li>
+    </ol>
+  </div>
+  <ul class="hf-safety-trust">
+    <li><span aria-hidden="true">✓</span> Your personal number stays private.</li>
+    <li><span aria-hidden="true">✓</span> Hosts will complete video KYC + Aadhaar verification.</li>
+    <li><span aria-hidden="true">✓</span> Human review decides strikes. AI will not ban anyone on its own.</li>
+  </ul>
+  <div class="hf-safety-policy-links"><a href="/community-guidelines">Read the community guidelines <span aria-hidden="true">→</span></a><a href="/recording-policy">Recording &amp; review policy <span aria-hidden="true">→</span></a></div>
+  <p class="hf-safety-crisis">Need urgent support? This is not a crisis service. Call <a href="tel:14416">Tele-MANAS 14416</a> or, in an emergency, <a href="tel:112">112</a>.</p>
+</section>

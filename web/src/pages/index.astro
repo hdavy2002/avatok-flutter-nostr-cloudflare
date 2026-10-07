@@ -7,6 +7,8 @@ import ModernIcon from '../components/home/ModernIcon.astro';
 import '../styles/callvaal-notebook.css';
 import HelloFraandsHeader from '../components/callvaal/Header.astro';
 import HelloFraandsFooter from '../components/callvaal/Footer.astro';
+import WomenOnlySection from '../components/callvaal/WomenOnlySection.astro';
+import SafetySection from '../components/callvaal/SafetySection.astro';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Dil halka karo. | ${identity.name}`;
 const description = 'Talk to a real person in your language, right now. Your number stays private. Pay per minute. 18+.';
@@ -68,23 +70,7 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
     <section class="mood-section" id="moods" aria-labelledby="moods-title"><p class="preview-kicker">Find your kind of conversation</p><h2 id="moods-title">Aaj kya <em>mood hai?</em></h2>
       <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['✳','✷','☼','✦'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
     </section>
-    {/* Launch auth contract: when auth is wired, render this entire section, its moods and its hosts ONLY for signed-in accounts with gender_verified = F or T. The section, moods and hosts must be absent for all other accounts. This public card is a static preview only. */}
-    <section class="women-section" id="women-only" aria-labelledby="women-title">
-      <p class="women-preview-tag">Preview — visible to verified women at launch</p>
-      <div class="women-heading"><ModernIcon name="lock" /><h2 id="women-title">Sirf ladkiyon ke liye<br/><em>Ek jagah jahan sirf auratein baat karti hain.</em></h2></div>
-      <p class="women-description">A women-only space. Periods, PCOS worries, saas-bahu, pregnancy nerves, 3am with a newborn — talk to another woman who gets it. Both the caller and the host are KYC-verified as women. This space is not visible to men.</p>
-      <small class="women-disclaimer">Talk and share — not medical advice.</small>
-      <div class="women-moods" aria-label="Women-only conversation topics">
-        <a class="women-mood-chip" href="/?lane=women#people">periods &amp; PCOS worries</a>
-        <a class="women-mood-chip" href="/?lane=women#people">saas-bahu, ghar ki baatein</a>
-        <a class="women-mood-chip" href="/?lane=women#people">pregnancy &amp; new mom nights</a>
-      </div>
-      <div class="women-actions">
-        <span class="women-entry-preview" title="Coming at launch" tabindex="0" aria-label="Verify &amp; enter — Coming at launch"><button type="button" disabled aria-describedby="women-launch-note">Verify &amp; enter</button><span class="women-launch-tooltip" id="women-launch-note" role="tooltip">Coming at launch</span></span>
-        <a class="women-explainer" href="/women-only">How the women-only space works →</a>
-      </div>
-      <p class="women-host-note">Hosts in this space earn the same rates. <a href="#earn">Earn with us →</a></p>
-    </section>
+    <WomenOnlySection />
     <section class="privacy-section" id="privacy-note" aria-labelledby="privacy-title">
       <h2 id="privacy-title">Aapka number. <em>Sirf aapka.</em></h2><p class="privacy-intro">Neither person sees the other’s personal phone number.</p>
       <ol class="privacy-diagram">
@@ -94,12 +80,7 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
       </ol>
       <div class="privacy-note paper-note">Number private.<br/>Baat apni.</div><div class="privacy-conversation-note paper-note">People.<br/>Conversations.<br/>A brighter you.</div><p class="privacy-bottom">No need to exchange personal numbers.<br/><button type="button" data-preview-action="privacy" data-preview-label="Number privacy">Learn about number privacy →</button></p>
     </section>
-    <section class="safety-section" id="safety" aria-labelledby="safety-title"><p class="preview-kicker">Planned for launch</p><h2 id="safety-title">Kaise <em>safe rahega</em></h2><div class="safety-grid">
-      <article><span aria-hidden="true">01</span><p>Your number will be masked. Calls will be bridged through {identity.name}.</p></article>
-      <article><span aria-hidden="true">02</span><p>Hosts will complete video KYC and Aadhaar verification before taking calls.</p></article>
-      <article><span aria-hidden="true">03</span><p>At launch, both people will hear a recording notice. Recordings may be reviewed for safety.</p></article>
-      <article><span aria-hidden="true">04</span><p>Harassment and sexual advances are not allowed. Reports are reviewed; repeated confirmed violations can lead to a ban.</p></article>
-    </div><div class="safety-links"><a href="/talk-safely">Rules for talking safely with strangers →</a><button type="button" data-preview-action="page" data-preview-label="Community guidelines">Community guidelines</button></div></section>
+    <SafetySection />
     <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">Sample profiles · Illustrative</p><h2 id="people-title">Kaun hai <em>online?</em></h2>
       <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{['Hindi','English','Kannada','Marathi'].map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>View all people →</button></div>
       <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>

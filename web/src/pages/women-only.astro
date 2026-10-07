@@ -10,6 +10,10 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 <p>Everyday life, work, family, relationships and personal experiences are welcome. You may discuss experiences such as periods, PCOS, pregnancy or menopause without being treated as making sexual conversation. Moderation is planned to consider this context. Harassment, sexual pressure and abuse remain reportable. Hosts offer company and listening, not diagnosis, treatment, therapy or counselling.</p>
 <h2>Your boundaries come first</h2>
 <ul><li>You can decline a call, stop a conversation or leave without explaining why. Payment never buys permission to cross a boundary.</li><li>Keep your number, address, workplace, social accounts and payment details private. Never share an OTP, identity document or another person's story.</li><li>Do not move a conversation to private contact, arrange meetings, send money or accept pressure to do so.</li><li>Number masking is planned to hide each participant's phone number from the other. It cannot hide details you say aloud or prevent someone recognising your voice.</li></ul>
+<aside class="hf-before-call" aria-labelledby="hf-before-call-title">
+  <h2 id="hf-before-call-title">Before you call</h2>
+  <p>You can talk about periods, PCOS, pregnancy, menopause, family stress, or anything else on your mind. You never have to share documents, intimate photos, contact details, or stay on a call that feels wrong. Hang up if you want to. A report asks the team to review what happened; it is not an emergency alert.</p>
+</aside>
 <h2>Planned host controls</h2>
 <p>The host's phone will ring first. A private announcement will give the caller's handle, prior call count and any note the host saved. Press <strong>1</strong> to accept or <strong>2</strong> to decline; no response within 10 seconds also declines. The caller is dialled only after acceptance, with no caller charge for a decline.</p>
 <p>During a connected call, the host's <strong>*</strong> key will end it. The host's <strong>#</strong> key will end it, block that caller from that host and flag the incident for review. A report is not a confirmed strike. Both participants can always hang up normally.</p>
@@ -17,5 +21,24 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 <p>The plan is to record every connected call, with spoken notices to both people before the conversation. Recordings will enter automated post-call review, with flagged content reviewed by authorised staff. Live AI warnings and call cuts are a later phase, not a preview feature. Read <a href="/recording-policy">Recording &amp; consent</a> before deciding what to share.</p>
 <h2>If something feels wrong</h2>
 <p>End the call. Planned follow-up controls will let hosts block, report or tag a caller through their dashboard or a post-call WhatsApp message. See <a href="/report">Report a user</a> for the reporting route and its current availability. Keep the call ID and a short description; do not include identity documents. Reports are not an emergency response service.</p>
-<p>Talking about distress or self-harm must not earn a strike. For immediate danger in India, call <a href="tel:112">112</a>; for mental-health support, call <a href="tel:14416">Tele-MANAS 14416</a>. See <a href="/emergency">Emergency support</a>.</p>
+<p>Talking about distress or self-harm must not earn a strike. A platform report cannot replace outside help.</p>
+<h2>Help outside the platform</h2>
+<div class="hf-help-strip" aria-label="Independent helplines in India">
+  <a href="tel:112"><strong>112</strong><span>Immediate danger</span></a>
+  <a href="tel:181"><strong>181</strong><span>Women's support</span></a>
+  <a href="tel:14416"><strong>14416</strong><span>Mental-health support</span></a>
+  <a href="tel:1930"><strong>1930</strong><span>Online financial fraud</span></a>
+</div>
+<p>These are separate services, not Hello Fraands support. See <a href="/emergency">Emergency support</a> or the official <a href="https://112.gov.in/">112</a>, <a href="https://missionshakti.wcd.gov.in/">Mission Shakti</a>, <a href="https://dghs.mohfw.gov.in/national-mental-health-programme.php">Tele-MANAS</a> and <a href="https://www.cybercrime.gov.in/">Cyber Crime Portal</a> pages.</p>
+<style>
+.hf-before-call{margin:1.5rem 0;padding:1.25rem 1.5rem;border:2px solid #b2367e;border-radius:24px;background:#f3eeff}
+.hf-before-call h2{margin:0 0 .6rem}
+.hf-before-call p{margin:0}
+.hf-help-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin:1rem 0}
+.hf-help-strip a{display:grid;gap:.25rem;padding:.9rem;border:1px solid #c9b6d3;border-radius:16px;background:#fff9eb;text-decoration:none;min-height:5rem}
+.hf-help-strip strong{font-family:Nunito,sans-serif;font-size:1.4rem}
+.hf-help-strip span{font-size:.875rem;line-height:1.35}
+@media(max-width:700px){.hf-help-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:360px){.hf-help-strip{grid-template-columns:1fr}}
+</style>
 </HelloFraandsPage>
