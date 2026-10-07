@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media]
         required: true
         default: inspect
 
@@ -133,6 +133,26 @@ jobs:
               console.log(`Created 301 redirect for ${oldNames.join(', ')} to ${identity.domain}`);
             } else if (already) {
               console.log(`Migration redirect already exists: ${already.id}`);
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-media' || REQUESTED_ACTION === 'ensure-media') {
+            const zoneId = current.find(item => item.name === identity.domain)?.zone_tag;
+            if (!zoneId) throw new Error('New website zone has no zone tag');
+            const bucket = 'avatok-blobs';
+            const bucketPath = `/accounts/${CF_ACCOUNT_ID}/r2/buckets/${bucket}/domains/custom`;
+            const listed = await request(bucketPath);
+            const domains = listed.domains ?? [];
+            const formerMediaHost = brand.hosts.media;
+            if (!domains.some(item => item.domain === formerMediaHost && item.enabled)) {
+              throw new Error(`Configured media host is not an enabled domain of ${bucket}`);
+            }
+            for (const item of domains) {
+              console.log(`R2 ${item.domain}: enabled=${item.enabled}; ownership=${item.status?.ownership}; ssl=${item.status?.ssl}`);
+            }
+            const name = `media.${identity.domain}`;
+            if (REQUESTED_ACTION === 'ensure-media' && !domains.some(item => item.domain === name)) {
+              await request(bucketPath, 'POST', { domain: name, enabled: true, zoneId });
+              console.log(`Attached ${name} to existing public media bucket ${bucket}`);
             }
           }
           NODE
