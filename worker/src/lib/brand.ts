@@ -26,8 +26,8 @@ export const BRAND = {
   apiOrigin: "https://api.hellofraands.com",
   mediaHost: "media.hellofraands.com",
   mediaOrigin: "https://media.hellofraands.com",
-  authHost: "clerk.aumfe.com",
-  authOrigin: "https://clerk.aumfe.com",
+  authHost: "clerk.hellofraands.com",
+  authOrigin: "https://clerk.hellofraands.com",
   mailHost: "mail.aumfe.com",
   /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */
   legacyDomains: ["saathum.com", "aumfe.com"] as readonly string[],

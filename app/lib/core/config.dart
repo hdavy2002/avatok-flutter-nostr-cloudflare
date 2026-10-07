@@ -11,7 +11,7 @@ import 'feature_flags.dart';
 /// publishable key is public and safe to ship either way.
 const String kClerkPublishableKey = kAvatokEnv == 'staging'
     ? 'pk_test_c3RlcmxpbmctdGVybWl0ZS03OS5jbGVyay5hY2NvdW50cy5kZXYk'
-    : 'pk_live_Y2xlcmsuc2FhdGh1bS5jb20k';
+    : Brand.clerkPublishableKey;
 
 /// Google WEB OAuth client id used as the native `google_sign_in` serverClientId
 /// (the ID-token audience the Worker `/api/auth/google` verifies). MIGRATED

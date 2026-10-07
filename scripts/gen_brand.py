@@ -19,6 +19,7 @@ hand edit to one is overwritten on the next run. Plain python3, no deps.
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sys
@@ -197,6 +198,7 @@ def render_dart(b: dict) -> str:
         f"  static const String mediaHost = {dart(h['media'])};",
         f"  static const String mediaOrigin = {dart('https://' + h['media'])};",
         f"  static const String authHost = {dart(h['auth'])};",
+        f"  static const String clerkPublishableKey = {dart('pk_live_' + base64.b64encode((h['auth'] + '$').encode()).decode())};",
         f"  static const String mailHost = {dart(h['mail'])};",
         "  /// Former domains. Their api./media. hosts stay attached forever.",
         f"  static const List<String> legacyDomains = {dart_list(legacy)};",

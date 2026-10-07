@@ -16,7 +16,8 @@ abstract final class Brand {
   static const String apiHost = 'api.hellofraands.com';
   static const String mediaHost = 'media.hellofraands.com';
   static const String mediaOrigin = 'https://media.hellofraands.com';
-  static const String authHost = 'clerk.aumfe.com';
+  static const String authHost = 'clerk.hellofraands.com';
+  static const String clerkPublishableKey = 'pk_live_Y2xlcmsuaGVsbG9mcmFhbmRzLmNvbSQ=';
   static const String mailHost = 'mail.aumfe.com';
   /// Former domains. Their api./media. hosts stay attached forever.
   static const List<String> legacyDomains = <String>['saathum.com', 'aumfe.com'];

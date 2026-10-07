@@ -17,7 +17,7 @@
   "hosts": {
     "api": "api.hellofraands.com",
     "media": "media.hellofraands.com",
-    "auth": "clerk.aumfe.com",
+    "auth": "clerk.hellofraands.com",
     "mail": "mail.aumfe.com"
   },
   "_legacyDomains": "Former domains, kept after a domain switch. On switch day the old domain moves here (e.g. [\"saathum.com\"]). The api. and media. hosts of every legacy domain stay attached to the Worker/storage FOREVER — installed app builds, links in old emails and image URLs stored in the database all point at them. A legacy website may redirect to the current domain after the new site is verified. Service aliases stay attached. Leave [] until a switch happens.",

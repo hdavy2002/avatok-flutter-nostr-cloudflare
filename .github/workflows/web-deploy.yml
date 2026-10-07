@@ -87,9 +87,8 @@ jobs:
         # never silently lose it to an unset repo secret. The SECRET key
         # (sk_live_…) is server-side only and must never appear in this repo.
         #
-        # This key decodes to `clerk.saathum.com`, which matches CLERK_ISSUER /
-        # CLERK_JWKS_URL in worker/wrangler.toml. If those ever change, change
-        # this too or web sign-in silently stops being accepted by the API.
+        # The key is derived from Specs/brand.json hosts.auth. Keep the live
+        # Worker's CLERK_ISSUER and CLERK_JWKS_URL in sync on domain switch day.
         env:
           # [SAATHUM-DOMAIN-LEGACY-1] PUBLIC_CLERK_PUBLISHABLE_KEY and PUBLIC_API_BASE
           # are no longer typed here: the "Derive brand build vars" step above writes

@@ -125,8 +125,8 @@ STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPt
 # Clerk JWT verification (public values, not secrets). Enabling these lets the
 # Worker read the signed-in Clerk user id, which links the account to its Nostr
 # key (clerk_nostr_link) and powers cross-device restore via GET /api/me.
-CLERK_JWKS_URL = "https://clerk.aumfe.com/.well-known/jwks.json"
-CLERK_ISSUER = "https://clerk.aumfe.com"
+CLERK_JWKS_URL = "https://clerk.hellofraands.com/.well-known/jwks.json"
+CLERK_ISSUER = "https://clerk.hellofraands.com"
 # Admins allowed to PUT /api/admin/config (remote kill switches, Phase 1 A2).
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 # AvaTalk group conferencing (Phase 10 — LiveKit ≤25). LIVEKIT_URL is a var;
