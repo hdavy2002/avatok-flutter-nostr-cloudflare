@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -175,7 +175,7 @@ jobs:
               console.log(`Attached ${attached.hostname} to Worker ${attached.service}`);
             }
           }
-          if (REQUESTED_ACTION === 'inspect-worker-routes') {
+          if (REQUESTED_ACTION === 'inspect-worker-routes' || REQUESTED_ACTION === 'ensure-worker-redirect') {
             const formerApex = brand.hosts.api.split('.').slice(1).join('.');
             if (!brand.legacyDomains.includes(formerApex)) throw new Error('Former apex is not a legacy domain');
             const oldZoneId = current.find(item => item.name === formerApex)?.zone_tag;
@@ -186,6 +186,39 @@ jobs:
             for (const route of routes) {
               if (names.some(name => route.pattern.includes(name))) {
                 console.log(`Route ${route.pattern}: ${route.script ?? 'none'}`);
+              }
+            }
+            if (REQUESTED_ACTION === 'ensure-worker-redirect') {
+              const scriptName = 'avatok-legacy-website-redirect-20261007';
+              const patterns = names.map(name => `${name}/*`);
+              for (const pattern of patterns) {
+                const existing = routes.find(route => route.pattern === pattern);
+                if (existing && existing.script !== scriptName) {
+                  throw new Error(`${pattern} is already routed to a different Worker`);
+                }
+              }
+              const destination = `https://${identity.domain}`;
+              const script = `addEventListener('fetch', event => {\n` +
+                `  const url = new URL(event.request.url);\n` +
+                `  event.respondWith(Response.redirect(${JSON.stringify(destination)} + url.pathname + url.search, 301));\n` +
+                `});\n`;
+              const uploaded = await fetch(root + `/accounts/${CF_ACCOUNT_ID}/workers/scripts/${scriptName}`, {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/javascript' },
+                body: script,
+              });
+              const uploadResult = await uploaded.json();
+              if (!uploaded.ok || !uploadResult.success) {
+                const errors = (uploadResult.errors || []).map(error => `${error.code}: ${error.message}`).join('; ');
+                throw new Error(`Redirect Worker upload failed (${uploaded.status}): ${errors}`);
+              }
+              console.log(`Redirect Worker ${scriptName} uploaded`);
+              for (const pattern of patterns) {
+                if (routes.some(route => route.pattern === pattern)) continue;
+                const added = await request(`/zones/${oldZoneId}/workers/routes`, 'POST', {
+                  pattern, script: scriptName,
+                });
+                console.log(`Created route ${added.pattern} -> ${added.script}`);
               }
             }
           }
