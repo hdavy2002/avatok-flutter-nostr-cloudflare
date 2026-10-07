@@ -35,7 +35,7 @@ assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|
 assert.doesNotMatch(visibleText, /General physician|NMC|Bar Council|ICAI|RCI|Raasta nikalo|Become an expert/);
 for (const heading of ['Mann ki baat', 'Tension', 'Gap-shap', 'Taare', 'Aapka number.', 'Kaun hai', 'Baatein karo.']) assert(visibleText.includes(heading), 'Section: ' + heading);
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['main-content', 'moods', 'privacy-note', 'safety', 'people', 'earn', 'preview-dialog']) assert(ids.has(id), 'Section exists: #' + id);
+for (const id of ['main-content', 'moods', 'women-only', 'privacy-note', 'safety', 'people', 'earn', 'preview-dialog']) assert(ids.has(id), 'Section exists: #' + id);
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Missing anchor: ' + href);
@@ -68,8 +68,15 @@ assert.match(visibleText, /Illustrative preview/);
 assert.match(visibleText, /Launch target/);
 assert.match(visibleText, /Sample activity Live updates coming later/);
 assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/);
-assert.match(bodyHtml, /<template id="women-space-template">/, 'Women-only content is inert until verification');
-assert.match(bodyHtml, /id="women-space-slot"><\/div>/, 'No women-only section rendered for anonymous visitors');
+const womenSection = bodyHtml.match(/<section\b[^>]*id="women-only"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
+assert(womenSection, 'Women-only preview renders on the homepage');
+assert.match(womenSection, /<h2[^>]*id="women-title"[^>]*>Sirf ladkiyon ke liye<br\s*\/?><em>Ek jagah jahan sirf auratein baat karti hain\.<\/em><\/h2>/, 'Women-only heading has an italic second line');
+assert(bodyHtml.indexOf('id="moods"') < bodyHtml.indexOf('id="women-only"') && bodyHtml.indexOf('id="women-only"') < bodyHtml.indexOf('id="privacy-note"'), 'Women-only preview sits between moods and privacy');
+for (const copy of ['Sirf ladkiyon ke liye', 'Ek jagah jahan sirf auratein baat karti hain.', 'Preview — visible to verified women at launch', 'Talk and share — not medical advice.', 'periods & PCOS worries', 'saas-bahu, ghar ki baatein', 'pregnancy & new mom nights', 'Hosts in this space earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
+assert.match(womenSection, /<button\b[^>]*disabled[^>]*>Verify &amp; enter<\/button>/, 'Preview entry is disabled');
+assert(womenSection.includes('href="/women-only"') && womenSection.includes('href="#earn"'), 'Women-only explainer and host rates links');
+assert.equal((womenSection.match(/class="women-mood-chip"/g) || []).length, 3, 'Three women-only mood chips');
+assert.equal((womenSection.match(/href="\/\?lane=women#people"/g) || []).length, 3, 'Women-only mood links enter preview lane');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
 assert.equal((footer.match(/<li[ >]/g) || []).length, 34, 'Complete five-column content footer');

@@ -150,8 +150,11 @@ try {
       await expect(page.locator('[data-person]')).toHaveCount(8);
       await expect(page.locator('.mood-group')).toHaveCount(4);
       await expect(page.locator('.mood-chip')).toHaveCount(17);
-      await expect(page.locator('#women-space')).toHaveCount(0);
-      await expect(page.locator('[data-women-nav]:visible')).toHaveCount(0);
+      await expect(page.locator('#women-only')).toBeVisible();
+      await expect(page.locator('#women-only')).toContainText('Preview — visible to verified women at launch');
+      await expect(page.locator('#women-only .women-mood-chip')).toHaveCount(3);
+      await expect(page.locator('#women-only button')).toBeDisabled();
+      await expect(page.locator('.cv-navigation a[href="/#women-only"]')).toHaveCount(1);
       await expect(page.locator('#safety .safety-grid article')).toHaveCount(4);
       await expect(page.locator('#earn .earn-steps li')).toHaveCount(4);
       await expect(page.locator('#safety a[href="/talk-safely"]')).toBeVisible();
@@ -208,6 +211,12 @@ try {
       await expect(page.locator('#mood-filter')).toHaveValue('kundli');
       await expect(page.locator('[data-person]:visible')).toHaveCount(1);
       await reset.click();
+      await page.locator('#women-only .women-mood-chip').first().click();
+      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
+      await expect(page.locator('[data-person]:visible')).toHaveCount(0);
+      await expect(page.locator('.no-results')).toContainText('Women-only hosts are coming at launch');
+      await page.locator('.no-results [data-reset-filters]').click();
+      await expect(page.locator('[data-person]:visible')).toHaveCount(8);
       const dialog = page.locator('#preview-dialog');
       for (const selector of ['.profile-card [data-preview-action="call"]', '#earn [data-preview-action="join"]', '#privacy-note [data-preview-action="privacy"]']) {
         const trigger = page.locator(selector).first();

@@ -1,6 +1,21 @@
 {
   "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
   "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+  "HELLO-FRAANDS-WOMEN-HOME-1": {
+    "description": "Women-only homepage preview card between moods and privacy, with a women-lane preview that shows no unverified public sample hosts. Header and footer link to the card. On launch, the card and its moods and hosts require signed-in gender_verified F or T.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "homepage_section_view",
+        "property": "section",
+        "equals": "women-only",
+        "min_events": 1,
+        "note": "Fires when a visitor scrolls the homepage preview card into view. The women-only host lane remains empty until verified host data and account gating are available."
+      }
+    ]
+  },
   "REFUND-POLICY-WEB-1": {
     "description": "[REFUND-POLICY-WEB-1 2026-09-28] Owner decision: no automatic refunds; a per-event-type notice window instead of one flat 24-hour rule — havan/puja: at least 24 hours before start, satsang/sermon/meditation: at least 3 days before start (web/src/lib/eventTypes.ts refundWindowHours/refundWindowLabel/refundWindowHoursFor, preferring a listing's own refund_window_hours when the worker sends one). web/src/pages/refunds.astro rewritten with a per-type table and per-type reasons, no-automatic-refunds/no-refund-for-missed-attendance stated plainly; web/src/content/help/billing/refunds.md and web/src/pages/marketplace.astro's cancellation blurb brought in line. Event page (components/eventpage/EventPage.astro) footer line and cancellation FAQ answer are now type-aware instead of a hardcoded '24 hrs'. Saathum checkout (islands/saathum-checkout/ReviewStep.tsx) already had a second required checkbox for the refund policy alongside Terms; reworded its label to 'I have read and agree to the refund policy' and renamed the field the create-checkout call sends from accept_refund to refund_policy_accepted (api.ts/types.ts/SaathumCheckout.tsx) to match the worker's new refund_policy_required contract; the Pay button stays disabled until both checkboxes are ticked (pre-existing canPay gate, unchanged). New telemetry: saathum_checkout_refund_policy_ticked{listing_id} on first tick.",
     "shipped": "2026-09-28",

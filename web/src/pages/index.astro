@@ -68,9 +68,23 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
     <section class="mood-section" id="moods" aria-labelledby="moods-title"><p class="preview-kicker">Find your kind of conversation</p><h2 id="moods-title">Aaj kya <em>mood hai?</em></h2>
       <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['✳','✷','☼','✦'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
     </section>
-    {/* Women-only contract: render this section and its moods ONLY after an authenticated account response has gender_verified = F or T. An unverified or male-verified account must receive no section at all. The static preview keeps the card inert until that field is supplied by the account API. */}
-    <div id="women-space-slot"></div>
-    <template id="women-space-template"><section class="women-section" id="women-space" aria-labelledby="women-title"><span class="women-doodle" aria-hidden="true">✳</span><div><p class="preview-kicker">A private corner</p><h2 id="women-title">Sirf ladkiyon <em>ke liye</em></h2><p>A women-only space. Periods, PCOS worries, saas-bahu, pregnancy nerves, 3am with a newborn — talk to another woman who gets it. Both caller and host are KYC-verified as women; this space is not visible to men.</p><small>Talk and share — not medical advice.</small></div><span title="Coming at launch"><button type="button" disabled aria-describedby="women-launch-note">Verify &amp; enter</button><small id="women-launch-note">Coming at launch</small></span></section></template>
+    {/* Launch auth contract: when auth is wired, render this entire section, its moods and its hosts ONLY for signed-in accounts with gender_verified = F or T. The section, moods and hosts must be absent for all other accounts. This public card is a static preview only. */}
+    <section class="women-section" id="women-only" aria-labelledby="women-title">
+      <p class="women-preview-tag">Preview — visible to verified women at launch</p>
+      <div class="women-heading"><ModernIcon name="lock" /><h2 id="women-title">Sirf ladkiyon ke liye<br/><em>Ek jagah jahan sirf auratein baat karti hain.</em></h2></div>
+      <p class="women-description">A women-only space. Periods, PCOS worries, saas-bahu, pregnancy nerves, 3am with a newborn — talk to another woman who gets it. Both the caller and the host are KYC-verified as women. This space is not visible to men.</p>
+      <small class="women-disclaimer">Talk and share — not medical advice.</small>
+      <div class="women-moods" aria-label="Women-only conversation topics">
+        <a class="women-mood-chip" href="/?lane=women#people">periods &amp; PCOS worries</a>
+        <a class="women-mood-chip" href="/?lane=women#people">saas-bahu, ghar ki baatein</a>
+        <a class="women-mood-chip" href="/?lane=women#people">pregnancy &amp; new mom nights</a>
+      </div>
+      <div class="women-actions">
+        <span class="women-entry-preview" title="Coming at launch" tabindex="0" aria-label="Verify &amp; enter — Coming at launch"><button type="button" disabled aria-describedby="women-launch-note">Verify &amp; enter</button><span class="women-launch-tooltip" id="women-launch-note" role="tooltip">Coming at launch</span></span>
+        <a class="women-explainer" href="/women-only">How the women-only space works →</a>
+      </div>
+      <p class="women-host-note">Hosts in this space earn the same rates. <a href="#earn">Earn with us →</a></p>
+    </section>
     <section class="privacy-section" id="privacy-note" aria-labelledby="privacy-title">
       <h2 id="privacy-title">Aapka number. <em>Sirf aapka.</em></h2><p class="privacy-intro">Neither person sees the other’s personal phone number.</p>
       <ol class="privacy-diagram">

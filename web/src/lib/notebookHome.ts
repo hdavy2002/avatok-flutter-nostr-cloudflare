@@ -1,6 +1,5 @@
 import { capture, initAnalytics } from './analytics';
 import { initImageTelemetry } from './imageTelemetry';
-import { meApi } from '../islands/dashboard2/accountApi';
 initAnalytics();
 initImageTelemetry();
 const surface = 'scrapbook-home';
@@ -12,40 +11,39 @@ const cards = [...document.querySelectorAll<HTMLElement>('[data-person]')];
 const label = document.querySelector<HTMLElement>('[data-selected-mood-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
+const noResultsText = noResults?.querySelector<HTMLElement>('p');
+let womenLane = new URLSearchParams(location.search).get('lane') === 'women';
 function filterPeople() {
   let count = 0;
   for (const card of cards) {
-    const match = (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
+    const match = !womenLane && (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
       && (!language?.value || card.dataset.languages?.split(', ').includes(language.value))
       && (!price?.value || Number(card.dataset.price) <= Number(price.value))
       && (!online?.checked || card.dataset.online === 'true');
     card.hidden = !match;
     if (match) count++;
   }
-  if (label) { label.hidden = !mood?.value; label.textContent = mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
+  if (label) { label.hidden = !womenLane && !mood?.value; label.textContent = womenLane ? 'Women-only space preview' : mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
   if (noResults) noResults.hidden = count > 0;
-  if (status) status.textContent = `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
+  if (noResultsText) noResultsText.textContent = womenLane ? 'Women-only hosts are coming at launch. No verified women-only hosts are shown in this preview.' : 'No sample profiles match those filters.';
+  if (status) status.textContent = womenLane ? 'Women-only hosts are coming at launch.' : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
 }
 for (const select of [mood, language, price]) select?.addEventListener('change', filterPeople);
 online?.addEventListener('change', filterPeople);
 document.querySelectorAll<HTMLButtonElement>('[data-reset-filters]').forEach(button => button.addEventListener('click', () => {
   for (const select of [mood, language, price]) if (select) select.value = '';
   if (online) online.checked = false;
+  if (womenLane) {
+    womenLane = false;
+    const url = new URL(location.href);
+    url.searchParams.delete('lane');
+    history.replaceState(null, '', url);
+  }
   filterPeople();
 }));
 const requestedMood = new URLSearchParams(location.search).get('mood');
 if (mood && requestedMood && [...mood.options].some(option => option.value === requestedMood)) mood.value = requestedMood;
 filterPeople();
-// The static home page has no trusted gender state. Materialize the women-only
-// section only after the authenticated account API explicitly returns F or T.
-meApi<{ gender_verified?: string }>('/api/me/profile').then(profile => {
-  if (profile.gender_verified !== 'F' && profile.gender_verified !== 'T') return;
-  const template = document.querySelector<HTMLTemplateElement>('#women-space-template');
-  const slot = document.querySelector('#women-space-slot');
-  if (!template || !slot) return;
-  slot.append(template.content.cloneNode(true));
-  document.querySelectorAll<HTMLElement>('[data-women-nav]').forEach(link => { link.hidden = false; });
-}).catch(() => { /* Signed out or unverified: section stays absent. */ });
 const dialog = document.querySelector<HTMLDialogElement>('#preview-dialog');
 let dialogTrigger: HTMLButtonElement | null = null;
 document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(button => button.addEventListener('click', () => {
