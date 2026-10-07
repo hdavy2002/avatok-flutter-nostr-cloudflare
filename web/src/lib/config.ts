@@ -49,11 +49,10 @@ export const ARTWORK_QUALITY = 45;
 export const IMAGE_WIDTHS = [48, 96, 160, 256, 420, 640, 900, 1280, 1600, 2048] as const;
 export interface ImageOptions { width?: number; quality?: number; fit?: string; format?: string }
 const imageHost = (host: string) =>
-  // [SAATHUM-DEBRAND-1 2026-09-27] media.saathum.com replaced blossom.avatok.ai
-  // (stored URLs migrated). A leftover old-host URL is simply served untransformed.
-  // Former-domain hosts are deliberately NOT listed here: this file ships to browsers and the
-  // old domain must not appear in client code. Such stored URLs are served untransformed.
-  host === BRAND.domain || host.endsWith(`.${BRAND.domain}`);
+  // The site and its API/media origins can live on different zones during a
+  // domain migration. Keep transforms on the actual configured origins only.
+  host === BRAND.domain || host.endsWith(`.${BRAND.domain}`) ||
+  host === BRAND.apiHost || host === BRAND.mediaHost;
 const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
 const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
 function imageParams(opts: ImageOptions): string {
