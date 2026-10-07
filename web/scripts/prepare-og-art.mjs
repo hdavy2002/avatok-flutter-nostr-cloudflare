@@ -21,8 +21,8 @@ const web = fileURLToPath(new URL('../', import.meta.url));
 const publicDir = join(web, 'public');
 const outDir = join(publicDir, '_og-art');
 const manifest = JSON.parse(await readFile(join(web, 'src/lib/publicImageManifest.json'), 'utf8'));
-// Only artwork the OG resolver can actually point at (ritual guides + Saathum listing art).
-const eligible = Object.entries(manifest).filter(([original]) => /^\/assets\/saathum[^/]*\//.test(original));
+// Only committed artwork the OG resolver can actually point at (ritual guides and listing art).
+const eligible = Object.entries(manifest).filter(([original]) => /^\/assets\/(?:rituals|saathum[^/]*)\//.test(original));
 
 await mkdir(outDir, { recursive: true });
 let made = 0;
