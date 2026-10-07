@@ -4,8 +4,9 @@
 .notebook-site>.cv-header,.notebook-site>.cv-footer{width:100%}
 .cv-header *,.cv-footer *{box-sizing:border-box;min-width:0}
 .cv-header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:28px 0;z-index:30}
-.cv-wordmark{position:relative;display:inline-flex;align-items:center;min-height:44px;color:#46113e;font-family:Nunito,sans-serif;font-size:2.25rem;font-weight:900;letter-spacing:-1.5px;line-height:1;text-decoration:none}
-.cv-wordmark>span{align-self:flex-start;display:inline-block;color:#ff585c;font-size:3rem;transform:rotate(30deg);line-height:.5}
+.cv-wordmark{position:relative;display:inline-flex;align-items:center;width:280px;max-width:100%;flex-shrink:0;min-height:44px;line-height:1;text-decoration:none}
+.cv-brand-logo{display:block;width:100%;height:auto;aspect-ratio:1872/390;overflow:hidden}
+.cv-footer-brand .cv-wordmark{width:340px}
 .cv-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:clamp(1rem,2vw,3rem)}
 .cv-navigation a{display:flex;align-items:center;gap:8px;min-height:44px;color:inherit;text-decoration:none;font-weight:700}
 .cv-sign-in svg{width:20px;height:20px}.cv-mobile-actions{display:none}
@@ -32,8 +33,8 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 @media(min-width:1400px){.cv-footer-columns{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(max-width:899px){.cv-header,.cv-footer{width:calc(100% - 40px)}.cv-footer-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:699px){
- .cv-header,.cv-footer{width:calc(100% - 32px)}.cv-header{gap:12px;padding:18px 0}.cv-wordmark{font-size:1.9rem}.cv-wordmark>span{font-size:2.6rem}
- .cv-mobile-actions{display:flex;align-items:center;gap:6px}.cv-mobile-actions a,.cv-menu-toggle{display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:8px;color:#46113e;background:none;border:0;cursor:pointer}.cv-mobile-actions svg{width:25px;height:25px}
+ .cv-header,.cv-footer{width:calc(100% - 32px)}.cv-header{gap:12px;padding:18px 0}.cv-header .cv-wordmark{width:280px;max-width:calc(100% - 106px)}
+ .cv-mobile-actions{display:flex;align-items:center;gap:6px;flex:0 0 94px}.cv-mobile-actions a,.cv-menu-toggle{display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:8px;color:#46113e;background:none;border:0;cursor:pointer}.cv-mobile-actions svg{width:25px;height:25px}
  .cv-navigation{display:none;position:absolute;left:0;right:0;top:100%;padding:16px;background:#fffdf7;border:1px solid #e8dce7;border-radius:14px;box-shadow:0 10px 24px #46113e18;gap:8px}.cv-navigation[data-open=true]{display:flex;flex-direction:column;align-items:stretch}.cv-navigation a{padding:8px}
  .cv-footer{margin-top:44px;padding-top:28px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}.notebook-site>.cv-footer{padding-bottom:calc(7rem + env(safe-area-inset-bottom))}
  .cv-footer-columns{grid-template-columns:1fr;gap:0}.cv-footer-group{border-top:1px solid #e8dce7}.cv-footer-group:last-child{border-bottom:1px solid #e8dce7}.cv-footer-group summary{display:flex;justify-content:space-between;gap:16px;padding:16px 0;cursor:pointer}.cv-footer-group summary:after{content:'+'}.cv-footer-group[open] summary:after{content:'−'}.cv-footer-group ul{margin:0 0 16px}
@@ -43,10 +44,7 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 .cv-footer-disclaimer{max-width:1150px;margin:32px auto 0;padding:22px;border-radius:14px;background:#fff1cf;color:#46113e;font-size:.875rem;line-height:1.65;text-align:center}
 @media(max-width:699px){.cv-footer-disclaimer{margin:25px 16px 0;padding:18px;text-align:left}}
 
-/* Hello Fraands keeps the existing scale and plum colour with the requested Comfortaa wordmark. */
-.cv-wordmark{font-family:Comfortaa,sans-serif;letter-spacing:-.065em}
 .cv-footer-bottom{border-top:1px solid #e8dce7;margin-top:2rem;padding-top:1rem}
 .cv-footer-bottom .cv-footer-disclaimer{margin-top:0}
 .cv-footer-disclaimer a,.cv-footer-copyright a{color:inherit;text-decoration:underline;text-underline-offset:.2em}
 .cv-age-badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.4rem;min-height:2rem;margin-right:.6rem;padding:.1rem .4rem;border:1px solid currentColor;border-radius:.4rem;font-weight:900}
-@media(max-width:699px){.cv-wordmark{font-size:clamp(1.25rem,5.4vw,1.9rem)}}

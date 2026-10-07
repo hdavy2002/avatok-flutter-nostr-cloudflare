@@ -1,5 +1,6 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
+import BrandLogo from './BrandLogo.astro';
 import '../../styles/callvaal-chrome.css';
 const identity = brandConfig.homepageIdentity;
 const groups = [
@@ -21,7 +22,7 @@ const groups = [
 ] as const;
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
-  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}</a><p>Real people.<br/>Baat se baat banti hai.</p></div>
+  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a><p>Real people.<br/>Baat se baat banti hai.</p></div>
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
     {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
   </nav>

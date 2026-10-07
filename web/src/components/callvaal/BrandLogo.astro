@@ -1,0 +1,11 @@
+---
+import { ARTWORK_QUALITY, publicImage } from '../../lib/config';
+const artwork = publicImage('/assets/branding/friendship-wordmark.png', {
+  width: 900, fit: 'scale-down', quality: ARTWORK_QUALITY, format: 'auto',
+});
+---
+{/* The approved raster is unchanged. Its alpha bounds remove only transparent
+    margins at display time; the home link supplies the accessible brand name. */}
+<svg class="cv-brand-logo" viewBox="110 189 1872 390" width="1872" height="390" aria-hidden="true" focusable="false">
+  <image href={artwork} x="0" y="0" width="2036" height="772" preserveAspectRatio="xMidYMid meet" />
+</svg>
