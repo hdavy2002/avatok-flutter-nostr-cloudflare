@@ -1,0 +1,59 @@
+---
+import brandConfig from '../../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+---
+<ol class="home-privacy-steps">
+  <li class="home-privacy-step home-privacy-step--choose">
+    <span class="home-step-number" aria-hidden="true">1</span>
+    <svg class="home-step-art" viewBox="0 0 320 220" role="img" aria-labelledby="privacy-choose-title" stroke="#5B1D4B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <title id="privacy-choose-title">Choose a person: a profile with a favourite heart and a finger tapping the Call button.</title>
+      <rect x="88" y="12" width="136" height="190" rx="18" fill="#fffdf7"/>
+      <path d="M135 22h42M144 192h24" fill="none"/>
+      <rect x="101" y="38" width="110" height="100" rx="10" fill="#DDF1EE"/>
+      <circle cx="154" cy="70" r="17" fill="#F7C9DF"/>
+      <path d="M131 112v-7c0-24 46-24 46 0v7Z" fill="#D9CCF2"/>
+      <text x="190" y="58" fill="#A52E67" stroke="none" font-size="23">♥</text>
+      <text x="154" y="130" text-anchor="middle" fill="#5B1D4B" stroke="none" font-size="12">Your dost</text>
+      <circle cx="156" cy="163" r="22" fill="#A52E67"/>
+      <text x="156" y="168" text-anchor="middle" fill="#fff" stroke="none" font-size="16" font-weight="800">Call</text>
+      <path d="m203 210-29-25c-7-6 0-15 6-11l9 6-18-35c-4-9 7-14 11-6l14 26c2-9 12-8 14-1 7-5 14-1 14 5 10-2 16 5 13 14l-8 27" fill="#E9AF78"/>
+      <path d="m73 143-11 4m11-20-10-5m154-21 15-2" fill="none"/>
+    </svg>
+    <p>Choose a person and tap Call.</p>
+  </li>
+  <li class="home-privacy-step home-privacy-step--connect">
+    <span class="home-step-number" aria-hidden="true">2</span>
+    <svg class="home-step-art" viewBox="0 0 320 220" role="img" aria-labelledby="privacy-connect-title" stroke="#5B1D4B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <title id="privacy-connect-title">{identity.name} calls the woman's phone first, then the man's phone after acceptance, through a locked exchange.</title>
+      <rect x="10" y="86" width="64" height="112" rx="10" fill="#fffdf7"/><path d="M31 95h22M35 188h14" fill="none"/>
+      <path d="M26 146v-24c0-22 33-22 33 0v24" fill="#5B1D4B"/><circle cx="42" cy="127" r="12" fill="#E9AF78"/><path d="M22 167v-9c0-23 40-23 40 0v9Z" fill="#A52E67"/>
+      <rect x="246" y="86" width="64" height="112" rx="10" fill="#fffdf7"/><path d="M267 95h22M271 188h14" fill="none"/>
+      <circle cx="278" cy="127" r="12" fill="#E9AF78"/><path d="M266 122c-2-19 27-19 25 0" fill="#5B1D4B"/><path d="M258 167v-9c0-23 40-23 40 0v9Z" fill="#55958A"/>
+      <rect x="91" y="100" width="138" height="72" rx="12" fill="#5B1D4B"/>
+      <text x="160" y="124" text-anchor="middle" fill="#fff" stroke="none" font-size="13" font-weight="800">{identity.name}</text>
+      <rect x="151" y="144" width="18" height="15" rx="3" fill="#FFE58A"/><path d="M155 144v-5a5 5 0 0 1 10 0v5" stroke="#FFE58A" fill="none"/>
+      <path d="M126 98V53H42v25M194 98V53h84v25" stroke-dasharray="5 5" fill="none"/><path d="m36 70 6 8 6-8m224 0 6 8 6-8" fill="none"/>
+      <circle cx="91" cy="53" r="15" fill="#FFE58A"/><circle cx="229" cy="53" r="15" fill="#D9CCF2"/>
+      <g stroke="none" fill="#5B1D4B" font-size="16" font-weight="800" text-anchor="middle"><text x="91" y="59">1</text><text x="229" y="59">2</text></g>
+    </svg>
+    <p>{identity.name} calls the host first; then the caller after acceptance.</p>
+  </li>
+  <li class="home-privacy-step home-privacy-step--private">
+    <span class="home-step-number" aria-hidden="true">3</span>
+    <svg class="home-step-art" viewBox="0 0 320 220" role="img" aria-labelledby="privacy-private-title" stroke="#5B1D4B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <title id="privacy-private-title">Two phones connected through a locked exchange: AI monitored and number private.</title>
+      <rect x="8" y="85" width="58" height="105" rx="10" fill="#fffdf7"/><rect x="254" y="85" width="58" height="105" rx="10" fill="#fffdf7"/>
+      <path d="M28 95h18m230 0h18M29 179h16m232 0h16" fill="none"/>
+      <circle cx="37" cy="123" r="12" fill="#F7C9DF"/><path d="M19 158c0-25 36-25 36 0Z" fill="#FFE58A"/>
+      <circle cx="283" cy="123" r="12" fill="#E9AF78"/><path d="M265 158c0-25 36-25 36 0Z" fill="#DDF1EE"/>
+      <rect x="90" y="101" width="140" height="71" rx="12" fill="#fffdf7"/>
+      <text x="160" y="120" text-anchor="middle" fill="#5B1D4B" stroke="none" font-size="13" font-weight="800">{identity.name}</text>
+      <path d="M66 145h188" stroke="#19734D" fill="none"/>
+      <rect x="149" y="136" width="22" height="20" rx="3" fill="#DDF1EE"/><path d="M153 136v-5a7 7 0 0 1 14 0v5m-7 8v4" fill="none"/>
+      <rect x="48" y="18" width="150" height="32" rx="16" fill="#FFE58A"/><path d="m91 50-7 10 22-10" fill="#FFE58A"/>
+      <rect x="128" y="58" width="180" height="32" rx="16" fill="#DDF1EE"/><path d="m247 90 7 10-22-10" fill="#DDF1EE"/>
+      <g fill="#5B1D4B" stroke="none" font-size="14" font-weight="800"><text x="61" y="39">AI monitored ✓</text><text x="141" y="79">number private ✓</text></g>
+    </svg>
+    <p>Both hear a recording notice. The calls connect privately.</p>
+  </li>
+</ol>

@@ -8,6 +8,21 @@ const language = document.querySelector<HTMLSelectElement>('#language-filter');
 const price = document.querySelector<HTMLSelectElement>('#price-filter');
 const online = document.querySelector<HTMLInputElement>('#online-filter');
 const cards = [...document.querySelectorAll<HTMLElement>('[data-person]')];
+// Preview samples are intentionally memory-only, reset on navigation/reload.
+const favourites = new Set(cards.filter(card => card.dataset.previewFavourite === 'true').map(card => card.dataset.profileId!));
+const savedPeople = [...document.querySelectorAll<HTMLElement>('[data-saved-person]')];
+const favouriteButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-favourite]')];
+function renderFavourites() {
+  for (const person of savedPeople) person.hidden = !favourites.has(person.dataset.savedPerson!);
+  for (const button of favouriteButtons) {
+    const saved = favourites.has(button.dataset.favourite!);
+    button.setAttribute('aria-pressed', String(saved));
+    button.setAttribute('aria-label', `${saved ? 'Unfavourite' : 'Favourite'} ${button.dataset.profileName} for this visit`);
+  }
+  const empty = document.querySelector<HTMLElement>('[data-favourites-empty]');
+  if (empty) empty.hidden = favourites.size > 0;
+}
+renderFavourites();
 const label = document.querySelector<HTMLElement>('[data-selected-mood-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
@@ -52,9 +67,13 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
   const label = button.dataset.previewLabel || button.textContent?.trim() || 'This feature';
   const title = dialog.querySelector('#preview-title');
   const description = dialog.querySelector('#preview-description');
-  if (title) title.textContent = button.dataset.previewAction === 'call' ? `Talk to ${label}` : label;
+  if (title) {
+    const action = button.dataset.previewAction;
+    title.textContent = action === 'call' ? `Talk to ${label}` : action === 'notify' ? `Notify me about ${label}` : label;
+  }
   const descriptions: Record<string, string> = {
     call: 'Yahan sirf baat hoti hai. No medical, legal or money advice. 18+ only. Calls and payments are unavailable in this illustrative preview.',
+    notify: 'This is an illustrative preview. No notification has been set. Availability alerts are not available yet.',
     join: 'Host registration is coming at launch. Your number stays private.',
     privacy: 'Calls are bridged so neither person sees the other’s number. Calling is unavailable in this preview.',
     page: `${label} is not published for this service yet.`,
@@ -65,9 +84,13 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
 }));
 dialog?.querySelector('[data-close-preview]')?.addEventListener('click', () => dialog.close());
 dialog?.addEventListener('close', () => { dialogTrigger?.focus(); dialogTrigger = null; });
-document.querySelectorAll<HTMLButtonElement>('[data-favourite]').forEach(button => button.addEventListener('click', () => {
-  const saved = button.getAttribute('aria-pressed') !== 'true';
-  button.setAttribute('aria-pressed', String(saved));
+favouriteButtons.forEach(button => button.addEventListener('click', () => {
+  const id = button.dataset.favourite!;
+  const saved = !favourites.has(id);
+  if (saved) favourites.add(id); else favourites.delete(id);
+  renderFavourites();
+  const announcement = document.querySelector<HTMLElement>('[data-favourites-status]');
+  if (announcement) announcement.textContent = `${button.dataset.profileName} ${saved ? 'added to' : 'removed from'} Your people for this visit.`;
   capture('cta_click', { surface, section: 'people', label: 'save_profile', saved, sample_profiles: true });
 }));
 document.querySelectorAll<HTMLAnchorElement>('.notebook-site main a, .mobile-bottom-nav a').forEach(link => link.addEventListener('click', () => {

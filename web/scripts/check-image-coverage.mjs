@@ -36,6 +36,12 @@ function check(url, file) {
     assert.ok(bytes.length <= 160000, `${relative(web, file)}: safety photo exceeds 160 KB: ${url}`);
     return;
   }
+  // Exact authored friendship collage only: real format fallbacks, each <=250 KB.
+  if (/^\/assets\/callvaal\/scrapbook\/hero-collage-friendship\.(?:avif|webp|jpg)$/.test(url)) {
+    const bytes = readFileSync(join(web, 'dist', url.slice(1)));
+    assert.ok(bytes.length <= 250000, `${relative(web, file)}: friendship hero exceeds 250 KB: ${url}`);
+    return;
+  }
   // Font files are browser resources, not raster images, and are intentionally
   // served as immutable static assets rather than through image transforms.
   if (/\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i.test(url)) return;

@@ -25,7 +25,7 @@ assert(identity?.name && identity?.domain, 'Homepage identity is centrally confi
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading');
 assert(visibleText.includes(identity.name), 'Planned public brand is visible');
 assert.match(visibleText, /Baat karo\. Dil halka karo\./);
-assert.match(visibleText, /Real people\. Your number stays private\./);
+assert.match(visibleText, /Real people\. Make a friend\. Your number stays private\./);
 assert.match(visibleText, /Pay per minute/);
 assert.match(visibleText, /18\+ only/);
 for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', '₹10.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
@@ -33,7 +33,7 @@ for (const copy of ['No medical, legal or money advice.', 'No miracles, no guara
 }
 assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|data-category-select/, 'Discovery uses moods, not professional categories');
 assert.doesNotMatch(visibleText, /General physician|NMC|Bar Council|ICAI|RCI|Raasta nikalo|Become an expert/);
-for (const heading of ['Mann ki baat', 'Tension', 'Gap-shap', 'Taare', 'Aapka number.', 'Kaun hai', 'Baatein karo.']) assert(visibleText.includes(heading), 'Section: ' + heading);
+for (const heading of ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein', 'Aapka number.', 'Apna dost dhundo.', 'Aur kal phir call karo.', 'Baatein karo.']) assert(visibleText.includes(heading), 'Section: ' + heading);
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const id of ['main-content', 'moods', 'women-only', 'privacy-note', 'safety', 'people', 'earn', 'preview-dialog']) assert(ids.has(id), 'Section exists: #' + id);
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
@@ -48,9 +48,9 @@ assert(meta(html, 'og:description'), 'Share description exists');
 assert(html.includes('href="/sign-in'), 'Sign-in remains reachable');
 assert.match(html, /<dialog\b/, 'Preview actions have an accessible notice');
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
-const moodSlugs = ['bas-baat-karni-hai', 'aaj-akela-lag-raha-hai', 'din-kharab-tha', 'raat-ko-neend-nahi-aati', 'shaam-ki-company', 'exam-ki-tension', 'interview-se-darr', 'shaadi-ka-pressure', 'ghar-waalon-se-jhagda', 'naukri-ki-chinta', 'breakup', 'kisi-topic-pe-baat', 'apni-bhasha-mein-baat', 'english-mein-casual-chat', 'kundli', 'horoscope', 'tarot'];
+const moodSlugs = ['roz-thodi-baat', 'koi-jo-mujhe-jaane', 'shaam-ka-saathi', 'ek-dost-jo-sune', 'apni-bhasha-mein-dost', 'kisi-topic-pe-baat', 'apni-bhasha-mein-baat', 'english-mein-casual-chat', 'bas-baat-karni-hai', 'aaj-akela-lag-raha-hai', 'din-kharab-tha', 'raat-ko-neend-nahi-aati', 'shaam-ki-company', 'exam-ki-tension', 'interview-se-darr', 'shaadi-ka-pressure', 'ghar-waalon-se-jhagda', 'naukri-ki-chinta', 'breakup', 'shaadi-ki-baatein', 'naya-sheher-nayi-job', 'paise-ki-tension', 'bachchon-ki-padhai', 'maa-baap-ki-sehat', 'sehat-ki-chinta'];
 const moodSelect = bodyHtml.match(/<select\b[^>]*id="mood-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
-assert.deepEqual([...moodSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), moodSlugs, 'All 17 moods in discovery order');
+assert.deepEqual([...moodSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), moodSlugs, 'All 25 moods in discovery order');
 for (const slug of moodSlugs) assert(bodyHtml.includes(`href="/?mood=${slug}#people"`), 'Mood link: ' + slug);
 assert.match(bodyHtml, /id="online-filter"/, 'Online filter available');
 const cards = [...bodyHtml.matchAll(/<article\b[^>]*data-person(?:="")?[^>]*>[\s\S]*?<\/article>/g)].map(m => m[0]);
@@ -65,12 +65,12 @@ for (const card of cards) {
 assert.match(visibleText, /All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative/);
 assert.match(visibleText, /Calls and payments are unavailable in this preview/);
 assert.match(visibleText, /Illustrative preview/);
-assert.match(visibleText, /Launch target/);
+assert.doesNotMatch(bodyHtml, /proof-card|What we are building towards at launch\.|Launch target/);
 assert.match(visibleText, /Sample activity Live updates coming later/);
 assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/);
 const womenSection = bodyHtml.match(/<section\b[^>]*id="women-only"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
 assert(womenSection, 'Women-only preview renders on the homepage');
-assert.match(womenSection, /<h2[^>]*id="hf-women-title"[^>]*>Only for women\.<br\s*\/?><em>A place to talk freely\.<\/em><\/h2>/, 'Women-only heading has an italic English second line');
+assert.match(womenSection, /<h2[^>]*id="hf-women-title"[^>]*><span>Only for women\.<\/span><em>A place to talk freely\.<\/em><\/h2>/, 'Women-only heading has an italic English second line');
 assert(bodyHtml.indexOf('id="moods"') < bodyHtml.indexOf('id="women-only"') && bodyHtml.indexOf('id="women-only"') < bodyHtml.indexOf('id="privacy-note"'), 'Women-only preview sits between moods and privacy');
 for (const copy of ['WOMEN-ONLY SPACE', 'Only for women.', 'A place to talk freely.', 'A public preview of a private lane.', 'Talk and share — not medical advice.', 'Video KYC + Aadhaar, both sides', 'Number never shared', 'Hosts here earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
 assert.doesNotMatch(plainText(womenSection), /Invisible to men|Yahan sirf auratein/, 'Retired women-only copy is absent');
@@ -92,8 +92,65 @@ assert.equal((footer.match(/<li[ >]/g) || []).length, 34, 'Complete five-column 
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Footer groups keep the requested order');
 assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
 checkHelloFraandsPages(root, identity);
+// Friendship-loop acceptance: exact copy, ordering, truthful preview and graphic contract.
+for (const copy of [
+  'Someone to talk to in your language, right now — and someone to call again tomorrow. Pay per minute. Nobody sees your phone number.',
+  'Rohit from Pune called Neha again · 4th call this week', 'Ananya from Guwahati just talked to Priya · 32 min',
+  'Arjun from Kochi called Sana again · 12 min', 'Meera from Jaipur found a new dost · Kavya',
+  'Make a friend. Rules are the same for everyone — see Kaise safe hai',
+  'Talk and share — not medical, legal or money advice.',
+  'Good hosts build regulars — people who call them every week. Regulars are where the steady earnings are.',
+  'Keep your regulars coming back',
+  'Friendship here means respect — the same rules apply on the first call and the fiftieth.',
+  'Real people. Naye dost. Baat se baat banti hai.',
+]) assert(plainText(bodyHtml).includes(copy), 'Friendship copy: ' + copy);
+assert.doesNotMatch(plainText(bodyHtml), /kundli|horoscope|tarot|Taare|Gap-shap|\bgirlfriend\b|ladki se baat|\bdate\b/i);
+assert.deepEqual([...bodyHtml.matchAll(/class="mood-group-head"[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>/g)].map(m => m[1]), ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein']);
+const profileIds = cards.map(card => card.match(/data-profile-id="([^"]+)"/)?.[1]);
+assert.equal(new Set(profileIds).size, 8, 'Eight stable sample IDs');
+assert(profileIds.every(Boolean), 'Every sample has an ID');
+for (const card of cards) {
+  const availability = card.match(/data-availability="([^"]+)"/)?.[1];
+  const action = { online: 'Call', busy: 'Notify me when free', offline: 'Notify me when online' }[availability];
+  assert(action, 'Known availability');
+  assert(plainText(card).includes(action), 'Availability-aware action');
+  assert.match(card, /data-favourite="[^"]+"/, 'Accessible heart toggle identity');
+  assert.match(card, /aria-pressed="(?:true|false)"/, 'Favourite state');
+  assert.match(plainText(card), /Regulars: \d+|Usually online 8–11pm/, 'Illustrative relationship cue');
+}
+for (const slug of moodSlugs.slice(0, 8)) {
+  const matching = cards.filter(card => card.match(/data-moods="([^"]+)"/)?.[1].split(' ').includes(slug));
+  assert(matching.some(card => card.includes('data-gender="woman"')) && matching.some(card => card.includes('data-gender="man"')), 'Mixed-gender Naye dost samples: ' + slug);
+}
+const yourPeople = bodyHtml.slice(bodyHtml.indexOf('class="your-people"'), bodyHtml.indexOf('class="people-toolbar"'));
+assert(yourPeople.includes('Your people') && yourPeople.includes('Preview'), 'Explicit preview favourites above filters');
+assert.match(yourPeople, /Favourite someone after a call and (?:they&#39;ll|they'll) show up here\./, 'Favourite empty state');
+assert.match(yourPeople, /data-saved-person="neha"/);
+assert.match(yourPeople, /data-saved-person="arjun"/);
+const privacySection = bodyHtml.match(/<section\b[^>]*id="privacy-note"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
+assert.match(privacySection, /class="home-privacy-band"/, 'Homepage-only privacy band');
+assert.equal((privacySection.match(/class="home-step-art"/g) || []).length, 3, 'Three inline explanatory scenes');
+assert.equal((privacySection.match(/role="img" aria-labelledby="privacy-/g) || []).length, 3, 'Every scene has an accessible title');
+assert.equal((privacySection.match(/<title id="privacy-/g) || []).length, 3);
+assert.doesNotMatch(privacySection, /linearGradient|radialGradient|class="phone-frame"/, 'Flat SVGs and independent homepage styles');
+for (const label of ['AI monitored ✓', 'number private ✓', identity.name]) assert(privacySection.includes(label), 'Privacy illustration label: ' + label);
+const earnSection = bodyHtml.match(/<ol class="earn-steps">([\s\S]*?)<\/ol>/)?.[1] || '';
+assert.equal((earnSection.match(/<li>/g) || []).length, 5, 'Five earning steps');
+for (const [extension, format] of [['avif', 'heif'], ['webp', 'webp'], ['jpg', 'jpeg']]) {
+  const file = resolve(root, 'assets/callvaal/scrapbook', 'hero-collage-friendship.' + extension);
+  const bytes = readFileSync(file);
+  assert(bytes.length <= 250000, 'Hero <=250 KB: ' + extension);
+  const art = await sharp(bytes).metadata();
+  assert.equal(art.format, format, 'Genuine hero encoding: ' + extension);
+  if (extension === 'avif') assert.equal(art.compression, 'av1', 'AVIF uses AV1 compression');
+  assert(art.width >= 1024 && art.height >= 1024, 'Readable collage resolution');
+}
+assert.match(bodyHtml, /<picture><source[^>]+hero-collage-friendship\.avif[^>]+type="image\/avif"/);
+assert.match(bodyHtml, /<source[^>]+hero-collage-friendship\.webp[^>]+type="image\/webp"/);
+assert(meta(html, 'og:image').endsWith('/hero-collage-friendship.jpg'), 'JPEG share fallback');
+
 const portraitHashes = new Set();
-for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'women-photo-young.png', 'women-photo-midage.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
+for (const asset of ['earn-art-moods.png', 'women-photo-young.png', 'women-photo-midage.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
   const file = resolve(root, 'assets/callvaal/scrapbook', asset);
   assert(existsSync(file), 'Approved artwork ships: ' + asset);
   const art = await sharp(file).metadata();

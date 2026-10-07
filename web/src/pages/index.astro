@@ -1,14 +1,15 @@
 ---
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
-import { publicImage, publicImageSrcSet } from '../lib/config';
-import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
+import { publicImage } from '../lib/config';
+import { moodGroups, moods, profiles, availabilityLabel, callActionLabel } from '../lib/callvaalHomeReference';
 import ModernIcon from '../components/home/ModernIcon.astro';
 import '../styles/callvaal-notebook.css';
 import HelloFraandsHeader from '../components/callvaal/Header.astro';
 import HelloFraandsFooter from '../components/callvaal/Footer.astro';
 import WomenOnlySection from '../components/callvaal/WomenOnlySection.astro';
 import SafetySection from '../components/callvaal/SafetySection.astro';
+import HomePrivacySteps from '../components/callvaal/HomePrivacySteps.astro';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Dil halka karo. | ${identity.name}`;
 const description = 'Talk to a real person in your language, right now. Your number stays private. Pay per minute. 18+.';
@@ -22,8 +23,8 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
   <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-moods.png`} /><meta property="og:image:alt" content={`${identity.name}: everyday people talking privately.`} />
-  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-moods.png`} />
+  <meta property="og:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-friendship.jpg`} /><meta property="og:image:alt" content={`${identity.name}: a man and woman on calls, a friendship checklist and everyday Indian keepsakes on colourful paper.`} />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-friendship.jpg`} />
   <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
@@ -33,64 +34,64 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
   <HelloFraandsHeader />
   <main id="main-content">
     <section class="notebook-hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark><em>Dil halka karo.</em></mark></h1><p class="hero-promise">Real people. Your number stays private.</p><p class="hero-subtitle">Someone to talk to, in your language, right now. Pay per minute. Nobody sees your phone number.</p>
+      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark><em>Dil halka karo.</em></mark></h1><p class="hero-promise">Real people. Make a friend. Your number stays private.</p><p class="hero-subtitle">Someone to talk to in your language, right now — and someone to call again tomorrow. Pay per minute. Nobody sees your phone number.</p>
         <div class="hero-actions"><a class="hero-primary" href="#people">Kisi se baat karo</a><a class="hero-secondary" href="#earn">Earn by talking</a></div>
         <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har host video-KYC verified</span><span><ModernIcon name="clock" />From ₹20/min</span></div>
       </div>
-      <div class="hero-art"><img src={publicImage('/assets/callvaal/scrapbook/hero-collage-moods.png', { width: 1280 })} srcset={publicImageSrcSet('/assets/callvaal/scrapbook/hero-collage-moods.png', [420, 640, 900, 1280])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 40px) / 2), (max-width: 1824px) calc((100vw - 64px) / 2), 880px" alt="Torn-paper collage of two everyday people talking on private phone calls" fetchpriority="high" width="1254" height="1254" /></div>
+      <div class="hero-art"><picture><source srcset="/assets/callvaal/scrapbook/hero-collage-friendship.avif" type="image/avif" /><source srcset="/assets/callvaal/scrapbook/hero-collage-friendship.webp" type="image/webp" /><img src="/assets/callvaal/scrapbook/hero-collage-friendship.jpg" alt="Terracotta, mustard and teal paper collage: a man and woman on calls, a handwritten Aaj kis se baat karein checklist with Neha, exam ki tension and bas baat, chai and everyday Indian keepsakes." fetchpriority="high" width="1254" height="1254" /></picture></div>
     </section>
     <aside class="service-disclaimer" aria-label="Service disclaimer">Yahan sirf baat hoti hai. No medical, legal or money advice. No miracles, no guaranteed results. Not a replacement for a doctor or counsellor. 18+ only.</aside>
     <section class="social-proof-section" aria-labelledby="social-proof-title">
-      <div class="social-proof-heading"><div><p class="preview-kicker">Illustrative preview</p><h2 id="social-proof-title">Bharat bhar mein, <em>baat kaam ki.</em></h2></div><p>What we are building towards at launch.</p></div>
-      <div class="proof-card-grid">
-        {[
-          ['coral', '5,000+', 'People to talk to', 'Launch target'],
-          ['gold', 'Any Indian language', 'Talk naturally', 'Designed for multilingual conversations'],
-          ['violet', 'Pan India', 'People across India', 'Find someone to talk to, wherever you are'],
-          ['rose', 'Private numbers', 'Your number stays yours', 'Calls connect without sharing personal numbers'],
-        ].map(([tone, value, label, note]) => <article class:list={['proof-card', `proof-card--${tone}`]}>
-          <svg class="proof-flower" aria-hidden="true" viewBox="0 0 64 64"><g fill="currentColor"><ellipse cx="32" cy="13" rx="8" ry="13"/><ellipse cx="51" cy="32" rx="13" ry="8"/><ellipse cx="32" cy="51" rx="8" ry="13"/><ellipse cx="13" cy="32" rx="13" ry="8"/></g><circle cx="32" cy="32" r="9" fill="#fffdf7"/></svg>
-          <strong>{value}</strong><span>{label}</span><small>{note}</small>
-        </article>)}
-      </div>
+      <div class="social-proof-heading"><div><p class="preview-kicker">Illustrative preview</p><h2 id="social-proof-title">Bharat bhar mein, <em>baat kaam ki.</em></h2></div></div>
       <div class="activity-preview">
         <div class="activity-preview-label"><strong>Sample activity</strong><span>Live updates coming later</span></div>
         <div class="activity-ticker" role="group" tabindex="0" aria-label="Illustrative sample activity from fictional people. Live activity updates are not available yet.">
           <div class="activity-track">
             <div class="activity-sequence">
-              <span><b>Rohit from Pune</b> just talked to Neha · 18 min</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Meera from Jaipur</b> just talked to Sana · 21 min</span><span><b>Arjun from Kochi</b> just talked to Kavya · 15 min</span>
+              <span><b>Rohit from Pune</b> called Neha again · 4th call this week</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Arjun from Kochi</b> called Sana again · 12 min</span><span><b>Meera from Jaipur</b> found a new dost · Kavya</span>
             </div>
             <div class="activity-sequence" aria-hidden="true">
-              <span><b>Rohit from Pune</b> just talked to Neha · 18 min</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Meera from Jaipur</b> just talked to Sana · 21 min</span><span><b>Arjun from Kochi</b> just talked to Kavya · 15 min</span>
+              <span><b>Rohit from Pune</b> called Neha again · 4th call this week</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Arjun from Kochi</b> called Sana again · 12 min</span><span><b>Meera from Jaipur</b> found a new dost · Kavya</span>
             </div>
           </div>
         </div>
       </div>
     </section>
     <section class="mood-section" id="moods" aria-labelledby="moods-title"><p class="preview-kicker">Find your kind of conversation</p><h2 id="moods-title">Aaj kya <em>mood hai?</em></h2>
-      <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['✳','✷','☼','✦'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
+      <div class="mood-grid">{moodGroups.map((group, index) => <div id={group === 'Naye dost' ? 'naye-dost' : undefined} class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Naye dost' && <p class="mood-note">Make a friend. Rules are the same for everyone — see <a href="#safety">Kaise safe hai</a>.</p>}{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}{group === 'Zindagi ki baatein' && <p class="mood-note">Talk and share — not medical, legal or money advice.</p>}</div>)}</div>
     </section>
     <WomenOnlySection />
-    <section class="privacy-section" id="privacy-note" aria-labelledby="privacy-title">
+    <section class="home-privacy-band" id="privacy-note" aria-labelledby="privacy-title"><div class="home-privacy-frame">
+      <span class="home-privacy-corner home-privacy-corner--top-left" aria-hidden="true">✦</span>
+      <span class="home-privacy-corner home-privacy-corner--top-right" aria-hidden="true">✦</span>
+      <span class="home-privacy-corner home-privacy-corner--bottom-left" aria-hidden="true">✦</span>
+      <span class="home-privacy-corner home-privacy-corner--bottom-right" aria-hidden="true">✦</span>
       <h2 id="privacy-title">Aapka number. <em>Sirf aapka.</em></h2><p class="privacy-intro">Neither person sees the other’s personal phone number.</p>
-      <ol class="privacy-diagram">
-        <li><p><b>1</b><span>Choose a person<br/>and tap Call.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>You</strong></li>
-        <li><p><b>2</b><span>{identity.name} calls the host first;<br/>then the caller after acceptance.</span></p><div class="phone-frame"><ModernIcon name="lock" /><small>{identity.name}</small></div><strong>Private connection</strong></li>
-        <li><p><b>3</b><span>Both hear a recording notice.<br/>The calls connect privately.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>Call partner</strong></li>
-      </ol>
-      <div class="privacy-note paper-note">Number private.<br/>Baat apni.</div><div class="privacy-conversation-note paper-note">People.<br/>Conversations.<br/>A brighter you.</div><p class="privacy-bottom">No need to exchange personal numbers.<br/><button type="button" data-preview-action="privacy" data-preview-label="Number privacy">Learn about number privacy →</button></p>
-    </section>
+      <HomePrivacySteps />
+      <div class="home-privacy-notes"><div class="paper-note">Number private.<br/>Baat apni.</div><div class="paper-note">People.<br/>Conversations.<br/>A brighter you.</div></div><p class="home-privacy-bottom">No need to exchange personal numbers.<br/><button type="button" data-preview-action="privacy" data-preview-label="Number privacy">Learn about number privacy →</button></p>
+    </div></section>
     <SafetySection />
-    <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">Sample profiles · Illustrative</p><h2 id="people-title">Kaun hai <em>online?</em></h2>
+    <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">Sample profiles · Illustrative</p><h2 id="people-title">Apna dost dhundo.<em>Aur kal phir call karo.</em></h2>
+      <div class="your-people" aria-labelledby="your-people-title" data-your-people>
+        <div class="your-people-heading"><h3 id="your-people-title">Your people</h3><span class="your-people-preview">Preview</span></div>
+        <p class="your-people-note">Sample favourites for this visit only. Calls and notifications are unavailable in this preview.</p>
+        <ul class="your-people-list" aria-label="Sample favourite hosts">{profiles.map(profile => <li data-saved-person={profile.id} hidden={!profile.previewFavourite}>
+          <img src={publicImage(`/assets/callvaal/scrapbook/${profile.portrait}`, { width: 160 })} alt={`Illustrative portrait of ${profile.name}`} width="64" height="64" loading="lazy" />
+          <div><strong>{profile.name}</strong><p class:list={['person-status', `is-${profile.availability}`]}><span aria-hidden="true"></span>{availabilityLabel[profile.availability]}</p></div>
+          <button type="button" class="saved-call" data-preview-action={profile.availability === 'online' ? 'call' : 'notify'} data-preview-label={profile.name} aria-label={`${profile.availability === 'online' ? 'Call again' : callActionLabel[profile.availability]}: ${profile.name}`}>{profile.availability === 'online' ? 'Call again' : <><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5Zm5 3h4"/></svg>{profile.availability === 'busy' ? 'Notify me when free' : 'Notify me'}</>}</button>
+        </li>)}</ul>
+        <p class="your-people-empty" data-favourites-empty hidden>Favourite someone after a call and they'll show up here.</p>
+        <p class="sr-only" data-favourites-status role="status" aria-live="polite"></p>
+      </div>
       <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{['Hindi','English','Kannada','Marathi'].map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>View all people →</button></div>
       <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
-      <div class="people-grid">{profiles.map(profile => <article class="profile-card" data-person data-moods={profile.moods.join(' ')} data-languages={profile.languages} data-price={profile.price} data-online={String(profile.online)} data-search={`${profile.name} ${profile.languages} ${profile.moods.map(moodLabel).join(' ')}`}>
-        <div class="portrait-wrap"><img class="person-portrait" src={publicImage(`/assets/callvaal/scrapbook/${profile.portrait}`, { width: 900 })} alt={`Illustrative portrait of ${profile.name}`} width="1254" height="1254" loading="lazy" /><button type="button" class="favourite-button" data-favourite aria-pressed="false" aria-label={`Save ${profile.name} for this visit`}><ModernIcon name="bookmark" /></button></div>
-        <div class="person-copy"><div class="person-heading"><h3>{profile.detailPath ? <a class="person-detail-link" href={profile.detailPath}>{profile.name}</a> : profile.name}</h3>{profile.videoKyc && <span class="verification-badge" aria-label="Illustrative video-KYC badge">video-KYC ✓</span>}</div><p class:list={['person-status', profile.online ? 'is-online' : 'is-offline']}><span aria-hidden="true"></span>{profile.online ? 'Online now' : 'Offline'}</p><ul class="person-moods">{profile.moods.map(slug => <li>{moodLabel(slug)}</li>)}</ul><p>{profile.languages}</p><p class="person-rating"><span aria-hidden="true">★</span><b>{profile.rating}</b></p><p class="person-talks"><ModernIcon name="user" /> Talked to {profile.talkedTo} people</p><div class="person-actions"><strong class="person-price">₹{profile.price}/min</strong>{profile.detailPath ? <a class="sample-call person-detail-action" href={profile.detailPath}>View profile</a> : <button type="button" class="sample-call" data-preview-action="call" data-preview-label={profile.name}>Talk</button>}</div></div>
+      <div class="people-grid">{profiles.map(profile => <article class="profile-card" data-person data-profile-id={profile.id} data-gender={profile.gender} data-availability={profile.availability} data-preview-favourite={String(!!profile.previewFavourite)} data-moods={profile.moods.join(' ')} data-languages={profile.languages} data-price={profile.price} data-online={String(profile.availability === 'online')} data-search={`${profile.name} ${profile.languages} ${profile.moods.map(moodLabel).join(' ')}`}>
+        <div class="portrait-wrap"><img class="person-portrait" src={publicImage(`/assets/callvaal/scrapbook/${profile.portrait}`, { width: 900 })} alt={`Illustrative portrait of ${profile.name}`} width="1254" height="1254" loading="lazy" /><button type="button" class="favourite-button" data-favourite={profile.id} data-profile-name={profile.name} aria-pressed={String(!!profile.previewFavourite)} aria-label={`${profile.previewFavourite ? 'Unfavourite' : 'Favourite'} ${profile.name} for this visit`}><span aria-hidden="true">♥</span></button></div>
+        <div class="person-copy"><div class="person-heading"><h3>{profile.detailPath ? <a class="person-detail-link" href={profile.detailPath}>{profile.name}</a> : profile.name}</h3>{profile.videoKyc && <span class="verification-badge" aria-label="Illustrative video-KYC badge">video-KYC ✓</span>}</div><p class="person-regulars">{profile.regulars}</p><p class:list={['person-status', `is-${profile.availability}`]}><span aria-hidden="true"></span>{availabilityLabel[profile.availability]}</p><ul class="person-moods">{profile.moods.map(slug => <li>{moodLabel(slug)}</li>)}</ul><p>{profile.languages}</p><p class="person-rating"><span aria-hidden="true">★</span><b>{profile.rating}</b></p><p class="person-talks"><ModernIcon name="user" /> Talked to {profile.talkedTo} people</p><div class="person-actions"><strong class="person-price">₹{profile.price}/min</strong><button type="button" class="sample-call" data-preview-action={profile.availability === 'online' ? 'call' : 'notify'} data-preview-label={profile.name}>{callActionLabel[profile.availability]}</button></div></div>
       </article>)}</div>
-      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Calls and payments are unavailable in this preview.</p>
+      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Availability, regulars and hours are samples too. Calls and payments are unavailable in this preview.</p>
     </section>
-    <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art-moods.png', { width: 900 })} alt="Torn-paper notebook with phone conversation doodles, pencil and chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Baatein karo. <em>Paise kamao.</em></h2><p>Good on the phone? Set your rate and talk from home on your own hours. At a ₹20/min caller rate, the planned host share is ₹10.80/min before tax; paid calls are not guaranteed. Your number stays private. You can end and report an abusive call, and confirmed abuse can lead to a ban.</p><ol class="earn-steps"><li><ModernIcon name="user" /><span>Sign up with WhatsApp OTP</span></li><li><ModernIcon name="lock" /><span>Video KYC + Aadhaar</span></li><li><ModernIcon name="clock" /><span>Pick your moods, languages and price</span></li><li><ModernIcon name="tax" /><span>Go online, get paid via UPI</span></li></ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
+    <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art-moods.png', { width: 900 })} alt="Torn-paper notebook with phone conversation doodles, pencil and chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Baatein karo. <em>Paise kamao.</em></h2><p>Good on the phone? Set your rate and talk from home on your own hours. At a ₹20/min caller rate, the planned host share is ₹10.80/min before tax; paid calls are not guaranteed. Your number stays private. You can end and report an abusive call, and confirmed abuse can lead to a ban.</p><p>Good hosts build regulars — people who call them every week. Regulars are where the steady earnings are.</p><ol class="earn-steps"><li><ModernIcon name="user" /><span>Sign up with WhatsApp OTP</span></li><li><ModernIcon name="lock" /><span>Video KYC + Aadhaar</span></li><li><ModernIcon name="clock" /><span>Pick your moods, languages and price</span></li><li><ModernIcon name="tax" /><span>Go online, get paid via UPI</span></li><li><ModernIcon name="user" /><span>Keep your regulars coming back</span></li></ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
     <aside class="phone-strip">Planned for launch: no app needed. Calls will come to your normal number.</aside>
   </main>
   <HelloFraandsFooter />

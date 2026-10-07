@@ -87,7 +87,7 @@ export const profileDetails: Record<ProfileDetailId, CallvaalProfileDetail> = {
     portrait: photo("portrait-6", "Illustrative portrait of Kavya", true), gallery: [],
     languages: ["Hindi", "Kannada"], ratePerMinute: 30, online: true, availabilityLabel: "Online now",
     rating: { average: 4.8, count: 29 }, conversationCount: 86,
-    personalQuote: "A reading can open a conversation. Your choices remain your own.", about: "Kavya enjoys chatting about kundli, horoscope and tarot as ways to reflect and explore stories. Taare conversations are for reflection and entertainment; no outcome is promised.", topicTags: ["kundli", "horoscope", "tarot"],
+    personalQuote: "A familiar voice can make a new city feel a little more like home.", about: "Kavya enjoys friendly conversations about everyday life, caring for parents and finding your feet in a new city or job. Talk and share — not medical, legal or money advice.", topicTags: ["maa-baap ki sehat", "naya sheher, nayi job"],
     reviews: [{ name: 'Riya S.', initials: 'RS', rating: 5, text: 'It felt good to tell my story without being rushed.' }, { name: 'Amit K.', initials: 'AK', rating: 5, text: 'A friendly conversation with room to pause.' }],
   },
   "priya": { ...common,

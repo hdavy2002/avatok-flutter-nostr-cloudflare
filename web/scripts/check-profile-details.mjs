@@ -83,7 +83,9 @@ for (const [id, name, rate, languages, portrait] of profiles) {
   assert(main.includes(`/assets/callvaal/scrapbook/${portrait}.png`), `${id}: correct host portrait`);
   const card = cards.find(card => card.includes(`href="${path}"`));
   assert(card, `${id}: homepage discovery card`);
-  assert.equal((card.match(new RegExp(`href="${path}"`, 'g')) || []).length, 2, `${id}: name and primary action reach detail`);
+  assert.equal((card.match(new RegExp(`href="${path}"`, 'g')) || []).length, 1, `${id}: name reaches detail while primary button follows availability`);
+  assert.match(card, /data-preview-action="(?:call|notify)"/, `${id}: truthful preview action`);
+  if (id === 'kavya') assert.doesNotMatch(text(main), /kundli|horoscope|tarot|Taare/i, 'Kavya now offers everyday conversation topics');
   assert(card.includes('data-moods=') && text(card).includes(`₹${rate}/min`) && text(card).includes(languages), `${id}: homepage mood/rate/languages agree`);
   const detailMoods = [...main.matchAll(/<ul\b[^>]*class="cv-topic-tags"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap(match => [...match[1].matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(item => text(item[1])));
   assert(detailMoods.length >= 2, `${id}: everyday conversation topics`);

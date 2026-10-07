@@ -35,10 +35,10 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '.social-proof-section h2, .proof-card strong, .proof-card span, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
-      [15, '.safety-links a, .social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .mood-chip, .crisis-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
+      [16, '.social-proof-section h2, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .home-privacy-step>p, .home-privacy-bottom, .home-privacy-bottom button, .your-people-list strong, .saved-call, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
+      [15, '.safety-links a, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .mood-chip, .crisis-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
       [11, '.verification-badge, .person-moods li'],
-      [14, '.preview-kicker, .proof-card small, .activity-preview-label span, .service-disclaimer'],
+      [14, '.preview-kicker, .activity-preview-label span, .service-disclaimer'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -51,7 +51,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '.social-proof-section, .proof-card, .activity-preview, #women-only, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
+    const panels = '.social-proof-section, .activity-preview, #women-only, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -84,7 +84,7 @@ async function inspectReadability(page) {
         }
       }
     };
-    checkSiblings('.privacy-diagram, .privacy-diagram li, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
+    checkSiblings('.home-privacy-steps, .home-privacy-notes, .your-people-heading, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
     const badges = [...document.querySelectorAll('.verification-badge')].map(el => {
       const rect = el.getBoundingClientRect();
       const card = el.closest('.profile-card').getBoundingClientRect();
@@ -126,6 +126,13 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const mutations = [];
     const browserErrors = [];
+    await page.addInitScript(() => {
+      window.__previewNotificationRequests = 0;
+      if ('Notification' in window) Notification.requestPermission = async () => {
+        window.__previewNotificationRequests++;
+        return 'denied';
+      };
+    });
     page.on('pageerror', error => browserErrors.push(String(error)));
     page.on('request', request => {
       if (/\/api\//.test(request.url()) && !['GET', 'HEAD'].includes(request.method())) mutations.push(request.url());
@@ -149,14 +156,34 @@ try {
       await expect(page.locator('h1')).toHaveText(/Baat karo\.\s*Dil halka karo\./);
       await expect(page.locator('[data-person]')).toHaveCount(8);
       await expect(page.locator('.mood-group')).toHaveCount(4);
-      await expect(page.locator('.mood-chip')).toHaveCount(17);
+      await expect(page.locator('.mood-chip')).toHaveCount(25);
+      await expect(page.locator('.mood-group h3')).toHaveText(['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein']);
+      await expect(page.locator('#people-title')).toHaveText('Apna dost dhundo.Aur kal phir call karo.');
+      await expect(page.locator('.proof-card')).toHaveCount(0);
+      await expect(page.locator('[data-your-people]')).toContainText('Preview');
+      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
+      await expect(page.locator('[data-profile-id="neha"] .sample-call')).toHaveText('Call');
+      await expect(page.locator('[data-profile-id="rohan"] .sample-call')).toHaveText('Notify me when free');
+      await expect(page.locator('[data-profile-id="priya"] .sample-call')).toHaveText('Notify me when online');
+      await expect(page.locator('.home-privacy-steps svg[role="img"]')).toHaveCount(3);
+      const privacyGraphics = await page.locator('.home-privacy-steps svg').evaluateAll(svgs => svgs.map(svg => ({
+        title: document.getElementById(svg.getAttribute('aria-labelledby'))?.textContent,
+        flat: !svg.querySelector('linearGradient, radialGradient'), stroke: svg.getAttribute('stroke-width'),
+      })));
+      assert(privacyGraphics.every(svg => svg.title && svg.flat && svg.stroke === '2.5'), name + ': accessible flat illustrations');
+      const womenHeading = await page.locator('#hf-women-title').evaluate(h2 => {
+        const first = h2.querySelector('span'); const second = h2.querySelector('em');
+        return { firstDisplay: getComputedStyle(first).display, secondDisplay: getComputedStyle(second).display,
+          gap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom };
+      });
+      assert(womenHeading.firstDisplay === 'block' && womenHeading.secondDisplay === 'block' && womenHeading.gap > 0, name + ': distinct women headline lines');
       await expect(page.locator('#women-only')).toBeVisible();
       await expect(page.locator('#women-only')).toContainText('A public preview of a private lane.');
       await expect(page.locator('#women-only .hf-women-proof li')).toHaveCount(2);
       await expect(page.locator('#women-only [data-women-preview]')).toBeEnabled();
       await expect(page.locator('.cv-navigation a[href="/#women-only"]')).toHaveCount(1);
       await expect(page.locator('#safety .hf-safety-rule')).toHaveCount(4);
-      await expect(page.locator('#earn .earn-steps li')).toHaveCount(4);
+      await expect(page.locator('#earn .earn-steps li')).toHaveCount(5);
       await expect(page.locator('#safety a[href="#women-only"]')).toBeVisible();
       await expect(page.locator('#safety .hf-safety-photo img')).toHaveCount(3);
       await expect(page.locator('.service-disclaimer')).toContainText('18+ only.');
@@ -166,22 +193,27 @@ try {
       assert.deepEqual(readability.clipping, [], name + ': unclipped content');
       assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
       assert(readability.viewportOverflow.content <= width + 1, name + ': no horizontal overflow');
-      const imageGeometry = await page.locator('main img').evaluateAll(images => images.map(image => ({
+      const imageGeometry = await page.locator('main img').evaluateAll(images => images.filter(image => image.getClientRects().length).map(image => ({
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 15 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits and earn art load');
+      assert(imageGeometry.length === 18 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits, three sample favourites and earn art load');
       await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
       const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
         moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),
-        price: Number(card.dataset.price), online: card.dataset.online === 'true',
+        price: Number(card.dataset.price), online: card.dataset.online === 'true', gender: card.dataset.gender,
       })));
       const moodOptions = await page.locator('#mood-filter option').evaluateAll(options => options.filter(option => option.value).map(option => ({ slug: option.value, label: option.textContent })));
-      assert.equal(moodOptions.length, 17);
+      assert.equal(moodOptions.length, 25);
+      for (const { slug } of moodOptions.slice(0, 8)) {
+        const genders = new Set(roster.filter(person => person.moods.includes(slug)).map(person => person.gender));
+        assert.deepEqual([...genders].sort(), ['man', 'woman'], name + ': mixed-gender friendship chip ' + slug);
+      }
       for (const { slug, label } of moodOptions) {
         await page.locator('#mood-filter').selectOption(slug);
         await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.moods.includes(slug)).length);
         await expect(page.locator('[data-selected-mood-label]')).toHaveText(`Mood: ${label}`);
+        await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
       }
       const reset = page.locator('[data-reset-filters]').first();
       await reset.click();
@@ -195,7 +227,7 @@ try {
       }
       await page.locator('#online-filter').check();
       await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.online).length);
-      await page.locator('#mood-filter').selectOption('kundli');
+      await page.locator('#mood-filter').selectOption('maa-baap-ki-sehat');
       await page.locator('#language-filter').selectOption('Kannada');
       await page.locator('#price-filter').selectOption('30');
       await expect(page.locator('[data-person]:visible')).toHaveCount(1);
@@ -207,9 +239,9 @@ try {
       await expect(page.locator('#online-filter')).not.toBeChecked();
       await expect(page.locator('[data-selected-mood-label]')).not.toBeVisible();
       // Exercise a real mood link and its query-driven initialization.
-      await page.locator('.mood-chip[href="/?mood=kundli#people"]').click();
+      await page.locator('.mood-chip[href="/?mood=maa-baap-ki-sehat#people"]').click();
       await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
-      await expect(page.locator('#mood-filter')).toHaveValue('kundli');
+      await expect(page.locator('#mood-filter')).toHaveValue('maa-baap-ki-sehat');
       await expect(page.locator('[data-person]:visible')).toHaveCount(1);
       await reset.click();
       const womenEntry = page.locator('#women-only [data-women-preview]');
@@ -238,11 +270,43 @@ try {
         await page.keyboard.press('Escape');
         await waitForPreviewClose(dialog, trigger, name);
       }
-      const favourite = page.locator('[data-favourite]').first();
-      await favourite.click();
+      const favourite = page.locator('[data-favourite="neha"]');
+      const savedNeha = page.locator('[data-saved-person="neha"]');
       await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await favourite.click();
+      await expect(savedNeha).toBeVisible();
+      await favourite.press('Enter');
       await expect(favourite).toHaveAttribute('aria-pressed', 'false');
+      await expect(savedNeha).not.toBeVisible();
+      await expect(page.locator('[data-favourites-status]')).toContainText('Neha removed');
+      for (const id of ['rohan', 'arjun']) await page.locator('[data-favourite="' + id + '"]').click();
+      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(0);
+      await expect(page.locator('[data-favourites-empty]')).toHaveText("Favourite someone after a call and they'll show up here.");
+      await favourite.press('Space');
+      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+      await expect(savedNeha).toBeVisible();
+      await expect(page.locator('[data-favourites-empty]')).not.toBeVisible();
+      const callAgain = savedNeha.getByRole('button', { name: 'Call again: Neha' });
+      await callAgain.click();
+      await expect(dialog).toContainText('Calls and payments are unavailable');
+      await page.keyboard.press('Escape');
+      await waitForPreviewClose(dialog, callAgain, name);
+      for (const id of ['rohan', 'arjun']) await page.locator('[data-favourite="' + id + '"]').click();
+      for (const selector of [
+        '[data-profile-id="rohan"] [data-preview-action="notify"]',
+        '[data-profile-id="priya"] [data-preview-action="notify"]',
+        '[data-saved-person="arjun"] [data-preview-action="notify"]',
+      ]) {
+        const notify = page.locator(selector);
+        await notify.click();
+        await expect(dialog).toContainText('No notification has been set.');
+        await page.keyboard.press('Escape');
+        await waitForPreviewClose(dialog, notify, name);
+      }
+      await favourite.click();
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
+      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
       const menu = page.locator('[data-callvaal-menu-toggle]');
       if (await menu.isVisible()) {
         await menu.click();
@@ -268,13 +332,14 @@ try {
         assert.deepEqual(enlarged.clipping, [], name + ': 200% text unclipped');
         assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
         assert(enlarged.viewportOverflow.content <= width + 1, name + ': 200% text no horizontal overflow');
-        await page.locator('#mood-filter').selectOption('kundli');
+        await page.locator('#mood-filter').selectOption('maa-baap-ki-sehat');
         await expect(page.locator('[data-person]:visible')).toHaveCount(1);
         await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
       }
       const missingAnchors = await page.locator('a[href^="#"]:visible').evaluateAll(links => links.map(a => a.hash.slice(1)).filter(id => id && !document.getElementById(id)));
       assert.deepEqual(missingAnchors, [], name + ': visible anchors resolve');
       assert.deepEqual(mutations, [], name + ': no backend mutations');
+      assert.equal(await page.evaluate(() => window.__previewNotificationRequests), 0, name + ': preview never requests notification permission');
       assert.deepEqual(browserErrors, [], name + ': no uncaught browser errors');
     } catch (error) {
       await page.screenshot({ path: `homepage-review/${name}-failure.png`, fullPage: true }).catch(() => undefined);
