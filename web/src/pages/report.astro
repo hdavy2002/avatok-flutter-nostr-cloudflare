@@ -3,8 +3,8 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 const grievanceEmail = '{{GRIEVANCE_EMAIL}}';
 ---
 <HelloFraandsPage title="Report a user" summary="Kisi call ya vyavahar ki shikayat yahan taiyaar karein.">
-<p>If a call makes you uncomfortable, end it. Use this form to prepare a report to {grievanceEmail}. Your email app opens with the report text. You must send the email yourself.</p>
-<p>We acknowledge reports within 24 hours of receiving them. For immediate danger, call <a href="tel:112">Emergency 112</a>. This form is not an emergency service.</p>
+<p>If a call makes you uncomfortable, end it. This preview form can prepare an email only after a working grievance address is published. Your email app must open and you must send the message yourself; nothing is submitted by this page.</p>
+<p>A working reporting contact and response process must be confirmed before calls launch. A safety report is reviewed before any strike is confirmed. For immediate danger, call <a href="tel:112">Emergency 112</a>. This form is not an emergency service.</p>
 <h2>Tell us what happened</h2>
 <form id="report-form" data-recipient={grievanceEmail}>
 <label for="report-contact">Your phone number or email (required)</label>
@@ -23,8 +23,8 @@ const grievanceEmail = '{{GRIEVANCE_EMAIL}}';
 <button type="submit" disabled>Prepare report email</button>
 <p id="report-status" role="status" aria-live="polite"></p>
 </form>
-<noscript><p>To report without JavaScript, email {grievanceEmail} with your contact details, the other person's profile name, call ID, and what happened. Attach any supporting file yourself.</p></noscript>
-<p>If your email app does not open, send those details directly to {grievanceEmail}. For a follow-up or appeal, visit <a href="/grievance">Grievance redressal</a>.</p>
+<noscript><p>JavaScript is needed to prepare the email. When a verified reporting address is published, send your contact details, the other person's profile name, call ID, and what happened directly to it. Do not email passwords or identity documents.</p></noscript>
+<p>When a verified address is published, you can send the details there directly if your email app does not open. For the planned follow-up and appeal process, visit <a href="/grievance">Grievance redressal</a>.</p>
 <style>
 form{display:grid;gap:.7rem;margin:2rem 0}label{font-weight:700;margin-top:.65rem}input,textarea{width:100%;box-sizing:border-box;font:inherit;padding:.85rem;border:1px solid #bdb5aa;border-radius:10px;background:#fff;color:#24211e}input[type=file]{padding:.65rem}form p{font-size:.9rem;margin:0 0 .6rem}button{justify-self:start;border:0;border-radius:999px;padding:.9rem 1.35rem;font:inherit;font-weight:700;background:#292521;color:#fff;cursor:pointer}input:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid #936329;outline-offset:3px}
 </style>
@@ -50,9 +50,15 @@ form?.addEventListener('submit', (event) => {
   const recipient = form.dataset.recipient || '';
   window.location.href = 'mailto:' + encodeURIComponent(recipient) + '?subject=' + encodeURIComponent('User report — call ' + String(data.get('call') || '')) + '&body=' + encodeURIComponent(body);
   const status = document.querySelector<HTMLElement>('#report-status');
-  if (status) status.textContent = 'Your report email is prepared. Send it in your email app' + (file ? ' and attach your selected file' : '') + '. Nothing has been sent by this page. We will acknowledge it within 24 hours after we receive it.';
+  if (status) status.textContent = 'Your report email is prepared. Send it in your email app' + (file ? ' and attach your selected file' : '') + '. Nothing has been sent by this page.';
 });
 // No JavaScript means the complaint cannot become a GET URL with private details.
-form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+const recipient = form?.dataset.recipient || '';
+if (recipient.includes('@') && !recipient.includes('{{')) {
+  form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+} else {
+  const status = document.querySelector<HTMLElement>('#report-status');
+  if (status) status.textContent = 'Reporting address is not available in this preview.';
+}
 </script>
 </HelloFraandsPage>

@@ -1,14 +1,21 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Women-only space" summary="Mahilaon ki zindagi par baat karne ke liye ek surakshit jagah." review={false} related={[]}>
-<h2>Who can enter</h2>
-<p>This space is available to callers and hosts whose verified KYC gender field is F or T. Both sides must meet this requirement. All users must be 18 or older.</p>
-<h2>What the space is for</h2>
-<p>Talk and share about women's lives, everyday experiences, and interests. Hosts offer conversation and company. They do not provide medical advice or counselling.</p>
-<h2>Privacy and conduct</h2>
-<p>The space and its member content are hidden from other accounts. This public page explains eligibility only. Do not share another person's identity or anything they tell you.</p>
-<p>The same <a href="/community-guidelines">community guidelines</a> and <a href="/recording-policy">recording rules</a> apply. Sexual talk, harassment, requests for contact details, and requests to meet are not allowed.</p>
-<h2>Report a concern</h2>
-<p>End the call if you feel uncomfortable. Use the report option in your call history, or visit <a href="/report">Report a user</a>. Include the call ID and say that the call happened in the women-only space.</p>
+<HelloFraandsPage title="Women-only space" summary="Apni baat, apni marzi — pehle privacy aur safety ke niyam samjhein." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/recording-policy',label:'Recording & consent'}]}>
+<p><strong>Preview:</strong> this page explains the planned women-only calling lane. Browsing the preview does not verify your identity or activate private calls, number masking, blocking or moderation.</p>
+<h2>Who the planned lane is for</h2>
+<p>All participants must be 18 or older. Both the host and caller must have a verified KYC gender field of F or T (female or transgender). An unverified account cannot enter. This is an eligibility check, not a guarantee of anyone's behaviour.</p>
+<p>Women-lane hosts are planned to appear only in the eligible lane, outside general listings. Calls will use a separate platform number. The public preview is not a private member area: do not upload private stories or identity documents here.</p>
+<h2>What you can talk about</h2>
+<p>Everyday life, work, family, relationships and personal experiences are welcome. You may discuss experiences such as periods, PCOS, pregnancy or menopause without being treated as making sexual conversation. Moderation is planned to consider this context. Harassment, sexual pressure and abuse remain reportable. Hosts offer company and listening, not diagnosis, treatment, therapy or counselling.</p>
+<h2>Your boundaries come first</h2>
+<ul><li>You can decline a call, stop a conversation or leave without explaining why. Payment never buys permission to cross a boundary.</li><li>Keep your number, address, workplace, social accounts and payment details private. Never share an OTP, identity document or another person's story.</li><li>Do not move a conversation to private contact, arrange meetings, send money or accept pressure to do so.</li><li>Number masking is planned to hide each participant's phone number from the other. It cannot hide details you say aloud or prevent someone recognising your voice.</li></ul>
+<h2>Planned host controls</h2>
+<p>The host's phone will ring first. A private announcement will give the caller's handle, prior call count and any note the host saved. Press <strong>1</strong> to accept or <strong>2</strong> to decline; no response within 10 seconds also declines. The caller is dialled only after acceptance, with no caller charge for a decline.</p>
+<p>During a connected call, the host's <strong>*</strong> key will end it. The host's <strong>#</strong> key will end it, block that caller from that host and flag the incident for review. A report is not a confirmed strike. Both participants can always hang up normally.</p>
+<h2>Recorded does not mean confidential</h2>
+<p>The plan is to record every connected call, with spoken notices to both people before the conversation. Recordings will enter automated post-call review, with flagged content reviewed by authorised staff. Live AI warnings and call cuts are a later phase, not a preview feature. Read <a href="/recording-policy">Recording &amp; consent</a> before deciding what to share.</p>
+<h2>If something feels wrong</h2>
+<p>End the call. Planned follow-up controls will let hosts block, report or tag a caller through their dashboard or a post-call WhatsApp message. See <a href="/report">Report a user</a> for the reporting route and its current availability. Keep the call ID and a short description; do not include identity documents. Reports are not an emergency response service.</p>
+<p>Talking about distress or self-harm must not earn a strike. For immediate danger in India, call <a href="tel:112">112</a>; for mental-health support, call <a href="tel:14416">Tele-MANAS 14416</a>. See <a href="/emergency">Emergency support</a>.</p>
 </HelloFraandsPage>

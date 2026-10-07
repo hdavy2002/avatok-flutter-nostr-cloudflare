@@ -4,10 +4,10 @@ import MaskedCallSteps from '../components/callvaal/MaskedCallSteps.astro';
 export const prerender = true;
 ---
 <HelloFraandsPage title="How it works" summary="Teen aasaan kadam, bina apna number share kiye.">
-<h2>Your number stays yours</h2><p>Neither person sees the other's personal phone number. Here is how the masked call connects.</p>
+<h2>Your number stays yours</h2><p>At launch, the host is called first and can accept or decline. Only after the host accepts will the caller be dialled and the two legs connected. Neither person is shown the other's personal phone number; please do not share yours on the call.</p>
 <MaskedCallSteps />
 <h2>Top up with UPI</h2><p>Sign in, open your wallet, choose a top-up amount and pay with UPI. Check the total and any shown tax before paying. Once the payment succeeds, the available talk-time balance appears in your wallet.</p>
-<h2>Pay by the minute</h2><p>Check the host's per-minute rate before calling. Your wallet pays for the time you talk. A low-balance warning tells you when about 1 minute remains at that rate. The call ends when the wallet is empty.</p>
+<h2>Pay by the minute</h2><p>Check the host's per-minute rate before calling. The planned billing starts only when the two people connect, charges each started minute at the displayed rate, and does not charge if the host declines or the bridge fails. You will need enough wallet balance for at least two minutes before starting. A spoken warning is planned about 60 seconds before your balance runs out; the call then ends when the balance is exhausted. See <a href="/wallet-terms">wallet terms</a> for details.</p>
 <h2>Want to keep talking?</h2><p>Open your wallet again, add funds through UPI and wait for confirmation. Then start a new call with an available host. See <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a> for billing details.</p>
 <p>The current site is a preview with illustrative profiles. Calls and payments are unavailable in the preview.</p>
 </HelloFraandsPage>

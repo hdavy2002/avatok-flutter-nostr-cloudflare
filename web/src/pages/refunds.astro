@@ -2,14 +2,16 @@
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
 <HelloFraandsPage title="Refund & cancellation" summary="Call ki dikkat ya galat charge ko jaldi report karein." review={true} related={[{"href":"/wallet-terms","label":"Wallet terms"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
-<h2>Failed or dropped calls</h2>
-<p>Failed connections and the affected portion of dropped calls are automatically credited to your wallet. Completed minutes are not refundable. If an expected credit is missing, send the call ID and payment details through <a href="/report">Report a user</a>.</p>
-<h2>Ending a call</h2>
-<p>You can end a call at any time. Charges for completed minutes still apply. There is no cancellation refund for time you have already used.</p>
-<h2>Unused balance when you close your account</h2>
-<p>You may request a refund of unused balance when closing your account, minus GST already paid, subject to applicable law. Approved refunds go to the original payment source in 7–10 days. Bank processing can affect when the credit appears.</p>
-<p>Provide your registered contact details and transaction reference. Do not send an OTP, UPI PIN, or full card details. Balance forfeiture following a ban is covered by the <a href="/wallet-terms">wallet terms</a>.</p>
-<aside class="help-crosslink"><p>Need help with a payment or refund? <a href="/help">Visit the help centre</a>.</p></aside>
-<h2>Raise a dispute within 48 hours</h2>
-<p>Use <a href="/report">Report a user</a> within 48 hours of the call or disputed charge. Include the call ID, time, amount, and what went wrong. We review the call and billing records. This reporting window does not remove any mandatory legal rights.</p>
+<h2>Preview status</h2>
+<p>Paid calls and refunds are not offered through this preview. This page explains the planned billing corrections and what remains to be decided before launch. It does not promise an automatic refund or a payment-processing deadline.</p>
+<h2>No connection means no call charge</h2>
+<p>Under the planned billing rule, a host decline, acceptance timeout, or failed bridge is not billable. Billing starts only when both parties connect. If a future statement charges for a call that never connected, that is a billing issue to investigate against the call records.</p>
+<h2>Connected, dropped, or ended calls</h2>
+<p>The proposed launch bills each started minute of connected time, including when either participant hangs up, a host blocks the caller, or moderation ends the call. For example, 61 connected seconds uses two billable minutes. A dropped call does not automatically make all connected time free; incorrect duration or duplicate settlement should be reviewed.</p>
+<p>A host block or moderation cut does not itself forfeit unused balance. Proposed consequences of a confirmed ban are described in the <a href="/wallet-terms">wallet terms</a> and require final review.</p>
+<h2>Unused balance and payment refunds</h2>
+<p>Eligibility for an unused-balance refund on account closure, refund destination, tax treatment, promotional-credit exclusions, and processing times must be settled and disclosed before top-ups launch. This preview does not promise a 7–10 day refund, automatic dropped-call credit, or a GST deduction.</p>
+<h2>Information for a billing query</h2>
+<p>When support opens, provide the call ID, date and time, disputed amount, transaction reference, and a brief explanation. Keep your receipt. Never send an OTP, UPI PIN, Aadhaar number, or full card details. Report promptly so the relevant records can be located; this draft imposes no 48-hour cutoff on complaints or legal rights.</p>
+<p>The <a href="/help">help centre</a> and <a href="/grievance">grievance page</a> describe the intended support route. Contact details and submission availability must be confirmed before launch.</p>
 </HelloFraandsPage>

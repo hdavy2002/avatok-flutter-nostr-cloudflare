@@ -5,8 +5,8 @@ const identity = brandConfig.homepageIdentity;
 ---
 <ol class="privacy-diagram masked-call-steps">
   <li><p><b>1</b><span>Choose a person<br/>and tap Call.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>You</strong></li>
-  <li><p><b>2</b><span>{identity.name} calls you and<br/>your call partner separately.</span></p><div class="phone-frame"><ModernIcon name="lock" /><small>{identity.name}</small></div><strong>Private connection</strong></li>
-  <li><p><b>3</b><span>Both pick up.<br/>{identity.name} connects the calls.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>Call partner</strong></li>
+  <li><p><b>2</b><span>{identity.name} calls the host first;<br/>the caller is dialled after acceptance.</span></p><div class="phone-frame"><ModernIcon name="lock" /><small>{identity.name}</small></div><strong>Private connection</strong></li>
+  <li><p><b>3</b><span>Both hear a recording notice.<br/>The calls connect privately.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>Call partner</strong></li>
 </ol>
 <style>
 .masked-call-steps{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.5rem;margin:2rem 0;padding:0;width:100%}

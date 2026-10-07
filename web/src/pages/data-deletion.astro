@@ -1,13 +1,17 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Data deletion" summary="Account aur apni jaankari hatane ka anurodh kar sakte hain." review={false} related={[]}>
-<h2>Request deletion</h2>
-<p>Use the account-deletion option in your dashboard, or email {'{{CONTACT_EMAIL}}'} from your registered email address. Include your registered phone number if needed to find the account. We verify that the request is yours. Never send an OTP, Aadhaar number, or document image by email.</p>
-<h2>What is removed</h2>
-<p>When deletion is confirmed and processed, account access is closed and your public profile is removed immediately. Personal account details that are no longer needed are deleted. Any eligible unused-balance refund follows the <a href="/refunds">refund policy</a>.</p>
-<h2>What must be kept</h2>
-<p>Call metadata is retained for 180 days from the call. Audio is retained for {'{{AUDIO_RETENTION_DAYS}}'} days. Transaction records are kept for the period required by tax law. We may preserve relevant records for a legal request or unresolved dispute. Retained records have restricted access and are not used to keep your profile active.</p>
-<h2>Confirmation</h2>
-<p>We email you after verifying the request and confirm when deletion is complete. That reply will explain the expected completion date and any records we must retain. If you have not received a response, contact the <a href="/grievance">grievance officer</a>, whose process provides acknowledgement within 24 hours and resolution within 15 days.</p>
+<HelloFraandsPage title="Data deletion" summary="Account aur apni jaankari hatane ka anurodh kar sakte hain." review={true} related={[]}>
+<h2>Planned deletion process</h2>
+<p>The website is a preview. Account deletion and identity-verification workflows are not established by this page. A working request route and final retention notice must be published before the calling service launches.</p>
+<h2>Requesting deletion</h2>
+<p>The proposed contact is {'{{CONTACT_EMAIL}}'}, which is still a placeholder. Once the service is available, a request should identify the account using its registered contact details. Identity must be verified before deletion. Never email an OTP, Aadhaar number, or KYC document image.</p>
+<h2>What the process is intended to remove</h2>
+<p>The intended process closes access, removes the public profile, and deletes personal information no longer needed. It must also address recordings, transcripts, moderation excerpts and clips, host tags, reports, and service-message records according to the final retention policy. This preview does not promise immediate deletion or an operational dashboard deletion button.</p>
+<p>Any unused balance must be handled under the final <a href="/refunds">refund terms</a>. Deletion alone does not establish refund eligibility or timing.</p>
+<h2>Records that may remain</h2>
+<p>The backend plan starts with 30 days for audio and at least 180 days for call metadata. These are design settings awaiting a final retention policy and legal review. Payment records, unresolved disputes, and lawful preservation requests may require different treatment. Any retained records should have restricted access and must not keep a deleted profile publicly active.</p>
+<p>The planned ban mechanism retains a phone-number restriction to prevent re-registration after three confirmed strikes. Its retention and handling of deletion requests must be resolved before launch. The application design stores KYC result flags and provider references, not Aadhaar numbers or document images; providers' own retention also needs to be explained.</p>
+<h2>Confirmation and review</h2>
+<p>The final process must tell you when a verified request can be completed and identify any retained records and the reason for retention. No completion or response deadline is promised by this preview. Read the <a href="/privacy">privacy policy</a> and <a href="/grievance">grievance process</a> for the proposed framework.</p>
 </HelloFraandsPage>

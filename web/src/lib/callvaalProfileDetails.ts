@@ -44,7 +44,7 @@ const sampleDisclosure = 'Sample profile · Illustrative. Images, availability, 
 const previewDisclosure = 'Preview only. Calls, bookings and payments are unavailable.';
 const preparationTips: ProfileTip[] = [
   { icon: 'chat', title: 'Just a conversation', text: 'Talk and share at your own pace. No professional advice or promised results.' },
-  { icon: 'user', title: 'Keep it respectful', text: '18+ only. You can end a call at any time. Sexual or abusive talk ends the call.' },
+  { icon: 'user', title: 'Keep it respectful', text: '18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.' },
   { icon: 'notes', title: 'Know before you start', text: 'Calls are recorded with consent for safety and kept for 30 days. In crisis, call Tele-MANAS 14416 or 112.' },
 ];
 const benefits: ProfileBenefit[] = [
