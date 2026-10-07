@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect, inspect-clerk-dns, ensure-clerk-dns, inspect-worker-auth-settings]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect, inspect-clerk-dns, ensure-clerk-dns, inspect-worker-auth-settings, ensure-clerk-email-dns]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect', 'inspect-clerk-dns', 'ensure-clerk-dns', 'inspect-worker-auth-settings'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect', 'inspect-clerk-dns', 'ensure-clerk-dns', 'inspect-worker-auth-settings', 'ensure-clerk-email-dns'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -104,6 +104,34 @@ jobs:
                 });
                 console.log(`${newName}: created`);
               }
+            }
+          }
+          if (REQUESTED_ACTION === 'ensure-clerk-email-dns') {
+            const zoneId = current.find(item => item.name === identity.domain)?.zone_tag;
+            if (!zoneId || brand.hosts.auth !== `clerk.${identity.domain}`) {
+              throw new Error('Clerk is not configured for the current brand domain');
+            }
+            // Targets shown by Clerk after the production primary-domain switch.
+            const targets = {
+              clkmail: 'mail.ra3rp0zxgl0y.clerk.services',
+              'clk._domainkey': 'dkim1.ra3rp0zxgl0y.clerk.services',
+              'clk2._domainkey': 'dkim2.ra3rp0zxgl0y.clerk.services',
+            };
+            for (const [label, target] of Object.entries(targets)) {
+              const name = `${label}.${identity.domain}`;
+              const records = await request(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(name)}`);
+              if (records.length !== 1 || records[0].type !== 'CNAME' || records[0].proxied ||
+                  !records[0].content.endsWith('.clerk.services')) {
+                throw new Error(`${name} has unexpected DNS records; no automatic replacement`);
+              }
+              if (records[0].content === target) {
+                console.log(`${name}: already points to ${target}`);
+                continue;
+              }
+              await request(`/zones/${zoneId}/dns_records/${records[0].id}`, 'PATCH', {
+                type: 'CNAME', name, content: target, proxied: false, ttl: 1,
+              });
+              console.log(`${name}: updated to ${target}`);
             }
           }
           if (REQUESTED_ACTION === 'inspect-worker-auth-settings') {
