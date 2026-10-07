@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect, inspect-clerk-dns, ensure-clerk-dns]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect, inspect-clerk-dns, ensure-clerk-dns, inspect-worker-auth-settings]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect', 'inspect-clerk-dns', 'ensure-clerk-dns'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect', 'inspect-clerk-dns', 'ensure-clerk-dns', 'inspect-worker-auth-settings'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -105,6 +105,17 @@ jobs:
                 console.log(`${newName}: created`);
               }
             }
+          }
+          if (REQUESTED_ACTION === 'inspect-worker-auth-settings') {
+            const settings = await request(`/accounts/${CF_ACCOUNT_ID}/workers/scripts/avatok-api/settings`);
+            const bindings = settings.bindings ?? [];
+            console.log(`Worker binding count: ${bindings.length}`);
+            for (const name of ['CLERK_ISSUER', 'CLERK_JWKS_URL', 'WEB_BASE_URL', 'WALLET_RETURN_URL', 'BLOSSOM_BASE_URL']) {
+              const binding = bindings.find(item => item.name === name);
+              if (binding?.type !== 'plain_text') throw new Error(`${name} is not a plain text binding`);
+              console.log(`${name}: ${binding.text}`);
+            }
+            console.log(`Binding types: ${JSON.stringify([...new Set(bindings.map(item => item.type))].sort())}`);
           }
           if (REQUESTED_ACTION === 'inspect-redirect' || REQUESTED_ACTION === 'ensure-redirect') {
             // The legacy website is the apex of the still-active API host. Never
