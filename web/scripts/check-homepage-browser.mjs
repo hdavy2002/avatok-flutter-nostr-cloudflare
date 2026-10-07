@@ -51,7 +51,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '.social-proof-section, .proof-card, .activity-preview, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
+    const panels = '.social-proof-section, .proof-card, .activity-preview, #women-only, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -152,7 +152,7 @@ try {
       await expect(page.locator('.mood-chip')).toHaveCount(17);
       await expect(page.locator('#women-only')).toBeVisible();
       await expect(page.locator('#women-only')).toContainText('A public preview of a private lane.');
-      await expect(page.locator('#women-only .hf-women-proof li')).toHaveCount(3);
+      await expect(page.locator('#women-only .hf-women-proof li')).toHaveCount(2);
       await expect(page.locator('#women-only [data-women-preview]')).toBeEnabled();
       await expect(page.locator('.cv-navigation a[href="/#women-only"]')).toHaveCount(1);
       await expect(page.locator('#safety .hf-safety-rule')).toHaveCount(4);
@@ -169,7 +169,7 @@ try {
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 10 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, eight portraits and earn art load');
+      assert(imageGeometry.length === 12 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, eight portraits and earn art load');
       await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
       const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
         moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),

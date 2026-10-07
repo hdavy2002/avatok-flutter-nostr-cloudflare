@@ -37,3 +37,44 @@
 .hf-women-verification-preview{position:relative;display:inline-flex;max-width:100%;border-radius:2rem}
 .hf-women-verification-preview [role=tooltip]{position:absolute;bottom:calc(100% + .4rem);left:0;z-index:1;width:max-content;max-width:100%;padding:.4rem .7rem;border-radius:.4rem;background:#46113e;color:#fff;font-size:.8rem;opacity:0;pointer-events:none}
 .hf-women-verification-preview:hover [role=tooltip],.hf-women-verification-preview:focus [role=tooltip],.hf-women-verification-preview:focus-within [role=tooltip]{opacity:1}
+
+/* Photo collage and soft floral treatment for the women-only preview. */
+.hf-women{position:relative;isolation:isolate;overflow:hidden;border:2px solid #d99abb;background:#f7e7f0;box-shadow:inset 0 0 0 7px #fffafd,0 14px 36px #5b224018}
+.hf-women::before,.hf-women::after{position:absolute;z-index:-1;color:#d998ba;font-family:Nunito,sans-serif;font-size:5rem;line-height:1;opacity:.48;pointer-events:none}
+.hf-women::before{content:"✿";top:-1.3rem;right:34%}
+.hf-women::after{content:"✿";bottom:-1.8rem;left:-.7rem;transform:rotate(18deg)}
+.hf-women-eyebrow{color:#96315d}
+.hf-women h2{max-width:14ch;overflow-wrap:anywhere}
+.hf-women h2 em{color:#9f2a64}
+.hf-women-plan,.hf-women-verification-note,.hf-women-host{color:#65415d}
+.hf-women-proof{gap:.75rem}
+.hf-women-proof li{border:2px solid #fff;padding:.75rem 1rem;background:#f2dce9;box-shadow:0 3px 0 #e2b5cb}
+.hf-women-proof small{color:#65415d}
+.hf-women-help{background:#efdae7;border:2px solid #fff}
+.hf-women-before{border-top:2px dashed #c789ab}
+.hf-women-art{position:relative;align-self:center;justify-self:center;width:100%;max-width:620px;height:clamp(21rem,36vw,32rem);margin:0;isolation:isolate}
+.hf-women-art-backdrop{position:absolute;inset:5% 2% 4%;z-index:-2;background:#e9d8ee;border:6px solid #fff;clip-path:polygon(1% 10%,7% 5%,18% 7%,29% 2%,42% 6%,52% 3%,63% 7%,76% 4%,89% 9%,98% 4%,96% 23%,99% 41%,95% 58%,98% 76%,93% 96%,79% 93%,65% 98%,51% 94%,36% 97%,22% 93%,8% 97%,4% 80%,1% 65%,4% 45%);transform:rotate(-3deg)}
+.hf-women-photo{position:absolute;top:14%;width:49%;height:72%;padding:9px;background:#fff;box-shadow:0 13px 24px #5b22402c;clip-path:polygon(0 3%,6% 1%,12% 2%,20% 0,28% 2%,38% 1%,47% 2%,57% 0,68% 2%,77% 1%,89% 2%,98% 0,100% 10%,98% 22%,100% 34%,99% 47%,100% 59%,98% 72%,100% 84%,98% 99%,88% 97%,76% 100%,65% 98%,54% 100%,42% 98%,31% 100%,19% 98%,7% 100%,0 96%,2% 82%,0 68%,2% 54%,0 40%,2% 27%)}
+.hf-women-photo img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 28%;clip-path:polygon(0 2%,15% 0,29% 2%,47% 0,66% 2%,83% 0,100% 2%,98% 29%,100% 50%,98% 73%,100% 98%,83% 100%,64% 98%,46% 100%,28% 98%,12% 100%,0 98%,2% 76%,0 51%,2% 27%)}
+.hf-women-photo--young{left:5%;transform:rotate(-8deg);z-index:1}
+.hf-women-photo--midage{right:3%;top:11%;transform:rotate(7deg);z-index:2}
+
+.hf-women-art .hf-women-flower{position:absolute;width:19%;height:auto;margin:0;filter:drop-shadow(0 5px 4px #682c4826);pointer-events:none;z-index:4}
+.hf-women-flower--top{top:0;left:42%;transform:rotate(-15deg)}
+.hf-women-art .hf-women-flower--bottom{bottom:3%;right:0;transform:rotate(16deg);width:15%}
+.hf-women-sticker{position:absolute;z-index:5;display:grid;place-items:center;border:6px solid #fff;box-shadow:0 6px 12px #5b224029;font-family:Nunito,sans-serif;font-weight:900;text-align:center;pointer-events:none}
+.hf-women-sticker--round{top:0;right:0;width:clamp(5rem,9vw,7rem);aspect-ratio:1;border-radius:50%;background:#a03267;color:#fff;font-size:clamp(.85rem,1.35vw,1.1rem);line-height:1.15;transform:rotate(10deg)}
+.hf-women-sticker--note{bottom:10%;left:1%;padding:.55rem .8rem;border-radius:.4rem;background:#f6d57e;color:#54203c;font-size:clamp(.75rem,1.2vw,1rem);transform:rotate(-8deg)}
+.hf-women-paper-note{position:absolute;bottom:0;left:25%;z-index:5;max-width:65%;padding:.5rem 1rem;background:#fffaf2;border:4px solid #fff;color:#96315d;font-family:Comfortaa,sans-serif;font-size:clamp(.8rem,1.4vw,1.15rem);font-style:italic;font-weight:700;text-align:center;transform:rotate(-3deg);clip-path:polygon(2% 0,20% 3%,38% 0,59% 3%,79% 0,99% 2%,97% 48%,100% 98%,80% 96%,59% 100%,40% 97%,18% 100%,0 97%,2% 49%)}
+.hf-women-art figcaption{position:absolute;left:0;bottom:-1.5rem;width:100%;margin:0;transform:none;color:#6b4761;font-family:Nunito,sans-serif;font-size:.75rem;font-style:normal;text-align:center}
+@media(max-width:760px){
+  .hf-women{background:#f7e7f0}
+  .hf-women-art{height:clamp(17rem,72vw,24rem);max-width:520px;margin:0 auto 1rem}
+  .hf-women-sticker--round{width:clamp(4.5rem,17vw,6rem)}
+  .hf-women::before{right:2%;font-size:3.5rem}
+}
+@media(max-width:380px){
+  .hf-women-photo{padding:6px}
+  .hf-women-sticker{border-width:4px}
+  .hf-women-sticker--note{bottom:8%;left:0}
+}

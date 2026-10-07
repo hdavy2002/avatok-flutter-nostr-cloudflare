@@ -70,9 +70,13 @@ assert.match(visibleText, /Sample activity Live updates coming later/);
 assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/);
 const womenSection = bodyHtml.match(/<section\b[^>]*id="women-only"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
 assert(womenSection, 'Women-only preview renders on the homepage');
-assert.match(womenSection, /<h2[^>]*id="hf-women-title"[^>]*>Yahan sirf auratein<br\s*\/?><em>baat karti hain\.<\/em><\/h2>/, 'Women-only heading has an italic second line');
+assert.match(womenSection, /<h2[^>]*id="hf-women-title"[^>]*>Only for women\.<br\s*\/?><em>A place to talk freely\.<\/em><\/h2>/, 'Women-only heading has an italic English second line');
 assert(bodyHtml.indexOf('id="moods"') < bodyHtml.indexOf('id="women-only"') && bodyHtml.indexOf('id="women-only"') < bodyHtml.indexOf('id="privacy-note"'), 'Women-only preview sits between moods and privacy');
-for (const copy of ['Sirf ladkiyon ke liye', 'Yahan sirf auratein', 'baat karti hain.', 'A public preview of a private lane.', 'Talk and share — not medical advice.', 'Video KYC + Aadhaar, both sides', 'Invisible to men', 'Number never shared', 'Hosts here earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
+for (const copy of ['WOMEN-ONLY SPACE', 'Only for women.', 'A place to talk freely.', 'A public preview of a private lane.', 'Talk and share — not medical advice.', 'Video KYC + Aadhaar, both sides', 'Number never shared', 'Hosts here earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
+assert.doesNotMatch(plainText(womenSection), /Invisible to men|Yahan sirf auratein/, 'Retired women-only copy is absent');
+assert.equal((womenSection.match(/class="hf-women-proof"/g) || []).length, 1, 'Safeguard chips remain grouped');
+assert.equal((womenSection.match(/<li><svg aria-hidden="true" viewBox="0 0 24 24">/g) || []).length, 2, 'Two requested safeguard chips');
+for (const photo of ['women-photo-young.png', 'women-photo-midage.png']) assert(womenSection.includes(photo), 'Photographic collage ships: ' + photo);
 assert.match(womenSection, /<button\b[^>]*data-women-preview[^>]*>Verify &amp; enter/, 'Preview entry opens verification information');
 assert(bodyHtml.includes('id="hf-women-dialog"') && bodyHtml.includes('Start verification'), 'Verification preview dialog is present');
 assert(womenSection.includes('href="/women-only"') && womenSection.includes('href="#earn"'), 'Women-only explainer and host rates links');
@@ -89,12 +93,12 @@ assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].
 assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
 checkHelloFraandsPages(root, identity);
 const portraitHashes = new Set();
-for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
+for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'women-photo-young.png', 'women-photo-midage.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
   const file = resolve(root, 'assets/callvaal/scrapbook', asset);
   assert(existsSync(file), 'Approved artwork ships: ' + asset);
   const art = await sharp(file).metadata();
   assert(art.width >= 1024 && art.height >= 1024, 'Artwork resolution: ' + asset);
-  if (asset.startsWith('portrait-')) {
+  if (asset.startsWith('portrait-') || asset.startsWith('women-photo-')) {
     const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
     assert(!portraitHashes.has(hash), 'Distinct host artwork: ' + asset);
     portraitHashes.add(hash);
