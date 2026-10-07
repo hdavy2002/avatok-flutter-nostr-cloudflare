@@ -168,3 +168,40 @@ padding:.75rem .25rem calc(.75rem + env(safe-area-inset-bottom));border-radius:0
 @media(max-width:899px){.proof-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.activity-preview{grid-template-columns:1fr;padding:16px;gap:12px}.activity-preview-label{flex-direction:row;flex-wrap:wrap;gap:4px 12px}}
 @media(max-width:599px){.social-proof-section{margin-top:44px}.social-proof-heading{align-items:flex-start;flex-direction:column;gap:8px}.social-proof-heading>p{text-align:left}.proof-card-grid{grid-template-columns:1fr;gap:12px}.proof-card{min-height:0;padding:22px 18px}.activity-preview{margin-top:14px}.activity-sequence{gap:12px;padding-right:12px}.activity-sequence>span{white-space:normal;max-width:min(82vw,22rem)}}
 @media(prefers-reduced-motion:reduce){.activity-ticker{overflow:visible}.activity-track{width:100%;max-width:100%;animation:none;transform:none;will-change:auto}.activity-sequence{width:100%;max-width:100%;flex:1 1 100%;min-width:0;flex-wrap:wrap;white-space:normal;padding:0}.activity-sequence[aria-hidden="true"]{display:none}.activity-sequence>span{min-width:0;max-width:100%;flex:1 1 18rem;white-space:normal}}
+
+/* Mood-led conversation preview; reuse the existing scrapbook palette. */
+.notebook-site em{font-style:italic}
+.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 4px}
+.hero-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:11px 22px;border-radius:30px;font-weight:700;text-decoration:none}
+.hero-primary{background:var(--text-accent);color:white}.hero-secondary{border:2px solid var(--plum);background:var(--ivory)}
+.service-disclaimer{background:#fff1cf;color:var(--plum);font-weight:700;text-align:center;padding:17px clamp(16px,4vw,50px);border-radius:14px;box-shadow:0 4px 12px #46113e10}
+.mood-section,.women-section,.safety-section{margin-top:clamp(56px,6vw,100px)}
+.mood-section h2,.safety-section h2{margin:3px 0 25px}
+.mood-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.mood-group{position:relative;background:#fff1cf;border-radius:18px;padding:24px;box-shadow:0 5px 16px #46113e0d;min-width:0}
+.mood-group--2{background:#fce4eb}.mood-group--3{background:#f2efff}.mood-group--4{background:#fff9e8}
+.mood-group-head{display:flex;align-items:center;gap:14px;margin-bottom:15px}.mood-group h3{font-size:clamp(1.4rem,2vw,2rem);line-height:1.1}
+.mood-doodle{font:900 2.5rem/1 Nunito;color:var(--text-accent);transform:rotate(-12deg)}
+.mood-chips{display:flex;flex-wrap:wrap;gap:9px}
+.mood-chip{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:8px 13px;border:1px solid #d9c4dc;border-radius:30px;background:#fffdf7;text-decoration:none;font-size:var(--text-note);line-height:1.35}
+.mood-chip:hover,.mood-chip:focus-visible{background:var(--plum);color:white}.mood-chip span{font-family:Nunito;font-size:1.1em}
+.crisis-note{font-size:var(--text-note);margin-top:18px;line-height:1.5}.crisis-note a{text-decoration:underline}
+.women-section{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:24px;padding:28px;background:#f2efff;border-radius:18px}
+.women-doodle{font:900 5rem/1 Nunito;color:var(--text-accent)}.women-section p:not(.preview-kicker){margin-top:12px}
+.women-section small{display:block;margin-top:10px}.women-section button{min-height:48px;padding:12px 22px;border-radius:28px;background:var(--plum);color:white;opacity:.5;cursor:not-allowed}
+.safety-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
+.safety-grid article{min-width:0;padding:23px 20px;border:1px solid #e8dce7;border-radius:15px;background:white;box-shadow:0 4px 12px #46113e09}
+.safety-grid article:nth-child(2){background:#fff1cf}.safety-grid article:nth-child(3){background:#f2efff}.safety-grid article:nth-child(4){background:#fce4eb}
+.safety-grid article span{display:block;color:var(--text-accent);font:900 2rem Nunito;margin-bottom:16px}.safety-grid p{font-size:var(--text-note);line-height:1.55}
+.safety-links{display:flex;flex-wrap:wrap;gap:14px 24px;margin-top:20px}.safety-links a,.safety-links button{background:none;text-decoration:underline;color:#714393;padding:5px 0;font-weight:700}
+.people-filters{align-items:center}.people-filters>label:not(.online-toggle){font-size:var(--text-note);font-weight:700;margin-left:4px}
+.people-filters #mood-filter{flex:1 1 15rem}.online-toggle{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.online-toggle input{width:20px;height:20px;accent-color:var(--plum)}
+.person-portrait{width:100%;height:100%;object-fit:cover;object-position:center 29%}
+.person-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.person-detail-link{text-decoration:none}.person-detail-link:hover{text-decoration:underline}
+.verification-badge{display:inline-flex;border:1px solid #78b28c;border-radius:20px;background:#f1fbf2;color:#075a2c;padding:4px 8px;font-size:.7rem;white-space:nowrap}
+.person-status{display:flex;align-items:center;gap:7px;color:var(--muted)}.person-status span{width:9px;height:9px;border-radius:50%;background:#078841}.person-status.is-offline span{background:#806b80}
+.person-moods{display:flex;flex-wrap:wrap;gap:5px;list-style:none;padding:0;margin:10px 0}.person-moods li{padding:5px 8px;border-radius:20px;background:#f2efff;color:var(--plum);font-size:.7rem;line-height:1.3}
+.phone-strip{margin:clamp(56px,6vw,100px) 0;text-align:center;padding:20px;background:#fff1cf;border-radius:14px;font-weight:700}
+@media(max-width:899px){.safety-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.women-section{grid-template-columns:auto 1fr}.women-section button{grid-column:2;justify-self:start}}
+@media(max-width:599px){.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions a{padding-inline:8px;font-size:.85rem}.service-disclaimer{font-size:.9rem;line-height:1.55}.mood-grid,.safety-grid{grid-template-columns:1fr}.mood-group{padding:19px}.women-section{grid-template-columns:1fr;padding:22px}.women-doodle{display:none}.women-section button{grid-column:1}.people-filters>label:not(.online-toggle){width:100%;margin-top:4px}.people-filters #mood-filter,.people-filters select{flex:1 1 100%;max-width:100%}.online-toggle{min-height:44px}.profile-card .person-actions{gap:8px}.phone-strip{margin-bottom:105px}}

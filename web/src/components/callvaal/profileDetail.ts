@@ -1,15 +1,15 @@
 import { capture } from '../../lib/analytics';
 
-// Only allowlisted fictional profile/category ids and fixed actions reach analytics.
+// Only allowlisted fictional profile ids and fixed actions reach analytics.
 const profileElement = document.querySelector<HTMLElement>('[data-profile-id]');
-const sampleProfiles: Record<string, string> = { 'dr-ananya': 'doctors', sana: 'counsellor', neha: 'listener', kavya: 'astrology', priya: 'practice' };
+const sampleProfiles = new Set(['dr-ananya', 'sana', 'neha', 'kavya', 'priya']);
 const profileId = profileElement?.dataset.profileId || '';
 const profileName = profileElement?.dataset.profileName || 'this sample profile';
-const categoryId = Object.prototype.hasOwnProperty.call(sampleProfiles, profileId) ? sampleProfiles[profileId] : undefined;
-const metadata = { surface: 'callvaal-profile', profile_id: profileId, category: categoryId, sample_profile: true };
+const knownProfile = sampleProfiles.has(profileId);
+const metadata = { surface: 'callvaal-profile', profile_id: profileId, sample_profile: true };
 const status = document.querySelector<HTMLElement>('[data-profile-status]');
 function record(action: string, extra: Record<string, string | number | boolean> = {}) {
-  if (!categoryId) return;
+  if (!knownProfile) return;
   capture('cta_click', { ...metadata, label: action, ...extra });
 }
 const triggers = new WeakMap<HTMLDialogElement, HTMLElement>();
@@ -17,13 +17,13 @@ function openDialog(dialog: HTMLDialogElement | null, trigger: HTMLElement) {
   if (!dialog || dialog.open) return;
   triggers.set(dialog, trigger);
   dialog.showModal();
-  dialog.querySelector<HTMLButtonElement>('[data-dialog-close]')?.focus();
+  dialog.querySelector<HTMLButtonElement>('[data-disclaimer-ack], [data-dialog-close]')?.focus();
 }
 document.querySelectorAll<HTMLDialogElement>('.cv-detail-dialog').forEach(dialog => {
   dialog.querySelector('[data-dialog-close]')?.addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { triggers.get(dialog)?.focus(); triggers.delete(dialog); });
   dialog.addEventListener('click', event => {
-    if (event.target !== dialog) return;
+    if (dialog.id === 'cv-profile-preview' || event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
   });
@@ -41,10 +41,16 @@ document.querySelector<HTMLButtonElement>('[data-profile-save]')?.addEventListen
 });
 
 const preview = document.querySelector<HTMLDialogElement>('#cv-profile-preview');
+// Preview has no call continuation. Dismissal explicitly acknowledges the disclaimer.
+preview?.addEventListener('cancel', event => event.preventDefault());
+preview?.querySelector('[data-disclaimer-ack]')?.addEventListener('click', () => {
+  record('call_disclaimer_acknowledged');
+  if (status) status.textContent = 'Disclaimer acknowledged. This sample has no live calls or bookings.';
+});
 document.querySelectorAll<HTMLButtonElement>('[data-profile-preview]').forEach(button => button.addEventListener('click', () => {
   const heading = preview?.querySelector('h2');
   const action = button.dataset.profilePreview === 'book' ? 'book' : 'call';
-  if (heading) heading.textContent = action === 'book' ? `Book a time with ${profileName}` : `Call ${profileName}`;
+  if (heading) heading.textContent = 'Before you call';
   openDialog(preview, button);
   record(`${action}_preview`);
 }));
@@ -79,7 +85,7 @@ const shareDialog = document.querySelector<HTMLDialogElement>('#cv-share-dialog'
 const shareInput = document.querySelector<HTMLInputElement>('#cv-share-url');
 const shareStatus = document.querySelector<HTMLElement>('[data-share-status]');
 // Drop all incoming query parameters and fragments; sharing never exposes them.
-const shareUrl = new URL(categoryId ? `/people/${profileId}` : '/', window.location.origin).href;
+const shareUrl = new URL(knownProfile ? `/people/${profileId}` : '/', window.location.origin).href;
 async function copyLink() {
   try {
     await navigator.clipboard.writeText(shareUrl);
@@ -117,10 +123,10 @@ if ('IntersectionObserver' in window) {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
-      if (categoryId) capture('profile_section_view', { ...metadata, section: entry.target.id });
+      if (knownProfile) capture('profile_section_view', { ...metadata, section: entry.target.id });
       observer.unobserve(entry.target);
     }
   }, { threshold: .2 });
-  document.querySelectorAll('#about, #services, #gallery, #reviews').forEach(section => observer.observe(section));
+  document.querySelectorAll('#about, #moods, #gallery, #reviews').forEach(section => observer.observe(section));
 }
 document.documentElement.dataset.profileReady = 'true';

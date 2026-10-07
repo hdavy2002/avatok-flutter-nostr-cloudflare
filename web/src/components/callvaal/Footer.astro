@@ -1,46 +1,30 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
 import { BRAND } from '../../lib/brand';
-import { categories } from '../../lib/callvaalHomeReference';
 import '../../styles/callvaal-chrome.css';
 const identity = brandConfig.homepageIdentity;
 const groups = [
-  ['Company', ['About us', 'How it works', 'Contact us', 'Help centre', 'FAQs', 'Careers', 'Press & media', 'Accessibility']],
-  ['Explore', ['All categories', 'Find your person', ...categories.map(category => category.name)]],
-  ['Partners', ['Join & earn', 'Partner requirements', 'Verification guide', 'Partner help', 'Rates & earnings', 'Payouts & taxes', 'Partner agreement', 'Partner code of conduct']],
-  ['Trust & Safety', ['Safety centre', 'Community guidelines', 'Report a user', 'Report a concern', 'Block & report guide', 'Grievance redressal', 'Professional standards', 'Emergency support']],
-  ['Legal & Payments', ['Terms of use', 'Privacy policy', 'Cookie policy', 'Refund policy', 'Cancellation policy', 'Payment & wallet terms', 'Service disclaimer', 'Data deletion']],
+  ['Company', ['About us', 'How it works', 'Contact us', 'Help centre']],
+  ['Explore', ['All moods', "Who's online", 'Sirf ladkiyon ke liye', 'Taare', 'Earn with us']],
+  ['Hosts', ['Join & earn', 'Host requirements', 'KYC guide', 'Rates & payouts', 'Host rules']],
+  ['Trust & Safety', ['Safety centre', 'Community guidelines', 'Report a user', 'Grievance officer', 'Emergency: Tele-MANAS 14416 / 112']],
+  ['Legal', ['Terms', 'Privacy', 'Refund & wallet', 'Service disclaimer', 'Data deletion']],
 ] as const;
 const anchors: Record<string, string> = {
-  'All categories': '/#categories', 'Find your person': '/#people',
-  'How it works': '/#privacy-note', 'Join & earn': '/#earn',
+  'All moods': '/#moods', "Who's online": '/#people', 'Sirf ladkiyon ke liye': '/#women-space',
+  'Taare': '/?mood=kundli#people', 'Earn with us': '/#earn', 'Join & earn': '/#earn',
+  'How it works': '/#privacy-note', 'Safety centre': '/talk-safely',
 };
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
-  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
-  <nav class="cv-footer-columns footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(label => {
-    const category = heading === 'Explore' ? categories.find(category => category.name === label) : undefined;
-    return <li>{category ? <button type="button" data-category-select data-category={category.id} aria-pressed="false">{label}</button> : anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : <button type="button" data-footer-preview={label} data-preview-action="page" data-preview-label={label}>{label}</button>}</li>;
-  })}</ul></details>)}</nav>
+  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span aria-hidden="true">′</span></a><p>Real people.<br/>Baat se baat banti hai.</p></div>
+  <nav class="cv-footer-columns footer-columns" aria-label="Footer">{groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(label => <li data-women-nav={label === 'Sirf ladkiyon ke liye' ? true : undefined} hidden={label === 'Sirf ladkiyon ke liye'}>{anchors[label] ? <a href={anchors[label]}>{label}</a> : label === 'Contact us' ? <a href={`mailto:${BRAND.emails.support}`}>{label}</a> : label === 'Emergency: Tele-MANAS 14416 / 112' ? <span>{label}</span> : <button type="button" data-footer-preview={label} data-preview-action="page" data-preview-label={label}>{label}</button>}</li>)}</ul></details>)}</nav>
+  <p class="cv-footer-disclaimer">{identity.name} is a place to talk. Hosts are real people, not doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. Astrology and tarot calls are for reflection and entertainment; no outcome is promised. Sexual or abusive talk ends the call and the account. Calls are recorded with consent for safety. 18+ only. In crisis, call Tele-MANAS 14416 or 112.</p>
   <p class="cv-footer-copyright footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Concept preview</p>
 </footer>
 <dialog class="cv-preview-dialog" id="cv-footer-dialog" aria-labelledby="cv-footer-dialog-title" aria-describedby="cv-footer-dialog-description"><h2 id="cv-footer-dialog-title">Concept preview</h2><p id="cv-footer-dialog-description">This page is not published for this service yet.</p><form method="dialog"><button autofocus>Close</button></form></dialog>
 <script>
   import { capture } from '../../lib/analytics';
-  // The homepage owns filter state and its analytics. Other routes carry the
-  // same category controls back to the homepage's validated filter.
-  if (!document.querySelector('#category-filter')) {
-    document.querySelectorAll<HTMLButtonElement>('.cv-footer [data-category-select]').forEach(button => {
-      button.removeAttribute('aria-pressed');
-      button.addEventListener('click', () => {
-        const category = button.dataset.category;
-        if (!category) return;
-        const href = `/?category=${encodeURIComponent(category)}#people`;
-        capture('nav_click', { surface: 'callvaal-chrome', section: 'footer', label: category, href });
-        window.location.assign(href);
-      });
-    });
-  }
   const mobile = window.matchMedia('(max-width: 699px)');
   const groups = document.querySelectorAll<HTMLDetailsElement>('.cv-footer-group');
   function updateGroups() { groups.forEach(group => { group.open = !mobile.matches; }); }
