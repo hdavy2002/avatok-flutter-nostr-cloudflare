@@ -1,9 +1,10 @@
 ---
+import { BRAND } from '../../lib/brand';
 import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
 <HelloFraandsPage title="Join & earn" summary="Ghar se baat karein, apne waqt par kamaayein.">
-<h2>Good at listening? Start here.</h2><p>You do not need a professional title to have a kind conversation. Hello Fraands welcomes ordinary adults, including women at home who want flexible hours. Choose when to go online and the topics you enjoy. Hosting is for conversation, not regulated advice.</p>
+<h2>Good at listening? Start here.</h2><p>You do not need a professional title to have a kind conversation. {BRAND.name} welcomes ordinary adults, including women at home who want flexible hours. Choose when to go online and the topics you enjoy. Hosting is for conversation, not regulated advice.</p>
 <h2>What could you earn?</h2><p>These examples assume 2 hours of fully paid calls each day for 25 days: 3,000 paid minutes. Being online does not guarantee calls. Amounts below are after platform commission and before TDS or your own taxes.</p>
 <div class="table-scroll"><table><caption>Illustrative earnings for 3,000 paid minutes</caption><thead><tr><th scope="col">Caller rate</th><th scope="col">Host share per minute</th><th scope="col">Monthly host share</th></tr></thead><tbody><tr><td>₹20/min</td><td>₹10.80</td><td>₹32,400</td></tr><tr><td>₹25/min</td><td>₹13.80</td><td>₹41,400</td></tr><tr><td>₹30/min</td><td>₹16.80</td><td>₹50,400</td></tr></tbody></table></div>
 <p>The platform keeps ₹2 plus 40% of the amount above ₹2. See <a href="/hosts/rates">rates, payouts &amp; taxes</a>.</p>

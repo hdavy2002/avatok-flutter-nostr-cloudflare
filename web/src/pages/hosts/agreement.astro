@@ -1,9 +1,10 @@
 ---
+import { BRAND } from '../../lib/brand';
 import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
 <HelloFraandsPage title="Host agreement" summary="Host ke taur par aapki zimmedariyan aur shartein." review={true} related={[{ href: '/hosts/rules', label: 'Host rules' }, { href: '/hosts/agreement', label: 'Host agreement' }, { href: '/recording-policy', label: 'Recording & consent' }]}>
-<h2>Your role</h2><p>You work as an independent contractor. You are not an employee of Hello Fraands. You choose your available hours and remain responsible for your conduct and statements.</p>
+<h2>Your role</h2><p>You work as an independent contractor. You are not an employee of {BRAND.name}. You choose your available hours and remain responsible for your conduct and statements.</p>
 <h2>Payment and conduct</h2><p>Payment is calculated under <a href="/hosts/rates">rates, payouts &amp; taxes</a>. You must meet the <a href="/hosts/requirements">host requirements</a> and follow the <a href="/hosts/rules">host rules</a>. Nobody else may use your account to take calls.</p>
 <h2>Recording and review</h2><p>You give the platform permission to record calls with consent and to review them for safety under the <a href="/recording-policy">recording policy</a>. This permission is limited to the purposes and retention periods stated there.</p>
 <h2>Suspension and termination</h2><p>Rule breaches can lead to a warning, suspension or removal. Serious safety concerns may require immediate action. Any withheld earnings will be reviewed individually under the published payout terms and applicable law; a report alone does not forfeit earnings. You may stop hosting and request account closure.</p>

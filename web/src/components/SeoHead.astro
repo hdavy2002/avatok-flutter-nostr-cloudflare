@@ -20,7 +20,7 @@ const seo = await resolveSeo({
   content,
   legacy,
 });
-// The five illustrative conversation profiles share the Hello Fraands identity;
+// The five illustrative conversation profiles share the homepage identity;
 // the rest of the app still follows the central app brand configuration.
 const conversationProfile = Astro.url.pathname.startsWith('/people/');
 const conversationOrigin = `https://${brandConfig.homepageIdentity.domain}`;

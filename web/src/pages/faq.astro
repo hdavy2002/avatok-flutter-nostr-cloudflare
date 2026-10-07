@@ -1,4 +1,5 @@
 ---
+import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
@@ -6,7 +7,7 @@ export const prerender = true;
 <h2>Common questions</h2>
 <details><summary>Will the other person see my number?</summary><p>No. Calls are connected through a masked bridge. Neither person sees the other's personal phone number. Do not share it during the call.</p></details>
 <details><summary>Are calls recorded?</summary><p>The planned call service gives both people a spoken recording notice before connection. Recordings may be checked by automated safety tools and reviewed by trained staff when needed. The final retention period will be published before calls launch. Read <a href="/recording-policy">recording &amp; consent</a>.</p></details>
-<details><summary>Is this therapy or counselling?</summary><p>No. Hello Fraands is for conversation and company. It is not therapy, counselling or a crisis service.</p></details>
+<details><summary>Is this therapy or counselling?</summary><p>No. {BRAND.name} is for conversation and company. It is not therapy, counselling or a crisis service.</p></details>
 <details><summary>Who are the hosts?</summary><p>Hosts are adults who choose to offer conversation in their selected moods and languages. They must complete video KYC and Aadhaar verification before hosting.</p></details>
 <details><summary>Are hosts doctors or lawyers?</summary><p>Hosts must not present themselves here as doctors, lawyers, counsellors, CAs or financial advisors. Nothing on a call is professional advice.</p></details>
 <details><summary>Is this a dating service?</summary><p>No. Sexual or suggestive talk, exchanging contact details and arranging meetings are not allowed.</p></details>

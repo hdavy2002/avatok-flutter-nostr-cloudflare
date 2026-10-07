@@ -1,9 +1,10 @@
 ---
+import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
 <HelloFraandsPage title="Age policy" summary="Callers aur hosts, sabhi ka 18 saal ya usse zyada hona zaroori hai." review={false} related={[]}>
 <h2>Adults only</h2>
-<p>You must be at least 18 to call or host on Hello Fraands. An adult must not let a child use their account.</p>
+<p>You must be at least 18 to call or host on {BRAND.name}. An adult must not let a child use their account.</p>
 <h2>How age is checked</h2>
 <p>Everyone declares their age at sign-up. Hosts complete Aadhaar verification and video KYC. Callers may need Aadhaar verification once their top-ups reach the verification threshold shown in the payment flow. Do not use another person's details.</p>
 <h2>If we find a minor</h2>
