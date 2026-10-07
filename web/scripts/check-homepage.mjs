@@ -23,91 +23,67 @@ const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')
 assert(identity?.name && identity?.domain, 'Homepage identity is centrally configured');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One main heading');
 assert(visibleText.includes(identity.name), 'Planned public brand is visible');
-assert.match(visibleText, /Baat karo\./);
-assert.match(visibleText, /Raasta nikalo\./);
-assert.match(visibleText, /A second opinion\. Someone to listen\. A friend to vent to\./, 'Hero offers private conversation use cases, not only consulting');
-assert.match(visibleText, /outside your circle/, 'Hero offers someone beyond the caller’s existing circle');
-assert.match(visibleText, /without showing them your phone number/, 'Hero makes the factual number-not-shown claim without promising absolute safety');
-assert.match(visibleText, /You decide which personal details to share/, 'Hero uses qualified caller-agency language');
-assert.match(visibleText, /more control for women and anyone seeking more privacy/, 'Hero explicitly reassures women and other privacy-seeking callers');
-assert.doesNotMatch(visibleText, /They only know what you choose to share/, 'Hero does not make an absolute claim about what another person knows');
-assert.match(bodyHtml, /<a\b[^>]*class="hero-safety-link"[^>]*href="\/talk-safely"[^>]*>Rules for talking safely with strangers →<\/a>/, 'Hero links to the stranger-safety guide');
-assert.match(visibleText, /Sample profiles/, 'Fictional profile cards are labelled');
-for (const label of ['5,000+', 'Verified people', 'Any Indian language', 'Pan India', 'Private numbers']) {
-  assert(visibleText.includes(label), 'Social proof preview card: ' + label);
+assert.match(visibleText, /Baat karo\. Dil halka karo\./);
+assert.match(visibleText, /Real people\. Your number stays private\./);
+assert.match(visibleText, /Pay per minute/);
+assert.match(visibleText, /18\+ only/);
+for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Calls are recorded with consent, kept 30 days', 'Earn ₹12–₹18', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
+  assert(visibleText.includes(copy), 'Conversation, safety and earning contract: ' + copy);
 }
-assert.match(visibleText, /Illustrative preview/, 'Social proof is visibly disclosed as illustrative');
-assert.match(visibleText, /Launch target/, '5,000+ is framed as a launch target');
-assert.match(visibleText, /Sample activity Live updates coming later/, 'Ticker is visibly disclosed as sample activity');
-assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/, 'Duplicated ticker sequence is hidden from assistive technology');
-assert(bodyHtml.indexOf('class="social-proof-section"') > bodyHtml.indexOf('class="notebook-hero"') && bodyHtml.indexOf('class="social-proof-section"') < bodyHtml.indexOf('class="category-section"'), 'Social proof sits between hero and categories');
-const homepageCss = readFileSync(resolve('src/styles/callvaal-notebook.css'), 'utf8');
-assert.match(homepageCss, /@keyframes sample-activity-scroll\{to\{transform:translateX\(-50%\)\}\}/, 'Ticker loops right-to-left without a timer');
-assert.match(homepageCss, /prefers-reduced-motion:reduce/, 'Ticker has a reduced-motion layout');
-assert.match(homepageCss, /\.activity-track\{width:100%;max-width:100%;animation:none/, 'Reduced-motion track stays within its container');
-assert.match(homepageCss, /\.activity-sequence\{width:100%;max-width:100%;flex:1 1 100%;min-width:0;/, 'Reduced-motion sequence can shrink at narrow zoomed widths');
-assert.match(homepageCss, /animation-play-state:paused/, 'Ticker pauses for pointer and keyboard users');
-assert.match(homepageCss, /\.activity-ticker:focus-visible\{outline:3px solid #7b388c;outline-offset:4px\}/, 'Ticker has a visible keyboard focus ring');
-assert.doesNotMatch(bodyHtml, /hero-havan|FolkArtwork|data-folk-artwork|AskPandit|grand-havan|bright\/border|logo-horizontal/);
-assert.doesNotMatch(visibleText, /Himalayan temple|prasad|pujas|havans|Aum Fe|Saa Thum/i);
-for (const heading of ['Kis se baat karni hai?', 'Aapka number. Sirf aapka.', 'Sahi insaan. Ek kaam ki baat.', 'Your knowledge. Your experience. Your time.']) {
-  assert(visibleText.includes(heading), 'Reference section: ' + heading);
-}
+assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|data-category-select/, 'Discovery uses moods, not professional categories');
+assert.doesNotMatch(visibleText, /General physician|NMC|Bar Council|ICAI|RCI|Raasta nikalo|Become an expert/);
+for (const heading of ['Mann ki baat', 'Tension', 'Gap-shap', 'Taare', 'Aapka number.', 'Kaun hai', 'Baatein karo.']) assert(visibleText.includes(heading), 'Section: ' + heading);
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-for (const id of ['main-content', 'categories', 'privacy-note', 'people', 'earn', 'preview-dialog']) {
-  assert(ids.has(id), 'Homepage section exists: #' + id);
-}
+for (const id of ['main-content', 'moods', 'privacy-note', 'safety', 'people', 'earn', 'preview-dialog']) assert(ids.has(id), 'Section exists: #' + id);
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Missing anchor: ' + href);
 }
-assert.equal((html.match(/<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared CallVaal header');
-assert.equal((html.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared CallVaal footer');
-assert(meta(html, 'description')?.length > 40, 'Homepage has useful neutral description');
-assert(meta(html, 'og:title')?.includes(identity.name), 'Share title uses homepage brand');
+assert.equal((html.match(/<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared header');
+assert.equal((html.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared footer');
+assert(meta(html, 'description')?.length > 40, 'Useful description');
+assert(meta(html, 'og:title')?.includes(identity.name), 'Share title uses homepage identity');
 assert(meta(html, 'og:description'), 'Share description exists');
-assert(html.includes('href="/sign-in'), 'Sign-in route remains reachable');
-assert.match(html, /<dialog\b/, 'Unwired calls and joining have an accessible preview notice');
-assert.doesNotMatch(visibleText, /No app needed|Life ka sawaal|Become an expert/i);
-// [CALLVAAL-READABLE-CATEGORIES-1] Check each discovery surface, not merely text anywhere.
-const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
+assert(html.includes('href="/sign-in'), 'Sign-in remains reachable');
+assert.match(html, /<dialog\b/, 'Preview actions have an accessible notice');
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
-const categoryCards = [...bodyHtml.matchAll(/<button\b[^>]*data-callvaal-category-card(?:="")?[^>]*>([\s\S]*?)<\/button>/g)].map(match => match[1]);
-assert.deepEqual(categoryCards.map(card => plainText(card.match(/<strong\b[^>]*>([\s\S]*?)<\/strong>/)?.[1] || '')), categoryLabels, 'Exact nine category labels and order');
-const categorySelect = bodyHtml.match(/<select\b[^>]*id="category-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
-assert.deepEqual([...categorySelect.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/g)].map(match => plainText(match[1])).slice(1), categoryLabels, 'Dropdown matches category tiles');
-assert.doesNotMatch(plainText(visibleText), /Home & property|Learning & skills|Wellbeing/, 'Retired categories are absent');
-const registryLabels = ['NMC', 'Bar Council', 'ICAI', 'RCI'];
-const categoryCredentials = [...bodyHtml.matchAll(/<span\b[^>]*class="category-credential"[^>]*>([\s\S]*?)<\/span>/g)].map(match => plainText(match[1]));
-assert.equal(categoryCredentials.length, 4, 'Four category registry badges');
-assert.deepEqual(categoryCredentials, registryLabels.map(registry => `✓ Verified · ${registry}`), 'Credential categories use explicit verified labels');
-for (const [index, registry] of [[0, 'NMC'], [1, 'Bar Council'], [2, 'ICAI'], [5, 'RCI']]) {
-  assert(categoryCards[index].includes('category-credential') && plainText(categoryCards[index]).includes(registry), 'Registry belongs to correct category: ' + registry);
+const moodSlugs = ['bas-baat-karni-hai', 'aaj-akela-lag-raha-hai', 'din-kharab-tha', 'raat-ko-neend-nahi-aati', 'shaam-ki-company', 'exam-ki-tension', 'interview-se-darr', 'shaadi-ka-pressure', 'ghar-waalon-se-jhagda', 'naukri-ki-chinta', 'breakup', 'kisi-topic-pe-baat', 'apni-bhasha-mein-baat', 'english-mein-casual-chat', 'kundli', 'horoscope', 'tarot'];
+const moodSelect = bodyHtml.match(/<select\b[^>]*id="mood-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
+assert.deepEqual([...moodSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), moodSlugs, 'All 17 moods in discovery order');
+for (const slug of moodSlugs) assert(bodyHtml.includes(`href="/?mood=${slug}#people"`), 'Mood link: ' + slug);
+assert.match(bodyHtml, /id="online-filter"/, 'Online filter available');
+const cards = [...bodyHtml.matchAll(/<article\b[^>]*data-person(?:="")?[^>]*>[\s\S]*?<\/article>/g)].map(m => m[0]);
+assert.equal(cards.length, 8, 'Eight illustrative hosts');
+assert.deepEqual(cards.map(card => plainText(card.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/)?.[1] || '')), ['Neha', 'Priya', 'Sana', 'Kavya', 'Ananya', 'Rohan', 'Arjun', 'Dev'], 'Approved host roster');
+for (const card of cards) {
+  assert.match(card, /data-moods="[^"]+"/);
+  assert.match(card, /data-online="(?:true|false)"/);
+  assert.match(card, /data-price="(?:20|25|30)"/);
+  assert.match(card, /alt="Illustrative portrait of /);
 }
-const profileBadges = [...bodyHtml.matchAll(/<div\b[^>]*class="person-heading"[^>]*>([\s\S]*?)<\/div>/g)].map(match => match[1]).filter(heading => heading.includes('class="verification-badge"')).map(plainText);
-assert.equal(profileBadges.length, 3, 'Three illustrative profile verification badges; Sana has no verified credential');
-for (const registry of ['NMC', 'Bar Council', 'ICAI']) assert(profileBadges.some(badge => badge.includes(registry)), 'Illustrative profile registry: ' + registry);
-const disclosure = [...bodyHtml.matchAll(/<p\b[^>]*class="(?:sample-label|profile-disclosure)"[^>]*>([\s\S]*?)<\/p>/g)].map(match => plainText(match[1])).join(' ');
-assert.match(disclosure, /illustrative/i);
-for (const detail of ['profiles', 'qualifications', 'verification badges']) assert(disclosure.includes(detail), 'Illustrative disclosure covers ' + detail);
+assert.match(visibleText, /All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative/);
+assert.match(visibleText, /Calls and payments are unavailable in this preview/);
+assert.match(visibleText, /Illustrative preview/);
+assert.match(visibleText, /Launch target/);
+assert.match(visibleText, /Sample activity Live updates coming later/);
+assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/);
+assert.match(bodyHtml, /<template id="women-space-template">/, 'Women-only content is inert until verification');
+assert.match(bodyHtml, /id="women-space-slot"><\/div>/, 'No women-only section rendered for anonymous visitors');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
-assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five stable footer groups');
-assert.equal((footer.match(/<li[ >]/g) || []).length, 43, 'Complete 43-entry footer');
-const explore = [...footer.matchAll(/<details\b[^>]*>([\s\S]*?)<\/details>/g)].map(match => match[1]).find(group => /<summary[^>]*>Explore<\/summary>/.test(group)) || '';
-assert.equal((explore.match(/<li[ >]/g) || []).length, 11, 'Explore has two destinations and nine categories');
-assert.deepEqual([...explore.matchAll(/<button\b[^>]*data-category-select[^>]*>([\s\S]*?)<\/button>/g)].map(match => plainText(match[1])), categoryLabels, 'Footer exposes every category filter');
-assert.match(visibleText, /non-clinical support/);
-assert.match(visibleText, /not therapy or crisis care/);
-assert.match(visibleText, /No stock or crypto tips\./, 'Tax category retains its advice boundary');
-for (const asset of ['hero-collage.png', 'category-stickers.png', 'earn-art.png', ...Array.from({ length: 9 }, (_, i) => `portrait-${i + 1}.png`)]) {
+assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
+assert.equal((footer.match(/<li[ >]/g) || []).length, 24, 'Complete mood-led footer');
+const portraitHashes = new Set();
+for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
   const file = resolve(root, 'assets/callvaal/scrapbook', asset);
-  assert(existsSync(file), 'Scrapbook artwork ships: ' + asset);
+  assert(existsSync(file), 'Approved artwork ships: ' + asset);
   const art = await sharp(file).metadata();
-  assert(art.width >= 1024 && art.height >= 1024, 'Scrapbook artwork has sufficient resolution: ' + asset);
-  if (asset === 'category-stickers.png') assert.equal(art.width, art.height, 'Three-by-three sprite is square: ' + asset);
+  assert(art.width >= 1024 && art.height >= 1024, 'Artwork resolution: ' + asset);
+  if (asset.startsWith('portrait-')) {
+    const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
+    assert(!portraitHashes.has(hash), 'Distinct host artwork: ' + asset);
+    portraitHashes.add(hash);
+  }
 }
-assert.equal((html.match(/data-person(?:=""|\s|>)/g) || []).length, 9, 'Nine illustrative profiles');
-assert.match(visibleText, /Illustrative qualifications, verification badges, ratings, reviews, conversation counts and prices/);
 assert.doesNotMatch(bodyHtml, /href="\/(?:privacy|terms|refunds|help)"/, 'Do not send new-service users to unrelated old policies');
 const talkSafely = readFileSync(resolve(root, 'talk-safely/index.html'), 'utf8');
 const talkSafelyText = talkSafely.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
@@ -124,7 +100,7 @@ assert.equal((talkSafely.match(/<footer\b/g) || []).length, 1, 'Safety guide has
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
-console.log('Notebook homepage checks passed: identity, reference content, anchors, sample disclosure and metadata.');
+console.log('Notebook homepage checks passed: identity, moods, eight hosts, safety, earning, anchors, sample disclosure and metadata.');
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] /archive/home-2026-09-09 and /global-ideas were DELETED
 // by owner decision (they now answer 410 via src/middleware.ts), so their archive and

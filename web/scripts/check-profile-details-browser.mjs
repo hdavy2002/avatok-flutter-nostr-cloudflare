@@ -20,7 +20,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }).end(body);
   } catch { if (!response.writableEnded) response.writeHead(404).end(); }
 });
-const profiles = [['dr-ananya', 'Dr. Ananya'], ['sana', 'Sana'], ['neha', 'Neha'], ['kavya', 'Kavya'], ['priya', 'Priya']];
+const profiles = [['dr-ananya', 'Ananya'], ['sana', 'Sana'], ['neha', 'Neha'], ['kavya', 'Kavya'], ['priya', 'Priya']];
 const failures = [];
 let browser;
 try {
@@ -78,27 +78,16 @@ try {
           await trigger.click();
           const dialog = page.locator('#cv-profile-preview');
           await expect(dialog).toBeVisible();
-          await expect(dialog.locator('h2')).toHaveText(action === 'call' ? `Call ${name}` : `Book a time with ${name}`);
-          await expect(dialog).toContainText('Calling, booking and payments are not available.');
+          await expect(dialog.locator('h2')).toHaveText('Before you call');
+          await expect(dialog).toContainText('Calls, bookings and payments are unavailable.');
           await page.keyboard.press('Escape');
+          await expect(dialog).toBeVisible();
+          await dialog.locator('[data-disclaimer-ack]').click();
           await expect(dialog).not.toBeVisible();
           await expect(trigger).toBeFocused();
         }
-        const galleryTrigger = page.locator('[data-gallery-index="0"]').first();
-        await galleryTrigger.click();
-        const gallery = page.locator('#cv-gallery-dialog');
-        await expect(gallery).toBeVisible();
-        await expect(gallery.locator('[data-gallery-count]')).toHaveText('1 / 3');
-        await page.keyboard.press('ArrowRight');
-        await expect(gallery.locator('[data-gallery-count]')).toHaveText('2 / 3');
-        await expect(gallery.locator('[data-gallery-image]')).toHaveAttribute('alt', new RegExp(name));
-        await gallery.locator('[data-gallery-step="-1"]').click();
-        await expect(gallery.locator('[data-gallery-count]')).toHaveText('1 / 3');
-        await page.keyboard.press('ArrowLeft');
-        await expect(gallery.locator('[data-gallery-count]')).toHaveText('3 / 3');
-        await page.keyboard.press('Escape');
-        await expect(gallery).not.toBeVisible();
-        await expect(galleryTrigger).toBeFocused();
+        await expect(page.locator('[data-gallery-index]')).toHaveCount(0);
+        await expect(page.locator('#gallery')).toHaveCount(0);
         const share = page.locator('[data-profile-share]');
         await share.click();
         await expect(page.locator('#cv-share-dialog')).toBeVisible();
@@ -112,11 +101,8 @@ try {
         await expect.poll(() => page.evaluate(() => window.__profileShared?.url)).toBe(`${origin}/people/${id}`);
         await expect(page.locator('#cv-share-dialog')).not.toBeVisible();
         if (width <= 699) {
-          const topics = page.locator('.cv-more-topics');
-          await topics.locator('summary').click();
-          await expect(topics).toHaveAttribute('open', '');
-          await page.locator('.cv-profile-tabs a[href="#services"]').click();
-          await expect(page.locator('.cv-profile-tabs a[href="#services"]')).toHaveAttribute('aria-current', 'location');
+          await page.locator('.cv-profile-tabs a[href="#moods"]').click();
+          await expect(page.locator('.cv-profile-tabs a[href="#moods"]')).toHaveAttribute('aria-current', 'location');
         }
         await page.screenshot({ path: `profile-detail-review/${id}-${width}.png`, fullPage: true });
         assert.deepEqual(mutations, [], `${id}/${width}: no business API writes`);
@@ -139,4 +125,4 @@ try {
   await new Promise(done => server.close(done));
 }
 assert.deepEqual(failures, [], 'Profile browser contract failures');
-console.log('Five profile pages passed responsive, preview, gallery, save, share, focus and embed checks.');
+console.log('Five profile pages passed responsive, disclaimer, moods, save, share, focus and embed checks.');

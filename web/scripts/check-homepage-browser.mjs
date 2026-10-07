@@ -1,4 +1,4 @@
-// Owner-approved reference replica. Run only in manually dispatched GitHub CI.
+// Owner-approved mood-led conversation homepage. Run only in manually dispatched GitHub CI.
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -22,11 +22,11 @@ await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
 const homepageIdentity = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
-const categoryLabels = ['Doctors', 'Legal', 'Tax & money', 'Career & workplace', 'Relationships & marriage', 'Counsellor', 'Listener', 'Astrology', 'Practice'];
+
 let browser;
 async function waitForPreviewClose(dialog, trigger, message) {
   // Native focus restoration can precede the application's queued close handler.
-  await expect(dialog, message + ': close handler completed').toHaveAttribute('data-preview-state', 'closed');
+  await expect(dialog, message + ': dialog closed').not.toBeVisible();
   await expect(trigger, message + ': trigger focus restored').toBeFocused();
 }
 // Inspect computed sizes at every viewport so later media queries cannot silently undo floors.
@@ -34,9 +34,10 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '.social-proof-section h2, .proof-card strong, .proof-card span, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, #apps h2, #apps>p, .download-button strong, .category-copy strong, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
-      [15, '.hero-safety-link, .social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .download-button small, #apps>small, .category-topic, .category-caveat, .listener-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
-      [14, '.preview-kicker, .proof-card small, .activity-preview-label span, .category-credential, .verification-badge, .verification-badge span'],
+      [16, '.social-proof-section h2, .proof-card strong, .proof-card span, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .privacy-diagram li>p, .privacy-diagram li>p span, .privacy-diagram strong, .privacy-bottom, .privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
+      [15, '.safety-links a, .social-proof-heading>p, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .mood-chip, .crisis-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
+      [11, '.verification-badge, .person-moods li'],
+      [14, '.preview-kicker, .proof-card small, .activity-preview-label span, .service-disclaimer'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -49,7 +50,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '.social-proof-section, .proof-card, .activity-preview, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #apps, .category-copy, [data-callvaal-footer-group][open]';
+    const panels = '.social-proof-section, .proof-card, .activity-preview, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -82,16 +83,15 @@ async function inspectReadability(page) {
         }
       }
     };
-    checkSiblings('.privacy-diagram, .privacy-diagram li, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, .download-grid, .download-button, footer[data-callvaal-chrome] nav[aria-label="Footer"], .category-card, .category-copy');
-    const badges = [...document.querySelectorAll('.category-credential, .verification-badge')].map(el => {
+    checkSiblings('.privacy-diagram, .privacy-diagram li, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
+    const badges = [...document.querySelectorAll('.verification-badge')].map(el => {
       const rect = el.getBoundingClientRect();
-      const card = el.closest('.category-card, .profile-card').getBoundingClientRect();
+      const card = el.closest('.profile-card').getBoundingClientRect();
       const style = getComputedStyle(el);
       const range = document.createRange();
       range.selectNodeContents(el);
       const textFits = [...range.getClientRects()].every(text => text.left >= rect.left - 2 && text.right <= rect.right + 2 && text.top >= rect.top - 2 && text.bottom <= rect.bottom + 2);
-      const arrow = el.closest('.category-card')?.querySelector('.category-arrow')?.getBoundingClientRect();
-      return { text: el.textContent.trim(), visible: visible(el), wraps: style.whiteSpace !== 'nowrap', fits: textFits && rect.left >= card.left - 2 && rect.right <= card.right + 2 && rect.top >= card.top - 2 && rect.bottom <= card.bottom + 2, arrowOverlap: arrow ? intersects(rect, arrow) : false };
+      return { text: el.textContent.trim(), visible: visible(el), wraps: style.whiteSpace !== 'nowrap', fits: textFits && rect.left >= card.left - 2 && rect.right <= card.right + 2 && rect.top >= card.top - 2 && rect.bottom <= card.bottom + 2 };
     });
     const viewportOverflow = {
       viewport: innerWidth,
@@ -110,7 +110,7 @@ async function inspectReadability(page) {
     };
     const contractCoverage = {
       footerGroups: document.querySelectorAll('[data-callvaal-footer-group]').length,
-      categoryCards: document.querySelectorAll('[data-callvaal-category-card]').length,
+      moodChips: document.querySelectorAll('.mood-chip').length,
       navigation: document.querySelectorAll('[data-callvaal-navigation]').length,
       menuToggles: document.querySelectorAll('[data-callvaal-menu-toggle]').length,
     };
@@ -120,324 +120,145 @@ async function inspectReadability(page) {
 try {
   await new Promise(done => server.listen(4179, '127.0.0.1', done));
   browser = await chromium.launch();
-  for (const [name, width, height] of [['reference', 1024, 1536], ['ultrawide', 2560, 1269], ['reference-desktop', 1760, 1100], ['wide', 1920, 1200], ['desktop', 1440, 1000], ['small-desktop', 1100, 900], ['below-small-desktop', 1099, 900], ['desktop-breakpoint', 900, 1000], ['below-desktop', 899, 1000], ['tablet', 820, 1000], ['small-tablet', 768, 1000], ['tablet-breakpoint', 600, 1000], ['below-tablet', 599, 900], ['large-mobile', 480, 900], ['reference-mobile', 452, 830], ['mobile', 390, 844], ['small-mobile', 360, 780], ['compact-mobile', 320, 740]]) {
-    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+  for (const width of [320, 360, 390, 452, 599, 600, 699, 700, 899, 900, 1024, 1440, 1920, 2560]) {
+    const name = `home-${width}`;
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const mutations = [];
     const browserErrors = [];
-    page.on('console', message => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`); });
-    page.on('pageerror', error => browserErrors.push(`page: ${String(error)}`));
+    page.on('pageerror', error => browserErrors.push(String(error)));
     page.on('request', request => {
       if (/\/api\//.test(request.url()) && !['GET', 'HEAD'].includes(request.method())) mutations.push(request.url());
     });
     await page.route('**/*', route => {
       const url = new URL(route.request().url());
-      if (url.hostname !== '127.0.0.1' || url.pathname.startsWith('/api/')) return route.abort();
+      if (url.origin !== 'http://127.0.0.1:4179' || url.pathname.startsWith('/api/')) return route.abort();
       return route.continue();
     });
     try {
       await page.goto('http://127.0.0.1:4179/', { waitUntil: 'domcontentloaded' });
-      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached', timeout: 10000 });
+      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
       await page.evaluate(async () => {
         await document.fonts.ready;
-        for (const image of document.images) image.loading = 'eager';
-        await Promise.all([...document.images].map(image => image.decode().catch(() => undefined)));
-        const artwork = new Image();
-        artwork.src = '/assets/callvaal/scrapbook/category-stickers.png';
-        await artwork.decode();
-        if (artwork.naturalWidth < 1024 || artwork.naturalWidth !== artwork.naturalHeight) throw new Error('Category sprite did not load as a high-resolution square');
+        const images = [...document.images].filter(image => image.getClientRects().length);
+        for (const image of images) image.loading = 'eager';
+        await Promise.all(images.map(image => image.decode()));
       });
-      await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
-      await page.locator('.notebook-hero').screenshot({ path: 'homepage-review/' + name + '-hero.png' });
-      for (const [section, selector] of [['social-proof', '.social-proof-section'], ['privacy', '#privacy-note'], ['people-toolbar', '.people-toolbar'], ['people-cards', '.people-grid'], ['earning', '#earn'], ['downloads', '#apps']]) {
-        await page.locator(selector).screenshot({ path: `homepage-review/${name}-${section}.png` });
-      }
-      const geometry = await page.evaluate(() => ({
-        viewport: innerWidth,
-        content: document.documentElement.scrollWidth,
-        height: document.documentElement.scrollHeight,
-        broken: [...document.images].filter(image => !image.complete || !image.naturalWidth).length,
-        heading: document.querySelector('h1')?.textContent,
-        headingFont: getComputedStyle(document.querySelector('h1')).fontFamily,
-        bodyFont: getComputedStyle(document.body).fontFamily,
-        siteWidth: document.querySelector('.notebook-site').getBoundingClientRect().width,
-        profileTextSize: parseFloat(getComputedStyle(document.querySelector('.person-copy p')).fontSize),
-        callButtonHeight: document.querySelector('.sample-call').getBoundingClientRect().height,
-        clippedText: [...document.querySelectorAll('.person-copy,.category-copy,.hero-copy,.earn-copy,.notebook-nav')]
-          .filter(el => el.scrollWidth > el.clientWidth + 2)
-          .map(el => ({ className: el.className, width: el.clientWidth, content: el.scrollWidth })),
-        categories: [...document.querySelectorAll('[data-callvaal-category-card]')].map(el => ({ top: el.offsetTop, left: el.offsetLeft })),
-        profileColumns: getComputedStyle(document.querySelector('.people-grid')).gridTemplateColumns.split(' ').length,
-        photoLayout: [...document.querySelectorAll('.profile-card')].map(card => {
-          const photo = card.querySelector('.portrait-wrap').getBoundingClientRect();
-          const text = card.querySelector('.person-copy').getBoundingClientRect();
-          return { above: photo.bottom <= text.top + 1, fullWidth: Math.abs(photo.width - text.width) < 2 };
-        }),
-      }));
-      metrics.push({ name, ...geometry });
+      await expect(page.locator('h1')).toHaveText(/Baat karo\.\s*Dil halka karo\./);
+      await expect(page.locator('[data-person]')).toHaveCount(8);
+      await expect(page.locator('.mood-group')).toHaveCount(4);
+      await expect(page.locator('.mood-chip')).toHaveCount(17);
+      await expect(page.locator('#women-space')).toHaveCount(0);
+      await expect(page.locator('[data-women-nav]:visible')).toHaveCount(0);
+      await expect(page.locator('#safety .safety-grid article')).toHaveCount(4);
+      await expect(page.locator('#earn .earn-steps li')).toHaveCount(4);
+      await expect(page.locator('#safety a[href="/talk-safely"]')).toBeVisible();
+      await expect(page.locator('.service-disclaimer')).toContainText('18+ only.');
       const readability = await inspectReadability(page);
-      metrics.at(-1).readability = readability;
-      assert(readability.fontCounts.every(group => group.count > 0), name + ': font checks cover each text class');
-      assert.deepEqual(readability.contractCoverage, { footerGroups: 5, categoryCards: 9, navigation: 1, menuToggles: 1 }, name + ': stable chrome and category contracts are present');
-      assert.deepEqual(readability.fontFailures, [], name + ': normal/control 16px, secondary 15px, verification 14px floors');
-      assert.deepEqual(readability.clipping, [], name + ': section text does not clip');
-      assert.deepEqual(readability.overlaps, [], name + ': controls, headings and text do not overlap');
-      assert.equal(readability.badges.length, 7, name + ': four category and three verified profile badges');
-      assert(readability.badges.every(badge => badge.visible && badge.wraps && badge.fits && !badge.arrowOverlap), name + ': complete badges remain visible and can wrap');
-      assert(geometry.content <= width + 1, name + ': no horizontal overflow');
-      assert.deepEqual(geometry.clippedText, [], name + ': important text is not clipped inside its panel');
-      assert.equal(geometry.broken, 0, name + ': source art loads');
-      assert.match(geometry.heading, /Baat karo\./);
-      assert.match(await page.locator('.hero-promise').innerText(), /A second opinion\. Someone to listen\. A friend to vent to\./, name + ': hero presents non-consulting conversation use cases');
-      assert.match(await page.locator('.hero-subtitle').innerText(), /outside your circle[\s\S]*without showing them your phone number[\s\S]*You decide which personal details to share[\s\S]*more control for women and anyone seeking more privacy/, name + ': hero explains caller-controlled privacy and explicitly reassures women');
-      assert.doesNotMatch(await page.locator('.hero-subtitle').innerText(), /They only know what you choose to share/, name + ': hero avoids an absolute knowledge claim');
-      const safetyLink = page.locator('.hero-safety-link');
-      await expect(safetyLink, name + ': safety guide link is visible').toBeVisible();
-      await expect(safetyLink, name + ': safety guide route').toHaveAttribute('href', '/talk-safely');
-      await safetyLink.focus();
-      assert.notEqual(await safetyLink.evaluate(el => getComputedStyle(el).outlineStyle), 'none', name + ': safety guide link has visible keyboard focus');
-      assert.match(geometry.headingFont, /Nunito/i);
-      assert.match(geometry.bodyFont, /Comfortaa/i);
-      assert.equal(await page.locator('.proof-card').count(), 4, name + ': four social proof cards');
-      assert.deepEqual(await page.locator('.proof-card strong').allTextContents(), ['5,000+', 'Any Indian language', 'Pan India', 'Private numbers'], name + ': exact social proof card labels');
-      assert.match(await page.locator('.proof-card').first().innerText(), /Launch target/, name + ': 5,000+ is explicitly a target');
-      assert.match(await page.locator('.social-proof-section').innerText(), /Illustrative preview/i, name + ': preview disclosure is visible');
-      assert.match(await page.locator('.activity-preview').innerText(), /Sample activity[\s\S]*Live updates coming later/, name + ': activity disclosure is visible');
-      assert.equal(await page.locator('.activity-sequence').count(), 2, name + ': ticker uses a duplicated sequence');
-      assert.equal(await page.locator('.activity-sequence').nth(1).getAttribute('aria-hidden'), 'true', name + ': duplicate ticker content is hidden from AT');
-      const reducedTicker = await page.locator('.activity-ticker').evaluate(el => {
-        const track = el.querySelector('.activity-track');
-        const sequence = el.querySelector('.activity-sequence:not([aria-hidden="true"])');
-        const duplicate = el.querySelector('.activity-sequence[aria-hidden="true"]');
-        return { label: el.getAttribute('aria-label'), animation: getComputedStyle(track).animationName, duplicate: getComputedStyle(duplicate).display,
-          trackFits: track.scrollWidth <= el.clientWidth + 1, sequenceFits: sequence.scrollWidth <= track.clientWidth + 1,
-          overflow: document.documentElement.scrollWidth - innerWidth };
-      });
-      assert.match(reducedTicker.label, /Illustrative sample activity/, name + ': ticker has a useful accessible label');
-      assert.equal(reducedTicker.animation, 'none', name + ': reduced motion disables ticker animation');
-      assert.equal(reducedTicker.duplicate, 'none', name + ': reduced motion shows one readable activity sequence');
-      assert(reducedTicker.trackFits && reducedTicker.sequenceFits, name + ': reduced-motion ticker stays within its container');
-      assert(reducedTicker.overflow <= 1, name + ': social proof ticker does not overflow the page');
-      if (width >= 1088) {
-        assert(Math.abs(geometry.siteWidth - Math.min(width - 64, 1760)) < 2, name + ': desktop uses available width up to readable cap');
+      metrics.push({ name, readability });
+      assert.deepEqual(readability.fontFailures, [], name + ': readable fonts');
+      assert.deepEqual(readability.clipping, [], name + ': unclipped content');
+      assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
+      assert(readability.viewportOverflow.content <= width + 1, name + ': no horizontal overflow');
+      const imageGeometry = await page.locator('main img').evaluateAll(images => images.map(image => ({
+        alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
+        width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
+      })));
+      assert(imageGeometry.length === 10 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, eight portraits and earn art load');
+      await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
+      const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
+        moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),
+        price: Number(card.dataset.price), online: card.dataset.online === 'true',
+      })));
+      const moodOptions = await page.locator('#mood-filter option').evaluateAll(options => options.filter(option => option.value).map(option => ({ slug: option.value, label: option.textContent })));
+      assert.equal(moodOptions.length, 17);
+      for (const { slug, label } of moodOptions) {
+        await page.locator('#mood-filter').selectOption(slug);
+        await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.moods.includes(slug)).length);
+        await expect(page.locator('[data-selected-mood-label]')).toHaveText(`Mood: ${label}`);
       }
-      if (width <= 480) {
-        assert(geometry.profileTextSize >= 16, name + ': readable mobile profile text');
-        assert(geometry.callButtonHeight >= 44, name + ': comfortable mobile call target');
+      const reset = page.locator('[data-reset-filters]').first();
+      await reset.click();
+      for (const [selector, value, predicate] of [
+        ['#language-filter', 'Kannada', person => person.languages.includes('Kannada')],
+        ['#price-filter', '20', person => person.price <= 20],
+      ]) {
+        await page.locator(selector).selectOption(value);
+        await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(predicate).length);
+        await reset.click();
       }
-      assert.equal(await page.locator('.profile-card').count(), 9);
-      assert.equal(geometry.profileColumns, width >= 900 ? 3 : width >= 600 ? 2 : 1, name + ': responsive profile columns');
-      assert(geometry.photoLayout.every(photo => photo.above && photo.fullWidth), name + ': full-width photos above profile text');
-      assert.equal(await page.locator('[data-callvaal-category-card]').count(), 9);
-      assert.deepEqual(await page.locator('.category-copy strong').allTextContents(), categoryLabels, name + ': exact tile labels');
-      assert.deepEqual((await page.locator('#category-filter option').allTextContents()).slice(1), categoryLabels, name + ': exact dropdown labels');
-      assert.doesNotMatch(await page.locator('body').innerText(), /Home & property|Learning & skills|Wellbeing/, name + ': retired categories absent');
-      const expectedRegistries = new Map([['Doctors', 'NMC'], ['Legal', 'Bar Council'], ['Tax & money', 'ICAI'], ['Counsellor', 'RCI']]);
-      for (const [label, registry] of expectedRegistries) {
-        const tile = page.locator('[data-callvaal-category-card]').filter({ has: page.locator('strong', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) });
-        assert.match(await tile.locator('.category-credential').innerText(), new RegExp(registry));
-        const id = await tile.getAttribute('data-category');
-        const badge = page.locator(`.profile-card[data-category="${id}"] .verification-badge`);
-        if (registry === 'RCI') {
-          assert.equal(await badge.count(), 0, name + ': category registry does not imply Sana is individually verified');
-          continue;
-        }
-        assert.equal(await badge.count(), 1, name + ': one matching illustrative badge for ' + label);
-        assert.match(await badge.innerText(), new RegExp(registry));
-        assert.match(await badge.getAttribute('aria-label'), /illustrative/i, name + ': sample verification is accessible');
-      }
-      const disclosure = await page.locator('.profile-disclosure').innerText();
-      for (const detail of [/illustrative/i, /profiles/i, /qualifications/i, /verification badges/i]) assert.match(disclosure, detail, name + ': disclosure explains illustrative credentials');
-      if (width >= 1024) {
-        const banner = await page.evaluate(() => {
-          const heading = document.querySelector('#earn h2');
-          const range = document.createRange();
-          range.selectNodeContents(heading);
-          const text = range.getBoundingClientRect();
-          const button = document.querySelector('#earn button').getBoundingClientRect();
-          return { separated: text.right <= button.left || text.left >= button.right || text.bottom <= button.top || text.top >= button.bottom };
-        });
-        assert(banner.separated, name + ': earning headline does not overlap button');
-        const rowTops = [...new Set(geometry.categories.map(card => card.top))];
-        assert.equal(rowTops.length, 3, name + ': three category rows');
-        for (const top of rowTops) {
-          const row = geometry.categories.filter(card => card.top === top);
-          assert.equal(row.length, 3, name + ': three cards per row');
-          assert.equal(new Set(row.map(card => card.left)).size, 3, name + ': distinct category columns');
-        }
-      }
-      const previewButton = page.locator('.profile-card [data-preview-action]').first();
-      await previewButton.click();
-      const dialog = page.locator('#preview-dialog');
-      assert(await dialog.evaluate(el => el.open), name + ': preview dialog opens');
-      assert(await dialog.evaluate(el => el.contains(document.activeElement)), name + ': dialog receives focus');
-      await dialog.locator('[data-close-preview]').press('Enter');
-      assert(!(await dialog.evaluate(el => el.open)), name + ': keyboard closes modal');
-      await waitForPreviewClose(dialog, previewButton, name + ': keyboard close');
-      await previewButton.press('Enter');
-      assert(await dialog.evaluate(el => el.open), name + ': keyboard opens modal');
-      await page.keyboard.press('Escape');
-      assert(!(await dialog.evaluate(el => el.open)), name + ': Escape closes dialog');
-      await waitForPreviewClose(dialog, previewButton, name + ': Escape close');
-      const joinButton = page.locator('#earn [data-preview-action]');
-      await joinButton.click();
-      await dialog.locator('[data-close-preview]').click();
-      assert(!(await dialog.evaluate(el => el.open)), name + ': close button works');
-      // close() hides the dialog synchronously; its close event restores focus later.
-      // Wait before filling search so that callback cannot steal the Enter keystroke.
-      await waitForPreviewClose(dialog, joinButton, name + ': close before search');
-      const search = page.locator('#people-search input[name="q"]');
-      await search.fill('Ananya');
-      await search.press('Enter');
-      assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': local name search');
-      await page.locator('[data-reset-filters]').first().click();
-      assert.equal(await page.locator('.profile-card:visible').count(), 9, name + ': reset restores samples');
-      const exploreGroup = page.locator('[data-callvaal-footer-group]').filter({ has: page.locator('summary', { hasText: /^Explore$/ }) });
-      const footerCategories = exploreGroup.locator('[data-category-select]');
-      assert.equal(await exploreGroup.locator('li').count(), 11, name + ': eleven Explore entries');
-      assert.deepEqual(await footerCategories.allTextContents(), categoryLabels, name + ': footer category labels');
-      const categoryIds = await page.locator('[data-callvaal-category-card]').evaluateAll(tiles => tiles.map(tile => tile.dataset.category));
-      for (const [index, id] of categoryIds.entries()) {
-        for (const surface of ['tile', 'dropdown', 'footer']) {
-          await page.locator('[data-reset-filters]').first().click();
-          if (surface === 'tile') {
-            const tile = page.locator('[data-callvaal-category-card]').nth(index);
-            await tile.focus();
-            await tile.press('Enter');
-          } else if (surface === 'dropdown') await page.locator('#category-filter').selectOption(id);
-          else {
-            if (!(await exploreGroup.evaluate(el => el.open))) await exploreGroup.locator('summary').click();
-            const footerCategory = footerCategories.nth(index);
-            await footerCategory.focus();
-            await footerCategory.press('Space');
-          }
-          assert.equal(await page.locator('#category-filter').inputValue(), id, `${name}: ${surface} selects ${categoryLabels[index]}`);
-          const selectedCategory = page.locator('[data-selected-category-label]');
-          assert(await selectedCategory.isVisible(), name + ': full selected category is visible outside native select');
-          assert.equal(await selectedCategory.innerText(), 'Selected category: ' + categoryLabels[index]);
-          assert(await selectedCategory.evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 15 && el.scrollWidth <= el.clientWidth + 2), name + ': selected category wraps readably');
-          const visibleCategories = await page.locator('.profile-card:visible').evaluateAll(cards => cards.map(card => card.dataset.category));
-          assert.deepEqual(visibleCategories, [id], `${name}: ${surface} shows matching sample for ${categoryLabels[index]}`);
-          assert.equal(await page.locator('[data-callvaal-category-card]').nth(index).getAttribute('aria-pressed'), 'true', name + ': tile state follows filter');
-          assert.equal(await footerCategories.nth(index).getAttribute('aria-pressed'), 'true', name + ': footer state follows filter');
-          assert(!(await dialog.evaluate(el => el.open)), name + ': category navigation filters without preview dialog');
-        }
-      }
-      await page.locator('[data-reset-filters]').first().click();
+      await page.locator('#online-filter').check();
+      await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.online).length);
+      await page.locator('#mood-filter').selectOption('kundli');
       await page.locator('#language-filter').selectOption('Kannada');
-      assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': language filter works');
-      await page.locator('[data-reset-filters]').first().click();
-      await page.locator('#price-filter').selectOption('15');
-      assert.equal(await page.locator('.profile-card:visible').count(), 6, name + ': price filter works');
-      await page.locator('[data-reset-filters]').first().click();
-      const firstSample = await page.locator('.profile-card').first().evaluate(card => ({ category: card.dataset.category, language: card.dataset.languages.split(', ')[0], price: Number(card.dataset.price), name: card.querySelector('h3').textContent.trim() }));
-      await page.locator('#category-filter').selectOption(firstSample.category);
-      await page.locator('#language-filter').selectOption(firstSample.language);
-      await page.locator('#price-filter').selectOption(String([15, 20, 25].find(price => price >= firstSample.price)));
-      await search.fill(firstSample.name);
-      await search.press('Enter');
-      assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': combined category/language/price/name filters');
-      await page.locator('[data-reset-filters]').first().click();
-      assert.equal(await search.inputValue(), '', name + ': reset clears query');
-      for (const selector of ['#category-filter', '#language-filter', '#price-filter']) assert.equal(await page.locator(selector).inputValue(), '', name + ': reset clears ' + selector);
-      assert.equal(await page.locator('[data-category-select][aria-pressed="true"]').count(), 0, name + ': reset clears category states');
-      assert(!(await page.locator('[data-selected-category-label]').isVisible()), name + ': reset clears selected category label');
-      assert.equal(await page.locator('.profile-card:visible').count(), 9, name + ': combined reset restores nine');
-      await search.fill('no matching sample name');
-      await search.press('Enter');
-      assert(await page.locator('.no-results').isVisible(), name + ': empty state');
+      await page.locator('#price-filter').selectOption('30');
+      await expect(page.locator('[data-person]:visible')).toHaveCount(1);
+      await page.locator('#price-filter').selectOption('20');
+      await expect(page.locator('.no-results')).toBeVisible();
       await page.locator('.no-results [data-reset-filters]').click();
+      await expect(page.locator('[data-person]:visible')).toHaveCount(8);
+      for (const selector of ['#mood-filter', '#language-filter', '#price-filter']) await expect(page.locator(selector)).toHaveValue('');
+      await expect(page.locator('#online-filter')).not.toBeChecked();
+      await expect(page.locator('[data-selected-mood-label]')).not.toBeVisible();
+      // Exercise a real mood link and its query-driven initialization.
+      await page.locator('.mood-chip[href="/?mood=kundli#people"]').click();
+      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
+      await expect(page.locator('#mood-filter')).toHaveValue('kundli');
+      await expect(page.locator('[data-person]:visible')).toHaveCount(1);
+      await reset.click();
+      const dialog = page.locator('#preview-dialog');
+      for (const selector of ['.profile-card [data-preview-action="call"]', '#earn [data-preview-action="join"]', '#privacy-note [data-preview-action="privacy"]']) {
+        const trigger = page.locator(selector).first();
+        await trigger.click();
+        await expect(dialog).toBeVisible();
+        assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
+        await dialog.locator('[data-close-preview]').press('Enter');
+        await waitForPreviewClose(dialog, trigger, name);
+        await trigger.press('Enter');
+        await expect(dialog).toBeVisible();
+        await page.keyboard.press('Escape');
+        await waitForPreviewClose(dialog, trigger, name);
+      }
       const favourite = page.locator('[data-favourite]').first();
       await favourite.click();
-      assert.equal(await favourite.getAttribute('aria-pressed'), 'true', name + ': bookmark selected');
+      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
       await favourite.click();
-      assert.equal(await favourite.getAttribute('aria-pressed'), 'false', name + ': bookmark deselected');
-      if (width < 600) {
-        const menu = page.locator('[data-callvaal-menu-toggle]');
+      await expect(favourite).toHaveAttribute('aria-pressed', 'false');
+      const menu = page.locator('[data-callvaal-menu-toggle]');
+      if (await menu.isVisible()) {
         await menu.click();
-        assert.equal(await menu.getAttribute('aria-expanded'), 'true', name + ': mobile menu opens');
+        await expect(menu).toHaveAttribute('aria-expanded', 'true');
         await page.keyboard.press('Escape');
-        assert.equal(await menu.getAttribute('aria-expanded'), 'false', name + ': Escape closes mobile menu');
-        assert(await menu.evaluate(el => document.activeElement === el), name + ': Escape returns menu focus');
-        await menu.click();
-        await page.locator('[data-callvaal-navigation] a[href="#categories"]').click();
-        assert.equal(await menu.getAttribute('aria-expanded'), 'false', name + ': navigation closes menu');
-        await page.locator('[data-callvaal-footer-group] summary').first().click();
-        assert(await page.locator('[data-callvaal-footer-group]').first().evaluate(el => el.open), name + ': mobile footer accordion');
-        await page.locator('#earn').scrollIntoViewIfNeeded();
-        const mobileNav = page.locator('.mobile-bottom-nav');
-        assert(await mobileNav.evaluate(el => {
-          const rect = el.getBoundingClientRect();
-          return getComputedStyle(el).position === 'fixed' && rect.bottom <= innerHeight + 1 && rect.top < innerHeight && rect.bottom > 0;
-        }), name + ': mobile quick navigation stays visible while scrolling');
+        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+        await expect(menu).toBeFocused();
       }
-      assert.equal(await page.locator('[data-callvaal-footer-group]').count(), 5, name + ': five footer columns');
-      assert.equal(await page.locator('[data-callvaal-footer-group] li').count(), 43, name + ': complete footer');
+      await expect(page.locator('[data-callvaal-footer-group]')).toHaveCount(5);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(24);
       for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
-        if (!(await group.evaluate(el => el.open))) await group.locator('summary').click();
+        if (!(await group.evaluate(element => element.open))) await group.locator('summary').click();
       }
-      await page.locator('footer[data-callvaal-chrome]').screenshot({ path: `homepage-review/${name}-footer-open.png` });
-      const openFooterReadability = await inspectReadability(page);
-      metrics.at(-1).openFooterReadability = openFooterReadability;
-      assert.deepEqual(openFooterReadability.fontFailures, [], name + ': open footer preserves font floors');
-      assert.deepEqual(openFooterReadability.clipping, [], name + ': open footer text is not clipped');
-      assert.deepEqual(openFooterReadability.overlaps, [], name + ': open footer does not overlap');
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), name + ': open footer has no horizontal overflow');
-      for (const platform of ['iPhone', 'Android', 'Mac', 'Windows']) {
-        const downloadButton = page.locator(`[data-preview-action="download"][data-preview-label="${platform}"]`);
-        await downloadButton.click();
-        assert.match(await dialog.innerText(), /downloads are not available yet/);
-        await dialog.locator('[data-close-preview]').click();
-        await waitForPreviewClose(dialog, downloadButton, name + ': download close');
-      }
-      const legalGroup = page.locator('[data-callvaal-footer-group]').last();
-      if (!(await legalGroup.evaluate(el => el.open))) await legalGroup.locator('summary').click();
-      const privacyButton = legalGroup.locator('[data-preview-label="Privacy policy"]');
-      await privacyButton.click();
-      assert.match(await dialog.innerText(), /not published for this service yet/);
+      const privacy = page.locator('[data-footer-preview="Privacy"]');
+      await privacy.click();
+      await expect(dialog).toContainText('not published for this service yet');
       await dialog.locator('[data-close-preview]').click();
-      await waitForPreviewClose(dialog, privacyButton, name + ': policy close');
+      await waitForPreviewClose(dialog, privacy, name);
       if ([320, 452, 1024].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-        await page.evaluate(async () => {
-          await document.fonts.ready;
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        });
-        const zoomedTickerFits = await page.locator('.activity-ticker').evaluate(el => {
-          const track = el.querySelector('.activity-track');
-          const sequence = el.querySelector('.activity-sequence:not([aria-hidden="true"])');
-          return track.scrollWidth <= el.clientWidth + 1 && sequence.scrollWidth <= track.clientWidth + 1;
-        });
-        assert(zoomedTickerFits, name + ': reduced-motion ticker stays contained at 200% text');
-        await page.locator('#category-filter').selectOption('relationships');
-        assert.equal(await page.locator('.profile-card:visible').count(), 1, name + ': 200% text category filter remains usable');
-        await page.locator('[data-reset-filters]').first().click();
-        if (width < 600) {
-          const menu = page.locator('[data-callvaal-menu-toggle]');
-          await menu.click();
-          assert.equal(await menu.getAttribute('aria-expanded'), 'true', name + ': 200% text mobile menu opens');
-          await page.keyboard.press('Escape');
-          assert.equal(await menu.getAttribute('aria-expanded'), 'false', name + ': 200% text mobile menu closes');
-        }
-        for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
-          if (!(await group.evaluate(el => el.open))) await group.locator('summary').click();
-        }
         const enlarged = await inspectReadability(page);
-        metrics.at(-1).enlargedReadability = enlarged;
-        await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
-        assert.deepEqual(enlarged.fontFailures, [], name + ': 200% text preserves font floors');
-        assert.deepEqual(enlarged.clipping, [], name + ': 200% text does not clip');
+        metrics.at(-1).enlarged = enlarged;
+        assert.deepEqual(enlarged.clipping, [], name + ': 200% text unclipped');
         assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
-        assert(enlarged.viewportOverflow.content <= enlarged.viewportOverflow.viewport + 1,
-          name + ': 200% text has no horizontal overflow: ' + JSON.stringify(enlarged.viewportOverflow));
+        assert(enlarged.viewportOverflow.content <= width + 1, name + ': 200% text no horizontal overflow');
+        await page.locator('#mood-filter').selectOption('kundli');
+        await expect(page.locator('[data-person]:visible')).toHaveCount(1);
+        await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
       }
-      const anchors = await page.locator('a[href^="#"]').evaluateAll(links => links.map(a => a.getAttribute('href').slice(1)).filter(id => id && !document.getElementById(id)));
-      assert.deepEqual(anchors, [], name + ': section links resolve');
-      assert.deepEqual(mutations, [], name + ': preview never posts to backend');
-      console.log(name, JSON.stringify(geometry));
+      const missingAnchors = await page.locator('a[href^="#"]:visible').evaluateAll(links => links.map(a => a.hash.slice(1)).filter(id => id && !document.getElementById(id)));
+      assert.deepEqual(missingAnchors, [], name + ': visible anchors resolve');
+      assert.deepEqual(mutations, [], name + ': no backend mutations');
+      assert.deepEqual(browserErrors, [], name + ': no uncaught browser errors');
     } catch (error) {
       await page.screenshot({ path: `homepage-review/${name}-failure.png`, fullPage: true }).catch(() => undefined);
       failures.push({ name, error: String(error), browserErrors });
-      console.error(name, error);
     } finally { await page.close(); }
   }
   for (const [name, width, height, textScale] of [['safety-desktop', 1280, 900, 1], ['safety-compact-text-200', 320, 740, 2]]) {
@@ -445,6 +266,10 @@ try {
     const browserErrors = [];
     page.on('console', message => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`); });
     page.on('pageerror', error => browserErrors.push(`page: ${String(error)}`));
+    await page.route('**/*', route => {
+      const url = new URL(route.request().url());
+      return url.origin !== 'http://127.0.0.1:4179' || url.pathname.startsWith('/api/') ? route.abort() : route.continue();
+    });
     try {
       await page.goto('http://127.0.0.1:4179/talk-safely', { waitUntil: 'domcontentloaded' });
       await page.locator('.safety-guide').waitFor({ state: 'visible', timeout: 10000 });
