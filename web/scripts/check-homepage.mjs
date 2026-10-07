@@ -28,7 +28,7 @@ assert.match(visibleText, /Baat karo\. Dil halka karo\./);
 assert.match(visibleText, /Real people\. Make a friend\. Your number stays private\./);
 assert.match(visibleText, /Pay per minute/);
 assert.match(visibleText, /18\+ only/);
-for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', '₹10.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
+for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', '₹1.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
   assert(visibleText.includes(copy), 'Conversation, safety and earning contract: ' + copy);
 }
 assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|data-category-select/, 'Discovery uses moods, not professional categories');
@@ -48,13 +48,21 @@ assert(meta(html, 'og:description'), 'Share description exists');
 assert(html.includes('href="/sign-in'), 'Sign-in remains reachable');
 assert.match(html, /<dialog\b/, 'Preview actions have an accessible notice');
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
-const moodSlugs = ['roz-thodi-baat', 'koi-jo-mujhe-jaane', 'shaam-ka-saathi', 'ek-dost-jo-sune', 'apni-bhasha-mein-dost', 'kisi-topic-pe-baat', 'apni-bhasha-mein-baat', 'english-mein-casual-chat', 'bas-baat-karni-hai', 'aaj-akela-lag-raha-hai', 'din-kharab-tha', 'raat-ko-neend-nahi-aati', 'shaam-ki-company', 'exam-ki-tension', 'interview-se-darr', 'shaadi-ka-pressure', 'ghar-waalon-se-jhagda', 'naukri-ki-chinta', 'breakup', 'shaadi-ki-baatein', 'naya-sheher-nayi-job', 'paise-ki-tension', 'bachchon-ki-padhai', 'maa-baap-ki-sehat', 'sehat-ki-chinta'];
+const moodSlugs = ['roz-thodi-baat', 'koi-jo-mujhe-jaane', 'shaam-ka-saathi', 'ek-dost-jo-sune', 'apni-bhasha-mein-dost', 'kisi-topic-pe-baat', 'apni-bhasha-mein-baat', 'english-mein-casual-chat', 'bas-baat-karni-hai', 'aaj-akela-lag-raha-hai', 'din-kharab-tha', 'raat-ko-neend-nahi-aati', 'shaam-ki-company', 'ghar-ki-yaad-aa-rahi-hai', 'kisi-se-share-karna-hai', 'bore-ho-raha-hoon', 'raat-ki-shift-koi-jaga-hai', 'subah-ki-chai-thodi-baat', 'mann-bhaari-hai', 'exam-ki-tension', 'interview-se-darr', 'shaadi-ka-pressure', 'ghar-waalon-se-jhagda', 'naukri-ki-chinta', 'breakup', 'shaadi-ki-baatein', 'naya-sheher-nayi-job', 'paise-ki-tension', 'bachchon-ki-padhai', 'maa-baap-ki-sehat', 'sehat-ki-chinta'];
 const moodSelect = bodyHtml.match(/<select\b[^>]*id="mood-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
-assert.deepEqual([...moodSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), moodSlugs, 'All 25 moods in discovery order');
+assert.deepEqual([...moodSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), moodSlugs, 'All 31 moods in discovery order');
+assert.equal(moodSlugs.length, 31, '31 shared discovery moods');
+const mannGroup = bodyHtml.match(/<div class="mood-group-head"[^>]*>[\s\S]*?<h3>Mann ki baat<\/h3>[\s\S]*?<div class="mood-chips">([\s\S]*?)<\/div>/)?.[1] || '';
+assert.equal((mannGroup.match(/class="mood-chip"/g) || []).length, 11, '11 Mann ki baat moods');
+for (const label of ['ghar ki yaad aa rahi hai', 'kisi se share karna hai', 'bore ho raha hoon', 'raat ki shift, koi jaga hai?', 'subah ki chai, thodi baat', 'mann bhaari hai']) assert(plainText(mannGroup).includes(label), 'New Mann ki baat label: ' + label);
+const priceSelect = bodyHtml.match(/<select\b[^>]*id="price-filter"[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
+assert.deepEqual([...priceSelect.matchAll(/<option\b[^>]*value="([^"]+)"/g)].map(m => m[1]), ['5', '20', '25', '30'], '₹5 floor and useful sample thresholds');
+assert(visibleText.includes('From ₹5/min') && visibleText.includes('At a ₹5/min caller rate'), 'Advertised minimum and earnings example');
 for (const slug of moodSlugs) assert(bodyHtml.includes(`href="/?mood=${slug}#people"`), 'Mood link: ' + slug);
 assert.match(bodyHtml, /id="online-filter"/, 'Online filter available');
 const cards = [...bodyHtml.matchAll(/<article\b[^>]*data-person(?:="")?[^>]*>[\s\S]*?<\/article>/g)].map(m => m[0]);
 assert.equal(cards.length, 8, 'Eight illustrative hosts');
+assert.deepEqual(cards.map(card => Number(card.match(/data-price="(\d+)"/)?.[1])), [20, 25, 25, 30, 20, 20, 25, 30], 'Existing sample host prices are unchanged');
 assert.deepEqual(cards.map(card => plainText(card.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/)?.[1] || '')), ['Neha', 'Priya', 'Sana', 'Kavya', 'Ananya', 'Rohan', 'Arjun', 'Dev'], 'Approved host roster');
 for (const card of cards) {
   assert.match(card, /data-moods="[^"]+"/);
@@ -122,18 +130,35 @@ for (const slug of moodSlugs.slice(0, 8)) {
   const matching = cards.filter(card => card.match(/data-moods="([^"]+)"/)?.[1].split(' ').includes(slug));
   assert(matching.some(card => card.includes('data-gender="woman"')) && matching.some(card => card.includes('data-gender="man"')), 'Mixed-gender Naye dost samples: ' + slug);
 }
-const yourPeople = bodyHtml.slice(bodyHtml.indexOf('class="your-people"'), bodyHtml.indexOf('class="people-toolbar"'));
-assert(yourPeople.includes('Your people') && yourPeople.includes('Preview'), 'Explicit preview favourites above filters');
-assert.match(yourPeople, /Favourite someone after a call and (?:they&#39;ll|they'll) show up here\./, 'Favourite empty state');
-assert.match(yourPeople, /data-saved-person="neha"/);
-assert.match(yourPeople, /data-saved-person="arjun"/);
+assert.doesNotMatch(bodyHtml, /Your people|data-your-people|data-saved-person|saved-call|data-favourites-empty/, 'Retired favourites strip is absent');
+assert.match(bodyHtml, /class="sr-only" data-favourites-status(?:="")? role="status" aria-live="polite"/, 'Standalone favourite live announcement');
 const privacySection = bodyHtml.match(/<section\b[^>]*id="privacy-note"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
 assert.match(privacySection, /class="home-privacy-band"/, 'Homepage-only privacy band');
-assert.equal((privacySection.match(/class="home-step-art"/g) || []).length, 3, 'Three inline explanatory scenes');
-assert.equal((privacySection.match(/role="img" aria-labelledby="privacy-/g) || []).length, 3, 'Every scene has an accessible title');
-assert.equal((privacySection.match(/<title id="privacy-/g) || []).length, 3);
-assert.doesNotMatch(privacySection, /linearGradient|radialGradient|class="phone-frame"/, 'Flat SVGs and independent homepage styles');
-for (const label of ['AI monitored ✓', 'number private ✓', identity.name]) assert(privacySection.includes(label), 'Privacy illustration label: ' + label);
+assert.equal((privacySection.match(/<picture>/g) || []).length, 3, 'Three photographic steps');
+assert.doesNotMatch(privacySection, /home-step-art|class="phone-frame"/, 'Retired illustrated scenes are absent');
+assert.equal((privacySection.match(/class="home-step-number"/g) || []).length, 3, 'Numbered step badges are retained');
+assert.deepEqual([...privacySection.matchAll(/<h3>([^<]+)<\/h3>/g)].map(m => m[1]), ['Tap Call', 'We ring the host first', 'Connected. Numbers hidden.'], 'Exact photo captions');
+assert.equal((privacySection.match(/class="home-step-connector"/g) || []).length, 1, 'CSS connector spans the connected scene');
+assert.equal((privacySection.match(/class="home-step-lock"/g) || []).length, 1, 'Small central padlock stays outside the photograph');
+assert(privacySection.includes(identity.name), 'Centrally configured identity remains in the connection explanation');
+const privacyPictures = [...privacySection.matchAll(/<picture>([\s\S]*?)<\/picture>/g)].map(m => m[1]);
+for (const [index, picture] of privacyPictures.entries()) {
+  const step = index + 1;
+  assert.match(picture, /alt="[^"]+"/, 'Descriptive photo alternative');
+  assert.match(picture, /width="1200" height="900" loading="lazy"/, 'Fixed 4:3 lazy photo dimensions');
+  for (const [extension, format, mime] of [['avif', 'heif', 'image/avif'], ['webp', 'webp', 'image/webp'], ['jpg', 'jpeg', null]]) {
+    const asset = `/assets/privacy/step-${step}.${extension}`;
+    assert(picture.includes(asset), 'Photo source: ' + asset);
+    if (mime) assert(picture.includes(`type="${mime}"`), 'Explicit photo format: ' + mime);
+    const bytes = readFileSync(resolve(root, asset.slice(1)));
+    assert(bytes.length <= 140000, 'Privacy photo <=140 KB: ' + asset);
+    const photo = await sharp(bytes).metadata();
+    assert.equal(photo.format, format, 'Genuine privacy encoding: ' + asset);
+    if (extension === 'avif') assert.equal(photo.compression, 'av1');
+    assert.equal(photo.width, 1200, 'Privacy photo width: ' + asset);
+    assert.equal(photo.height, 900, 'Privacy photo height: ' + asset);
+  }
+}
 const earnSection = bodyHtml.match(/<ol class="earn-steps">([\s\S]*?)<\/ol>/)?.[1] || '';
 assert.equal((earnSection.match(/<li>/g) || []).length, 5, 'Five earning steps');
 for (const [extension, format] of [['avif', 'heif'], ['webp', 'webp'], ['jpg', 'jpeg']]) {

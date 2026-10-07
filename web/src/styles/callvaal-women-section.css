@@ -56,8 +56,8 @@
 .hf-women-before{border-top:2px dashed #c789ab}
 .hf-women-art{position:relative;align-self:center;justify-self:center;width:100%;max-width:620px;height:clamp(21rem,36vw,32rem);margin:0;isolation:isolate}
 .hf-women-art-backdrop{position:absolute;inset:5% 2% 4%;z-index:-2;background:#e9d8ee;border:6px solid #fff;clip-path:polygon(1% 10%,7% 5%,18% 7%,29% 2%,42% 6%,52% 3%,63% 7%,76% 4%,89% 9%,98% 4%,96% 23%,99% 41%,95% 58%,98% 76%,93% 96%,79% 93%,65% 98%,51% 94%,36% 97%,22% 93%,8% 97%,4% 80%,1% 65%,4% 45%);transform:rotate(-3deg)}
-.hf-women-photo{position:absolute;top:14%;width:49%;height:72%;padding:9px;background:#fff;box-shadow:0 13px 24px #5b22402c;clip-path:polygon(0 3%,6% 1%,12% 2%,20% 0,28% 2%,38% 1%,47% 2%,57% 0,68% 2%,77% 1%,89% 2%,98% 0,100% 10%,98% 22%,100% 34%,99% 47%,100% 59%,98% 72%,100% 84%,98% 99%,88% 97%,76% 100%,65% 98%,54% 100%,42% 98%,31% 100%,19% 98%,7% 100%,0 96%,2% 82%,0 68%,2% 54%,0 40%,2% 27%)}
-.hf-women-photo img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 28%;clip-path:polygon(0 2%,15% 0,29% 2%,47% 0,66% 2%,83% 0,100% 2%,98% 29%,100% 50%,98% 73%,100% 98%,83% 100%,64% 98%,46% 100%,28% 98%,12% 100%,0 98%,2% 76%,0 51%,2% 27%)}
+.hf-women-photo{position:absolute;top:14%;width:49%;height:72%;padding:9px;background:#fff;box-shadow:0 13px 24px #5b22402c;border-radius:14px;overflow:hidden}
+.hf-women-photo img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 28%;border-radius:14px;overflow:hidden}
 .hf-women-photo--young{left:5%;transform:rotate(-8deg);z-index:1}
 .hf-women-photo--midage{right:3%;top:11%;transform:rotate(7deg);z-index:2}
 

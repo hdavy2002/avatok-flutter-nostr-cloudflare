@@ -10,19 +10,15 @@ const online = document.querySelector<HTMLInputElement>('#online-filter');
 const cards = [...document.querySelectorAll<HTMLElement>('[data-person]')];
 // Preview samples are intentionally memory-only, reset on navigation/reload.
 const favourites = new Set(cards.filter(card => card.dataset.previewFavourite === 'true').map(card => card.dataset.profileId!));
-const savedPeople = [...document.querySelectorAll<HTMLElement>('[data-saved-person]')];
 const favouriteButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-favourite]')];
-function renderFavourites() {
-  for (const person of savedPeople) person.hidden = !favourites.has(person.dataset.savedPerson!);
+function renderFavouriteButtons() {
   for (const button of favouriteButtons) {
     const saved = favourites.has(button.dataset.favourite!);
     button.setAttribute('aria-pressed', String(saved));
     button.setAttribute('aria-label', `${saved ? 'Unfavourite' : 'Favourite'} ${button.dataset.profileName} for this visit`);
   }
-  const empty = document.querySelector<HTMLElement>('[data-favourites-empty]');
-  if (empty) empty.hidden = favourites.size > 0;
 }
-renderFavourites();
+renderFavouriteButtons();
 const label = document.querySelector<HTMLElement>('[data-selected-mood-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
@@ -88,9 +84,9 @@ favouriteButtons.forEach(button => button.addEventListener('click', () => {
   const id = button.dataset.favourite!;
   const saved = !favourites.has(id);
   if (saved) favourites.add(id); else favourites.delete(id);
-  renderFavourites();
+  renderFavouriteButtons();
   const announcement = document.querySelector<HTMLElement>('[data-favourites-status]');
-  if (announcement) announcement.textContent = `${button.dataset.profileName} ${saved ? 'added to' : 'removed from'} Your people for this visit.`;
+  if (announcement) announcement.textContent = `${button.dataset.profileName} ${saved ? 'added to' : 'removed from'} your favourites for this visit.`;
   capture('cta_click', { surface, section: 'people', label: 'save_profile', saved, sample_profiles: true });
 }));
 document.querySelectorAll<HTMLAnchorElement>('.notebook-site main a, .mobile-bottom-nav a').forEach(link => link.addEventListener('click', () => {

@@ -35,10 +35,10 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '.social-proof-section h2, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .home-privacy-step>p, .home-privacy-bottom, .home-privacy-bottom button, .your-people-list strong, .saved-call, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
+      [16, '.social-proof-section h2, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .home-privacy-step>p, .home-privacy-bottom, .home-privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
       [15, '.safety-links a, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .mood-chip, .crisis-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
       [11, '.verification-badge, .person-moods li'],
-      [14, '.preview-kicker, .activity-preview-label span, .service-disclaimer'],
+      [14, '.preview-kicker, .activity-preview-label span, .service-disclaimer, .home-privacy-step>h3'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -84,7 +84,7 @@ async function inspectReadability(page) {
         }
       }
     };
-    checkSiblings('.home-privacy-steps, .home-privacy-notes, .your-people-heading, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
+    checkSiblings('.home-privacy-steps, .home-privacy-notes, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
     const badges = [...document.querySelectorAll('.verification-badge')].map(el => {
       const rect = el.getBoundingClientRect();
       const card = el.closest('.profile-card').getBoundingClientRect();
@@ -156,21 +156,51 @@ try {
       await expect(page.locator('h1')).toHaveText(/Baat karo\.\s*Dil halka karo\./);
       await expect(page.locator('[data-person]')).toHaveCount(8);
       await expect(page.locator('.mood-group')).toHaveCount(4);
-      await expect(page.locator('.mood-chip')).toHaveCount(25);
+      await expect(page.locator('.mood-chip')).toHaveCount(31);
       await expect(page.locator('.mood-group h3')).toHaveText(['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein']);
       await expect(page.locator('#people-title')).toHaveText('Apna dost dhundo.Aur kal phir call karo.');
       await expect(page.locator('.proof-card')).toHaveCount(0);
-      await expect(page.locator('[data-your-people]')).toContainText('Preview');
-      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
       await expect(page.locator('[data-profile-id="neha"] .sample-call')).toHaveText('Call');
       await expect(page.locator('[data-profile-id="rohan"] .sample-call')).toHaveText('Notify me when free');
       await expect(page.locator('[data-profile-id="priya"] .sample-call')).toHaveText('Notify me when online');
-      await expect(page.locator('.home-privacy-steps svg[role="img"]')).toHaveCount(3);
-      const privacyGraphics = await page.locator('.home-privacy-steps svg').evaluateAll(svgs => svgs.map(svg => ({
-        title: document.getElementById(svg.getAttribute('aria-labelledby'))?.textContent,
-        flat: !svg.querySelector('linearGradient, radialGradient'), stroke: svg.getAttribute('stroke-width'),
+      await expect(page.locator('.mood-group').filter({ has: page.locator('h3', { hasText: 'Mann ki baat' }) }).locator('.mood-chip')).toHaveCount(11);
+      await expect(page.locator('[data-your-people], [data-saved-person], .saved-call, [data-favourites-empty]')).toHaveCount(0);
+      await expect(page.locator('.home-privacy-steps picture')).toHaveCount(3);
+      await expect(page.locator('.home-privacy-steps h3')).toHaveText(['Tap Call', 'We ring the host first', 'Connected. Numbers hidden.']);
+      await expect(page.locator('.home-step-number')).toHaveText(['1', '2', '3']);
+      await expect(page.locator('.home-step-art')).toHaveCount(0);
+      await expect(page.locator('.home-privacy-step--private .home-step-connector .home-step-lock')).toHaveCount(1);
+      const privacyPhotos = await page.locator('.home-privacy-steps img').evaluateAll(images => images.map(image => ({
+        alt: image.alt, width: image.naturalWidth, height: image.naturalHeight,
+        sources: [...image.parentElement.querySelectorAll('source')].map(source => ({ src: source.getAttribute('srcset'), type: source.type })),
+        src: image.getAttribute('src'), declaredWidth: image.getAttribute('width'), declaredHeight: image.getAttribute('height'),
       })));
-      assert(privacyGraphics.every(svg => svg.title && svg.flat && svg.stroke === '2.5'), name + ': accessible flat illustrations');
+      for (const [index, photo] of privacyPhotos.entries()) {
+        assert(photo.alt && photo.width === 1200 && photo.height === 900, name + ': loaded 4:3 photograph');
+        assert.deepEqual(photo.sources, [{ src: `/assets/privacy/step-${index + 1}.avif`, type: 'image/avif' }, { src: `/assets/privacy/step-${index + 1}.webp`, type: 'image/webp' }]);
+        assert.equal(photo.src, `/assets/privacy/step-${index + 1}.jpg`);
+        assert.equal(photo.declaredWidth, '1200'); assert.equal(photo.declaredHeight, '900');
+      }
+      const photoStyles = await page.evaluate(() => {
+        const styles = selector => [...document.querySelectorAll(selector)].map(element => {
+          const style = getComputedStyle(element);
+          return { radius: style.borderRadius, overflow: style.overflow, clip: style.clipPath };
+        });
+        return {
+          privacy: styles('.home-step-photo'), women: styles('#women-only .hf-women-photo, #women-only .hf-women-photo img'),
+          safetyFrames: styles('#safety .hf-safety-photo'), safetyPhotos: styles('#safety .hf-safety-photo picture, #safety .hf-safety-photo img'),
+          portraits: [...document.querySelectorAll('.people-grid .person-portrait')].map(image => ({ radius: getComputedStyle(image).borderRadius, width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height })),
+          connector: getComputedStyle(document.querySelector('.home-step-connector')).backgroundColor,
+          safetyTape: getComputedStyle(document.querySelector('.hf-safety-photo'), '::before').content,
+        };
+      });
+      assert(photoStyles.privacy.length === 3 && photoStyles.privacy.every(style => style.radius === '18px' && style.overflow === 'hidden'), name + ': rounded privacy viewport');
+      assert(photoStyles.women.length === 4 && photoStyles.women.every(style => style.radius === '14px' && style.overflow === 'hidden' && style.clip === 'none'), name + ': rounded women polaroids');
+      assert(photoStyles.safetyFrames.length === 3 && photoStyles.safetyFrames.every(style => style.radius === '14px' && style.overflow === 'visible'), name + ': safety tape and shadows stay outside the frame');
+      assert(photoStyles.safetyPhotos.length === 6 && photoStyles.safetyPhotos.every(style => style.radius === '14px'), name + ': rounded safety pictures and images');
+      assert(photoStyles.safetyPhotos.filter((_, index) => index % 2 === 0).every(style => style.overflow === 'hidden'), name + ': inner safety picture clips the image');
+      assert(photoStyles.safetyTape !== 'none' && photoStyles.connector !== 'rgba(0, 0, 0, 0)', name + ': tape and soft connector remain');
+      assert(photoStyles.portraits.length === 8 && photoStyles.portraits.every(photo => photo.radius === '50%' && Math.abs(photo.width - photo.height) < 1), name + ': circular main host portraits');
       const womenHeading = await page.locator('#hf-women-title').evaluate(h2 => {
         const first = h2.querySelector('span'); const second = h2.querySelector('em');
         return { firstDisplay: getComputedStyle(first).display, secondDisplay: getComputedStyle(second).display,
@@ -197,14 +227,14 @@ try {
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 18 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits, three sample favourites and earn art load');
+      assert(imageGeometry.length === 18 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits, three privacy photos and earn art load');
       await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
       const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
         moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),
         price: Number(card.dataset.price), online: card.dataset.online === 'true', gender: card.dataset.gender,
       })));
       const moodOptions = await page.locator('#mood-filter option').evaluateAll(options => options.filter(option => option.value).map(option => ({ slug: option.value, label: option.textContent })));
-      assert.equal(moodOptions.length, 25);
+      assert.equal(moodOptions.length, 31);
       for (const { slug } of moodOptions.slice(0, 8)) {
         const genders = new Set(roster.filter(person => person.moods.includes(slug)).map(person => person.gender));
         assert.deepEqual([...genders].sort(), ['man', 'woman'], name + ': mixed-gender friendship chip ' + slug);
@@ -213,12 +243,12 @@ try {
         await page.locator('#mood-filter').selectOption(slug);
         await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.moods.includes(slug)).length);
         await expect(page.locator('[data-selected-mood-label]')).toHaveText(`Mood: ${label}`);
-        await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
       }
       const reset = page.locator('[data-reset-filters]').first();
       await reset.click();
       for (const [selector, value, predicate] of [
         ['#language-filter', 'Kannada', person => person.languages.includes('Kannada')],
+        ['#price-filter', '5', person => person.price <= 5],
         ['#price-filter', '20', person => person.price <= 20],
       ]) {
         await page.locator(selector).selectOption(value);
@@ -262,6 +292,7 @@ try {
         const trigger = page.locator(selector).first();
         await trigger.click();
         await expect(dialog).toBeVisible();
+        if (selector.includes('data-preview-action="call"')) await expect(dialog).toContainText('Calls and payments are unavailable');
         assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
         await dialog.locator('[data-close-preview]').press('Enter');
         await waitForPreviewClose(dialog, trigger, name);
@@ -271,30 +302,18 @@ try {
         await waitForPreviewClose(dialog, trigger, name);
       }
       const favourite = page.locator('[data-favourite="neha"]');
-      const savedNeha = page.locator('[data-saved-person="neha"]');
       await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await expect(savedNeha).toBeVisible();
       await favourite.press('Enter');
       await expect(favourite).toHaveAttribute('aria-pressed', 'false');
-      await expect(savedNeha).not.toBeVisible();
+      await expect(favourite).toHaveAttribute('aria-label', 'Favourite Neha for this visit');
       await expect(page.locator('[data-favourites-status]')).toContainText('Neha removed');
-      for (const id of ['rohan', 'arjun']) await page.locator('[data-favourite="' + id + '"]').click();
-      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(0);
-      await expect(page.locator('[data-favourites-empty]')).toHaveText("Favourite someone after a call and they'll show up here.");
       await favourite.press('Space');
       await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await expect(savedNeha).toBeVisible();
-      await expect(page.locator('[data-favourites-empty]')).not.toBeVisible();
-      const callAgain = savedNeha.getByRole('button', { name: 'Call again: Neha' });
-      await callAgain.click();
-      await expect(dialog).toContainText('Calls and payments are unavailable');
-      await page.keyboard.press('Escape');
-      await waitForPreviewClose(dialog, callAgain, name);
-      for (const id of ['rohan', 'arjun']) await page.locator('[data-favourite="' + id + '"]').click();
+      await expect(favourite).toHaveAttribute('aria-label', 'Unfavourite Neha for this visit');
+      await expect(page.locator('[data-favourites-status]')).toContainText('Neha added');
       for (const selector of [
         '[data-profile-id="rohan"] [data-preview-action="notify"]',
         '[data-profile-id="priya"] [data-preview-action="notify"]',
-        '[data-saved-person="arjun"] [data-preview-action="notify"]',
       ]) {
         const notify = page.locator(selector);
         await notify.click();
@@ -306,7 +325,6 @@ try {
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
       await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await expect(page.locator('[data-saved-person]:visible')).toHaveCount(3);
       const menu = page.locator('[data-callvaal-menu-toggle]');
       if (await menu.isVisible()) {
         await menu.click();

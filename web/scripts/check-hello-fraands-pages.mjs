@@ -39,8 +39,13 @@ export function checkHelloFraandsPages(root, identity) {
   const faq = pages.get('/faq').match(/<div\b[^>]*class="hf-prose"[^>]*>([\s\S]*?)<\/article>/)?.[1] || '';
   assert((faq.match(/<details\b/g) || []).length >= 15, 'FAQ has at least 15 accessible accordions');
   assert.equal((pages.get('/how-it-works').match(/class="phone-frame"/g) || []).length, 3, 'Three masked-call steps');
-  for (const amount of ['₹32,400', '₹41,400', '₹50,400']) assert(text(pages.get('/hosts/join')).includes(amount), 'Net illustrative earnings: ' + amount);
-  for (const amount of ['₹9.20', '₹10.80']) assert(text(pages.get('/hosts/rates')).includes(amount), '₹20 split: ' + amount);
+  for (const amount of ['₹5,400', '₹41,400', '₹50,400']) assert(text(pages.get('/hosts/join')).includes(amount), 'Net illustrative earnings: ' + amount);
+  for (const amount of ['₹5 minute', '₹5 − ₹2 = ₹3', '40% of ₹3 = ₹1.20', '₹2 + ₹1.20 = ₹3.20', '₹5 − ₹3.20 = ₹1.80']) assert(text(pages.get('/hosts/rates')).includes(amount), '₹5 split: ' + amount);
+  assert(text(faq).includes('Planned calls start at ₹5/min.'), 'FAQ planned minimum');
+  const wallet = text(pages.get('/wallet-terms'));
+  for (const copy of ['general-lane floor of ₹5/minute', '61 connected seconds at ₹5/minute costs ₹10', '₹3.20 for the platform and ₹1.80 for the host']) assert(wallet.includes(copy), 'Wallet ₹5 example: ' + copy);
+  const firstEarningsRow = pages.get('/hosts/join').match(/<tbody>\s*<tr>([\s\S]*?)<\/tr>/)?.[1] || '';
+  assert.deepEqual([...firstEarningsRow.matchAll(/<td>([^<]+)<\/td>/g)].map(m => m[1]), ['₹5/min', '₹1.80', '₹5,400'], 'First earnings row follows the ₹5 minimum');
   for (const [route, phones] of [['/emergency', ['14416', '112', '9152987821', '18602662345']], ['/hosts/crisis-script', ['14416', '112']]]) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);

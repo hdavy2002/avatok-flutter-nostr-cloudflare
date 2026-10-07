@@ -36,6 +36,12 @@ function check(url, file) {
     assert.ok(bytes.length <= 160000, `${relative(web, file)}: safety photo exceeds 160 KB: ${url}`);
     return;
   }
+  // Exact nine privacy assets only: three 4:3 photos with real format fallbacks.
+  if (/^\/assets\/privacy\/step-[1-3]\.(?:avif|webp|jpg)$/.test(url)) {
+    const bytes = readFileSync(join(web, 'dist', url.slice(1)));
+    assert.ok(bytes.length <= 140000, `${relative(web, file)}: privacy photo exceeds 140 KB: ${url}`);
+    return;
+  }
   // Exact authored friendship collage only: real format fallbacks, each <=250 KB.
   if (/^\/assets\/callvaal\/scrapbook\/hero-collage-friendship\.(?:avif|webp|jpg)$/.test(url)) {
     const bytes = readFileSync(join(web, 'dist', url.slice(1)));
