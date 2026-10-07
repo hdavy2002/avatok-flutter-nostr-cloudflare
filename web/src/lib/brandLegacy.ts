@@ -6,9 +6,9 @@
 /** SERVER-ONLY. Import behind `import.meta.env.SSR` so it never reaches a browser chunk. */
 import { isBrandHost } from './brand';
 
-export const LEGACY_DOMAINS: readonly string[] = ["saathum.com"] as readonly string[];
-export const LEGACY_MEDIA_HOSTS: readonly string[] = ["media.saathum.com"] as readonly string[];
-export const LEGACY_API_HOSTS: readonly string[] = ["api.saathum.com"] as readonly string[];
+export const LEGACY_DOMAINS: readonly string[] = ["saathum.com", "aumfe.com"] as readonly string[];
+export const LEGACY_MEDIA_HOSTS: readonly string[] = ["media.saathum.com", "media.aumfe.com"] as readonly string[];
+export const LEGACY_API_HOSTS: readonly string[] = ["api.saathum.com", "api.aumfe.com"] as readonly string[];
 
 /** True for the brand domain, any legacy domain, and any subdomain of either. */
 export function isBrandOrLegacyHost(host: string): boolean {

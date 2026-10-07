@@ -111,10 +111,10 @@ AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
 VERTEX_PROJECT = "avatok-avaglobal"
 VERTEX_LOCATION = "global"
 WALLET_TOPUP_ENABLED = "0"   # Money-in providers retired; kept for old clients/config shape.
-WALLET_RETURN_URL = "https://aumfe.com/wallet"
+WALLET_RETURN_URL = "https://hellofraands.com/wallet"
 # [SAATHUM-DEBRAND-1 2026-09-27] Customer-facing web origin (payment return pages,
 # emails). Unset, several routes fell back to avatok.ai, now a frozen placeholder.
-WEB_BASE_URL = "https://aumfe.com"
+WEB_BASE_URL = "https://hellofraands.com"
 # Public Stripe publishable key (NOT a secret) — returned to the app for the in-app
 # PaymentSheet. MUST match the STRIPE_SECRET_KEY mode (pk_test ↔ sk_test). REPLACE.
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"

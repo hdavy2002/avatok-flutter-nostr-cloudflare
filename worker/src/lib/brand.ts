@@ -19,9 +19,9 @@ export const BRAND = {
   /** Full story of the name (About page, help). */
   nameMeaningLong: "Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.",
   /** Bare host, no scheme. */
-  domain: "aumfe.com",
+  domain: "hellofraands.com",
   /** https://<domain> — no trailing slash. */
-  webOrigin: "https://aumfe.com",
+  webOrigin: "https://hellofraands.com",
   apiHost: "api.aumfe.com",
   apiOrigin: "https://api.aumfe.com",
   mediaHost: "media.aumfe.com",
@@ -30,9 +30,9 @@ export const BRAND = {
   authOrigin: "https://clerk.aumfe.com",
   mailHost: "mail.aumfe.com",
   /** Former domains. Their api./media. hosts stay attached forever (old app builds, old emails, stored image URLs). */
-  legacyDomains: ["saathum.com"] as readonly string[],
-  legacyMediaHosts: ["media.saathum.com"] as readonly string[],
-  legacyApiHosts: ["api.saathum.com"] as readonly string[],
+  legacyDomains: ["saathum.com", "aumfe.com"] as readonly string[],
+  legacyMediaHosts: ["media.saathum.com", "media.aumfe.com"] as readonly string[],
+  legacyApiHosts: ["api.saathum.com", "api.aumfe.com"] as readonly string[],
   emails: {
     support: "support@aumfe.com",
     noreply: "noreply@aumfe.com",

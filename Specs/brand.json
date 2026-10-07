@@ -13,15 +13,15 @@
   "slogan": "Faith, brought home to you.",
   "nameMeaningShort": "Aum (ॐ) is the sacred sound of the East; Fe is the word for faith in Spanish and Portuguese. Aum Fe is a meeting ground for East and West.",
   "nameMeaningLong": "Our name joins two words from two worlds. Aum — written ॐ and also spoken as Om — is the ancient Sanskrit syllable that Hindu tradition holds as the sound at the heart of every prayer. Fe is the plain word for faith in Spanish and Portuguese. The East has Aum; the West speaks of faith. Aum Fe is where the two meet: a home for anyone, anywhere, who wants to take part in a havan or puja performed with devotion in the Himalayas.",
-  "domain": "aumfe.com",
+  "domain": "hellofraands.com",
   "hosts": {
     "api": "api.aumfe.com",
     "media": "media.aumfe.com",
     "auth": "clerk.aumfe.com",
     "mail": "mail.aumfe.com"
   },
-  "_legacyDomains": "Former domains, kept after a domain switch. On switch day the old domain moves here (e.g. [\"saathum.com\"]). The api. and media. hosts of every legacy domain stay attached to the Worker/storage FOREVER — installed app builds, links in old emails and image URLs stored in the database all point at them. The website on a legacy domain is a frozen archive. Leave [] until a switch happens.",
-  "legacyDomains": ["saathum.com"],
+  "_legacyDomains": "Former domains, kept after a domain switch. On switch day the old domain moves here (e.g. [\"saathum.com\"]). The api. and media. hosts of every legacy domain stay attached to the Worker/storage FOREVER — installed app builds, links in old emails and image URLs stored in the database all point at them. A legacy website may redirect to the current domain after the new site is verified. Service aliases stay attached. Leave [] until a switch happens.",
+  "legacyDomains": ["saathum.com", "aumfe.com"],
   "emails": {
     "support": "support@aumfe.com",
     "noreply": "noreply@aumfe.com",

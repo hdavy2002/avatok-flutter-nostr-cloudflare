@@ -262,7 +262,7 @@ def sync_wrangler(text: str, b: dict) -> str:
     # one for the current api host AND one api.<legacy> per legacy domain (those stay
     # attached forever). The first such block is replaced by the full generated set,
     # any further ones (previous generator runs) are dropped, so this is idempotent.
-    hosts = [h["api"]] + ["api." + d for d in legacy_domains(b)]
+    hosts = list(dict.fromkeys([h["api"]] + ["api." + d for d in legacy_domains(b)]))
     generated = "\n".join(
         f'[[routes]]\npattern = "{x}"\ncustom_domain = true\n' for x in hosts)
     route_re = re.compile(
