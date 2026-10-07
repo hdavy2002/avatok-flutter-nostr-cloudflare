@@ -1,0 +1,20 @@
+---
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+---
+<HelloFraandsPage title="Safety centre" summary="Surakshit baat karein, aur zarurat par madad lein." review={false} related={[]}>
+<p>A good conversation starts with clear boundaries. Hello Fraands is for adults who want to talk to a real person. Use these guides to understand consent, report a concern, and find help.</p>
+<div class="safety-cards">
+<a href="/community-guidelines"><strong>Community guidelines</strong><span>What is welcome, what is banned, and what happens after a breach.</span></a>
+<a href="/talk-safely"><strong>Talk safely</strong><span>Simple ways to protect your privacy on a call.</span></a>
+<a href="/recording-policy"><strong>Recording &amp; consent</strong><span>Why calls are recorded and who may review them.</span></a>
+<a href="/report"><strong>Report a user</strong><span>Tell us about a call or behaviour that concerned you.</span></a>
+<a href="/grievance"><strong>Grievance redressal</strong><span>Contact the grievance officer and follow up on a complaint.</span></a>
+<a href="/emergency"><strong>Emergency support</strong><span>Find crisis and mental-health support numbers.</span></a>
+<a href="/women-only"><strong>Women-only space</strong><span>Who can enter and the rules inside the space.</span></a>
+<a href="/age-policy"><strong>Age policy</strong><span>Our 18+ rule and age checks.</span></a>
+</div>
+<p>If you are in immediate danger, call <a href="tel:112">Emergency 112</a>. For mental-health support, call <a href="tel:14416">Tele-MANAS 14416</a>.</p>
+<style>
+.safety-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:1rem}.safety-cards a{display:grid;gap:.5rem;padding:1.2rem;border:1px solid #ded8cf;border-radius:16px;text-decoration:none}.safety-cards span{font-size:.95rem}
+</style>
+</HelloFraandsPage>

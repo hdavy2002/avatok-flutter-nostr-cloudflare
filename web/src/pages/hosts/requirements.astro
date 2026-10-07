@@ -1,0 +1,9 @@
+---
+import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage title="Host requirements" summary="Host banne se pehle yeh zaroori shartein padhein." review={true} related={[{ href: '/hosts/rules', label: 'Host rules' }, { href: '/hosts/agreement', label: 'Host agreement' }, { href: '/recording-policy', label: 'Recording & consent' }]}>
+<h2>Who can host?</h2><ul><li>You must be at least 18 and an Indian resident.</li><li>You need valid Aadhaar and must complete video KYC.</li><li>Use your own phone number and one account per person.</li><li>Only you may take calls on your account. Do not share or rent it.</li></ul>
+<h2>Conversation, without professional claims</h2><p>Do not present yourself on Hello Fraands as a doctor, lawyer, counsellor, chartered accountant or financial advisor. Do not give medical, legal, financial or other regulated advice, even if you hold a qualification outside the platform.</p>
+<p>Give honest profile details. Complete verification before going online and cooperate with checks if your account details change. See the <a href="/hosts/kyc">KYC guide</a>.</p>
+</HelloFraandsPage>

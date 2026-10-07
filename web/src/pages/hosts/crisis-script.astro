@@ -1,0 +1,14 @@
+---
+import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage title="Crisis script" summary="Sankat mein shaant rahein aur turant sahi madad ki taraf bhejein." review={true} related={[{href:'/hosts/rules',label:'Host rules'},{href:'/emergency',label:'Emergency support'},{href:'/disclaimer',label:'Service disclaimer'}]}>
+<h2>When a caller mentions self-harm</h2><p>Stay calm. Do not argue, judge or try to counsel them. Speak slowly. Use the words below, ask them to call now, then end-and-report so the safety team can review the call.</p>
+<h2>Say this in English</h2>
+<blockquote><p>“I care about your safety, and I am glad you told me. I am not trained to help in a crisis. Please call Tele-MANAS on <a href="tel:14416">14416</a> now. If you might hurt yourself now or are in immediate danger, call <a href="tel:112">112</a> now. Can you make that call now? If you can, ask someone you trust to stay with you. I am going to end this call so you can reach that help, and report this to our safety team.”</p></blockquote>
+<h2>हिंदी में यह कहें</h2>
+<blockquote lang="hi"><p>“मुझे आपकी सुरक्षा की परवाह है। आपने मुझे बताया, यह अच्छा किया। मैं संकट में मदद करने के लिए प्रशिक्षित नहीं हूँ। कृपया अभी टेली-मानस को <a href="tel:14416">14416</a> पर कॉल करें। अगर आपको लगता है कि आप अभी खुद को नुकसान पहुँचा सकते हैं या तुरंत खतरे में हैं, तो अभी <a href="tel:112">112</a> पर कॉल करें। क्या आप अभी यह कॉल कर सकते हैं? हो सके तो किसी भरोसेमंद व्यक्ति को अपने पास रहने के लिए कहें। मैं अब यह कॉल खत्म करूँगा या करूँगी ताकि आप मदद ले सकें, और हमारी सुरक्षा टीम को इसकी रिपोर्ट दूँगा या दूँगी।”</p></blockquote>
+<h2>Do not say</h2><ul><li>“You are overreacting” or “Just be positive.”</li><li>“Other people have it worse.”</li><li>“Promise me you will never do it.”</li><li>“I can fix this” or “This will stay secret.”</li></ul>
+<p>Do not ask for details of a method, offer a diagnosis or charge for more conversation. Do not promise that the platform has contacted emergency services. Use end-and-report after giving the script.</p>
+<p><a class="hf-button" href="/hosts/crisis-script.pdf" download>Download PDF</a></p>
+</HelloFraandsPage>

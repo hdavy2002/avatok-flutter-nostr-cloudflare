@@ -1,0 +1,10 @@
+---
+import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage title="Host rules" summary="Izzat se baat karein, hadon ka dhyaan rakhein." review={true} related={[{ href: '/hosts/rules', label: 'Host rules' }, { href: '/hosts/agreement', label: 'Host agreement' }, { href: '/recording-policy', label: 'Recording & consent' }]}>
+<h2>Keep every call respectful</h2><ul><li>No sexual or suggestive talk, abuse, threats or harassment.</li><li>Do not ask for or share phone numbers, social accounts, addresses or meetings.</li><li>Do not sell products, services or paid remedies, or solicit money.</li><li>No medical, legal or financial advice.</li><li>Astrology is only for reflection and entertainment. Never promise an outcome or sell a remedy.</li></ul>
+<h2>If something goes wrong</h2><p>Use the one-tap end-and-report control if a caller crosses a boundary. Do not argue or continue for more paid minutes. If someone mentions self-harm, the <a href="/hosts/crisis-script">crisis script</a> is mandatory: respond calmly, direct them to urgent support, then end and report.</p>
+<h2>Warnings and removal</h2><p>The host strike ladder is a warning, then a 7-day suspension, then removal. Serious breaches may lead to immediate suspension or removal. Unpaid host earnings are forfeited only for serious breaches, not for an ordinary warning. You can raise a concern through <a href="/grievance">grievance redressal</a>.</p>
+<h2>Recording consent</h2><p>Calls are recorded for safety with a spoken notice and consent. Do not take a call if you do not agree. Do not make your own recording of the other person. Read the <a href="/recording-policy">recording and consent policy</a>.</p>
+</HelloFraandsPage>

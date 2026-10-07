@@ -1,0 +1,10 @@
+---
+import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage title="KYC guide" summary="Apni pehchaan surakshit tareeqe se verify karein.">
+<h2>What to expect</h2><ol><li>Start verification from your own signed-in account.</li><li>Follow the Didit video KYC flow. Allow camera access, use a well-lit place and follow the face or liveness prompts.</li><li>Complete the Aadhaar OTP step through the verification flow. Enter the OTP only there. Never tell it to a host or support agent.</li><li>Wait for the verification result before going online.</li></ol>
+<h2>What we keep</h2><p>For KYC, we store only the verified flag, gender field, verification date and provider reference. We never store your Aadhaar number or document images. The verification provider processes information within its own flow. Read the <a href="/privacy">privacy policy</a> for provider details and your rights.</p>
+<h2>How long does it take?</h2><p>Timing depends on the provider and whether a manual review is needed. Follow the status shown in the verification flow; a fixed completion time is not promised.</p>
+<h2>If verification fails</h2><p>Check camera permissions, lighting, internet access and that your details match. Retry only when the flow allows it. If you remain stuck, contact {'{{CONTACT_EMAIL}}'} with the error and provider reference. Do not send Aadhaar numbers, document images or OTPs by email.</p>
+</HelloFraandsPage>

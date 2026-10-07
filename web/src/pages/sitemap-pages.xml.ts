@@ -36,10 +36,18 @@ import { rituals } from '../lib/ritualGuides';
 import { getHelpEntries, helpUrl } from '../lib/help';
 import { isArchivedPath } from '../lib/archivedPages';
 import { BRAND } from '../lib/brand';
+import brandConfig from '../../../Specs/brand.json';
 
 export const prerender = true;
 
 const SITE = BRAND.webOrigin;
+const HELLO_SITE = `https://${brandConfig.homepageIdentity.domain}`;
+const HELLO_ROUTES = new Set([
+  '/', '/about', '/how-it-works', '/faq', '/contact', '/press',
+  '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc',
+  '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/age-policy',
+  '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy',
+]);
 
 /** [path, changefreq, priority] */
 // [WEB-SEO-REBRAND-1 2026-09-27] Rebuilt from a scan of every page on the live
@@ -48,7 +56,7 @@ const SITE = BRAND.webOrigin;
 // wallet/legal-for-sellers rows were removed rather than left to the archive
 // filter). Ritual guides use the trailing-slash URL — that is the one Cloudflare
 // Pages serves with 200 (see canonicalUrl in lib/seo/policy.ts).
-const ROUTES: Array<[string, string, string, string?]> = [
+const BASE_ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
   ['/free-videos', 'daily', '0.7'], // [SAATHUM-FREEVIDEOS-WEB-1]
@@ -68,6 +76,11 @@ const ROUTES: Array<[string, string, string, string?]> = [
   ['/cookies', 'yearly', '0.3'],
   ['/disclaimer', 'yearly', '0.3'],
   ['/grievance', 'yearly', '0.3'],
+  // Hello Fraands content routes share the site's static sitemap.
+];
+const ROUTES: Array<[string, string, string, string?]> = [
+  ...BASE_ROUTES,
+  ...[...HELLO_ROUTES].filter(path => !BASE_ROUTES.some(([existing]) => existing === path)).map(path => [path, 'monthly', '0.5'] as [string, string, string]),
 ];
 
 export const GET: APIRoute = async () => {
@@ -93,7 +106,7 @@ export const GET: APIRoute = async () => {
   const urls = [...ROUTES, ...helpRoutes].filter(([path]) => !isArchivedPath(path)).map(
     ([path, changefreq, priority, rowLastmod]) =>
       `  <url>\n` +
-      `    <loc>${SITE}${path}</loc>\n` +
+      `    <loc>${HELLO_ROUTES.has(path) ? HELLO_SITE : SITE}${path}</loc>\n` +
       (rowLastmod ? `    <lastmod>${rowLastmod}</lastmod>\n` : '') +
       `    <changefreq>${changefreq}</changefreq>\n` +
       `    <priority>${priority}</priority>\n` +

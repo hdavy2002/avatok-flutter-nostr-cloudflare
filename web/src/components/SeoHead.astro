@@ -4,6 +4,7 @@ import { resolveSeo } from '../lib/seo/resolve';
 import { serializeJsonLd } from '../lib/seo/normalize';
 import type { LegacySeoInput, PublicContent } from '../lib/seo/types';
 import { BRAND } from '../lib/brand';
+import brandConfig from '../../../Specs/brand.json';
 
 interface Props extends LegacySeoInput {
   content?: PublicContent;
@@ -19,21 +20,30 @@ const seo = await resolveSeo({
   content,
   legacy,
 });
+// The five illustrative conversation profiles share the Hello Fraands identity;
+// the rest of the app still follows the central app brand configuration.
+const conversationProfile = Astro.url.pathname.startsWith('/people/');
+const conversationOrigin = `https://${brandConfig.homepageIdentity.domain}`;
+const canonical = conversationProfile ? seo.canonical.replace(BRAND.webOrigin, conversationOrigin) : seo.canonical;
+const imageUrl = conversationProfile ? seo.image.url.replace(BRAND.webOrigin, conversationOrigin) : seo.image.url;
+const pageTitle = conversationProfile ? (legacy.title ?? seo.title) : seo.title;
+const ogTitle = conversationProfile ? pageTitle : seo.ogTitle;
+const siteName = conversationProfile ? brandConfig.homepageIdentity.name : BRAND.name;
 ---
-<link rel="canonical" href={seo.canonical} />
+<link rel="canonical" href={canonical} />
 <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 <meta name="robots" content={seo.robots} />
-<title data-i18n-meta={titleMessageKey ?? authoredKey(seo.title)}>{seo.title}</title>
+<title data-i18n-meta={titleMessageKey ?? authoredKey(pageTitle)}>{pageTitle}</title>
 <meta data-i18n-meta={descriptionMessageKey ?? authoredKey(seo.description)} name="description" content={seo.description} />
 {keywords && <meta name="keywords" content={keywords} />}
 <meta property="og:type" content={seo.ogType} />
-<meta property="og:site_name" content={BRAND.name} />
+<meta property="og:site_name" content={siteName} />
 <meta property="og:locale" content="en_IN" />
-<meta property="og:title" content={seo.ogTitle} />
+<meta property="og:title" content={ogTitle} />
 <meta property="og:description" content={seo.ogDescription} />
-<meta property="og:url" content={seo.canonical} />
-<meta property="og:image" content={seo.image.url} />
-<meta property="og:image:secure_url" content={seo.image.url} />
+<meta property="og:url" content={canonical} />
+<meta property="og:image" content={imageUrl} />
+<meta property="og:image:secure_url" content={imageUrl} />
 <meta property="og:image:type" content={seo.image.mime} />
 <meta property="og:image:width" content={seo.image.width} />
 <meta property="og:image:height" content={seo.image.height} />
@@ -43,8 +53,8 @@ const seo = await resolveSeo({
 {content?.publishedAt && <meta property="article:published_time" content={content.publishedAt} />}
 {content?.modifiedAt && <meta property="article:modified_time" content={content.modifiedAt} />}
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content={seo.ogTitle} />
+<meta name="twitter:title" content={ogTitle} />
 <meta name="twitter:description" content={seo.ogDescription} />
-<meta name="twitter:image" content={seo.image.url} />
+<meta name="twitter:image" content={imageUrl} />
 <meta name="twitter:image:alt" content={seo.image.alt} />
 {seo.indexable && <script type="application/ld+json" set:html={serializeJsonLd(seo.jsonLd)} />}

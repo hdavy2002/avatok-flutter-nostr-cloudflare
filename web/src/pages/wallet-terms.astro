@@ -1,0 +1,15 @@
+---
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+---
+<HelloFraandsPage title="Payment & wallet terms" summary="Wallet ka balance sirf platform par baat karne ke liye hai." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
+<h2>Prepaid talk-time</h2>
+<p>Your wallet holds prepaid talk-time for calls on Hello Fraands. It is personal, non-transferable, and cannot be sent to another user. Callers cannot cash out. An eligible account-closure refund is handled under the <a href="/refunds">refund policy</a>.</p>
+<h2>Top-ups and charges</h2>
+<p>Top up using the payment options shown in the service, including UPI. Review the amount and GST shown before paying. Keep your payment receipt. Each host's per-minute rate is shown before the call.</p>
+<p>Calls are billed by the minute. You receive a warning when about one minute of balance remains. The call ends when the wallet is empty. Add more balance before starting another call.</p>
+<h2>Expiry</h2>
+<p>Any expiry period or promotional balance conditions must be shown before you top up or accept an offer. Check those terms before paying. If no expiry information is shown, contact {'{{CONTACT_EMAIL}}'} for clarification.</p>
+<h2>Connection failures and account action</h2>
+<p>If a call fails to bridge, the affected charge is automatically credited to your wallet. Dropped-call credits and disputes follow the <a href="/refunds">refund policy</a>.</p>
+<p>A permanent ban for conduct breaches may result in forfeiture of the remaining balance, subject to applicable law and the grievance process. Report an incorrect charge or account action through <a href="/report">Report a user</a>.</p>
+</HelloFraandsPage>

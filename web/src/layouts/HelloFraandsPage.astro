@@ -1,0 +1,58 @@
+---
+import brandConfig from '../../../Specs/brand.json';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
+import '../styles/callvaal-notebook.css';
+import '../styles/hello-fraands-pages.css';
+
+interface Link { href: string; label: string }
+interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string }
+const { title, summary, review = false, related = [], description = summary } = Astro.props;
+const identity = brandConfig.homepageIdentity;
+const canonical = `https://${identity.domain}${Astro.url.pathname}`;
+const pageTitle = `${title} | ${identity.name}`;
+const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-moods.png`;
+---
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#46113e" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content={identity.name} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={ogImage} />
+    <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: pageTitle, description, url: canonical, inLanguage: 'en-IN' })} />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <div class="notebook-site hf-site" data-design="callvaal-scrapbook">
+      <a class="skip-link" href="#main-content">Skip to main content</a>
+      <Header />
+      <main id="main-content" class="hf-content">
+        <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
+        <article class="hf-page">
+          <header class="hf-page-header">
+            <h1>{title}</h1>
+            <p class="hf-hindi"><em>{summary}</em></p>
+            <p class="hf-date">Last updated: {'{{DATE}}'}</p>
+          </header>
+          <div class="hf-prose"><slot /></div>
+          {review && <aside class="hf-review-note"><p>This page is under legal review.</p>{related.length > 0 && <p>Related pages: {related.map((link, index) => <>{index > 0 && ' · '}<a href={link.href}>{link.label}</a></>)}</p>}</aside>}
+        </article>
+      </main>
+      <Footer />
+    </div>
+  </body>
+</html>

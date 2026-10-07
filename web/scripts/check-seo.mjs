@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
 import { BRAND, reEscape } from './brand.mjs';
+import brandConfig from '../../Specs/brand.json' with { type: 'json' };
+import { contentRoutes } from './check-hello-fraands-pages.mjs';
+const helloOrigin = `https://${brandConfig.homepageIdentity.domain}`;
+const helloPaths = new Set(['/', ...contentRoutes]);
 
 const dist = resolve('dist');
 assert(existsSync(dist), 'Missing dist/; run after the Astro build');
@@ -28,7 +32,9 @@ for (const file of htmlFiles(dist)) {
   indexable++;
 
   const canonical = value(html, /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
-  assert(canonical?.startsWith(BRAND.webOrigin + '/'), `Invalid canonical: ${relative(dist, file)}`);
+  const path = '/' + relative(dist, file).replace(/index\.html$/, '').replace(/\/$/, '');
+  const expectedOrigin = helloPaths.has(path || '/') ? helloOrigin : BRAND.webOrigin;
+  assert(canonical?.startsWith(expectedOrigin + '/'), `Invalid canonical: ${relative(dist, file)}`);
   assert(!canonical.includes('?') && !canonical.includes('#'), `Canonical contains query/fragment: ${canonical}`);
   assert(!seenCanonical.has(canonical), `Duplicate canonical ${canonical}: ${seenCanonical.get(canonical)} and ${relative(dist, file)}`);
   seenCanonical.set(canonical, relative(dist, file));
@@ -38,8 +44,8 @@ for (const file of htmlFiles(dist)) {
     /<meta[^>]+name=["']description["'][^>]+content=["'][^"']+["']/i,
     /<meta[^>]+property=["']og:title["'][^>]+content=["'][^"']+["']/i,
     /<meta[^>]+property=["']og:description["'][^>]+content=["'][^"']+["']/i,
-    new RegExp('<meta[^>]+property=["\']og:url["\'][^>]+content=["\']' + reEscape(BRAND.webOrigin + '/'), 'i'),
-    new RegExp('<meta[^>]+property=["\']og:image["\'][^>]+content=["\']' + reEscape(BRAND.webOrigin + '/'), 'i'),
+    new RegExp('<meta[^>]+property=["\']og:url["\'][^>]+content=["\']' + reEscape(expectedOrigin + '/'), 'i'),
+    new RegExp('<meta[^>]+property=["\']og:image["\'][^>]+content=["\']' + reEscape(expectedOrigin + '/'), 'i'),
     /<meta[^>]+name=["']twitter:card["'][^>]+content=["']summary_large_image["']/i,
     /<script[^>]+type=["']application\/ld\+json["'][^>]*>/i,
   ];
@@ -58,7 +64,7 @@ for (const output of ['sitemap-pages.xml', 'llms.txt', 'llms-rituals.txt']) {
   assert(existsSync(join(dist, output)), `Missing discovery output: ${output}`);
 }
 const sitemapPages = readFileSync(join(dist, 'sitemap-pages.xml'), 'utf8');
-const sitemapLocations = new Set([...sitemapPages.matchAll(new RegExp('<loc>(' + reEscape(BRAND.webOrigin) + '/[^<]*)</loc>', 'g'))].map((match) => match[1]));
+const sitemapLocations = new Set([...sitemapPages.matchAll(/<loc>(https:\/\/[^<]+)<\/loc>/g)].map((match) => match[1]));
 for (const canonical of seenCanonical.keys()) {
   assert(sitemapLocations.has(canonical), `Indexable prerendered page missing from sitemap-pages.xml: ${canonical}`);
 }

@@ -1,127 +1,19 @@
 ---
-// [WEB-LEGAL-FOLK-1 2026-09-27] /privacy rebuilt to the owner-approved mockup
-// design/legal-pages/saathum-privacy-mock.src.html. OWNER: "exact replica of
-// what you have shown me, not an inspired version." Replaces the
-// layouts/Content.astro version — same policy text, word-for-word (mock's
-// two stray "Ava" references in section 4 already read "Saa Thum" — keep
-// that), on the new folk shell.
-//
-// NOTE FOR AI:
-//  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
-//    styles/legal-folk.css. Same conventions as pages/refunds.astro:
-//    Base chrome={false}, `.folk-site[data-design="reference-v5"]`,
-//    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
-//  - This page supplies only content props (title/lead/updated/sticker/toc/
-//    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
-//  - Prose text below is UNCHANGED from the mock — do not "improve" the
-//    wording; this is a shell swap, not a copy edit.
-//  - Emails stay plain text "support (@) saathum.com", never mailto.
-export const prerender = true;
-import LegalFolk from '../layouts/LegalFolk.astro';
-import { BRAND } from '../lib/brand';
-
-const toc = [
-  { id: 'collect', label: 'Information we collect' },
-  { id: 'use', label: 'How we use information' },
-  { id: 'google', label: 'Google APIs and Google user data' },
-  { id: 'ai', label: 'AI features and your data' },
-  { id: 'share', label: 'How we share information' },
-  { id: 'retention', label: 'Data retention' },
-  { id: 'rights', label: 'Your rights and choices' },
-  { id: 'security', label: 'Security' },
-  { id: 'transfers', label: 'International transfers' },
-  { id: 'children', label: 'Children' },
-  { id: 'changes', label: 'Changes to this policy' },
-  { id: 'contact', label: 'Contact us' },
-];
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-
-<LegalFolk
-  title="Privacy Policy"
-  seoTitle="Privacy Policy — How Your Details Are Handled"
-  titleHtml="Privacy <em>Policy</em>"
-  eyebrow="Legal"
-  lead={`What information the ${BRAND.name} team gathers, how it is used, and how we keep it safe.`}
-  description={`Which personal details ${BRAND.name} gathers when you use the site or book a ritual, why we need them, how they are kept safe, and the choices you have over them.`}
-  image="/og/privacy.png"
-  updated="2026-09-25"
-  sticker={{ src: '/assets/editorial-stickers-v2/privacy-sticker-v2.png', width: 1206, height: 1304, alt: 'A teal lotus-shaped shield with a golden padlock and a diya — privacy.' }}
-  stamp={{ src: '/assets/bright/lotus.png', width: 1254, height: 1254 }}
-  toc={toc}
-  railCard={{
-    title: 'We never sell your data',
-    html: `Ask us to delete your account and data at any time at support (@) ${BRAND.domain}.`,
-    image: { src: '/diya-logo.png', width: 1254, height: 1254 },
-  }}
->
-  <p>
-    This Privacy Policy explains how the {BRAND.name} founding team ("{BRAND.name}", "we", "us", or "our")
-    handles personal information in connection with the {BRAND.name} websites, apps, and services
-    (collectively, the "Services").
-  </p>
-
-  <p>
-    By using the Services you agree to the practices described here. If you do not agree, please do
-    not use the Services.
-  </p>
-
-  <h2 id="collect"><span class="lg-n">1.</span>Information we collect</h2>
-  <p>We collect information in three ways:</p>
-  <ul>
-    <li><strong>Information you give us</strong> — such as your name, email address, handle, profile details, payment and payout details, identity-verification data (for KYC where required), and any content you create, upload, or send.</li>
-    <li><strong>Biometric identifiers</strong> — before you post publicly we ask you to complete a liveness check, which produces a scan of facial geometry. We collect this only with your prior written consent, we never sell or profit from it, and we destroy it on a published timetable.</li>
-    <li><strong>Information we collect automatically</strong> — such as device and browser type, IP address, approximate location, pages viewed, and interactions with the Services, collected through cookies and similar technologies (see our <a href="/cookies">Cookie Policy</a>).</li>
-    <li><strong>Information from third parties</strong> — such as authentication providers, payment processors, and analytics partners that help us run the Services.</li>
-  </ul>
-
-  <h2 id="use"><span class="lg-n">2.</span>How we use information</h2>
-  <ul>
-    <li>To provide, maintain, and improve the Services.</li>
-    <li>To process payments, payouts, bookings, and transactions.</li>
-    <li>To verify identity, keep the community safe, and prevent fraud and abuse.</li>
-    <li>To personalize features, including AI-powered features.</li>
-    <li>To communicate with you about your account, updates, and support requests.</li>
-    <li>To comply with legal obligations and enforce our <a href="/terms">Terms of Service</a>.</li>
-  </ul>
-
-  <h2 id="google"><span class="lg-n">3.</span>Google APIs and Google user data</h2>
-  <p>If you choose to connect a Google Account, {BRAND.name} uses Google OAuth and requests only Google Drive's limited <code>drive.file</code> access. This lets {BRAND.name} create files in your Google Drive when you ask it to (for example, saving a booking receipt) and open only the files that {BRAND.name} created or that you explicitly select. {BRAND.name} cannot see, read or change any other file in your Google Drive. {BRAND.name} does not request access to your Google Calendar, Gmail, Contacts or any other Google service.</p>
-  <p>Google user data is used only to provide the feature you requested, is transmitted over encrypted connections, and is never sold, used for advertising, used to determine creditworthiness, or transferred to anyone else except as necessary to provide that feature or where required by law. {BRAND.name}'s use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
-  <p><strong>Google user data and AI.</strong> {BRAND.name} does not send any data received from Google APIs to any AI or machine-learning model — neither a self-hosted model nor a third-party AI service — and does not use Google user data to train, fine-tune or improve any AI model, whether generalized, foundational or {BRAND.name}'s own.</p>
-  <p>You can disconnect Google at any time from {BRAND.name}'s settings or from your Google Account's third-party connections (myaccount.google.com/connections). When disconnected, {BRAND.name} stops making Google API requests for that connection. You can ask us to delete stored Google-related data and tokens by contacting support (@) {BRAND.domain}; tokens are encrypted at rest and are deleted when the connection is removed, subject to legally required retention.</p>
-
-  <h2 id="ai"><span class="lg-n">4.</span>AI features and your data</h2>
-  <p>{BRAND.name} is an AI-centric platform. Some features use machine-learning models to generate, summarize, translate, or recommend content. AI outputs can be inaccurate or incomplete — please review the section on AI in our <a href="/terms">Terms of Service</a>. Private and end-to-end encrypted content is processed on-device wherever feasible and is not used to train shared models without your consent. Some communication features are server-readable so {BRAND.name} can provide the service you request; content is handled according to the controls and disclosures shown inside the relevant feature. Where a feature is explicitly described as end-to-end encrypted, processing remains limited to the participating devices except where you choose to share that content with {BRAND.name}.</p>
-  <p><strong>Which AI services we use.</strong> {BRAND.name} does not run its own self-hosted AI model. AI features use third-party AI services acting as our service providers: Cloudflare Workers AI, OpenAI and Google Gemini (and, for some features, OpenRouter and Groq). We send these providers only the content needed for the AI feature you use. As explained in section 3, data received from Google APIs is never sent to any of these AI services.</p>
-
-  <h2 id="share"><span class="lg-n">5.</span>How we share information</h2>
-  <p>We do <strong>not</strong> sell your personal information. We share it only:</p>
-  <ul>
-    <li>With service providers (e.g. hosting, payments, email, analytics) under contract.</li>
-    <li>With other users when you choose to make content or a profile public.</li>
-    <li>To comply with law, legal process, or to protect rights, safety, and property.</li>
-    <li>In connection with a merger, acquisition, or sale of assets, with notice where required.</li>
-  </ul>
-
-  <h2 id="retention"><span class="lg-n">6.</span>Data retention</h2>
-  <p>We keep personal information for as long as your account is active or as needed to provide the Services, comply with legal obligations, resolve disputes, and enforce our agreements. You can request deletion of your account and data at any time.</p>
-
-  <h2 id="rights"><span class="lg-n">7.</span>Your rights and choices</h2>
-  <p>Depending on where you live, you may have the right to access, correct, export, or delete your personal information, and to object to or restrict certain processing. To exercise these rights, contact us at support (@) {BRAND.domain}. You can also manage cookies through your browser and our cookie controls.</p>
-
-  <h2 id="security"><span class="lg-n">8.</span>Security</h2>
-  <p>We use technical and organizational measures designed to protect personal information, including encryption in transit and at rest. No method of transmission or storage is perfectly secure, so we cannot guarantee absolute security.</p>
-  <p>{BRAND.name} user data is hosted using secure infrastructure selected by {BRAND.name}. We describe the locations and providers used for your data in the applicable service notices.</p>
-
-  <h2 id="transfers"><span class="lg-n">9.</span>International transfers</h2>
-  <p>We operate globally. Your information may be processed in countries other than your own, including countries where our infrastructure and service providers operate, where data-protection laws may differ. We take steps to ensure appropriate safeguards are in place.</p>
-
-  <h2 id="children"><span class="lg-n">10.</span>Children</h2>
-  <p>The Services are not directed to children under 13 (or the minimum age required in your jurisdiction). We do not knowingly collect personal information from children. If you believe a child has provided us information, contact support (@) {BRAND.domain}.</p>
-
-  <h2 id="changes"><span class="lg-n">11.</span>Changes to this policy</h2>
-  <p>We may update this Privacy Policy from time to time. We will post the updated version here and revise the "Last updated" date above. Material changes may be communicated through the Services.</p>
-
-  <h2 id="contact"><span class="lg-n">12.</span>Contact us</h2>
-  <p>Questions about privacy? Email support (@) {BRAND.domain} or use our <a href="/contact">contact page</a>.</p>
-</LegalFolk>
+<HelloFraandsPage title="Privacy policy" summary="Aapki jaankari ka istemal kaise hota hai, yahan jaanein." review={true} related={[{"href":"/recording-policy","label":"Recording & consent"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"},{"href":"/intermediary-policy","label":"Intermediary & content policy"}]}>
+<h2>Who handles your data</h2>
+<p>{'{{COMPANY_NAME}}'} operates Hello Fraands. Contact {'{{CONTACT_EMAIL}}'} for privacy questions, or {'{{GRIEVANCE_EMAIL}}'} for a grievance. Our registered address is {'{{REG_ADDRESS}}'}.</p>
+<h2>What we collect and why</h2>
+<ul><li>Phone number, name, and email to create your account, verify access, and contact you.</li><li>KYC result flags, gender field, verification date, and provider reference for eligibility and safety. We do not store Aadhaar numbers or document images.</li><li>Call metadata and recordings to connect calls, calculate charges, investigate reports, and check safety.</li><li>Wallet and payment transactions to process top-ups, credits, payouts, and required financial records.</li><li>Reports and support messages to resolve concerns and prevent misuse.</li></ul>
+<p>We use this data for the stated service, safety, and legal purposes. Recording consent is explained before calls. Where consent is the basis for processing, you can withdraw it by contacting us; this may limit features that need that data.</p>
+<h2>Service providers</h2>
+<p>We use Clerk for account access, Didit for KYC, Vobiz or the telephony provider for calls, a WhatsApp API provider for messages, and bank or UPI providers for payments. They receive the data needed for their role. Their own privacy terms also apply to data they handle. Lawful requests from authorities are handled through the grievance officer.</p>
+<h2>Retention and access</h2>
+<p>Call metadata is kept for 180 days. Audio is kept for {'{{AUDIO_RETENTION_DAYS}}'} days. Transaction records are kept for the period required by tax law. Reports or relevant records may be preserved where a legal requirement applies. Account data is kept while needed for the service and is handled under our <a href="/data-deletion">deletion process</a> when you leave.</p>
+<p>Only authorised staff can access data for their work. Only Trust &amp; Safety may review call audio, on a report or a random safety sample. No service can promise absolute security.</p>
+<h2>Your choices and rights</h2>
+<p>You may request access to your personal data, correction of inaccurate details, deletion, or grievance review. Email {'{{CONTACT_EMAIL}}'} from your registered address or include your registered phone number. We verify your identity before acting. Rights and any required exceptions are handled under applicable law, including the Digital Personal Data Protection Act where in force and applicable.</p>
+<h2>Children and changes</h2>
+<p>This is an 18+ service. If we learn that an account belongs to a minor, we close it and handle its data under legal requirements. Report concerns through <a href="/report">Report a user</a>. We update this policy when our practices change and communicate material changes through the service.</p>
+</HelloFraandsPage>

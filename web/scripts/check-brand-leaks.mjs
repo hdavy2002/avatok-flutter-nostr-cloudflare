@@ -36,6 +36,11 @@ function scan(label, text) {
 for (const file of walk(root)) {
   const html = readFileSync(file, 'utf8');
   const robots = html.match(/<meta name="robots" content="([^"]*)"/i)?.[1] ?? '';
+  // The retired public identity is banned even on sample/noindex pages.
+  // Keep internal callvaal filenames and DOM hooks out of the visible-text scan.
+  const publicCopy = html.replace(/<script\b[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
+  const publicMeta = (html.match(/<meta\b[^>]*(?:name|property)="(?:description|og:[^"]+|twitter:[^"]+)"[^>]*>/gi) || []).map(tag => tag.match(/content="([^"]*)"/)?.[1] || '').join(' ');
+  if (/CallVaal/i.test(publicCopy + ' ' + publicMeta.replace(/https?:\/\/[^\s"<>]+/g, ''))) failures.push(relative(root, file) + ': retired CallVaal identity in public copy');
   if (!/\bindex\b/i.test(robots) || /\bnoindex\b/i.test(robots)) continue;
   const rel = '/' + relative(root, file).replace(/index\.html$/, '');
   const meta = [

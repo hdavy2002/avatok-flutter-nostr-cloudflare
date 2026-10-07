@@ -8,14 +8,15 @@ import { BRAND } from './lib/brand';
 // this middleware sees every one of these requests.
 //
 // NOTE FOR AI: paths already 301'd in public/_redirects (/tokens, /payouts, /dmca,
-// /organisers, /child-safety, /community-guidelines, /biometric-retention,
+// /organisers, /child-safety, /biometric-retention,
 // /india, /ideas via page) keep their redirect — _redirects wins before this runs.
-// Do not re-create any of these pages; build new Saa Thum pages instead.
+// /community-guidelines is now a Hello Fraands page and is no longer retired.
+// Other retired routes keep their existing behavior.
 const GONE_EXACT = new Set([
   '/add',
   '/careers',
   '/acceptable-use', '/consultation-terms', '/marketplace-terms', '/prohibited-services', '/recording',
-  '/biometric-retention', '/child-safety', '/community-guidelines', '/dmca',
+  '/biometric-retention', '/child-safety', '/dmca',
   '/organisers', '/payouts', '/pricing-fees', '/tokens',
   '/pricing', '/pricing-preview', '/global-ideas', '/global-next', '/india-next', '/india',
   '/ideas', '/landing-steps-preview',

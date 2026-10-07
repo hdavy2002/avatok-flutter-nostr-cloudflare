@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
+import { contentRoutes, footerGroups } from './check-hello-fraands-pages.mjs';
 
 const root = resolve('dist');
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
@@ -143,6 +144,8 @@ try {
         for (const image of images) image.loading = 'eager';
         await Promise.all(images.map(image => image.decode()));
       });
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://${homepageIdentity.domain}/`);
+      await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('h1')).toHaveText(/Baat karo\.\s*Dil halka karo\./);
       await expect(page.locator('[data-person]')).toHaveCount(8);
       await expect(page.locator('.mood-group')).toHaveCount(4);
@@ -232,15 +235,15 @@ try {
         await expect(menu).toBeFocused();
       }
       await expect(page.locator('[data-callvaal-footer-group]')).toHaveCount(5);
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(24);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(34);
       for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
         if (!(await group.evaluate(element => element.open))) await group.locator('summary').click();
       }
-      const privacy = page.locator('[data-footer-preview="Privacy"]');
-      await privacy.click();
-      await expect(dialog).toContainText('not published for this service yet');
-      await dialog.locator('[data-close-preview]').click();
-      await waitForPreviewClose(dialog, privacy, name);
+      await expect(page.locator('[data-callvaal-footer-group] summary')).toHaveText(footerGroups);
+      const privacy = page.locator('[data-callvaal-footer-group] a[href="/privacy"]');
+      await expect(privacy).toBeVisible();
+      await expect(privacy).toHaveAttribute('href', '/privacy');
+      await expect(page.locator('[data-footer-preview]')).toHaveCount(0);
       if ([320, 452, 1024].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         const enlarged = await inspectReadability(page);
@@ -300,6 +303,33 @@ try {
       failures.push({ name, error: String(error), browserErrors });
       console.error(name, error);
     } finally { await page.close(); }
+  }
+  // Visit every published content route at a narrow viewport. All traffic remains local.
+  for (const path of contentRoutes) {
+    const page = await browser.newPage({ viewport: { width: 320, height: 740 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    await page.route('**/*', route => {
+      const url = new URL(route.request().url());
+      return url.origin !== 'http://127.0.0.1:4179' || url.pathname.startsWith('/api/') ? route.abort() : route.continue();
+    });
+    try {
+      const response = await page.goto(`http://127.0.0.1:4179${path}`, { waitUntil: 'domcontentloaded' });
+      assert.equal(response.status(), 200, `${path}: published route`);
+      await expect(page.locator('h1')).toHaveCount(1);
+      await expect(page.locator('.hf-hindi em')).toBeVisible();
+      await expect(page.locator('.hf-date')).toHaveText('Last updated: {{DATE}}');
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(34);
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path}: 200% narrow text has no page overflow`);
+      if (path === '/faq') {
+        const item = page.locator('.hf-prose details').first();
+        await item.locator('summary').click();
+        await expect(item.locator('p')).toBeVisible();
+      }
+      assert.deepEqual(errors, [], `${path}: no browser errors`);
+    } catch (error) { failures.push({ name: path, error: String(error), browserErrors: errors }); }
+    finally { await page.close(); }
   }
   await writeFile('homepage-review/metrics.json', JSON.stringify({ metrics, failures }, null, 2));
   assert.equal(failures.length, 0, JSON.stringify(failures));

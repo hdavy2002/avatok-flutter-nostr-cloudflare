@@ -1,0 +1,14 @@
+---
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+---
+<HelloFraandsPage title="Recording & consent" summary="Har call ki recording se pehle aapko bataya jaata hai." review={true} related={[{"href":"/privacy","label":"Privacy policy"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
+<h2>Consent before the conversation</h2>
+<p>A spoken notice plays at the start of every call. It explains that the call is recorded for safety. Continue only if you agree. If you do not agree, end the call.</p>
+<h2>What we keep</h2>
+<p>We record the audio and call metadata, such as the call ID, participants, time, duration, and connection status. Call metadata is kept for 180 days. Audio is kept for {'{{AUDIO_RETENTION_DAYS}}'} days, unless a legal requirement requires us to preserve it longer.</p>
+<h2>Who can listen</h2>
+<p>Only authorised Trust &amp; Safety staff may listen, either to review a report or as part of a random safety sample. Access is limited to that purpose. Recordings are shared outside this process only in response to a lawful law-enforcement request or court order.</p>
+<h2>Request your call record</h2>
+<p>Email {'{{GRIEVANCE_EMAIL}}'} with your registered phone or email, call ID, and call date. We will verify your identity and review the request, including the other person's privacy and any legal restrictions. Do not send an Aadhaar number or identity document by email.</p>
+<p>You must not record the other person yourself. Read the <a href="/community-guidelines">community guidelines</a>.</p>
+</HelloFraandsPage>

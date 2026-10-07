@@ -1,3 +1,6 @@
+# Hello Fraands domain move map: aumfe.com/* -> hellofraands.com/:splat (301).
+# Configure this as a Cloudflare zone Redirect Rule when the new domain is attached;
+# host-based entries in this file are parsed as paths by the Astro adapter.
 # [WEB-SEO-2 2026-09-10] www.avatok.ai -> avatok.ai is NOT here. It was tried as
 #   https://www.avatok.ai/* https://avatok.ai/:splat 301
 # and Cloudflare Pages ignored the host-form rule (www kept answering 200), while
@@ -41,8 +44,6 @@
 /biometric-retention/ / 301
 /child-safety / 301
 /child-safety/ / 301
-/community-guidelines / 301
-/community-guidelines/ / 301
 
 # [SAATHUM-ENTITY-1 2026-09-26] Owner removed this page; file kept (archived,
 # already excluded from nav/footer/sitemap via archivedPages.ts).

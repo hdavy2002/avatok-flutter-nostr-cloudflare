@@ -34,10 +34,32 @@ for (const [id, name, rate, languages, portrait] of profiles) {
   const main = html.match(/<main\b[^>]*id="profile-main"[^>]*>[\s\S]*?<\/main>/)?.[0];
   assert(main, `${id}: shared profile main`);
   const title = text(html.match(/<title\b[^>]*>[\s\S]*?<\/title>/)?.[0] || '');
-  assert(title.startsWith(`${name} — Someone to talk to `) && title.includes(`| ${identity.name}`) && title.endsWith(`· ${brand.name}`), `${id}: conversation title with homepage and site identities`);
+  assert.equal(title, `${name} — Someone to talk to | ${identity.name}`, `${id}: conversation title uses only the public identity`);
   const robots = html.match(/<meta\b[^>]*name="robots"[^>]*>/)?.[0] || '';
   assert.match(robots, /content="noindex,\s*follow"/, `${id}: sample stays noindex while allowing link discovery`);
   assert.equal((html.match(/<h1[ >]/g) || []).length, 1, `${id}: one h1`);
+  const canonical = html.match(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"/)?.[1];
+  assert(canonical, `${id}: canonical URL exists`);
+  const canonicalUrl = new URL(canonical);
+  assert.equal(canonicalUrl.origin, `https://${identity.domain}`, `${id}: Hello Fraands canonical domain`);
+  assert.equal(canonicalUrl.pathname.replace(/\/$/, ''), path, `${id}: canonical profile path`);
+  const ogUrl = html.match(/<meta\b[^>]*property="og:url"[^>]*content="([^"]+)"/)?.[1];
+  assert.equal(ogUrl, canonical, `${id}: OG URL matches canonical`);
+  const metadata = key => {
+    const tag = (html.match(/<meta\b[^>]*>/g) || []).find(tag => tag.includes(`property="${key}"`) || tag.includes(`name="${key}"`));
+    return decodeEntities(tag?.match(/content="([^"]*)"/)?.[1] || '');
+  };
+  assert.equal(metadata('og:site_name'), identity.name, `${id}: OG site identity`);
+  assert.equal(metadata('og:title'), title, `${id}: OG title matches page title`);
+  assert.equal(metadata('twitter:title'), title, `${id}: Twitter title matches page title`);
+  const ogImage = metadata('og:image');
+  assert(ogImage, `${id}: OG image exists`);
+  assert.equal(new URL(ogImage).origin, `https://${identity.domain}`, `${id}: OG image domain`);
+  assert.equal(metadata('og:image:secure_url'), ogImage, `${id}: secure OG image matches`);
+  assert.equal(metadata('twitter:image'), ogImage, `${id}: Twitter image matches`);
+
+  assert.doesNotMatch(text(html), /CallVaal/, `${id}: retired visible brand absent`);
+
   assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${id}: shared header`);
   assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${id}: shared footer`);
   for (const [key, value] of [['id', id], ['name', name], ['path', path]]) assert(main.includes(`data-profile-${key}="${value}"`), `${id}: interaction ${key}`);

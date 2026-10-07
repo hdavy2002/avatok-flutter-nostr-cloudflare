@@ -8,6 +8,7 @@ import { resolve, extname, sep } from 'node:path';
 import assert from 'node:assert/strict';
 
 const root = resolve('dist');
+const identity = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
 const server = createServer(async (request, response) => {
   try {
@@ -54,6 +55,14 @@ try {
           for (const image of document.querySelectorAll('#profile-main img')) { image.loading = 'eager'; await image.decode(); }
         });
         await expect(page.locator('h1')).toHaveText(name);
+        const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
+        const canonicalUrl = new URL(canonical);
+        assert.equal(canonicalUrl.origin, `https://${identity.domain}`, `${id}/${width}: canonical domain`);
+        assert.equal(canonicalUrl.pathname.replace(/\/$/, ''), `/people/${id}`, `${id}/${width}: canonical path`);
+        await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonical);
+        await expect(page.locator('header[data-callvaal-chrome] .cv-wordmark')).toContainText(identity.name);
+        await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(34);
+
         const layout = await page.evaluate(() => {
           const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
           const controls = [...document.querySelectorAll('#profile-main button, .cv-profile-tabs a, .cv-mobile-booking button')].filter(visible);

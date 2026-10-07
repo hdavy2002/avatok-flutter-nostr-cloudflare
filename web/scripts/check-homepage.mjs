@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
 import { BRAND, reEscape } from './brand.mjs';
+import { checkHelloFraandsPages, footerGroups, footerRoutes } from './check-hello-fraands-pages.mjs';
 
 function meta(page, key) {
   const tags = page.match(/<meta\b[^>]*>/g) || [];
@@ -71,7 +72,10 @@ assert.match(bodyHtml, /<template id="women-space-template">/, 'Women-only conte
 assert.match(bodyHtml, /id="women-space-slot"><\/div>/, 'No women-only section rendered for anonymous visitors');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
-assert.equal((footer.match(/<li[ >]/g) || []).length, 24, 'Complete mood-led footer');
+assert.equal((footer.match(/<li[ >]/g) || []).length, 34, 'Complete five-column content footer');
+assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Footer groups keep the requested order');
+assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
+checkHelloFraandsPages(root, identity);
 const portraitHashes = new Set();
 for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'portrait-ananya.png', ...[3, 4, 5, 6, 7, 8, 9].map(i => `portrait-${i}.png`)]) {
   const file = resolve(root, 'assets/callvaal/scrapbook', asset);
@@ -84,7 +88,8 @@ for (const asset of ['hero-collage-moods.png', 'earn-art-moods.png', 'portrait-a
     portraitHashes.add(hash);
   }
 }
-assert.doesNotMatch(bodyHtml, /href="\/(?:privacy|terms|refunds|help)"/, 'Do not send new-service users to unrelated old policies');
+for (const href of ['/privacy', '/terms', '/refunds']) assert(footer.includes(`href="${href}"`), 'Published service policy is linked: ' + href);
+assert.doesNotMatch(plainText(footer), /CallVaal|Doctors|Tax & money|Career|Relationships|Counsellor|Listener|Practice/, 'Footer has no retired brand or professional categories');
 const talkSafely = readFileSync(resolve(root, 'talk-safely/index.html'), 'utf8');
 const talkSafelyText = talkSafely.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert(talkSafelyText.includes(identity.name), 'Safety guide uses the centrally configured homepage identity');
@@ -127,8 +132,8 @@ assert.equal((guide.match(/data-idea-card/g) || []).length, 51, 'All 51 rituals 
 assert.equal((guide.match(/data-format="havan"/g) || []).length, 29, '28 havan cards + the Havans filter');
 assert.equal((guide.match(/data-format="puja"/g) || []).length, 24, '23 puja cards + the Pujas filter');
 assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main heading');
-assert.match(guide, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared CallVaal footer');
-assert.match(guide, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared CallVaal header');
+assert.match(guide, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands footer');
+assert.match(guide, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands header');
 assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
 assert.match(guide, /CollectionPage/);
 assert.match(guide, /ItemList/);
@@ -150,8 +155,8 @@ for (const href of ritualLinks) {
  assert.equal((article.match(/<h1[ >]/g) || []).length, 1, 'One article heading: ' + href);
  assert.match(article, new RegExp('data-ritual-article="' + slug + '"'), 'Article identity: ' + href);
  for (const section of ['about','why-deity','blessings','who','when','altar','value','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
- assert.match(article, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared CallVaal article header: ' + href);
- assert.match(article, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared CallVaal article footer: ' + href);
+ assert.match(article, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared Hello Fraands article header: ' + href);
+ assert.match(article, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared Hello Fraands article footer: ' + href);
  assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
  // [SAATHUM-GUIDE-2] Havans are open shared events (power of many); pujas are private.
   // [PRICING-1] The price is a live [data-site-price] span fed by /api/pricing — never a hardcoded figure.
@@ -185,8 +190,8 @@ assert(ogImageUrl, 'Homepage has a share image');
 assert(ogImageUrl.includes('/assets/callvaal/scrapbook/'), 'Homepage shares its scrapbook artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
-assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(BRAND.webOrigin + '/') + '"'), 'Homepage canonical is the root URL');
-assert.equal(meta(html, 'og:url'), BRAND.webOrigin + '/');
+assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(`https://${identity.domain}/`) + '"'), 'Homepage canonical is the root URL');
+assert.equal(meta(html, 'og:url'), `https://${identity.domain}/`);
 assert.doesNotMatch(sitemap, new RegExp('<loc>' + reEscape(BRAND.webOrigin) + '/india(?:-next)?/?</loc>'), 'Retired and preview routes stay out of the sitemap');
 console.log('Homepage title, description, canonical and share image passed.');
 

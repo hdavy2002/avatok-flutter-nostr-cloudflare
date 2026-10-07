@@ -1,0 +1,26 @@
+---
+import ModernIcon from '../home/ModernIcon.astro';
+import brandConfig from '../../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+---
+<ol class="privacy-diagram masked-call-steps">
+  <li><p><b>1</b><span>Choose a person<br/>and tap Call.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>You</strong></li>
+  <li><p><b>2</b><span>{identity.name} calls you and<br/>your call partner separately.</span></p><div class="phone-frame"><ModernIcon name="lock" /><small>{identity.name}</small></div><strong>Private connection</strong></li>
+  <li><p><b>3</b><span>Both pick up.<br/>{identity.name} connects the calls.</span></p><div class="phone-frame"><ModernIcon name="user" /></div><strong>Call partner</strong></li>
+</ol>
+<style>
+.masked-call-steps{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.5rem;margin:2rem 0;padding:0;width:100%}
+.masked-call-steps li{min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.masked-call-steps li>p{display:flex;gap:.625rem;text-align:left;align-items:flex-start;line-height:1.6;margin:0}
+.masked-call-steps li>p span{min-width:0;overflow-wrap:anywhere}
+.masked-call-steps b{display:grid;place-items:center;flex:none;width:1.75rem;height:1.75rem;background:var(--plum,#46113e);color:white;border-radius:50%;font-family:Nunito,sans-serif}
+.phone-frame{box-sizing:border-box;flex:none;width:6rem;min-height:8rem;padding:1rem .375rem;border:4px solid var(--plum,#46113e);background:#fffdf9;border-radius:10px;margin:17px auto 8px;transform:rotate(-3deg);display:flex;align-items:center;justify-content:center;flex-direction:column;position:relative;box-shadow:3px 3px 0 #46113e13}
+.phone-frame:before{content:"";position:absolute;top:3px;left:30%;right:30%;height:4px;border-radius:4px;background:var(--plum,#46113e)}
+.phone-frame :global(.modern-icon){width:39px;height:39px;stroke-width:2}
+.phone-frame small{font-family:Nunito,sans-serif;font-size:.8125rem;line-height:1.5;margin-top:6px;max-width:100%;overflow-wrap:anywhere}
+.masked-call-steps li:nth-child(2) .phone-frame{transform:rotate(1deg)}
+.masked-call-steps li:nth-child(3) .phone-frame{transform:rotate(3deg)}
+.masked-call-steps strong{font-family:Nunito,sans-serif;font-size:1.1875rem;line-height:1.5}
+@media(max-width:599px){.masked-call-steps{grid-template-columns:1fr;gap:1.75rem}.masked-call-steps li{display:grid;grid-template-columns:minmax(0,1fr) 6rem;gap:.5rem 1rem;text-align:left}.masked-call-steps li>p{grid-column:1;grid-row:1;justify-content:flex-start}.masked-call-steps .phone-frame{grid-column:2;grid-row:1/3;margin:auto}.masked-call-steps strong{grid-column:1;grid-row:2;margin-left:2.5rem}}
+@media(max-width:359px){.masked-call-steps li{display:flex;align-items:flex-start;gap:.75rem}.masked-call-steps .phone-frame{align-self:center;margin:.25rem auto}.masked-call-steps strong{margin-left:0}}
+</style>

@@ -1,9 +1,9 @@
 {
   "_readme": "[SAATHUM-BRAND-CENTRAL-1 2026-09-30] SINGLE SOURCE for the public brand name and domain. Edit ONLY this file, then run `python3 scripts/gen_brand.py`. It rewrites web/src/lib/brand.ts, worker/src/lib/brand.ts, consumers/src/brand.ts and app/lib/core/brand.dart — never hand-edit those. Plan: Specs/PLAN-2026-09-30-BRAND-CENTRAL-CONFIG.md.",
   "homepageIdentity": {
-    "name": "CallVaal",
-    "domain": "callvaal.com",
-    "description": "Real people. Useful advice. One phone call. Explore the upcoming pay-per-minute phone conversation platform for India, from learning and careers to everyday questions."
+    "name": "Hello Fraands",
+    "domain": "hellofraands.com",
+    "description": "Talk to a real person in your language. Private numbers, everyday conversations and clear per-minute prices. 18+ only."
   },
   "name": "Aum Fe",
   "nameUpper": "AUM FE",

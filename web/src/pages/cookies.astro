@@ -1,96 +1,12 @@
 ---
-// [WEB-LEGAL-FOLK-1 2026-09-27] /cookies rebuilt to the owner-approved mockup
-// design/legal-pages/saathum-cookies-mock.src.html. OWNER: "exact replica of
-// what you have shown me, not an inspired version." Replaces the
-// layouts/Content.astro version — same policy text, word-for-word, on the
-// new folk shell.
-//
-// NOTE FOR AI:
-//  - Shell + CSS: layouts/LegalFolk.astro (props documented there) + its
-//    styles/legal-folk.css. Same conventions as pages/refunds.astro: Base
-//    chrome={false}, `.folk-site[data-design="reference-v5"]`,
-//    SiteHeader/SiteFooter `folk`. Do not re-derive the shell here.
-//  - This page supplies only content props (title/lead/updated/sticker/toc/
-//    prose) — LegalFolk.astro builds the PublicContent SEO object from them.
-//  - Prose text below is UNCHANGED from the previous cookies.astro (minus the
-//    data-i18n/<ui-copy> wrappers, since the site is English-only) — do not
-//    "improve" the wording; this is a shell swap, not a copy edit.
-//  - Emails stay plain text "support (@) saathum.com", never mailto.
-export const prerender = true;
-import LegalFolk from '../layouts/LegalFolk.astro';
-import { BRAND } from '../lib/brand';
-
-const toc = [
-  { id: 'what', label: 'What are cookies?' },
-  { id: 'how', label: 'How we use cookies' },
-  { id: 'manage', label: 'Managing cookies' },
-  { id: 'third', label: 'Third-party cookies' },
-  { id: 'changes', label: 'Changes' },
-  { id: 'contact', label: 'Contact' },
-];
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-
-<LegalFolk
-  title="Cookie Policy"
-  seoTitle="Cookie Policy — Cookies Used on This Website"
-  titleHtml="Cookie <em>Policy</em>"
-  eyebrow="Legal"
-  lead={`Which cookies and similar technologies ${BRAND.name} relies on, and how you stay in control of them.`}
-  description={`A plain list of the cookies and similar technologies ${BRAND.name} uses on this website, the job each one does for you, and the ways you can switch them off.`}
-  image="/og/cookies.png"
-  updated="2026-08-28"
-  sticker={{ src: '/assets/editorial-stickers-v2/cookies-sticker-v2.png', width: 1374, height: 1145, alt: 'A brass mithai box with sweets, a lotus and a cup — the cookies page.' }}
-  stamp={{ src: '/assets/booking/elephant.png', width: 1536, height: 1024 }}
-  toc={toc}
-  railCard={{
-    title: 'Only the essentials',
-    html: "Sign-in and security cookies can't be switched off; everything else is your choice.",
-    image: { src: '/diya-logo.png', width: 1254, height: 1254 },
-  }}
->
-  <p>
-    This Cookie Policy explains how <strong>{BRAND.name}</strong> uses cookies and similar technologies
-    on the {BRAND.name} Services. It supplements our <a href="/privacy">Privacy Policy</a>.
-  </p>
-
-  <h2 id="what"><span class="lg-n">1.</span>What are cookies?</h2>
-  <p>
-    Cookies are small text files stored on your device when you visit a website. We also use related
-    technologies such as local storage, pixels, and SDKs. We refer to all of these as "cookies".
-  </p>
-
-  <h2 id="how"><span class="lg-n">2.</span>How we use cookies</h2>
-  <div class="lg-tablewrap"><table>
-    <thead><tr><th>Type</th><th>Purpose</th></tr></thead>
-    <tbody>
-      <tr><td><strong>Essential</strong></td><td>Required for the Services to work — sign-in, sessions, security, and load balancing. These can't be switched off.</td></tr>
-      <tr><td><strong>Preferences</strong></td><td>Remember your settings, such as language or display choices.</td></tr>
-      <tr><td><strong>Analytics</strong></td><td>Help us understand how the Services are used so we can improve them. We use privacy-respecting analytics.</td></tr>
-      <tr><td><strong>Functional</strong></td><td>Enable enhanced features and integrations, such as payments and embedded media.</td></tr>
-    </tbody>
-  </table></div>
-
-  <h2 id="manage"><span class="lg-n">3.</span>Managing cookies</h2>
-  <p>
-    You can control cookies through your browser settings — most browsers let you block or delete
-    cookies. Note that blocking some cookies may affect how the Services function. Where required, we
-    will ask for your consent before setting non-essential cookies.
-  </p>
-
-  <h2 id="third"><span class="lg-n">4.</span>Third-party cookies</h2>
-  <p>
-    Some cookies are set by third parties that provide services to us, such as analytics and payment
-    providers. Their use of cookies is governed by their own policies.
-  </p>
-
-  <h2 id="changes"><span class="lg-n">5.</span>Changes</h2>
-  <p>
-    We may update this Cookie Policy from time to time. The "Last updated" date above shows when it
-    was last revised.
-  </p>
-
-  <h2 id="contact"><span class="lg-n">6.</span>Contact</h2>
-  <p>
-    Questions about cookies? Email support (@) {BRAND.domain} or visit our <a href="/contact">contact page</a>.
-  </p>
-</LegalFolk>
+<HelloFraandsPage title="Cookie policy" summary="Zaroori cookies sign-in aur suraksha mein madad karti hain." review={false} related={[]}>
+<h2>Essential cookies</h2>
+<p>Essential cookies and similar browser storage keep you signed in, protect your session, and remember choices needed to run the service. Clerk may use cookies for account access. Blocking these may prevent sign-in or other features from working.</p>
+<h2>Analytics</h2>
+<p>If optional analytics are used, they help us understand how pages perform and where users encounter problems. Any required choice or consent will be presented before optional cookies are used. This page does not mean every type of analytics is enabled.</p>
+<h2>Your choices</h2>
+<p>Use the site's cookie controls, where available, to change optional choices. You can also block or delete cookies in your browser settings. Deleting cookies may sign you out. Contact {'{{CONTACT_EMAIL}}'} if you need help with a cookie or privacy choice.</p>
+<p>Read the <a href="/privacy">privacy policy</a> for the data we use and your rights.</p>
+</HelloFraandsPage>

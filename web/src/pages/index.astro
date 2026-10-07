@@ -1,17 +1,16 @@
 ---
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
-import { BRAND } from '../lib/brand';
 import { publicImage, publicImageSrcSet } from '../lib/config';
 import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
 import ModernIcon from '../components/home/ModernIcon.astro';
 import '../styles/callvaal-notebook.css';
-import CallVaalHeader from '../components/callvaal/Header.astro';
-import CallVaalFooter from '../components/callvaal/Footer.astro';
+import HelloFraandsHeader from '../components/callvaal/Header.astro';
+import HelloFraandsFooter from '../components/callvaal/Footer.astro';
 const identity = brandConfig.homepageIdentity;
 const title = `Baat karo. Dil halka karo. | ${identity.name}`;
 const description = 'Talk to a real person in your language, right now. Your number stays private. Pay per minute. 18+.';
-const canonical = `${BRAND.webOrigin}/`;
+const canonical = `https://${identity.domain}/`;
 const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.label ?? slug;
 ---
 <!doctype html>
@@ -21,15 +20,15 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
   <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${BRAND.webOrigin}/assets/callvaal/scrapbook/hero-collage-moods.png`} /><meta property="og:image:alt" content={`${identity.name}: everyday people talking privately.`} />
-  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${BRAND.webOrigin}/assets/callvaal/scrapbook/hero-collage-moods.png`} />
+  <meta property="og:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-moods.png`} /><meta property="og:image:alt" content={`${identity.name}: everyday people talking privately.`} />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-moods.png`} />
   <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body>
 <div class="notebook-site" data-design="callvaal-scrapbook">
   <a class="skip-link" href="#main-content">Skip to main content</a>
-  <CallVaalHeader />
+  <HelloFraandsHeader />
   <main id="main-content">
     <section class="notebook-hero" aria-labelledby="hero-title">
       <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark><em>Dil halka karo.</em></mark></h1><p class="hero-promise">Real people. Your number stays private.</p><p class="hero-subtitle">Someone to talk to, in your language, right now. Pay per minute. Nobody sees your phone number.</p>
@@ -99,7 +98,7 @@ const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.labe
     <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art-moods.png', { width: 900 })} alt="Torn-paper notebook with phone conversation doodles, pencil and chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Baatein karo. <em>Paise kamao.</em></h2><p>Good on the phone? Earn ₹12–₹18 for every minute you talk, from home, on your own hours. Your number stays private. You can end any call with one tap, and abusive callers are banned.</p><ol class="earn-steps"><li><ModernIcon name="user" /><span>Sign up with WhatsApp OTP</span></li><li><ModernIcon name="lock" /><span>Video KYC + Aadhaar</span></li><li><ModernIcon name="clock" /><span>Pick your moods, languages and price</span></li><li><ModernIcon name="tax" /><span>Go online, get paid via UPI</span></li></ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
     <aside class="phone-strip">Works on any phone — no app needed. Calls come to your normal number.</aside>
   </main>
-  <CallVaalFooter />
+  <HelloFraandsFooter />
   <nav class="mobile-bottom-nav" aria-label="Quick navigation">{[['home','#main-content','Home'],['grid','#moods','Moods'],['user','#people','People'],['lock','#safety','Safety'],['tax','#earn','Earn']].map(([icon,href,label]) => <a href={href}><ModernIcon name={icon}/><span>{label}</span></a>)}</nav>
 </div>
 <dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>

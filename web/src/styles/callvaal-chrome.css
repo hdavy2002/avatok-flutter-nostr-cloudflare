@@ -42,3 +42,11 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 .cv-footer [hidden]{display:none!important}
 .cv-footer-disclaimer{max-width:1150px;margin:32px auto 0;padding:22px;border-radius:14px;background:#fff1cf;color:#46113e;font-size:.875rem;line-height:1.65;text-align:center}
 @media(max-width:699px){.cv-footer-disclaimer{margin:25px 16px 0;padding:18px;text-align:left}}
+
+/* Hello Fraands keeps the existing scale and plum colour with the requested Comfortaa wordmark. */
+.cv-wordmark{font-family:Comfortaa,sans-serif;letter-spacing:-.065em}
+.cv-footer-bottom{border-top:1px solid #e8dce7;margin-top:2rem;padding-top:1rem}
+.cv-footer-bottom .cv-footer-disclaimer{margin-top:0}
+.cv-footer-disclaimer a,.cv-footer-copyright a{color:inherit;text-decoration:underline;text-underline-offset:.2em}
+.cv-age-badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.4rem;min-height:2rem;margin-right:.6rem;padding:.1rem .4rem;border:1px solid currentColor;border-radius:.4rem;font-weight:900}
+@media(max-width:699px){.cv-wordmark{font-size:clamp(1.25rem,5.4vw,1.9rem)}}
