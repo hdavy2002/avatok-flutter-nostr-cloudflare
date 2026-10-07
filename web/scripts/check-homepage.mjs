@@ -28,7 +28,7 @@ assert.match(visibleText, /Baat karo\. Dil halka karo\./);
 assert.match(visibleText, /Real people\. Your number stays private\./);
 assert.match(visibleText, /Pay per minute/);
 assert.match(visibleText, /18\+ only/);
-for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Calls are recorded with consent, kept 30 days', 'Earn ₹12–₹18', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
+for (const copy of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', 'Tele-MANAS 14416', 'Both hear a recording notice.', 'Every call will be recorded.', '₹10.80/min before tax', 'Video KYC + Aadhaar', 'Go online, get paid via UPI']) {
   assert(visibleText.includes(copy), 'Conversation, safety and earning contract: ' + copy);
 }
 assert.doesNotMatch(bodyHtml, /data-callvaal-category-card|id="category-filter"|data-category-select/, 'Discovery uses moods, not professional categories');
@@ -70,13 +70,18 @@ assert.match(visibleText, /Sample activity Live updates coming later/);
 assert.match(bodyHtml, /class="activity-sequence" aria-hidden="true"/);
 const womenSection = bodyHtml.match(/<section\b[^>]*id="women-only"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
 assert(womenSection, 'Women-only preview renders on the homepage');
-assert.match(womenSection, /<h2[^>]*id="women-title"[^>]*>Sirf ladkiyon ke liye<br\s*\/?><em>Ek jagah jahan sirf auratein baat karti hain\.<\/em><\/h2>/, 'Women-only heading has an italic second line');
+assert.match(womenSection, /<h2[^>]*id="hf-women-title"[^>]*>Yahan sirf auratein<br\s*\/?><em>baat karti hain\.<\/em><\/h2>/, 'Women-only heading has an italic second line');
 assert(bodyHtml.indexOf('id="moods"') < bodyHtml.indexOf('id="women-only"') && bodyHtml.indexOf('id="women-only"') < bodyHtml.indexOf('id="privacy-note"'), 'Women-only preview sits between moods and privacy');
-for (const copy of ['Sirf ladkiyon ke liye', 'Ek jagah jahan sirf auratein baat karti hain.', 'Preview — visible to verified women at launch', 'Talk and share — not medical advice.', 'periods & PCOS worries', 'saas-bahu, ghar ki baatein', 'pregnancy & new mom nights', 'Hosts in this space earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
-assert.match(womenSection, /<button\b[^>]*disabled[^>]*>Verify &amp; enter<\/button>/, 'Preview entry is disabled');
+for (const copy of ['Sirf ladkiyon ke liye', 'Yahan sirf auratein', 'baat karti hain.', 'A public preview of a private lane.', 'Talk and share — not medical advice.', 'Video KYC + Aadhaar, both sides', 'Invisible to men', 'Number never shared', 'Hosts here earn the same rates.']) assert(plainText(womenSection).includes(copy), 'Women-only preview: ' + copy);
+assert.match(womenSection, /<button\b[^>]*data-women-preview[^>]*>Verify &amp; enter/, 'Preview entry opens verification information');
+assert(bodyHtml.includes('id="hf-women-dialog"') && bodyHtml.includes('Start verification'), 'Verification preview dialog is present');
 assert(womenSection.includes('href="/women-only"') && womenSection.includes('href="#earn"'), 'Women-only explainer and host rates links');
-assert.equal((womenSection.match(/class="women-mood-chip"/g) || []).length, 3, 'Three women-only mood chips');
-assert.equal((womenSection.match(/href="\/\?lane=women#people"/g) || []).length, 3, 'Women-only mood links enter preview lane');
+assert.doesNotMatch(womenSection, /href="\/\?lane=women#people"/, 'Preview does not expose gated lane entry');
+const safetySection = bodyHtml.match(/<section\b[^>]*id="safety"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
+assert(bodyHtml.indexOf('id="privacy-note"') < bodyHtml.indexOf('id="safety"') && bodyHtml.indexOf('id="safety"') < bodyHtml.indexOf('id="people"'), 'Safety section sits between privacy and people');
+assert.equal((safetySection.match(/class="hf-safety-rule"/g) || []).length, 4, 'Four safety rules');
+for (const copy of ['Every call will be recorded.', 'AI will check recordings after the call', 'Human review decides strikes.']) assert(plainText(safetySection).includes(copy), 'Accurate safety preview: ' + copy);
+assert(safetySection.includes('href="/community-guidelines"') && safetySection.includes('href="/recording-policy"'), 'Safety policies are linked');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
 assert.equal((footer.match(/<li[ >]/g) || []).length, 34, 'Complete five-column content footer');

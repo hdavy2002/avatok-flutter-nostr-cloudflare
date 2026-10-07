@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 export const footerGroups = ['Company', 'Hosts', 'Trust & Safety', 'Legal & Payments', 'Explore'];
 export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
 export const footerRoutes = [...contentRoutes.slice(0, 14), '/talk-safely', ...contentRoutes.slice(14), '/#moods', '/#people', '/#women-only', '/?mood=kundli#people', '/#earn'];
-const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/recording-policy', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
+const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/recording-policy', '/women-only', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
 const text = html => html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
 export function checkHelloFraandsPages(root, identity) {
   assert.equal(identity.name, 'Hello Fraands', 'Requested public identity');

@@ -66,20 +66,16 @@ function walkHtmlFiles(dir) {
   return out;
 }
 
-// [WEB-HELP-1] The four policy pages (tokens/refunds/payouts/pricing-fees)
-// carry a `helpHref` deep link (Content.astro's help-crosslink callout) plus
-// their own /help#billing-style landing anchors — check them for the same
-// two link classes as the help pages themselves, since a broken link there
-// is just as real as one inside /help. Each page must actually exist AND
-// render the crosslink (not just build) — a missing `helpHref` prop would
-// build fine and pass silently otherwise.
-// [SAATHUM-ENTITY-1 2026-09-25] tokens and payouts are removed (they 301 home), so only these are built.
+// [WEB-HELP-1] The remaining refund policy page must render its help-centre
+// link and resolve any deep links it contains. Earlier policy layouts used a
+// help-crosslink class; the current Hello Fraands page uses a plain text link.
+// [SAATHUM-ENTITY-1 2026-09-25] tokens and payouts are removed (they 301 home).
 const POLICY_PAGES = ['refunds'];
 const policyHtmlFiles = POLICY_PAGES.map((slug) => resolve(root, slug, 'index.html'));
 for (const file of policyHtmlFiles) {
   assert(existsSync(file), `Missing built policy page: ${file}`);
   const html = normalizeBuiltImages(readFileSync(file, 'utf8'), { root });
-  assert(html.includes('class="help-crosslink"'), `Policy page missing the help-centre crosslink: ${file}`);
+  assert(html.includes('href="/help"'), `Policy page missing the help-centre link: ${file}`);
 }
 
 const helpHtmlFiles = walkHtmlFiles(helpRoot);
