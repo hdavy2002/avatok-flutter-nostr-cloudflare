@@ -6,7 +6,7 @@ on:
       action:
         description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect]
+        options: [inspect, attach, inspect-dns, ensure-dns, inspect-redirect, ensure-redirect, inspect-media, ensure-media, inspect-api, ensure-api, inspect-worker-routes, ensure-worker-redirect, inspect-clerk-dns, ensure-clerk-dns]
         required: true
         default: inspect
 
@@ -28,7 +28,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns', 'inspect-redirect', 'ensure-redirect', 'inspect-media', 'ensure-media', 'inspect-api', 'ensure-api', 'inspect-worker-routes', 'ensure-worker-redirect', 'inspect-clerk-dns', 'ensure-clerk-dns'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
           const brand = JSON.parse(readFileSync('Specs/brand.json', 'utf8'));
           const identity = brand.homepageIdentity;
@@ -76,6 +76,33 @@ jobs:
                   type: 'CNAME', name, content: target, proxied: true, ttl: 1,
                 });
                 console.log(`${name}: created proxied CNAME, record ${record.id}`);
+              }
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-clerk-dns' || REQUESTED_ACTION === 'ensure-clerk-dns') {
+            const newZoneId = current.find(item => item.name === identity.domain)?.zone_tag;
+            const formerApex = brand.hosts.auth.split('.').slice(1).join('.');
+            const oldZoneId = current.find(item => item.name === formerApex)?.zone_tag;
+            if (!newZoneId || !oldZoneId || !brand.legacyDomains.includes(formerApex)) {
+              throw new Error('Current or former Clerk DNS zone is unavailable');
+            }
+            for (const label of ['clerk', 'accounts', 'clkmail', 'clk._domainkey', 'clk2._domainkey']) {
+              const oldName = `${label}.${formerApex}`;
+              const newName = `${label}.${identity.domain}`;
+              const former = await request(`/zones/${oldZoneId}/dns_records?name=${encodeURIComponent(oldName)}`);
+              if (former.length !== 1 || former[0].type !== 'CNAME' || former[0].proxied) {
+                throw new Error(`${oldName} must have one unproxied CNAME`);
+              }
+              const existing = await request(`/zones/${newZoneId}/dns_records?name=${encodeURIComponent(newName)}`);
+              if (existing.length && !existing.some(item => item.type === 'CNAME' && item.content === former[0].content && !item.proxied)) {
+                throw new Error(`${newName} has a conflicting DNS record`);
+              }
+              console.log(`${newName}: ${existing.length ? 'ready' : 'missing'}; target ${former[0].content}`);
+              if (REQUESTED_ACTION === 'ensure-clerk-dns' && !existing.length) {
+                await request(`/zones/${newZoneId}/dns_records`, 'POST', {
+                  type: 'CNAME', name: newName, content: former[0].content, proxied: false, ttl: 1,
+                });
+                console.log(`${newName}: created`);
               }
             }
           }
