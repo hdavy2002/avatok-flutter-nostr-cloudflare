@@ -1,6 +1,6 @@
 // Published content contract. Invoked by check-homepage.mjs after the GitHub CI build.
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 export const footerGroups = ['Company', 'Hosts', 'Trust & Safety', 'Legal & Payments', 'Explore'];
 export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
@@ -45,9 +45,8 @@ export function checkHelloFraandsPages(root, identity) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);
   }
-  const pdf = resolve(root, 'hosts/crisis-script.pdf');
-  assert(existsSync(pdf), 'Crisis-script PDF ships');
-  assert.equal(readFileSync(pdf).subarray(0, 5).toString(), '%PDF-', 'Download is a PDF');
-  assert(pages.get('/hosts/crisis-script').includes('href="/hosts/crisis-script.pdf"'), 'Script links its PDF');
-  console.log('Hello Fraands content contracts passed: 28 pages, shared chrome, metadata, review notes, earnings, crisis links and PDF.');
+  // The older downloadable card predates the reviewed welfare guidance and is
+  // intentionally unlinked until its text is updated to match this page.
+  assert(!pages.get('/hosts/crisis-script').includes('href="/hosts/crisis-script.pdf"'), 'Unreviewed crisis PDF is not promoted');
+  console.log('Hello Fraands content contracts passed: 28 pages, shared chrome, metadata, review notes, earnings and crisis links.');
 }
