@@ -1,0 +1,60 @@
+name: Website domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Inspect or attach the two fixed website domains
+        type: choice
+        options: [inspect, attach]
+        required: true
+        default: inspect
+
+jobs:
+  pages-domains:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect or attach Pages domains
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          REQUESTED_ACTION: ${{ inputs.action }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
+          if (!['inspect', 'attach'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
+          const identity = JSON.parse(readFileSync('Specs/brand.json', 'utf8')).homepageIdentity;
+          if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
+          const root = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/avatok-app`;
+          async function request(path, method = 'GET', body) {
+            const response = await fetch(root + path, {
+              method,
+              headers: { Authorization: `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+              ...(body ? { body: JSON.stringify(body) } : {}),
+            });
+            const json = await response.json();
+            if (!response.ok || !json.success) {
+              const errors = (json.errors || []).map(error => `${error.code}: ${error.message}`).join('; ');
+              throw new Error(`Cloudflare ${method} ${path} failed (${response.status}): ${errors}`);
+            }
+            return json.result;
+          }
+          const project = await request('');
+          console.log(`Pages project: ${project.name}; production branch: ${project.production_branch}`);
+          const names = [identity.domain, `www.${identity.domain}`];
+          const current = await request('/domains');
+          for (const name of names) {
+            const domain = current.find(item => item.name === name);
+            console.log(`${name}: ${domain?.status ?? 'not attached'}`);
+            if (REQUESTED_ACTION === 'attach' && !domain) {
+              const added = await request('/domains', 'POST', { name });
+              console.log(`${name}: attached, status ${added.status}`);
+            }
+          }
+          NODE
