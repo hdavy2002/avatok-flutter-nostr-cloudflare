@@ -83,9 +83,9 @@ assert(womenSection.includes('href="/women-only"') && womenSection.includes('hre
 assert.doesNotMatch(womenSection, /href="\/\?lane=women#people"/, 'Preview does not expose gated lane entry');
 const safetySection = bodyHtml.match(/<section\b[^>]*id="safety"[^>]*>[\s\S]*?<\/section>/)?.[0] || '';
 assert(bodyHtml.indexOf('id="privacy-note"') < bodyHtml.indexOf('id="safety"') && bodyHtml.indexOf('id="safety"') < bodyHtml.indexOf('id="people"'), 'Safety section sits between privacy and people');
-assert.equal((safetySection.match(/class="hf-safety-rule"/g) || []).length, 4, 'Four safety rules');
-for (const copy of ['Every call will be recorded.', 'AI will check recordings after the call', 'Human review decides strikes.']) assert(plainText(safetySection).includes(copy), 'Accurate safety preview: ' + copy);
-assert(safetySection.includes('href="/community-guidelines"') && safetySection.includes('href="/recording-policy"'), 'Safety policies are linked');
+assert.equal((safetySection.match(/class="hf-safety-rule hf-safety-rule--/g) || []).length, 4, 'Four safety rules');
+for (const copy of ['AI dhyaan rakhta hai.', 'Call band, user block.', 'Spam & fraud', 'Harassment & gaali', 'Buying & selling', 'Number & social exchange', 'Preview']) assert(plainText(safetySection).includes(copy), 'Safety collage copy: ' + copy);
+assert(safetySection.includes('href="#women-only"'), 'Safety section links to women-only space');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
 assert.equal((footer.match(/<li[ >]/g) || []).length, 34, 'Complete five-column content footer');

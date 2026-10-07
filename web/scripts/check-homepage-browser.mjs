@@ -157,7 +157,8 @@ try {
       await expect(page.locator('.cv-navigation a[href="/#women-only"]')).toHaveCount(1);
       await expect(page.locator('#safety .hf-safety-rule')).toHaveCount(4);
       await expect(page.locator('#earn .earn-steps li')).toHaveCount(4);
-      await expect(page.locator('#safety a[href="/recording-policy"]')).toBeVisible();
+      await expect(page.locator('#safety a[href="#women-only"]')).toBeVisible();
+      await expect(page.locator('#safety .hf-safety-photo img')).toHaveCount(3);
       await expect(page.locator('.service-disclaimer')).toContainText('18+ only.');
       const readability = await inspectReadability(page);
       metrics.push({ name, readability });
@@ -169,7 +170,7 @@ try {
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 12 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, eight portraits and earn art load');
+      assert(imageGeometry.length === 15 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits and earn art load');
       await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
       const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
         moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),
