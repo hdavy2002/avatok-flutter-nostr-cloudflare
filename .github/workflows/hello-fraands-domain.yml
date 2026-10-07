@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Inspect or attach the two fixed website domains
+        description: Inspect or configure the website domains
         type: choice
-        options: [inspect, attach]
+        options: [inspect, attach, inspect-dns, ensure-dns]
         required: true
         default: inspect
 
@@ -19,7 +19,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
-      - name: Inspect or attach Pages domains
+      - name: Inspect or configure Pages domains
         env:
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -28,10 +28,11 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const { CF_ACCOUNT_ID, CF_API_TOKEN, REQUESTED_ACTION } = process.env;
-          if (!['inspect', 'attach'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
-          const identity = JSON.parse(readFileSync('Specs/brand.json', 'utf8')).homepageIdentity;
+          if (!['inspect', 'attach', 'inspect-dns', 'ensure-dns'].includes(REQUESTED_ACTION)) throw new Error('Invalid action');
           if (!CF_ACCOUNT_ID || !CF_API_TOKEN) throw new Error('Cloudflare credentials are unavailable');
-          const root = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/avatok-app`;
+          const identity = JSON.parse(readFileSync('Specs/brand.json', 'utf8')).homepageIdentity;
+          const root = 'https://api.cloudflare.com/client/v4';
+          const projectPath = `/accounts/${CF_ACCOUNT_ID}/pages/projects/avatok-app`;
           async function request(path, method = 'GET', body) {
             const response = await fetch(root + path, {
               method,
@@ -45,16 +46,36 @@ jobs:
             }
             return json.result;
           }
-          const project = await request('');
+          const project = await request(projectPath);
           console.log(`Pages project: ${project.name}; production branch: ${project.production_branch}`);
           const names = [identity.domain, `www.${identity.domain}`];
-          const current = await request('/domains');
+          const current = await request(`${projectPath}/domains`);
           for (const name of names) {
             const domain = current.find(item => item.name === name);
-            console.log(`${name}: ${domain?.status ?? 'not attached'}`);
+            console.log(`${name}: ${domain?.status ?? 'not attached'}; DNS zone known: ${Boolean(domain?.zone_tag)}`);
             if (REQUESTED_ACTION === 'attach' && !domain) {
-              const added = await request('/domains', 'POST', { name });
+              const added = await request(`${projectPath}/domains`, 'POST', { name });
               console.log(`${name}: attached, status ${added.status}`);
+            }
+          }
+          if (REQUESTED_ACTION === 'inspect-dns' || REQUESTED_ACTION === 'ensure-dns') {
+            const zoneId = current.find(item => item.name === identity.domain)?.zone_tag;
+            if (!zoneId) throw new Error('Pages has no zone tag for the apex domain yet');
+            for (const name of names) {
+              const records = await request(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(name)}`);
+              console.log(`${name}: ${records.length} DNS record(s)`);
+              const target = `${project.name}.pages.dev`;
+              if (records.length) {
+                if (!records.some(record => record.type === 'CNAME' && record.content === target && record.proxied)) {
+                  throw new Error(`${name} has a conflicting DNS record; no automatic replacement`);
+                }
+                console.log(`${name}: proxied CNAME already points to ${target}`);
+              } else if (REQUESTED_ACTION === 'ensure-dns') {
+                const record = await request(`/zones/${zoneId}/dns_records`, 'POST', {
+                  type: 'CNAME', name, content: target, proxied: true, ttl: 1,
+                });
+                console.log(`${name}: created proxied CNAME, record ${record.id}`);
+              }
             }
           }
           NODE
