@@ -12,8 +12,8 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import SiteHeader from '../components/SiteHeader.astro';
-import SiteFooter from '../components/SiteFooter.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
 import FreeVideosPage from '../islands/freevideos/FreeVideosPage';
 import { FREE_VIDEO_CATEGORIES, getFreeVideos, type FreeVideoCardData } from '../islands/freevideos/api';
 import { API_BASE, publicImage } from '../lib/config';
@@ -56,7 +56,7 @@ const content: PublicContent = {
   </Fragment>
   <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <SiteHeader />
     <main id="main-content">
       <section class="fv-page" aria-labelledby="fv-page-title">
         <div class="fv-page-head">
@@ -66,6 +66,6 @@ const content: PublicContent = {
         <FreeVideosPage client:load initial={initial} initialCategory={category} />
       </section>
     </main>
-    <SiteFooter folk indiaLandingLanguage={false} />
+    <SiteFooter />
   </div>
 </Base>

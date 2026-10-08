@@ -18,8 +18,8 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
-import SiteFooter from '../../components/SiteFooter.astro';
+import SiteHeader from '../../components/callvaal/Header.astro';
+import SiteFooter from '../../components/callvaal/Footer.astro';
 import ShopHeroBlock from '../../islands/shop/blocks/ShopHeroBlock';
 import CollectionGridBlock from '../../islands/shop/blocks/CollectionGridBlock';
 import ProductRailBlock from '../../islands/shop/blocks/ProductRailBlock';
@@ -99,7 +99,7 @@ const railHasItems = (id: string) => (resolved.rails[id]?.length ?? 0) > 0;
   </Fragment>
   <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <SiteHeader />
     <main id="main-content" class="sh">
       <ShopTelemetry client:idle event="shop_home_viewed" />
 
@@ -125,6 +125,6 @@ const railHasItems = (id: string) => (resolved.rails[id]?.length ?? 0) > 0;
         </div>
       ))}
     </main>
-    <SiteFooter folk indiaLandingLanguage={false} />
+    <SiteFooter />
   </div>
 </Base>

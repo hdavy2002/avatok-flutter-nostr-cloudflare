@@ -143,7 +143,7 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | ID | Rule | Decision | Pages | Backend |
 |---|---|---|---|---|
 | HF-SITE-1 | The help centre uses the **old "help skin v2" design** (terracotta hero, photo topic tiles, plum FAQ band, white panels, rail + on-this-page). Do not re-skin it. Only the art and copy are Hello Fraands; header/footer are the shared site ones. | ADOPTED | DONE | N/A |
-| HF-SITE-2 | Old Aum Fe pages are **archived, not deleted** (kept for reuse): /rituals, /shop, /temples, /pandit, /guides, /desk, /watch, /book, /free-videos, /marketplace/page. Archived = URL still works, noindex, out of sitemap and menus (`web/src/lib/archivedPages.ts`). | ADOPTED | DONE | N/A |
+| HF-SITE-2 | Old Aum Fe pages are **archived, not deleted** (kept for reuse): /rituals, /shop, /temples, /pandit, /guides, /desk, /watch, /book, /free-videos, /marketplace/page. Archived = URL still works, noindex, out of sitemap and menus (`web/src/lib/archivedPages.ts`). Archived pages wear the **Hello Fraands header and footer** — never the old brand's logo or menus (owner 2026-10-08, HF-ARCHIVE-RESKIN-1). | ADOPTED | DONE | N/A |
 | HF-SITE-3 | /marketplace stays live and will be **re-skinned** for Hello Fraands. What it should list is to be confirmed. | ADOPTED | DONE (/marketplace = Explore: all hosts, mood/language/price/online filters, same cards as home; real cards replace samples later) | TODO |
 | HF-SITE-4 | All other pages (content/legal pages, FAQ, wellbeing) get the **same full-width, responsive treatment as the front page**. Mock first, owner approves, then exact rollout. | ADOPTED | DONE (all HelloFraandsPage content/legal pages, FAQ, wellbeing) | N/A |
 | HF-SITE-5 | Logged-in dashboard: give it the **new-look shell now** (front-page width, fonts, colours, menu); real Hello Fraands screens (wallet, favourites, call history, host earnings) are built when the backend is ready. | ADOPTED | DONE (shell: palette, fonts, width, logo, menu: Explore hosts, Favourites, Wallet, Billing, Profile) | TODO |
@@ -224,6 +224,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | HF-SITE-2: archived pages (/free-videos, /pandit, /temples, /guides, /shop) re-skinned with the Hello Fraands header and footer; old logo and menus gone (HF-ARCHIVE-RESKIN-1). |
 | 2026-10-08 | HF-SITE-6 added (owner: one standard font size like the front page). Help/blog/dashboard pages no longer grow header, footer and text on wide monitors; tiny labels raised to 14px; /talk-safely got the real header/footer (HF-TYPE-SCALE-1). |
 | 2026-10-08 | Full-width front-page look rolled out to content pages, FAQ and wellbeing (HELLO-FRAANDS-WIDE-1); /marketplace re-skinned as Explore (HELLO-FRAANDS-EXPLORE-1); header "Explore" + footer "Explore all hosts" added, HF-NAV-1/2 recorded; dashboard new-look shell (HELLO-FRAANDS-DASH-SHELL-1). |
 | 2026-10-08 | Section 11 added. Help centre restored to the old help skin v2 design with Hello Fraands art/copy (HELLO-FRAANDS-HELP-RESTORE-1); old Aum Fe pages archived (HELLO-FRAANDS-ARCHIVE-1). Site-wide front-page treatment, marketplace re-skin and dashboard shell pending owner approval of mocks. |

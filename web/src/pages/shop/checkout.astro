@@ -14,8 +14,8 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
-import SiteFooter from '../../components/SiteFooter.astro';
+import SiteHeader from '../../components/callvaal/Header.astro';
+import SiteFooter from '../../components/callvaal/Footer.astro';
 import { publicImage, clerkFapiHost } from '../../lib/config';
 import { HOME_HEADER_LINKS } from '../../lib/homeNavigation';
 import { ShopCheckout } from '../../islands/shop-checkout/ShopCheckout.tsx';
@@ -42,13 +42,13 @@ const clerkHost = clerkFapiHost();
   </Fragment>
   <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
     <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
+    <SiteHeader />
     <main id="main-content" class="sh">
       <div class="sh-wrap">
         <div class="sh-crumb"><a href="/shop">Shop</a> / Checkout</div>
         <ShopCheckout client:load />
       </div>
     </main>
-    <SiteFooter folk indiaLandingLanguage={false} />
+    <SiteFooter />
   </div>
 </Base>
