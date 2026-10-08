@@ -108,7 +108,7 @@
 .auth-label {
   font-family: var(--f-label);
   font-weight: 700;
-  font-size: 10px;
+  font-size: 14px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--label-brown);
@@ -153,14 +153,14 @@
   cursor: pointer;
   font-family: var(--f-label);
   font-weight: 700;
-  font-size: 10px;
+  font-size: 14px;
   letter-spacing: 0.1em;
   color: var(--error);
   text-transform: uppercase;
 }
 .auth-show:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; border-radius: 4px; }
 
-.auth-err { font-size: 13px; color: var(--error); margin: 0; }
+.auth-err { font-size: 14px; color: var(--error); margin: 0; }
 /* [WEB-ACCOUNT-1] The line under the phone field explaining why we ask. */
 .auth-hint {
   margin: -6px 0 2px;
@@ -170,7 +170,7 @@
 }
 
 .auth-formerr {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--error);
   background: var(--bone);
   border: 2.5px solid var(--error);
@@ -194,15 +194,15 @@
 }
 .auth-check--lg { width: 22px; height: 22px; }
 .auth-check:checked { background: var(--signal); }
-.auth-check:checked::after { content: '✓'; color: var(--bone); font-size: 13px; line-height: 1; }
+.auth-check:checked::after { content: '✓'; color: var(--bone); font-size: 14px; line-height: 1; }
 .auth-check:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 .auth-row label { font-size: 14px; font-weight: 500; color: var(--body-brown); cursor: pointer; }
-.auth-terms label { font-size: 13.5px; line-height: 1.45; }
+.auth-terms label { font-size: 14px; line-height: 1.45; }
 .auth-terms a { color: var(--signal); }
 .auth-forgot {
   margin-left: auto;
   font-family: var(--f-display);
-  font-size: 13px;
+  font-size: 14px;
   text-transform: uppercase;
   color: var(--signal);
   text-decoration: none;
@@ -245,7 +245,7 @@
 .auth-divider { display: flex; align-items: center; gap: 12px; }
 .auth-divider::before,
 .auth-divider::after { content: ''; flex: 1; height: 2px; background: rgba(22, 22, 20, 0.2); }
-.auth-divider span { font-family: var(--f-label); font-weight: 700; font-size: 10px; letter-spacing: 0.14em; color: var(--label-brown); }
+.auth-divider span { font-family: var(--f-label); font-weight: 700; font-size: 14px; letter-spacing: 0.14em; color: var(--label-brown); }
 
 /* ── Role picker ──────────────────────────────────────────────────────── */
 .auth-roles { display: flex; gap: 12px; }
@@ -273,12 +273,12 @@
   background: var(--bone);
   display: grid;
   place-content: center;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
 }
 .auth-role[aria-checked='true'] .auth-radio { background: var(--signal); color: var(--bone); }
 .auth-role-title { font-family: var(--f-display); font-weight: 600; font-size: 21px; text-transform: uppercase; letter-spacing: 0.03em; }
-.auth-role-sub { font-size: 13px; font-weight: 500; color: var(--card-copy); margin: 0; line-height: 1.4; }
+.auth-role-sub { font-size: 14px; font-weight: 500; color: var(--card-copy); margin: 0; line-height: 1.4; }
 
 /* ── Ornaments (tablet + desktop only) ────────────────────────────────── */
 .auth-rail,
@@ -307,7 +307,7 @@
   .auth-wordmark .wm-tok { font-size: 35px; }
   .auth-hindi { font-size: 27px; }
   .auth-form { padding: 0 34px 34px; gap: 18px; }
-  .auth-label { font-size: 11px; }
+  .auth-label { font-size: 14px; }
   .auth-box { border-radius: 16px; padding: 17px 18px; font-size: 17px; }
   .auth-form--signup .auth-box { padding: 15px 16px; }
   .auth-btn { font-size: 19px; padding: 19px 24px; }
@@ -342,7 +342,7 @@
     border: 2.5px dashed var(--bone);
     font-family: var(--f-label);
     font-weight: 700;
-    font-size: 10px;
+    font-size: 14px;
     letter-spacing: 0.16em;
     color: var(--bone);
     white-space: nowrap;
@@ -460,7 +460,7 @@
   color: var(--bone);
   font-family: var(--f-label);
   font-weight: 800;
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
@@ -484,7 +484,7 @@
   color: var(--bone);
   font-family: var(--f-label);
   font-weight: 800;
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   animation: auth-pop 260ms ease-out;
@@ -513,7 +513,7 @@
   background: var(--butter);
   border-radius: 0 16px 16px 0;
 }
-.auth-otp-sent { margin: 0; font-size: 13px; color: var(--body-brown); }
+.auth-otp-sent { margin: 0; font-size: 14px; color: var(--body-brown); }
 .auth-otp-sent strong { color: var(--ink); font-weight: 600; word-break: break-all; }
 .auth-box--otp,
 .auth-form--signup .auth-box--otp {
@@ -524,7 +524,7 @@
   padding: 10px 14px;
 }
 .auth-box--otp::placeholder { letter-spacing: 0.4em; }
-.auth-otp-foot { margin: 0; font-size: 13px; color: var(--body-brown); }
+.auth-otp-foot { margin: 0; font-size: 14px; color: var(--body-brown); }
 .auth-linkbtn {
   background: none;
   border: 0;
@@ -536,7 +536,7 @@
   cursor: pointer;
 }
 .auth-linkbtn:hover { text-decoration: underline; text-underline-offset: 3px; }
-.auth-gatehint { margin: 0; font-size: 13px; color: var(--body-brown); text-align: center; }
+.auth-gatehint { margin: 0; font-size: 14px; color: var(--body-brown); text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .auth-reveal, .auth-verified { transition: none; animation: none; }
