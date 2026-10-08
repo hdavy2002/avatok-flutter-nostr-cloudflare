@@ -1,0 +1,8 @@
+---
+// [HF-PROFILE-DETAIL-4] One static file per sample profile. A prerendered [id].astro
+// route is answered 404 by the Pages worker, so keep these as plain files.
+export const prerender = true;
+import ProfileDetail from '../../components/callvaal/ProfileDetail.astro';
+import { profileDetails } from '../../lib/callvaalProfileDetails';
+---
+<ProfileDetail profile={profileDetails['kavya']} />
