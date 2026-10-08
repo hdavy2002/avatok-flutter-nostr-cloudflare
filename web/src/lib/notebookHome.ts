@@ -69,6 +69,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
   }
   const descriptions: Record<string, string> = {
     call: 'Yahan sirf baat hoti hai. No medical, legal or money advice. 18+ only. Calls and payments are unavailable in this illustrative preview.',
+    voice: 'This sample profile demonstrates a 20-second voice introduction. This is a visual demo; no recording is playing.',
     notify: 'This is an illustrative preview. No notification has been set. Availability alerts are not available yet.',
     join: 'Host registration is coming at launch. Your number stays private.',
     privacy: 'Calls are bridged so neither person sees the other’s number. Calling is unavailable in this preview.',

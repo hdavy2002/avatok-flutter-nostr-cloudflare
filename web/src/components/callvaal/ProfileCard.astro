@@ -26,10 +26,10 @@ const waveform = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 10
       <div><ModernIcon name="user" /><p class="person-talks"><strong>{profile.talkedTo} people</strong><span>have talked to {profile.name}</span></p></div>
       <div><ModernIcon name={profile.regulars.startsWith('Regulars:') ? 'user' : 'clock'} /><p class="person-regulars"><strong>{profile.regulars}</strong><span>{profile.regulars.startsWith('Regulars:') ? 'keep coming back' : 'sample availability'}</span></p></div>
     </div>
-    <div class="profile-card-voice" aria-label={`Voice introduction for ${profile.name} coming soon`}>
-      <button type="button" disabled aria-label={`Play ${profile.name}’s introduction — coming soon`}><ModernIcon name="play" /></button>
+    <div class="profile-card-voice" aria-label={`Demo voice introduction for ${profile.name}`}>
+      <button type="button" data-preview-action="voice" data-preview-label={`${profile.name}’s introduction`} aria-label={`Play ${profile.name}’s introduction`}><ModernIcon name="play" /></button>
       <div><span>Hear my introduction</span><div class="profile-card-wave" aria-hidden="true">{waveform.map(height => <i style={`height:${height}%`}></i>)}</div></div>
-      <small>Coming soon</small>
+      <small>0:20</small>
     </div>
     <dl class="profile-card-facts">
       <div><dt><ModernIcon name="globe" />Languages</dt><dd>{profile.languages}</dd></div>

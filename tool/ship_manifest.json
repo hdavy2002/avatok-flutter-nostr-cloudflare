@@ -1,6 +1,6 @@
 {
   "LISTENER-PHOTO-CARDS-1": {
-    "description": "Shared photo-first design for all eight public sample profile cards: rectangular photos, status overlay, rating, relationship stats, pending voice introduction, language/style panels, topics and estimated ten-minute price. Existing filters, favourites and preview actions are preserved.",
+    "description": "Shared photo-first design for all eight public sample profile cards: rectangular photos, status overlay, rating, relationship stats, demo voice introduction with waveform and 0:20 duration, language/style panels, topics and estimated ten-minute price. Existing filters, favourites and preview actions are preserved.",
     "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],

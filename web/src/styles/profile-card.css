@@ -26,10 +26,10 @@
 .people-grid .profile-card-stats p>span{font-size:.875rem}
 .people-grid .profile-card-stats .modern-icon,.people-grid .profile-card-facts .modern-icon{width:25px;height:25px;color:var(--plum)}
 .people-grid .profile-card-voice{display:flex;align-items:center;gap:10px;padding:12px;border-radius:14px;background:#f2ecfc;min-width:0}
-.people-grid .profile-card-voice>button{display:grid;place-items:center;flex:none;width:44px;height:44px;min-height:44px;border-radius:12px;background:#785979;color:white;cursor:default}
+.people-grid .profile-card-voice>button{display:grid;place-items:center;flex:none;width:44px;height:44px;min-height:44px;border-radius:12px;background:var(--plum);color:white;cursor:pointer}
 .people-grid .profile-card-voice>button .modern-icon{width:23px;height:23px}
 .people-grid .profile-card-voice>div{flex:1;min-width:0;color:var(--plum);font-size:.875rem}
-.people-grid .profile-card-voice>small{flex:0 1 4.5rem;font-size:.8rem;line-height:1.4;text-align:right}
+.people-grid .profile-card-voice>small{flex:none;font-size:.875rem;line-height:1.4;text-align:right}
 .people-grid .profile-card-wave{display:flex;align-items:center;justify-content:space-between;gap:3px;height:25px;margin-top:5px;overflow:hidden}
 .people-grid .profile-card-wave i{flex:1;max-width:4px;min-width:1px;background:#bea1dc;border-radius:3px}
 .people-grid .profile-card-facts>div{display:block;background:#fff3ed}
