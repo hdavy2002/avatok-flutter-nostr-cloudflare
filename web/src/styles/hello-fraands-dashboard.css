@@ -1,0 +1,39 @@
+/* [HELLO-FRAANDS-DASH-SHELL-1 2026-10-08] New-look shell for the signed-in dashboard: the front
+   page's palette and fonts, applied by overriding the shadcn tokens of Dashboard 2 (site-tokens.css)
+   ONLY under .hf-dash, so Admin 2 (which shares .dash2) is untouched. No green. */
+.dash2.hf-dash, body.dash2.hf-dash {
+  --background: 45 100% 98%;          /* ivory  #fffdf7 */
+  --foreground: 308 61% 17%;          /* plum   #46113e */
+  --card: 0 0% 100%;
+  --card-foreground: 308 61% 17%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 308 61% 17%;
+  --primary: 351 66% 45%;             /* red    #bd2740 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 341 76% 94%;           /* pink   #fce4eb */
+  --secondary-foreground: 308 61% 17%;
+  --muted: 43 100% 90%;               /* cream  #fff1cf */
+  --muted-foreground: 300 15% 41%;    /* #785979 */
+  --accent: 308 61% 17%;              /* plum */
+  --accent-foreground: 45 100% 98%;
+  --destructive: 351 66% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 300 25% 85%;
+  --input: 300 25% 80%;
+  --ring: 288 43% 38%;                /* #7b388c */
+  --radius: 16px;
+  --scrim: 308 61% 17%;
+  --dash-shadow: 0 1px 2px hsl(308 61% 17% / 0.06), 0 8px 24px -12px hsl(308 61% 17% / 0.18);
+  --dash-shadow-lg: 0 2px 4px hsl(308 61% 17% / 0.06), 0 18px 40px -18px hsl(308 61% 17% / 0.28);
+  --grand-teal: #46113e;
+  --grand-ink: #46113e;
+  --grand-red: #bd2740;
+  --grand-gold: #f4d152;
+  --grand-cream: #fffdf7;
+  font-family: Comfortaa, sans-serif;
+  background: #fffdf7;
+  color: #46113e;
+}
+.hf-dash .font-dash, .hf-dash h1, .hf-dash h2, .hf-dash h3 { font-family: Nunito, sans-serif; font-weight: 900; letter-spacing: -0.01em; }
+.hf-dash h1 { color: #46113e; }
+.hf-dash .dash-ribbon { height: 6px; border-radius: 6px; background: linear-gradient(90deg, #fff1cf, #fce4eb, #f2efff, #fff9e8); }

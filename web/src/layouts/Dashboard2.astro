@@ -21,6 +21,7 @@ import InstallPrompt from '../islands/dashboard2/InstallPrompt.tsx';
 import type { DashKey } from '../islands/dashboard2/nav';
 import { publicImage } from '../lib/config';
 import '../styles/site-tokens.css';
+import '../styles/hello-fraands-dashboard.css';
 import { BRAND } from '../lib/brand';
 
 export interface Props {
@@ -49,17 +50,17 @@ const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scal
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content={BRAND.name} />
-    <meta name="theme-color" content="hsl(42, 100%, 95%)" />
+    <meta name="theme-color" content="#46113e" />
   </Fragment>
   {/* Radix portals (dialogs, popovers, selects, tooltips) render into <body>,
       outside the .dash2 root, so body carries the scope too. Runs before paint. */}
-  <script is:inline>document.body.classList.add('dash2');</script>
+  <script is:inline>document.body.classList.add('dash2', 'hf-dash');</script>
 
-  <div class="dash2 dash2-root min-h-screen bg-background text-foreground" data-dash2-screen={active} style={`--folk-border-url:url(${ribbon})`}>
+  <div class="dash2 hf-dash dash2-root min-h-screen bg-background text-foreground" data-dash2-screen={active} style={`--folk-border-url:url(${ribbon})`}>
     <DashNav client:load active={active} />
 
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
-      <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
+      <main class="dash-safe-bottom mx-auto w-full max-w-[1760px] flex-1 px-4 pt-6 sm:px-8 sm:pt-10 lg:px-16">
         <header class="mb-6 sm:mb-8">
           {/* [SAATHUM-SHOP-DASH-1] optional `actions` slot (My orders' red "Shop again"); renders nothing for every other page. */}
           <div class="flex flex-wrap items-end justify-between gap-3">
