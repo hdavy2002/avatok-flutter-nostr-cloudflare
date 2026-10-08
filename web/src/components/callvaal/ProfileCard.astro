@@ -1,0 +1,44 @@
+---
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+import { availabilityLabel, callActionLabel, moods, type SampleProfile } from '../../lib/callvaalHomeReference';
+import ModernIcon from '../home/ModernIcon.astro';
+import DetailIcon from './DetailIcon.astro';
+import '../../styles/profile-card.css';
+interface Props { profile: SampleProfile }
+const { profile } = Astro.props;
+const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.label ?? slug;
+const photo = `/assets/callvaal/scrapbook/${profile.portrait}`;
+const waveform = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 100, 70, 45, 30, 60, 80, 50, 35, 65, 40, 25, 50, 75, 45, 30];
+---
+<article class="profile-card" data-person data-profile-id={profile.id} data-gender={profile.gender} data-availability={profile.availability} data-preview-favourite={String(!!profile.previewFavourite)} data-moods={profile.moods.join(' ')} data-languages={profile.languages} data-price={profile.price} data-online={String(profile.availability === 'online')} data-search={`${profile.name} ${profile.languages} ${profile.moods.map(moodLabel).join(' ')}`}>
+  <div class="portrait-wrap">
+    <img class="person-portrait" src={publicImage(photo, { width: 900 })} srcset={publicImageSrcSet(photo, [420, 640, 900])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 60px) / 2), (max-width: 1824px) calc((100vw - 112px) / 3), 571px" alt={`Illustrative portrait of ${profile.name}`} width="1254" height="1254" loading="lazy" />
+    <button type="button" class="favourite-button" data-favourite={profile.id} data-profile-name={profile.name} aria-pressed={String(!!profile.previewFavourite)} aria-label={`${profile.previewFavourite ? 'Unfavourite' : 'Favourite'} ${profile.name} for this visit`}><span aria-hidden="true">♥</span></button>
+    <p class:list={['person-status', `is-${profile.availability}`]}><span aria-hidden="true"></span>{availabilityLabel[profile.availability]}</p>
+  </div>
+  <div class="person-copy">
+    <div class="profile-card-heading">
+      <div class="person-heading"><h3>{profile.detailPath ? <a class="person-detail-link" href={profile.detailPath}>{profile.name}</a> : profile.name}</h3>{profile.videoKyc && <span class="verification-badge" aria-label="Illustrative video-KYC badge"><DetailIcon name="shield" />Video verified</span>}</div>
+      <span class="person-rating" aria-label={`Illustrative rating: ${profile.rating} out of 5`}><span aria-hidden="true">★</span><b>{profile.rating}</b></span>
+    </div>
+    <p class="person-tagline">{profile.tagline || 'A little time for a good conversation'}</p>
+    <div class="profile-card-stats">
+      <div><ModernIcon name="user" /><p class="person-talks"><strong>{profile.talkedTo} people</strong><span>have talked to {profile.name}</span></p></div>
+      <div><ModernIcon name={profile.regulars.startsWith('Regulars:') ? 'user' : 'clock'} /><p class="person-regulars"><strong>{profile.regulars}</strong><span>{profile.regulars.startsWith('Regulars:') ? 'keep coming back' : 'sample availability'}</span></p></div>
+    </div>
+    <div class="profile-card-voice" aria-label={`Voice introduction for ${profile.name} coming soon`}>
+      <button type="button" disabled aria-label={`Play ${profile.name}’s introduction — coming soon`}><ModernIcon name="play" /></button>
+      <div><span>Hear my introduction</span><div class="profile-card-wave" aria-hidden="true">{waveform.map(height => <i style={`height:${height}%`}></i>)}</div></div>
+      <small>Coming soon</small>
+    </div>
+    <dl class="profile-card-facts">
+      <div><dt><ModernIcon name="globe" />Languages</dt><dd>{profile.languages}</dd></div>
+      <div><dt><ModernIcon name="sparkle" />Conversation style</dt><dd>{profile.conversationStyle || 'Details coming soon'}</dd></div>
+    </dl>
+    <div class="profile-card-topics"><h4>Let’s talk about</h4><ul class="person-moods">{profile.moods.map(slug => <li><DetailIcon name="chat" /><span>{moodLabel(slug)}</span></li>)}</ul></div>
+    <div class="profile-card-footer">
+      <div class="person-actions"><div class="profile-card-price"><strong class="person-price">₹{profile.price}/min</strong><small>10 min ≈ ₹{profile.price * 10}</small></div><button type="button" class="sample-call" data-preview-action={profile.availability === 'online' ? 'call' : 'notify'} data-preview-label={profile.name}><ModernIcon name={profile.availability === 'online' ? 'phone' : 'bell'} />{callActionLabel[profile.availability]}</button></div>
+      {profile.detailPath ? <a class="profile-card-link" href={profile.detailPath}>View full profile <span aria-hidden="true">→</span></a> : <span class="profile-card-link is-pending">Full profile coming soon</span>}
+    </div>
+  </div>
+</article>

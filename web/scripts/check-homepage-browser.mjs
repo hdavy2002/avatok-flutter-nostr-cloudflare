@@ -189,7 +189,7 @@ try {
         return {
           privacy: styles('.home-step-photo'), women: styles('#women-only .hf-women-photo, #women-only .hf-women-photo img'),
           safetyFrames: styles('#safety .hf-safety-photo'), safetyPhotos: styles('#safety .hf-safety-photo picture, #safety .hf-safety-photo img'),
-          portraits: [...document.querySelectorAll('.people-grid .person-portrait')].map(image => ({ radius: getComputedStyle(image).borderRadius, width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height })),
+          portraits: [...document.querySelectorAll('.people-grid .person-portrait')].map(image => ({ radius: getComputedStyle(image).borderRadius, width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height, frameWidth: image.closest('.portrait-wrap').getBoundingClientRect().width })),
           connector: getComputedStyle(document.querySelector('.home-step-connector')).backgroundColor,
           safetyTape: getComputedStyle(document.querySelector('.hf-safety-photo'), '::before').content,
         };
@@ -200,7 +200,7 @@ try {
       assert(photoStyles.safetyPhotos.length === 6 && photoStyles.safetyPhotos.every(style => style.radius === '14px'), name + ': rounded safety pictures and images');
       assert(photoStyles.safetyPhotos.filter((_, index) => index % 2 === 0).every(style => style.overflow === 'hidden'), name + ': inner safety picture clips the image');
       assert(photoStyles.safetyTape !== 'none' && photoStyles.connector !== 'rgba(0, 0, 0, 0)', name + ': tape and soft connector remain');
-      assert(photoStyles.portraits.length === 8 && photoStyles.portraits.every(photo => photo.radius === '50%' && Math.abs(photo.width - photo.height) < 1), name + ': circular main host portraits');
+      assert(photoStyles.portraits.length === 8 && photoStyles.portraits.every(photo => photo.radius === '0px' && photo.width > photo.height && Math.abs(photo.width - photo.frameWidth) < 1), name + ': full-width rectangular main host portraits');
       const womenHeading = await page.locator('#hf-women-title').evaluate(h2 => {
         const first = h2.querySelector('span'); const second = h2.querySelector('em');
         return { firstDisplay: getComputedStyle(first).display, secondDisplay: getComputedStyle(second).display,
