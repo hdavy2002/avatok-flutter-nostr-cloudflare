@@ -1,4 +1,4 @@
-// rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25] section labels/blurbs.
+// rebrand: reviewed — [HELLO-FRAANDS-HELP-1 2026-10-08] current-brand help topics.
 // [WEB-HELP-1 2026-09-11] Shared API for the help centre: the section
 // registry, the tree the landing page and sidebar render from, URL helpers,
 // prev/next navigation within a section, and the zero-dependency search
@@ -13,60 +13,53 @@ import { fillBrandTokens, fillBrandTokensDeep } from './brandTokens';
 
 export type HelpSectionId =
   | 'getting-started'
-  | 'booking-and-paying'
-  | 'creators'
-  | 'billing'
-  | 'account-and-safety'
-  | 'talk-to-a-guide';
+  | 'calling'
+  | 'safety-and-privacy'
+  | 'for-women'
+  | 'hosts'
+  | 'wallet-and-payments'
+  | 'account-and-help';
 
 export type HelpEntry = CollectionEntry<'help'>;
 
+export type HelpTone = 'cream' | 'pink' | 'lilac' | 'paper' | 'peach';
+
 /**
- * Section labels, ordering and intro copy in one place, per the plan (§4).
- * Tones are picked from the four the site already has — see Content.astro's
- * `.tone-*` rules — never invented here.
+ * [HELLO-FRAANDS-HELP-1 2026-10-08] Section labels, ordering, intro copy, the
+ * Hinglish sub-line and the notebook tone/icon used by pages/help/index.astro
+ * and layouts/Help.astro. Tones are the home page mood-card colours. Never green.
  */
 export const SECTIONS: Record<
   HelpSectionId,
-  { label: string; order: number; blurb: string; tone: 'cream' | 'sky' | 'lime' | 'pink' }
+  { label: string; hindi: string; icon: string; order: number; blurb: string; tone: HelpTone }
 > = {
   'getting-started': {
-    label: 'Getting started',
-    order: 1,
-    blurb: `What ${BRAND.name} is, how to sign up, and choosing between a puja and a havan.`,
-    tone: 'cream',
+    label: 'Getting started', hindi: 'Shuruaat yahan se', icon: '❋', order: 1, tone: 'cream',
+    blurb: `What ${BRAND.name} is, how a call works, signing up and finding someone to talk to.`,
   },
-  'booking-and-paying': {
-    label: 'Booking & paying',
-    order: 2,
-    blurb: 'Choosing a ritual, your sankalp, watching live, replay and prasad.',
-    tone: 'cream',
+  calling: {
+    label: 'Making calls', hindi: 'Call kaise karein', icon: '✳', order: 2, tone: 'pink',
+    blurb: 'Your first call, price per minute, ending a call, calling a friend again and call problems.',
   },
-  creators: {
-    label: 'For creators',
-    order: 3,
-    blurb: 'Building a listing, getting it approved, pricing it, and running a live session.',
-    tone: 'lime',
+  'safety-and-privacy': {
+    label: 'Safety & privacy', hindi: 'Number private, baat safe', icon: '✦', order: 3, tone: 'peach',
+    blurb: 'Your private number, how AI keeps calls safe, no recordings, OTP scams, strikes and bans.',
   },
-  billing: {
-    label: 'Payments & refunds',
-    order: 4,
-    blurb: 'How refunds and cancellations work.',
-    tone: 'sky',
+  'for-women': {
+    label: 'For women', hindi: 'Mahilaon ke liye', icon: '♥', order: 4, tone: 'lilac',
+    blurb: 'Staying safe as a woman, the women-only space and talking about health.',
   },
-  'account-and-safety': {
-    label: 'Account & safety',
-    order: 5,
-    blurb: 'Reporting a problem and deleting your account.',
-    tone: 'pink',
+  hosts: {
+    label: 'For hosts', hindi: 'Baatein karo, paise kamao', icon: '☀', order: 5, tone: 'cream',
+    blurb: 'Becoming a host, what you earn, taking calls, handling bad callers and getting paid.',
   },
-  // [AUMFE-HELP-GUIDES-1] Hidden until launch: every article in this section is
-  // draft: true, and getHelpTree() omits sections with no live entries.
-  'talk-to-a-guide': {
-    label: 'Talk to a guide',
-    order: 6,
-    blurb: 'Talking to an AI voice guide: languages, birth details, memory, privacy, minutes and payment.',
-    tone: 'sky',
+  'wallet-and-payments': {
+    label: 'Wallet & payments', hindi: 'Paisa aur wallet', icon: '₹', order: 6, tone: 'paper',
+    blurb: 'Adding money, why calls are not refunded, taking your balance out and billing mistakes.',
+  },
+  'account-and-help': {
+    label: 'Account & help', hindi: 'Report, block aur madad', icon: '☎', order: 7, tone: 'lilac',
+    blurb: 'Reporting or blocking someone, deleting your account, complaints and urgent help.',
   },
 };
 
@@ -99,7 +92,9 @@ export interface HelpTreeSection {
   label: string;
   blurb: string;
   order: number;
-  tone: string;
+  tone: HelpTone;
+  hindi: string;
+  icon: string;
   entries: HelpEntry[];
 }
 
@@ -112,6 +107,8 @@ export async function getHelpTree(): Promise<HelpTreeSection[]> {
     blurb: SECTIONS[id].blurb,
     order: SECTIONS[id].order,
     tone: SECTIONS[id].tone,
+    hindi: SECTIONS[id].hindi,
+    icon: SECTIONS[id].icon,
     entries: entries.filter((entry) => entry.data.section === id),
   })).filter((section) => section.entries.length > 0);
 }

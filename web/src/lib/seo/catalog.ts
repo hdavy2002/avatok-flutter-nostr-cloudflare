@@ -43,8 +43,8 @@ export const HELP_SEO: PublicContent = {
   kind: 'collection',
   key: 'help',
   canonicalPath: '/help',
-  title: 'Help Centre: Booking Havans, Pujas and Prasad',
-  summary: `Plain answers on booking a havan or puja with ${BRAND.name}: your sankalp and gotra, the ritual video, prasad delivery, refunds and managing your account.`,
+  title: 'Help Centre: Calls, Safety, Wallet and Hosting',
+  summary: `Simple answers about ${BRAND.name}: how calls work, your private number, AI safety and OTP scams, the women-only space, the wallet, refunds and becoming a host.`,
   visibility: 'public',
 };
 

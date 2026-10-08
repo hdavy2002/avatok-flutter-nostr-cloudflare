@@ -1,4 +1,5 @@
-// [WEB-HELP-1 2026-09-11] Content collection for the avatok.ai help centre.
+// [WEB-HELP-1 2026-09-11] Content collection for the help centre.
+// [HELLO-FRAANDS-HELP-1 2026-10-08] Sections replaced with the current-brand calling topics.
 // Markdown files under src/content/help/<section>/<slug>.md become the
 // `help` collection via Astro's glob loader — entry.id is the file's path
 // relative to `base` without extension, e.g. "billing/platform-fee", which
@@ -14,7 +15,7 @@ const help = defineCollection({
   schema: z.object({
     title: z.string().min(4).max(90),
     description: z.string().min(20).max(200), // meta description + card blurb
-    section: z.enum(['getting-started', 'booking-and-paying', 'creators', 'billing', 'account-and-safety', 'talk-to-a-guide']),
+    section: z.enum(['getting-started', 'calling', 'safety-and-privacy', 'for-women', 'hosts', 'wallet-and-payments', 'account-and-help']),
     order: z.number().int().min(1), // position within section
     updated: z.coerce.date(),
     keywords: z.array(z.string()).default([]), // extra search terms, e.g. ["UPI","withdraw"]

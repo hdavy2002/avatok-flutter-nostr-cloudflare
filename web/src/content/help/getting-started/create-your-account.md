@@ -1,48 +1,65 @@
 ---
-title: "Signing up for an account on {{brand.name}}"
-description: "How to sign up on {{brand.domain}} with an email code and an Indian mobile OTP, and why onboarding and your {{brand.name}} number are completed in the app."
+title: "How do I create my account?"
+description: "Sign up in a minute with a one-time code on WhatsApp or email. No password, and free to join."
 section: getting-started
-order: 2
-updated: 2026-09-11
-keywords: ["sign up", "signup", "create account", "otp", "email code", "verification", "phone number", "{{brand.name}} number"]
+order: 3
+updated: 2026-10-08
+keywords: ["sign up", "register", "account banao", "OTP", "WhatsApp login", "no password", "18+", "join"]
 audience: both
 faq:
-  - q: "What do I need to sign up on the website?"
-    a: "Your name, an email address you can check, and an Indian mobile number (+91) — you'll verify both with a one-time code before your account opens."
-  - q: "Do I get my {{brand.name}} number when I sign up on the web?"
-    a: "No. Web sign-up creates your account; choosing your {{brand.name}} number and the rest of onboarding happen the first time you open the {{brand.name}} app."
-  - q: "Why does {{brand.name}} need my real phone number if it stays confidential?"
-    a: "It's used to verify you're a real person and to secure your account — everyone else only ever sees your {{brand.name}} number, never your real one."
+  - q: "Do I need a password?"
+    a: "No. You sign in with a one-time code (OTP) sent to your WhatsApp or email."
+  - q: "Is it free to join?"
+    a: "Yes. It is free for callers and hosts. There is no subscription. You pay only for the minutes you talk."
+  - q: "Can I be both a caller and a host?"
+    a: "Yes. One account can do both. Hosting opens after you finish video KYC and Aadhaar verification."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-## What you need
+Creating an account on {{brand.name}} is free and quick. You do not need a password. You only need to be 18 or older.
 
-Signing up on {{brand.domain}} ([create an account](/sign-up)) takes three things: your first and last name, an email inbox you can open, and an Indian mobile number. Each of the email and the number is confirmed with a one-time code before the account exists — you never set or remember a password.
+## Sign up in simple steps
 
-## How it works, step by step
+1. Open the website.
+2. Enter your WhatsApp number or your email.
+3. We send you a one-time code. This is called an OTP.
+4. Type the code. Your account is ready.
 
-1. **Enter your name and email**, then tap Verify. A 6-digit code lands in your inbox, and a box slides open on the same screen to enter it — there's no separate "check your email" page.
-2. **Once your email is verified**, the mobile number field unlocks. Enter your 10-digit number — the country code is fixed to **+91**, since phone verification on the web is for Indian numbers only.
-3. **Tap Send OTP.** A 6-digit code arrives on WhatsApp (the number must have WhatsApp), and you enter it in the same inline box. Both your email and phone show a green "Verified" tick once confirmed.
-4. **Accept the terms** (you'll need to be 18 or over) and tap **Create my account**. Your account is created only after both checks pass — an account can't be opened without verifying both.
+Next time, you sign in the same way. There is no password to remember or lose.
 
-You can also start with **Google** — it fills in your name and email, and you still verify a phone number afterwards.
+**Never share your OTP with anyone.** {{brand.name}} will never ask for your OTP, UPI PIN, password or bank details. Not on a call, not on WhatsApp, not on email.
 
-## Why the phone number, if it stays confidential?
+## Only 18 and above
 
-Verifying a real mobile number is how {{brand.name}} confirms you're a genuine person and secures your account against takeover. It is never shown to anyone else. Once you're through onboarding in the app, your public identity to other users is a separate **{{brand.name}} number** that keeps your real one masked.
+You must be 18 or older to join. Read our [age policy](/age-policy).
 
-## What happens after you sign up
+## Caller or host?
 
-Creating your account on the web is the first step, not the whole thing. Once it's created, you land on [Our Pujas](/marketplace), ready to choose a ritual. You can book, pay and watch right in your browser — no app needed. See [Choosing and booking a ritual](/help/booking-and-paying/how-to-book).
+- A **caller** talks to hosts and pays per minute. You can start right after sign up.
+- A **host** takes calls and earns money. Hosting opens after extra checks.
+- You can be **both** on one account.
 
-## Already have an account?
+## Why hosts must verify who they are
 
-Use [sign in](/sign-in) instead — the same email-code verification applies there too, since there are no passwords on {{brand.name}}.
+Hosts do two checks before they can take calls:
 
-## Trouble signing up
+- **Video KYC.** KYC means "know your customer". The host shows their face on a short video check.
+- **Aadhaar verification.** The host confirms their Aadhaar with an OTP.
 
-If an email address already has an account, sign-up will tell you to log in instead. If a code doesn't arrive, you can resend it after a short wait shown on screen. For anything else, see [Report a problem](/help/account-and-safety/report-a-problem) or write to support (@) {{brand.domain}}.
+This keeps the service safe. You know that a host with the badge is a real adult. If you want to become a host, see [Join & earn](/hosts/join).
+
+## What stays private
+
+A host's legal name, Aadhaar details and phone number are never shown on their profile. They are never shared with you. The same is true for you. Your name, number and details are not shown to the host.
+
+Your phone number is never shared with the other person on a call. See [How does a call work?](/help/getting-started/how-a-call-works).
+
+## Leaving later
+
+You can delete your account any time. Take your wallet balance back to your UPI first. Steps are at [data deletion](/data-deletion).
+
+## Next step
+
+[Find someone to talk to](/help/getting-started/find-someone-to-talk-to)

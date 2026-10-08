@@ -9,7 +9,7 @@ import { safeHref } from '../preeti/richText';
 import type { Card, PanditChart, PanditMemory, PanditProfile, ProfileInput, WhyStep } from './types';
 
 export const PANDIT_IMG = '/images/pandit-ji.jpg';
-export const WHY_HELP_HREF = '/help/talk-to-a-guide/why-this-design';
+export const WHY_HELP_HREF = '/help'; // [HELLO-FRAANDS-HELP-1] guide articles removed
 
 const STEP_LABEL: Record<WhyStep['step'], string> = {
   deity: 'Deity on the design',
