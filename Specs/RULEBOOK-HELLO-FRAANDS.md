@@ -154,6 +154,18 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 
 ---
 
+## 12. Host profiles and reviews (added 2026-10-09)
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-PROF-1 | Every host card has a full profile page (/people/<id>). The page shows everything the card shows — tagline, people talked to, regulars, voice introduction, languages, conversation style, topics, price per minute and the 10-minute estimate — plus About, a quote, reviews and "Before you call". Card and page read the same data so they never disagree. | ADOPTED | DONE (8 sample profiles) | TODO |
+| HF-REV-1 | Callers can rate a host 1–5 stars and write a short review, optionally tagging the topic they talked about. | ADOPTED | DONE (demo form, nothing saved) | TODO |
+| HF-REV-2 | Only a caller who has completed a paid call with that host can review them (one review per call). | PROPOSED | DONE (stated on page) | TODO |
+| HF-REV-3 | Reviews are checked before they appear; phone numbers, emails, addresses and abusive text are blocked. Only the reviewer's first name is shown. | PROPOSED | DONE (stated on page; demo blocks numbers/emails) | TODO |
+| HF-REV-4 | A review shows the reviewer's first name, stars, date, topic (if given), call length and a "Regular" tag for repeat callers; the page shows the average and a 5-to-1 star breakdown. | PROPOSED | DONE | TODO |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -225,6 +237,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-09 | Section 12 added (HF-PROFILE-DETAIL-2): profile pages now show every card field, sample reviews with star breakdown and a demo "Write a review" form; all 8 sample cards link to a profile page. HF-PROF-1 and HF-REV-1 adopted (owner asked for them); HF-REV-2..4 proposed — owner to confirm. |
 | 2026-10-08 | Full-site consistency pass (HF-CONSISTENCY-1): every page audited at desktop and phone width — all text Comfortaa/Nunito, nothing under 14px, help-centre reading text raised to the front page's 18px, green help pills and the mint safety card recoloured, 404 and "page removed" pages given the Hello Fraands header/footer, fonts and copy (they still mentioned havans and pujas). |
 | 2026-10-08 | HF-SITE-7 added (owner): Nunito for headlines, Comfortaa for all other text on every page (HF-FONTS-1). |
 | 2026-10-08 | Sign in / Sign up pages: old Ganesh, lotus and Suswagatam artwork replaced with Hello Fraands art (friendship collage, notebook + chai) on cream/lilac panels; old "Creator Marketplace" and "Light a diya" text replaced (HF-AUTH-ART-1). |

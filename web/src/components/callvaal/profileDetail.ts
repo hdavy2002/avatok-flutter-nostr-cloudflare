@@ -2,7 +2,7 @@ import { capture } from '../../lib/analytics';
 
 // Only allowlisted fictional profile ids and fixed actions reach analytics.
 const profileElement = document.querySelector<HTMLElement>('[data-profile-id]');
-const sampleProfiles = new Set(['dr-ananya', 'sana', 'neha', 'kavya', 'priya']);
+const sampleProfiles = new Set(['neha', 'priya', 'sana', 'kavya', 'dr-ananya', 'rohan', 'arjun', 'dev']);
 const profileId = profileElement?.dataset.profileId || '';
 const profileName = profileElement?.dataset.profileName || 'this sample profile';
 const knownProfile = sampleProfiles.has(profileId);
@@ -49,8 +49,8 @@ preview?.querySelector('[data-disclaimer-ack]')?.addEventListener('click', () =>
 });
 document.querySelectorAll<HTMLButtonElement>('[data-profile-preview]').forEach(button => button.addEventListener('click', () => {
   const heading = preview?.querySelector('h2');
-  const action = button.dataset.profilePreview === 'book' ? 'book' : 'call';
-  if (heading) heading.textContent = 'Before you call';
+  const action = button.dataset.profilePreview === 'book' ? 'book' : button.dataset.profilePreview === 'notify' ? 'notify' : 'call';
+  if (heading) heading.textContent = action === 'notify' ? `Notify me about ${profileName}` : 'Before you call';
   openDialog(preview, button);
   record(`${action}_preview`);
 }));
@@ -127,6 +127,70 @@ if ('IntersectionObserver' in window) {
       observer.unobserve(entry.target);
     }
   }, { threshold: .2 });
-  document.querySelectorAll('#about, #moods, #gallery, #reviews').forEach(section => observer.observe(section));
+  document.querySelectorAll('#about, #moods, #reviews').forEach(section => observer.observe(section));
 }
+
+// [HF-PROFILE-DETAIL-2] Voice intro — a visual demo; no audio file exists yet.
+const voice = document.querySelector<HTMLElement>('[data-voice]');
+const voiceButton = voice?.querySelector<HTMLButtonElement>('[data-voice-play]');
+const voiceTime = voice?.querySelector<HTMLElement>('[data-voice-time]');
+const voiceCaption = document.querySelector<HTMLElement>('[data-voice-caption]');
+let voiceTimer: number | undefined;
+let voiceLeft = 20;
+function stopVoice() {
+  if (voiceTimer) window.clearInterval(voiceTimer);
+  voiceTimer = undefined; voiceLeft = 20;
+  voice?.classList.remove('is-playing');
+  voiceButton?.setAttribute('aria-pressed', 'false');
+  if (voiceTime) voiceTime.textContent = '0:20';
+}
+voiceButton?.addEventListener('click', () => {
+  if (voiceTimer) { stopVoice(); return; }
+  voice?.classList.add('is-playing');
+  voiceButton.setAttribute('aria-pressed', 'true');
+  if (voiceCaption) voiceCaption.hidden = false;
+  voiceTimer = window.setInterval(() => {
+    voiceLeft -= 1;
+    if (voiceTime) voiceTime.textContent = `0:${String(Math.max(voiceLeft, 0)).padStart(2, '0')}`;
+    if (voiceLeft <= 0) stopVoice();
+  }, 1000);
+  record('voice_intro_play');
+});
+
+// [HF-PROFILE-DETAIL-2] Write a review — demo only. Nothing is sent or stored;
+// the review text never leaves the page (analytics gets the star count only).
+const reviewDialog = document.querySelector<HTMLDialogElement>('#cv-review-dialog');
+const reviewForm = reviewDialog?.querySelector<HTMLFormElement>('[data-review-form]');
+const reviewError = reviewDialog?.querySelector<HTMLElement>('[data-review-error]');
+const reviewList = document.querySelector<HTMLElement>('[data-review-list]');
+document.querySelector<HTMLButtonElement>('[data-review-open]')?.addEventListener('click', event => {
+  if (reviewError) reviewError.textContent = '';
+  openDialog(reviewDialog, event.currentTarget as HTMLElement);
+  reviewDialog?.querySelector<HTMLInputElement>('input[name=rating]')?.focus();
+  record('review_open');
+});
+const escapeText = (value: string) => { const node = document.createElement('span'); node.textContent = value; return node.innerHTML; };
+reviewForm?.addEventListener('submit', event => {
+  event.preventDefault();
+  const data = new FormData(reviewForm);
+  const stars = Number(data.get('rating') || 0);
+  const text = String(data.get('text') || '').trim();
+  const name = String(data.get('name') || '').trim().replace(/\s+/g, ' ').split(' ')[0] || 'You';
+  const mood = String(data.get('mood') || '');
+  if (!stars) { if (reviewError) reviewError.textContent = 'Please choose a star rating.'; return; }
+  if (text.length < 10) { if (reviewError) reviewError.textContent = 'Please write at least 10 characters.'; return; }
+  if (/\d{6,}|@/.test(text.replace(/\s/g, ''))) { if (reviewError) reviewError.textContent = 'Please remove phone numbers or email addresses from your review.'; return; }
+  const today = new Date();
+  const card = document.createElement('article');
+  card.className = 'cv-review-card is-new';
+  card.setAttribute('aria-label', `Your review: ${stars} out of 5 stars`);
+  card.innerHTML = `<span class="cv-review-avatar" aria-hidden="true">${escapeText(name.slice(0, 1).toUpperCase())}</span><div><div class="cv-review-heading"><h3>${escapeText(name)}<span class="cv-review-regular">Your review</span></h3><time datetime="${today.toISOString().slice(0, 10)}">${today.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</time></div><span class="cv-review-stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</span><p>${escapeText(text)}</p><p class="cv-review-meta">${mood ? `${escapeText(mood)} · ` : ''}Demo · not saved</p></div>`;
+  reviewList?.prepend(card);
+  reviewForm.reset();
+  reviewDialog?.close();
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (status) status.textContent = 'Thank you! Your review is shown on this page only (demo, not saved).';
+  record('review_submit_demo', { stars, has_mood: Boolean(mood) });
+});
+
 document.documentElement.dataset.profileReady = 'true';

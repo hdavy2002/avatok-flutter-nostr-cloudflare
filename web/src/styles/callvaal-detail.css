@@ -126,3 +126,87 @@ html[data-site-embed] .cv-booking-card>.cv-book-button{margin-top:12px}
 .cv-mood-note{margin-top:16px!important}
 .cv-service-disclosure{background:#fff4d6;color:#4c0d47;font-weight:800}
 @media(max-width:699px){.cv-profile-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* [HF-PROFILE-DETAIL-2] Card fields on the detail page, sample reviews, review form.
+   Same colours, radii and type sizes as the profile card (profile-card.css). */
+.cv-status-busy{background:#fff1d9;color:#84520a;border-color:#e7c48c}.cv-status-busy>span{background:#a9680a}
+.cv-identity .cv-role{font-family:Comfortaa,Nunito,sans-serif;font-size:1.2rem}
+.cv-profile-stats{list-style:none;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;margin-top:18px!important}
+.cv-profile-stats li{display:flex;align-items:center;gap:9px;padding:12px 10px;border-radius:13px;background:#f8f1fc;min-width:0}
+.cv-profile-stats li>a{display:flex;flex-direction:column;text-decoration:none;min-height:0}
+.cv-profile-stats p,.cv-profile-stats a{font-size:1rem;line-height:1.4;color:#685382;margin:0}
+.cv-profile-stats p{display:flex;flex-direction:column;min-width:0}
+.cv-profile-stats strong{color:#4c0d47;font-weight:800}
+.cv-profile-stats span:not(.cv-star){font-size:.875rem}
+.cv-profile-stats .modern-icon{width:25px;height:25px;color:#4c0d47}
+.cv-profile-stats .cv-star{font-size:1.7rem}
+.cv-voice{display:flex;align-items:center;gap:12px;width:100%;margin-top:12px;padding:12px;border-radius:14px;background:#f2ecfc}
+.cv-voice>button{display:grid;place-items:center;flex:none;width:48px;height:48px;border:0;border-radius:12px;background:#4c0d47;color:white}
+.cv-voice>button .modern-icon{width:24px;height:24px}
+.cv-voice-pause{display:none;font-size:1rem;letter-spacing:-2px}
+.cv-voice.is-playing .cv-voice-play{display:none}.cv-voice.is-playing .cv-voice-pause{display:inline}
+.cv-voice>div{flex:1;min-width:0;color:#4c0d47;font-size:.9375rem}
+.cv-voice>small{flex:none;font-size:.9375rem;color:#4c0d47;font-variant-numeric:tabular-nums}
+.cv-voice-wave{display:flex;align-items:center;justify-content:space-between;gap:3px;height:28px;margin-top:5px;overflow:hidden}
+.cv-voice-wave i{flex:1;max-width:4px;min-width:1px;background:#bea1dc;border-radius:3px;transform-origin:center}
+.cv-voice.is-playing .cv-voice-wave i{background:#7b388c;animation:cv-wave .9s ease-in-out infinite alternate}
+.cv-voice.is-playing .cv-voice-wave i:nth-child(3n){animation-delay:.2s}.cv-voice.is-playing .cv-voice-wave i:nth-child(3n+1){animation-delay:.45s}
+@keyframes cv-wave{from{transform:scaleY(.45)}to{transform:scaleY(1)}}
+.cv-voice-caption{width:100%;margin-top:8px!important;font:1rem/1.5 Comfortaa,Nunito,sans-serif;color:#50307e}
+.cv-voice-caption span{font-size:.875rem;color:#806c84}
+.cv-detail-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:18px 0 0}
+.cv-detail-facts>div{padding:12px;border-radius:13px;background:#fff3ed;min-width:0}
+.cv-detail-facts dt{display:flex;align-items:center;gap:7px;font-size:.875rem;color:#685382}
+.cv-detail-facts dt .modern-icon{width:22px;height:22px;color:#4c0d47}.cv-detail-facts>div:last-child dt .modern-icon{color:#c45b27}
+.cv-detail-facts dd{margin:4px 0 0;font-size:1rem;font-weight:700;color:#4c0d47;overflow-wrap:anywhere}
+.cv-detail-topics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin-top:4px!important}
+.cv-detail-topics li{display:flex;align-items:center;gap:8px;min-width:0;padding:10px 12px;border-radius:16px;background:#f2efff;color:#442582;font-size:.9375rem;line-height:1.4;overflow-wrap:anywhere}
+.cv-detail-topics .modern-icon{width:20px;height:20px;flex:none}
+.cv-detail-main .cv-info-card h2 em{font-style:normal}
+.cv-rate{margin-bottom:2px}.cv-rate-estimate{font-size:.9375rem;color:#685382;margin:0 0 14px!important}
+.cv-write-review{display:inline-flex;align-items:center;gap:8px;border:1px solid #fa7393!important;border-radius:12px;background:#fceaf0!important;color:#540e4c!important;padding:8px 14px!important;font-weight:700}
+.cv-write-review .modern-icon{width:20px;height:20px}
+.cv-reviews-layout{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(0,2fr);gap:14px;align-items:start}
+.cv-reviews-layout .cv-review-summary{position:sticky;top:24px;gap:4px}
+.cv-reviews-layout .cv-review-summary .cv-review-stars{font-size:1.25rem}
+.cv-rating-bars{list-style:none;padding:0;margin:10px 0 0!important;display:grid;gap:6px}
+.cv-rating-bars li{display:grid;grid-template-columns:2.6em 1fr 2em;align-items:center;gap:8px;font-size:.875rem;color:#685382}
+.cv-rating-bars li>span:nth-child(3){text-align:right}
+.cv-rating-bar{height:8px;border-radius:8px;background:#f2ecfc;overflow:hidden}.cv-rating-bar i{display:block;height:100%;background:#ffbf00;border-radius:8px}
+.cv-review-rule{margin-top:12px!important;padding-top:10px;border-top:1px solid #eee4ed;font-size:.875rem!important;line-height:1.45}
+.cv-review-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cv-review-list .cv-review-card{padding:16px}
+.cv-review-list .cv-review-card.is-new{border-color:#fa7393;background:#fffafc}
+.cv-review-heading h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.9375rem!important}
+.cv-review-regular{display:inline-block;padding:1px 8px;border-radius:20px;background:#f2efff;color:#442582;font-size:.875rem;font-weight:700}
+.cv-review-list .cv-review-card p{font-size:.9375rem;line-height:1.5}
+.cv-review-list .cv-review-card p.cv-review-meta{font-size:.875rem;color:#9b86aa;margin-top:8px}
+.cv-review-dialog{width:min(560px,calc(100% - 32px))}
+.cv-review-dialog .cv-review-demo-note{font-size:.9375rem;background:#fff4d6;border-radius:10px;padding:10px 12px}
+.cv-review-dialog form{display:grid;gap:8px}
+.cv-review-dialog label,.cv-review-dialog legend{font-weight:800;font-size:1rem;color:#4c0d47}
+.cv-review-dialog label span{font-weight:400;font-size:.875rem;color:#806c84}
+.cv-review-dialog select,.cv-review-dialog input[type=text],.cv-review-dialog textarea{width:100%;min-height:44px;padding:10px 12px;border:1px solid #d9c4e6;border-radius:10px;background:white;color:#46113e;font:inherit;font-size:1rem}
+.cv-review-dialog textarea{resize:vertical}
+.cv-review-dialog .cv-review-hint{font-size:.875rem;color:#806c84;margin:0}
+.cv-review-dialog .cv-review-error{font-size:.9375rem;color:#b3123b;font-weight:700;margin:0;min-height:1.2em}
+.cv-review-dialog .cv-call-button{margin-top:6px}
+.cv-star-picker{border:0;padding:0;margin:0 0 6px}
+.cv-star-picker>div{display:inline-flex;flex-direction:row-reverse;gap:4px}
+.cv-star-picker input{position:absolute;opacity:0;width:1px;height:1px}
+.cv-star-picker label{font-size:2.2rem!important;line-height:1;color:#e3d6ee;cursor:pointer;min-height:44px;min-width:44px;display:grid;place-items:center}
+.cv-star-picker input:checked~label,.cv-star-picker label:hover,.cv-star-picker label:hover~label{color:#ffbf00}
+.cv-star-picker input:focus-visible+label{outline:3px solid #7b388c;outline-offset:2px;border-radius:8px}
+.cv-mobile-booking>div{display:flex;flex-direction:column}.cv-mobile-booking>div>strong{font:900 1.6rem/1.2 Nunito,Arial,sans-serif;color:#4c0d47;white-space:nowrap}.cv-mobile-booking>div>small{font-size:.875rem;color:#685382}
+@media(max-width:1199px) and (min-width:700px){.cv-profile-stats{grid-template-columns:1fr}.cv-reviews-layout{grid-template-columns:1fr}.cv-reviews-layout .cv-review-summary{position:static}}
+@media(max-width:899px){.cv-review-list{grid-template-columns:1fr}.cv-detail-topics{grid-template-columns:1fr}}
+@media(max-width:699px){
+ .cv-profile-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.cv-profile-stats li{flex-direction:column;align-items:flex-start;gap:4px;padding:10px 8px}
+ .cv-reviews-layout{grid-template-columns:1fr}.cv-reviews-layout .cv-review-summary{position:static;flex-direction:column;align-items:stretch}
+ .cv-section-heading{flex-wrap:wrap}
+ .cv-detail-facts{grid-template-columns:1fr 1fr}
+}
+@media(max-width:399px){.cv-profile-stats{grid-template-columns:1fr}.cv-profile-stats li{flex-direction:row;align-items:center}.cv-detail-facts{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.cv-voice.is-playing .cv-voice-wave i{animation:none}}
+@media(max-width:699px){.cv-booking-card>.cv-rate-estimate{display:none}}
+html[data-site-embed] .cv-booking-card>.cv-rate-estimate{display:block}

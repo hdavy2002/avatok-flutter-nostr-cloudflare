@@ -1,0 +1,11 @@
+---
+// [HF-PROFILE-DETAIL-2] One sample detail page per card in callvaalHomeReference.ts.
+export const prerender = true;
+import ProfileDetail from '../../components/callvaal/ProfileDetail.astro';
+import { profileDetailIds, profileDetails, type ProfileDetailId } from '../../lib/callvaalProfileDetails';
+export function getStaticPaths() {
+  return profileDetailIds.map(id => ({ params: { id } }));
+}
+const id = Astro.params.id as ProfileDetailId;
+---
+<ProfileDetail profile={profileDetails[id]} />
