@@ -48,7 +48,7 @@ works; the backend must be built to match these rules before calls go live.
 | HF-CALL-2 | Neither person ever sees the other's real phone number. | ADOPTED | DONE | TODO |
 | HF-CALL-3 | No app needed: calls come to the normal phone number. Wallet, favourites and history live on the website. | ADOPTED | DONE | TODO |
 | HF-CALL-4 | Either person can hang up any time. **#** at any time ends the call, blocks the other person and reports the incident. | ADOPTED | DONE | TODO |
-| HF-CALL-5 | Both people hear a short **safety notice** before connecting (not a recording notice). Proposed wording: *"This is a friendly chat, not counselling. In crisis, dial 14416."* | ADOPTED (wording PROPOSED) | DONE (mentions notice) | TODO |
+| HF-CALL-5 | Both people hear a short **safety notice** before connecting (not a recording notice). Proposed wording: *"This is a friendly chat, not counselling. In crisis, dial 14416."* | ADOPTED (wording PROPOSED) | DONE (wording in terms) | TODO |
 
 ## 3. Privacy and recording
 
@@ -98,7 +98,7 @@ works; the backend must be built to match these rules before calls go live.
 | HF-PAY-4 | Billing errors (charged for a call that never connected, double charge) are corrected back to the wallet — this is not a refund. | ADOPTED | DONE | TODO |
 | HF-PAY-5 | Unused wallet balance is always the user's: withdraw to own UPI ID any time (also after a ban, before deleting the account). | ADOPTED | DONE | TODO |
 | HF-PAY-6 | Platform share per minute: ₹2 + 40% of the amount above ₹2, 18% GST included in the platform share. ₹5 → host ₹1.80; ₹10 → ₹4.80; ₹20 → ₹10.80; ₹30 → ₹16.80. Host earnings paid to a UPI ID in the host's own name. Payout minimum and timing not decided. | ADOPTED | DONE | TODO |
-| HF-PAY-7 | **Daily spending limit** for callers, and an "Are you sure?" step on large top-ups (money trouble is a risk factor). Amounts to be decided. | PROPOSED | TODO | TODO |
+| HF-PAY-7 | **Daily spending limit** for callers, and an "Are you sure?" step on large top-ups (money trouble is a risk factor). Amounts to be decided. | PROPOSED | DONE (described as coming at launch) | TODO |
 
 ## 8. Wellbeing, mental health and attachment (added 2026-10-08)
 
@@ -111,15 +111,15 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 |---|---|---|---|---|
 | HF-WELL-1 | Crisis numbers are visible on every key page and in every help area: **Tele-MANAS 14416** (free, 24×7) and **112**. We are not an emergency service. | ADOPTED | DONE | N/A |
 | HF-WELL-2 | **Welfare detection:** when AI hears hopelessness or self-harm talk, it (a) plays a short message with 14416 and 112 during the call, (b) sends the same by WhatsApp after the call, (c) writes a welfare entry in the safety log. Never a strike. | PROPOSED | TODO | TODO |
-| HF-WELL-3 | **A block is never shown as a rejection.** A blocked or limited caller only ever sees "This host isn't available right now." The host's name is never attached to a refusal. | PROPOSED | TODO | TODO |
-| HF-WELL-4 | **Attachment detection:** AI and usage patterns flag a caller who calls the same host daily, long late-night calls, rising spend, or talk of love / "I can't live without you". | PROPOSED | TODO | TODO |
-| HF-WELL-5 | **Healthy-use limits on one host:** a daily minutes cap with the same host and a cooling-off gap; a gentle reminder that hosts offer friendly conversation, not relationships. The platform — not the host — ends the pairing if it continues. Numbers to be decided. | PROPOSED | TODO | TODO |
-| HF-WELL-6 | **Host welfare training** (with the scam training): warning signs, what to do, what never to do, attachment boundaries, how to flag. See Appendix A. | ADOPTED (content PROPOSED) | TODO (`/hosts/crisis-script` to expand) | N/A |
-| HF-WELL-7 | **No misguiding:** hosts give no medical, medicine, legal, money or relationship advice, and never keep a vulnerable caller on the line for money. Doing so is a removal offence in the host agreement. | ADOPTED | DONE (no advice) / TODO (agreement clause) | N/A |
-| HF-WELL-8 | **Signup acknowledgement** (checkbox) for callers. Proposed text in Appendix B. | PROPOSED | TODO (publish text in terms) | TODO |
-| HF-WELL-9 | **Terms and host agreement clauses** on: platform only connects calls; hosts are independent; not a crisis line; user responsible for own decisions; platform may limit any account for its wellbeing; host follows welfare script and indemnifies breaches. Lawyer to review. | PROPOSED | TODO | N/A |
+| HF-WELL-3 | **A block is never shown as a rejection.** A blocked or limited caller only ever sees "This host isn't available right now." The host's name is never attached to a refusal. | PROPOSED | DONE (described: /wellbeing, terms, help, FAQ) | TODO |
+| HF-WELL-4 | **Attachment detection:** AI and usage patterns flag a caller who calls the same host daily, long late-night calls, rising spend, or talk of love / "I can't live without you". | PROPOSED | DONE (described in host guide) | TODO |
+| HF-WELL-5 | **Healthy-use limits on one host:** a daily minutes cap with the same host and a cooling-off gap; a gentle reminder that hosts offer friendly conversation, not relationships. The platform — not the host — ends the pairing if it continues. Numbers to be decided. | PROPOSED | DONE (described as coming at launch; numbers TBD) | TODO |
+| HF-WELL-6 | **Host welfare training** (with the scam training): warning signs, what to do, what never to do, attachment boundaries, how to flag. See Appendix A. | ADOPTED (content PROPOSED) | DONE (/hosts/crisis-script = Welfare & crisis guide; help article) | N/A |
+| HF-WELL-7 | **No misguiding:** hosts give no medical, medicine, legal, money or relationship advice, and never keep a vulnerable caller on the line for money. Doing so is a removal offence in the host agreement. | ADOPTED | DONE (host guide + host agreement clause) | N/A |
+| HF-WELL-8 | **Signup acknowledgement** (checkbox) for callers. Proposed text in Appendix B. | PROPOSED | DONE (text published in terms) | TODO |
+| HF-WELL-9 | **Terms and host agreement clauses** on: platform only connects calls; hosts are independent; not a crisis line; user responsible for own decisions; platform may limit any account for its wellbeing; host follows welfare script and indemnifies breaches. Lawyer to review. | PROPOSED | DONE (terms, disclaimer, host agreement — lawyer review pending) | N/A |
 | HF-WELL-10 | **Caller age gate:** callers confirm 18+ at signup; minors are suspended. (Hosts already KYC.) | PROPOSED | DONE (stated) / TODO (signup step) | TODO |
-| HF-WELL-11 | **Welfare page** for users: "Using Hello Fraands in a healthy way" — limits, attachment, where to get real help. | PROPOSED | TODO | N/A |
+| HF-WELL-11 | **Welfare page** for users: "Using Hello Fraands in a healthy way" — limits, attachment, where to get real help. | PROPOSED | DONE (/wellbeing) | N/A |
 
 ## 9. Legal protection (business)
 
@@ -211,4 +211,5 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | Phase 1 public pages for wellbeing done (HELLO-FRAANDS-WELL-1): new /wellbeing page; /hosts/crisis-script expanded into the Welfare & crisis guide (footer label renamed); wellbeing, healthy-use-limit and acknowledgement clauses in terms; not-a-relationship/crisis section in disclaimer (Hindi recording text fixed); wellbeing duties in host agreement; 2 help articles; 4 FAQ entries. Backend items unchanged (TODO). Limit numbers still to be decided by owner. |
 | 2026-10-08 | Rulebook created. Sections 1–7, 9–10 record decisions already made and shipped on the public site (FAQ, policy pages, help centre deployed 2026-10-08). Section 8 (wellbeing) added from the owner's mental-health concern; most items PROPOSED pending owner decisions on numbers. |
