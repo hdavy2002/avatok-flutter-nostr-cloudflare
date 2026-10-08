@@ -48,3 +48,18 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 .cv-footer-bottom .cv-footer-disclaimer{margin-top:0}
 .cv-footer-disclaimer a,.cv-footer-copyright a{color:inherit;text-decoration:underline;text-underline-offset:.2em}
 .cv-age-badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.4rem;min-height:2rem;margin-right:.6rem;padding:.1rem .4rem;border:1px solid currentColor;border-radius:.4rem;font-weight:900}
+
+/* [HF-FONTS-1 2026-10-08] OWNER RULE (rulebook HF-SITE-7): the whole site uses two faces
+   only — Nunito for headlines (h1–h6 and the hero sub-headline), Comfortaa for everything
+   else (body, links, buttons, labels, stickers, forms). Every public page loads this file
+   through the shared header/footer, so the rule lives here and beats older skins that still
+   asked for Instrument Sans, Baloo 2, Kalam or Nunito body text. Do not add other faces. */
+body,
+body *:not(svg, svg *, code, pre, kbd, samp) {
+  font-family: Comfortaa, sans-serif !important;
+}
+body :is(h1, h2, h3, h4, h5, h6, [role="heading"], .hero-promise),
+body :is(h1, h2, h3, h4, h5, h6, [role="heading"], .hero-promise) *:not(svg, svg *) {
+  font-family: Nunito, sans-serif !important;
+}
+body :is(h1, h2, h3, h4, h5, h6, [role="heading"]) { font-weight: 900 !important; }

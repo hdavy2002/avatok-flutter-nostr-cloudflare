@@ -148,6 +148,7 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | HF-SITE-4 | All other pages (content/legal pages, FAQ, wellbeing) get the **same full-width, responsive treatment as the front page**. Mock first, owner approves, then exact rollout. | ADOPTED | DONE (all HelloFraandsPage content/legal pages, FAQ, wellbeing) | N/A |
 | HF-SITE-5 | Logged-in dashboard: give it the **new-look shell now** (front-page width, fonts, colours, menu); real Hello Fraands screens (wallet, favourites, call history, host earnings) are built when the backend is ready. | ADOPTED | DONE (shell: palette, fonts, width, logo, menu: Explore hosts, Favourites, Wallet, Billing, Profile) | TODO |
 | HF-SITE-6 | **One standard type size on every page, matching the front page.** Root font size is a fixed 16px everywhere (no growing on wide monitors), header and footer are identical on every page, and no text is smaller than 14px. Never make tiny fonts. | ADOPTED | DONE (HF-TYPE-SCALE-1: global root fixed, help centre labels 11–13px → 14px, home/explore card labels → 14px, /talk-safely uses the shared header/footer) | N/A |
+| HF-SITE-7 | **Two fonts only: Nunito for headlines, Comfortaa for everything else** (body, links, buttons, labels, forms). No Instrument Sans, Baloo, Kalam or other faces. Enforced in `web/src/styles/callvaal-chrome.css` (HF-FONTS-1). | ADOPTED | DONE | N/A |
 | HF-NAV-1 | **Header must have "Explore" → /marketplace** (first item). | ADOPTED | DONE | N/A |
 | HF-NAV-2 | **Every new public page gets a relevant link in the header or footer** in the same change (and the footer link-count checks in web/scripts are updated with it). Footer columns: Company · Hosts · Trust & Safety · Legal & Payments · Explore. | ADOPTED | DONE (so far) | N/A |
 
@@ -224,6 +225,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | HF-SITE-7 added (owner): Nunito for headlines, Comfortaa for all other text on every page (HF-FONTS-1). |
 | 2026-10-08 | Sign in / Sign up pages: old Ganesh, lotus and Suswagatam artwork replaced with Hello Fraands art (friendship collage, notebook + chai) on cream/lilac panels; old "Creator Marketplace" and "Light a diya" text replaced (HF-AUTH-ART-1). |
 | 2026-10-08 | HF-SITE-2: archived pages (/free-videos, /pandit, /temples, /guides, /shop) re-skinned with the Hello Fraands header and footer; old logo and menus gone (HF-ARCHIVE-RESKIN-1). |
 | 2026-10-08 | HF-SITE-6 added (owner: one standard font size like the front page). Help/blog/dashboard pages no longer grow header, footer and text on wide monitors; tiny labels raised to 14px; /talk-safely got the real header/footer (HF-TYPE-SCALE-1). |
