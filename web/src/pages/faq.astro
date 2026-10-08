@@ -1,25 +1,123 @@
 ---
+// [HELLO-FRAANDS-FAQ-1] Full FAQ — topic index, accordions, search, partner section.
+import brandConfig from '../../../Specs/brand.json';
 import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+import { faqSections, faqCount } from '../lib/faqData';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
+import '../styles/callvaal-notebook.css';
+import '../styles/hello-fraands-faq.css';
 export const prerender = true;
+
+const identity = brandConfig.homepageIdentity;
+const title = `FAQs — safety, privacy, payments | ${identity.name}`;
+const description = `Answers about ${identity.name}: private numbers, AI call safety, spam and OTP-scam protection, the women-only space, host verification, wallet, UPI withdrawals and refunds.`;
+const canonical = `https://${identity.domain}/faq`;
+const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
+const jsonLd = {
+  '@context': 'https://schema.org', '@type': 'FAQPage', url: canonical, inLanguage: 'en-IN',
+  mainEntity: faqSections.flatMap(s => s.items.map(i => ({ '@type': 'Question', name: i.q, acceptedAnswer: { '@type': 'Answer', text: plain(i.a) } }))),
+};
+const quickLinks = [
+  { href: '/safety', title: 'Safety centre', text: 'How calls are kept safe', tone: 'peach' },
+  { href: '/women-only', title: 'Women-only space', text: 'Verified women, both sides', tone: 'pink' },
+  { href: '/hosts/join', title: 'Join & earn', text: 'Become a verified host', tone: 'cream' },
+  { href: '/refunds', title: 'Refund policy', text: 'Wallet, charges, UPI', tone: 'lilac' },
+  { href: '/grievance', title: 'Grievance', text: 'Raise a complaint', tone: 'paper' },
+  { href: '/terms', title: 'Terms', text: 'The full rules', tone: 'cream' },
+];
 ---
-<HelloFraandsPage title="FAQs" summary="Baat shuru karne se pehle, aapke sawaalon ke jawaab.">
-<h2>Common questions</h2>
-<details><summary>Will the other person see my number?</summary><p>No. Calls are connected through a masked bridge. Neither person sees the other's personal phone number. Do not share it during the call.</p></details>
-<details><summary>Are calls recorded?</summary><p>The planned call service gives both people a spoken recording notice before connection. Recordings may be checked by automated safety tools and reviewed by trained staff when needed. The final retention period will be published before calls launch. Read <a href="/recording-policy">recording &amp; consent</a>.</p></details>
-<details><summary>Is this therapy or counselling?</summary><p>No. {BRAND.name} is for conversation and company. It is not therapy, counselling or a crisis service.</p></details>
-<details><summary>Who are the hosts?</summary><p>Hosts are adults who choose to offer conversation in their selected moods and languages. They must complete video KYC and Aadhaar verification before hosting.</p></details>
-<details><summary>Are hosts doctors or lawyers?</summary><p>Hosts must not present themselves here as doctors, lawyers, counsellors, CAs or financial advisors. Nothing on a call is professional advice.</p></details>
-<details><summary>Is this a dating service?</summary><p>No. Sexual or suggestive talk, exchanging contact details and arranging meetings are not allowed.</p></details>
-<details><summary>Do I have to be 18?</summary><p>Yes. Both callers and hosts must be 18 or older. See the <a href="/age-policy">age policy</a>.</p></details>
-<details><summary>How do I pay?</summary><p>Top up your prepaid talk-time wallet using UPI. Planned calls start at ₹5/min. Calls are billed by the minute at the shown rate. See <a href="/wallet-terms">wallet terms</a>.</p></details>
-<details><summary>Can I get a refund?</summary><p>There should be no call charge before connection, including when a host declines or the bridge fails. For connected calls and unused wallet balance, see the <a href="/refunds">refund policy</a>. You can <a href="/report">dispute a charge</a> with the call ID.</p></details>
-<details><summary>What happens if a call drops or fails?</summary><p>There should be no call charge if the host declines or the bridge never connects. If a connected call drops or a charge looks wrong, check your call and wallet history and <a href="/report">report it</a> with the call ID so it can be reviewed under the <a href="/refunds">refund policy</a>.</p></details>
-<details><summary>How do I report someone?</summary><p>The planned host keypad control # ends a call and blocks and reports the caller; * just ends it. You can also use the <a href="/report">report form</a>. Include the profile name, call ID and what happened. A report is reviewed before any strike is confirmed.</p></details>
-<details><summary>How do I block someone?</summary><p>Use the block control on their profile or in your call history when available. If you cannot find it, <a href="/report">report the person</a> and ask for help preventing further contact.</p></details>
-<details><summary>Who can enter the women-only space?</summary><p>At launch, only signed-in callers and hosts whose gender verification is F or T should see and use this space. The public preview describes it for everyone; live listings and calls are planned to be hidden from other accounts. Read about the <a href="/women-only">women-only space</a>.</p></details>
-<details><summary>How can I become a host?</summary><p>Start at <a href="/hosts/join">Join &amp; earn</a>. You need your own phone number, video KYC and Aadhaar verification. Read the host rules before applying.</p></details>
-<details><summary>How do I delete my account?</summary><p>See <a href="/data-deletion">data deletion</a> for the available request route and any records we must retain. The current preview has no live calling account dashboard.</p></details>
-<details><summary>What if my wallet runs out?</summary><p>The planned call service gives a warning about 60 seconds before balance runs out, then ends the call when the balance is exhausted. Top up again before starting another call.</p></details>
-<details><summary>Can I make a call in the preview?</summary><p>No. The current preview contains illustrative profiles. Calls and payments are unavailable in the preview.</p></details>
-</HelloFraandsPage>
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} />
+  <meta name="robots" content="index,follow" /><meta name="theme-color" content="#46113e" />
+  <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
+  <meta property="og:image" content={`https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`} /><meta name="twitter:card" content="summary_large_image" />
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+<body>
+<div class="notebook-site faq-site" data-design="callvaal-scrapbook">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <Header />
+  <main id="main-content" class="faq-main">
+    <section class="faq-hero" aria-labelledby="faq-title">
+      <p class="preview-kicker">Help centre · {faqCount} answers</p>
+      <h1 id="faq-title">Sawaal hai?<br /><mark><em>Jawaab yahan hai.</em></mark></h1>
+      <p class="faq-hero-sub">Everything callers, hosts and partners ask us — your number, AI safety, spam calls, the women-only space, payments and refunds. In plain words.</p>
+      <div class="faq-search">
+        <label for="faq-search-input" class="sr-only">Search the FAQs</label>
+        <span aria-hidden="true">⌕</span>
+        <input id="faq-search-input" type="search" placeholder="Search: OTP, refund, number, women…" autocomplete="off" />
+      </div>
+      <p class="sr-only" id="faq-search-status" role="status" aria-live="polite"></p>
+      <div class="faq-chips" aria-label="Key facts">
+        <span>Number kabhi share nahi hota</span><span>AI ends bad calls</span><span>No call recording</span><span>Every host KYC-verified</span>
+      </div>
+      <div class="faq-hero-note paper-note" aria-hidden="true">Koi sawaal<br />chhota nahi hota.</div>
+    </section>
+
+    <nav class="faq-topics" aria-label="FAQ topics">
+      {faqSections.map(s => <a class={`faq-topic tone-${s.tone}`} href={`#${s.id}`}><span class="faq-topic-icon" aria-hidden="true">{s.icon}</span><strong>{s.title}</strong><small>{s.items.length} questions</small></a>)}
+    </nav>
+
+    <div class="faq-sections">
+      {faqSections.map(s => <section class={`faq-section tone-${s.tone}`} id={s.id} aria-labelledby={`${s.id}-title`} data-faq-section>
+        <header class="faq-section-head">
+          <span class="faq-section-icon" aria-hidden="true">{s.icon}</span>
+          <div><h2 id={`${s.id}-title`}>{s.title}</h2><p><em>{s.hindi}</em></p></div>
+        </header>
+        <div class="faq-list">
+          {s.items.map((item, i) => <details class="faq-item" id={`${s.id}-${i + 1}`} data-faq-item>
+            <summary><span>{item.q}</span><b aria-hidden="true">+</b></summary>
+            <div class="faq-answer"><p set:html={item.a} /></div>
+          </details>)}
+        </div>
+      </section>)}
+      <p class="faq-empty" hidden data-faq-empty>No answer matches that search. Try another word, or write to <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>.</p>
+    </div>
+
+    <section class="faq-quick" aria-labelledby="faq-quick-title">
+      <h2 id="faq-quick-title">Quick <em>links</em></h2>
+      <div class="faq-quick-grid">{quickLinks.map(l => <a class={`tone-${l.tone}`} href={l.href}><strong>{l.title}</strong><span>{l.text} →</span></a>)}</div>
+    </section>
+
+    <section class="faq-cta" aria-labelledby="faq-cta-title">
+      <h2 id="faq-cta-title">Abhi bhi sawaal hai?</h2>
+      <p>Write to us and a real person will reply. Never send an OTP, UPI PIN or card details — we will never ask for them.</p>
+      <div class="faq-cta-actions"><a class="faq-btn faq-btn--primary" href={`mailto:${BRAND.emails.support}`}>Email support</a><a class="faq-btn faq-btn--ghost" href="/#people">Kisi se baat karo</a></div>
+      <p class="faq-crisis">In danger? Call <a href="tel:112">112</a>. Need mental-health support? Call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7).</p>
+    </section>
+  </main>
+  <Footer />
+</div>
+<script>
+  const input = document.getElementById('faq-search-input') as HTMLInputElement | null;
+  const status = document.getElementById('faq-search-status');
+  const items = Array.from(document.querySelectorAll<HTMLDetailsElement>('[data-faq-item]'));
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-faq-section]'));
+  const empty = document.querySelector<HTMLElement>('[data-faq-empty]');
+  const openFromHash = () => {
+    const el = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+    if (el instanceof HTMLDetailsElement) el.open = true;
+  };
+  openFromHash();
+  window.addEventListener('hashchange', openFromHash);
+  input?.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    items.forEach(d => {
+      const hit = !q || (d.textContent ?? '').toLowerCase().includes(q);
+      d.hidden = !hit; if (hit) shown++;
+      d.open = hit && q.length > 2;
+    });
+    sections.forEach(s => { s.hidden = !s.querySelector('[data-faq-item]:not([hidden])'); });
+    if (empty) empty.hidden = shown > 0;
+    if (status) status.textContent = q ? `${shown} answers found` : '';
+  });
+</script>
+</body>
+</html>
