@@ -65,15 +65,8 @@ try {
   assert.equal(view.getUint32(20), 630, 'OG runtime image height mismatch');
   console.log(`OG workerd endpoint OK: ${bytes.byteLength} bytes.`);
 
-  // [SEO-OG-ART-1] A ritual article must render its OWN picture, not the brand
-  // hero. Before this check every article card shipped with X-SEO-OG-Fallback: art.
-  const article = await runtime.dispatchFetch(BRAND.webOrigin + '/og/article/saraswati-havan.png');
-  if (article.status !== 200) assert.fail(`Article OG endpoint returned ${article.status}: ${await article.text()}`);
-  assert.equal(article.headers.get('x-seo-og-fallback'), null, 'Article OG card fell back instead of using the ritual artwork');
-  const home = await runtime.dispatchFetch(BRAND.webOrigin + '/og/home/home.png');
-  const [a, h] = [new Uint8Array(await article.arrayBuffer()), new Uint8Array(await home.arrayBuffer())];
-  assert.notDeepEqual(a.subarray(0, 4096), h.subarray(0, 4096), 'Article card is byte-identical to the home card');
-  console.log(`OG article artwork OK: ${a.byteLength} bytes (home ${h.byteLength}).`);
+  // [HELLO-FRAANDS-ARCHIVE-1 2026-10-08] The ritual guide is archived (noindex), so its OG
+  // article cards are no longer served; the [SEO-OG-ART-1] artwork check is in git history.
 } finally {
   await runtime.dispose();
 }

@@ -138,6 +138,16 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | HF-HOST-2 | Regular host training on spam, scam and fraud calls (OTP asks, "KYC update", sextortion, emotional money stories). | ADOPTED | DONE | N/A |
 | HF-HOST-3 | Hosts go online/offline any time and may decline any call. Never ask callers for money outside the platform (removal). | ADOPTED | DONE | TODO |
 
+## 11. Site design and pages (added 2026-10-08)
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-SITE-1 | The help centre uses the **old "help skin v2" design** (terracotta hero, photo topic tiles, plum FAQ band, white panels, rail + on-this-page). Do not re-skin it. Only the art and copy are Hello Fraands; header/footer are the shared site ones. | ADOPTED | DONE | N/A |
+| HF-SITE-2 | Old Aum Fe pages are **archived, not deleted** (kept for reuse): /rituals, /shop, /temples, /pandit, /guides, /desk, /watch, /book, /free-videos, /marketplace/page. Archived = URL still works, noindex, out of sitemap and menus (`web/src/lib/archivedPages.ts`). | ADOPTED | DONE | N/A |
+| HF-SITE-3 | /marketplace stays live and will be **re-skinned** for Hello Fraands. What it should list is to be confirmed. | ADOPTED | TODO | TODO |
+| HF-SITE-4 | All other pages (content/legal pages, FAQ, wellbeing) get the **same full-width, responsive treatment as the front page**. Mock first, owner approves, then exact rollout. | ADOPTED | TODO (mock) | N/A |
+| HF-SITE-5 | Logged-in dashboard: give it the **new-look shell now** (front-page width, fonts, colours, menu); real Hello Fraands screens (wallet, favourites, call history, host earnings) are built when the backend is ready. | ADOPTED | TODO | TODO |
+
 ---
 
 ## Implementation plan — public pages first (backend not ready)
@@ -211,6 +221,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | Section 11 added. Help centre restored to the old help skin v2 design with Hello Fraands art/copy (HELLO-FRAANDS-HELP-RESTORE-1); old Aum Fe pages archived (HELLO-FRAANDS-ARCHIVE-1). Site-wide front-page treatment, marketplace re-skin and dashboard shell pending owner approval of mocks. |
 | 2026-10-08 | Footer: added "Help centre" (/help) to the Company column (HELLO-FRAANDS-FOOTER-HELP-1). |
 | 2026-10-08 | Owner decision: limit numbers (daily minutes with one host, cooling-off gap, daily spending cap) are deliberately left open for now — pages keep saying they will be published before launch. Do not invent numbers. (HF-WELL-5, HF-PAY-7) |
 | 2026-10-08 | Phase 1 public pages for wellbeing done (HELLO-FRAANDS-WELL-1): new /wellbeing page; /hosts/crisis-script expanded into the Welfare & crisis guide (footer label renamed); wellbeing, healthy-use-limit and acknowledgement clauses in terms; not-a-relationship/crisis section in disclaimer (Hindi recording text fixed); wellbeing duties in host agreement; 2 help articles; 4 FAQ entries. Backend items unchanged (TODO). Limit numbers still to be decided by owner. |

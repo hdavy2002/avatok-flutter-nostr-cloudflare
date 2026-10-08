@@ -233,8 +233,8 @@ assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main head
 assert.match(guide, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands footer');
 assert.match(guide, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands header');
 assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
-assert.match(guide, /CollectionPage/);
-assert.match(guide, /ItemList/);
+// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(guide, /CollectionPage/);
+// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(guide, /ItemList/);
 assert(meta(guide, 'og:title') && meta(guide, 'og:description'));
 const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)\/"/g)].map(m => m[1]))];
 assert.equal(ritualLinks.length, 51, 'Every ritual has its own article');
@@ -242,7 +242,8 @@ const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'),'utf8');
 assert.match(sitemapIndexSource,/<sitemapindex/,'sitemap.xml is implemented as a sitemap index');
 assert(sitemapIndexSource.includes('/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
-assert(sitemap.includes(`<loc>${BRAND.webOrigin}/rituals/</loc>`), 'Guide is in the sitemap');
+// [HELLO-FRAANDS-ARCHIVE-1] The guide is archived: still built, but noindex and out of the sitemap.
+assert(!sitemap.includes(`<loc>${BRAND.webOrigin}/rituals/</loc>`), 'Archived guide stays out of the sitemap');
 assert(!sitemap.includes(`${BRAND.webOrigin}/ideas<`), 'Retired /ideas is out of the sitemap');
 assert(!sitemap.includes(`${BRAND.webOrigin}/blog/creator-ideas/`), 'Archived creator guides stay out of the sitemap');
 assert(!sitemap.includes(`${BRAND.webOrigin}/organisers`), '/organisers archived: not in sitemap');
@@ -265,8 +266,8 @@ for (const href of ritualLinks) {
  assert.match(article, /internationally/, 'International prasad courier explained: ' + href);
  assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
  assert.equal(meta(article, 'og:type'), 'article');
- assert.match(article, /BreadcrumbList/);
- assert(sitemap.includes(BRAND.webOrigin + href + '/<'), 'Article in sitemap: ' + href);
+// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(article, /BreadcrumbList/);
+ assert(!sitemap.includes(BRAND.webOrigin + href + '/<'), 'Archived article stays out of the sitemap: ' + href);
  // Artwork: one file per ritual at /assets/rituals/<slug>.png, landscape, unique.
  const file = resolve(root, 'assets/rituals', slug + '.png');
  assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
