@@ -15,7 +15,7 @@
 .people-grid .person-heading{min-width:0;gap:8px}
 .people-grid .person-copy h3{font-size:clamp(1.5rem,1.9vw,2rem);line-height:1.25}
 .people-grid .person-detail-link{min-height:0}
-.people-grid .verification-badge{gap:4px;padding:4px 8px;white-space:normal;font-size:.8rem}
+.people-grid .verification-badge{gap:4px;padding:4px 8px;white-space:normal;font-size:.875rem}
 .people-grid .verification-badge .modern-icon{width:17px;height:17px}
 .people-grid .person-rating{flex:none;flex-wrap:nowrap;gap:4px;background:#fff2eb;border-radius:24px;padding:5px 10px}
 .people-grid .person-tagline{font-size:var(--text-body);line-height:1.5}
@@ -36,7 +36,7 @@
 .people-grid .profile-card-facts dt{display:flex;align-items:center;gap:7px;font-size:.875rem;line-height:1.4}
 .people-grid .profile-card-facts dd{margin:3px 0 0;font-size:1rem;font-weight:700;line-height:1.45;color:var(--plum);overflow-wrap:anywhere}
 .people-grid .profile-card-facts>div:last-child .modern-icon{color:#c45b27}
-.people-grid .profile-card-topics h4{margin:0 0 8px;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase}
+.people-grid .profile-card-topics h4{margin:0 0 8px;font-size:.875rem;letter-spacing:.08em;text-transform:uppercase}
 .people-grid .person-moods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0;padding:0}
 .people-grid .person-moods li{display:flex;align-items:center;gap:7px;min-width:0;padding:9px 10px;border-radius:16px;font-size:.875rem;line-height:1.45;background:#f2efff;overflow-wrap:anywhere}
 .people-grid .person-moods .modern-icon{width:20px;height:20px}

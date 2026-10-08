@@ -12,20 +12,20 @@
 .hf-women-proof{display:flex;flex-wrap:wrap;gap:.65rem;list-style:none;margin:1.5rem 0 1rem;padding:0}
 .hf-women-proof li{display:flex;align-items:start;gap:.5rem;max-width:100%;padding:.65rem .85rem;border:1px solid #dfcbd6;border-radius:.9rem;background:#fffaf5;font-family:Nunito,sans-serif;font-size:.95rem;font-weight:800}
 .hf-women-proof li>span:first-child{color:#993260;font-size:1.2rem}
-.hf-women-proof small{display:block;font-family:Comfortaa,sans-serif;font-size:.8rem;font-weight:600;color:#73546c;line-height:1.6}
+.hf-women-proof small{display:block;font-family:Comfortaa,sans-serif;font-size:.875rem;font-weight:600;color:#73546c;line-height:1.6}
 .hf-women-disclaimer{font-size:.9rem}.hf-women-disclaimer em{color:#73546c;font-style:italic}
 .hf-women-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.7rem 1.2rem;margin-top:1.4rem}
 .hf-women-enter{display:inline-flex;align-items:center;justify-content:center;gap:1.25rem;border:0;border-radius:2rem;padding:.9rem 1.5rem;background:#9f305e;color:#fff;font-weight:700;min-height:48px;box-shadow:0 4px 0 #6c2145}
 .hf-women-enter:hover{background:#7e244a}.hf-women-enter:active{box-shadow:0 2px 0 #6c2145}
 .hf-women-actions a,.hf-women-before a{display:inline-flex;align-items:center;min-height:44px;font-size:.95rem;font-weight:700;text-underline-offset:.25em}
-.hf-women-verification-note{margin-top:.75rem;color:#73546c;font-size:.8rem;line-height:1.6}
-.hf-women-host{margin-top:1.3rem;color:#73546c;font-size:.85rem;line-height:1.8}.hf-women-host a{display:inline-block;padding:.35rem 0;color:#743255;font-weight:700}
+.hf-women-verification-note{margin-top:.75rem;color:#73546c;font-size:.875rem;line-height:1.6}
+.hf-women-host{margin-top:1.3rem;color:#73546c;font-size:.875rem;line-height:1.8}.hf-women-host a{display:inline-block;padding:.35rem 0;color:#743255;font-weight:700}
 .hf-women-art{margin:0;align-self:center}.hf-women-art svg{display:block;width:100%;height:auto;max-width:620px;margin:auto}
 .hf-women-art figcaption{text-align:center;color:#8e335e;font-family:Nunito,sans-serif;font-style:italic;font-size:clamp(1.25rem,1.8vw,1.65rem);transform:rotate(-3deg);margin-top:.5rem}
 .hf-women-before{grid-column:1/-1;display:grid;grid-template-columns:minmax(11rem,.7fr) minmax(0,1.7fr) auto;align-items:center;gap:.75rem 1.5rem;border-top:1px dashed #cbb6bb;padding-top:1.5rem}
 .hf-women-before h3{font-size:1.3rem;line-height:1.25}.hf-women-before p{font-size:.9rem;line-height:1.7;color:#73546c}
-.hf-women-help{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:.45rem 1.25rem;padding:1rem 1.2rem;background:#f0e7e8;border-radius:.9rem;font-size:.85rem}
-.hf-women-help a{display:inline-flex;flex-wrap:wrap;min-width:0;gap:.4rem;align-items:center;min-height:44px;text-underline-offset:.2em;overflow-wrap:anywhere}.hf-women-help b{font-family:Nunito,sans-serif;font-size:1rem}.hf-women-help>span{flex-basis:100%;color:#73546c;font-size:.8rem}
+.hf-women-help{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:.45rem 1.25rem;padding:1rem 1.2rem;background:#f0e7e8;border-radius:.9rem;font-size:.875rem}
+.hf-women-help a{display:inline-flex;flex-wrap:wrap;min-width:0;gap:.4rem;align-items:center;min-height:44px;text-underline-offset:.2em;overflow-wrap:anywhere}.hf-women-help b{font-family:Nunito,sans-serif;font-size:1rem}.hf-women-help>span{flex-basis:100%;color:#73546c;font-size:.875rem}
 .hf-women-dialog{width:580px;max-width:calc(100% - 32px);max-height:calc(100dvh - 40px);overflow:auto;padding:clamp(1.25rem,4vw,2rem);border:1px solid #ceb6c1;border-radius:1.3rem;background:#fff9ee;color:#46113e}
 .hf-women-dialog h2{font-size:1.8rem;line-height:1.2}.hf-women-dialog p,.hf-women-dialog li{font-size:.95rem;line-height:1.7}.hf-women-dialog ol{padding-left:1.3rem}.hf-women-dialog li+li{margin-top:.75rem}
 .hf-women-dialog-actions{display:flex;flex-wrap:wrap;gap:.75rem}.hf-women-dialog-actions button{padding:.75rem 1rem;min-height:44px;white-space:normal}.hf-women-dialog-actions button:disabled{background:#e9dfe4;color:#6d5864;cursor:not-allowed}.hf-women-dialog-actions [data-women-later]{background:#9f305e;color:#fff}
@@ -65,10 +65,10 @@
 .hf-women-flower--top{top:0;left:42%;transform:rotate(-15deg)}
 .hf-women-art .hf-women-flower--bottom{bottom:3%;right:0;transform:rotate(16deg);width:15%}
 .hf-women-sticker{position:absolute;z-index:5;display:grid;place-items:center;border:6px solid #fff;box-shadow:0 6px 12px #5b224029;font-family:Nunito,sans-serif;font-weight:900;text-align:center;pointer-events:none}
-.hf-women-sticker--round{top:0;right:0;width:clamp(5rem,9vw,7rem);aspect-ratio:1;border-radius:50%;background:#a03267;color:#fff;font-size:clamp(.85rem,1.35vw,1.1rem);line-height:1.15;transform:rotate(10deg)}
-.hf-women-sticker--note{bottom:10%;left:1%;padding:.55rem .8rem;border-radius:.4rem;background:#f6d57e;color:#54203c;font-size:clamp(.75rem,1.2vw,1rem);transform:rotate(-8deg)}
+.hf-women-sticker--round{top:0;right:0;width:clamp(5rem,9vw,7rem);aspect-ratio:1;border-radius:50%;background:#a03267;color:#fff;font-size:clamp(.875rem,1.35vw,1.1rem);line-height:1.15;transform:rotate(10deg)}
+.hf-women-sticker--note{bottom:10%;left:1%;padding:.55rem .8rem;border-radius:.4rem;background:#f6d57e;color:#54203c;font-size:clamp(.875rem,1.2vw,1rem);transform:rotate(-8deg)}
 .hf-women-paper-note{position:absolute;bottom:0;left:25%;z-index:5;max-width:65%;padding:.5rem 1rem;background:#fffaf2;border:4px solid #fff;color:#96315d;font-family:Comfortaa,sans-serif;font-size:clamp(.8rem,1.4vw,1.15rem);font-style:italic;font-weight:700;text-align:center;transform:rotate(-3deg);clip-path:polygon(2% 0,20% 3%,38% 0,59% 3%,79% 0,99% 2%,97% 48%,100% 98%,80% 96%,59% 100%,40% 97%,18% 100%,0 97%,2% 49%)}
-.hf-women-art figcaption{position:absolute;left:0;bottom:-1.5rem;width:100%;margin:0;transform:none;color:#6b4761;font-family:Nunito,sans-serif;font-size:.75rem;font-style:normal;text-align:center}
+.hf-women-art figcaption{position:absolute;left:0;bottom:-1.5rem;width:100%;margin:0;transform:none;color:#6b4761;font-family:Nunito,sans-serif;font-size:.875rem;font-style:normal;text-align:center}
 @media(max-width:760px){
   .hf-women{background:#f7e7f0}
   .hf-women-art{height:clamp(17rem,72vw,24rem);max-width:520px;margin:0 auto 1rem}

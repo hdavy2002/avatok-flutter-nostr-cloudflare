@@ -2,6 +2,8 @@
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import '../styles/callvaal-notebook.css';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
 
 const identity = brandConfig.homepageIdentity;
 const title = `Talking safely with strangers | ${identity.name}`;
@@ -24,9 +26,7 @@ const description = `A short, practical guide to choosing what personal details 
   <body>
     <div class="notebook-site safety-site" data-design="callvaal-scrapbook">
       <a class="skip-link" href="#main-content">Skip to main content</a>
-      <header class="notebook-header">
-        <a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a>
-      </header>
+      <Header />
       <main class="safety-guide" id="main-content">
         <p class="safety-guide__eyebrow">Safety guide</p>
         <h1>Rules for talking safely with strangers</h1>
@@ -41,18 +41,13 @@ const description = `A short, practical guide to choosing what personal details 
         <p>If someone threatens you or asks for sexual contact, end the call and <a href="/report">report them</a>. For immediate danger call <a href="tel:112">112</a>; for mental health support call <a href="tel:14416">Tele-MANAS 14416</a>. This site is not an emergency service.</p>
         <a class="safety-guide__home" href="/">← Back to {identity.name}</a>
       </main>
-      <footer class="notebook-footer safety-footer">
-        <div class="footer-brand"><a class="wordmark" href="/" aria-label={`${identity.name} home`}>{identity.name}<span class="logo-rays" aria-hidden="true">′</span></a><p>Real people.<br/>Useful conversations.</p></div>
-        <p class="footer-copyright">© {new Date().getFullYear()} {identity.name}. All rights reserved. · Guide preview</p>
-      </footer>
+      <Footer />
     </div>
   </body>
 </html>
 
 <style>
   .safety-site { min-height: 100vh; }
-  .safety-site .wordmark { font-size: clamp(1.25rem, 7vw, 2rem); overflow-wrap: anywhere; }
-  .safety-site .logo-rays { font-size: 1.35em; }
   .safety-guide {
     width: min(42rem, 100%);
     margin: clamp(2rem, 7vw, 6rem) auto;

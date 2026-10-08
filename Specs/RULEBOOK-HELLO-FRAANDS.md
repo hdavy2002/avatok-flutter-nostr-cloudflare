@@ -147,6 +147,7 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | HF-SITE-3 | /marketplace stays live and will be **re-skinned** for Hello Fraands. What it should list is to be confirmed. | ADOPTED | DONE (/marketplace = Explore: all hosts, mood/language/price/online filters, same cards as home; real cards replace samples later) | TODO |
 | HF-SITE-4 | All other pages (content/legal pages, FAQ, wellbeing) get the **same full-width, responsive treatment as the front page**. Mock first, owner approves, then exact rollout. | ADOPTED | DONE (all HelloFraandsPage content/legal pages, FAQ, wellbeing) | N/A |
 | HF-SITE-5 | Logged-in dashboard: give it the **new-look shell now** (front-page width, fonts, colours, menu); real Hello Fraands screens (wallet, favourites, call history, host earnings) are built when the backend is ready. | ADOPTED | DONE (shell: palette, fonts, width, logo, menu: Explore hosts, Favourites, Wallet, Billing, Profile) | TODO |
+| HF-SITE-6 | **One standard type size on every page, matching the front page.** Root font size is a fixed 16px everywhere (no growing on wide monitors), header and footer are identical on every page, and no text is smaller than 14px. Never make tiny fonts. | ADOPTED | DONE (HF-TYPE-SCALE-1: global root fixed, help centre labels 11–13px → 14px, home/explore card labels → 14px, /talk-safely uses the shared header/footer) | N/A |
 | HF-NAV-1 | **Header must have "Explore" → /marketplace** (first item). | ADOPTED | DONE | N/A |
 | HF-NAV-2 | **Every new public page gets a relevant link in the header or footer** in the same change (and the footer link-count checks in web/scripts are updated with it). Footer columns: Company · Hosts · Trust & Safety · Legal & Payments · Explore. | ADOPTED | DONE (so far) | N/A |
 
@@ -223,6 +224,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | HF-SITE-6 added (owner: one standard font size like the front page). Help/blog/dashboard pages no longer grow header, footer and text on wide monitors; tiny labels raised to 14px; /talk-safely got the real header/footer (HF-TYPE-SCALE-1). |
 | 2026-10-08 | Full-width front-page look rolled out to content pages, FAQ and wellbeing (HELLO-FRAANDS-WIDE-1); /marketplace re-skinned as Explore (HELLO-FRAANDS-EXPLORE-1); header "Explore" + footer "Explore all hosts" added, HF-NAV-1/2 recorded; dashboard new-look shell (HELLO-FRAANDS-DASH-SHELL-1). |
 | 2026-10-08 | Section 11 added. Help centre restored to the old help skin v2 design with Hello Fraands art/copy (HELLO-FRAANDS-HELP-RESTORE-1); old Aum Fe pages archived (HELLO-FRAANDS-ARCHIVE-1). Site-wide front-page treatment, marketplace re-skin and dashboard shell pending owner approval of mocks. |
 | 2026-10-08 | Footer: added "Help centre" (/help) to the Company column (HELLO-FRAANDS-FOOTER-HELP-1). |

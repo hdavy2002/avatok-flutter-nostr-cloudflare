@@ -2,7 +2,10 @@
    landing page all scale their rem type with the viewport via this root rule; the
    Base.astro pages never had it, so on a wide monitor everything sat at 16px while
    the front page ran at ~21px. Site-wide now — components must size type in rem. */
-html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
+/* [HF-TYPE-SCALE-1 2026-10-08] Owner: one standard size on every page, like the front page.
+   The front page never loads this file, so its root is a fixed 16px; every page that did load it
+   grew its header, footer and text up to 22px on wide monitors. Keep it fixed. */
+html { font-size: 16px; }
 
 /* Base layer for the avatok.ai web client.
  * tokens.css (generated) provides --zine-* vars; this file self-hosts the three
