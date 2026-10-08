@@ -17,8 +17,12 @@ export function checkHelloFraandsPages(root, identity) {
     pages.set(route, html);
     const body = html.match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '';
     assert.equal((html.match(/<h1[ >]/g) || []).length, 1, `${route}: one H1`);
-    assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
-    assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
+    // [HELLO-FRAANDS-FAQ-1] /faq is a standalone help page (topic tiles, search,
+    // accordions), not the HelloFraandsPage legal layout, so it has no summary/date line.
+    if (route !== '/faq') {
+      assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
+      assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
+    }
     assert.match(body, /<h2\b/, `${route}: real structured content`);
     assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${route}: shared header`);
     assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${route}: shared footer`);
@@ -36,12 +40,13 @@ export function checkHelloFraandsPages(root, identity) {
       assert(related.some(href => reviewRoutes.has(href) && href !== route), `${route}: related review page`);
     }
   }
-  const faq = pages.get('/faq').match(/<div\b[^>]*class="hf-prose"[^>]*>([\s\S]*?)<\/article>/)?.[1] || '';
-  assert((faq.match(/<details\b/g) || []).length >= 15, 'FAQ has at least 15 accessible accordions');
+  const faq = pages.get('/faq').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '';
+  assert((faq.match(/<details\b[^>]*class="faq-item"/g) || []).length >= 15, 'FAQ has at least 15 accessible accordions');
+  assert((pages.get('/faq').match(/"@type":"FAQPage"/g) || []).length === 1, 'FAQ emits FAQPage structured data once');
   assert.equal((pages.get('/how-it-works').match(/class="phone-frame"/g) || []).length, 3, 'Three masked-call steps');
   for (const amount of ['₹5,400', '₹41,400', '₹50,400']) assert(text(pages.get('/hosts/join')).includes(amount), 'Net illustrative earnings: ' + amount);
   for (const amount of ['₹5 minute', '₹5 − ₹2 = ₹3', '40% of ₹3 = ₹1.20', '₹2 + ₹1.20 = ₹3.20', '₹5 − ₹3.20 = ₹1.80']) assert(text(pages.get('/hosts/rates')).includes(amount), '₹5 split: ' + amount);
-  assert(text(faq).includes('Planned calls start at ₹5/min.'), 'FAQ planned minimum');
+  assert(text(faq).includes('starting from ₹5/min'), 'FAQ minimum rate');
   const wallet = text(pages.get('/wallet-terms'));
   for (const copy of ['general-lane floor of ₹5/minute', '61 connected seconds at ₹5/minute costs ₹10', '₹3.20 for the platform and ₹1.80 for the host']) assert(wallet.includes(copy), 'Wallet ₹5 example: ' + copy);
   const firstEarningsRow = pages.get('/hosts/join').match(/<tbody>\s*<tr>([\s\S]*?)<\/tr>/)?.[1] || '';
