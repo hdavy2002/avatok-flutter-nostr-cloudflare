@@ -2,6 +2,17 @@
 
 ---
 
+## 📒 HELLO FRAANDS SITE RULEBOOK — `Specs/RULEBOOK-HELLO-FRAANDS.md` (owner decision 2026-10-08)
+
+The single record of every Hello Fraands rule: what was planned, what is on the
+public pages, what the backend does. Read it before touching any Hello Fraands
+page, policy, help article, call flow, wallet or safety feature. When the owner
+adds, changes or drops a rule, update the rulebook **in the same commit** and add
+a Change log line. Never delete a rule silently — mark it `DROPPED` with date and
+reason.
+
+---
+
 ## 🌐 DEPLOY TARGET IS aumfe.com (owner decision 2026-10-01)
 
 The brand is now **Aum Fe** at **aumfe.com** (formerly Saa Thum / saathum.com).
