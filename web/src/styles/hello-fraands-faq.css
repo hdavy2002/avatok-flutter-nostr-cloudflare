@@ -1,5 +1,5 @@
 /* [HELLO-FRAANDS-FAQ-1] /faq — same notebook palette, fonts and paper treatments as the home page. No green. */
-.faq-main{max-width:1180px;margin:0 auto;padding:clamp(28px,5vw,64px) 0 clamp(56px,8vw,96px)}
+.faq-main{overflow-wrap:anywhere;max-width:1180px;margin:0 auto;padding:clamp(28px,5vw,64px) 0 clamp(56px,8vw,96px)}
 .faq-hero{position:relative;text-align:center;max-width:860px;margin:0 auto clamp(36px,5vw,56px)}
 .faq-hero h1{font-size:clamp(2.5rem,5.4vw,4.75rem);line-height:1.02;letter-spacing:-2.5px;margin:6px 0 18px}
 .faq-hero h1 mark{background:none;color:var(--text-accent)}
@@ -9,7 +9,7 @@
 .faq-search input{flex:1;min-width:0;border:0;background:none;font:700 1.0625rem/1.4 Comfortaa,sans-serif;color:var(--plum);padding:14px 0}
 .faq-search input:focus{outline:none}.faq-search:focus-within{outline:3px solid #7b388c;outline-offset:4px}
 .faq-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:26px}
-.faq-chips span{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 15px;border:1px solid #d9c4dc;border-radius:30px;background:#fffdf7;font-size:var(--text-note);font-weight:700}
+.faq-chips span{max-width:100%;display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 15px;border:1px solid #d9c4dc;border-radius:30px;background:#fffdf7;font-size:var(--text-note);font-weight:700}
 .faq-chips span:before{content:"";width:9px;height:9px;border-radius:50%;background:var(--coral)}
 .faq-hero-note{position:absolute;right:-40px;top:10px;transform:rotate(5deg);font-family:Nunito,sans-serif;font-size:var(--text-note);padding:22px 20px;max-width:170px}
 @media(max-width:1100px){.faq-hero-note{display:none}}

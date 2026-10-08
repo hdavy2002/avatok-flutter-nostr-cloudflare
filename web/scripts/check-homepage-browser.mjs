@@ -417,13 +417,15 @@ try {
       const response = await page.goto(`http://127.0.0.1:4179${path}`, { waitUntil: 'domcontentloaded' });
       assert.equal(response.status(), 200, `${path}: published route`);
       await expect(page.locator('h1')).toHaveCount(1);
-      await expect(page.locator('.hf-hindi em')).toBeVisible();
-      await expect(page.locator('.hf-date')).toHaveText('Last updated: {{DATE}}');
+      if (path !== '/faq') { // [HELLO-FRAANDS-FAQ-1] /faq is a standalone help page without the legal summary/date line
+        await expect(page.locator('.hf-hindi em')).toBeVisible();
+        await expect(page.locator('.hf-date')).toHaveText('Last updated: {{DATE}}');
+      }
       await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(34);
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path}: 200% narrow text has no page overflow`);
       if (path === '/faq') {
-        const item = page.locator('.hf-prose details').first();
+        const item = page.locator('details.faq-item').first();
         await item.locator('summary').click();
         await expect(item.locator('p')).toBeVisible();
       }
