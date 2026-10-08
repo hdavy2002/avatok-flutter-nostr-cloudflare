@@ -24,7 +24,7 @@ const clerkHost = clerkFapiHost();
 
 <Base
   title={`Log in · ${BRAND.name}`}
-  description={`Log in to ${BRAND.name} — a global creator marketplace for live events, 1:1 consultations and AI voice.`}
+  description={`Log in to ${BRAND.name} — talk to a real person in your language. Your number stays private.`}
   chrome={false}
 >
   <Fragment slot="head">
@@ -50,11 +50,11 @@ const clerkHost = clerkFapiHost();
     <div class="auth-shell">
       <!-- Decorative left panel — desktop (>=1280px) only. Hidden, never
            shrunk, below that (README §Responsive). -->
-      <aside class="auth-panel auth-panel--marigold" aria-hidden="true">
-        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
-        <img src={publicImage('/assets/bright/ganesh.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
-        <p class="auth-aside"><ui-copy style="display:contents" data-i18n="web-auth.147f03f49b15afba">Light a diya.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-auth.eef3540404312d17">Your darshan awaits.</ui-copy></p>
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+      <aside class="auth-panel auth-panel--hf-cream" aria-hidden="true">
+        <span class="auth-rail">Real people · Naye dost</span>
+        <img src={publicImage('/assets/callvaal/scrapbook/hero-collage-moods.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
+        <p class="auth-aside">Baat karo.<br />Dil halka karo.</p>
+        <span class="auth-stamp">Number kabhi share nahi hota</span>
       </aside>
 
       <main class="auth-main">
@@ -62,14 +62,14 @@ const clerkHost = clerkFapiHost();
              its own copies for >=1280; these two are hidden there. Duplicated
              rather than shared because the panel is display:none below 1280,
              which would take the ornaments with it. -->
-        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
+        <span class="auth-rail">Real people · Naye dost</span>
         <div class="auth-card">
           <header class="auth-head">
             <p class="auth-hindi" lang="hi">We've been waiting for you</p>
           </header>
           <LoginIsland client:load />
         </div>
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+        <span class="auth-stamp">Number kabhi share nahi hota</span>
       </main>
     </div>
   </div>

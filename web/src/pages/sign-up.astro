@@ -4,9 +4,9 @@
 // [WEB-AUTH-DESIGN-1 2026-08-26] Rebuilt from design/login/README.md, replacing
 // Clerk's prebuilt <SignUp/> drop-in. See sign-in.astro for the shell rationale.
 //
-// The desktop left panel here is INK with the lotus sticker (README §5), against
-// the marigold + Ganesh artwork on log in — that contrast is intentional in the
-// handoff, not a copy/paste slip.
+// [HF-AUTH-ART-1 2026-10-08] Hello Fraands art: lilac panel with the notebook + chai
+// sticker here, cream panel with the friendship collage on log in (owner asked to
+// replace the old Ganesh / lotus / Suswagatam artwork).
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
@@ -45,28 +45,28 @@ const clerkHost = clerkFapiHost();
 
   <div class="auth">
     <div class="auth-shell">
-      <aside class="auth-panel auth-panel--ink" aria-hidden="true">
-        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
-        <img src={publicImage('/assets/bright/lotus.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+      <aside class="auth-panel auth-panel--hf-lilac" aria-hidden="true">
+        <span class="auth-rail">Real people · Naye dost</span>
+        <img src={publicImage('/assets/callvaal/scrapbook/earn-art-moods.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
+        <span class="auth-stamp">Number kabhi share nahi hota</span>
       </aside>
 
       <main class="auth-main auth-main--signup">
         <!-- See sign-in.astro: ornaments for the 768–1279 card layout, hidden
              at >=1280 where the decorative panel carries its own. -->
-        <span data-i18n="web-auth.1ffe0e40e1c3005e" class="auth-rail">Creator Marketplace</span>
+        <span class="auth-rail">Real people · Naye dost</span>
         <div class="auth-card">
           <header class="auth-head">
             <!-- The graphic carries the welcome line on sign-up, so there is no
                  separate Hindi text row here (README §2). -->
             <img
-              src={publicImage('/auth/suswagatam.png', { width: 998, fit: 'scale-down' })} alt="" width="998" height="668"
+              src={publicImage('/assets/callvaal/scrapbook/hero-collage-moods.png', { width: 600, fit: 'scale-down' })} alt="" width="1254" height="1254"
               fetchpriority="high" style="height:130px;width:auto;"
             />
           </header>
           <SignUpIsland client:load />
         </div>
-        <span data-i18n="web-auth.1dbccd09995a56ce" class="auth-stamp">Homegrown · Heartfelt · Global</span>
+        <span class="auth-stamp">Number kabhi share nahi hota</span>
       </main>
     </div>
   </div>

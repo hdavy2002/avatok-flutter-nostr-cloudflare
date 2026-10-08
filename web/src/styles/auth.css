@@ -376,6 +376,13 @@
   }
   .auth-panel--marigold { background: var(--marigold); }
   .auth-panel--ink { background: var(--ink); }
+  /* [HF-AUTH-ART-1] Hello Fraands panels (cream log in, lilac sign up), plum ink. */
+  .auth-panel--hf-cream { background: #fff1cf; color: #46113e; }
+  .auth-panel--hf-lilac { background: #eee3fb; color: #46113e; }
+  .auth-panel--hf-cream img, .auth-panel--hf-lilac img { max-width: 520px; }
+  .auth-panel--hf-cream .auth-aside, .auth-panel--hf-lilac .auth-aside { color: #46113e; }
+  .auth-panel--hf-cream .auth-rail, .auth-panel--hf-lilac .auth-rail { color: rgba(70, 17, 62, 0.5); }
+  .auth-panel--hf-cream .auth-stamp, .auth-panel--hf-lilac .auth-stamp { border-color: #46113e; color: #46113e; }
   .auth-panel img { display: block; max-width: 470px; width: 100%; height: auto; }
   .auth-panel--ink img { max-width: 330px; }
   .auth-panel .auth-aside { display: block; font-size: 25px; transform: rotate(-3deg); }
@@ -387,7 +394,7 @@
   .auth-wordmark .wm-ava { font-size: 34px; }
   .auth-wordmark .wm-tok { font-size: 33px; }
   .auth-desktop-head { display: flex; flex-direction: column; gap: 8px; }
-  .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; text-align: center; }
+  .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; text-align: center; }
   .auth-h2 { font-family: var(--f-display); font-weight: 600; font-size: 40px; line-height: 1.02; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; white-space: nowrap; text-align: center; }
   .auth-form { padding: 0; gap: 18px; }
   .auth-foot { align-items: flex-start; text-align: left; padding: 0; margin-top: 18px; }
