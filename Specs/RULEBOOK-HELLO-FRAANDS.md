@@ -211,5 +211,6 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | Owner decision: limit numbers (daily minutes with one host, cooling-off gap, daily spending cap) are deliberately left open for now — pages keep saying they will be published before launch. Do not invent numbers. (HF-WELL-5, HF-PAY-7) |
 | 2026-10-08 | Phase 1 public pages for wellbeing done (HELLO-FRAANDS-WELL-1): new /wellbeing page; /hosts/crisis-script expanded into the Welfare & crisis guide (footer label renamed); wellbeing, healthy-use-limit and acknowledgement clauses in terms; not-a-relationship/crisis section in disclaimer (Hindi recording text fixed); wellbeing duties in host agreement; 2 help articles; 4 FAQ entries. Backend items unchanged (TODO). Limit numbers still to be decided by owner. |
 | 2026-10-08 | Rulebook created. Sections 1–7, 9–10 record decisions already made and shipped on the public site (FAQ, policy pages, help centre deployed 2026-10-08). Section 8 (wellbeing) added from the owner's mental-health concern; most items PROPOSED pending owner decisions on numbers. |
