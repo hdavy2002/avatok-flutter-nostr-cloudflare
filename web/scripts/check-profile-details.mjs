@@ -83,7 +83,9 @@ for (const [id, name, rate, languages, portrait] of profiles) {
   assert(main.includes(`/assets/callvaal/scrapbook/${portrait}.png`), `${id}: correct host portrait`);
   const card = cards.find(card => card.includes(`href="${path}"`));
   assert(card, `${id}: homepage discovery card`);
-  assert.equal((card.match(new RegExp(`href="${path}"`, 'g')) || []).length, 1, `${id}: name reaches detail while primary button follows availability`);
+  // [PROFILE-CARD-CHECK-1 2026-10-08] The approved photo cards ([LISTENER-PHOTO-CARDS-1]) link the name AND a
+  // "View full profile" line to the detail page; the primary button still follows availability (next check).
+  assert.equal((card.match(new RegExp(`href="${path}"`, 'g')) || []).length, 2, `${id}: name and View full profile reach detail while primary button follows availability`);
   assert.match(card, /data-preview-action="(?:call|notify)"/, `${id}: truthful preview action`);
   if (id === 'kavya') assert.doesNotMatch(text(main), /kundli|horoscope|tarot|Taare/i, 'Kavya now offers everyday conversation topics');
   assert(card.includes('data-moods=') && text(card).includes(`₹${rate}/min`) && text(card).includes(languages), `${id}: homepage mood/rate/languages agree`);
