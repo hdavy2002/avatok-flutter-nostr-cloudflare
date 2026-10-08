@@ -334,7 +334,7 @@ try {
         await expect(menu).toBeFocused();
       }
       await expect(page.locator('[data-callvaal-footer-group]')).toHaveCount(5);
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(35);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
       for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
         if (!(await group.evaluate(element => element.open))) await group.locator('summary').click();
       }
@@ -421,7 +421,7 @@ try {
         await expect(page.locator('.hf-hindi em')).toBeVisible();
         await expect(page.locator('.hf-date')).toHaveText('Last updated: {{DATE}}');
       }
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(35);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path}: 200% narrow text has no page overflow`);
       if (path === '/faq') {

@@ -1,137 +1,95 @@
 ---
-// [MKT-V2-1 2026-09-27] THE NEW MARKETPLACE (owner-approved "marketplace v2"
-// mockup, formerly pages/marketplace-v2-preview.astro). Replaces the bazaar
-// marketplace (MarketplaceBrowse / ExploreGrid / BazaarHero — deleted).
+// [HELLO-FRAANDS-EXPLORE-1 2026-10-08] /marketplace = "Explore": browse every host with mood,
+// language, price and online filters. Re-skinned for Hello Fraands (owner decision 2026-10-08,
+// rulebook HF-SITE-3). The old puja/havan marketplace (islands/marketplace/MarketplaceV2) is in git
+// history and its directory pages are archived.
 //
 // NOTE FOR AI:
-//  - Public for everyone, logged in or not (SPEC-2026-09-01 A1.1).
-//    /dashboard/marketplace 301s here; /marketplace/page/[page] is the crawlable
-//    directory for the sitemap and is unrelated to this page.
-//  - REAL DATA ONLY. Everything that depends on listings (tabs counts, live strip,
-//    rails, deity/festival/temple counts, the grid, filters, empty state, hero
-//    stats) is islands/marketplace/MarketplaceV2.tsx over /api/explore. Never add
-//    placeholder/sample cards "so it looks full" — that was reverted on 2026-08-29.
-//  - This file renders only the static chrome: hero + search form (a plain GET
-//    form so a search is a shareable URL and works without JS), the intention band
-//    (passed into the island as the `intentions` slot so it sits between the
-//    deity row and the festival panel), the booking steps, promises and the note.
-//  - SSR (prerender = false) because the hero form is pre-filled from ?q=&type=&when=.
-//  - Island props carry RAW /assets paths only — a /cdn-cgi/image URL inside
-//    serialized props fails the built-image-source deploy check (see pages/index.astro).
-//  - Brand is "Saa Thum". Prices are only ever "Starting from ₹X" from the listing.
-export const prerender = false;
+//  - Same people grid, ProfileCard and filter script (lib/notebookHome.ts) as the home page's
+//    #people section, so a card change lands here too. The element ids (#mood-filter, #people …)
+//    are what the script reads — keep them.
+//  - Profiles are the illustrative samples from lib/callvaalHomeReference until the backend lists
+//    real hosts; the sample disclosure must stay.
+export const prerender = true;
+import brandConfig from '../../../Specs/brand.json';
+import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
+import ProfileCard from '../components/callvaal/ProfileCard.astro';
+import ModernIcon from '../components/home/ModernIcon.astro';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
+import '../styles/callvaal-notebook.css';
+import '../styles/hello-fraands-pages.css';
 
-import Base from '../layouts/Base.astro';
-import SiteHeader from '../components/SiteHeader.astro';
-import SiteFooter from '../components/SiteFooter.astro';
-import MarketplaceV2 from '../islands/marketplace/MarketplaceV2';
-import FreeVideosRow from '../islands/freevideos/FreeVideosRow';
-import ExploreGuides from '../islands/guides/ExploreGuides';
-import { API_BASE, publicImage } from '../lib/config';
-import { HOME_HEADER_LINKS } from '../lib/homeNavigation';
-import { rituals, ritualBySlug } from '../lib/ritualGuides';
-import { MARKETPLACE_SEO } from '../lib/seo/catalog';
-import '../styles/saathum-folk.css';
-import '../islands/home/BookNowShelf.css';
-import '../islands/marketplace/MarketplaceV2.css';
-import { BRAND } from '../lib/brand';
-import { loadMarketplaceCards } from '../lib/marketplaceCards';
-import { withDeadline } from '../lib/requestDeadline';
-import type { Card } from '../lib/types';
-
-const params = Astro.url.searchParams;
-const q = (params.get('q') ?? '').trim().slice(0, 80);
-const type = (params.get('type') ?? '').trim().toLowerCase();
-const when = (params.get('when') ?? '').trim().toLowerCase();
-
-const guides = rituals.map(r => ({ title: r.title, href: r.href, image: r.image }));
-const heroImage = ritualBySlug('lakshmi-havan')?.image ?? '/assets/grand/hero.png';
-const typeOptions = [['', 'All categories'], ['havan', 'Havan'], ['puja', 'Puja'], ['satsang', 'Satsang'], ['sermon', 'Sermon'], ['meditation', 'Meditation'], ['festival', 'Festival specials']];
-const whenOptions = [['', 'Any date'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'This weekend'], ['month', 'This month']];
-const trending = ['Lakshmi', 'Navratri', 'Ganesh', 'Mahamrityunjaya', 'Satyanarayan', 'Exams'];
-
-// [MKT-SSR-1 2026-09-30] Fetch the listings HERE so the "Upcoming events" grid is in
-// the HTML. Before this the island had to download + boot and only then start the
-// fetch (0.7 s median, 1.6 s p90 on top), and on slow phones the section sat empty
-// long enough that the owner scrolled past it. Server → api is Cloudflare-internal
-// and fast; if it is not (deadline) or it fails, the island falls back to its
-// client fetch with placeholder cards, exactly as before. Never blocks the page long.
-const SSR_DEADLINE_MS = 1500;
-let initialCards: Card[] | undefined;
-let serverMs: number | undefined;
-{
-  const t0 = Date.now();
-  try {
-    initialCards = await withDeadline((signal) => loadMarketplaceCards(signal), SSR_DEADLINE_MS);
-  } catch (err) {
-    console.warn('[MKT-SSR-1] server listing fetch failed; island will fetch', err instanceof Error ? err.message : String(err));
-  }
-  serverMs = Date.now() - t0;
-}
-const serverNow = Date.now();
-
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+const identity = brandConfig.homepageIdentity;
+const title = `Explore — find someone to talk to | ${identity.name}`;
+const description = 'Browse real people by mood, language and price. Your number stays private. Pay per minute. 18+.';
+const canonical = `https://${identity.domain}/marketplace`;
+const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*·\s*/)).map(s => s.trim()).filter(Boolean))];
 ---
-<Base content={MARKETPLACE_SEO} chrome={false} indiaLandingLanguage={false}>
-  <Fragment slot="head">
-    <meta name="theme-color" content="#fff8e8" />
-    <!-- [MKT-SPEED-1] Open the API connection while the island JS downloads, so the
-         listings fetch skips DNS + TLS setup. -->
-    <link rel="preconnect" href={API_BASE} crossorigin />
-    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
-  </Fragment>
-  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
-    <a class="folk-skip" href="#main-content">Skip to main content</a>
-    <SiteHeader folk indiaLandingLanguage={false} responsiveHome referenceHome links={HOME_HEADER_LINKS} />
-    <main id="main-content" class="mk">
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
+  <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
+  <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
+  <meta property="og:image" content={`https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`} />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:image" content={`https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`} />
+  <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+<body>
+<div class="notebook-site hf-site" data-design="callvaal-scrapbook">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <Header />
+  <main id="main-content" class="hf-content explore-page">
+    <header class="hfp-hero">
+      <div class="hfp-hero-copy">
+        <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">Explore</span></nav>
+        <h1>Apna dost dhundo.</h1>
+        <p class="hf-hindi"><em>Pick a mood, a language and a price — then call. Your number stays private.</em></p>
+        <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har host video-KYC verified</span><span><ModernIcon name="clock" />From ₹5/min</span></div>
+      </div>
+      <div class="hfp-hero-note paper-note" aria-hidden="true">Aaj kis se<br />baat karein?</div>
+    </header>
 
-      <!-- ① HERO + SEARCH ENGINE. Plain GET form: every search is a shareable URL
-           (?q=&type=&when=); the island intercepts it when JS is on. -->
-      <section class="mk-hero" aria-labelledby="mk-title">
-        <div class="mk-hero-inner">
-          <div class="mk-hero-copy">
-            <p class="mk-eyebrow">{BRAND.nameUpper} MARKETPLACE<span id="mk-hero-count"></span></p>
-            <h1 id="mk-title">Search havans, pujas and satsangs. <em>Booked in about a minute.</em></h1>
-            <p class="mk-lead">Led by the priests of Himalayan temples<span id="mk-hero-cities"></span>. A shared sankalp for all who join, and prasad couriered home.</p>
-            <form class="mk-search" action="/marketplace" method="get" role="search" aria-label="Search events">
-              <label class="mk-field mk-field--q">
-                <span>What are you looking for?</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                <input name="q" type="search" value={q} maxlength="80" placeholder="Deity, ritual or a wish — Lakshmi, exams, new home…" autocomplete="off" />
-              </label>
-              <label class="mk-field"><span>Category</span><select name="type">{typeOptions.map(([v, l]) => <option value={v} selected={v === type}>{l}</option>)}</select></label>
-              <label class="mk-field"><span>When</span><select name="when">{whenOptions.map(([v, l]) => <option value={v} selected={v === when}>{l}</option>)}</select></label>
-              <button class="mk-search-btn" type="submit">Search <span aria-hidden="true">→</span></button>
-            </form>
-            <div class="mk-quick" aria-label="Popular searches">
-              <span>Trending:</span>
-              {trending.map(t => <a href={'/marketplace?q=' + encodeURIComponent(t) + '#all-events'}>{t}</a>)}
-            </div>
-          </div>
-          <div class="mk-hero-art">
-            <img class="mk-hero-img" aria-hidden="true" src={publicImage(heroImage, { width: 900, fit: 'scale-down' })} alt="" width="1536" height="1024" fetchpriority="high" decoding="async" />
-            <div id="mk-hero-stats" class="mk-hero-stats-slot"></div>
-          </div>
-        </div>
-      </section>
-      <div class="grand-divider" aria-hidden="true"></div>
+    <section class="explore-moods" aria-labelledby="explore-moods-title">
+      <h2 id="explore-moods-title" class="explore-h2">Aaj kya <em>mood hai?</em></h2>
+      <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/marketplace?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
+    </section>
 
-      <!-- ②–⑨ Data-driven sections (tabs, live strip, rails, deities, festivals,
-           temples, all events, empty state). The intention band is static and
-           slotted in between. -->
-      <MarketplaceV2 client:load guides={guides}
-        initialCards={initialCards} serverNow={serverNow} serverMs={serverMs}
-        initialSearch={Astro.url.search} origin={Astro.url.origin}>
-        <!-- [SAATHUM-FREEVIDEOS-WEB-1] "Free videos" row: its own section right after the Upcoming
-             events grid (MarketplaceV2 renders this slot there). client:visible = loads when scrolled to. -->
-        <FreeVideosRow slot="afterEvents" client:visible surface="marketplace" />
-      </MarketplaceV2>
-      {/* [AUMFE-GUIDES-FRONT-1] "Talk to a guide" (#guides) — admin-preview only, renders nothing for customers. */}
-      <ExploreGuides client:idle />
-      <div class="grand-divider" aria-hidden="true"></div>
+    <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">All hosts · Sample profiles</p><h2 id="people-title">Sab log. <em>Ek jagah.</em></h2>
+      <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{(languages.length ? languages : ['Hindi','English','Kannada','Marathi']).map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[5,10,20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>Show everyone →</button></div>
+      <p class="sr-only" data-favourites-status role="status" aria-live="polite"></p>
+      <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
+      <div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} />)}</div>
+      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Availability, regulars, hours and conversation styles are samples too. Calls and payments are unavailable in this preview.</p>
+    </section>
 
-      <p class="grand-booking-note">{BRAND.name} performs pujas and havans for you. You book and pay online; refunds follow our <a href="/refunds">published policy</a>. Benefits described are those traditionally sought by devotees; {BRAND.name} makes no claims of guaranteed outcomes.</p>
-    </main>
-    <SiteFooter folk indiaLandingLanguage={false} />
-  </div>
-</Base>
+    <section class="explore-help" aria-label="Before you call">
+      <a class="tone-cream" href="/help/getting-started/how-a-call-works"><strong>How a call works</strong><span>The host rings first, then you. Numbers stay hidden.</span></a>
+      <a class="tone-pink" href="/help/calling/price-and-minutes"><strong>What a call costs</strong><span>From ₹5/min, billed per minute you are connected.</span></a>
+      <a class="tone-lilac" href="/safety"><strong>Kaise safe hai</strong><span>AI ends bad calls. No recording. # ends and blocks.</span></a>
+      <a class="tone-paper" href="/hosts/join"><strong>Baatein karo, paise kamao</strong><span>Become a verified host and earn from home.</span></a>
+    </section>
+  </main>
+  <Footer />
+</div>
+<dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>
+<style>
+  .explore-page .trust-chips{margin-top:20px}
+  .explore-moods{margin:clamp(40px,6vw,72px) 0}
+  .explore-h2{margin-bottom:26px}
+  .explore-h2 em,.explore-page .people-section h2 em{color:#A52E67}
+  .explore-page .people-section{margin-top:0}
+  .explore-help{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:clamp(40px,6vw,72px)}
+  .explore-help a{display:grid;gap:8px;padding:22px;border-radius:22px;text-decoration:none;box-shadow:0 5px 16px #46113e0d}
+  .explore-help strong{font-family:Nunito,sans-serif;font-weight:900;font-size:1.25rem}
+  .explore-help span{font-size:var(--text-note);color:#5d3a59}
+  .explore-help a:hover{transform:translateY(-2px)}
+  @media(max-width:1099px){.explore-help{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:599px){.explore-help{grid-template-columns:1fr}}
+</style>
+<script>import '../lib/notebookHome';</script>
+</body>
+</html>
