@@ -1,7 +1,7 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Terms of use" summary="Yeh seva sirf baat-cheet ke liye hai; istemal se pehle niyam padhein." review={true} related={[{"href":"/wallet-terms","label":"Wallet terms"},{"href":"/community-guidelines","label":"Community guidelines"},{"href":"/recording-policy","label":"Recording & consent"},{"href":"/disclaimer","label":"Service disclaimer"},{"href":"/privacy","label":"Privacy policy"}]}>
+<HelloFraandsPage title="Terms of use" summary="Yeh seva sirf baat-cheet ke liye hai; istemal se pehle niyam padhein." review={true} related={[{"href":"/wallet-terms","label":"Wallet terms"},{"href":"/community-guidelines","label":"Community guidelines"},{"href":"/recording-policy","label":"Recording & AI safety"},{"href":"/disclaimer","label":"Service disclaimer"},{"href":"/privacy","label":"Privacy policy"}]}>
 <h2>Preview status</h2>
 <p>These are proposed terms for the planned Hello Fraands calling service. The current website is a preview; a profile or button does not establish that calling, payments, or safety controls are available. Final operator details and reviewed terms must be published before paid use.</p>
 <h2>Operator and eligibility</h2>
@@ -11,11 +11,11 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 <p>The proposed purchase is time talking with a host at the rate shown before the call. This is not a dating, professional advice, therapy, or emergency service. Hosts must not present a conversation as medical, legal, or financial advice.</p>
 <p>The planned flow checks eligibility, host availability, blocks, account restrictions, and at least two minutes of wallet balance at the host's rate. The host receives a private caller introduction and may accept or decline before the caller is dialled. A decline, timeout, or failed connection is not billable.</p>
 <h2>Billing, recording, and conduct</h2>
-<p>Launch billing is planned per started minute after both parties connect. Read the <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refund policy</a>. Every connected call is intended to be recorded with spoken notices to both participants and reviewed after the call; later live moderation is not a current guarantee. See <a href="/recording-policy">recording and consent</a>.</p>
+<p>Launch billing is planned per started minute after both parties connect. Read the <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refund policy</a>. Calls are not recorded and no human listens to live calls; AI follows the conversation live and can end a call that breaks the rules. See <a href="/recording-policy">recording and AI safety</a>.</p>
 <p>Follow the <a href="/community-guidelines">community guidelines</a>: no sexual or abusive talk, solicitation of contact details, or selling. Planned host controls include ending the call with * and ending, blocking, and raising a strike record with #.</p>
 <h2>Restrictions and review</h2>
 <p>The design distinguishes pending reports from confirmed strikes. Three confirmed strikes lead to a ban; AI does not ban on its own. Blocks by three distinct hosts trigger a freeze pending review, and two #-ended calls within 24 hours trigger a 24-hour suspension. A mention of self-harm is routed for welfare review, never a strike by itself.</p>
-<p>A block or moderation cut still bills connected time under the started-minute rule and does not itself forfeit the remaining wallet. Proposed forfeiture on a confirmed ban requires final legal review and a grievance process before launch. You may request review of an incorrect restriction through the planned <a href="/grievance">grievance process</a>.</p>
+<p>A block or safety cut still bills connected time under the started-minute rule. Calls are not refundable. Wallet balance is never forfeited: a banned account cannot make calls, but can still sign in and withdraw its remaining balance to UPI. You may request review of an incorrect restriction through the planned <a href="/grievance">grievance process</a>.</p>
 <h2>Limits and final terms</h2>
 <p>No particular conversation outcome, uninterrupted connection, or prevention of every harmful interaction is promised. Final terms must identify the operator, effective date, applicable legal requirements, complaint routes, and account-closure arrangements. Nothing on this preview is intended to remove rights that cannot lawfully be excluded.</p>
 </HelloFraandsPage>

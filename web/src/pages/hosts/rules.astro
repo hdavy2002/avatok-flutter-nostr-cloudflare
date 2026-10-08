@@ -2,7 +2,7 @@
 import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
-<HelloFraandsPage title="Host rules" summary="Call lena aapki marzi hai; hadon ka dhyaan rakhein." review={true} related={[{href:'/hosts/agreement',label:'Host agreement'},{href:'/recording-policy',label:'Recording & consent'},{href:'/hosts/crisis-script',label:'Crisis script'}]}>
+<HelloFraandsPage title="Host rules" summary="Call lena aapki marzi hai; hadon ka dhyaan rakhein." review={true} related={[{href:'/hosts/agreement',label:'Host agreement'},{href:'/recording-policy',label:'Recording & AI safety'},{href:'/hosts/crisis-script',label:'Crisis script'}]}>
 <p><strong>Preview:</strong> these rules explain the planned calling flow. The keypad, dashboard and WhatsApp controls below are planned, not active preview tools.</p>
 <h2>Choose whether to take each call</h2>
 <p>The host's phone will ring first. A private announcement will give the caller's handle, how many times they have called you before, and your saved caller note if you have one. Press <strong>1 to accept</strong> or <strong>2 to decline</strong>. No input within 10 seconds is a decline. The caller is dialled only after you accept; declined or unconnected calls are not billed to the caller.</p>
@@ -15,8 +15,8 @@ export const prerender = true;
 <p>These keys are for the host's phone during the connected call. Either participant can also hang up normally. After a call, the planned host WhatsApp message shows duration and earnings: reply <strong>1 to block</strong>, <strong>2 to report</strong>, or <strong>3 to tag</strong>. The dashboard is planned to offer the same actions. Do not put sensitive personal details in caller notes.</p>
 <h2>Distress is not misconduct</h2>
 <p>If someone mentions self-harm, use the <a href="/hosts/crisis-script">crisis script</a> to direct them to appropriate support. Do not use the # end-and-block key solely because they are distressed. Such mentions are for welfare review only and must never earn a strike. Do not promise emergency dispatch or a response from the platform.</p>
-<h2>Recording and review</h2>
-<p>The plan records every connected call with spoken notices to both participants before connection. Decline if you do not agree. Do not make your own recording. Every recording is planned for automated post-call review, with staff reviewing flags; live monitoring is a later phase. Read <a href="/recording-policy">Recording &amp; consent</a>.</p>
+<h2>AI safety, no recording</h2>
+<p>Calls are not recorded and no human listens. AI follows every live call, ends abusive or scam calls automatically and flags them for review. Do not make your own recording. We train hosts regularly to spot scam and spam callers. Read <a href="/recording-policy">Recording &amp; AI safety</a>.</p>
 <h2>Account action</h2>
 <p>Host enforcement and earnings terms remain under review in the <a href="/hosts/agreement">host agreement</a>; this preview does not promise a warning sequence or automatic loss of host earnings. See <a href="/grievance">Grievance redressal</a> for the published route to raise a concern.</p>
 </HelloFraandsPage>

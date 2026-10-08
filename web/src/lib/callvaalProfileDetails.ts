@@ -45,7 +45,7 @@ const previewDisclosure = 'Preview only. Calls, bookings and payments are unavai
 const preparationTips: ProfileTip[] = [
   { icon: 'chat', title: 'Just a conversation', text: 'Talk and share at your own pace. No professional advice or promised results.' },
   { icon: 'user', title: 'Keep it respectful', text: '18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.' },
-  { icon: 'notes', title: 'Know before you start', text: 'Calls are recorded with consent for safety and kept for 30 days. In crisis, call Tele-MANAS 14416 or 112.' },
+  { icon: 'notes', title: 'Know before you start', text: 'Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.' },
 ];
 const benefits: ProfileBenefit[] = [
   { icon: 'lock', title: 'Your number stays private', text: `Calls are bridged through ${brandConfig.homepageIdentity.name}` },

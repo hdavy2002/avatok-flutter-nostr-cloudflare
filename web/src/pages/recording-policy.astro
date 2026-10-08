@@ -1,21 +1,19 @@
 ---
+import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Recording & consent" summary="Call se pehle recording aur review ka plan samjhein." review={true} related={[{href:'/privacy',label:'Privacy policy'},{href:'/terms',label:'Terms of use'},{href:'/grievance',label:'Grievance redressal'}]}>
-<p><strong>Preview:</strong> this is the planned recording policy. The preview does not place or record calls. Recording, storage, deletion and moderation controls must be implemented and verified before calling launches.</p>
-<h2>Notice before you talk</h2>
-<p>Every connected call is planned to be recorded. A spoken recording notice must be given to both the host and caller before their conversation is connected. The host hears a private caller announcement and accepts first; the caller is dialled only after that acceptance. If you do not agree to recording, decline or hang up before the conversation. There is no planned unrecorded-call option.</p>
-<p>Acknowledging a notice does not make this a confidential counselling service. Consider what you share, including information about other people. Signup acknowledgement and the call notices are part of the planned consent flow; final wording and legal requirements remain under review.</p>
-<h2>What the recording is used for</h2>
-<p>The launch plan sends <strong>every recording</strong> through automated transcription and post-call safety checks, not just a random sample. Checks may flag abuse, sexual misconduct, contact solicitation, selling or inappropriate advice. Authorised reviewers assess flagged excerpts and clips before confirming strikes. AI does not independently ban accounts.</p>
-<p>Women-lane review must recognise ordinary health discussion in context. Mentions of self-harm are for welfare follow-up only, never a strike. Automated checks can miss context or flag something incorrectly; a review is not proof of misconduct.</p>
-<p>Live audio monitoring, automated warnings and call cuts are planned for a later phase. Post-call review cannot prevent harm during a call. Either person can hang up; hosts are planned to have keypad end and block controls.</p>
-<h2>Planned storage and retention</h2>
-<p>The specification proposes audio retention of <strong>30 days by default</strong>, configurable before launch, and call metadata retention of <strong>at least 180 days</strong>. Metadata includes the call ID, participants, timing, duration, connection status and billing information. These are proposed settings, not verified live deletion guarantees or a statement of the law.</p>
-<p>Transcripts, flagged excerpts and review clips are also part of the proposed review process. Their retention and any preservation exceptions must be documented with the final privacy policy before launch. Do not assume all copies disappear when the default audio period ends.</p>
-<h2>Who processes the audio</h2>
-<p>The planned telephony, transcription and moderation services will process call audio or transcripts, and authorised staff will review safety flags. The final provider disclosures, staff access controls and handling of lawful requests must be confirmed in the <a href="/privacy">privacy policy</a>. Recordings are not intended to be public or a way for participants to obtain each other's contact details.</p>
-<h2>Ask about a call record</h2>
-<p>See <a href="/grievance">Grievance redressal</a> for the published contact route and its current availability. Once calls are live, include the call ID and date in a request. Identity checks, the other person's privacy and applicable restrictions may affect access; a request does not guarantee a recording download. Do not send an Aadhaar number or identity document by email.</p>
-<p>Do not make your own recording of the other person. Read the <a href="/community-guidelines">community guidelines</a>.</p>
+<HelloFraandsPage title="Recording & AI safety" summary="Hum call record nahi karte. AI live dhyaan rakhta hai." review={true} related={[{href:'/privacy',label:'Privacy policy'},{href:'/faq#ai-safety',label:'AI safety FAQs'},{href:'/grievance',label:'Grievance redressal'}]}>
+<h2>We do not record calls</h2>
+<p>{BRAND.name} does not record calls and does not store call audio. There is no recording to download, share, leak or listen to later — for you, for the other person or for us.</p>
+<h2>No human listens</h2>
+<p>No person at {BRAND.name} monitors or listens to live calls. We are a switch: our system rings the host, and once the host accepts it rings the caller and joins the two calls through a platform number, so neither person sees the other's number.</p>
+<h2>How AI keeps the call safe</h2>
+<p>While a call is live, our AI follows the conversation in real time. It does not react to single words or keyword lists — it understands the <strong>intention</strong> of the caller. If it detects harassment, abuse, threats, sexual pressure, or a scam such as asking for an OTP, UPI PIN, card or bank details, it ends the call automatically and flags the account.</p>
+<p>The AI looks at the conversation as it happens and does not keep a recording. In the women-only space it is tuned to recognise ordinary health and intimate-wellness discussion, so describing a symptom or a bad experience is not treated as misconduct. A mention of self-harm is never a strike.</p>
+<h2>What we keep about a call</h2>
+<p>Only the records needed to run the service, bill fairly and handle complaints: the participants (as account IDs), connection and end times, duration, rate, charge, and whether the call was ended by a person or by a safety action. No audio, no transcript.</p>
+<h2>Strikes and reviews</h2>
+<p>An AI safety action ends the call and creates a flag. Our trust &amp; safety team reviews flags and reports before confirming a strike; three confirmed strikes means a permanent ban, and serious cases such as threats, sexual harassment or fraud can be banned straight away. If you think a call was ended or an account restricted unfairly, use <a href="/grievance">grievance redressal</a>.</p>
+<h2>Your part</h2>
+<p>Either person can hang up at any time, and pressing <strong>#</strong> ends the call and blocks the other person. Do not make your own recording of the other person — it breaks the <a href="/community-guidelines">community guidelines</a>. Number masking hides your number, not what you say, so keep your address, workplace, social accounts, OTPs and bank details to yourself.</p>
 </HelloFraandsPage>

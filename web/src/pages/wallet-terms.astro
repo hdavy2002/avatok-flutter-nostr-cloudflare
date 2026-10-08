@@ -1,18 +1,19 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Payment & wallet terms" summary="Wallet ka balance sirf platform par baat karne ke liye hai." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
-<h2>Planned wallet, not an active payment offer</h2>
-<p>The website is a preview. Top-ups, paid calls, settlement, and wallet safeguards described here are planned; do not treat example balances or rates as a payment confirmation. Final payment and wallet terms must be approved and shown before accepting money.</p>
+<HelloFraandsPage title="Payment & wallet terms" summary="Wallet ka balance platform par baat karne ke liye hai — aur bacha hua paisa UPI par wapas." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
+<h2>Prepaid talk-time wallet</h2>
+<p>Callers top up a prepaid wallet with UPI and spend it on connected call minutes. The wallet is for calls on this platform only; it is not a bank account and earns no interest.</p>
 <h2>Rate and minimum balance</h2>
-<p>The launch design uses a host-set per-minute rate with a general-lane floor of ₹5/minute; the women-only lane may have a separate floor. The chosen host's actual rate must be shown before a call. A caller needs at least two minutes of balance at that rate to start.</p>
+<p>Each host sets a per-minute rate, from ₹5/minute in the general space; the women-only space may have a separate minimum. The host's actual rate is shown before you call. You need at least two minutes of balance at that rate to start a call.</p>
 <h2>When charges start</h2>
-<p>Billing starts only when host and caller are connected, not while a phone rings or the host decides. Launch billing is per started minute: for example, 61 connected seconds at ₹5/minute costs ₹10. Declines, timeouts before connection, and failed bridges cost nothing.</p>
-<p>The planned maximum duration is the number of whole minutes the available balance buys, capped at 60 minutes per call. A warning is planned 60 seconds before this limit, followed by automatic disconnection at the limit. These controls require backend implementation and testing.</p>
+<p>Billing starts only when host and caller are connected, not while a phone rings or the host decides. Billing is per started minute: for example, 61 connected seconds at ₹5/minute costs ₹10. Declines, timeouts before connection and failed connections cost nothing.</p>
+<p>A call can last as many whole minutes as your balance buys, up to 60 minutes per call. You hear a warning about 60 seconds before the limit, then the call ends automatically. Your balance can never go below zero.</p>
 <h2>Settlement and host earnings</h2>
-<p>Each call is intended to settle once against its connection and end records. The planned platform share per minute is ₹2 plus 40% of the amount above ₹2. At ₹5/minute, this is ₹3.20 for the platform and ₹1.80 for the host. The specification includes 18% GST within the platform share; final tax treatment and receipts require review before launch.</p>
-<p>Host earnings and caller prepaid balances are separate records. Top-up methods, payout eligibility and timing, expiry, promotional credits, and unused-balance withdrawal or refund conditions are not finalised by this preview.</p>
-<h2>Ended calls, restrictions, and disputes</h2>
-<p>A host block or moderation cut bills connected time under the same started-minute rule; it does not itself forfeit unused balance. The specification proposes forfeiture only after a ban based on three confirmed strikes. That proposal remains subject to legal review and a complaint process, not an automatic right asserted by this preview.</p>
-<p>See <a href="/refunds">refunds and billing disputes</a> for missing credits or incorrect charges, and <a href="/grievance">grievance redressal</a> for review of account restrictions.</p>
+<p>Each call settles once against its connection and end records. The platform share per minute is ₹2 plus 40% of the amount above ₹2, with 18% GST included in the platform share. At ₹5/minute, this is ₹3.20 for the platform and ₹1.80 for the host. Host earnings are credited after each completed call and withdrawn to a UPI ID in the host's own name.</p>
+<h2>Withdrawing your balance</h2>
+<p>Unused wallet balance belongs to you. You can transfer it back to your own UPI ID from your dashboard at any time. Calls themselves are not refundable — see the <a href="/refunds">refund policy</a>.</p>
+<h2>Ended calls, bans and disputes</h2>
+<p>A call ended by either person, by # or by a safety action bills connected time under the same started-minute rule. If an account is banned, it can no longer make or receive calls, but the owner can still sign in to the dashboard and withdraw the remaining wallet balance to their UPI ID. Wallet balance is never forfeited as a penalty.</p>
+<p>See <a href="/refunds">refunds and billing errors</a> for incorrect charges, and <a href="/grievance">grievance redressal</a> to ask for a review of an account restriction.</p>
 </HelloFraandsPage>
