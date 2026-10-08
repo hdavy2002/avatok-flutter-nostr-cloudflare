@@ -1,40 +1,60 @@
 ---
-// [HELLO-FRAANDS-HELP-1 2026-10-08] Help centre LANDING in the current-brand
-// notebook look (same fonts, palette and paper cards as the home page and /faq).
-// Replaces the Aum Fe "help skin v2" (temple art, folk chrome).
+// [WEB-HELP-SKIN-2 2026-09-27] Help centre LANDING, rebuilt to the owner-approved
+// "help skin v2" mockup (design/help-centre/saathum-help-skin-v2.src.html, view
+// "Help home"). Owner rule: an approved mockup is reproduced EXACTLY, including
+// on large screens. Replaces the [WEB-HELP-2] zine landing (HelpHero /
+// HelpTiles / HelpFaqStrip and the `.help-page` token block — all deleted).
 //
 // NOTE FOR AI:
-//  - Base with the default chrome renders the shared current-brand header/footer.
-//    Page CSS: styles/hello-fraands-help.css, scoped under `.hf-help`.
-//  - REAL CONTENT ONLY, from lib/help.ts (sections, articles, each article's faq[]).
-//  - Every live section id is an element id here (the panels) — layouts/Help.astro's
-//    breadcrumb links to /help#<section>, and scripts/check-help.mjs asserts every
-//    /help#x link resolves to an id on this page.
-//  - The ONE FAQPage JSON-LD block of the help centre lives here; articles must
-//    never emit it (check-help.mjs).
-//  - Emails are plain text "support (@) <domain>", never mailto. Brand from BRAND only.
+//  - Same shell as pages/marketplace.astro: Base chrome={false}, the
+//    `.folk-site[data-design="reference-v5"]` wrapper carrying
+//    --folk-border-url, SiteHeader/SiteFooter `folk`, Comfortaa+Nunito,
+//    theme-color #fff8e8. Page CSS: styles/help-skin.css (scoped under `.hs`).
+//  - REAL CONTENT ONLY, from lib/help.ts. The mockup renamed "For creators" to
+//    "Sankalp & prasad" and invented article titles, counts and a ₹ price —
+//    none of that is used. Tiles/panels = live sections (drafts excluded by
+//    getHelpTree); FAQ cards = real `faq[]` items; hero stats = real counts.
+//  - Tile grid is `repeat(sections + 1)` (the +1 is the contact tile) so a
+//    smaller number of live sections widens the tiles instead of leaving an
+//    empty column.
+//  - Every section id is an element id here (the panels) — layouts/Help.astro's
+//    breadcrumb and rail link to /help#<section>, and check-help.mjs asserts
+//    every /help#x link resolves to an id on this page.
+//  - The ONE FAQPage JSON-LD block of the help centre lives here (unchanged
+//    since [WEB-HELP-1]); articles must never emit it (check-help.mjs).
+//  - Emails are plain text "name (@) <domain>", never mailto. Brand comes from BRAND only.
+//  - [HELLO-FRAANDS-HELP-RESTORE-1 2026-10-08] Restored for Hello Fraands: shared header/footer, Hello Fraands art and copy.
 export const prerender = true;
 
 import Base from '../../layouts/Base.astro';
+// [HELLO-FRAANDS-HELP-RESTORE-1] Shared site header/footer replace the old folk chrome.
+import SiteHeader from '../../components/callvaal/Header.astro';
+import SiteFooter from '../../components/callvaal/Footer.astro';
 import HelpSearch from '../../components/HelpSearch.astro';
 import { getHelpTree, helpUrl, type HelpEntry, type HelpSectionId } from '../../lib/help';
+import { publicImage } from '../../lib/config';
 import { ORG } from '../../lib/org';
 import { HELP_SEO } from '../../lib/seo/catalog';
-import { readMinutes, countLabel } from '../../components/help/helpSkin';
-import '../../styles/hello-fraands-help.css';
+import {
+  SECTION_ART, HERO_ART, SECTION_PILL, sectionMark, markSvg, MARK_TICKET, MARK_SEARCH,
+  readMinutes, countLabel,
+} from '../../components/help/helpSkin';
+import '../../styles/saathum-folk.css';
+import '../../styles/help-skin.css';
 import { BRAND } from '../../lib/brand';
 
 const tree = await getHelpTree();
 const allEntries = tree.flatMap((s) => s.entries);
 const articleCount = allEntries.length;
 
-type FaqItem = { q: string; a: string; entry: HelpEntry; sectionId: HelpSectionId; section: string; tone: string };
+type FaqItem = { q: string; a: string; entry: HelpEntry; sectionId: HelpSectionId; section: string };
 const faqItems: FaqItem[] = tree.flatMap((section) =>
   section.entries.flatMap((entry) =>
-    entry.data.faq.map((f) => ({ ...f, entry, sectionId: section.id, section: section.label, tone: section.tone })),
+    entry.data.faq.map((f) => ({ ...f, entry, sectionId: section.id, section: section.label })),
   ),
 );
 
+// [WEB-HELP-1, kept verbatim] The ONLY FAQPage JSON-LD block in the help centre.
 const faqLd =
   faqItems.length > 0
     ? {
@@ -49,109 +69,152 @@ const faqLd =
       }
     : null;
 
-// Six cards, the first question of each section's articles taken round-robin,
-// so the band shows every topic rather than six answers from one article.
+// Six FAQ cards, taken round-robin across the live sections (each section's
+// items in their own order) so the band shows every topic, not six answers
+// from the first article.
 const bySection = tree.map((s) => faqItems.filter((f) => f.sectionId === s.id));
 const faqCards: FaqItem[] = [];
 for (let round = 0; faqCards.length < 6 && bySection.some((l) => l.length > round); round++) {
   for (const list of bySection) if (list[round] && faqCards.length < 6) faqCards.push(list[round]);
 }
 
-// "People ask about" chips — short labels onto real articles; a chip whose
-// article is missing simply disappears.
+// "People ask about:" chips — short labels onto real articles; a chip whose
+// article is archived simply disappears.
 const QUICK: { id: string; label: string }[] = [
   { id: 'safety-and-privacy/your-number-stays-private', label: 'Is my number private?' },
   { id: 'safety-and-privacy/spot-otp-and-bank-scams', label: 'OTP & bank scams' },
   { id: 'calling/price-and-minutes', label: 'How much does a call cost?' },
   { id: 'wallet-and-payments/withdraw-your-balance', label: 'Take my balance out' },
   { id: 'for-women/women-only-space', label: 'Women-only space' },
-  { id: 'hosts/host-earnings', label: 'How much do hosts earn?' },
 ];
 const quick = QUICK.flatMap((c) => {
   const e = allEntries.find((x) => x.id === c.id);
   return e ? [{ href: helpUrl(e), label: c.label }] : [];
 });
+
+const n = tree.length;
+// [HELLO-FRAANDS-HELP-RESTORE-1] 7 topics + contact = 8 tiles → 4 per row; panels max 4 per row.
+const gridVars = `--hs-tiles:${n + 1 > 6 ? 4 : n + 1};--hs-panels:${Math.min(n, 4)};--hs-panels-md:${Math.min(n, 2)}`;
 ---
-<Base content={HELP_SEO} indiaLandingLanguage={false}>
+<Base content={HELP_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#46113e" />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
-  <main id="main-content" class="hf-help hf-help-home">
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="hs hs-home" style={gridVars}>
 
-    <section class="hfh-hero" aria-labelledby="help-title">
-      <p class="hfh-kicker">{BRAND.name} help centre · {articleCount} articles</p>
-      <h1 id="help-title">Kaise madad <mark><em>karein?</em></mark></h1>
-      <p class="hfh-lead">Simple answers about calls, your private number, safety, the wallet and hosting. Written in easy English, with examples.</p>
-      <HelpSearch id="hero" placeholder="Try “OTP”, “refund”, “number”, “earn”…" />
-      {quick.length > 0 && (
-        <div class="hfh-quick" aria-label="Popular questions">
-          <span>People ask:</span>
-          {quick.map((c) => <a href={c.href}>{c.label}</a>)}
+      <!-- ① Hero + search — the marketplace hero pattern, one wide field -->
+      <section class="hs-hero" aria-labelledby="help-title">
+        <div class="hs-hero-inner">
+          <div>
+            <p class="hs-eyebrow">{BRAND.name} help centre</p>
+            <h1 id="help-title">Namaste. How can we <em>help you</em> today?</h1>
+            <p class="hs-hero-lead">Calls, your private number, safety, the wallet or becoming a host. Clear, simple answers in easy English, with examples.</p>
+            <HelpSearch id="hero" />
+            {quick.length > 0 && (
+              <div class="hs-quick" aria-label="Popular questions">
+                <span>Popular questions:</span>
+                {quick.map((c) => <a href={c.href}>{c.label}</a>)}
+              </div>
+            )}
+          </div>
+          <div class="hs-hero-art">
+            <img class="hs-hero-img" src={publicImage(HERO_ART, { width: 900, fit: 'scale-down' })} alt="" width="720" height="480" fetchpriority="high" decoding="async" />
+            <div class="hs-hero-stats" aria-label="Help centre at a glance">
+              <div><b>{articleCount}</b><span>Articles</span></div>
+              <div><b>{n}</b><span>Topics</span></div>
+              <div><b>18+</b><span>Adults only</span></div>
+            </div>
+          </div>
         </div>
-      )}
-      <div class="hfh-note paper-note" aria-hidden="true">Koi sawaal<br />chhota nahi hota.</div>
-    </section>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
 
-    <section class="hfh-topics" aria-labelledby="topics-title">
-      <h2 id="topics-title" class="hfh-h2">Choose a <em>topic</em></h2>
-      <div class="hfh-tile-grid">
-        {tree.map((s) => (
-          <a class={`hfh-tile tone-${s.tone}`} href={`#${s.id}`}>
-            <span class="hfh-tile-icon" aria-hidden="true">{s.icon}</span>
-            <strong>{s.label}</strong>
-            <em>{s.hindi}</em>
-            <small>{countLabel(s.entries.length)}</small>
+      <!-- ② Pick a topic — one tile per live section + the contact tile -->
+      <section class="hs-topics hs-wrap" aria-labelledby="topics-title">
+        <div class="grand-section-heading">
+          <h2 id="topics-title"><span aria-hidden="true">✽</span>Choose a topic<span aria-hidden="true">✽</span></h2>
+          <a class="hs-link" href="#every-article">Every article <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="hs-tile-grid">
+          {tree.map((s) => (
+            <a class="hs-tile" href={`#${s.id}`}>
+              <img src={publicImage(SECTION_ART[s.id], { width: 420, fit: 'scale-down' })} alt="" width="180" height="180" loading="lazy" decoding="async" />
+              <div class="hs-tile-copy"><h3>{s.label}<small>{countLabel(s.entries.length)}</small></h3><span class="hs-arrow" aria-hidden="true">↗</span></div>
+            </a>
+          ))}
+          <a class="hs-tile hs-tile--contact" href="/contact">
+            <img class="hs-diya" src="/assets/callvaal/notebook/favicon.svg" alt="" width="128" height="128" loading="lazy" decoding="async" />
+            <div class="hs-tile-copy"><h3>Still need help? Email us<small>A real person replies</small></h3><span class="hs-arrow" aria-hidden="true">↗</span></div>
           </a>
-        ))}
-        <a class="hfh-tile hfh-tile--faq" href="/faq">
-          <span class="hfh-tile-icon" aria-hidden="true">?</span>
-          <strong>Quick FAQs</strong>
-          <em>Chhote sawaal, seedhe jawaab</em>
-          <small>Short answers on one page</small>
-        </a>
-      </div>
-    </section>
+        </div>
+      </section>
 
-    {faqCards.length > 0 && (
-      <section class="hfh-faq" id="faq" aria-labelledby="faq-title">
-        <h2 id="faq-title" class="hfh-h2">What people ask <em>most</em></h2>
-        <div class="hfh-faq-grid">
-          {faqCards.map((f) => (
-            <article class="hfh-card">
-              <span class={`hfh-pill tone-${f.tone}`}>{f.section}</span>
-              <h3>{f.q}</h3>
-              <p>{f.a}</p>
-              <div class="hfh-card-foot"><span>Read in {readMinutes(f.entry)} min</span><a href={helpUrl(f.entry)} aria-label={`Read more: ${f.entry.data.title}`}>Read more →</a></div>
-            </article>
+      <!-- ③ Questions devotees ask most — plum band, white cards, real faq[] -->
+      {faqCards.length > 0 && (
+        <section class="hs-faq" id="faq" aria-labelledby="faq-title">
+          <div class="hs-wrap">
+            <div class="grand-section-heading">
+              <h2 id="faq-title"><span aria-hidden="true">✽</span> What people ask us most</h2>
+              <a class="hs-link" href="#every-article">All articles <span aria-hidden="true">→</span></a>
+            </div>
+            <div class="hs-faq-grid">
+              {faqCards.map((f) => (
+                <article class="hs-card">
+                  <div class="hs-card-head"><span class:list={['hs-pill', SECTION_PILL[f.sectionId]]}>{f.section}</span><Fragment set:html={sectionMark(f.sectionId)} /></div>
+                  <div class="hs-card-body">
+                    <h3>{f.q}</h3>
+                    <p>{f.a}</p>
+                    <div class="hs-card-foot"><span>Read in {readMinutes(f.entry)} min</span><a class="hs-read" href={helpUrl(f.entry)} aria-label={`Read more: ${f.entry.data.title}`}>Read more →</a></div>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <p class="hs-faq-note">These answers explain how {BRAND.name} works. Conversations are friendly talk, not medical, legal or money advice, and no outcome is promised.</p>
+          </div>
+        </section>
+      )}
+
+      <!-- ④ Every article, by topic — white panels; each carries its section id -->
+      <section class="hs-all hs-wrap" id="every-article" aria-labelledby="all-title">
+        <div class="grand-section-heading">
+          <h2 id="all-title"><span aria-hidden="true">✽</span> All articles, grouped by topic</h2>
+        </div>
+        <div class="hs-panel-grid">
+          {tree.map((s) => (
+            <div class="hs-panel" id={s.id}>
+              <div class="hs-panel-top"><img src={publicImage(SECTION_ART[s.id], { width: 96, fit: 'scale-down' })} alt="" width="46" height="46" loading="lazy" decoding="async" /><h3>{s.label}<small>{countLabel(s.entries.length)}</small></h3></div>
+              <ul>
+                {s.entries.map((e) => <li><a href={helpUrl(e)}>{e.data.title}<i aria-hidden="true">→</i></a></li>)}
+              </ul>
+            </div>
           ))}
         </div>
       </section>
-    )}
 
-    <section class="hfh-all" id="every-article" aria-labelledby="all-title">
-      <h2 id="all-title" class="hfh-h2">All articles, <em>by topic</em></h2>
-      <div class="hfh-panel-grid">
-        {tree.map((s) => (
-          <div class={`hfh-panel tone-${s.tone}`} id={s.id}>
-            <div class="hfh-panel-top">
-              <span class="hfh-panel-icon" aria-hidden="true">{s.icon}</span>
-              <div><h3>{s.label}</h3><p>{s.blurb}</p></div>
-            </div>
-            <ul>
-              {s.entries.map((e) => <li><a href={helpUrl(e)}>{e.data.title}<i aria-hidden="true">→</i></a></li>)}
-            </ul>
+      <!-- ⑤ Didn't find it? — the landing's sage band -->
+      <section class="hs-stuck" aria-labelledby="stuck-title">
+        <div class="hs-stuck-inner">
+          <div class="hs-stuck-art"><img src={publicImage('/assets/callvaal/scrapbook/neha-tea.png', { width: 640, fit: 'scale-down' })} alt="" width="280" height="187" loading="lazy" decoding="async" /></div>
+          <div class="hs-stuck-copy">
+            <h2 id="stuck-title">No answer here?<br />Ask a real person.</h2>
+            <p>Email us in Hindi or English. For a call or billing question, add your call ID, date and time. Never send an OTP or UPI PIN — we will never ask for them.</p>
+            <a class="hs-btn" href="/contact">Contact the team <span aria-hidden="true">→</span></a>
           </div>
-        ))}
-      </div>
-    </section>
+          <ul class="hs-ways" aria-label="Ways to reach us">
+            <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
+            <li><Fragment set:html={markSvg(MARK_SEARCH, '')} /><div><b>Contact form</b><span>Rather use a form? Our <a href="/contact">contact page</a> goes to the same people.</span></div></li>
+            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#d87332"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff6e6"/>', '')} /><div><b>Grievance Redressal</b><span>Support could not resolve it? See our <a href="/grievance">grievance redressal</a> page.</span></div></li>
+          </ul>
+        </div>
+      </section>
 
-    <section class="hfh-cta" aria-labelledby="stuck-title">
-      <h2 id="stuck-title">Jawaab nahi mila?</h2>
-      <p>Write to us in Hindi or English and a real person will reply. Add your call ID, date and time if it is about a call. Never send an OTP, UPI PIN or card details — we will never ask for them.</p>
-      <p class="hfh-cta-mail">Email: <code>support (@) {BRAND.domain}</code></p>
-      <div class="hfh-cta-actions"><a class="hfh-btn hfh-btn--primary" href="/report">Report a problem</a><a class="hfh-btn hfh-btn--ghost" href="/grievance">Grievance redressal</a></div>
-      <p class="hfh-crisis">In danger? Call <a href="tel:112">112</a>. Need mental-health support? Call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7).</p>
-    </section>
-  </main>
+      <p class="grand-booking-note">{BRAND.name} connects you with real people for friendly conversation, paid per minute. Calls are not refunded; see our <a href="/refunds">refund policy</a>. Not medical, legal or money advice. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
+    </main>
+    <SiteFooter />
+  </div>
 </Base>

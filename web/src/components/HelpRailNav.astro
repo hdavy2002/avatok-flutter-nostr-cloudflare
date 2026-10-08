@@ -1,0 +1,36 @@
+---
+// [WEB-HELP-1 2026-09-11] Section/article nav for help articles.
+// [WEB-HELP-SKIN-2 2026-09-27] Re-skinned to the help skin v2 mockup's left
+// rail: one white group per live section with its tile art, the current
+// section open with the current article in teal, every other section closed
+// (its header links to that section's panel on /help). At <=1100px the CSS
+// turns the rail into a horizontal row of section chips (mockup behaviour).
+// Styling: styles/help-skin.css (`.hs-rail*`).
+import { publicImage } from '../lib/config';
+import { helpUrl, type HelpEntry, type HelpTreeSection } from '../lib/help';
+import { SECTION_ART } from './help/helpSkin';
+
+export interface Props {
+  tree: HelpTreeSection[];
+  entry: HelpEntry;
+}
+
+const { tree, entry } = Astro.props;
+---
+
+<nav class="hs-rail" aria-label="Help topics">
+  {tree.map((s) => {
+    const open = s.id === entry.data.section;
+    const art = <img src={publicImage(SECTION_ART[s.id], { width: 96, fit: 'scale-down' })} alt="" width="32" height="32" decoding="async" />;
+    return (
+      <div class:list={['hs-rail-group', { 'is-closed': !open }]}>
+        <a class="hs-rail-head" href={`/help#${s.id}`}>{art}{s.label}</a>
+        <ul>
+          {s.entries.map((e) => (
+            <li><a href={helpUrl(e)} aria-current={e.id === entry.id ? 'page' : undefined}>{e.data.title}</a></li>
+          ))}
+        </ul>
+      </div>
+    );
+  })}
+</nav>

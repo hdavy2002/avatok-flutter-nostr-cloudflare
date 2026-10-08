@@ -1,0 +1,80 @@
+---
+// [WEB-HELP-2 2026-09-11] "On this page" anchor list for a help article.
+// [WEB-HELP-SKIN-2 2026-09-27] Re-skinned to the help skin v2 mockup's right
+// column (`.toc`): small caps label, gold left rule, current heading in teal
+// with a red rule. Wraps a sticky `.hs-toc` box whose default slot carries the
+// teal "Ready to book?" nudge (Help.astro fills it), so the list and the nudge
+// stick together exactly as in the mockup. Depth-2 headings only; the list is
+// omitted under 2 of them, the nudge still shows. Styling: styles/help-skin.css.
+// The first link is marked current at render (as the mockup draws it); the
+// scroll-spy below takes over once a heading is observed.
+export interface Props {
+  headings: { depth: number; slug: string; text: string }[];
+}
+
+const { headings } = Astro.props;
+const items = headings.filter((h) => h.depth === 2);
+---
+
+<div class="hs-toc">
+  {items.length >= 2 && (
+    <nav aria-label="On this page">
+      <span class="hs-toc-label">On this page</span>
+      <ol>
+        {items.map((h, i) => (
+          <li>
+            <a href={`#${h.slug}`} data-help-otp-link data-slug={h.slug} aria-current={i === 0 ? 'location' : undefined}>{h.text}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )}
+  <slot />
+</div>
+
+<script>
+  // [WEB-HELP-2 2026-09-11] Progressive scroll-spy: highlights the heading
+  // currently in view. No analytics — purely visual, mirrors the mockup's
+  // "current section" dot. Astro dedupes this identical inline module script
+  // across the two HelpOnThisPage instances a page can render (the 1024-1199
+  // <details> copy and the >=1200 sidebar copy), so it runs once and updates
+  // both sets of links together even though only one is ever visible via CSS.
+  function initHelpOnThisPage() {
+    const links = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>('[data-help-otp-link]'),
+    );
+    if (!links.length) return;
+
+    const targets = links
+      .map((a) => ({ a, el: document.getElementById(a.dataset.slug ?? '') }))
+      .filter((t): t is { a: HTMLAnchorElement; el: HTMLElement } => !!t.el);
+    if (!targets.length) return;
+
+    const setActive = (slug: string) => {
+      for (const a of links) {
+        if (a.dataset.slug === slug) a.setAttribute('aria-current', 'location');
+        else a.removeAttribute('aria-current');
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((x, y) => x.boundingClientRect.top - y.boundingClientRect.top);
+        if (visible.length) setActive(visible[0].target.id);
+      },
+      // [WEB-HELP-2] IntersectionObserver's rootMargin must be px/%, never a
+      // font-relative unit (rem/em) — the constructor throws otherwise. 6rem
+      // is 96px at the root 16px size this project builds at.
+      { rootMargin: '-96px 0px -70% 0px', threshold: 0 },
+    );
+    for (const t of targets) observer.observe(t.el);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHelpOnThisPage);
+  } else {
+    initHelpOnThisPage();
+  }
+</script>

@@ -1,21 +1,40 @@
 ---
-// [HELLO-FRAANDS-HELP-1 2026-10-08] Help ARTICLE layout in the current-brand
-// notebook look. Replaces the Aum Fe help skin (folk chrome, temple CTA).
+// [WEB-HELP-SKIN-2 2026-09-27] Help ARTICLE layout, rebuilt to the owner-approved
+// "help skin v2" mockup (design/help-centre/saathum-help-skin-v2.src.html, view
+// "Article page"). Replaces the [WEB-HELP-2] zine article layout (truck-art
+// strip, lavender band, --ava-* alias block — all gone).
 //
 // NOTE FOR AI:
-//  - Base with the default chrome = shared current-brand header/footer. Base also
-//    emits the BreadcrumbList JSON-LD from `content.breadcrumbs` (check-help.mjs
-//    requires exactly one per article, and NO FAQPage on articles).
-//  - Styles: styles/hello-fraands-help.css, scoped under `.hf-help`.
-//  - Left rail = every topic and its articles; right rail = this page's `##` headings.
+//  - Same shell as pages/help/index.astro and pages/marketplace.astro: Base
+//    chrome={false}, `.folk-site[data-design="reference-v5"]` wrapper,
+//    SiteHeader/SiteFooter `folk`. Styles: styles/help-skin.css (`.hs`).
+//  - Terracotta band: breadcrumb, h1 (plain cream — the mockup's marigold
+//    keyword needs per-article markup we don't have), lead = description,
+//    meta pills (reading time, updated date, audience), compact search.
+//  - Below: rail (HelpRailNav) | white article card | "On this page" + the
+//    "Ready to book?" nudge (HelpOnThisPage). Toc hidden <=1400px, rail becomes
+//    a chip row <=1100px, phone rules <=600px — all in help-skin.css.
+//  - The mini-FAQ is built from the entry's own `faq[]` as plain <details>. It
+//    must NOT emit FAQPage JSON-LD: the landing page is the only emitter and
+//    check-help.mjs fails an article that carries it.
+//  - BreadcrumbList JSON-LD comes from Base via `content.breadcrumbs` — exactly
+//    once per article (check-help.mjs). Do not add a second one here.
+//  - "Did this answer your question?" buttons are inert for now (no endpoint);
+//    wire them to PostHog before calling them feedback.
 import Base from './Base.astro';
+// [HELLO-FRAANDS-HELP-RESTORE-1] Shared site header/footer replace the old folk chrome.
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
 import HelpSearch from '../components/HelpSearch.astro';
+import HelpRailNav from '../components/HelpRailNav.astro';
+import HelpOnThisPage from '../components/help/HelpOnThisPage.astro';
 import { SECTIONS, helpUrl, type HelpEntry, type HelpTreeSection, type HelpSectionId } from '../lib/help';
+import { publicImage } from '../lib/config';
 import { ORG } from '../lib/org';
 import type { PublicContent } from '../lib/seo/types';
 import { readMinutes, dateLabel, AUDIENCE_LABEL } from '../components/help/helpSkin';
-import { BRAND } from '../lib/brand';
-import '../styles/hello-fraands-help.css';
+import '../styles/saathum-folk.css';
+import '../styles/help-skin.css';
 
 export interface Props {
   entry: HelpEntry;
@@ -30,7 +49,6 @@ const sectionId = entry.data.section as HelpSectionId;
 const section = SECTIONS[sectionId];
 const updated = dateLabel(entry.data.updated);
 const articleCount = tree.reduce((sum, s) => sum + s.entries.length, 0);
-const toc = headings.filter((h) => h.depth === 2);
 
 const canonicalPath = helpUrl(entry);
 const content: PublicContent = {
@@ -53,70 +71,62 @@ const content: PublicContent = {
   },
 };
 ---
-<Base content={content} indiaLandingLanguage={false}>
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#46113e" />
+    <meta name="theme-color" content="#fff8e8" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <main id="main-content" class="hf-help hf-help-article">
-    <section class={`hfh-aband tone-${section.tone}`} aria-labelledby="art-title">
-      <nav class="hfh-crumbs" aria-label="Breadcrumb"><a href="/help">Help</a><i aria-hidden="true">/</i><a href={`/help#${sectionId}`}>{section.label}</a><i aria-hidden="true">/</i><span aria-current="page">{entry.data.title}</span></nav>
-      <h1 id="art-title">{entry.data.title}</h1>
-      <p class="hfh-lead">{entry.data.description}</p>
-      <div class="hfh-meta"><span>Read in {readMinutes(entry)} min</span><span>Updated {updated}</span><span>{AUDIENCE_LABEL[entry.data.audience]}</span></div>
-      <HelpSearch id="band" compact label="Search help" button="Go" placeholder={`Search all ${articleCount} articles…`} />
-    </section>
-
-    <div class="hfh-article-wrap">
-      <nav class="hfh-rail" aria-label="Help topics">
-        <details open>
-          <summary>All help topics</summary>
-          {tree.map((s) => (
-            <div class:list={['hfh-rail-group', { 'is-current': s.id === sectionId }]}>
-              <a class="hfh-rail-head" href={`/help#${s.id}`}><span aria-hidden="true">{s.icon}</span>{s.label}</a>
-              {s.id === sectionId && (
-                <ul>
-                  {s.entries.map((e) => <li><a href={helpUrl(e)} aria-current={e.id === entry.id ? 'page' : undefined}>{e.data.title}</a></li>)}
-                </ul>
-              )}
-            </div>
-          ))}
-        </details>
-      </nav>
-
-      <div class="hfh-main">
-        <article class="hfh-article">
-          <div class="hfh-prose">
-            <slot />
+  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
+    <a class="folk-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="hs hs-article-page">
+      <section class="hs-aband" aria-labelledby="art-title">
+        <div class="hs-aband-inner">
+          <div>
+            <nav class="hs-crumbs" aria-label="Breadcrumb"><a href="/help">Help</a><i aria-hidden="true">/</i><a href={`/help#${sectionId}`}>{section.label}</a><i aria-hidden="true">/</i><span aria-current="page">{entry.data.title}</span></nav>
+            <h1 id="art-title">{entry.data.title}</h1>
+            <p class="hs-lead">{entry.data.description}</p>
+            <div class="hs-aband-meta"><span>Read in {readMinutes(entry)} min</span><span>Updated {updated}</span><span>{AUDIENCE_LABEL[entry.data.audience]}</span></div>
           </div>
-          {entry.data.faq.length > 0 && (
-            <div class="hfh-mini-faq" role="group" aria-label="Quick answers">
-              <h2>Quick answers</h2>
-              {entry.data.faq.map((f, i) => (
-                <details open={i === 0}><summary><span>{f.q}</span><b aria-hidden="true">+</b></summary><p>{f.a}</p></details>
-              ))}
+          <HelpSearch id="band" compact label="Search help" button="Go" placeholder={`Search all ${articleCount} articles…`} />
+        </div>
+      </section>
+      <div class="grand-divider" aria-hidden="true"></div>
+
+      <div class="hs-wrap hs-article-wrap">
+        <HelpRailNav tree={tree} entry={entry} />
+
+        <div>
+          <article class="hs-article">
+            <div class="hs-prose">
+              <slot />
+
+              {entry.data.faq.length > 0 && (
+                <div class="hs-mini-faq" role="group" aria-label="Quick answers">
+                  {entry.data.faq.map((f, i) => (
+                    <details open={i === 0}><summary>{f.q}</summary><p>{f.a}</p></details>
+                  ))}
+                </div>
+              )}
+
+              <div class="hs-helpful"><span>Did this answer your question?</span><button type="button">Yes</button><button type="button">Not really</button><small>Updated {updated}</small></div>
             </div>
+          </article>
+          {(prev || next) && (
+            <nav class="hs-prevnext" aria-label="More in this section">
+              {prev && <a href={helpUrl(prev)}><small>← Previous</small><b>{prev.data.title}</b></a>}
+              {next && <a class="hs-next" href={helpUrl(next)}><small>Next →</small><b>{next.data.title}</b></a>}
+            </nav>
           )}
-        </article>
-        {(prev || next) && (
-          <nav class="hfh-prevnext" aria-label="More in this topic">
-            {prev && <a href={helpUrl(prev)}><small>← Previous</small><b>{prev.data.title}</b></a>}
-            {next && <a class="hfh-next" href={helpUrl(next)}><small>Next →</small><b>{next.data.title}</b></a>}
-          </nav>
-        )}
-        <aside class="hfh-still">
-          <b>Still need help?</b>
-          <span>Write to <code>support (@) {BRAND.domain}</code> with your call ID, date and time. Never send an OTP or UPI PIN.</span>
-          <a href="/report">Report a problem →</a>
+        </div>
+
+        <aside class="hs-toc-col" aria-label="Page tools">
+          <HelpOnThisPage headings={headings}>
+            <div class="hs-toc-cta"><b>Want to talk?</b><span>Real people. Your number stays private.</span><a href="/#people">Find someone →</a></div>
+          </HelpOnThisPage>
         </aside>
       </div>
-
-      {toc.length > 1 && (
-        <aside class="hfh-toc" aria-label="On this page">
-          <b>On this page</b>
-          <ul>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ul>
-          <a class="hfh-toc-faq" href="/faq">See all FAQs →</a>
-        </aside>
-      )}
-    </div>
-  </main>
+    </main>
+    <SiteFooter />
+  </div>
 </Base>
