@@ -1,5 +1,5 @@
 /* [HELLO-FRAANDS-FAQ-1] /faq — same notebook palette, fonts and paper treatments as the home page. No green. */
-.faq-main{overflow-wrap:anywhere;max-width:1180px;margin:0 auto;padding:clamp(28px,5vw,64px) 0 clamp(56px,8vw,96px)}
+.faq-main{overflow-wrap:anywhere;max-width:none;margin:0 auto;padding:clamp(28px,5vw,64px) 0 clamp(56px,8vw,96px)}
 .faq-hero{position:relative;text-align:center;max-width:860px;margin:0 auto clamp(36px,5vw,56px)}
 .faq-hero h1{font-size:clamp(2.5rem,5.4vw,4.75rem);line-height:1.02;letter-spacing:-2.5px;margin:6px 0 18px}
 .faq-hero h1 mark{background:none;color:var(--text-accent)}
@@ -70,3 +70,6 @@
   .faq-section-head{align-items:flex-start}
   .faq-section-icon{width:44px;height:44px}
 }
+
+/* [HELLO-FRAANDS-WIDE-1] Front-page width: two question columns on wide screens. */
+@media(min-width:1200px){.faq-list{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.faq-topics{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}

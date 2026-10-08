@@ -1,4 +1,15 @@
 ---
+// [HELLO-FRAANDS-WIDE-1 2026-10-08] Content/legal page layout with the FRONT-PAGE treatment:
+// same width and gutters as the home page (.notebook-site), a colourful hero band, a jump-chip
+// bar, and every `##` section turned into a full-width two-column card (heading left, text right)
+// so long pages fill large screens instead of sitting in a narrow box. Stacks on tablets/phones.
+//
+// NOTE FOR AI:
+//  - Contracts in web/scripts/check-hello-fraands-pages.mjs read these hooks: `.hf-hindi > em`,
+//    `.hf-date` text "Last updated: {{DATE}}", at least one <h2>, `.hf-review-note` with
+//    "This page is under legal review." and a related review link. Keep them.
+//  - Sections are split from the rendered slot at build time on each <h2>; text before the first
+//    <h2> becomes the intro card. Pages need no changes.
 import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
@@ -13,6 +24,22 @@ const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const canonical = `https://${identity.domain}${pathname}`;
 const pageTitle = `${title} | ${identity.name}`;
 const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`;
+
+const html = await Astro.slots.render('default');
+const strip = (s: string) => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const slugify = (s: string) => strip(s).toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'section';
+const parts = html.split(/(?=<h2[\s>])/);
+const intro = parts[0].trim();
+const used = new Set<string>();
+const sections = parts.slice(1).map((part, i) => {
+  const m = part.match(/^<h2([^>]*)>([\s\S]*?)<\/h2>/);
+  const headHtml = m ? m[2] : '';
+  let id = (m && m[1].match(/\bid="([^"]+)"/)?.[1]) || slugify(headHtml);
+  while (used.has(id)) id = `${id}-${i + 1}`;
+  used.add(id);
+  return { id, headHtml, label: strip(headHtml), body: m ? part.slice(m[0].length) : part };
+});
+const tones = ['cream', 'pink', 'lilac', 'paper'];
 ---
 <!doctype html>
 <html lang="en-IN">
@@ -42,14 +69,29 @@ const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-colla
       <a class="skip-link" href="#main-content">Skip to main content</a>
       <Header />
       <main id="main-content" class="hf-content">
-        <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
-        <article class="hf-page">
-          <header class="hf-page-header">
+        <header class="hfp-hero">
+          <div class="hfp-hero-copy">
+            <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
             <h1>{title}</h1>
             <p class="hf-hindi"><em>{summary}</em></p>
             <p class="hf-date">Last updated: {'{{DATE}}'}</p>
-          </header>
-          <div class="hf-prose"><slot /></div>
+          </div>
+          <div class="hfp-hero-note paper-note" aria-hidden="true">Seedhi baat.<br />Saaf niyam.</div>
+        </header>
+        {sections.length >= 3 && (
+          <nav class="hfp-jump" aria-label="On this page">
+            <span>On this page</span>
+            {sections.map((s) => <a href={`#${s.id}`}>{s.label}</a>)}
+          </nav>
+        )}
+        <article class="hf-page">
+          {intro && <div class="hfp-intro hf-prose" set:html={intro} />}
+          {sections.map((s, i) => (
+            <section class={`hfp-sec tone-${tones[i % tones.length]}`} aria-labelledby={s.id}>
+              <div class="hfp-sec-head"><span class="hfp-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span><h2 id={s.id} set:html={s.headHtml} /></div>
+              <div class="hf-prose" set:html={s.body} />
+            </section>
+          ))}
           {review && <aside class="hf-review-note"><p>This page is under legal review.</p>{related.length > 0 && <p>Related pages: {related.map((link, index) => <>{index > 0 && ' · '}<a href={link.href}>{link.label}</a></>)}</p>}</aside>}
         </article>
       </main>

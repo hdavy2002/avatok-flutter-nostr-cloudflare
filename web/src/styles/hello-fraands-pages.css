@@ -1,1 +1,82 @@
-.hf-site{min-height:100vh}.hf-content{width:min(100% - 2rem,78rem);margin:0 auto;padding:clamp(1.5rem,4vw,3rem) 0 clamp(4rem,7vw,6rem)}.hf-breadcrumb{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin:0 auto 1.5rem;max-width:48rem;color:#65445f;font:700 .85rem/1.5 Comfortaa,sans-serif}.hf-breadcrumb a{color:#743b70;text-underline-offset:.2em}.hf-page{max-width:52rem;margin:auto;padding:clamp(1.4rem,4vw,3.5rem);background:#fffdf9;border:1px solid #e6d6df;border-radius:1.4rem;box-shadow:0 14px 45px #46113e12;color:#382338}.hf-page-header{border-bottom:2px solid #ecdde7;padding-bottom:1.4rem;margin-bottom:2rem}.hf-page h1{font:900 clamp(2rem,5vw,3.8rem)/1.12 Nunito,sans-serif;letter-spacing:-.025em;margin:0 0 .8rem;color:#46113e}.hf-hindi{font:700 clamp(1rem,2vw,1.2rem)/1.55 Comfortaa,sans-serif;margin:.25rem 0;color:#7b388c}.hf-date{font:600 .85rem/1.5 Comfortaa,sans-serif;color:#655566;margin:.7rem 0 0}.hf-prose{font:500 1rem/1.8 Comfortaa,sans-serif;overflow-wrap:anywhere}.hf-prose :is(h2,h3){font-family:Nunito,sans-serif;color:#46113e;line-height:1.25}.hf-prose h2{font-size:clamp(1.45rem,3vw,2rem);margin:2.1rem 0 .7rem}.hf-prose h3{font-size:1.25rem;margin:1.5rem 0 .5rem}.hf-prose :is(p,ul,ol,table,details,form,blockquote){margin:0 0 1.2rem}.hf-prose li{margin:.4rem 0}.hf-prose a,.hf-review-note a{color:#733678;text-decoration:underline;text-underline-offset:.2em}.hf-prose :is(a,button,input,textarea,select):focus-visible,.hf-review-note a:focus-visible{outline:3px solid #7b388c;outline-offset:3px}.hf-prose details{border:1px solid #e6d6df;border-radius:.75rem;background:white;padding:1rem}.hf-prose summary{cursor:pointer;font-weight:800}.hf-prose details p{margin:.8rem 0 0}.hf-prose table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}.hf-prose :is(th,td){border:1px solid #dfd1dc;padding:.7rem;text-align:left}.hf-prose th{background:#f6edf3}.hf-prose :is(input,textarea,select){box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #bfaabe;border-radius:.5rem;background:white}.hf-prose label{display:block;font-weight:700;margin:1rem 0 .35rem}.hf-prose button,.hf-prose .hf-button{display:inline-flex;align-items:center;justify-content:center;min-height:2.75rem;padding:.7rem 1.1rem;border:0;border-radius:.6rem;background:#6d2d67;color:white;font:800 .95rem/1.4 Comfortaa,sans-serif;text-decoration:none;cursor:pointer}.hf-prose .hf-calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.8rem}.hf-prose .hf-calls a{display:flex;align-items:center;justify-content:center;min-height:4rem;padding:.7rem;border-radius:.7rem;background:#6d2d67;color:white;text-align:center;text-decoration:none;font-weight:800}.hf-review-note{background:#f0eef0;color:#4f4850;border-radius:.7rem;padding:1rem 1.2rem;margin-top:2.5rem;font:600 .9rem/1.6 Comfortaa,sans-serif}.hf-review-note p{margin:.2rem 0}.hf-prose .hf-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:1rem}.hf-prose .hf-card-grid a{display:block;padding:1.2rem;border-radius:.8rem;border:1px solid #e5d4df;background:#fff;text-decoration:none;font-weight:800}.hf-prose .hf-card-grid a:hover{background:#f6edf3}@media(max-width:480px){.hf-content{width:min(100% - 1rem,78rem)}.hf-page{padding:1.25rem}.hf-prose{font-size:1rem}}
+/* [HELLO-FRAANDS-WIDE-1 2026-10-08] Content pages with the front-page treatment.
+   Width/gutters come from .notebook-site (callvaal-notebook.css): calc(100% - 64px), max 1760px,
+   40px gutters under 900px, 32px under 600px. Palette and fonts are the home page's. No green. */
+.hf-site{min-height:100vh}
+.hf-content{padding:clamp(20px,3vw,40px) 0 clamp(56px,7vw,96px);color:var(--plum)}
+.hf-content .tone-cream{background:#fff1cf}.hf-content .tone-pink{background:#fce4eb}.hf-content .tone-lilac{background:#f2efff}.hf-content .tone-paper{background:#fff9e8}
+
+/* Hero band — same rhythm as the home sections */
+.hfp-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:clamp(20px,4vw,64px);padding:clamp(28px,5vw,72px) clamp(22px,5vw,80px);border-radius:28px;background:#fff1cf;box-shadow:0 5px 16px #46113e0d;overflow:hidden}
+.hfp-hero:after{content:"";position:absolute;right:-60px;bottom:-60px;width:240px;height:240px;border-radius:50%;background:#fce4eb;opacity:.7;z-index:0}
+.hfp-hero-copy{position:relative;z-index:1;min-width:0}
+.hf-breadcrumb{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:0 0 14px;color:var(--text-accent);font:900 var(--text-badge)/1.4 Nunito,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.hf-breadcrumb a{color:inherit;text-decoration:none}
+.hf-breadcrumb a:hover{text-decoration:underline}
+.hfp-hero h1{font-size:clamp(2.4rem,5.2vw,5.25rem);line-height:1;letter-spacing:-2.5px;margin:0 0 16px;overflow-wrap:anywhere}
+.hf-hindi{margin:0;font-size:clamp(1.0625rem,1rem + .5vw,1.5rem);line-height:1.45;color:#7b388c}
+.hf-hindi em{font-style:italic}
+.hf-date{display:inline-block;margin:18px 0 0;padding:6px 14px;border-radius:30px;background:#fffdf7;font-size:var(--text-badge);font-weight:700;color:var(--muted)}
+.hfp-hero-note{position:relative;z-index:1;transform:rotate(4deg);font-family:Nunito,sans-serif;font-size:clamp(1rem,.9rem + .4vw,1.375rem);padding:34px 30px;min-width:200px}
+
+/* Jump chips */
+.hfp-jump{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:clamp(22px,3vw,36px) 0}
+.hfp-jump span{font-family:Nunito,sans-serif;font-weight:900;font-size:var(--text-badge);letter-spacing:.08em;text-transform:uppercase;color:var(--text-accent);margin-right:4px}
+.hfp-jump a{display:inline-flex;align-items:center;min-height:42px;max-width:100%;padding:8px 15px;border:1px solid #d9c4dc;border-radius:30px;background:#fffdf7;text-decoration:none;font-size:var(--text-note);font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.hfp-jump a:hover{background:#fce4eb}
+
+/* Sections */
+.hf-page{display:grid;gap:clamp(16px,2vw,24px);margin-top:clamp(22px,3vw,36px)}
+.hfp-jump+.hf-page{margin-top:0}
+.hfp-intro{padding:clamp(22px,3vw,40px) clamp(22px,4vw,56px);border-radius:24px;background:#fffdf7;border:2px solid var(--plum);box-shadow:0 5px 0 #46113e;font-size:clamp(1.0625rem,1rem + .3vw,1.25rem)}
+.hfp-sec{display:grid;grid-template-columns:minmax(220px,.42fr) minmax(0,1fr);gap:clamp(20px,4vw,64px);padding:clamp(24px,3.4vw,52px) clamp(22px,4vw,56px);border-radius:24px;box-shadow:0 5px 16px #46113e0d;scroll-margin-top:24px}
+.hfp-sec-head{display:flex;flex-direction:column;gap:12px;align-self:start;position:sticky;top:20px}
+.hfp-num{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#fffdf7;border:2px solid var(--plum);font:900 1.125rem/1 Nunito,sans-serif;color:var(--text-accent)}
+.hfp-sec-head h2{font-size:clamp(1.5rem,2.3vw,2.5rem);line-height:1.12;letter-spacing:-1px;margin:0;overflow-wrap:anywhere}
+
+/* Prose (also used inside the intro) */
+.hf-prose{font-size:var(--text-body);line-height:1.75;color:#3a2236;overflow-wrap:anywhere;min-width:0}
+.hf-prose>*:first-child{margin-top:0}.hf-prose>*:last-child{margin-bottom:0}
+.hf-prose :is(h2,h3){font-family:Nunito,sans-serif;font-weight:900;color:var(--plum);line-height:1.25}
+.hf-prose h3{font-size:1.25rem;margin:1.4rem 0 .5rem}
+.hf-prose :is(p,ul,ol,table,details,form,blockquote){margin:0 0 1.1rem}
+.hf-prose ul,.hf-prose ol{padding-left:1.3rem}
+.hf-prose ul{list-style:disc}.hf-prose ol{list-style:decimal}
+.hf-prose li{margin:.4rem 0}
+.hf-prose li::marker{color:var(--text-accent)}
+.hf-prose strong{color:var(--plum)}
+.hf-prose a,.hf-review-note a{color:#A52E67;font-weight:700;text-decoration:underline;text-underline-offset:.2em}
+.hf-prose :is(a,button,input,textarea,select,summary):focus-visible,.hf-review-note a:focus-visible,.hfp-jump a:focus-visible{outline:3px solid #7b388c;outline-offset:3px}
+.hf-prose blockquote{padding:16px 20px;border-left:5px solid var(--text-accent);background:#fffdf7;border-radius:0 16px 16px 0}
+.hf-prose details{border:1px solid #e3cfe0;border-radius:16px;background:#fffdf7;padding:14px 18px}
+.hf-prose summary{cursor:pointer;font-weight:800;font-family:Nunito,sans-serif}
+.hf-prose details p{margin:.7rem 0 0}
+.hf-prose table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;background:#fffdf7;border-radius:14px}
+.hf-prose :is(th,td){border:1px solid #e3cfe0;padding:.7rem;text-align:left}
+.hf-prose th{background:#fce4eb}
+.hf-prose :is(input,textarea,select){box-sizing:border-box;width:100%;font:inherit;padding:.75rem;border:2px solid #cdb8cf;border-radius:12px;background:#fffdf7}
+.hf-prose label{display:block;font-weight:800;margin:1rem 0 .35rem}
+.hf-prose button,.hf-prose .hf-button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.75rem 1.4rem;border:0;border-radius:40px;background:var(--text-accent);color:#fff;font:900 1rem/1.3 Nunito,sans-serif;text-decoration:none;cursor:pointer;box-shadow:0 4px 0 #46113e}
+.hf-prose .hf-calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.9rem}
+.hf-prose .hf-calls a{display:flex;align-items:center;justify-content:center;min-height:4rem;padding:.8rem;border-radius:18px;background:var(--plum);color:#fff;text-align:center;text-decoration:none;font-weight:800}
+.hf-prose .hf-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}
+.hf-prose .hf-card-grid a{display:block;padding:1.2rem;border-radius:18px;border:2px solid var(--plum);background:#fffdf7;text-decoration:none;font-weight:800;box-shadow:0 4px 0 #46113e}
+.hf-prose .hf-card-grid a:hover{background:#fce4eb}
+
+/* Review note */
+.hf-review-note{padding:20px clamp(22px,4vw,56px);border-radius:20px;background:#fff9e8;border:1px dashed #cdb8cf;font-size:var(--text-note);font-weight:700;color:#5d3a59}
+.hf-review-note p{margin:.2rem 0}
+
+@media(max-width:1099px){
+  .hfp-sec{grid-template-columns:1fr;gap:16px}
+  .hfp-sec-head{position:static;flex-direction:row;align-items:center}
+  .hfp-num{width:44px;height:44px;flex:none}
+}
+@media(max-width:799px){
+  .hfp-hero{grid-template-columns:1fr}
+  .hfp-hero-note{display:none}
+  .hfp-hero h1{letter-spacing:-1.5px}
+}
+@media(max-width:599px){
+  .hfp-hero,.hfp-sec,.hfp-intro{border-radius:20px}
+  .hfp-jump a{min-height:40px;padding:7px 12px}
+}
