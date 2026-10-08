@@ -35,7 +35,7 @@
 
 .hf-women h2,.hf-women-dialog h2{font-family:Comfortaa,sans-serif}
 .hf-women-proof li>svg{flex:none;width:1.2rem;height:1.2rem;margin-top:.2rem;fill:none;stroke:#993260;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.hf-women-proof li>span{color:#46113e;font-size:.95rem}
+.hf-women-proof li>span{min-width:0;overflow-wrap:anywhere;color:#46113e;font-size:.95rem}
 .hf-women-verification-preview{position:relative;display:inline-flex;max-width:100%;border-radius:2rem}
 .hf-women-verification-preview [role=tooltip]{position:absolute;bottom:calc(100% + .4rem);left:0;z-index:1;width:max-content;max-width:100%;padding:.4rem .7rem;border-radius:.4rem;background:#46113e;color:#fff;font-size:.8rem;opacity:0;pointer-events:none}
 .hf-women-verification-preview:hover [role=tooltip],.hf-women-verification-preview:focus [role=tooltip],.hf-women-verification-preview:focus-within [role=tooltip]{opacity:1}
