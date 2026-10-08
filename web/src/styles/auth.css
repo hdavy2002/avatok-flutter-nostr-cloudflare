@@ -164,7 +164,7 @@
 /* [WEB-ACCOUNT-1] The line under the phone field explaining why we ask. */
 .auth-hint {
   margin: -6px 0 2px;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.45;
   color: #5a5a54;
 }

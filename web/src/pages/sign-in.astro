@@ -11,7 +11,7 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
 import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost, publicImage } from '../lib/config';
 import '../styles/auth.css';
@@ -44,7 +44,7 @@ const clerkHost = clerkFapiHost();
     )}
   </Fragment>
 
-  <SiteHeader authMobileOnly indiaLandingLanguage />
+  <SiteHeader />
 
   <div class="auth">
     <div class="auth-shell">
