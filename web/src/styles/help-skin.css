@@ -112,14 +112,14 @@
 .folk-site[data-design="reference-v5"] .hs .hs-card { background: #fff; border: 5px solid #fff; border-radius: 11px; min-width: 0; overflow: hidden; box-shadow: 0 6px 18px #17343c22; transition: transform .18s ease, box-shadow .18s ease; display: flex; flex-direction: column; color: var(--grand-ink); }
 .folk-site[data-design="reference-v5"] .hs .hs-card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px #17343c30; }
 .folk-site[data-design="reference-v5"] .hs .hs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 12px 0; }
-.folk-site[data-design="reference-v5"] .hs .hs-pill { padding: 4px 9px; border-radius: 999px; background: #e1eee0; color: #35634f; font-size: 14px; font-weight: 800; white-space: nowrap; }
+.folk-site[data-design="reference-v5"] .hs .hs-pill { padding: 4px 9px; border-radius: 999px; background: #eee3fb; color: #46113e; font-size: 14px; font-weight: 800; white-space: nowrap; }
 .folk-site[data-design="reference-v5"] .hs .hs-pill--gold { background: #fff3d8; color: #6b4a2b; }
 .folk-site[data-design="reference-v5"] .hs .hs-pill--rose { background: #ffe0cf; color: #983f2f; }
 .folk-site[data-design="reference-v5"] .hs .hs-pill--sky { background: #dfeef1; color: #07545b; }
 .folk-site[data-design="reference-v5"] .hs .hs-card-mark { width: 30px; height: 30px; flex: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-card-body { padding: 10px 12px 12px; display: flex; flex: 1; flex-direction: column; }
 .folk-site[data-design="reference-v5"] .hs .hs-card-body h3 { font-size: clamp(18px, 1.3vw, 22px); }
-.folk-site[data-design="reference-v5"] .hs .hs-card-body p { margin-top: 8px; color: #405451; font-size: 15px; line-height: 1.4; }
+.folk-site[data-design="reference-v5"] .hs .hs-card-body p { margin-top: 8px; color: #405451; font-size: 16px; line-height: 1.4; }
 .folk-site[data-design="reference-v5"] .hs .hs-card-foot { margin-top: auto; padding-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 800; color: #68746e; }
 .folk-site[data-design="reference-v5"] .hs .hs-read { padding: 8px 12px; border-radius: 8px; background: var(--grand-red); color: #fff; font-size: 14px; font-weight: 900; text-decoration: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-faq-note { font-size: 14px; text-align: center; margin-top: 14px; color: var(--paper); opacity: .85; }
@@ -133,7 +133,7 @@
 .folk-site[data-design="reference-v5"] .hs .hs-panel-top h3 { font-family: 'Nunito', sans-serif; font-size: 17px; letter-spacing: -.02em; line-height: 1.15; }
 .folk-site[data-design="reference-v5"] .hs .hs-panel-top small { display: block; font-size: 14px; font-weight: 800; color: var(--quiet); letter-spacing: .04em; text-transform: uppercase; }
 .folk-site[data-design="reference-v5"] .hs .hs-panel ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.folk-site[data-design="reference-v5"] .hs .hs-panel li a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; background: var(--grand-cream); border: 1px solid #ecd6a8; text-decoration: none; font-size: 14.5px; font-weight: 700; line-height: 1.25; }
+.folk-site[data-design="reference-v5"] .hs .hs-panel li a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; background: var(--grand-cream); border: 1px solid #ecd6a8; text-decoration: none; font-size: 16px; font-weight: 700; line-height: 1.25; }
 .folk-site[data-design="reference-v5"] .hs .hs-panel li a:hover { background: #fff1c9; }
 .folk-site[data-design="reference-v5"] .hs .hs-panel li a i { font-style: normal; color: var(--grand-red); font-weight: 900; }
 
@@ -166,7 +166,7 @@
 .folk-site[data-design="reference-v5"] .hs .hs-crumbs a:hover { text-decoration: underline; }
 .folk-site[data-design="reference-v5"] .hs .hs-crumbs i { font-style: normal; opacity: .6; }
 .folk-site[data-design="reference-v5"] .hs .hs-aband h1 { font-size: clamp(28px, 2.6vw, 46px); color: var(--paper); margin-top: 10px; max-width: 24ch; }
-.folk-site[data-design="reference-v5"] .hs .hs-aband .hs-lead { margin-top: 10px; max-width: 62ch; font-size: clamp(15px, 1.1vw, 18px); color: #fff1dc; }
+.folk-site[data-design="reference-v5"] .hs .hs-aband .hs-lead { margin-top: 10px; max-width: 62ch; font-size: clamp(16px, calc(.96rem + .2vw), 18px); color: #fff1dc; }
 .folk-site[data-design="reference-v5"] .hs .hs-aband-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .folk-site[data-design="reference-v5"] .hs .hs-aband-meta span { padding: 6px 12px; border-radius: 999px; background: #ffffff22; border: 1px solid #ffffff55; font: 800 14px 'Nunito', sans-serif; color: var(--paper); }
 .folk-site[data-design="reference-v5"] .hs .hs-aband .hs-search { margin: 0; min-width: min(100%, 420px); padding: 6px; border-width: 4px; box-shadow: 0 10px 26px #3a140a55; }
@@ -178,14 +178,14 @@
 .folk-site[data-design="reference-v5"] .hs .hs-rail-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; font: 900 14px 'Nunito', sans-serif; color: var(--grand-teal); letter-spacing: .02em; border-bottom: 1px solid var(--gold-hair); text-decoration: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-head img { width: 32px; height: 32px; border-radius: 8px; background: #f7e8cc; flex: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-group ul { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
-.folk-site[data-design="reference-v5"] .hs .hs-rail-group ul a { display: block; padding: 8px 10px; border-radius: 8px; font-size: 14.5px; font-weight: 700; text-decoration: none; line-height: 1.25; }
+.folk-site[data-design="reference-v5"] .hs .hs-rail-group ul a { display: block; padding: 8px 10px; border-radius: 8px; font-size: 16px; font-weight: 700; text-decoration: none; line-height: 1.3; }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-group ul a:hover { background: var(--grand-cream); }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-group ul a[aria-current] { background: var(--grand-teal); color: #fff; }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-group.is-closed ul { display: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-rail-group.is-closed .hs-rail-head { border-bottom: 0; color: var(--grand-ink); }
 .folk-site[data-design="reference-v5"] .hs a.hs-rail-head:hover { background: var(--grand-cream); }
 .folk-site[data-design="reference-v5"] .hs .hs-article { background: #fff; border: 5px solid #fff; border-radius: 18px; box-shadow: 0 8px 22px #17343c1a; padding: 10px clamp(16px, 2.4vw, 40px) 30px; }
-.folk-site[data-design="reference-v5"] .hs .hs-prose { max-width: 68ch; font-size: 17.5px; line-height: 1.6; }
+.folk-site[data-design="reference-v5"] .hs .hs-prose { max-width: 68ch; font-size: 18px; line-height: 1.6; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose > :first-child { margin-top: 20px; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose h2 { font-size: clamp(22px, 1.8vw, 30px); margin-top: 34px; scroll-margin-top: 100px; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose h3 { font-size: clamp(18px, 1.3vw, 22px); margin-top: 22px; scroll-margin-top: 100px; }
@@ -197,20 +197,20 @@
 .folk-site[data-design="reference-v5"] .hs .hs-prose ul li::marker { color: var(--grand-red); }
 /* ordered lists render as the mockup's numbered .steps cards */
 .folk-site[data-design="reference-v5"] .hs .hs-prose ol { list-style: none; counter-reset: hs-s; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
-.folk-site[data-design="reference-v5"] .hs .hs-prose ol li { counter-increment: hs-s; position: relative; min-height: 68px; padding: 12px 14px 12px 70px; border-radius: 12px; background: var(--grand-cream); border: 1px solid #ecd6a8; font-size: 15px; line-height: 1.5; color: #405451; }
+.folk-site[data-design="reference-v5"] .hs .hs-prose ol li { counter-increment: hs-s; position: relative; min-height: 68px; padding: 12px 14px 12px 70px; border-radius: 12px; background: var(--grand-cream); border: 1px solid #ecd6a8; font-size: 18px; line-height: 1.5; color: #405451; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose ol li::before { content: counter(hs-s, decimal-leading-zero); position: absolute; left: 14px; top: 12px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #bda66f; color: var(--grand-teal); font: 900 15px 'Nunito', sans-serif; background: var(--paper); }
-.folk-site[data-design="reference-v5"] .hs .hs-prose ol li > strong:first-child { display: block; color: var(--grand-teal); font-size: 16px; }
-.folk-site[data-design="reference-v5"] .hs .hs-prose blockquote, .folk-site[data-design="reference-v5"] .hs .hs-callout { margin: 20px 0 0; padding: 14px 16px 14px 18px; border-radius: 12px; background: var(--grand-cream); border: 1px solid #ecd6a8; border-left: 6px solid var(--marigold); font-size: 16px; }
+.folk-site[data-design="reference-v5"] .hs .hs-prose ol li > strong:first-child { display: block; color: var(--grand-teal); font-size: 18px; }
+.folk-site[data-design="reference-v5"] .hs .hs-prose blockquote, .folk-site[data-design="reference-v5"] .hs .hs-callout { margin: 20px 0 0; padding: 14px 16px 14px 18px; border-radius: 12px; background: var(--grand-cream); border: 1px solid #ecd6a8; border-left: 6px solid var(--marigold); font-size: 18px; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose blockquote > :first-child { margin-top: 0; }
 .folk-site[data-design="reference-v5"] .hs .hs-prose code { font: 800 .92em 'Nunito', sans-serif; }
 .folk-site[data-design="reference-v5"] .hs .hs-mini-faq { margin-top: 26px; border-top: 2px solid var(--gold-hair); padding-top: 6px; }
 .folk-site[data-design="reference-v5"] .hs .hs-mini-faq details { border-bottom: 1px solid var(--gold-hair); }
-.folk-site[data-design="reference-v5"] .hs .hs-mini-faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 12px; padding: 14px 2px; font-weight: 800; font-size: 16.5px; color: var(--grand-ink); }
+.folk-site[data-design="reference-v5"] .hs .hs-mini-faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 12px; padding: 14px 2px; font-weight: 800; font-size: 18px; color: var(--grand-ink); }
 .folk-site[data-design="reference-v5"] .hs .hs-mini-faq summary::-webkit-details-marker { display: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-mini-faq summary::after { content: "+"; color: var(--grand-red); font-weight: 900; font-size: 22px; line-height: 1; }
 .folk-site[data-design="reference-v5"] .hs .hs-mini-faq details[open] summary::after { content: "–"; }
-.folk-site[data-design="reference-v5"] .hs .hs-mini-faq details p { margin: 0 0 14px; font-size: 16px; color: #405451; max-width: 68ch; }
-.folk-site[data-design="reference-v5"] .hs .hs-helpful { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border-radius: 14px; background: var(--grand-sage); border: 1px solid #c9d2bd; font-weight: 800; font-size: 15px; }
+.folk-site[data-design="reference-v5"] .hs .hs-mini-faq details p { margin: 0 0 14px; font-size: clamp(16px, calc(.96rem + .2vw), 18px); color: #405451; max-width: 68ch; }
+.folk-site[data-design="reference-v5"] .hs .hs-helpful { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border-radius: 14px; background: var(--grand-sage); border: 1px solid #c9d2bd; font-weight: 800; font-size: 16px; }
 .folk-site[data-design="reference-v5"] .hs .hs-helpful button { font: 900 14px 'Nunito', sans-serif; padding: 9px 16px; border-radius: 999px; border: 2px solid var(--grand-teal); background: var(--paper); color: var(--grand-teal); cursor: pointer; }
 .folk-site[data-design="reference-v5"] .hs .hs-helpful button:hover { background: var(--grand-teal); color: #fff; }
 .folk-site[data-design="reference-v5"] .hs .hs-helpful small { font-weight: 700; color: #405451; margin-left: auto; font-size: 14px; }
@@ -218,11 +218,11 @@
 .folk-site[data-design="reference-v5"] .hs .hs-prevnext a { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 12px; background: #fff; border: 4px solid #fff; box-shadow: 0 6px 16px #17343c14; text-decoration: none; }
 .folk-site[data-design="reference-v5"] .hs .hs-prevnext .hs-next { grid-column: 2; text-align: right; }
 .folk-site[data-design="reference-v5"] .hs .hs-prevnext small { font: 900 14px 'Nunito', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--quiet); }
-.folk-site[data-design="reference-v5"] .hs .hs-prevnext b { color: var(--grand-teal); font-size: 15px; }
+.folk-site[data-design="reference-v5"] .hs .hs-prevnext b { color: var(--grand-teal); font-size: 16px; }
 .folk-site[data-design="reference-v5"] .hs .hs-toc { position: sticky; top: calc(96px + env(safe-area-inset-top, 0px)); }
 .folk-site[data-design="reference-v5"] .hs .hs-toc-label { display: block; font: 900 14px 'Nunito', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--quiet); margin-bottom: 8px; }
 .folk-site[data-design="reference-v5"] .hs .hs-toc ol { list-style: none; margin: 0; padding: 0; border-left: 3px solid var(--gold-hair); }
-.folk-site[data-design="reference-v5"] .hs .hs-toc ol a { display: block; padding: 7px 0 7px 14px; margin-left: -3px; border-left: 3px solid transparent; font-size: 14px; font-weight: 700; text-decoration: none; color: #405451; }
+.folk-site[data-design="reference-v5"] .hs .hs-toc ol a { display: block; padding: 7px 0 7px 14px; margin-left: -3px; border-left: 3px solid transparent; font-size: 16px; font-weight: 700; text-decoration: none; color: #405451; }
 .folk-site[data-design="reference-v5"] .hs .hs-toc ol a[aria-current] { border-left-color: var(--grand-red); color: var(--grand-teal); font-weight: 900; }
 .folk-site[data-design="reference-v5"] .hs .hs-toc-cta { margin-top: 18px; padding: 14px; border-radius: 14px; background: var(--grand-teal); color: var(--paper); }
 .folk-site[data-design="reference-v5"] .hs .hs-toc-cta b { display: block; font-size: 15px; }

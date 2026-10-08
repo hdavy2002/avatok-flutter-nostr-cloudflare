@@ -37,18 +37,20 @@ const GONE_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Page removed · ${BRAND.name}</title>
-<link rel="icon" href="/assets/logo/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml">
 <style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fdf1d3;color:#2b1a12;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
-  main{max-width:520px;text-align:center}
-  h1{font-size:28px;line-height:1.2;margin:0 0 12px}
-  p{font-size:18px;line-height:1.5;margin:0 0 24px}
-  a{display:inline-block;background:#ad3028;color:#fdf1d3;text-decoration:none;font-weight:800;font-size:18px;padding:14px 24px;border-radius:20px}
+  @font-face{font-family:Comfortaa;src:url('/fonts/Comfortaa-Bold.ttf') format('truetype');font-weight:400 700;font-display:swap}
+  @font-face{font-family:Nunito;src:url('/fonts/Nunito-Black.woff2') format('woff2');font-weight:700 1000;font-display:swap}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fffdf7;color:#46113e;font-family:Comfortaa,sans-serif;padding:24px}
+  main{max-width:560px;text-align:center}
+  h1{font-family:Nunito,sans-serif;font-weight:900;font-size:clamp(2rem,4vw,3rem);line-height:1.1;margin:0 0 14px}
+  p{font-size:18px;line-height:1.6;margin:0 0 26px;color:#785979}
+  a{display:inline-block;background:#bd2740;color:#fff;text-decoration:none;font-weight:700;font-size:18px;padding:14px 28px;border-radius:30px}
 </style></head>
 <body><main>
 <h1>This page has been removed</h1>
-<p>Explore the havans and pujas you can join on ${BRAND.name}.</p>
-<a href="/marketplace">Explore</a>
+<p>Real people are still here to talk on ${BRAND.name}.</p>
+<a href="/marketplace">Find someone to talk to</a>
 </main></body></html>`;
 
 export function isGonePath(pathname: string): boolean {

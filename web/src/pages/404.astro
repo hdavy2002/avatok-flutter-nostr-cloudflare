@@ -1,5 +1,9 @@
 ---
 import { BRAND } from '../lib/brand';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
+import '../styles/callvaal-notebook.css';
+// [HF-CONSISTENCY-1 2026-10-08] Same header, footer, fonts and colours as every other page.
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] Real 404 page. Without a 404.html in the build,
 // Cloudflare Pages runs in "SPA mode" and answers EVERY unknown URL with the homepage
 // and a 200 (a soft-404 — deleted pages like /add, /pricing, /vision still looked
@@ -8,24 +12,29 @@ import { BRAND } from '../lib/brand';
 export const prerender = true;
 ---
 <!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Page not found · {BRAND.name}</title>
-<link rel="icon" href="/assets/logo/favicon-32.png" type="image/png" sizes="32x32">
-<style is:inline>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fdf1d3;color:#2b1a12;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
-  main{max-width:520px;text-align:center}
-  h1{font-size:28px;line-height:1.2;margin:0 0 12px}
-  p{font-size:18px;line-height:1.5;margin:0 0 24px}
-  a{display:inline-block;background:#ad3028;color:#fdf1d3;text-decoration:none;font-weight:800;font-size:18px;padding:14px 24px;border-radius:20px}
-</style>
+<link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
 </head>
-<body><main>
-<h1>We couldn't find that page</h1>
-<p>Explore the havans and pujas you can join on {BRAND.name}.</p>
-<a href="/marketplace">Explore</a>
-</main></body>
+<body>
+<div class="notebook-site hf-site" data-design="callvaal-scrapbook">
+  <Header />
+  <main id="main-content" class="hf-missing">
+    <h1>We couldn't find that page</h1>
+    <p>The link may be old or mistyped. Real people are still here to talk.</p>
+    <a class="hf-missing-btn" href="/marketplace">Find someone to talk to</a>
+  </main>
+  <Footer />
+</div>
+<style>
+  .hf-missing { max-width: 640px; margin: clamp(48px, 8vw, 120px) auto; text-align: center; }
+  .hf-missing h1 { font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.1; color: #46113e; }
+  .hf-missing p { margin: 16px 0 28px; font-size: var(--text-body); color: #785979; }
+  .hf-missing-btn { display: inline-block; padding: 14px 28px; border-radius: 30px; background: #bd2740; color: #fff; font-weight: 700; text-decoration: none; }
+</style>
+</body>
 </html>

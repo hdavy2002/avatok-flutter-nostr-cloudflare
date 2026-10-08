@@ -55,7 +55,7 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
    through the shared header/footer, so the rule lives here and beats older skins that still
    asked for Instrument Sans, Baloo 2, Kalam or Nunito body text. Do not add other faces. */
 body,
-body *:not(svg, svg *, code, pre, kbd, samp) {
+body *:not(svg, svg *) {
   font-family: Comfortaa, sans-serif !important;
 }
 body :is(h1, h2, h3, h4, h5, h6, [role="heading"], .hero-promise),

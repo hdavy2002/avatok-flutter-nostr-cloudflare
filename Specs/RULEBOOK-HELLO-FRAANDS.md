@@ -225,6 +225,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-08 | Full-site consistency pass (HF-CONSISTENCY-1): every page audited at desktop and phone width — all text Comfortaa/Nunito, nothing under 14px, help-centre reading text raised to the front page's 18px, green help pills and the mint safety card recoloured, 404 and "page removed" pages given the Hello Fraands header/footer, fonts and copy (they still mentioned havans and pujas). |
 | 2026-10-08 | HF-SITE-7 added (owner): Nunito for headlines, Comfortaa for all other text on every page (HF-FONTS-1). |
 | 2026-10-08 | Sign in / Sign up pages: old Ganesh, lotus and Suswagatam artwork replaced with Hello Fraands art (friendship collage, notebook + chai) on cream/lilac panels; old "Creator Marketplace" and "Light a diya" text replaced (HF-AUTH-ART-1). |
 | 2026-10-08 | HF-SITE-2: archived pages (/free-videos, /pandit, /temples, /guides, /shop) re-skinned with the Hello Fraands header and footer; old logo and menus gone (HF-ARCHIVE-RESKIN-1). |
