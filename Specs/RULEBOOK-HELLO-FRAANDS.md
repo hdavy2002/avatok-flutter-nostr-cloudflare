@@ -86,7 +86,7 @@ works; the backend must be built to match these rules before calls go live.
 | ID | Rule | Decision | Pages | Backend |
 |---|---|---|---|---|
 | HF-WOM-1 | Women's safety is the main design goal: masked numbers, verified hosts, AI ends abusive calls, # ends and blocks instantly. Payment never buys permission to cross a boundary. | ADOPTED | DONE | TODO |
-| HF-WOM-2 | Women-only lane: only women talk to women; hidden from everyone else. **Both** caller and host must pass video KYC **and** Aadhaar KYC showing they are women before the lane appears. | ADOPTED | DONE | TODO |
+| HF-WOM-2 | Women-only lane: only women talk to women; hidden from everyone else. **Both** caller and host must pass Aadhaar verification (and the host the selfie video check) showing they are women before the lane appears. (Wording updated 2026-10-09: India KYC is Aadhaar OTP + selfie video, not Didit.) | ADOPTED | DONE | TODO |
 
 ## 7. Money
 
@@ -134,7 +134,7 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 
 | ID | Rule | Decision | Pages | Backend |
 |---|---|---|---|---|
-| HF-HOST-1 | Host onboarding: WhatsApp OTP → video KYC (Didit) → Aadhaar OTP → moods, languages, price, topics → go online. Own Indian number; the KYC'd WhatsApp number is the number calls come to. | ADOPTED | DONE | TODO |
+| HF-HOST-1 | Host onboarding (changed 2026-10-09): WhatsApp OTP → Aadhaar OTP → 10-second selfie video → UPI/bank check → avatar, about, languages, style, topics (max 6), one price, hours → AI profile media → host approves → admin approves → live. Own Indian number; the verified WhatsApp number is the number calls come to. Was: WhatsApp OTP → video KYC (Didit) → Aadhaar OTP. | ADOPTED | DONE (/hosts/join, /hosts/kyc) | TODO (mock at /hosts/onboarding, not deployed) |
 | HF-HOST-2 | Regular host training on spam, scam and fraud calls (OTP asks, "KYC update", sextortion, emotional money stories). | ADOPTED | DONE | N/A |
 | HF-HOST-3 | Hosts go online/offline any time and may decline any call. Never ask callers for money outside the platform (removal). | ADOPTED | DONE | TODO |
 
@@ -163,6 +163,30 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | HF-REV-2 | Only a caller who has completed a paid call with that host can review them (one review per call). | PROPOSED | DONE (stated on page) | TODO |
 | HF-REV-3 | Reviews are checked before they appear; phone numbers, emails, addresses and abusive text are blocked. Only the reviewer's first name is shown. | PROPOSED | DONE (stated on page; demo blocks numbers/emails) | TODO |
 | HF-REV-4 | A review shows the reviewer's first name, stars, date, topic (if given), call length and a "Regular" tag for repeat callers; the page shows the average and a 5-to-1 star breakdown. | PROPOSED | DONE | TODO |
+
+---
+
+## 13. Verification, data protection, avatars and lanes (added 2026-10-09)
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-KYC-1 | India vendors: WhatsApp OTP through **WasenderAPI**; Aadhaar OTP and bank/UPI checks through **Sandbox.co.in** (about ₹1 per Aadhaar check, ₹0.75 per bank check). **Didit is kept only for future international hosts.** | ADOPTED | DONE (/hosts/kyc names "licensed verification partner") | TODO |
+| HF-KYC-2 | We keep **only the last 4 digits of Aadhaar** plus the partner's verification reference — never the full number. We keep name, gender, DOB, address and father's/guardian's name from Aadhaar, encrypted, in private storage, access logged. | ADOPTED | DONE (/hosts/kyc, /privacy) | TODO |
+| HF-KYC-3 | Liveness = our own **10-second selfie video** where the host reads a random code shown on screen; an admin compares it with the Aadhaar photo. Private storage, consent required, deleted when no longer needed. | ADOPTED | DONE (/hosts/kyc) | TODO |
+| HF-KYC-4 | Host payouts: **UPI ID + bank account (account no. + IFSC)** checked with a no-deposit bank check; the account name must match the Aadhaar name. | ADOPTED | DONE (/hosts/kyc) | TODO |
+| HF-KYC-5 | **Callers**: WhatsApp number (OTP) + the number they receive calls on (may be the same), wallet top-ups by UPI. No Aadhaar unless they join a protected lane or become a host. | ADOPTED | DONE (/privacy) | TODO |
+| HF-PRIV-6 | We follow India's **DPDP Act 2023 and DPDP Rules 2025**: clear notice + consent, never sell data, encrypted and access-logged, keep host data while hosting + 1 year (records at least 1 year), rights to see/correct/delete/withdraw consent/nominate/complain (reply within the legal limit, 90 days), breach notice to users and the Data Protection Board. Pages say we *follow* the law — never "certified". Every promise on a page must be built before launch. | ADOPTED | DONE (/hosts/kyc, /privacy, FAQ, help article) | TODO |
+| HF-AVA-1 | Everything AI-generated is labelled: "AI avatar chosen by the host", "AI images", "AI voice clip". Labels small but never under 14px and never hidden (IT Rules 2026). Privacy line on home, join and profile: number masked + AI avatar. | ADOPTED | DONE (privacy line, FAQ) | TODO |
+| HF-AVA-2 | Host's own voice is cloned (with consent) for the sample conversation; the clone is deleted after the clip is made. | ADOPTED | TODO | TODO |
+| HF-AVA-3 | Sample conversation is labelled "Sample conversation — AI voices, not a real call". | ADOPTED | TODO | TODO |
+| HF-AVA-4 | Avatar catalogue: chosen by gender, age, look, style; fully clothed everyday images; no body-shape filters; fully synthetic; exclusive to one host. | ADOPTED | N/A | TODO |
+| HF-AVA-5 | **No real photos of hosts, ever** (stalking risk). Profile image + gallery are AI only. Photo avatars, not video (owner 2026-10-09; video parked). | ADOPTED | DONE (FAQ) | TODO |
+| HF-LIST-1 | **One price per host for all topics**, ₹5 floor. | ADOPTED | DONE | TODO |
+| HF-LIST-2 | Per host we generate 1 profile image + 5 gallery images + 1 ~20 s sample conversation. Regeneration limits TBD. | ADOPTED | N/A | TODO |
+| HF-LGBT-1 | **LGBTQ+ space**: a private lane where LGBTQ+ callers talk to LGBTQ+ hosts; hidden from everyone else. Friendship and conversation only; all conduct rules apply. | ADOPTED | DONE (/lgbtq, FAQ, help) | TODO |
+| HF-LGBT-2 | Joining is **self-declared and private by default** — we never guess. Showing "LGBTQ+ friendly" on the public profile is a **separate opt-in**, changeable any time. Orientation is sensitive data: private storage, never sold. | ADOPTED | DONE (/lgbtq) | TODO (mock toggles built) |
+| HF-LGBT-3 | **Callers in the lane must be verified** (Aadhaar OTP), because the lane is a known target for extortion. | ADOPTED | DONE (/lgbtq) | TODO |
+| HF-LGBT-4 | AI safety in the lane watches for threats, money demands and "outing" threats; # ends and blocks; reports go to priority review. | ADOPTED | DONE (/lgbtq safety section) | TODO |
 
 ---
 
@@ -237,6 +261,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-09 | Section 13 added (HF-DPDP-COPY-1): India KYC = WasenderAPI WhatsApp OTP + Sandbox.co.in Aadhaar OTP + own selfie video + UPI/bank check; Didit kept for international. Only last 4 Aadhaar digits kept. DPDP Act 2023 wording on /hosts/kyc, /privacy, FAQ, new help article. AI-avatar rules, one price, LGBTQ+ lane (new /lgbtq page, footer link). HF-HOST-1 and HF-WOM-2 updated (Didit removed). |
 | 2026-10-09 | Section 12 added (HF-PROFILE-DETAIL-2): profile pages now show every card field, sample reviews with star breakdown and a demo "Write a review" form; all 8 sample cards link to a profile page. HF-PROF-1 and HF-REV-1 adopted (owner asked for them); HF-REV-2..4 proposed — owner to confirm. |
 | 2026-10-08 | Full-site consistency pass (HF-CONSISTENCY-1): every page audited at desktop and phone width — all text Comfortaa/Nunito, nothing under 14px, help-centre reading text raised to the front page's 18px, green help pills and the mint safety card recoloured, 404 and "page removed" pages given the Hello Fraands header/footer, fonts and copy (they still mentioned havans and pujas). |
 | 2026-10-08 | HF-SITE-7 added (owner): Nunito for headlines, Comfortaa for all other text on every page (HF-FONTS-1). |

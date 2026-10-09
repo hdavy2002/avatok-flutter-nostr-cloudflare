@@ -96,7 +96,7 @@ for (const copy of ['AI dhyaan rakhta hai.', 'Call band, user block.', 'Spam & f
 assert(safetySection.includes('href="#women-only"'), 'Safety section links to women-only space');
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
-assert.equal((footer.match(/<li[ >]/g) || []).length, 36, 'Complete five-column content footer');
+assert.equal((footer.match(/<li[ >]/g) || []).length, 37, 'Complete five-column content footer');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Footer groups keep the requested order');
 assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
 checkHelloFraandsPages(root, identity);

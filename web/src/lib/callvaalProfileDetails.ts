@@ -50,7 +50,7 @@ const preparationTips: ProfileTip[] = [
   { icon: 'notes', title: 'Know before you start', text: 'Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.' },
 ];
 const benefits: ProfileBenefit[] = [
-  { icon: 'lock', title: 'Your number stays private', text: `Calls are bridged through ${brandConfig.homepageIdentity.name}` },
+  { icon: 'lock', title: 'Your number stays private', text: `Your number is masked: calls are bridged through ${brandConfig.homepageIdentity.name}. Hosts appear only as an AI avatar they chose, never a real photo.` },
   { icon: 'shield', title: 'Video-KYC badge', text: 'Illustrative badge; this sample is not verified' },
   { icon: 'chat', title: 'Your pace, your choice', text: 'Share only what feels comfortable' },
 ];

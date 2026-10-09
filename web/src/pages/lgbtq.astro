@@ -1,0 +1,19 @@
+---
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage title="LGBTQ+ space" summary="Apne jaise logon se, bina darr ke baat." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/privacy',label:'Privacy policy'},{href:'/community-guidelines',label:'Community guidelines'}]}>
+<h2>What it is</h2>
+<p>This is a private lane where LGBTQ+ callers talk to LGBTQ+ hosts. It is coming at launch. This page explains how it is planned to work.</p>
+<h2>Private by default</h2>
+<p>Joining this lane is your private choice. We never guess anything about you. Showing it on your profile is a separate choice, and you can change it anytime.</p>
+<h2>Verified callers only</h2>
+<p>Callers in this lane must also pass an Aadhaar check (other callers only verify their WhatsApp number), so everyone here is a real, verified adult.</p>
+<h2>Your safety</h2>
+<ul><li>Never share your phone number, photos or address.</li><li>Never pay anyone outside the platform.</li><li>Press <strong>#</strong> to end the call and block the caller.</li><li>Threats or demands for money are not allowed. If someone threatens to expose you or asks for money to keep a secret, that is extortion. Do not pay. End the call and report it.</li><li>AI follows live calls and ends abusive calls.</li></ul>
+<p>See <a href="/safety">the Safety centre</a> for how to report.</p>
+<h2>Friendship, not dating</h2>
+<p>The same conduct rules apply here as everywhere else. This is a place for friendship and conversation. Sexual talk is not allowed. Read the <a href="/community-guidelines">community guidelines</a>.</p>
+<h2>Your data</h2>
+<p>Sexual orientation is sensitive personal data. It is stored privately, never shown without your choice, and never sold. Read the <a href="/privacy">privacy policy</a> for details.</p>
+</HelloFraandsPage>

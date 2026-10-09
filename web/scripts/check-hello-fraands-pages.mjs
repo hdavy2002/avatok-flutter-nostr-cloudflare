@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 export const footerGroups = ['Company', 'Hosts', 'Trust & Safety', 'Legal & Payments', 'Explore'];
-export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
+export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
 export const footerRoutes = [...contentRoutes.slice(0, 3), '/help', ...contentRoutes.slice(3, 14), '/talk-safely', ...contentRoutes.slice(14), '/marketplace', '/#naye-dost', '/#moods', '/#people', '/#women-only', '/#earn'];
-const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/recording-policy', '/women-only', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
+const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/recording-policy', '/women-only', '/lgbtq', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
 const text = html => html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
 export function checkHelloFraandsPages(root, identity) {
   assert.equal(identity.name, 'Hello Fraands', 'Requested public identity');
   assert.equal(identity.domain, 'hellofraands.com', 'Requested canonical domain');
-  assert.equal(contentRoutes.length, 28, 'All 28 requested content pages');
+  assert.equal(contentRoutes.length, 29, 'All 29 requested content pages');
   const pages = new Map();
   for (const route of contentRoutes) {
     const html = readFileSync(resolve(root, route.slice(1), 'index.html'), 'utf8');
@@ -58,5 +58,5 @@ export function checkHelloFraandsPages(root, identity) {
   // The older downloadable card predates the reviewed welfare guidance and is
   // intentionally unlinked until its text is updated to match this page.
   assert(!pages.get('/hosts/crisis-script').includes('href="/hosts/crisis-script.pdf"'), 'Unreviewed crisis PDF is not promoted');
-  console.log('Hello Fraands content contracts passed: 28 pages, shared chrome, metadata, review notes, earnings and crisis links.');
+  console.log('Hello Fraands content contracts passed: 29 pages, shared chrome, metadata, review notes, earnings and crisis links.');
 }

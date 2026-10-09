@@ -1,10 +1,55 @@
 ---
 import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+import { BRAND } from '../../lib/brand';
 export const prerender = true;
 ---
-<HelloFraandsPage title="KYC guide" summary="Apni pehchaan surakshit tareeqe se verify karein.">
-<h2>What to expect</h2><ol><li>Start verification from your own signed-in account.</li><li>Follow the Didit video KYC flow. Allow camera access, use a well-lit place and follow the face or liveness prompts.</li><li>Complete the Aadhaar OTP step through the verification flow. Enter the OTP only there. Never tell it to a host or support agent.</li><li>Wait for the verification result before going online.</li></ol>
-<h2>What we keep</h2><p>For KYC, we store only the verified flag, gender field, verification date and provider reference. We never store your Aadhaar number or document images. The verification provider processes information within its own flow. Read the <a href="/privacy">privacy policy</a> for provider details and your rights.</p>
-<h2>How long does it take?</h2><p>Timing depends on the provider and whether a manual review is needed. Follow the status shown in the verification flow; a fixed completion time is not promised.</p>
-<h2>If verification fails</h2><p>Check camera permissions, lighting, internet access and that your details match. Retry only when the flow allows it. If you remain stuck, contact {'{{CONTACT_EMAIL}}'} with the error and provider reference. Do not send Aadhaar numbers, document images or OTPs by email.</p>
+<HelloFraandsPage title="How we verify hosts, and how we protect your data" summary="Host verification aur aapke data ki suraksha, saaf shabdon mein.">
+<p><strong>Your privacy is protected.</strong> Your phone number stays hidden behind our masked line. Hosts appear only as an AI avatar they chose — never their real photo.</p>
+<p>This page explains the checks every host on {BRAND.name} goes through, what we keep, and your rights. We follow India's Digital Personal Data Protection (DPDP) Act, 2023 and the DPDP Rules, 2025. See also our <a href="/privacy">privacy policy</a>.</p>
+<h2>What we check</h2>
+<ol>
+<li><strong>Your WhatsApp number.</strong> We send a one-time code on WhatsApp. This is the number callers' calls will ring on.</li>
+<li><strong>Your Aadhaar.</strong> A one-time code (OTP) is sent by UIDAI to your Aadhaar-linked mobile, through our licensed verification partner. Enter the OTP only in the verification step. Never tell it to anyone.</li>
+<li><strong>A 10-second selfie video.</strong> You read a short code shown on screen, so we know a real person is joining.</li>
+<li><strong>Your UPI ID and bank account.</strong> We check that the account is in your own name, so your earnings reach you and no one else.</li>
+</ol>
+<h2>Why we need it</h2>
+<ul>
+<li>To make sure every host is 18 or older.</li>
+<li>To know your gender, for the women-only lane.</li>
+<li>To stop fake, duplicate or banned accounts.</li>
+<li>To pay your earnings into your own account.</li>
+<li>To help the police only when the law requires it, for example a court order or a lawful police request.</li>
+</ul>
+<h2>What we keep</h2>
+<ul>
+<li>From Aadhaar: your name, gender, date of birth, address and father's or guardian's name.</li>
+<li>Only the last 4 digits of your Aadhaar number, and our partner's verification reference. We never keep the full Aadhaar number.</li>
+<li>Your WhatsApp number, your selfie video, and your UPI ID and bank account details.</li>
+</ul>
+<h2>What callers see, and never see</h2>
+<p>Callers see only your first name (or nickname), your AI avatar, your AI voice clip, your topics, languages and price. Callers never see your real name, photo, phone number, address, Aadhaar or bank details.</p>
+<h2>How we protect it</h2>
+<ul>
+<li>Your details are stored encrypted, in private storage, separate from your public profile.</li>
+<li>Only a small authorised team can open them, and every access is logged.</li>
+<li>We never sell your data and never use it for advertising.</li>
+<li>We share it only with our verification partner (to check Aadhaar), our payment partner (to pay you), or a government authority when the law requires.</li>
+</ul>
+<h2>How long we keep it</h2>
+<p>We keep it while you are a host, and for 1 year after you leave, unless another law requires us to keep it longer. Then we delete it. Your selfie video is deleted when your verification is no longer needed, and at the latest when this period ends.</p>
+<h2>Your rights under the DPDP Act 2023</h2>
+<p>You can:</p>
+<ul>
+<li>See what data we hold about you.</li>
+<li>Correct anything that is wrong.</li>
+<li>Delete your account and your data, except records the law tells us to keep.</li>
+<li>Withdraw your consent, by stopping hosting at any time.</li>
+<li>Nominate someone to act for you if you cannot.</li>
+<li>Complain to our <a href="/grievance">Grievance Officer</a>. We reply as fast as we can, and always within the time the law allows (90 days). If you are not satisfied, you can approach the Data Protection Board of India.</li>
+</ul>
+<h2>If something goes wrong</h2>
+<p>If a data breach ever affects you, we will tell you and the Data Protection Board of India, as the law requires.</p>
+<h2>If verification fails</h2>
+<p>Check your internet, lighting and that your details match your Aadhaar and bank account, then try again when the flow allows. If you stay stuck, contact {'{{CONTACT_EMAIL}}'}. Do not send Aadhaar numbers, document images or OTPs by email.</p>
 </HelloFraandsPage>
