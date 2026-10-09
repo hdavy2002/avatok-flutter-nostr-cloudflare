@@ -2107,6 +2107,17 @@ export interface PlatformConfig {
   hfRefundsEnabled: boolean;
   hfRefundWindowDays: number;
   hfExitGateEnabled: boolean;
+  // [HF-WALLET-LIMITS-1] Caller spend limits on REAL money (test credits never count; IST day / month) and the "Are you sure?" step on large top-ups (HF-PAY-7).
+  hfDailySpendLimitRupees: number;
+  hfMonthlySpendLimitRupees: number;
+  hfTopupConfirmAboveRupees: number;
+  // [HF-WALLET-LIMITS-1] Supplier details for receipts / GST tax invoices (HF-PAY-16). Empty hfGstin = plain payment receipts only; set it and
+  // monthly tax invoices on the platform share start. Config-only switch: no deploy needed.
+  hfGstin: string;
+  hfLegalName: string;
+  hfLegalAddress: string;
+  hfStateCode: string; // two-digit GST state code, e.g. "27"
+  hfInvoicePrefix: string; // document-number prefix, max 4 chars
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2870,6 +2881,14 @@ const DEFAULTS: PlatformConfig = {
   hfRefundsEnabled: false, // [HF-WALLET-EXIT-1] dark until the owner flips it
   hfRefundWindowDays: 180,
   hfExitGateEnabled: true,
+  hfDailySpendLimitRupees: 2000, // [HF-WALLET-LIMITS-1]
+  hfMonthlySpendLimitRupees: 15000,
+  hfTopupConfirmAboveRupees: 1000,
+  hfGstin: "",
+  hfLegalName: "",
+  hfLegalAddress: "",
+  hfStateCode: "",
+  hfInvoicePrefix: "HF",
   consultantsEnabled: false, // [AUMFE-CONSULT-FOUNDATION-1] dark until the owner flips it (previewers can use it meanwhile) // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,
@@ -3011,7 +3030,7 @@ export async function getConfig(env: Env): Promise<Response> {
   const partyEnabled = env.PARTY_ENABLED === "1";
   // [HF-TOPUP-1] The browser gets only a derived `hfTopup` block (enabled already means "flag on + gateway chosen + adapter has keys").
   const merged: Record<string, unknown> = { ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }) };
-  merged.hfTopup = hfTopupPublic(env, merged as any);
+  merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
@@ -3182,6 +3201,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
+    "hfDailySpendLimitRupees", "hfMonthlySpendLimitRupees", "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3193,6 +3213,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
     "hfTopupGateway", "hfTopupPacks", // [HF-TOPUP-1]
+    "hfGstin", "hfLegalName", "hfLegalAddress", "hfStateCode", "hfInvoicePrefix", // [HF-WALLET-LIMITS-1]
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -3240,6 +3261,19 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfRefundWindowDays" && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 3650)) {
       return json({ error: "hfRefundWindowDays must be an integer 1-3650" }, 400);
+    }
+    // [HF-WALLET-LIMITS-1]
+    if ((k === "hfDailySpendLimitRupees" || k === "hfMonthlySpendLimitRupees" || k === "hfTopupConfirmAboveRupees") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {
+      return json({ error: `${k} must be a whole rupee amount 0-1000000` }, 400);
+    }
+    if (k === "hfGstin" && v !== "" && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(String(v))) {
+      return json({ error: "hfGstin must be empty or a valid 15-character GSTIN" }, 400);
+    }
+    if (k === "hfStateCode" && v !== "" && !/^\d{2}$/.test(String(v))) {
+      return json({ error: "hfStateCode must be empty or a two-digit GST state code" }, 400);
+    }
+    if (k === "hfInvoicePrefix" && !/^[A-Za-z0-9]{1,4}$/.test(String(v))) {
+      return json({ error: "hfInvoicePrefix must be 1-4 letters or digits" }, 400);
     }
     if (k === "shopPodProvider" && v !== "manual" && v !== "printrove") {
       return json({ error: "shopPodProvider must be manual or printrove" }, 400);

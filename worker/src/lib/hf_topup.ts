@@ -9,6 +9,8 @@ import { WALLET_APP } from "./hf_calls_store";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
 import { noteGatewayRefund } from "./hf_refunds"; // [HF-WALLET-EXIT-1]
+import { readConfig } from "../routes/config";
+import { issueTopupReceipt } from "./hf_receipts"; // [HF-WALLET-LIMITS-1]
 
 export const TOPUP_PREFIX = "hftop_";
 export const TOPUP_EXPIRE_MS = 24 * 3600_000;
@@ -93,6 +95,8 @@ export async function settleHfTopup(
   }
   await db.prepare("UPDATE hf_topups SET status='paid', credited=1, raw_status=?2, gateway_payment_id=COALESCE(?3,gateway_payment_id), paid_at=COALESCE(paid_at,?4), updated_at=?4 WHERE id=?1")
     .bind(row.id, String(truth.status).slice(0, 40), evidence.gatewayPaymentId, now).run();
+  // [HF-WALLET-LIMITS-1] Payment receipt (HF-PAY-16), idempotent by top-up id; never fails the credit. A miss is healed when the caller opens /wallet.
+  try { await issueTopupReceipt(env, (await readConfig(env).catch(() => ({}))) as Record<string, unknown>, { id: row.id, uid: row.uid, amount_rupees: row.amount_rupees, gateway: row.gateway, gateway_payment_id: evidence.gatewayPaymentId ?? row.gateway_payment_id ?? null, paid_at: now }); } catch { /* best-effort */ }
   void track(env, row.uid, "hf_topup_paid", WALLET_APP, { area: "hf_topup", rupees: row.amount_rupees, gateway: row.gateway }).catch(() => undefined);
   return { result: "credited", balanceAfter: Math.trunc(Number(r.body?.balance ?? NaN)) || undefined };
 }

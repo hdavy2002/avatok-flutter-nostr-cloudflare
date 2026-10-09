@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import TopupPanel from './TopupPanel'; // [HF-TOPUP-1]
 import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
+import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
 import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
@@ -12,6 +13,7 @@ const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
 export default function HfWallet() {
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
   const [w, setW] = useState<WalletInfo | null>(null);
+  const [rcptKey, setRcptKey] = useState(0); // [HF-WALLET-LIMITS-1] bump to reload receipts after a top-up
 
   useEffect(() => {
     if (looksSignedOut()) { setPhase('signedout'); return; }
@@ -44,9 +46,15 @@ export default function HfWallet() {
           <div className="hfc-stat"><strong>{inr(w.testBalance)}</strong><span>Test credits: spend only, can’t be withdrawn</span></div>
         </div>
         <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
+        {w.limits && (
+          <p className="hfc-sub" style={{ margin: 0 }}>
+            Today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} used · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)} used. Limits count real money only, and today’s resets at midnight.
+          </p>
+        )}
       </section>
 
-      <TopupPanel onPaid={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
+      <TopupPanel onPaid={() => { setRcptKey(k => k + 1); fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
+      <ReceiptsPanel reloadKey={rcptKey} />
 
       <RefundPanel onChanged={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
 

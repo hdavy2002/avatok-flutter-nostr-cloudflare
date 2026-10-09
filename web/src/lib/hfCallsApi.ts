@@ -91,5 +91,7 @@ export interface WalletInfo {
   host?: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number };
   history: WalletHistoryItem[];
   balanceRupees?: number;
+  /** [HF-WALLET-LIMITS-1] Real-money spend so far against the caller's limits (IST day / month). Absent on an older worker. */
+  limits?: { daily: number; monthly: number; spentToday: number; spentThisMonth: number; resetsAt: number };
 }
 export const fetchWallet = (): Promise<HfResult<WalletInfo>> => hfCall<WalletInfo>('GET', '/api/hf/wallet');

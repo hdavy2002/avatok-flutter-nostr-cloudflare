@@ -1,0 +1,10 @@
+---
+// [HF-WALLET-LIMITS-1] Admin: money reconciliation (top-ups vs wallet credits, calls, earnings, payouts, refunds).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import HostReconciliation from '../../../islands/admin2/hosts/HostReconciliation.tsx';
+---
+
+<Admin2 title="Reconciliation" active="host-reconciliation" subtitle="Check that every top-up became a wallet credit, and see where the money went.">
+  <HostReconciliation client:load />
+</Admin2>

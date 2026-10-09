@@ -9684,5 +9684,22 @@
         "note": "A caller asked for unused top-up money back, or the closure flow created a refund."
       }
     ]
+  },
+  "HF-WALLET-LIMITS-1": {
+    "description": "[HF-WALLET-LIMITS-1 2026-10-10] HF caller spend limits on real money (Rs2,000/day, Rs15,000/month, IST; test credits never count; admin per-user override), 'Are you sure?' step on top-ups of Rs1,000+, payment receipts for every paid top-up (GST tax invoices on the platform share, monthly, once hfGstin is set), and an admin reconciliation report (/admin/hosts/reconciliation, CSV). New hf_spend_limits, hf_receipts, hf_doc_counters tables and hf_calls.limit_cap_rupees. Dark with hfCallsEnabled / hfTopupEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallsEnabled",
+      "hfTopupEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_topup_paid",
+        "property": "area",
+        "equals": "hf_topup",
+        "note": "A top-up was paid and credited; its receipt is issued at the same moment."
+      }
+    ]
   }
 }
