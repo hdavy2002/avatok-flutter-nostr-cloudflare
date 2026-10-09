@@ -80,8 +80,9 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
   const now = useNow(connected);
 
   const loadWallet = useCallback(async () => {
-    const r = await hfCall<{ balanceRupees: number }>('GET', '/api/hf/wallet');
-    if (r.ok) setBalance(Number(r.data.balanceRupees) || 0);
+    // [HF-WALLET-1] what you can spend on a call = paid balance + test credits
+    const r = await hfCall<{ balanceRupees: number; spendable?: number }>('GET', '/api/hf/wallet');
+    if (r.ok) setBalance(Number(r.data.spendable ?? r.data.balanceRupees) || 0);
     else if (r.status === 401) window.location.assign(signInUrl());
   }, []);
 

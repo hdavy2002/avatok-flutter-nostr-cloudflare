@@ -1,0 +1,12 @@
+---
+// [HF-WALLET-1] Wallet: paid balance, spend-only test credits, history. Signed-in only, not indexed.
+export const prerender = true;
+import Base from '../layouts/Base.astro';
+import HfWallet from '../islands/wallet/HfWallet';
+import '../styles/hf-calls.css';
+import brandConfig from '../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+---
+<Base title={`Wallet | ${identity.name}`} description="Your balance, test credits and history." noindex keywords="" lang="en-IN">
+  <HfWallet client:only="react" />
+</Base>

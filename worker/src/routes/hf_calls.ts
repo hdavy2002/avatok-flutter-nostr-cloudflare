@@ -3,7 +3,8 @@
 //   POST /api/hf/calls {hostSlug, lane?}              -> {ok, callId, status:"ringing_host", rate, maxMinutes}
 //   GET  /api/hf/calls/:id                            -> {id,status,hostSlug,hostName,rate,connectedAt,endedAt,billedMinutes,chargedRupees,endReason,canReview}
 //   POST /api/hf/calls/:id/cancel                     (caller, before connect)
-//   GET  /api/hf/wallet                               -> {balanceRupees, testCredits:true}
+//   GET  /api/hf/wallet                               -> {paidBalance, testBalance, spendable, host?, history[], balanceRupees (legacy)}   [HF-WALLET-1]
+//   POST /api/admin/hf/wallet/migrate-test-credits {dry_run?=true}   (one-off: moves earlier wallet test credits into hf_credits)
 //   GET|PUT /api/hosts/me/presence {online}           -> {ok, presence}      POST /api/hosts/me/presence/beat
 //   GET  /api/hosts/me/calls                          -> {ok, calls:[...], today:{calls,minutes,earningRupees}}   (handles only, never numbers)
 //   POST /api/admin/hf/wallet/credit {uid | phone, rupees 1..2000, note, opId?, via?}   GET /api/admin/hf/users/search?q=      GET /api/admin/hf/calls?status=&limit=&offset=
@@ -25,7 +26,8 @@ import { readConfig } from "./config";
 import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
 } from "../lib/hf_calls_store";
-import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
+import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance } from "../lib/hf_credits";
+import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const UNAVAILABLE = () => err(409, "host_unavailable", "This host isn't available right now.");
@@ -98,20 +100,33 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const callId = crypto.randomUUID();
   const needed = rate * START_RESERVE_MINUTES;
 
-  const rsv = await hfReserve(env, uid, needed, callId, "reserve");
-  if (!rsv.ok) {
-    if (rsv.status === 402) return err(402, "low_balance", `You need at least ₹${needed} for this call.`, { needed, balance: rsv.available });
-    return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
+  // [HF-WALLET-1] Test credits are held first (up to a full-length call); the paid wallet reserves only what they do not cover.
+  const testReserved = await reserveTestCredits(env, uid, callId, rate * MAX_CALL_MINUTES);
+  const shortfall = paidShortfall(needed, testReserved);
+  let paidReserved = 0, paidFunds = 0;
+  if (shortfall > 0) {
+    const rsv = await hfReserve(env, uid, shortfall, callId, "reserve");
+    if (!rsv.ok) {
+      await settleTestCredits(env, uid, callId, 0).catch(() => 0);
+      const spendable = testReserved + rsv.available;
+      if (rsv.status === 402) return err(402, "low_balance", `You need at least ₹${needed} for this call.`, { needed, balance: spendable });
+      return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
+    }
+    paidReserved = shortfall;
+    paidFunds = rsv.available + shortfall;
+  } else {
+    paidFunds = await hfWalletBalance(env, uid);
   }
-  const fundsRupees = rsv.available + needed;
+  const fundsRupees = testReserved + paidFunds;
   const maxMinutes = maxMinutesFor(fundsRupees, rate);
   const limitReason = Math.floor(fundsRupees / rate) < MAX_CALL_MINUTES ? "balance" : "time_limit";
 
+  const freeAll = async () => { await hfRelease(env, uid, callId).catch(() => false); await settleTestCredits(env, uid, callId, 0).catch(() => 0); };
   if (!(await claimHost(env, host.uid))) {
-    await hfRelease(env, uid, callId).catch(() => false);
+    await freeAll();
     return UNAVAILABLE();
   }
-  const undo = async () => { await releaseHost(env, host.uid).catch(() => undefined); await hfRelease(env, uid, callId).catch(() => false); };
+  const undo = async () => { await releaseHost(env, host.uid).catch(() => undefined); await freeAll(); };
   try {
     await env.DB_META.prepare(
       "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7)",
@@ -124,7 +139,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   try {
     const r = await callStub(env, callId).fetch("https://hfcall/init", {
       method: "POST",
-      body: JSON.stringify({ callId, callerUid: uid, hostUid: host.uid, rateRupees: rate, reservedRupees: needed, fundsRupees, maxMinutes, limitReason }),
+      body: JSON.stringify({ callId, callerUid: uid, hostUid: host.uid, rateRupees: rate, reservedRupees: paidReserved, testReservedRupees: testReserved, fundsRupees, maxMinutes, limitReason }),
     });
     if (!r.ok) return err(502, "call_failed", "We couldn't place the call. Please try again.");
   } catch (e) {
@@ -174,7 +189,48 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
-  return json({ balanceRupees: await hfWalletBalance(env, u.uid), testCredits: true }, 200, { "cache-control": "private, no-store" });
+  // [HF-WALLET-1] paid (withdrawable) money and spend-only test credits are reported separately; host block only for hosts.
+  const snap = await walletOp(env, u.uid, { op: "balance", uid: u.uid });
+  const paidBalance = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.balance ?? 0))) : 0;
+  const held = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.held ?? 0))) : 0;
+  const test = await getTestBalance(env, u.uid);
+  const isHost = !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(u.uid).first().catch(() => null));
+
+  type H = { at: number; kind: string; rupees: number; label: string; callId?: string };
+  const hist: H[] = [];
+  const ledger = (await env.DB_META.prepare(
+    "SELECT kind, delta, note, created_at FROM hf_credit_ledger WHERE uid=?1 AND kind IN ('grant','migrate','admin_reverse') ORDER BY created_at DESC LIMIT 50",
+  ).bind(u.uid).all<{ kind: string; delta: number; note: string | null; created_at: number }>().catch(() => ({ results: [] }))).results ?? [];
+  for (const l of ledger) {
+    hist.push({ at: l.created_at, kind: l.kind === "admin_reverse" ? "test_credit_removed" : "test_credit", rupees: Number(l.delta), label: l.kind === "grant" ? "Test credits added" : l.kind === "migrate" ? "Test credits (moved from wallet)" : "Test credits removed" });
+  }
+  const calls = (await env.DB_META.prepare(
+    `SELECT c.id, c.caller_uid, c.created_at, c.ended_at, c.billed_minutes, c.charged_paise, c.paid_rupees, c.test_rupees, c.host_paid_rupees, c.host_test_rupees, c.host_earned_tokens,
+            (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name, (SELECT display_name FROM users x WHERE x.uid=c.caller_uid) AS caller_name
+       FROM hf_calls c WHERE (c.caller_uid=?1 OR c.host_uid=?1) AND c.status='completed' AND c.billed_minutes>=1 ORDER BY c.created_at DESC LIMIT 50`,
+  ).bind(u.uid).all<{ id: string; caller_uid: string; created_at: number; ended_at: number | null; billed_minutes: number; charged_paise: number; paid_rupees: number | null; test_rupees: number | null; host_paid_rupees: number | null; host_test_rupees: number | null; host_earned_tokens: number | null; host_name: string | null; caller_name: string | null }>()
+    .catch(() => ({ results: [] }))).results ?? [];
+  for (const c of calls) {
+    const at = Number(c.ended_at ?? c.created_at);
+    if (c.caller_uid === u.uid) {
+      hist.push({ at, kind: "call_spent", rupees: -Math.round(Number(c.charged_paise ?? 0)) / 100, label: `Call with ${callerHandle(c.host_name)} (${c.billed_minutes} min)`, callId: c.id });
+    } else {
+      const paid = Number(c.host_paid_rupees ?? c.host_earned_tokens ?? 0), t = Number(c.host_test_rupees ?? 0);
+      hist.push({ at, kind: "call_earned", rupees: paid + t, label: `Call with ${callerHandle(c.caller_name)} (${c.billed_minutes} min)${t > 0 ? ` - ₹${t} from test credits, not withdrawable` : ""}`, callId: c.id });
+    }
+  }
+  hist.sort((a, b) => b.at - a.at);
+
+  let host: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number } | undefined;
+  if (isHost) {
+    const te = await env.DB_META.prepare("SELECT COALESCE(SUM(rupees),0) AS t FROM hf_host_test_earnings WHERE host_uid=?1").bind(u.uid).first<{ t: number }>().catch(() => null);
+    const life = await env.DB_META.prepare("SELECT COALESCE(SUM(COALESCE(host_paid_rupees, host_earned_tokens)),0) AS p FROM hf_calls WHERE host_uid=?1").bind(u.uid).first<{ p: number }>().catch(() => null);
+    host = { heldRupees: held, availableRupees: paidBalance, testEarningsRupees: Number(te?.t ?? 0), lifetimePaidEarnings: Number(life?.p ?? 0) };
+  }
+  return json({
+    balanceRupees: paidBalance, testCredits: true, // legacy fields kept for older clients
+    paidBalance, testBalance: test.balance, spendable: paidBalance + test.balance, ...(host ? { host } : {}), history: hist.slice(0, 50),
+  }, 200, { "cache-control": "private, no-store" });
 }
 
 // ── host presence ────────────────────────────────────────────────────────────
@@ -258,12 +314,54 @@ async function adminCredit(req: Request, env: Env): Promise<Response> {
   if (!exists) return err(404, "not_found", "No such user.");
   if (name === null) name = personName(exists);
   const opKey = String(b.opId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || crypto.randomUUID();
-  const r = await walletOp(env, uid, { op: "credit", uid, amount, type: "hf_test_credit", app_name: WALLET_APP, ref: `hftest:${a.uid}`, op_id: `hftest:${opKey}`, context: `Test credits: ${note}`.slice(0, 120) });
-  if (r.status !== 200 || r.body?.ok !== true) return err(502, "wallet_error", "The credit didn't go through.");
+  // [HF-WALLET-1] Test credits are spend-only and live in hf_credits, never in the withdrawable wallet.
+  let g: { applied: boolean; balance: number };
+  try { g = await grantTestCredits(env, uid, amount, `hftest:${opKey}`, note); } catch (e) {
+    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/wallet/credit", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "grant" } });
+    return err(502, "wallet_error", "The credit didn't go through.");
+  }
+  const paid = await hfWalletBalance(env, uid);
   await audit(env, a.uid, "wallet_test_credit", uid, { rupees: amount, note, op: opKey, via });
   void track(env, a.uid, "hf_test_credit_added", HF_CALL_APP, { area: "hf_call", rupees: amount }).catch(() => undefined);
   void track(env, a.uid, "hf_admin_credit_added", HF_CALL_APP, { area: "hf_call", rupees: amount, via }).catch(() => undefined);
-  return json({ ok: true, uid, name, balanceRupees: Math.max(0, Math.trunc(Number(r.body?.balance ?? 0))) });
+  return json({ ok: true, uid, name, balanceRupees: paid, testBalance: g.balance });
+}
+
+// POST /api/admin/hf/wallet/migrate-test-credits {dry_run?: boolean (default true)}
+// One-off: earlier admin test credits landed in the PAID wallet (type hf_test_credit). Move min(sum credited, current paid balance) per user
+// out of the wallet and into hf_credits. Idempotent per user (op ids hfmig:<uid>). Hosts' earlier call earnings cannot be classified; counts only.
+async function adminMigrateTestCredits(req: Request, env: Env): Promise<Response> {
+  const a = await adminCtx(req, env);
+  if (a instanceof Response) return a;
+  const b = await readJson(req);
+  const dryRun = b.dry_run !== false;
+  const rows = (await env.DB_WALLET.prepare(
+    "SELECT uid, SUM(amount) AS credited, COUNT(*) AS n FROM wallet_transactions WHERE type='hf_test_credit' AND amount>0 GROUP BY uid LIMIT 500",
+  ).all<{ uid: string; credited: number; n: number }>()).results ?? [];
+  const report: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    const credited = Math.max(0, Math.trunc(Number(r.credited)));
+    const paid = await hfWalletBalance(env, r.uid);
+    const already = await env.DB_META.prepare("SELECT 1 AS x FROM hf_credit_ledger WHERE op_id=?1").bind(`hfmig:${r.uid}`).first<{ x: number }>().catch(() => null);
+    const amount = already ? 0 : Math.min(credited, paid);
+    const row: Record<string, unknown> = { uid: r.uid, credited, paidBalance: paid, amount, alreadyMigrated: !!already, moved: false };
+    if (!dryRun && amount > 0) {
+      const sp = await walletOp(env, r.uid, { op: "spend", uid: r.uid, amount, allow_free: false, op_id: `hfmig:${r.uid}`, app_name: WALLET_APP, ref: "hfmig", context: "Test credits moved to spend-only balance" });
+      if (sp.status === 200 && sp.body?.ok === true) {
+        await grantTestCredits(env, r.uid, amount, `hfmig:${r.uid}`, "Moved from wallet", "migrate");
+        row.moved = true;
+      } else row.error = `wallet_${sp.status}`;
+    }
+    report.push(row);
+  }
+  const hosts = (await env.DB_META.prepare(
+    "SELECT host_uid, COUNT(*) AS calls, COALESCE(SUM(host_earned_tokens),0) AS rupees FROM hf_calls WHERE host_uid IS NOT NULL AND host_paid_rupees IS NULL AND host_earned_tokens>0 GROUP BY host_uid LIMIT 500",
+  ).all<{ host_uid: string; calls: number; rupees: number }>().catch(() => ({ results: [] }))).results ?? [];
+  await audit(env, a.uid, "migrate_test_credits", "-", { dry_run: dryRun, users: report.length, moved: report.filter((x) => x.moved).length });
+  return json({
+    ok: true, dryRun, users: report, totalAmount: report.reduce((t, x) => t + Number(x.amount ?? 0), 0),
+    unclassifiedHostEarnings: hosts.map((h) => ({ hostUid: h.host_uid, calls: Number(h.calls), rupees: Number(h.rupees) })),
+  }, 200, { "cache-control": "private, no-store" });
 }
 
 // GET /api/admin/hf/users/search?q=  (admin only; full phone is shown on purpose, the audit row keeps only type + count)
@@ -350,6 +448,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (p === "/api/hosts/me/presence/beat" && m === "POST") return await presenceRoute(req, env, p, ctx);
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);
     if (p === "/api/admin/hf/wallet/credit" && m === "POST") return await adminCredit(req, env);
+    if (p === "/api/admin/hf/wallet/migrate-test-credits" && m === "POST") return await adminMigrateTestCredits(req, env);
     if (p === "/api/admin/hf/users/search" && m === "GET") return await adminUserSearch(req, env);
     if (p === "/api/admin/hf/calls" && m === "GET") return await adminCalls(req, env);
     return null;

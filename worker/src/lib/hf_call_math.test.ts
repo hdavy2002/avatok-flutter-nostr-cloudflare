@@ -2,7 +2,48 @@ import { describe, it, expect } from "vitest";
 import {
   ratePaise, hostSharePerMinPaise, billedMinutes, maxMinutesFor, settleCall, hostTokensToCredit, callerHandle, announceText,
   hostAnnounceXml, noticeAndConferenceXml, hangupXml, callerDidntPickUpXml, SAFETY_NOTICE,
+  splitCharge, splitHostShare, paidShortfall, paidStillNeeded,
 } from "./hf_call_math";
+
+// [HF-WALLET-1] test credits are consumed first; the host share follows the same paid/test proportions.
+describe("test-credit split", () => {
+  it("test credits cover the charge first, paid covers the rest", () => {
+    expect(splitCharge(30, 100)).toEqual({ testUsed: 30, paidUsed: 0 });
+    expect(splitCharge(30, 10)).toEqual({ testUsed: 10, paidUsed: 20 });
+    expect(splitCharge(30, 0)).toEqual({ testUsed: 0, paidUsed: 30 });
+    expect(splitCharge(0, 50)).toEqual({ testUsed: 0, paidUsed: 0 });
+  });
+  it("host share: all-test call earns nothing withdrawable, all-paid earns everything", () => {
+    expect(splitHostShare(18, 30, 0)).toEqual({ hostPaid: 0, hostTest: 18 });
+    expect(splitHostShare(18, 30, 30)).toEqual({ hostPaid: 18, hostTest: 0 });
+  });
+  it("host share is proportional, floors the paid part and never loses a rupee", () => {
+    const s = splitHostShare(18, 30, 10); // 18 * 10 / 30 = 6
+    expect(s).toEqual({ hostPaid: 6, hostTest: 12 });
+    const t = splitHostShare(7, 20, 7); // floor(7*7/20) = 2
+    expect(t.hostPaid + t.hostTest).toBe(7);
+    expect(t.hostPaid).toBe(2);
+    expect(splitHostShare(5, 0, 0)).toEqual({ hostPaid: 0, hostTest: 5 });
+    expect(splitHostShare(0, 20, 20)).toEqual({ hostPaid: 0, hostTest: 0 });
+  });
+  it("paid reserve at start is only the shortfall", () => {
+    expect(paidShortfall(40, 0)).toBe(40);
+    expect(paidShortfall(40, 25)).toBe(15);
+    expect(paidShortfall(40, 500)).toBe(0);
+  });
+  it("extra paid needed at settle ignores test credits and what is already reserved", () => {
+    expect(paidStillNeeded(100, 60, 20)).toBe(20);
+    expect(paidStillNeeded(100, 150, 0)).toBe(0);
+    expect(paidStillNeeded(100, 0, 40)).toBe(60);
+    expect(paidStillNeeded(30, 10, 20)).toBe(0);
+  });
+  it("end to end: funds = test + paid, split is consistent with the settlement charge", () => {
+    const st = settleCall({ connectedSeconds: 190, rateRupees: 10, fundsRupees: 25 + 10 }); // 4 min wanted = 40 > 35 funds -> 3 min, charge 35
+    const sp = splitCharge(st.chargeRupees, 25);
+    expect(sp.testUsed + sp.paidUsed).toBe(st.chargeRupees);
+    expect(sp).toEqual({ testUsed: 25, paidUsed: 10 });
+  });
+});
 
 describe("host share", () => {
   it("matches the contract at Rs 5/10/20/30", () => {

@@ -82,3 +82,14 @@ export function relDate(v: number | string | null | undefined): string {
   if (days < 365) return `${Math.floor(days / 30)} month${days >= 60 ? 's' : ''} ago`;
   return 'Over a year ago';
 }
+
+/* [HF-WALLET-1] GET /api/hf/wallet. paidBalance is withdrawable money; testBalance is spend-only test credits (never withdrawable).
+ * `host` is present only for hosts. `history` merges test-credit grants with completed calls (as caller and as host). */
+export interface WalletHistoryItem { at: number; kind: 'test_credit' | 'test_credit_removed' | 'call_spent' | 'call_earned' | string; rupees: number; label: string; callId?: string }
+export interface WalletInfo {
+  paidBalance: number; testBalance: number; spendable: number;
+  host?: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number };
+  history: WalletHistoryItem[];
+  balanceRupees?: number;
+}
+export const fetchWallet = (): Promise<HfResult<WalletInfo>> => hfCall<WalletInfo>('GET', '/api/hf/wallet');

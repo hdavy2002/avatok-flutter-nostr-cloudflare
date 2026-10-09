@@ -9620,5 +9620,21 @@
         "note": "Test credit added from a search result."
       }
     ]
+  },
+  "HF-WALLET-1": {
+    "description": "[HF-WALLET-1 2026-10-09] HF test credits are now spend-only: stored in hf_credits (not the withdrawable wallet), used before paid balance on calls; host share from test-credit calls is recorded as non-withdrawable (hf_host_test_earnings). New /wallet page (paid balance, test credits, history), GET /api/hf/wallet extended, host dashboard earnings breakdown, one-off admin migrate-test-credits endpoint. Dark behind hfCallsEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_admin_credit_added",
+        "property": "area",
+        "equals": "hf_call",
+        "note": "Admin added spend-only test credits (hf_credits)."
+      }
+    ]
   }
 }

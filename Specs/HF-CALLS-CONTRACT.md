@@ -24,6 +24,7 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
 - Max call length = min(60 min, floor(balance / rate) minutes), with a spoken warning 60 s before the limit.
 - The balance never goes negative.
 - Host share per minute = rate − (2 + 0.4 × (rate − 2)). At ₹5/min that's ₹1.80; in paise use integer math.
+- **Test credits vs paid money [HF-WALLET-1]:** test credits (admin-added) live in D1 `hf_credits` / `hf_credit_ledger`, never in the WalletDO paid balance, and are spend-only. At call start test credits are held first (up to a 60-minute call); the paid wallet reserves only the shortfall of the 2-minute start reserve. At settle `testUsed = min(testHeld, charge)`, `paidUsed = charge − testUsed`; only `paidUsed` is consumed from the wallet and the unused test hold is returned. The host share splits the same way: `hostPaid = floor(hostTotal × paidUsed / charge)` is earned to the host wallet (7-day hold, commission on the paid part); `hostTest = hostTotal − hostPaid` goes to `hf_host_test_earnings` and is never withdrawable. `hf_calls` records `paid_rupees`, `test_rupees`, `host_paid_rupees`, `host_test_rupees`. Every step is idempotent (op ids `hfres:<callId>`, `hfset:<callId>`, `hfcall:<callId>:*`, UNIQUE `hf_host_test_earnings.call_id`).
 
 **Blocks:** a block always shows to the blocked person as "host isn't available".
 
@@ -69,7 +70,9 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
 - **Auto-offline:** the existing scheduled() cron sets presence offline after 8 h without a heartbeat. **`POST /api/hosts/me/presence/beat`** refreshes it while the dashboard is open.
 - **`GET /api/hosts/me/calls`** → recent calls for the host dashboard (no caller numbers, handle only).
 - **Admin**
-  - `POST /api/admin/hf/wallet/credit` with `{uid, rupees (1..2000), note}` adds test credits via WalletDO credit, audited.
+  - `POST /api/admin/hf/wallet/credit` with `{uid, rupees (1..2000), note}` adds test credits to `hf_credits` (spend-only; no WalletDO credit), audited; the response also returns `testBalance`.
+  - `POST /api/admin/hf/wallet/migrate-test-credits` `{dry_run?: true}` one-off: moves earlier wallet `hf_test_credit` credits (capped at the paid balance) into `hf_credits` (op ids `hfmig:<uid>`); lists hosts whose earlier earnings cannot be classified.
+  - `GET /api/hf/wallet` → `{paidBalance, testBalance, spendable, host?: {heldRupees, availableRupees, testEarningsRupees, lifetimePaidEarnings}, history[]}` (legacy `balanceRupees` kept).
   - `GET /api/admin/hf/calls` → list.
 - **Vobiz webhooks** under `/api/hf/vobiz/<VOBIZ_WEBHOOK_SECRET>/...` (answer/host, digits/host, answer/caller, conference events, hangup), with XML responses in the Plivo/Vobiz dialect, mirroring `lib/campaign_handover.ts` and `lib/vobiz_provider.ts`. State lives in a Durable Object **`HfCallDO`** (one per call, alarms for the warning and the time limit). Add the DO binding + migration tag in wrangler.toml, mirroring existing DO declarations exactly.
 - **Billing ops through WalletDO**

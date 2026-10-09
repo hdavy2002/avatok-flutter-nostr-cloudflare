@@ -16,8 +16,9 @@ import { speakIntoCall } from "../lib/hf_vobiz";
 import {
   HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
+import { settleTestCredits } from "../lib/hf_credits";
 import {
-  settleCall, billedMinutes, hostTokensToCredit, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
+  settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
 } from "../lib/hf_call_math";
 
@@ -28,11 +29,19 @@ const CALLER_PHASE_MS = 70_000;    // caller ring + safety notice
 const CONNECT_GUESS_MS = 25_000;   // only used when Vobiz sends no conference "enter" events at all
 const MAX_BILL_ATTEMPTS = 8;
 
-interface Plan { billedMinutes: number; chargeRupees: number; hostEarningPaise: number; hostTokens: number; capped: boolean }
-interface Bill { funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number }
+// [HF-WALLET-1] testUsed/paidUsed split the caller's charge; hostPaid/hostTest split the host's share the same way (test part is never withdrawable).
+interface Plan {
+  billedMinutes: number; chargeRupees: number; hostEarningPaise: number; hostTokens: number; capped: boolean;
+  testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
+}
+interface Bill {
+  funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
+  testSettled?: boolean; testEarned?: boolean;
+}
 interface S {
   callId: string; callerUid: string; hostUid: string;
-  rateRupees: number; reservedRupees: number; fundsRupees: number; maxMinutes: number; limitReason: "time_limit" | "balance";
+  // reservedRupees = PAID rupees reserved in the wallet at start; testReservedRupees = test credits held for this call; fundsRupees = test + paid available at start.
+  rateRupees: number; reservedRupees: number; testReservedRupees?: number; fundsRupees: number; maxMinutes: number; limitReason: "time_limit" | "balance";
   status: string; createdAt: number;
   hostLeg: string | null; callerLeg: string | null;
   hostPicked: boolean; hostAccepted: boolean; callerPicked: boolean; callerPickedAt: number | null;
@@ -102,7 +111,7 @@ export class HfCallDO {
     const now = Date.now();
     const s: S = {
       callId: String(b.callId), callerUid: String(b.callerUid), hostUid: String(b.hostUid),
-      rateRupees: Math.trunc(Number(b.rateRupees)), reservedRupees: Math.trunc(Number(b.reservedRupees)), fundsRupees: Math.trunc(Number(b.fundsRupees)),
+      rateRupees: Math.trunc(Number(b.rateRupees)), reservedRupees: Math.trunc(Number(b.reservedRupees)), testReservedRupees: Math.max(0, Math.trunc(Number(b.testReservedRupees ?? 0))), fundsRupees: Math.trunc(Number(b.fundsRupees)),
       maxMinutes: Math.trunc(Number(b.maxMinutes)), limitReason: b.limitReason === "balance" ? "balance" : "time_limit",
       status: "ringing_host", createdAt: now, hostLeg: null, callerLeg: null,
       hostPicked: false, hostAccepted: false, callerPicked: false, callerPickedAt: null,
@@ -340,11 +349,14 @@ export class HfCallDO {
     try {
       if (!b.plan) {
         const seconds = s.connectedAt ? Math.floor(((s.endedAt ?? Date.now()) - s.connectedAt) / 1000) : 0;
+        // [HF-WALLET-1] `funds` = PAID rupees secured in the wallet; test credits (held at start) cover the charge first.
         let funds = s.reservedRupees;
+        const testHeld = Math.max(0, s.testReservedRupees ?? 0);
         const wantCharge = Math.min(billedMinutes(seconds) * s.rateRupees, s.fundsRupees);
-        if (wantCharge > funds) {
+        const extraNeeded = paidStillNeeded(wantCharge, testHeld, funds);
+        if (extraNeeded > 0) {
           // Secure the rest of the charge (never more than the balance at start). Two op ids: a refused reserve is cached by op_id.
-          const extra = wantCharge - funds;
+          const extra = extraNeeded;
           const r1 = await hfReserve(this.env, s.callerUid, extra, s.callId, "reserve2");
           if (r1.ok) funds += extra;
           else if (r1.status === 402 && r1.available > 0) {
@@ -354,20 +366,28 @@ export class HfCallDO {
           } else if (r1.status !== 402) throw new Error(`reserve2 ${r1.status}`);
         }
         b.funds = funds;
-        const st = settleCall({ connectedSeconds: seconds, rateRupees: s.rateRupees, fundsRupees: funds });
+        const st = settleCall({ connectedSeconds: seconds, rateRupees: s.rateRupees, fundsRupees: funds + testHeld });
         let hostTokens = 0;
         if (st.hostEarningPaise > 0) {
           const prior = await this.db().prepare("SELECT COALESCE(SUM(host_earning_paise),0) AS p, COALESCE(SUM(host_earned_tokens),0) AS t FROM hf_calls WHERE host_uid=?1 AND id<>?2")
             .bind(s.hostUid, s.callId).first<{ p: number; t: number }>();
           hostTokens = Math.min(st.chargeRupees, hostTokensToCredit(Number(prior?.p ?? 0), Number(prior?.t ?? 0), st.hostEarningPaise));
         }
-        b.plan = { billedMinutes: st.billedMinutes, chargeRupees: st.chargeRupees, hostEarningPaise: st.hostEarningPaise, hostTokens, capped: st.capped };
+        const split = splitCharge(st.chargeRupees, testHeld);
+        const hs = splitHostShare(hostTokens, st.chargeRupees, split.paidUsed);
+        b.plan = {
+          billedMinutes: st.billedMinutes, chargeRupees: st.chargeRupees, hostEarningPaise: st.hostEarningPaise, hostTokens, capped: st.capped,
+          testUsed: split.testUsed, paidUsed: split.paidUsed, hostPaid: hs.hostPaid, hostTest: hs.hostTest,
+        };
         await this.save(s);
       }
       const plan = b.plan;
+      // Plans saved before HF-WALLET-1 have no split: everything was paid.
+      const paidUsed = plan.paidUsed ?? plan.chargeRupees, testUsed = plan.testUsed ?? 0;
+      const hostPaid = plan.hostPaid ?? plan.hostTokens, hostTest = plan.hostTest ?? 0;
       if (b.consumed == null) {
-        if (plan.chargeRupees > 0) {
-          const c = await hfConsume(this.env, s.callerUid, plan.chargeRupees, s.callId, s.hostUid);
+        if (paidUsed > 0) {
+          const c = await hfConsume(this.env, s.callerUid, paidUsed, s.callId, s.hostUid);
           if (!c.ok) throw new Error("consume failed");
           b.consumed = c.consumed;
         } else b.consumed = 0;
@@ -377,13 +397,23 @@ export class HfCallDO {
         if (!(await hfRelease(this.env, s.callerUid, s.callId))) throw new Error("release failed");
         b.released = true; await this.save(s);
       }
-      if (plan.hostTokens > 0 && !b.earned) {
-        if (!(await hfEarn(this.env, s.hostUid, plan.hostTokens, s.callId, s.callerUid, Math.max(0, (b.consumed ?? 0) - plan.hostTokens)))) throw new Error("earn failed");
+      if (!b.testSettled) {
+        await settleTestCredits(this.env, s.callerUid, s.callId, testUsed);
+        b.testSettled = true; await this.save(s);
+      }
+      if (hostPaid > 0 && !b.earned) {
+        if (!(await hfEarn(this.env, s.hostUid, hostPaid, s.callId, s.callerUid, Math.max(0, (b.consumed ?? 0) - hostPaid)))) throw new Error("earn failed");
         b.earned = true; await this.save(s);
       }
+      if (hostTest > 0 && !b.testEarned) {
+        await this.db().prepare("INSERT OR IGNORE INTO hf_host_test_earnings (id, host_uid, call_id, rupees, created_at) VALUES (?1,?2,?3,?4,?5)")
+          .bind(crypto.randomUUID(), s.hostUid, s.callId, hostTest, Date.now()).run();
+        b.testEarned = true; await this.save(s);
+      }
       if (!b.saved) {
-        await this.db().prepare("UPDATE hf_calls SET billed_minutes=?1, charged_paise=?2, host_earning_paise=?3, host_earned_tokens=?4 WHERE id=?5")
-          .bind(plan.billedMinutes, (b.consumed ?? 0) * 100, plan.hostEarningPaise, plan.hostTokens, s.callId).run();
+        await this.db().prepare(
+          "UPDATE hf_calls SET billed_minutes=?1, charged_paise=?2, host_earning_paise=?3, host_earned_tokens=?4, paid_rupees=?5, test_rupees=?6, host_paid_rupees=?7, host_test_rupees=?8 WHERE id=?9",
+        ).bind(plan.billedMinutes, ((b.consumed ?? 0) + testUsed) * 100, plan.hostEarningPaise, plan.hostTokens, b.consumed ?? 0, testUsed, hostPaid, hostTest, s.callId).run();
         b.saved = true; await this.save(s);
       }
       return true;

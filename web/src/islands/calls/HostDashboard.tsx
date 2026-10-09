@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SessionBridge from './SessionBridge';
 import { API_BASE } from '../../lib/env';
-import { callsEnabled, hfCall, inr, looksSignedOut, relDate, signInUrl, toMs, type HostPresence } from '../../lib/hfCallsApi';
+import { callsEnabled, fetchWallet, hfCall, inr, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 
 const BEAT_MS = 5 * 60_000;
@@ -69,12 +69,15 @@ export default function HostDashboard() {
   const [msg, setMsg] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [today, setToday] = useState<Today>({ calls: 0, minutes: 0, earned: 0 });
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const presenceRef = useRef(presence);
   presenceRef.current = presence;
 
   const loadCalls = useCallback(async () => {
     const r = await hfCall<unknown>('GET', '/api/hosts/me/calls');
     if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); }
+    const w = await fetchWallet(); // [HF-WALLET-1] earnings breakdown
+    if (w.ok) setWallet(w.data);
   }, []);
 
   useEffect(() => {
@@ -166,9 +169,21 @@ export default function HostDashboard() {
         <div className="hfc-stats">
           <div className="hfc-stat"><strong>{today.calls}</strong><span>calls</span></div>
           <div className="hfc-stat"><strong>{today.minutes}</strong><span>minutes</span></div>
-          <div className="hfc-stat"><strong>{inr(today.earned)}</strong><span>earned (test credits)</span></div>
+          <div className="hfc-stat"><strong>{inr(today.earned)}</strong><span>earned today</span></div>
         </div>
       </section>
+
+      {wallet?.host && (
+        <section className="hfc-card" aria-labelledby="hfc-earn">
+          <h2 id="hfc-earn">Your earnings</h2>
+          <div className="hfc-stats">
+            <div className="hfc-stat"><strong>{inr(wallet.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{inr(wallet.host.availableRupees)}</strong><span>available</span></div>
+            <div className="hfc-stat"><strong>{inr(wallet.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+          </div>
+          <p className="hfc-sub" style={{ margin: 0 }}><a href="/wallet">See wallet and history</a></p>
+        </section>
+      )}
 
       <section className="hfc-card" aria-labelledby="hfc-recent">
         <h2 id="hfc-recent">Recent calls</h2>

@@ -54,6 +54,32 @@ export function hostTokensToCredit(priorEarnedPaise: number, priorCreditedRupees
   return Math.max(0, Math.floor((Math.max(0, priorEarnedPaise) + Math.max(0, thisPaise)) / 100) - Math.max(0, priorCreditedRupees));
 }
 
+// ── [HF-WALLET-1] test credits vs paid money ────────────────────────────────
+
+/** Test credits go first; the paid wallet covers only what they do not. All whole rupees. */
+export function splitCharge(chargeRupees: number, testReservedRupees: number): { testUsed: number; paidUsed: number } {
+  const charge = Math.max(0, Math.trunc(chargeRupees));
+  const testUsed = Math.min(charge, Math.max(0, Math.trunc(testReservedRupees)));
+  return { testUsed, paidUsed: charge - testUsed };
+}
+
+/** Host share follows the same proportions: hostPaid = floor(hostTotal * paidUsed / charge), the rest is non-withdrawable test earnings. */
+export function splitHostShare(hostTotalRupees: number, chargeRupees: number, paidUsedRupees: number): { hostPaid: number; hostTest: number } {
+  const total = Math.max(0, Math.trunc(hostTotalRupees)), charge = Math.max(0, Math.trunc(chargeRupees));
+  if (charge === 0 || total === 0) return { hostPaid: 0, hostTest: total };
+  const paid = Math.min(charge, Math.max(0, Math.trunc(paidUsedRupees)));
+  const hostPaid = Math.floor((total * paid) / charge);
+  return { hostPaid, hostTest: total - hostPaid };
+}
+
+/** Paid rupees to reserve at call start: the part of the 2-minute reserve the test credits do not cover. */
+export const paidShortfall = (neededRupees: number, testReservedRupees: number): number =>
+  Math.max(0, Math.trunc(neededRupees) - Math.max(0, Math.trunc(testReservedRupees)));
+
+/** Paid rupees still to secure at settle (beyond what is already reserved) for a wanted charge. */
+export const paidStillNeeded = (wantChargeRupees: number, testReservedRupees: number, paidFundsRupees: number): number =>
+  Math.max(0, Math.max(0, Math.trunc(wantChargeRupees)) - Math.max(0, Math.trunc(testReservedRupees)) - Math.max(0, Math.trunc(paidFundsRupees)));
+
 // ── spoken text + Vobiz (Plivo-dialect) XML ─────────────────────────────────
 
 /** Contract wording. The crisis number is spelled digit by digit so the text-to-speech voice does not read it as a quantity. */

@@ -1,0 +1,73 @@
+/* [HF-WALLET-1] /wallet: Paid balance (real money) and Test credits (spend-only, never withdrawable), plus recent history.
+ * Worker: GET /api/hf/wallet. The empty #hf-topup-slot is where the top-up panel will mount later. */
+import { useEffect, useState } from 'react';
+import SessionBridge from '../calls/SessionBridge';
+import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
+import '../../styles/hf-calls.css';
+
+const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
+
+export default function HfWallet() {
+  const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
+  const [w, setW] = useState<WalletInfo | null>(null);
+
+  useEffect(() => {
+    if (looksSignedOut()) { setPhase('signedout'); return; }
+    let live = true;
+    (async () => {
+      const r = await fetchWallet();
+      if (!live) return;
+      if (r.ok) { setW(r.data); setPhase('ready'); }
+      else setPhase(r.status === 401 ? 'signedout' : 'error');
+    })();
+    return () => { live = false; };
+  }, []);
+
+  if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading your wallet…</p></main>;
+  if (phase === 'signedout') {
+    return <main className="hfc-page"><h1>Wallet</h1><p>Please sign in to see your wallet.</p><a className="hfc-btn hfc-primary" href={signInUrl('/wallet')}>Sign in</a></main>;
+  }
+  if (phase === 'error' || !w) {
+    return <main className="hfc-page"><h1>Wallet</h1><p>We could not load your wallet. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
+  }
+
+  return (
+    <main className="hfc-page">
+      <SessionBridge on />
+      <h1>Wallet</h1>
+      <section className="hfc-card" aria-labelledby="hfw-bal">
+        <h2 id="hfw-bal">Balance</h2>
+        <div className="hfc-stats">
+          <div className="hfc-stat"><strong>{inr(w.paidBalance)}</strong><span>Paid balance</span></div>
+          <div className="hfc-stat"><strong>{inr(w.testBalance)}</strong><span>Test credits: spend only, can’t be withdrawn</span></div>
+        </div>
+        <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
+      </section>
+
+      <div id="hf-topup-slot" />
+
+      {w.host && (
+        <section className="hfc-card" aria-labelledby="hfw-earn">
+          <h2 id="hfw-earn">Host earnings</h2>
+          <div className="hfc-stats">
+            <div className="hfc-stat"><strong>{inr(w.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{inr(w.host.availableRupees)}</strong><span>available</span></div>
+            <div className="hfc-stat"><strong>{inr(w.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+          </div>
+          <p className="hfc-sub" style={{ margin: 0 }}>Lifetime paid earnings: {inr(w.host.lifetimePaidEarnings)}</p>
+        </section>
+      )}
+
+      <section className="hfc-card" aria-labelledby="hfw-hist">
+        <h2 id="hfw-hist">History</h2>
+        {w.history.length === 0 ? <p>Nothing here yet. Calls and credits will show up here.</p> : (
+          <ul className="hfc-calls">
+            {w.history.map((h, i) => (
+              <li key={`${h.at}-${h.callId ?? i}`}><strong>{h.label}</strong><span>{signed(h.rupees)}</span><small>{relDate(h.at)}</small></li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
+  );
+}
