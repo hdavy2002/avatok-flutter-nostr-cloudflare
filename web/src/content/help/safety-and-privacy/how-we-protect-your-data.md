@@ -10,7 +10,7 @@ faq:
   - q: "Do you sell my data?"
     a: "Never. We follow India's DPDP Act 2023. We use your data only to run the service, pay hosts, keep people safe and meet the law."
   - q: "Do you keep my full Aadhaar number?"
-    a: "No. Hosts' Aadhaar is checked with a one-time code. We keep only the last 4 digits, never the full number."
+    a: "No. Hosts' Aadhaar is checked through DigiLocker, so we never ask for or see the full number. We keep only the last 4 digits."
   - q: "Can I ask you to delete my data?"
     a: "Yes. Choose Delete my account, or write to the Grievance Officer. We delete it, except records the law says we must keep."
 draft: false
@@ -40,7 +40,7 @@ To call a host, we keep:
 
 ## What we collect from hosts
 
-Hosts go through more checks, because they earn money and must be real adults. In short: a WhatsApp code, an Aadhaar one-time code, a 10-second selfie video, and a check of your UPI and bank account. From Aadhaar we keep **only the last 4 digits** of the number, never the full number. Read all the details on [how we verify hosts](/hosts/kyc).
+Hosts go through more checks, because they earn money and must be real adults. In short: a WhatsApp code, your Aadhaar through DigiLocker, a 10-second selfie video, and a check of your UPI and bank account. We never ask for or see your full Aadhaar number. We keep **only the last 4 digits**. Read all the details on [how we verify hosts](/hosts/kyc).
 
 ## How we keep your data safe
 

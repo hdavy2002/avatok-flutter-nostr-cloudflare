@@ -237,19 +237,28 @@ export const realApi: OnboardingApi = {
   async sendOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
   async verifyOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
 
-  async sendAadhaarOtp(aadhaar) {
-    const r = await call<{ ok: boolean; already_verified?: boolean; gender?: string | null; last4?: string }>(
-      'POST', '/api/hosts/kyc/aadhaar/otp', { aadhaar: aadhaar.replace(/\D/g, ''), consent: true, role: 'host' }, 'We could not send the OTP. Please check the number.');
+  async digilockerStart(consent) {
+    const r = await call<{ ok: boolean; url?: string; already_verified?: boolean; gender?: string | null; last4?: string }>(
+      'POST', '/api/hosts/kyc/digilocker/start',
+      { consent, role: 'host', returnPath: '/hosts/onboarding?step=aadhaar&dl=return' },
+      'We could not open DigiLocker right now. Please try again.');
     if (!r.ok) return { ok: false, error: r.error };
     if (r.data.already_verified) return { ok: true, alreadyVerified: { gender: kycGender(r.data.gender ?? null), last4: r.data.last4 || '' } };
-    return { ok: true };
+    if (!r.data.url) return { ok: false, error: 'We could not open DigiLocker right now. Please try again.' };
+    return { ok: true, url: r.data.url };
   },
 
-  async verifyAadhaarOtp(code) {
-    const r = await call<{ ok: boolean; gender: string; last4: string; firstName?: string }>(
-      'POST', '/api/hosts/kyc/aadhaar/verify', { otp: code.replace(/\D/g, '') }, 'That OTP is not right. Please try again.');
-    if (!r.ok) return { ok: false, error: r.error };
-    return { ok: true, last4: r.data.last4, name: r.data.firstName || '', gender: kycGender(r.data.gender) ?? undefined };
+  async digilockerComplete() {
+    const r = await call<{ ok: boolean; pending?: boolean; message?: string; gender?: string; last4?: string | null; firstName?: string }>(
+      'POST', '/api/hosts/kyc/digilocker/complete', {}, 'We could not finish the check. Please try again.');
+    if (!r.ok) {
+      // no_session / session_expired / consent_denied / aadhaar_not_shared / under-18 / declined: starting again is the way forward
+      // (the worker message says why); a network blip or 5xx may simply be asked again.
+      const retry = r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 429;
+      return { ok: false, retry, error: r.error };
+    }
+    if (r.data.pending || r.data.ok === false) return { ok: false, pending: true, error: r.data.message || 'DigiLocker is still sending your details.' };
+    return { ok: true, last4: r.data.last4 || '', name: r.data.firstName || '', gender: kycGender(r.data.gender ?? null) ?? undefined };
   },
 
   async getSelfieCode() {

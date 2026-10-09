@@ -46,7 +46,7 @@ You must be 18 or older to join. Read our [age policy](/age-policy).
 Hosts do two checks before they can take calls:
 
 - **Video KYC.** KYC means "know your customer". The host shows their face on a short video check.
-- **Aadhaar verification.** The host confirms their Aadhaar with an OTP.
+- **Aadhaar verification.** The host confirms their Aadhaar through DigiLocker, a Government of India service.
 
 This keeps the service safe. You know that a host with the badge is a real adult. If you want to become a host, see [Join & earn](/hosts/join).
 

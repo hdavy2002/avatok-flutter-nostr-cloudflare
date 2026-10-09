@@ -3,8 +3,7 @@
 //
 // Docs (read 2026-10-09):
 //   Authenticate  https://developer.sandbox.co.in/reference/authenticate-api
-//   Aadhaar OTP   https://developer.sandbox.co.in/api-reference/kyc/aadhaar/endpoints/generate_otp.md
-//   Aadhaar verify https://developer.sandbox.co.in/api-reference/kyc/aadhaar/endpoints/verify_otp.md
+//   DigiLocker    https://developer.sandbox.co.in/api-reference/kyc/digilocker/overview.md
 //   Penny-less    https://developer.sandbox.co.in/api-reference/kyc/bank/endpoints/penny_less.md
 //   Penny drop    https://developer.sandbox.co.in/api-reference/kyc/bank/endpoints/penny_drop.md (NOT used: it deposits ₹1)
 //
@@ -16,25 +15,17 @@
 //   The token is sent as the RAW `Authorization: <token>` header — NO "Bearer" prefix (per docs).
 //   Cached in KV TOKENS for ~23 h; on a 401/403 from an endpoint we drop the cache and re-auth once.
 //
-// AADHAAR OTP  POST {base}/kyc/aadhaar/okyc/otp
-//   headers: Authorization, x-api-key, x-api-version: 1.0.0, Content-Type: application/json
-//   body: { "@entity": "in.co.sandbox.kyc.aadhaar.okyc.otp.request", aadhaar_number: "<12 digits>", consent: "y", reason: "<text>" }
-//   200 -> { code, timestamp, transaction_id, data: { "@entity": "...otp.response", reference_id: <int>, message } }
-//   200 + data.message "Invalid Aadhaar Card" = bad number; 422 "Invalid Aadhaar number pattern"; 503 "Source Unavailable".
-//
-// AADHAAR VERIFY  POST {base}/kyc/aadhaar/okyc/otp/verify
-//   body: { "@entity": "in.co.sandbox.kyc.aadhaar.okyc.request", reference_id: "<string>", otp: "<6 digits>" }
-//   200 + data.status "VALID" -> data: { name, gender "M"|"F"|..., date_of_birth "DD-MM-YYYY", year_of_birth, care_of "S/O: ...",
-//        address{house,street,landmark,post_office,subdistrict,district,vtc,state,country,pincode}, full_address,
-//        photo "data:image/jpeg;base64,...", email_hash, mobile_hash, share_code }
-//   200 + data.message "Invalid OTP" | "OTP Expired" | "Request under process, please try after 30 seconds" (no status);
-//   422 "OTP missing in request"; 503 "Source Unavailable".
-//
-// *** UNCONFIRMED / RISK *** Both Aadhaar pages carry "This Aadhaar verification endpoint has been deprecated by UIDAI.
-// We recommend migrating to the DigiLocker-based verification flow" (while the OpenAPI says deprecated:false). It may
-// stop working without notice — see HF-HOST-KYC-1-RUNBOOK. TODO(owner): ask Sandbox support whether OKYC is still live
-// for our account, and plan a DigiLocker adapter (https://developer.sandbox.co.in/api-reference/kyc/digilocker/overview.md)
-// behind the same aadhaarOtpGenerate/aadhaarOtpVerify surface.
+// AADHAAR (DigiLocker) — the old OKYC OTP endpoints (/kyc/aadhaar/okyc/otp[/verify]) were REMOVED: UIDAI deprecated
+// them and we no longer receive (or ask for) the 12-digit number. Docs: developer.sandbox.co.in/api-reference/kyc/digilocker
+//   INIT     POST {base}/kyc/digilocker/sessions/init
+//            body { "@entity": "in.co.sandbox.kyc.digilocker.session.request", flow:"signin", doc_types:["aadhaar"], redirect_url:"https://..." }
+//            200 -> data { authorization_url, session_id }; 400 invalid redirect_url; 500 failed.
+//   STATUS   GET  {base}/kyc/digilocker/sessions/{id}/status -> data { status: created|succeeded|expired|failed, documents_consented[] }
+//            errors 429, 500, 503 (DigiLocker unavailable), 521 (session not found).
+//   DOCUMENT GET  {base}/kyc/digilocker/sessions/{id}/documents/aadhaar -> data.files[] { url (presigned S3, 1 h), size, metadata }
+//            The url is downloaded with a plain fetch (NO auth headers). It is UIDAI e-Aadhaar XML, parsed by parseEAadhaarXml().
+//   PROFILE  GET  {base}/kyc/digilocker/sessions/{id}/user/profile -> data { name, date_of_birth (int), gender, mobile, eaadhaar }
+//            523 = session incomplete / token expired. Fallback only: no photo, no address, no last4.
 //
 // BANK (penniless)  GET {base}/bank/{ifsc}/accounts/{account_number}/penniless-verify
 //   headers: Authorization, x-api-key, x-api-version: 1.0.0 ; no body ; (optional ?name=&mobile= — we do NOT send them,
@@ -62,8 +53,8 @@ export type SandboxFail = {
   ok: false;
   reason:
     | "not_configured" | "auth_failed" | "timeout" | "unavailable"   // infra: ours or theirs
-    | "invalid_aadhaar" | "invalid_input"                            // caller error
-    | "invalid_otp" | "otp_expired" | "retry_later"                  // OTP step
+    | "invalid_input"                                                // caller error
+    | "retry_later" | "session_not_found" | "session_incomplete"     // DigiLocker session
     | "account_not_found" | "account_blocked" | "bank_offline" | "unverifiable" // bank step
     | "unsupported" | "bad_response";
   message?: string; // vendor message (safe: contains no secrets or the Aadhaar number)
@@ -74,7 +65,10 @@ export type SandboxOk<T> = { ok: true; data: T; txn?: string };
 export type SandboxResult<T> = SandboxOk<T> | SandboxFail;
 
 export interface AadhaarKyc {
+  /** DigiLocker session id (vendor reference; not the Aadhaar number). */
   refId: string;
+  /** Last 4 digits of the Aadhaar (from the masked UidData uid), null when unknown. */
+  last4: string | null;
   name: string;
   /** "M" | "F" | raw vendor value (route maps to F/M/T). */
   gender: string;
@@ -83,7 +77,7 @@ export interface AadhaarKyc {
   yearOfBirth: number | null;
   careOf: string | null;
   address: string;
-  /** Raw JPEG bytes decoded from the data-URI, when returned. */
+  /** Raw JPEG bytes decoded from the e-Aadhaar <Pht> element, when present. */
   photo: Uint8Array | null;
 }
 
@@ -149,7 +143,7 @@ async function call(env: Env, method: "GET" | "POST", path: string, body?: Json)
     if (r === "network") return { ok: false, reason: "unavailable" };
     if ((r.status === 401 || r.status === 403) && attempt === 0) continue;
     if (r.status === 401 || r.status === 403) return { ok: false, reason: "auth_failed", status: r.status };
-    if (r.status >= 500) return { ok: false, reason: "unavailable", status: r.status, message: str(r.body.message).slice(0, 200), txn: str(r.body.transaction_id) || undefined };
+    if (r.status >= 500 && r.status !== 521 && r.status !== 523) return { ok: false, reason: "unavailable", status: r.status, message: str(r.body.message).slice(0, 200), txn: str(r.body.transaction_id) || undefined };
     return { ok: true, data: { status: r.status, body: r.body }, txn: str(r.body.transaction_id) || undefined };
   }
   return { ok: false, reason: "auth_failed" };
@@ -157,23 +151,115 @@ async function call(env: Env, method: "GET" | "POST", path: string, body?: Json)
 
 const dataOf = (b: Json): Json => ((b.data && typeof b.data === "object" ? b.data : {}) as Json);
 
-/** Step 1: send the OTP to the mobile linked to the Aadhaar. Returns the vendor reference id. */
-export async function aadhaarOtpGenerate(env: Env, aadhaar12: string, consentReason: string): Promise<SandboxResult<{ refId: string }>> {
-  if (!/^\d{12}$/.test(aadhaar12)) return { ok: false, reason: "invalid_aadhaar" };
-  const r = await call(env, "POST", "/kyc/aadhaar/okyc/otp", {
-    "@entity": "in.co.sandbox.kyc.aadhaar.okyc.otp.request",
-    aadhaar_number: aadhaar12,
-    consent: "y",
-    reason: consentReason.slice(0, 120),
+const DL = "/kyc/digilocker/sessions";
+
+function dlFail(status: number, body: Json, txn?: string): SandboxFail {
+  const message = str(dataOf(body).message || body.message).slice(0, 200);
+  if (status === 521) return { ok: false, reason: "session_not_found", status, message, txn };
+  if (status === 523) return { ok: false, reason: "session_incomplete", status, message, txn };
+  if (status === 429) return { ok: false, reason: "retry_later", status, message, txn };
+  if (status === 400 || status === 422) return { ok: false, reason: "invalid_input", status, message, txn };
+  return { ok: false, reason: "bad_response", status, message, txn };
+}
+
+/** Start a DigiLocker session. `redirectUrl` must be public https. Returns the URL to send the user to. */
+export async function digilockerInit(env: Env, redirectUrl: string): Promise<SandboxResult<{ sessionId: string; authorizationUrl: string }>> {
+  const r = await call(env, "POST", `${DL}/init`, {
+    "@entity": "in.co.sandbox.kyc.digilocker.session.request",
+    flow: "signin",
+    doc_types: ["aadhaar"],
+    redirect_url: redirectUrl,
   });
   if (!r.ok) return r;
   const { status, body } = r.data;
   const d = dataOf(body);
-  if (status === 422) return { ok: false, reason: "invalid_aadhaar", status, message: str(body.message).slice(0, 200), txn: r.txn };
-  const ref = d.reference_id;
-  if (status === 200 && ref != null && ref !== "") return { ok: true, data: { refId: String(ref) }, txn: r.txn };
-  if (/invalid aadhaar/i.test(str(d.message))) return { ok: false, reason: "invalid_aadhaar", status, message: str(d.message).slice(0, 200), txn: r.txn };
-  return { ok: false, reason: "bad_response", status, message: str(d.message || body.message).slice(0, 200), txn: r.txn };
+  const sessionId = str(d.session_id);
+  const url = str(d.authorization_url);
+  if (status === 200 && sessionId && /^https:\/\//.test(url)) return { ok: true, data: { sessionId, authorizationUrl: url }, txn: r.txn };
+  return dlFail(status, body, r.txn);
+}
+
+export type DigilockerState = "created" | "succeeded" | "expired" | "failed";
+
+export async function digilockerStatus(env: Env, sessionId: string): Promise<SandboxResult<{ state: DigilockerState; documents: string[] }>> {
+  if (!sessionId) return { ok: false, reason: "invalid_input" };
+  const r = await call(env, "GET", `${DL}/${encodeURIComponent(sessionId)}/status`);
+  if (!r.ok) return r;
+  const { status, body } = r.data;
+  const d = dataOf(body);
+  const st = str(d.status).toLowerCase();
+  if (status === 200 && (st === "created" || st === "succeeded" || st === "expired" || st === "failed")) {
+    const docs = Array.isArray(d.documents_consented) ? d.documents_consented.map((x) => str(x).toLowerCase()) : [];
+    return { ok: true, data: { state: st, documents: docs }, txn: r.txn };
+  }
+  return dlFail(status, body, r.txn);
+}
+
+async function downloadText(url: string): Promise<string | null> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  try {
+    // Presigned S3 URL: plain fetch, deliberately NO Authorization / x-api-key headers.
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) return null;
+    const txt = await r.text();
+    return txt.length > 0 && txt.length < 2_000_000 ? txt : null;
+  } catch { return null; } finally { clearTimeout(t); }
+}
+
+/** Fetch the consented e-Aadhaar XML and parse it. `bad_response` when the file is missing or unparseable. */
+export async function digilockerAadhaar(env: Env, sessionId: string): Promise<SandboxResult<AadhaarKyc>> {
+  if (!sessionId) return { ok: false, reason: "invalid_input" };
+  const r = await call(env, "GET", `${DL}/${encodeURIComponent(sessionId)}/documents/aadhaar`);
+  if (!r.ok) return r;
+  const { status, body } = r.data;
+  if (status !== 200) return dlFail(status, body, r.txn);
+  const files = dataOf(body).files;
+  const first = Array.isArray(files) ? (files[0] as Json | undefined) : undefined;
+  const url = first ? str(first.url) : "";
+  if (!/^https:\/\//.test(url)) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "no aadhaar file" };
+  const xml = await downloadText(url);
+  if (!xml) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "aadhaar file not downloadable" };
+  const k = parseEAadhaarXml(xml);
+  if (!k) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "aadhaar file not parseable" };
+  return { ok: true, txn: r.txn, data: { refId: sessionId, ...k } };
+}
+
+/** epoch ms | epoch s | "DD-MM-YYYY" | "YYYY-MM-DD" -> yyyy-mm-dd (IST calendar day), or null. */
+export function profileDobToIso(v: unknown): string | null {
+  if (typeof v === "string") {
+    const t = v.trim();
+    const d = parseVendorDob(t);
+    if (d) return d;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+    if (!/^-?\d+$/.test(t)) return null;
+    v = Number(t);
+  }
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  const ms = Math.abs(v) >= 1e11 ? v : v * 1000; // seconds vs milliseconds
+  const d = new Date(ms + 5.5 * 3600_000); // IST day (also correct for UTC-midnight stamps)
+  const y = d.getUTCFullYear();
+  if (!(y >= 1900 && y <= 2100)) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/** Fallback: name/DOB/gender only (no photo, address or last4). */
+export async function digilockerProfile(env: Env, sessionId: string): Promise<SandboxResult<AadhaarKyc>> {
+  if (!sessionId) return { ok: false, reason: "invalid_input" };
+  const r = await call(env, "GET", `${DL}/${encodeURIComponent(sessionId)}/user/profile`);
+  if (!r.ok) return r;
+  const { status, body } = r.data;
+  if (status !== 200) return dlFail(status, body, r.txn);
+  const d = dataOf(body);
+  const name = str(d.name).trim();
+  if (!name) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "no name in profile" };
+  const dobIso = profileDobToIso(d.date_of_birth);
+  const g = str(d.gender).trim().toLowerCase();
+  const gender = g === "male" ? "M" : g === "female" ? "F" : g === "transgender" ? "T" : g.toUpperCase();
+  return {
+    ok: true, txn: r.txn,
+    data: { refId: sessionId, last4: null, name, gender, dobIso, yearOfBirth: dobIso ? Number(dobIso.slice(0, 4)) : null, careOf: null, address: "", photo: null },
+  };
 }
 
 /** DD-MM-YYYY (vendor) -> yyyy-mm-dd; null if unparseable. */
@@ -186,61 +272,89 @@ export function parseVendorDob(s: string): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function addressOf(d: Json): string {
-  const full = str(d.full_address).trim();
-  if (full) return full;
-  const a = (d.address && typeof d.address === "object" ? d.address : {}) as Json;
-  return ["house", "street", "landmark", "post_office", "subdistrict", "district", "vtc", "state", "country", "pincode"]
-    .map((k) => str(a[k]).trim()).filter(Boolean).join(", ");
+function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (m, e: string) => {
+    switch (e) {
+      case "amp": return "&";
+      case "lt": return "<";
+      case "gt": return ">";
+      case "quot": return '"';
+      case "apos": return "'";
+    }
+    const cp = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    try { return Number.isFinite(cp) ? String.fromCodePoint(cp) : m; } catch { return m; }
+  });
 }
 
-function decodeDataUri(uri: string): Uint8Array | null {
-  const raw = uri.includes(",") ? uri.slice(uri.indexOf(",") + 1) : uri;
-  if (!raw) return null;
+/** Attributes of the first `<tag ...>` in xml (case-insensitive attribute names, entity-decoded values), or null. */
+function tagAttrs(xml: string, tag: string): Record<string, string> | null {
+  const m = new RegExp(`<${tag}\\b([^>]*)>`, "i").exec(xml);
+  if (!m) return null;
+  const out: Record<string, string> = {};
+  const re = /([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let a: RegExpExecArray | null;
+  while ((a = re.exec(m[1]))) out[a[1].toLowerCase()] = decodeEntities(a[2] ?? a[3] ?? "").trim();
+  return out;
+}
+const pick = (o: Record<string, string>, ...keys: string[]): string => {
+  for (const k of keys) if (o[k]) return o[k];
+  return "";
+};
+
+function decodeB64(raw: string): Uint8Array | null {
+  const clean = raw.replace(/\s+/g, "");
+  if (!clean) return null;
   try {
-    const bin = atob(raw);
+    const bin = atob(clean);
+    if (!bin.length) return null;
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
   } catch { return null; }
 }
 
-/** Step 2: verify the OTP and receive the offline e-KYC record. */
-export async function aadhaarOtpVerify(env: Env, refId: string, otp: string): Promise<SandboxResult<AadhaarKyc>> {
-  if (!/^\d{6}$/.test(otp) || !refId) return { ok: false, reason: "invalid_input" };
-  const r = await call(env, "POST", "/kyc/aadhaar/okyc/otp/verify", {
-    "@entity": "in.co.sandbox.kyc.aadhaar.okyc.request",
-    reference_id: refId,
-    otp,
-  });
-  if (!r.ok) return r;
-  const { status, body } = r.data;
-  const d = dataOf(body);
-  const msg = str(d.message || body.message);
-  if (status === 200 && str(d.status).toUpperCase() === "VALID") {
-    const name = str(d.name).trim();
-    if (!name) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "no name in e-KYC" };
-    const yob = Number(str(d.year_of_birth));
-    return {
-      ok: true,
-      txn: r.txn,
-      data: {
-        refId,
-        name,
-        gender: str(d.gender).trim().toUpperCase(),
-        dobIso: parseVendorDob(str(d.date_of_birth)),
-        yearOfBirth: Number.isFinite(yob) && yob > 1900 ? yob : null,
-        careOf: str(d.care_of).trim() || null,
-        address: addressOf(d),
-        photo: d.photo ? decodeDataUri(str(d.photo)) : null,
-      },
-    };
-  }
-  if (/invalid otp/i.test(msg)) return { ok: false, reason: "invalid_otp", status, message: msg.slice(0, 200), txn: r.txn };
-  if (/expired/i.test(msg)) return { ok: false, reason: "otp_expired", status, message: msg.slice(0, 200), txn: r.txn };
-  if (/under process|try after/i.test(msg)) return { ok: false, reason: "retry_later", status, message: msg.slice(0, 200), txn: r.txn };
-  if (status === 422) return { ok: false, reason: "invalid_otp", status, message: msg.slice(0, 200), txn: r.txn };
-  return { ok: false, reason: "bad_response", status, message: msg.slice(0, 200), txn: r.txn };
+/**
+ * Parse a UIDAI e-Aadhaar XML (Certificate > CertificateData > KycRes > UidData{uid, Poi, Poa, LData, Pht}).
+ * Workers have no DOMParser, so this is attribute-regex based. The regional-language <LData> copy is ignored.
+ * Returns null when the uid or the name is missing. Never logs or returns more than the last 4 digits of the uid.
+ */
+export function parseEAadhaarXml(xml: string): Omit<AadhaarKyc, "refId"> | null {
+  if (typeof xml !== "string" || xml.length < 20) return null;
+  const x = xml.replace(/<!--[\s\S]*?-->/g, "").replace(/<LData\b[^>]*?(?:\/>|>[\s\S]*?<\/LData>)/gi, "");
+  const uidData = tagAttrs(x, "UidData");
+  const uid = uidData ? pick(uidData, "uid") : "";
+  const l4 = /(\d{4})\s*$/.exec(uid);
+  if (!l4) return null;
+  const poi = tagAttrs(x, "Poi");
+  const name = poi ? pick(poi, "name") : "";
+  if (!poi || !name) return null;
+
+  const dobRaw = pick(poi, "dob");
+  let dobIso = parseVendorDob(dobRaw);
+  if (!dobIso && /^\d{4}-\d{2}-\d{2}$/.test(dobRaw)) dobIso = dobRaw;
+  const yobStr = /^\d{4}$/.test(dobRaw) ? dobRaw : dobIso ? dobIso.slice(0, 4) : "";
+  const yob = Number(yobStr);
+
+  const poa = tagAttrs(x, "Poa") ?? {};
+  const careOfRaw = pick(poa, "co", "careof");
+  const careOf = careOfRaw.replace(/^\s*(?:c\/o|s\/o|d\/o|w\/o|h\/o)\b\s*[:,.\-]?\s*/i, "").trim();
+  const parts = [
+    pick(poa, "house"), pick(poa, "street"), pick(poa, "lm", "landmark"), pick(poa, "loc", "locality"), pick(poa, "vtc"),
+    pick(poa, "po", "postoffice"), pick(poa, "subdist", "subdistrict"), pick(poa, "dist", "district"),
+    pick(poa, "state"), pick(poa, "pc", "pincode"), pick(poa, "country"),
+  ].filter(Boolean);
+
+  const pht = /<Pht\b[^>]*>([\s\S]*?)<\/Pht>/i.exec(x);
+  return {
+    last4: l4[1],
+    name,
+    gender: pick(poi, "gender").toUpperCase(),
+    dobIso,
+    yearOfBirth: Number.isFinite(yob) && yob > 1900 ? yob : null,
+    careOf: careOf || null,
+    address: parts.join(", "),
+    photo: pht ? decodeB64(pht[1]) : null,
+  };
 }
 
 /** Penny-less (no deposit) bank check -> account holder name at the bank. */

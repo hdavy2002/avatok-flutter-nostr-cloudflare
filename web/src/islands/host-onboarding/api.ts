@@ -4,7 +4,6 @@ import type { Draft, GeneratedProfile, GenerationStage, OnboardingApi, StageStat
 
 const wait = (min = 400, max = 1200) => new Promise<void>(r => setTimeout(r, min + Math.random() * (max - min)));
 const digits = (s: string) => s.replace(/\D/g, '');
-let aadhaarOnFile = '';
 
 const TAGLINES = [
   'Steady words for when things feel heavy',   // Steady & encouraging
@@ -29,17 +28,14 @@ export const mockApi: OnboardingApi = {
     if (d.length !== 6 || d === '000000') return { ok: false, error: 'Wrong code. Try again.' };
     return { ok: true };
   },
-  async sendAadhaarOtp(aadhaar) {
+  async digilockerStart(consent) {
     await wait();
-    const d = digits(aadhaar);
-    if (d.length !== 12) return { ok: false, error: 'Aadhaar number must be 12 digits.' };
-    aadhaarOnFile = d;
+    if (!consent) return { ok: false, error: 'Please tick the box to continue.' };
     return { ok: true };
   },
-  async verifyAadhaarOtp(code, mockGender) {
-    await wait();
-    if (digits(code).length !== 6) return { ok: false, error: 'Wrong code. Try again.' };
-    return { ok: true, last4: aadhaarOnFile.slice(-4), name: 'SEEMA DEVI', gender: mockGender, age: 34 };
+  async digilockerComplete(mockGender) {
+    await wait(1200, 1800);
+    return { ok: true, last4: '4821', name: 'SEEMA', gender: mockGender ?? 'woman', };
   },
   async getSelfieCode() {
     return { ok: true, code: String(Math.floor(1000 + Math.random() * 9000)) };

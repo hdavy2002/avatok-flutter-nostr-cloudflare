@@ -88,9 +88,11 @@ export interface OnboardingApi {
   readonly mode: 'mock' | 'real';
   sendOtp(phone: string): Promise<{ ok: boolean; error?: string }>;
   verifyOtp(phone: string, code: string): Promise<{ ok: boolean; error?: string }>;
-  sendAadhaarOtp(aadhaar: string): Promise<{ ok: boolean; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
-  /** Mock: `mockGender` is what the fake UIDAI record returns. Real mode ignores it (gender comes from Aadhaar). */
-  verifyAadhaarOtp(code: string, mockGender: KycGender): Promise<{ ok: boolean; last4?: string; name?: string; gender?: KycGender; age?: number; error?: string }>;
+  /** [HF-KYC-DIGILOCKER-1] Step 1: ask the worker for the DigiLocker sign-in link. Mock never returns a url. */
+  digilockerStart(consent: boolean): Promise<{ ok: boolean; url?: string; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
+  /** Step 2 (after the host comes back): finish the check. `pending` = DigiLocker has not answered yet, ask again shortly.
+   *  `retry` = the sign-in cannot be finished, start again. Mock: `mockGender` is what the fake record returns. */
+  digilockerComplete(mockGender?: KycGender): Promise<{ ok: boolean; pending?: boolean; retry?: boolean; last4?: string; name?: string; gender?: KycGender; error?: string }>;
   /** The number the host must say out loud in the selfie video. */
   getSelfieCode(): Promise<{ ok: boolean; code?: string; error?: string }>;
   /** Mock: stores nothing; the real one uploads the 10-second video with the spoken code. */
@@ -122,7 +124,7 @@ export interface OnboardingApi {
 export interface StepAction {
   label: string;
   disabled?: boolean;
-  /** Return true to move to the next step. May be async (OTP verify etc.). */
+  /** Return true to move to the next step. May be async (server check etc.). */
   run?: () => boolean | Promise<boolean>;
   /** Hide the bottom bar entirely (welcome, generating, done own their buttons). */
   hidden?: boolean;

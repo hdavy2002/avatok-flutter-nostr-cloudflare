@@ -9387,6 +9387,29 @@
     ],
     "_verified_at": "worker/src/routes/hf_host_kyc.ts emit() call sites: hf_kyc_aadhaar_otp_sent {ok:true}, hf_kyc_aadhaar_verified {gender, age_ok:true}, hf_kyc_selfie_uploaded {ok:true}, hf_payout_verified {match}. Not yet exercised against live Sandbox; tsc clean 2026-10-09."
   },
+  "HF-KYC-DIGILOCKER-1": {
+    "description": "[HF-KYC-DIGILOCKER-1 2026-10-09] Hello Fraands Aadhaar verification moved from the deprecated UIDAI OTP (OKYC) API to Sandbox DigiLocker: POST /api/hosts/kyc/digilocker/start (consent, returns DigiLocker URL) and /complete (reads consented e-Aadhaar XML, 18+ and gender check, encrypted storage, only last4 kept). Old /aadhaar/otp and /aadhaar/verify answer 410 use_digilocker. Dark behind hostKycEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_kyc_digilocker_started",
+        "property": "role",
+        "exists": true,
+        "note": "User consented and a DigiLocker session was created. Failures emit hf_kyc_failed {step,reason}."
+      },
+      {
+        "event": "hf_kyc_aadhaar_verified",
+        "property": "method",
+        "equals": "digilocker",
+        "note": "DigiLocker Aadhaar verified, 18+, record stored. Also carries gender, age_ok, role, has_photo; never name, DOB or Aadhaar number."
+      }
+    ],
+    "_verified_at": "worker/src/routes/hf_host_kyc.ts emit() call sites: hf_kyc_digilocker_started {role}, hf_kyc_aadhaar_verified {method:'digilocker'}. Not yet exercised against live Sandbox; tsc clean 2026-10-09."
+  },
   "HF-HOST-PLATFORM-1": {
     "description": "[HF-HOST-PLATFORM-1 2026-10-09] HF host onboarding Phases 3-6: real host profile API (/api/hosts/me, avatars claim, voice upload, submit), AI media Workflow (Gemini text -> Nano Banana profile + 5 gallery images of the same avatar face -> ElevenLabs IVC clone + eleven_v3 sample conversation in the host's language -> clone deleted -> safety), admin review at /admin/hosts and avatar catalogue at /admin/hosts/avatars, public /h/<slug> profiles and live host cards. Dark behind hostOnboardingEnabled + hostsPublicEnabled.",
     "two_sided": false,

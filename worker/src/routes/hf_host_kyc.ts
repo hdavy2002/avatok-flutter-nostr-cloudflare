@@ -1,8 +1,9 @@
 // [HF-HOST-KYC-1 2026-10-09] HF — real host verification BACKEND (onboarding spec Phase 2).
 // Rulebook: Specs/RULEBOOK-HELLO-FRAANDS.md §13 (HF-KYC-1..5, HF-PRIV-6, HF-LGBT-3). Runbook: Specs/HF-HOST-KYC-1-RUNBOOK.md.
 //
-//   POST /api/hosts/kyc/aadhaar/otp     { aadhaar, consent:true, role }   -> { ok }
-//   POST /api/hosts/kyc/aadhaar/verify  { otp }                           -> { ok, gender, ageOk, last4, firstName }
+//   POST /api/hosts/kyc/digilocker/start    { consent:true, role, returnPath? } -> { ok, url }  | { ok, already_verified, gender, last4 }
+//   POST /api/hosts/kyc/digilocker/complete {}                                  -> { ok, gender, ageOk, last4, firstName } | 202 pending | 4xx
+//   POST /api/hosts/kyc/aadhaar/otp|verify  -> 410 use_digilocker (retired: UIDAI deprecated the OTP API)
 //   POST /api/hosts/kyc/selfie/code                                       -> { code, expires_in_s }
 //   POST /api/hosts/kyc/selfie          raw video body + x-selfie-code    -> { ok, status:"pending" }
 //   POST /api/hosts/payout/verify       { upi, account, ifsc }            -> { ok, nameAtBank, match, accountLast4, upiVerified }
@@ -13,9 +14,9 @@
 //
 // Everything is dark behind the `hostKycEnabled` flag (404 not_enabled). All user routes need a signed-in user.
 //
-// PRIVACY INVARIANTS (HF-KYC-2): the full Aadhaar number lives only in the request body of /aadhaar/otp, is passed to
-// Sandbox and dropped — never written to D1/KV/R2, never in a log line, never in a PostHog property, never in an error.
-// KV holds only the vendor reference id + last4. Name/DOB/address/guardian are AES-GCM encrypted (lib/pii_crypto.ts).
+// PRIVACY INVARIANTS (HF-KYC-2): we never receive the full Aadhaar number any more (DigiLocker e-Aadhaar carries it masked);
+// only the last 4 digits are kept — never in a log line, a PostHog property or an error.
+// KV holds only the DigiLocker session id (30 min). Name/DOB/address/guardian are AES-GCM encrypted (lib/pii_crypto.ts).
 // The Aadhaar photo and selfie videos sit in the PRIVATE VERIFICATION bucket and are only ever streamed through the worker
 // to an admin, and every admin read is written to admin_audit (DB_WALLET) — "access logged".
 import type { Env } from "../types";
@@ -23,17 +24,18 @@ import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { trackUser, trackException } from "../hooks";
-import { BRAND } from "../lib/brand";
+import { BRAND, brandUrl } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
 import { encryptPii, tryDecryptPii, piiKeyConfigured, piiKeyBytes } from "../lib/pii_crypto";
-import { sandboxConfigured, aadhaarOtpGenerate, aadhaarOtpVerify, bankVerify, upiVerify, type SandboxFail } from "../lib/sandbox_client";
-import { cleanAadhaar, mapGender, isAdult, namesMatch, firstNameOf, UPI_RE, IFSC_RE, ACCOUNT_RE } from "../lib/hf_kyc_util";
+import { sandboxConfigured, digilockerInit, digilockerStatus, digilockerAadhaar, digilockerProfile, bankVerify, upiVerify, type AadhaarKyc, type SandboxFail } from "../lib/sandbox_client";
+import { mapGender, isAdult, namesMatch, firstNameOf, UPI_RE, IFSC_RE, ACCOUNT_RE } from "../lib/hf_kyc_util";
 
 const APP = BRAND.slug;
 export const HF_KYC_CONSENT_VERSION = "hf-kyc-2026-10-09";
-const REF_TTL_S = 600;
+const DL_TTL_S = 1800;
+const DEFAULT_RETURN_PATH = "/hosts/onboarding?step=aadhaar&dl=return";
 const CODE_TTL_S = 600;
 const MAX_SELFIE_BYTES = 12 * 1024 * 1024;
 const MIN_SELFIE_BYTES = 20 * 1024;
@@ -41,7 +43,7 @@ const MEDIA_URL_TTL_MS = 5 * 60_000;
 const SELFIE_TYPES: Record<string, string> = { "video/webm": "webm", "video/mp4": "mp4", "video/quicktime": "mov" };
 
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
-const refKey = (uid: string) => `hfkyc:ref:${uid}`;
+const dlKey = (uid: string) => `hfkyc_dl:${uid}`;
 const codeKey = (uid: string) => `hfkyc:selfie:${uid}`;
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {
@@ -80,10 +82,9 @@ function makeEmit(env: Env, ctx: ExecutionContext | undefined, uid: string) {
 
 function failHttp(f: SandboxFail): { status: number; error: string; message: string; infra: boolean } {
   switch (f.reason) {
-    case "invalid_aadhaar": return { status: 422, error: "invalid_aadhaar", message: "That Aadhaar number isn’t valid. Check it and try again.", infra: false };
-    case "invalid_otp": return { status: 422, error: "invalid_otp", message: "That code isn’t right. Check the SMS from UIDAI and try again.", infra: false };
-    case "otp_expired": return { status: 410, error: "otp_expired", message: "That code has expired. Request a new one.", infra: false };
     case "retry_later": return { status: 429, error: "retry_later", message: "Still checking — try again in 30 seconds.", infra: false };
+    case "session_not_found": return { status: 410, error: "session_expired", message: "Your DigiLocker session expired. Please start again.", infra: false };
+    case "session_incomplete": return { status: 409, error: "session_incomplete", message: "DigiLocker verification wasn’t completed. Please start again.", infra: false };
     case "account_not_found": return { status: 422, error: "account_not_found", message: "We couldn’t find that bank account. Check the account number and IFSC.", infra: false };
     case "account_blocked": return { status: 422, error: "account_blocked", message: "That bank account is blocked. Please use another account.", infra: false };
     case "unverifiable": return { status: 422, error: "bank_unsupported", message: "We couldn’t verify this account automatically. Try another account or contact support.", infra: false };
@@ -112,23 +113,34 @@ const kycRow = (env: Env, uid: string) =>
   env.DB_META.prepare("SELECT uid, role, aadhaar_last4, provider_ref, name_enc, gender, age_ok, photo_r2_key, verified_at FROM hf_kyc WHERE uid=?1")
     .bind(uid).first<KycRow>();
 
-// ── POST /api/hosts/kyc/aadhaar/otp ──────────────────────────────────────────
-async function aadhaarOtp(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
+// ── Aadhaar via DigiLocker ───────────────────────────────────────────────────
+const NOT_AVAILABLE = { message: "Verification isn’t available right now. Please try again shortly." };
+
+interface DlPending { sessionId: string; role: string; at: number; consentVersion: string }
+
+function cleanReturnPath(v: unknown): string | null {
+  if (v === undefined || v === null || v === "") return DEFAULT_RETURN_PATH;
+  if (typeof v !== "string" || v.length > 200) return null;
+  if (!v.startsWith("/") || v.startsWith("//") || /[\\\s\u0000-\u001f]/.test(v)) return null;
+  return v;
+}
+
+// POST /api/hosts/kyc/digilocker/start
+async function digilockerStart(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const uid = u.uid;
   const emit = makeEmit(env, ctx, uid);
   if (!sandboxConfigured(env) || !piiKeyConfigured(env)) {
-    // Fail closed BEFORE spending ₹1 on an OTP we could not store the result of.
-    await trackException(env, new Error("hf_kyc not configured (SANDBOX_* or HF_PII_KEY)"), { uid, route: "/api/hosts/kyc/aadhaar/otp", handled: true, app_name: APP, extra: { area: "hf_kyc" } });
-    return err(503, "kyc_unavailable", { message: "Verification isn’t available right now. Please try again shortly." });
+    // Fail closed before creating a DigiLocker session we could not store the result of.
+    await trackException(env, new Error("hf_kyc not configured (SANDBOX_* or HF_PII_KEY)"), { uid, route: "/api/hosts/kyc/digilocker/start", handled: true, app_name: APP, extra: { area: "hf_kyc" } });
+    return err(503, "kyc_unavailable", NOT_AVAILABLE);
   }
   const b = await readJson(req);
   if (b.consent !== true) return err(400, "consent_required", { message: "Please agree to the Aadhaar verification notice to continue.", field: "consent" });
   const role = b.role === "lane_caller" ? "lane_caller" : "host";
-  const aadhaar = cleanAadhaar(b.aadhaar);
-  if (!aadhaar) return err(400, "invalid_aadhaar", { message: "Enter your 12-digit Aadhaar number.", field: "aadhaar" });
-  const last4 = aadhaar.slice(-4);
+  const returnPath = cleanReturnPath(b.returnPath);
+  if (!returnPath) return err(400, "invalid_return_path", { message: "Invalid return path.", field: "returnPath" });
 
   const done = await kycRow(env, uid).catch(() => null);
   if (done?.verified_at) {
@@ -138,79 +150,47 @@ async function aadhaarOtp(req: Request, env: Env, ctx: ExecutionContext | undefi
     return json({ ok: true, already_verified: true, gender: done.gender, last4: done.aadhaar_last4 });
   }
 
-  const lim = (await limited(env, `hfkyc_otp_h:${uid}`, 3, 3600, "Too many Aadhaar codes requested. Please try again in an hour."))
-    ?? (await limited(env, `hfkyc_otp_d:${uid}`, 10, 86400, "You’ve reached today’s limit for Aadhaar codes. Please try again tomorrow."))
-    ?? (await limited(env, "hfkyc_otp_global", 300, 3600, "We’re getting a lot of verifications right now. Please try again in a few minutes."));
-  if (lim) { emit("hf_kyc_failed", { step: "aadhaar_otp", reason: "rate_limited" }); return lim; }
+  const lim = (await limited(env, `hfkyc_dl_h:${uid}`, 3, 3600, "Too many DigiLocker attempts. Please try again in an hour."))
+    ?? (await limited(env, `hfkyc_dl_d:${uid}`, 10, 86400, "You’ve reached today’s limit for DigiLocker attempts. Please try again tomorrow."))
+    ?? (await limited(env, "hfkyc_dl_global", 300, 3600, "We’re getting a lot of verifications right now. Please try again in a few minutes."));
+  if (lim) { emit("hf_kyc_failed", { step: "digilocker_start", reason: "rate_limited" }); return lim; }
 
-  const now = Date.now();
-  const r = await aadhaarOtpGenerate(env, aadhaar, `${BRAND.name} ${role === "host" ? "host" : "protected-lane"} identity verification`);
-  await env.DB_META.prepare("INSERT INTO hf_kyc_otp (uid, role, provider_ref, status, reason, consent_version, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)")
-    .bind(uid, role, r.ok ? r.data.refId : null, r.ok ? "sent" : "failed", r.ok ? null : r.reason, HF_KYC_CONSENT_VERSION, now).run()
-    .catch((e) => trackException(env, e, { uid, route: "/api/hosts/kyc/aadhaar/otp", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "ledger" } }));
-  if (!r.ok) return fail(env, emit, uid, "kyc/aadhaar/otp", r);
+  const r = await digilockerInit(env, brandUrl(returnPath));
+  if (!r.ok) return fail(env, emit, uid, "kyc/digilocker/start", r);
 
-  await env.TOKENS.put(refKey(uid), JSON.stringify({ refId: r.data.refId, role, last4, consentAt: now, consentVersion: HF_KYC_CONSENT_VERSION }), { expirationTtl: REF_TTL_S });
-  emit("hf_kyc_aadhaar_otp_sent", { ok: true, role });
-  return json({ ok: true, expires_in_s: REF_TTL_S });
+  const pending: DlPending = { sessionId: r.data.sessionId, role, at: Date.now(), consentVersion: HF_KYC_CONSENT_VERSION };
+  await env.TOKENS.put(dlKey(uid), JSON.stringify(pending), { expirationTtl: DL_TTL_S });
+  emit("hf_kyc_digilocker_started", { role });
+  return json({ ok: true, url: r.data.authorizationUrl });
 }
 
-// ── POST /api/hosts/kyc/aadhaar/verify ───────────────────────────────────────
-async function aadhaarVerify(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
-  const u = await requireUser(req, env);
-  if (isFail(u)) return err(u.status, u.error);
-  const uid = u.uid;
-  const emit = makeEmit(env, ctx, uid);
-  if (!sandboxConfigured(env) || !piiKeyConfigured(env)) return err(503, "kyc_unavailable", { message: "Verification isn’t available right now. Please try again shortly." });
-
-  const b = await readJson(req);
-  const otp = String(b.otp ?? "").replace(/\D/g, "");
-  if (!/^\d{6}$/.test(otp)) return err(400, "invalid_otp", { message: "Enter the 6-digit code.", field: "otp" });
-
-  let pending: { refId: string; role: string; last4: string; consentAt: number; consentVersion: string } | null = null;
-  try { pending = JSON.parse((await env.TOKENS.get(refKey(uid))) || "null"); } catch { pending = null; }
-  if (!pending?.refId) return err(400, "no_otp", { message: "Request an Aadhaar code first (it may have expired).", field: "otp" });
-
-  const lim = await limited(env, `hfkyc_verify:${uid}`, 6, 600, "Too many wrong codes. Request a new code.");
-  if (lim) return lim;
-
-  const r = await aadhaarOtpVerify(env, pending.refId, otp);
-  if (!r.ok) {
-    if (r.reason === "otp_expired") await env.TOKENS.delete(refKey(uid)).catch(() => {});
-    return fail(env, emit, uid, "kyc/aadhaar/verify", r);
-  }
-  await env.TOKENS.delete(refKey(uid)).catch(() => {});
-  const k = r.data;
-  const now = Date.now();
-  const ledger = (status: string, reason: string | null) =>
-    env.DB_META.prepare("INSERT INTO hf_kyc_otp (uid, role, provider_ref, status, reason, consent_version, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)")
-      .bind(uid, pending!.role, k.refId, status, reason, pending!.consentVersion, now).run().catch(() => {});
-
-  // 18+ (HF-HOST rules). Under-18 → store NOTHING from the e-KYC record.
+/** Shared tail of Aadhaar verification: 18+ check, gender, encrypt, store photo + hf_kyc row. */
+async function storeVerifiedKyc(
+  env: Env, emit: ReturnType<typeof makeEmit>, uid: string, k: AadhaarKyc,
+  p: { role: string; consentAt: number; consentVersion: string; method: string },
+): Promise<Response> {
   const adult = isAdult(k.dobIso, k.yearOfBirth);
   if (adult === false) {
-    await ledger("declined", "under_18");
     emit("hf_kyc_declined", { reason: "under_18" });
     return err(403, "under_18", { message: "You must be 18 or older to continue." });
   }
   if (adult === null) {
-    await ledger("rejected", "age_unverifiable");
     emit("hf_kyc_declined", { reason: "age_unverifiable" });
     return err(422, "age_unverifiable", { message: "We couldn’t confirm your age from this record. Please contact support." });
   }
   const gender = mapGender(k.gender);
   if (!gender) {
-    await ledger("rejected", "gender_unreadable");
     emit("hf_kyc_declined", { reason: "gender_unreadable" });
     return err(422, "gender_unreadable", { message: "We couldn’t read the gender on this record. Please contact support." });
   }
 
+  const now = Date.now();
   let photoKey: string | null = null;
   try {
     const [nameEnc, dobEnc, addrEnc, guardEnc] = await Promise.all([
       encryptPii(env, k.name),
       encryptPii(env, k.dobIso ?? String(k.yearOfBirth ?? "")),
-      encryptPii(env, k.address),
+      k.address ? encryptPii(env, k.address) : Promise.resolve(null),
       k.careOf ? encryptPii(env, k.careOf) : Promise.resolve(null),
     ]);
     if (k.photo && k.photo.byteLength > 0) {
@@ -220,22 +200,82 @@ async function aadhaarVerify(req: Request, env: Env, ctx: ExecutionContext | und
     await env.DB_META.prepare(
       `INSERT INTO hf_kyc (uid, role, aadhaar_last4, provider, provider_ref, name_enc, dob_enc, address_enc, guardian_name_enc, gender, age_ok,
                            photo_r2_key, consent_version, consent_at, verified_at, updated_at)
-       VALUES (?1,?2,?3,'sandbox',?4,?5,?6,?7,?8,?9,1,?10,?11,?12,?13,?13)
-       ON CONFLICT(uid) DO UPDATE SET role=excluded.role, aadhaar_last4=excluded.aadhaar_last4, provider_ref=excluded.provider_ref,
+       VALUES (?1,?2,?3,'sandbox_digilocker',?4,?5,?6,?7,?8,?9,1,?10,?11,?12,?13,?13)
+       ON CONFLICT(uid) DO UPDATE SET role=excluded.role, aadhaar_last4=excluded.aadhaar_last4, provider=excluded.provider, provider_ref=excluded.provider_ref,
          name_enc=excluded.name_enc, dob_enc=excluded.dob_enc, address_enc=excluded.address_enc, guardian_name_enc=excluded.guardian_name_enc,
          gender=excluded.gender, age_ok=1, photo_r2_key=excluded.photo_r2_key, consent_version=excluded.consent_version,
          consent_at=excluded.consent_at, verified_at=excluded.verified_at, updated_at=excluded.updated_at`,
-    ).bind(uid, pending.role, pending.last4, k.refId, nameEnc, dobEnc, addrEnc, guardEnc, gender, photoKey,
-      pending.consentVersion, pending.consentAt, now).run();
+    ).bind(uid, p.role, k.last4, k.refId, nameEnc, dobEnc, addrEnc, guardEnc, gender, photoKey,
+      p.consentVersion, p.consentAt, now).run();
   } catch (e) {
-    await trackException(env, e, { uid, route: "/api/hosts/kyc/aadhaar/verify", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "store" } });
+    await trackException(env, e, { uid, route: "/api/hosts/kyc/digilocker/complete", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "store" } });
     emit("hf_kyc_failed", { step: "kyc/aadhaar/store", reason: "store_failed" });
     return err(500, "store_failed", { message: "We couldn’t save your verification. Please try again." });
   }
-  await ledger("verified", null);
-  emit("hf_kyc_aadhaar_verified", { gender, age_ok: true, role: pending.role, has_photo: !!photoKey });
-  return json({ ok: true, gender, ageOk: true, last4: pending.last4, firstName: firstNameOf(k.name) });
+  emit("hf_kyc_aadhaar_verified", { gender, age_ok: true, role: p.role, has_photo: !!photoKey, method: p.method });
+  return json({ ok: true, gender, ageOk: true, last4: k.last4, firstName: firstNameOf(k.name) });
 }
+
+// POST /api/hosts/kyc/digilocker/complete
+async function digilockerComplete(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error);
+  const uid = u.uid;
+  const emit = makeEmit(env, ctx, uid);
+  if (!sandboxConfigured(env) || !piiKeyConfigured(env)) return err(503, "kyc_unavailable", NOT_AVAILABLE);
+
+  let pending: DlPending | null = null;
+  try { pending = JSON.parse((await env.TOKENS.get(dlKey(uid))) || "null"); } catch { pending = null; }
+  if (!pending?.sessionId) return err(400, "no_session", { message: "Start DigiLocker verification again." });
+  const dropSession = () => env.TOKENS.delete(dlKey(uid)).catch(() => {});
+
+  const lim = await limited(env, `hfkyc_dl_c:${uid}`, 60, 600, "Too many checks. Please wait a few minutes and try again.");
+  if (lim) return lim;
+
+  const st = await digilockerStatus(env, pending.sessionId);
+  if (!st.ok) {
+    if (st.reason === "session_not_found") await dropSession();
+    return fail(env, emit, uid, "kyc/digilocker/complete", st);
+  }
+  if (st.data.state === "created") {
+    return json({ ok: false, pending: true, error: "pending", message: "DigiLocker hasn’t confirmed yet. If you finished there, wait a few seconds and tap Check again." }, 202);
+  }
+  if (st.data.state === "failed") {
+    await dropSession();
+    emit("hf_kyc_failed", { step: "kyc/digilocker/complete", reason: "consent_denied" });
+    return err(409, "consent_denied", { message: "DigiLocker verification was cancelled or not approved. Please try again." });
+  }
+  if (st.data.state === "expired") {
+    await dropSession();
+    emit("hf_kyc_failed", { step: "kyc/digilocker/complete", reason: "session_expired" });
+    return err(410, "session_expired", { message: "Your DigiLocker session expired. Please start again." });
+  }
+  if (!st.data.documents.includes("aadhaar")) {
+    emit("hf_kyc_failed", { step: "kyc/digilocker/complete", reason: "aadhaar_not_shared" });
+    return err(409, "aadhaar_not_shared", { message: "Please allow access to your Aadhaar in DigiLocker." });
+  }
+
+  let doc = await digilockerAadhaar(env, pending.sessionId);
+  if (!doc.ok && doc.reason !== "not_configured" && doc.reason !== "auth_failed") {
+    // XML unavailable / unparseable: fall back to the profile (name, DOB, gender only).
+    const prof = await digilockerProfile(env, pending.sessionId);
+    if (prof.ok) doc = prof;
+    else if (doc.reason === "bad_response") {
+      emit("hf_kyc_failed", { step: "kyc/digilocker/complete", reason: "parse_failed" });
+      await trackException(env, new Error(`digilocker aadhaar parse_failed ${doc.message ?? ""}`), { uid, route: "/api/hosts/kyc/digilocker/complete", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "parse", txn: doc.txn } });
+      return err(502, "kyc_unavailable", NOT_AVAILABLE);
+    }
+  }
+  if (!doc.ok) return fail(env, emit, uid, "kyc/digilocker/complete", doc);
+
+  const res = await storeVerifiedKyc(env, emit, uid, doc.data, {
+    role: pending.role === "lane_caller" ? "lane_caller" : "host", consentAt: pending.at, consentVersion: pending.consentVersion || HF_KYC_CONSENT_VERSION, method: "digilocker",
+  });
+  if (res.status !== 500) await dropSession(); // keep the session on a transient store failure so the user can retry
+  return res;
+}
+
+const retired = () => err(410, "use_digilocker", { message: "Aadhaar verification now happens through DigiLocker. Please refresh the page." });
 
 // ── selfie ───────────────────────────────────────────────────────────────────
 async function selfieCode(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
@@ -504,8 +544,9 @@ export async function hfHostKycRoute(req: Request, env: Env, p: string, ctx?: Ex
   if (!ours) return null;
   try {
     if ((await readConfig(env)).hostKycEnabled !== true) return err(404, "not_enabled");
-    if (p === "/api/hosts/kyc/aadhaar/otp" && m === "POST") return await aadhaarOtp(req, env, ctx);
-    if (p === "/api/hosts/kyc/aadhaar/verify" && m === "POST") return await aadhaarVerify(req, env, ctx);
+    if (p === "/api/hosts/kyc/digilocker/start" && m === "POST") return await digilockerStart(req, env, ctx);
+    if (p === "/api/hosts/kyc/digilocker/complete" && m === "POST") return await digilockerComplete(req, env, ctx);
+    if ((p === "/api/hosts/kyc/aadhaar/otp" || p === "/api/hosts/kyc/aadhaar/verify") && m === "POST") return retired();
     if (p === "/api/hosts/kyc/selfie/code" && m === "POST") return await selfieCode(req, env, ctx);
     if (p === "/api/hosts/kyc/selfie" && m === "POST") return await selfieUpload(req, env, ctx);
     if (p === "/api/hosts/payout/verify" && m === "POST") return await payoutVerify(req, env, ctx);
