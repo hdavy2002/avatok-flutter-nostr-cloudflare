@@ -9,7 +9,7 @@ export const prerender = true;
 <h2>What we check</h2>
 <ol>
 <li><strong>Your WhatsApp number.</strong> We send a one-time code on WhatsApp. This is the number callers' calls will ring on.</li>
-<li><strong>Your Aadhaar, through DigiLocker.</strong> You sign in to DigiLocker (a Government of India service) and approve sharing your e-Aadhaar with us. Our verification partner, Sandbox.co.in, passes it on. We never ask for your 12-digit Aadhaar number and we never see it.</li>
+<li><strong>Your Aadhaar, with an OTP.</strong> We check your Aadhaar with an OTP sent to the mobile linked to it. If that doesn't work, you can use DigiLocker instead (a Government of India service): you sign in and approve sharing your e-Aadhaar with us. Our verification partner, Sandbox.co.in, passes it on. With the OTP, your 12-digit Aadhaar number is used only to request the OTP and is not stored. With DigiLocker we never ask for it.</li>
 <li><strong>A 10-second selfie video.</strong> You read a short code shown on screen, so we know a real person is joining.</li>
 <li><strong>Your UPI ID and bank account.</strong> We check that the account is in your own name, so your earnings reach you and no one else.</li>
 </ol>
@@ -23,8 +23,8 @@ export const prerender = true;
 </ul>
 <h2>What we keep</h2>
 <ul>
-<li>From DigiLocker: your name, gender, date of birth, address, father's or guardian's name and the photo on your Aadhaar.</li>
-<li>Only the last 4 digits of your Aadhaar number, and our partner's verification reference. We never collect or keep the full Aadhaar number.</li>
+<li>From UIDAI (OTP) or DigiLocker: your name, gender, date of birth, address, father's or guardian's name and the photo on your Aadhaar.</li>
+<li>Only the last 4 digits of your Aadhaar number, and our partner's verification reference. We never store the full Aadhaar number.</li>
 <li>Your WhatsApp number, your selfie video, and your UPI ID and bank account details.</li>
 </ul>
 <h2>What callers see, and never see</h2>
@@ -34,7 +34,7 @@ export const prerender = true;
 <li>Your details are stored encrypted, in private storage, separate from your public profile.</li>
 <li>Only a small authorised team can open them, and every access is logged.</li>
 <li>We never sell your data and never use it for advertising.</li>
-<li>We share it only with our verification partner (Sandbox.co.in, to fetch your Aadhaar details from DigiLocker), our payment partner (to pay you), or a government authority when the law requires.</li>
+<li>We share it only with our verification partner (Sandbox.co.in, to request your Aadhaar OTP and fetch your Aadhaar details from UIDAI or DigiLocker), our payment partner (to pay you), or a government authority when the law requires.</li>
 </ul>
 <h2>How long we keep it</h2>
 <p>We keep it while you are a host, and for 1 year after you leave, unless another law requires us to keep it longer. Then we delete it. Your selfie video is deleted when your verification is no longer needed, and at the latest when this period ends.</p>

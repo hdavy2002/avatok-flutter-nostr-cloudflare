@@ -31,7 +31,7 @@ It works like the rest of the platform: you pick a host, you see the price, you 
 **Both the caller and the host must complete two checks** before the lane even appears:
 
 1. **Video KYC.** KYC means "know your customer". You do a short live video so we can see you are a real person.
-2. **Aadhaar KYC.** You verify your Aadhaar through DigiLocker. This shows that you are a woman.
+2. **Aadhaar KYC.** You verify your Aadhaar with an OTP sent to the mobile linked to it (or with DigiLocker if the OTP doesn't work). This shows that you are a woman.
 
 Your Aadhaar details are never shown on your profile or shared with the other person.
 

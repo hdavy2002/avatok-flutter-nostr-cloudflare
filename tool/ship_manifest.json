@@ -9456,5 +9456,31 @@
   "HF-KYC-COPY-FIX-1": {
     "description": "[HF-KYC-COPY-FIX-1 2026-10-09] Aadhaar verified card states truthfully what is stored (encrypted details + photo, last 4 digits only).",
     "no_telemetry": "Copy-only change."
+  },
+  "HF-KYC-OTP-FALLBACK-1": {
+    "description": "[HF-KYC-OTP-FALLBACK-1 2026-10-09] Hello Fraands Aadhaar verification: Sandbox Aadhaar OTP is PRIMARY (POST /api/hosts/kyc/aadhaar/otp and /aadhaar/verify), DigiLocker is the FALLBACK. OTP errors carry fallback:'digilocker' when the vendor is down/deprecated, no mobile is linked, rate limits hit, or 3 wrong OTPs. Both paths share storeVerifiedKyc; only last4 kept. Dark behind hostKycEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_kyc_aadhaar_otp_sent",
+        "property": "ok",
+        "equals": true,
+        "note": "Aadhaar OTP requested and sent. Failures emit hf_kyc_failed {step,reason,fallback} and hf_kyc_fallback_offered {from:'otp',reason}."
+      },
+      {
+        "event": "hf_kyc_aadhaar_verified",
+        "property": "method",
+        "in": [
+          "otp",
+          "digilocker"
+        ],
+        "note": "Aadhaar verified by OTP or by the DigiLocker fallback, 18+, record stored. Never carries name, DOB or the Aadhaar number."
+      }
+    ],
+    "_verified_at": "worker/src/routes/hf_host_kyc.ts emit() call sites: hf_kyc_aadhaar_otp_sent {ok:true,role}, hf_kyc_aadhaar_verified {method:'otp'|'digilocker'} via storeVerifiedKyc. Not yet exercised against live Sandbox; tsc clean 2026-10-09."
   }
 }

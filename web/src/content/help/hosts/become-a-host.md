@@ -31,14 +31,14 @@ Hosts are not doctors, lawyers, counsellors, CAs or financial advisors. You are 
 
 - Your own Indian mobile number with WhatsApp. This is the number your calls will come to.
 - Your phone with a camera, for the video KYC.
-- Your DigiLocker sign-in (DigiLocker is a Government of India service). You will approve sharing your e-Aadhaar.
+- Your Aadhaar number and the mobile linked to it, so we can send you an OTP. If the OTP doesn't work, use your DigiLocker sign-in instead (DigiLocker is a Government of India service).
 
 ## Steps to start
 
 1. Go to [Become a host](/hosts/join).
 2. Sign up with a one-time code (OTP) sent to your WhatsApp. There is no password.
 3. Do the **video KYC**. You record a short video so we can see it is really you.
-4. Do the **Aadhaar check through DigiLocker**. You sign in to DigiLocker and approve sharing your e-Aadhaar. We never ask for your 12-digit Aadhaar number.
+4. Do the **Aadhaar check with an OTP**. We send an OTP to the mobile linked to your Aadhaar. If that doesn't work, you can use DigiLocker instead: sign in and approve sharing your e-Aadhaar. We never store your full Aadhaar number, only the last 4 digits.
 5. Pick your **moods**, your **languages**, your **price per minute**, and the **topics** you are happy to talk about.
 6. Go **online**. Callers can now find you and ring you.
 

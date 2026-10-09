@@ -58,6 +58,16 @@ function failure(e: unknown, fallback: string): Failure {
   return { ok: false, status: 0, body: {}, error: 'We could not reach the server. Check your internet and try again.', code: 'network' };
 }
 
+/** [HF-KYC-OTP-FALLBACK-1] Keep the worker's fallback / attemptsLeft / field hints for the Aadhaar step. */
+function otpFailure(r: Failure): ApiResult & { fallback?: 'digilocker'; attemptsLeft?: number } {
+  const b = r.body;
+  return {
+    ok: false, error: r.error, field: r.field, code: r.code,
+    fallback: b.fallback === 'digilocker' ? 'digilocker' : undefined,
+    attemptsLeft: typeof b.attemptsLeft === 'number' ? b.attemptsLeft : undefined,
+  };
+}
+
 async function call<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown, fallback = 'Something went wrong. Please try again.'): Promise<{ ok: true; data: T } | Failure> {
   const auth = await token();
   if (!auth) return { ok: false, status: 401, body: {}, error: 'Please sign in again to continue.', code: 'no_session' };
@@ -236,6 +246,22 @@ export const realApi: OnboardingApi = {
 
   async sendOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
   async verifyOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
+
+  /* [HF-KYC-OTP-FALLBACK-1] The full Aadhaar number goes in this one request body and nowhere else. */
+  async aadhaarSendOtp(aadhaar, consent) {
+    const r = await call<{ ok: boolean; already_verified?: boolean; gender?: string | null; last4?: string }>(
+      'POST', '/api/hosts/kyc/aadhaar/otp', { aadhaar: aadhaar.replace(/\D/g, ''), consent, role: 'host' }, 'We could not send the OTP. Please check the number.');
+    if (!r.ok) return otpFailure(r);
+    if (r.data.already_verified) return { ok: true, alreadyVerified: { gender: kycGender(r.data.gender ?? null), last4: r.data.last4 || '' } };
+    return { ok: true };
+  },
+
+  async aadhaarVerifyOtp(otp) {
+    const r = await call<{ ok: boolean; gender: string; last4: string; firstName?: string }>(
+      'POST', '/api/hosts/kyc/aadhaar/verify', { otp: otp.replace(/\D/g, '') }, 'That OTP is not right. Please try again.');
+    if (!r.ok) return otpFailure(r);
+    return { ok: true, last4: r.data.last4, name: r.data.firstName || '', gender: kycGender(r.data.gender) ?? undefined };
+  },
 
   async digilockerStart(consent) {
     const r = await call<{ ok: boolean; url?: string; already_verified?: boolean; gender?: string | null; last4?: string }>(

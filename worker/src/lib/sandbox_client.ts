@@ -3,6 +3,8 @@
 //
 // Docs (read 2026-10-09):
 //   Authenticate  https://developer.sandbox.co.in/reference/authenticate-api
+//   Aadhaar OTP   https://developer.sandbox.co.in/api-reference/kyc/aadhaar/endpoints/generate_otp.md
+//   Aadhaar verify https://developer.sandbox.co.in/api-reference/kyc/aadhaar/endpoints/verify_otp.md
 //   DigiLocker    https://developer.sandbox.co.in/api-reference/kyc/digilocker/overview.md
 //   Penny-less    https://developer.sandbox.co.in/api-reference/kyc/bank/endpoints/penny_less.md
 //   Penny drop    https://developer.sandbox.co.in/api-reference/kyc/bank/endpoints/penny_drop.md (NOT used: it deposits ₹1)
@@ -15,8 +17,28 @@
 //   The token is sent as the RAW `Authorization: <token>` header — NO "Bearer" prefix (per docs).
 //   Cached in KV TOKENS for ~23 h; on a 401/403 from an endpoint we drop the cache and re-auth once.
 //
-// AADHAAR (DigiLocker) — the old OKYC OTP endpoints (/kyc/aadhaar/okyc/otp[/verify]) were REMOVED: UIDAI deprecated
-// them and we no longer receive (or ask for) the 12-digit number. Docs: developer.sandbox.co.in/api-reference/kyc/digilocker
+// AADHAAR has TWO paths (HF-KYC-OTP-FALLBACK-1): OTP is PRIMARY, DigiLocker is the FALLBACK.
+//
+// AADHAAR OTP (primary)  POST {base}/kyc/aadhaar/okyc/otp
+//   headers: Authorization, x-api-key, x-api-version: 1.0.0, Content-Type: application/json
+//   body: { "@entity": "in.co.sandbox.kyc.aadhaar.okyc.otp.request", aadhaar_number: "<12 digits>", consent: "y", reason: "<text>" }
+//   200 -> { code, timestamp, transaction_id, data: { "@entity": "...otp.response", reference_id: <int>, message } }
+//   200 + data.message "Invalid Aadhaar Card" = bad number; 422 "Invalid Aadhaar number pattern"; 503 "Source Unavailable".
+//
+// AADHAAR VERIFY  POST {base}/kyc/aadhaar/okyc/otp/verify
+//   body: { "@entity": "in.co.sandbox.kyc.aadhaar.okyc.request", reference_id: "<string>", otp: "<6 digits>" }
+//   200 + data.status "VALID" -> data: { name, gender "M"|"F"|..., date_of_birth "DD-MM-YYYY", year_of_birth, care_of "S/O: ...",
+//        address{house,street,landmark,post_office,subdistrict,district,vtc,state,country,pincode}, full_address,
+//        photo "data:image/jpeg;base64,...", email_hash, mobile_hash, share_code }
+//   200 + data.message "Invalid OTP" | "OTP Expired" | "Request under process, please try after 30 seconds" (no status);
+//   422 "OTP missing in request"; 503 "Source Unavailable".
+//
+// *** UNCONFIRMED / RISK *** Both Aadhaar OTP pages carry "This Aadhaar verification endpoint has been deprecated by UIDAI.
+// We recommend migrating to the DigiLocker-based verification flow" (while the OpenAPI says deprecated:false). It may
+// stop working without notice, which is exactly why the route offers DigiLocker as the fallback (lib/hf_kyc_fallback.ts
+// decides when). See HF-HOST-KYC-1-RUNBOOK. TODO(owner): ask Sandbox support whether OKYC is still live for our account.
+//
+// AADHAAR (DigiLocker, fallback). Docs: developer.sandbox.co.in/api-reference/kyc/digilocker
 //   INIT     POST {base}/kyc/digilocker/sessions/init
 //            body { "@entity": "in.co.sandbox.kyc.digilocker.session.request", flow:"signin", doc_types:["aadhaar"], redirect_url:"https://..." }
 //            200 -> data { authorization_url, session_id }; 400 invalid redirect_url; 500 failed.
@@ -53,7 +75,8 @@ export type SandboxFail = {
   ok: false;
   reason:
     | "not_configured" | "auth_failed" | "timeout" | "unavailable"   // infra: ours or theirs
-    | "invalid_input"                                                // caller error
+    | "invalid_input" | "invalid_aadhaar"                             // caller error
+    | "invalid_otp" | "otp_expired"                                   // OTP step
     | "retry_later" | "session_not_found" | "session_incomplete"     // DigiLocker session
     | "account_not_found" | "account_blocked" | "bank_offline" | "unverifiable" // bank step
     | "unsupported" | "bad_response";
@@ -65,9 +88,9 @@ export type SandboxOk<T> = { ok: true; data: T; txn?: string };
 export type SandboxResult<T> = SandboxOk<T> | SandboxFail;
 
 export interface AadhaarKyc {
-  /** DigiLocker session id (vendor reference; not the Aadhaar number). */
+  /** DigiLocker session id / OTP reference id (vendor reference; not the Aadhaar number). */
   refId: string;
-  /** Last 4 digits of the Aadhaar (from the masked UidData uid), null when unknown. */
+  /** Last 4 digits of the Aadhaar (DigiLocker: masked UidData uid; OTP: the route fills it from the submitted number), null when unknown. */
   last4: string | null;
   name: string;
   /** "M" | "F" | raw vendor value (route maps to F/M/T). */
@@ -355,6 +378,76 @@ export function parseEAadhaarXml(xml: string): Omit<AadhaarKyc, "refId"> | null 
     address: parts.join(", "),
     photo: pht ? decodeB64(pht[1]) : null,
   };
+}
+
+/** OTP step 1: send the OTP to the mobile linked to the Aadhaar. Returns the vendor reference id. The 12-digit number is only forwarded, never stored or logged. */
+export async function aadhaarOtpGenerate(env: Env, aadhaar12: string, consentReason: string): Promise<SandboxResult<{ refId: string }>> {
+  if (!/^\d{12}$/.test(aadhaar12)) return { ok: false, reason: "invalid_aadhaar" };
+  const r = await call(env, "POST", "/kyc/aadhaar/okyc/otp", {
+    "@entity": "in.co.sandbox.kyc.aadhaar.okyc.otp.request",
+    aadhaar_number: aadhaar12,
+    consent: "y",
+    reason: consentReason.slice(0, 120),
+  });
+  if (!r.ok) return r;
+  const { status, body } = r.data;
+  const d = dataOf(body);
+  if (status === 422) return { ok: false, reason: "invalid_aadhaar", status, message: str(body.message).slice(0, 200), txn: r.txn };
+  const ref = d.reference_id;
+  if (status === 200 && ref != null && ref !== "") return { ok: true, data: { refId: String(ref) }, txn: r.txn };
+  if (/invalid aadhaar/i.test(str(d.message))) return { ok: false, reason: "invalid_aadhaar", status, message: str(d.message).slice(0, 200), txn: r.txn };
+  return { ok: false, reason: "bad_response", status, message: str(d.message || body.message).slice(0, 200), txn: r.txn };
+}
+
+function addressOf(d: Json): string {
+  const full = str(d.full_address).trim();
+  if (full) return full;
+  const a = (d.address && typeof d.address === "object" ? d.address : {}) as Json;
+  return ["house", "street", "landmark", "post_office", "subdistrict", "district", "vtc", "state", "country", "pincode"]
+    .map((k) => str(a[k]).trim()).filter(Boolean).join(", ");
+}
+
+function decodeDataUri(uri: string): Uint8Array | null {
+  return decodeB64(uri.includes(",") ? uri.slice(uri.indexOf(",") + 1) : uri);
+}
+
+/** OTP step 2: verify the OTP and receive the offline e-KYC record. `last4` is null here (the route knows it from the submitted number). */
+export async function aadhaarOtpVerify(env: Env, refId: string, otp: string): Promise<SandboxResult<AadhaarKyc>> {
+  if (!/^\d{6}$/.test(otp) || !refId) return { ok: false, reason: "invalid_input" };
+  const r = await call(env, "POST", "/kyc/aadhaar/okyc/otp/verify", {
+    "@entity": "in.co.sandbox.kyc.aadhaar.okyc.request",
+    reference_id: refId,
+    otp,
+  });
+  if (!r.ok) return r;
+  const { status, body } = r.data;
+  const d = dataOf(body);
+  const msg = str(d.message || body.message);
+  if (status === 200 && str(d.status).toUpperCase() === "VALID") {
+    const name = str(d.name).trim();
+    if (!name) return { ok: false, reason: "bad_response", status, txn: r.txn, message: "no name in e-KYC" };
+    const yob = Number(str(d.year_of_birth));
+    return {
+      ok: true,
+      txn: r.txn,
+      data: {
+        refId,
+        last4: null,
+        name,
+        gender: str(d.gender).trim().toUpperCase(),
+        dobIso: parseVendorDob(str(d.date_of_birth)),
+        yearOfBirth: Number.isFinite(yob) && yob > 1900 ? yob : null,
+        careOf: str(d.care_of).trim() || null,
+        address: addressOf(d),
+        photo: d.photo ? decodeDataUri(str(d.photo)) : null,
+      },
+    };
+  }
+  if (/invalid otp/i.test(msg)) return { ok: false, reason: "invalid_otp", status, message: msg.slice(0, 200), txn: r.txn };
+  if (/expired/i.test(msg)) return { ok: false, reason: "otp_expired", status, message: msg.slice(0, 200), txn: r.txn };
+  if (/under process|try after/i.test(msg)) return { ok: false, reason: "retry_later", status, message: msg.slice(0, 200), txn: r.txn };
+  if (status === 422) return { ok: false, reason: "invalid_otp", status, message: msg.slice(0, 200), txn: r.txn };
+  return { ok: false, reason: "bad_response", status, message: msg.slice(0, 200), txn: r.txn };
 }
 
 /** Penny-less (no deposit) bank check -> account holder name at the bank. */

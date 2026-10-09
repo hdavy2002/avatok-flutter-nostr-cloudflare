@@ -28,6 +28,20 @@ export const mockApi: OnboardingApi = {
     if (d.length !== 6 || d === '000000') return { ok: false, error: 'Wrong code. Try again.' };
     return { ok: true };
   },
+  /* [HF-KYC-OTP-FALLBACK-1] Preview: OTP 123456 works; an Aadhaar number ending 0000 shows the DigiLocker fallback. */
+  async aadhaarSendOtp(aadhaar, consent) {
+    await wait();
+    if (!consent) return { ok: false, error: 'Please tick the box to continue.', field: 'consent' };
+    const d = digits(aadhaar);
+    if (d.length !== 12 || /^[01]/.test(d)) return { ok: false, error: 'Enter your 12-digit Aadhaar number.', field: 'aadhaar', code: 'invalid_aadhaar' };
+    if (d.endsWith('0000')) return { ok: false, error: 'We cannot send an OTP right now. You can verify with DigiLocker instead.', code: 'otp_unavailable', fallback: 'digilocker' };
+    return { ok: true };
+  },
+  async aadhaarVerifyOtp(otp, mockGender) {
+    await wait();
+    if (digits(otp) !== '123456') return { ok: false, error: 'That OTP is not right. Please try again.', code: 'invalid_otp', attemptsLeft: 2 };
+    return { ok: true, last4: '4821', name: 'SEEMA', gender: mockGender ?? 'woman' };
+  },
   async digilockerStart(consent) {
     await wait();
     if (!consent) return { ok: false, error: 'Please tick the box to continue.' };

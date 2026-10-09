@@ -83,12 +83,20 @@ export interface ServerDraft {
   hostStatus: string | null;
 }
 
+/** [HF-KYC-OTP-FALLBACK-1] Result of an Aadhaar OTP call. `fallback` = OTP cannot work for this host, offer DigiLocker instead.
+ *  `attemptsLeft` = tries left on this OTP. `field` names the form field the error belongs to ('aadhaar' | 'consent'). */
+export interface KycOtpResult extends ApiResult { fallback?: 'digilocker'; attemptsLeft?: number }
+
 export interface OnboardingApi {
   /** 'mock' = clickable preview, nothing is sent. 'real' = talks to the worker. */
   readonly mode: 'mock' | 'real';
   sendOtp(phone: string): Promise<{ ok: boolean; error?: string }>;
   verifyOtp(phone: string, code: string): Promise<{ ok: boolean; error?: string }>;
-  /** [HF-KYC-DIGILOCKER-1] Step 1: ask the worker for the DigiLocker sign-in link. Mock never returns a url. */
+  /** [HF-KYC-OTP-FALLBACK-1] Aadhaar OTP (primary). The number is used for this one call only and is never kept by the client. */
+  aadhaarSendOtp(aadhaar: string, consent: boolean): Promise<KycOtpResult & { alreadyVerified?: { gender: KycGender | null; last4: string } }>;
+  /** Mock only: `mockGender` is what the fake record returns. */
+  aadhaarVerifyOtp(otp: string, mockGender?: KycGender): Promise<KycOtpResult & { last4?: string; name?: string; gender?: KycGender }>;
+  /** [HF-KYC-DIGILOCKER-1] DigiLocker (fallback). Step 1: ask the worker for the DigiLocker sign-in link. Mock never returns a url. */
   digilockerStart(consent: boolean): Promise<{ ok: boolean; url?: string; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
   /** Step 2 (after the host comes back): finish the check. `pending` = DigiLocker has not answered yet, ask again shortly.
    *  `retry` = the sign-in cannot be finished, start again. Mock: `mockGender` is what the fake record returns. */
