@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1] Row <-> JSON mapping + D1 access for Hello Fraands hosts. Shared with the workflow/admin agents; keep exports stable.
+// [HF-HOST-PLATFORM-1] Row <-> JSON mapping + D1 access for HF hosts. Shared with the workflow/admin agents; keep exports stable.
 import type { Env } from "../types";
 import { makeSlug } from "./hf_options";
 

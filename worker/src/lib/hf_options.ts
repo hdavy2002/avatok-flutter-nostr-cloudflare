@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1] Hello Fraands host options + pure validators. Worker-side mirror of web/src/lib/callvaalHomeReference.ts moods.
+// [HF-HOST-PLATFORM-1] HF host options + pure validators. Worker-side mirror of web/src/lib/callvaalHomeReference.ts moods.
 // Keep TOPICS in sync with that file (slug is the stored value).
 export interface Topic { slug: string; label: string }
 export const TOPICS: readonly Topic[] = [

@@ -311,7 +311,7 @@ export interface Env {
   // goes on WhatsApp. UNSET => break-glass fallback to 2Factor SMS above.
   WASENDER_API_KEY?: string;
   // [HF-HOST-KYC-1 2026-10-09] Sandbox.co.in (Aadhaar OTP + bank check) credentials and the
-  // field-encryption key for Hello Fraands host KYC. All SECRETS — never in the repo, never logged:
+  // field-encryption key for HF host KYC. All SECRETS — never in the repo, never logged:
   //   scripts/cf.sh worker secret put SANDBOX_API_KEY | SANDBOX_API_SECRET | HF_PII_KEY
   // HF_PII_KEY = base64 of 32 random bytes (`openssl rand -base64 32`); losing it makes every
   // encrypted KYC field unreadable, so back it up. See Specs/HF-HOST-KYC-1-RUNBOOK.md.

@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1] Typed calls for the Hello Fraands host review + avatar admin screens
+// [HF-HOST-PLATFORM-1] Typed calls for the HF host review + avatar admin screens
 // (worker routes/hf_hosts_admin.ts and routes/hf_host_kyc.ts admin routes). Admin only.
 import { API_BASE } from './env';
 import { adminCall } from '../islands/admin2/peopleKit';

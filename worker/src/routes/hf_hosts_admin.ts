@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1] Hello Fraands host review + avatar library admin API (ADMIN_UIDS only).
+// [HF-HOST-PLATFORM-1] HF host review + avatar library admin API (ADMIN_UIDS only).
 //   GET  /api/admin/hf/hosts?status=            list
 //   GET  /api/admin/hf/hosts/:uid               host + media + KYC summary (selfie/Aadhaar photo via /api/admin/hf/kyc signed URLs)
 //   POST /api/admin/hf/hosts/:uid/decision      { decision: approve|reject|pause, reason }

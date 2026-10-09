@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1 2026-10-09] Hello Fraands host onboarding APIs (profile, avatars, voice sample, submit). Contract: Specs/HF-HOST-PLATFORM-CONTRACT.md
+// [HF-HOST-PLATFORM-1 2026-10-09] HF host onboarding APIs (profile, avatars, voice sample, submit). Contract: Specs/HF-HOST-PLATFORM-CONTRACT.md
 //   GET/PUT /api/hosts/me · GET /api/hosts/avatars · POST /api/hosts/avatars/:id/claim · POST /api/hosts/voice
 //   PUT /api/hosts/me/generated · POST /api/hosts/submit          (flag hostOnboardingEnabled; 404 not_enabled when off)
 // /api/hosts/generate* belongs to the workflow agent; /api/hosts/public* to hf_hosts_public.ts.

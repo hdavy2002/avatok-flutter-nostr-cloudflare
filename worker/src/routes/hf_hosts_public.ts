@@ -1,4 +1,4 @@
-// [HF-HOST-PLATFORM-1] Public Hello Fraands host cards. Flag hostsPublicEnabled. Only status='live'. Never exposes uid, KYC, phone, voice sample.
+// [HF-HOST-PLATFORM-1] Public HF host cards. Flag hostsPublicEnabled. Only status='live'. Never exposes uid, KYC, phone, voice sample.
 //   GET /api/hosts/public?limit=&offset=   GET /api/hosts/public/:slug
 import type { Env } from "../types";
 import { json } from "../util";

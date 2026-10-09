@@ -1,4 +1,4 @@
-// [HF-HOST-KYC-1 2026-10-09] Hello Fraands — real host verification BACKEND (onboarding spec Phase 2).
+// [HF-HOST-KYC-1 2026-10-09] HF — real host verification BACKEND (onboarding spec Phase 2).
 // Rulebook: Specs/RULEBOOK-HELLO-FRAANDS.md §13 (HF-KYC-1..5, HF-PRIV-6, HF-LGBT-3). Runbook: Specs/HF-HOST-KYC-1-RUNBOOK.md.
 //
 //   POST /api/hosts/kyc/aadhaar/otp     { aadhaar, consent:true, role }   -> { ok }
@@ -144,7 +144,7 @@ async function aadhaarOtp(req: Request, env: Env, ctx: ExecutionContext | undefi
   if (lim) { emit("hf_kyc_failed", { step: "aadhaar_otp", reason: "rate_limited" }); return lim; }
 
   const now = Date.now();
-  const r = await aadhaarOtpGenerate(env, aadhaar, `Hello Fraands ${role === "host" ? "host" : "protected-lane"} identity verification`);
+  const r = await aadhaarOtpGenerate(env, aadhaar, `${BRAND.name} ${role === "host" ? "host" : "protected-lane"} identity verification`);
   await env.DB_META.prepare("INSERT INTO hf_kyc_otp (uid, role, provider_ref, status, reason, consent_version, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)")
     .bind(uid, role, r.ok ? r.data.refId : null, r.ok ? "sent" : "failed", r.ok ? null : r.reason, HF_KYC_CONSENT_VERSION, now).run()
     .catch((e) => trackException(env, e, { uid, route: "/api/hosts/kyc/aadhaar/otp", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "ledger" } }));

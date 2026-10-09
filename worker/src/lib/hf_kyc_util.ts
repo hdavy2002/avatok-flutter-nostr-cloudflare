@@ -1,4 +1,4 @@
-// [HF-HOST-KYC-1 2026-10-09] Pure helpers for Hello Fraands host KYC (no I/O — unit-testable).
+// [HF-HOST-KYC-1 2026-10-09] Pure helpers for HF host KYC (no I/O — unit-testable).
 
 // ── Aadhaar number checksum (Verhoeff) — rejects typos before we pay Sandbox ~₹1 for a doomed OTP ──
 const D = [

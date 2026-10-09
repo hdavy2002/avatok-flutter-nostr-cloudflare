@@ -1,4 +1,4 @@
-// [HF-HOST-KYC-1 2026-10-09] Field-level encryption for Hello Fraands KYC data (HF-KYC-2, HF-PRIV-6).
+// [HF-HOST-KYC-1 2026-10-09] Field-level encryption for HF KYC data (HF-KYC-2, HF-PRIV-6).
 //
 // AES-256-GCM through WebCrypto. Key = secret HF_PII_KEY (base64 of 32 random bytes).
 // Output format:  v1:<iv base64>:<ciphertext+tag base64>   (fresh random 12-byte IV per value).
