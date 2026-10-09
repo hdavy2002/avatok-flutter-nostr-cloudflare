@@ -291,6 +291,10 @@ import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMF
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
 import { consultRoute } from "./routes/consultants"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants REST
 import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] Hello Fraands host verification (flag hostKycEnabled)
+import { hfHostsRoute } from "./routes/hf_hosts"; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/submit (flag hostOnboardingEnabled)
+import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
+import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLATFORM-1] media generation
+import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
 import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -371,6 +375,7 @@ export { DynKV, DynBrain, DynComposio } from "./lib/dynw/caps";
 // class_name = "DeletionWorkflow" binding resolves. Dark behind
 // deletionWorkflowEnabled (routes/config.ts).
 export { DeletionWorkflow } from "./workflows/deletion";
+export { HostMediaWorkflow, AvatarBatchWorkflow } from "./workflows/host_media"; // [HF-HOST-PLATFORM-1]
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -1080,6 +1085,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
+      if (p.startsWith("/api/hosts/")) { // [HF-HOST-PLATFORM-1]
+        const r = (await hfHostsPublicRoute(req, env, ctx)) ?? (await hfHostGenerateRoute(req, env, ctx)) ?? (await hfHostsRoute(req, env, ctx));
+        if (r) return r;
+      }
+      if (p.startsWith("/api/admin/hf/hosts") || p.startsWith("/api/admin/hf/avatars")) { const r = await hfHostsAdminRoute(req, env, ctx); if (r) return r; } // [HF-HOST-PLATFORM-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"
           || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {

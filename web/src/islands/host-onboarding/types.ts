@@ -36,6 +36,10 @@ export interface GeneratedProfile {
   /** 5 AI gallery images (mock: avatar image + scene caption). */
   gallery: { image: string; caption: string }[];
   profileImage: string;
+  /** Real mode: public URL of the AI sample-conversation audio (null when the voice stage was skipped). */
+  sampleAudioUrl?: string | null;
+  /** Real mode: voice + conversation stages were skipped (voice provider not connected yet). */
+  voiceSkipped?: boolean;
 }
 
 export interface Draft {
@@ -67,21 +71,50 @@ export interface Draft {
 }
 
 export type GenerationStage = 'text' | 'images' | 'voice' | 'conversation' | 'safety';
+export type StageState = 'waiting' | 'working' | 'done' | 'skipped' | 'failed';
+export type StageStates = Record<GenerationStage, StageState>;
+
+/** Result shape shared by calls that can fail with a human message. `field` names the form field a server validation error belongs to. */
+export interface ApiResult { ok: boolean; error?: string; field?: string; code?: string }
+
+/** What the worker knows about this host when the page opens (real mode). */
+export interface ServerDraft {
+  draft: Partial<Draft>;
+  hostStatus: string | null;
+}
 
 export interface OnboardingApi {
+  /** 'mock' = clickable preview, nothing is sent. 'real' = talks to the worker. */
+  readonly mode: 'mock' | 'real';
   sendOtp(phone: string): Promise<{ ok: boolean; error?: string }>;
   verifyOtp(phone: string, code: string): Promise<{ ok: boolean; error?: string }>;
-  sendAadhaarOtp(aadhaar: string): Promise<{ ok: boolean; error?: string }>;
-  /** Mock: `mockGender` is what the fake UIDAI record returns. */
+  sendAadhaarOtp(aadhaar: string): Promise<{ ok: boolean; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
+  /** Mock: `mockGender` is what the fake UIDAI record returns. Real mode ignores it (gender comes from Aadhaar). */
   verifyAadhaarOtp(code: string, mockGender: KycGender): Promise<{ ok: boolean; last4?: string; name?: string; gender?: KycGender; age?: number; error?: string }>;
-  /** Mock: stores nothing; the real one uploads the 10-second video and the spoken code. */
-  uploadSelfie(blob: Blob, code: string): Promise<{ ok: boolean }>;
+  /** The number the host must say out loud in the selfie video. */
+  getSelfieCode(): Promise<{ ok: boolean; code?: string; error?: string }>;
+  /** Mock: stores nothing; the real one uploads the 10-second video with the spoken code. */
+  uploadSelfie(blob: Blob, code: string): Promise<{ ok: boolean; error?: string; codeExpired?: boolean }>;
   /** Mock: penny-drop check. Real one compares nameAtBank with the Aadhaar name. */
   verifyPayout(input: { upi: string; account: string; ifsc: string }): Promise<{ ok: boolean; nameAtBank?: string; match?: boolean; error?: string }>;
   listAvatars(): Promise<Avatar[]>;
-  uploadVoice(blob: Blob, durationSec: number): Promise<{ ok: boolean; url?: string }>;
-  generateProfile(draft: Draft, onStage: (stage: GenerationStage) => void): Promise<GeneratedProfile>;
-  submitForReview(draft: Draft): Promise<{ ok: boolean }>;
+  /** Real: takes the avatar for this host (exclusive). Mock: always ok. */
+  claimAvatar(id: string): Promise<ApiResult>;
+  /** Mock: stores nothing. Real: keeps the blob; call commitVoice() once the host has agreed to the voice-use notice. */
+  uploadVoice(blob: Blob, durationSec: number): Promise<{ ok: boolean; url?: string; error?: string }>;
+  /** Real only: sends the recording kept by uploadVoice (needs the consent header). */
+  commitVoice?(consent: boolean): Promise<ApiResult>;
+  /** Real only: what the server already has for this host. Null in mock. */
+  loadServerDraft(): Promise<ServerDraft | null>;
+  /** Real only: debounced autosave of the profile fields (800 ms). Each field is sent on its own so one bad field never blocks the rest. */
+  saveServerDraft(draft: Draft, onResult: (errors: Record<string, string>) => void): void;
+  /** Real only: send any pending autosave right now. */
+  flushServerDraft(): Promise<void>;
+  /** Streams stage states while the profile is made; resolves with the finished profile. */
+  generateProfile(draft: Draft, onStages: (stages: StageStates) => void): Promise<GeneratedProfile>;
+  /** Real only: host edits of the generated tagline / about / quote. */
+  editGenerated(patch: { tagline?: string; aboutPolished?: string; quote?: string }): Promise<ApiResult>;
+  submitForReview(draft: Draft): Promise<ApiResult>;
 }
 
 /** What the shell's sticky bottom bar does on this step. A step sets it with
@@ -104,4 +137,6 @@ export interface StepProps {
   goNext: () => void;
   goTo: (step: StepKey) => void;
   avatars: Avatar[];
+  /** Real mode: server validation messages by field name (displayName, about, languages, ...). Empty in mock. */
+  errors: Record<string, string>;
 }

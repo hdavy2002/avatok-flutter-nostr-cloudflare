@@ -11,17 +11,20 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
   const [mockGender, setMockGender] = useState<KycGender>(draft.kycGender ?? 'woman');
   const [phase, setPhase] = useState<1 | 2>(1);
   const [error, setError] = useState('');
+  const [consent, setConsent] = useState(false);
+  const real = api.mode === 'real';
   const done = draft.aadhaarDone;
 
   useEffect(() => {
     if (done) setAction({ label: 'Continue', run: () => true });
     else if (phase === 1) setAction({
       label: 'Send OTP',
-      disabled: digits.length !== 12,
+      disabled: digits.length !== 12 || (real && !consent),
       run: async () => {
         setError('');
         const r = await api.sendAadhaarOtp(digits);
         if (!r.ok) { setError(r.error || 'We could not send the OTP. Please check the number.'); return false; }
+        if (r.alreadyVerified) { update({ aadhaarDone: true, aadhaarLast4: r.alreadyVerified.last4, kycGender: r.alreadyVerified.gender }); return false; }
         setCode(''); setPhase(2);
         return false;
       },
@@ -37,7 +40,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
         return false;
       },
     });
-  }, [done, phase, digits, code, mockGender, api, update, setAction]);
+  }, [done, phase, digits, code, mockGender, consent, real, api, update, setAction]);
 
   if (done) {
     return (
@@ -74,6 +77,12 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
           <p id="hob-v-aadhaar-help" className="hob-help">We only check it. We never show it and never store the full number.</p>
           <p id="hob-v-err" className="hob-error" role="alert" aria-live="polite">{error}</p>
         </div>
+        {real && (
+          <label className="hob-card hob-f-consent">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            <span>I agree that my Aadhaar can be checked through our licensed verification partner to confirm my name, gender and that I am 18 or older. The full number is never stored.</span>
+          </label>
+        )}
       </div>
     );
   }
@@ -93,7 +102,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
         />
         <p id="hob-v-err" className="hob-error" role="alert" aria-live="polite">{error}</p>
       </div>
-      <div className="hob-v-preview" role="group" aria-labelledby="hob-v-prev">
+      {!real && <div className="hob-v-preview" role="group" aria-labelledby="hob-v-prev">
         <p className="hob-v-tag">Preview only</p>
         <p id="hob-v-prev">For this preview, choose the gender the Aadhaar record would show:</p>
         <div className="hob-v-chips">
@@ -101,7 +110,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
             <button key={g} type="button" className="hob-chip" aria-pressed={mockGender === g} onClick={() => setMockGender(g)}>{GENDER_LABEL[g]}</button>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

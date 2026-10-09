@@ -21,7 +21,19 @@ function Filter<T extends string>({ legend, value, onChange, options }: {
   );
 }
 
-export default function AvatarStep({ draft, update, setAction, avatars }: StepProps) {
+export default function AvatarStep({ draft, update, setAction, avatars, api }: StepProps) {
+  const [claimErr, setClaimErr] = useState('');
+  const [claiming, setClaiming] = useState(false);
+  const real = api.mode === 'real';
+  const pick = async (id: string) => {
+    if (claiming || id === draft.avatarId) return;
+    setClaimErr('');
+    setClaiming(true);
+    const r = await api.claimAvatar(id);
+    setClaiming(false);
+    if (!r.ok) { setClaimErr(r.error || 'We could not choose that avatar. Please try another.'); return; }
+    update({ avatarId: id });
+  };
   const [g, setG] = useState<GF>('all');
   const [a, setA] = useState<AF>('all');
   const [s, setS] = useState<SF>('all');
@@ -62,9 +74,9 @@ export default function AvatarStep({ draft, update, setAction, avatars }: StepPr
                 type="button"
                 className={`hob-p-avatar${sel ? ' is-selected' : ''}${taken ? ' is-taken' : ''}`}
                 aria-pressed={sel}
-                disabled={taken}
+                disabled={taken || claiming}
                 aria-label={`${av.gender === 'woman' ? 'Woman' : 'Man'}, ${av.age}, ${av.style} look${taken ? ', taken' : ''}`}
-                onClick={() => update({ avatarId: av.id })}
+                onClick={() => { void pick(av.id); }}
               >
                 <img src={av.image} alt="" loading="lazy" />
                 <span className="hob-ai-label hob-p-ai">AI avatar</span>
@@ -75,7 +87,8 @@ export default function AvatarStep({ draft, update, setAction, avatars }: StepPr
           })}
         </div>
       )}
-      <p className="hob-help hob-p-note">Once you pick an avatar it becomes yours only. Sample avatars shown in this preview.</p>
+      <p className="hob-error" role="alert" aria-live="polite">{claimErr}</p>
+      <p className="hob-help hob-p-note">Once you pick an avatar it becomes yours only.{real ? '' : ' Sample avatars shown in this preview.'}</p>
     </div>
   );
 }

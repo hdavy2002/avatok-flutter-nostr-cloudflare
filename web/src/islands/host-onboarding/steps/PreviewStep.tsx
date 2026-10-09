@@ -14,6 +14,9 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [editing, setEditing] = useState<'tagline' | 'about' | null>(null);
   const [text, setText] = useState('');
+  const [editErr, setEditErr] = useState('');
+  const [submitErr, setSubmitErr] = useState('');
+  const real = api.mode === 'real';
   const closeRef = useRef<HTMLButtonElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
 
@@ -21,8 +24,9 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
     setAction({
       label: 'Looks good — send for review',
       run: async () => {
+        setSubmitErr('');
         const r = await api.submitForReview(draft);
-        if (!r.ok) return false;
+        if (!r.ok) { setSubmitErr(r.error || 'We could not send your profile. Please try again.'); return false; }
         update({ submitted: true });
         return true;
       },
@@ -57,7 +61,15 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
 
   const patch = (p: Partial<GeneratedProfile>) => update({ generated: { ...g, ...p } });
   const startEdit = (k: 'tagline' | 'about') => { setEditing(k); setText(g[k]); };
-  const saveEdit = () => { if (editing && text.trim()) patch({ [editing]: text.trim() } as Partial<GeneratedProfile>); setEditing(null); };
+  const saveEdit = async () => {
+    if (editing && text.trim()) {
+      setEditErr('');
+      const r = await api.editGenerated(editing === 'tagline' ? { tagline: text.trim() } : { aboutPolished: text.trim() });
+      if (!r.ok) { setEditErr(r.error || 'We could not save that. Please try again.'); return; }
+      patch({ [editing]: text.trim() } as Partial<GeneratedProfile>);
+    }
+    setEditing(null);
+  };
   const topicLabels = draft.topics.map(s => TOPICS.find(t => t.slug === s)?.label || s);
 
   return (
@@ -81,9 +93,10 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
             <label className="hob-label" htmlFor="hob-f-tag">Tagline</label>
             <input id="hob-f-tag" className="hob-input" value={text} maxLength={80} onChange={e => setText(e.target.value)} />
             <div className="hob-f-editrow">
-              <button type="button" className="hob-btn hob-btn-primary" onClick={saveEdit}>Save</button>
-              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="button" className="hob-btn hob-btn-primary" onClick={() => { void saveEdit(); }}>Save</button>
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => { setEditing(null); setEditErr(''); }}>Cancel</button>
             </div>
+            {editErr && <p className="hob-error" role="alert">{editErr}</p>}
           </div>
         ) : (
           <p className="hob-f-tagline">{g.tagline} <button type="button" className="hob-f-link" onClick={() => startEdit('tagline')}>Edit tagline</button></p>
@@ -98,9 +111,10 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
             <label className="hob-label" htmlFor="hob-f-about">About</label>
             <textarea id="hob-f-about" className="hob-input" rows={6} value={text} maxLength={800} onChange={e => setText(e.target.value)} />
             <div className="hob-f-editrow">
-              <button type="button" className="hob-btn hob-btn-primary" onClick={saveEdit}>Save</button>
-              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="button" className="hob-btn hob-btn-primary" onClick={() => { void saveEdit(); }}>Save</button>
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => { setEditing(null); setEditErr(''); }}>Cancel</button>
             </div>
+            {editErr && <p className="hob-error" role="alert">{editErr}</p>}
           </div>
         ) : (
           <>
@@ -113,7 +127,9 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
       <h2 className="hob-f-h2">Sample conversation</h2>
       <section className="hob-card hob-f-clip">
         <span className="hob-ai-label">AI voice clip · Sample conversation — not a real call</span>
-        <div className="hob-f-player">
+        {real && g.sampleAudioUrl && <audio className="hob-f-audio" controls preload="none" src={g.sampleAudioUrl} aria-label="AI voice clip, sample conversation" style={{ width: '100%', minHeight: 48, marginTop: 8 }} />}
+        {real && !g.sampleAudioUrl && <p className="hob-help">Voice clip coming soon. We will add your sample conversation as soon as it is ready.</p>}
+        {!real && <div className="hob-f-player">
           <button type="button" className="hob-f-play" onClick={() => setPlaying(p => !p)} aria-label={playing ? 'Pause sample' : 'Play sample'}>
             <Icon name={playing ? 'pause' : 'play'} />
           </button>
@@ -121,15 +137,15 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
             <span style={{ width: `${(pos / CLIP_SEC) * 100}%` }} />
           </div>
           <span className="hob-f-time">0:{String(Math.floor(pos)).padStart(2, '0')} / 0:{CLIP_SEC}</span>
-        </div>
-        <ul className="hob-f-chat">
+        </div>}
+        {g.conversation.length > 0 && <ul className="hob-f-chat">
           {g.conversation.map((l, i) => (
             <li key={i} className={`hob-f-bubble hob-f-bubble-${l.speaker}`}>
               <span className="hob-f-who">{l.speaker === 'host' ? draft.displayName || 'Host' : 'Caller'}</span>
               {l.text}
             </li>
           ))}
-        </ul>
+        </ul>}
       </section>
 
       <h2 className="hob-f-h2">Avatar gallery</h2>
@@ -150,6 +166,7 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
         <p>To protect our hosts' privacy, the photos and audio clips on host profiles are AI-generated from an avatar the host chose. The person callers talk to is the real, KYC-verified host.</p>
       </aside>
 
+      {submitErr && <p className="hob-error" role="alert" aria-live="polite">{submitErr}</p>}
       <button type="button" className="hob-btn hob-btn-ghost" onClick={() => goTo('review')}>Change something</button>
 
       {lightbox !== null && (

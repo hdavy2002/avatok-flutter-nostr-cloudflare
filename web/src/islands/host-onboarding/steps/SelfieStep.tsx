@@ -4,11 +4,16 @@ import { SELFIE_SEC } from '../data';
 import type { StepProps } from '../types';
 
 const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof (window as any).MediaRecorder !== 'undefined';
-const newCode = () => String(Math.floor(1000 + Math.random() * 9000));
 type Phase = 'idle' | 'count' | 'rec';
 
 export default function SelfieStep({ draft, update, api, setAction }: StepProps) {
-  const [code] = useState(() => draft.selfie.code || newCode());
+  const [code, setCode] = useState(draft.selfie.code || '');
+  const [codeErr, setCodeErr] = useState('');
+  const fetchCode = useCallback(() => {
+    setCodeErr('');
+    void api.getSelfieCode().then(r => { if (r.ok && r.code) setCode(r.code); else setCodeErr(r.error || 'We could not get your code. Please try again.'); });
+  }, [api]);
+  useEffect(() => { if (!code) fetchCode(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [phase, setPhase] = useState<Phase>('idle');
   const [count, setCount] = useState(3);
   const [elapsed, setElapsed] = useState(0);
@@ -42,7 +47,11 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
     try {
       const r = await api.uploadSelfie(blob, code);
       if (!aliveRef.current) return;
-      if (!r.ok) { setError('We could not save your video. Please try again.'); return; }
+      if (!r.ok) {
+        setError(r.error || 'We could not save your video. Please try again.');
+        if (r.codeExpired) { setCode(''); fetchCode(); }
+        return;
+      }
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       const u = URL.createObjectURL(blob);
       urlRef.current = u; setUrl(u);
@@ -50,7 +59,7 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
     } catch {
       if (aliveRef.current) setError('We could not save your video. Please try again.');
     } finally { if (aliveRef.current) setBusy(false); }
-  }, [api, code, update, draft.selfie.consent]);
+  }, [api, code, update, draft.selfie.consent, fetchCode]);
 
   const finish = useCallback(() => {
     clearTimer();
@@ -81,6 +90,7 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
 
   const start = async () => {
     setError('');
+    if (!code) { setError('Wait for your code to show, then start.'); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
       streamRef.current = stream;
@@ -132,8 +142,9 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
 
       <div className="hob-card hob-v-codecard">
         <p className="hob-v-codelabel">Your code</p>
-        <p className="hob-v-bigcode" aria-label={`Your code is ${spaced}`}>{code}</p>
-        <p className="hob-v-say">Look at the camera and say: <strong>Mera code {spaced} hai</strong></p>
+        <p className="hob-v-bigcode" aria-label={code ? `Your code is ${spaced}` : 'Getting your code'}>{code || '····'}</p>
+        {codeErr ? <p className="hob-error" role="alert">{codeErr} <button type="button" className="hob-v-link" onClick={fetchCode}>Try again</button></p>
+          : <p className="hob-v-say">Look at the camera and say: <strong>Mera code {spaced} hai</strong></p>}
       </div>
 
       <div className="hob-card hob-v-cam">
@@ -159,12 +170,12 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
 
         <div className="hob-v-camactions">
           {!live && !recorded && !fallback && (
-            <button type="button" className="hob-btn hob-btn-primary" onClick={start} disabled={busy}><Icon name="video" size={20} />Start recording</button>
+            <button type="button" className="hob-btn hob-btn-primary" onClick={start} disabled={busy || !code}><Icon name="video" size={20} />Start recording</button>
           )}
           {!live && !recorded && fallback && (
-            <label className="hob-btn hob-btn-primary hob-v-filebtn">
+            <label className="hob-btn hob-btn-primary hob-v-filebtn" aria-disabled={!code}>
               <Icon name="video" size={20} />Record with phone camera
-              <input type="file" accept="video/*" capture="user" onChange={onFile} className="hob-v-file" />
+              <input type="file" accept="video/*" capture="user" onChange={onFile} className="hob-v-file" disabled={!code} />
             </label>
           )}
           {!live && !recorded && !fallback && (

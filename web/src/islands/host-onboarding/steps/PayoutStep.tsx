@@ -48,10 +48,10 @@ export default function PayoutStep({ draft, update, api, setAction }: StepProps)
           <p className="hob-v-strong">Name matches your Aadhaar ✓</p>
         </div>
         <dl className="hob-card hob-v-read">
-          <div><dt>Name at bank</dt><dd>{p.nameAtBank}</dd></div>
-          <div><dt>UPI ID</dt><dd>{p.upi}</dd></div>
-          <div><dt>Bank account</dt><dd>••••{p.accountLast4}</dd></div>
-          <div><dt>IFSC</dt><dd>{p.ifsc}</dd></div>
+          {p.nameAtBank && <div><dt>Name at bank</dt><dd>{p.nameAtBank}</dd></div>}
+          {p.upi && <div><dt>UPI ID</dt><dd>{p.upi}</dd></div>}
+          {p.accountLast4 && <div><dt>Bank account</dt><dd>••••{p.accountLast4}</dd></div>}
+          {p.ifsc && <div><dt>IFSC</dt><dd>{p.ifsc}</dd></div>}
         </dl>
         <button type="button" className="hob-v-link" onClick={() => { setEditing(true); update({ payout: { ...p, verified: false } }); }}>Change payout details</button>
       </div>

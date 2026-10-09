@@ -1,0 +1,170 @@
+---
+// [HF-HOST-PLATFORM-1 2026-10-09] Public page of a real, approved host: /h/<slug>.
+// SSR (prerender = false): GET /api/hosts/public/:slug is fetched here so the HTML is complete for search and share.
+// The look is the sample profile page's (components/callvaal/ProfileDetail.astro + styles/callvaal-detail.css).
+// Every photo and the voice clip on this page is AI-generated from an avatar the host chose, and is labelled so.
+// Flag hostsPublicEnabled off -> the API answers 404 -> this page is a friendly 404 (noindex).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import ModernIcon from '../../components/home/ModernIcon.astro';
+import DetailIcon from '../../components/callvaal/DetailIcon.astro';
+import brandConfig from '../../../../Specs/brand.json';
+import { API_BASE } from '../../lib/config';
+import { moods } from '../../lib/callvaalHomeReference';
+import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
+import '../../styles/callvaal-detail.css';
+
+interface Card {
+  slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
+  pricePerMin: number; lgbtqFriendly: boolean; sampleAudioUrl: string | null;
+  aboutPolished: string | null; quote: string | null;
+  gallery: { url: string; caption: string | null }[];
+  sampleAudio: { url: string; transcript: { speaker: 'host' | 'caller'; text: string }[] } | null;
+}
+const STYLE_LABEL: Record<string, string> = {
+  warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
+  playful: 'Funny & light', straightforward: 'Straight-talking', thoughtful: 'Gentle & patient',
+};
+
+const identity = brandConfig.homepageIdentity;
+const { slug } = Astro.params;
+let host: Card | null = null;
+if (slug && /^[a-z0-9-]{3,40}$/.test(slug)) {
+  try {
+    const res = await fetch(`${API_BASE}/api/hosts/public/${slug}`, { headers: { accept: 'application/json' } });
+    if (res.ok) host = (await res.json()) as Card;
+  } catch (err) {
+    console.warn('[HF-HOST-PLATFORM-1] host profile fetch failed', err instanceof Error ? err.message : String(err));
+  }
+}
+if (!host) Astro.response.status = 404;
+else Astro.response.headers.set('cache-control', 'public, max-age=60');
+
+const moodLabel = (s: string) => moods.find(m => m.slug === s)?.label ?? s;
+const name = host?.displayName ?? '';
+const price = host?.pricePerMin ?? 0;
+const topics = (host?.topics ?? []).map(moodLabel);
+const gallery = host?.gallery ?? [];
+const transcript = host?.sampleAudio?.transcript ?? [];
+const audioUrl = host?.sampleAudio?.url ?? host?.sampleAudioUrl ?? null;
+const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ₹${price}/min. Your number stays private.` : 'This host page is not available.';
+const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
+---
+<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Host not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN">
+  <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
+  {!host ? (
+    <main class="cv-detail-main" id="profile-main">
+      <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/marketplace">Explore</a></nav>
+      <section class="cv-info-card hf-missing" aria-labelledby="hf-missing-title">
+        <h1 id="hf-missing-title">We could not find this host</h1>
+        <p>The page may have moved, or the host is not taking calls right now. See everyone who is.</p>
+        <a class="cv-call-button hf-missing-link" href="/marketplace">Explore hosts</a>
+      </section>
+    </main>
+  ) : (
+    <>
+      <a class="cv-detail-skip" href="#profile-main">Skip to profile</a>
+      <main class="cv-detail-main" id="profile-main" data-host-slug={host.slug}>
+        <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/marketplace">Explore</a><span aria-hidden="true">›</span><span aria-current="page">{name}</span></nav>
+        <div class="cv-detail-layout">
+          <div class="cv-detail-content">
+            <section class="cv-profile-hero" aria-labelledby="profile-name">
+              <div class="cv-profile-photo">
+                {host.avatarUrl && <img src={host.avatarUrl} width="1254" height="1254" alt={`${name}, an AI avatar chosen by the host`} fetchpriority="high" />}
+                <span class="hf-ai-label">AI avatar chosen by the host</span>
+                <span class="cv-online cv-status-offline"><span aria-hidden="true"></span>Calls open soon</span>
+              </div>
+              <div class="cv-identity">
+                <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
+                <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified host ✓</span></span>
+                {audioUrl && (
+                  <div class="hf-clip">
+                    <span class="hf-ai-chip">AI voice clip · Sample conversation — not a real call</span>
+                    <audio controls preload="none" src={audioUrl} aria-label={`AI voice clip, sample conversation with ${name}`}></audio>
+                    {transcript.length > 0 && (
+                      <details class="hf-transcript">
+                        <summary>Read the sample conversation</summary>
+                        <ul>{transcript.map(l => <li class={`hf-line hf-line-${l.speaker}`}><strong>{l.speaker === 'host' ? name : 'Caller'}</strong>{l.text}</li>)}</ul>
+                      </details>
+                    )}
+                  </div>
+                )}
+                {host.quote && <blockquote class="cv-profile-quote"><p>“{host.quote}”</p><cite>– {name}</cite></blockquote>}
+              </div>
+            </section>
+            <p class="cv-sample-disclosure">To protect our hosts’ privacy, the photos and audio clips on host profiles are AI-generated from an avatar the host chose. The person you talk to on a call is the real, ID-verified host.</p>
+            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
+            <div class="cv-information-grid">
+              <section class="cv-info-card" id="about" aria-labelledby="about-heading">
+                <h2 id="about-heading">About {name}</h2>
+                {host.aboutPolished && <p>{host.aboutPolished}</p>}
+                <dl class="cv-detail-facts">
+                  {host.languages.length > 0 && <div><dt><ModernIcon name="globe" />Languages</dt><dd>{host.languages.join(', ')}</dd></div>}
+                  {host.style && <div><dt><ModernIcon name="sparkle" />Conversation style</dt><dd>{STYLE_LABEL[host.style] ?? host.style}</dd></div>}
+                  {host.lgbtqFriendly && <div><dt><ModernIcon name="user" />Welcome</dt><dd>LGBTQ+ friendly</dd></div>}
+                </dl>
+              </section>
+              <section class="cv-info-card" id="moods" aria-labelledby="moods-heading"><h2 id="moods-heading">Let’s talk <em>about</em></h2><ul class="cv-detail-topics">{topics.map(t => <li><DetailIcon name="chat" /><span>{t}</span></li>)}</ul><p class="cv-mood-note">Pick a topic, bring a story, or just say hello.</p></section>
+            </div>
+            <p class="cv-service-disclosure">{shortCallDisclaimer}</p>
+            {gallery.length > 0 && (
+              <section class="cv-gallery-section" id="gallery" aria-labelledby="gallery-heading">
+                <div class="cv-section-heading"><h2 id="gallery-heading">Gallery</h2><span class="hf-ai-chip">AI images</span></div>
+                <div class="cv-gallery-grid">{gallery.map((g, i) => <button type="button" class="hf-tile" data-gallery-index={i} aria-label={`Open picture ${i + 1}: ${g.caption || 'AI image'}`}><img src={g.url} alt={g.caption || 'AI image'} width="640" height="388" loading="lazy" /><span class="hf-ai-label hf-ai-tile">AI image</span></button>)}</div>
+              </section>
+            )}
+            <section class="cv-before-section" aria-labelledby="before-heading"><h2 id="before-heading">Before you call</h2><div class="cv-before-grid">
+              <div class="cv-before-card"><DetailIcon name="chat" /><div><h3>Just a conversation</h3><p>Talk and share at your own pace. No professional advice or promised results.</p></div></div>
+              <div class="cv-before-card"><ModernIcon name="user" /><div><h3>Keep it respectful</h3><p>18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.</p></div></div>
+              <div class="cv-before-card"><DetailIcon name="notes" /><div><h3>Know before you start</h3><p>Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.</p></div></div>
+            </div></section>
+          </div>
+          <aside class="cv-booking-rail" aria-label="Call options">
+            <div class="cv-booking-card"><strong class="cv-rate">₹{price}/min</strong><p class="cv-rate-estimate">10 min ≈ ₹{price * 10}</p>
+              <button class="cv-call-button hf-call-off" type="button" disabled aria-disabled="true"><ModernIcon name="bell" />Calls open soon</button>
+              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified host</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
+            </div>
+          </aside>
+        </div>
+      </main>
+      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>₹{price}/min</strong><small>10 min ≈ ₹{price * 10}</small></div><button class="cv-call-button hf-call-off" type="button" disabled aria-disabled="true"><ModernIcon name="bell" />Calls open soon</button></div>
+      <dialog class="cv-detail-dialog cv-gallery-dialog" id="hf-lightbox" aria-labelledby="hf-lightbox-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><span class="hf-ai-chip hf-ai-lb">AI image</span><figcaption id="hf-lightbox-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous picture">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next picture">→</button></div></dialog>
+      <script type="application/json" id="hf-gallery-data" set:html={galleryJson} />
+    </>
+  )}
+</Base>
+<style is:global>
+  .cv-profile-photo .hf-ai-label{position:absolute;top:12px;left:12px;z-index:2;max-width:calc(100% - 24px);padding:4px 10px;border-radius:999px;background:#fffdf7e6;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3;box-shadow:0 2px 8px #46113e14}
+  .hf-tile{position:relative}
+  .hf-ai-tile{position:absolute;left:8px;bottom:8px;padding:3px 9px;border-radius:999px;background:#fffdf7e6;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3}
+  .hf-ai-chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#f3eafb;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3}
+  .hf-ai-lb{display:block;width:max-content;margin:8px auto 0}
+  .hf-clip{display:grid;gap:8px;width:100%;margin-top:12px;padding:12px;border-radius:14px;background:#f2ecfc}
+  .hf-clip audio{width:100%;min-height:48px}
+  .hf-transcript summary{min-height:48px;display:flex;align-items:center;cursor:pointer;color:#4c0d47;font-weight:700;font-size:1rem}
+  .hf-transcript ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .hf-line{padding:10px 12px;border-radius:12px;background:#fff;color:#50307e;font-size:1rem;line-height:1.5}
+  .hf-line strong{display:block;font-size:.875rem;color:#806c84}
+  .hf-line-caller{margin-right:16px}.hf-line-host{margin-left:16px;background:#fff6e5}
+  .hf-call-off{opacity:.75;cursor:not-allowed}
+  .hf-missing{max-width:640px;margin:48px auto;padding:28px}
+  .hf-missing-link{display:flex;margin-top:16px;max-width:320px;text-decoration:none}
+</style>
+<script>
+  const data = document.querySelector('#hf-gallery-data');
+  const photos: { src: string; alt: string }[] = JSON.parse(data?.textContent || '[]');
+  const dialog = document.querySelector<HTMLDialogElement>('#hf-lightbox');
+  if (dialog && photos.length) {
+    const img = dialog.querySelector<HTMLImageElement>('[data-gallery-image]')!;
+    const cap = dialog.querySelector<HTMLElement>('#hf-lightbox-caption')!;
+    const count = dialog.querySelector<HTMLElement>('[data-gallery-count]')!;
+    let i = 0;
+    let opener: HTMLElement | null = null;
+    const show = (n: number) => { i = (n + photos.length) % photos.length; img.src = photos[i].src; img.alt = photos[i].alt; cap.textContent = photos[i].alt; count.textContent = `${i + 1} / ${photos.length}`; };
+    document.querySelectorAll<HTMLButtonElement>('[data-gallery-index]').forEach(b => b.addEventListener('click', () => { opener = b; show(Number(b.dataset.galleryIndex) || 0); dialog.showModal(); dialog.querySelector<HTMLElement>('[data-dialog-close]')?.focus(); }));
+    dialog.querySelectorAll<HTMLButtonElement>('[data-gallery-step]').forEach(b => b.addEventListener('click', () => show(i + Number(b.dataset.galleryStep))));
+    dialog.querySelector('[data-dialog-close]')?.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => opener?.focus());
+    dialog.addEventListener('keydown', e => { if (e.key === 'ArrowRight') show(i + 1); else if (e.key === 'ArrowLeft') show(i - 1); });
+  }
+</script>

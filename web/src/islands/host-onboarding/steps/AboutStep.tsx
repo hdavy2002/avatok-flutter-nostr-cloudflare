@@ -8,7 +8,7 @@ const EXAMPLES = [
   'I have lived in a big city and a small town, so I understand both.',
 ];
 
-export default function AboutStep({ draft, update, setAction }: StepProps) {
+export default function AboutStep({ draft, update, setAction, errors }: StepProps) {
   const name = draft.displayName.trim();
   const nameOk = /^[A-Za-zऀ-ॿ ]{2,20}$/.test(name);
   const len = draft.about.trim().length;
@@ -37,6 +37,7 @@ export default function AboutStep({ draft, update, setAction }: StepProps) {
           value={draft.displayName} onChange={(e) => update({ displayName: e.target.value })} placeholder="For example, Neha" />
         <p className="hob-help">Only your first name is shown. You can use a nickname.</p>
         {draft.displayName && !nameOk && <p className="hob-error" role="alert">Use 2 to 20 letters. No numbers or symbols.</p>}
+        {errors.displayName && <p className="hob-error" role="alert">{errors.displayName}</p>}
       </div>
 
       <div className="hob-field">
@@ -50,6 +51,7 @@ export default function AboutStep({ draft, update, setAction }: StepProps) {
         </div>
         {len > 0 && len < 40 && <p className="hob-help">Write at least {40 - len} more characters.</p>}
         {leak && <p className="hob-error" role="alert">{leak}</p>}
+        {errors.about && <p className="hob-error" role="alert">{errors.about}</p>}
       </div>
 
       <div className="hob-p-examples">

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import Icon from '../Icon';
 import type { StepProps } from '../types';
 
-export default function DoneStep({ setAction }: StepProps) {
+export default function DoneStep({ setAction, api }: StepProps) {
   useEffect(() => { setAction({ label: '', hidden: true }); }, [setAction]);
   const restart = () => {
     try { localStorage.removeItem('hf_host_onboarding_draft_v1'); } catch { /* ignore */ }
@@ -26,7 +26,7 @@ export default function DoneStep({ setAction }: StepProps) {
         </ul>
       </section>
       <a className="hob-btn hob-btn-primary hob-f-full" href="/dashboard/profile">Go to dashboard</a>
-      <button type="button" className="hob-btn hob-btn-ghost hob-f-full" onClick={restart}>Start the preview again</button>
+      {api.mode === 'mock' && <button type="button" className="hob-btn hob-btn-ghost hob-f-full" onClick={restart}>Start the preview again</button>}
     </div>
   );
 }

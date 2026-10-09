@@ -4,7 +4,43 @@ import type { StepProps } from '../types';
 
 const RESEND_SECS = 30;
 
-export default function PhoneStep({ draft, update, api, setAction, goNext }: StepProps) {
+const PHONE_FLOW_URL = `/sign-up?finish=1&next=${encodeURIComponent('/hosts/onboarding?step=phone')}`;
+
+/** Real mode: the number was verified by WhatsApp when the host signed in. We only show it (masked) and let them go on. */
+function RealPhoneStep({ draft, setAction }: StepProps) {
+  const verified = draft.phoneVerified;
+  const last4 = draft.phone.slice(-4);
+  useEffect(() => {
+    setAction(verified ? { label: 'Continue', run: () => true } : { label: 'Verify my number', run: () => { window.location.assign(PHONE_FLOW_URL); return false; } });
+  }, [verified, setAction]);
+  if (verified) {
+    return (
+      <div>
+        <h1 className="hob-h1">Your number is verified</h1>
+        <div className="hob-card hob-v-done">
+          <span className="hob-v-badge" aria-hidden="true"><Icon name="check" /></span>
+          <div>
+            <p className="hob-v-strong">+91 •••••• {last4} ✓</p>
+            <p className="hob-help">Callers' calls will ring on this number. It is never shown to anyone.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <h1 className="hob-h1">Verify your WhatsApp number</h1>
+      <p className="hob-lead">We need to check the number your calls will ring on. It takes a minute and we never show it to callers.</p>
+      <a className="hob-btn hob-btn-primary" href={PHONE_FLOW_URL}>Verify my number</a>
+    </div>
+  );
+}
+
+export default function PhoneStep(props: StepProps) {
+  return props.api.mode === 'real' ? <RealPhoneStep {...props} /> : <MockPhoneStep {...props} />;
+}
+
+function MockPhoneStep({ draft, update, api, setAction, goNext }: StepProps) {
   const [phone, setPhone] = useState(draft.phone || '');
   const [code, setCode] = useState('');
   const [phase, setPhase] = useState<1 | 2>(1);

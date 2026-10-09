@@ -126,8 +126,17 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
   const recorded = draft.voice.recorded && !!url;
   const ready = draft.voice.recorded && draft.voice.consent;
   useEffect(() => {
-    setAction({ label: 'Continue', disabled: !ready, run: () => true });
-  }, [ready, setAction]);
+    setAction({
+      label: 'Continue',
+      disabled: !ready,
+      run: async () => {
+        if (!api.commitVoice) return true;
+        const r = await api.commitVoice(draft.voice.consent);
+        if (!r.ok) { setError(r.error || 'We could not save your recording. Please try again.'); return false; }
+        return true;
+      },
+    });
+  }, [ready, setAction, api, draft.voice.consent]);
 
   return (
     <div>

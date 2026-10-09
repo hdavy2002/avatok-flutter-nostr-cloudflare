@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';
-import type { GenerationStage, StepProps } from '../types';
+import type { GenerationStage, StageState, StageStates, StepProps } from '../types';
 
 const STAGES: { key: GenerationStage; label: string }[] = [
   { key: 'text', label: 'Writing your profile' },
@@ -12,7 +12,7 @@ const STAGES: { key: GenerationStage; label: string }[] = [
 
 export default function GeneratingStep({ draft, update, api, setAction, goNext }: StepProps) {
   const ran = useRef(false);
-  const [current, setCurrent] = useState(-1);
+  const [states, setStates] = useState<StageStates | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
 
@@ -23,9 +23,9 @@ export default function GeneratingStep({ draft, update, api, setAction, goNext }
     if (ran.current) return;
     ran.current = true;
     setError('');
-    api.generateProfile(draft, st => setCurrent(STAGES.findIndex(s => s.key === st)))
-      .then(g => { setCurrent(STAGES.length); update({ generated: g }); setTimeout(goNext, 400); })
-      .catch(() => { ran.current = false; setError('Something went wrong while making your profile.'); });
+    api.generateProfile(draft, st => setStates(st))
+      .then(g => { update({ generated: g }); setTimeout(goNext, 400); })
+      .catch((e: unknown) => { ran.current = false; setError(e instanceof Error && e.message ? e.message : 'Something went wrong while making your profile.'); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
 
@@ -34,14 +34,18 @@ export default function GeneratingStep({ draft, update, api, setAction, goNext }
       <h1 className="hob-h1">Creating your profile</h1>
       <p className="hob-lead">This usually takes a few minutes. You can close this page — we'll send you a WhatsApp message when it's ready.</p>
       <ol className="hob-card hob-f-stages" aria-live="polite">
-        {STAGES.map((s, i) => {
-          const state = i < current ? 'done' : i === current ? 'working' : 'waiting';
+        {STAGES.map((s) => {
+          const state: StageState = states?.[s.key] ?? 'waiting';
+          const skipped = state === 'skipped';
+          const label = skipped && (s.key === 'voice' || s.key === 'conversation') ? 'Voice clip coming soon' : s.label;
+          const css = state === 'skipped' ? 'done' : state === 'failed' ? 'waiting' : state;
+          const word = state === 'done' ? 'done' : state === 'working' ? 'working' : state === 'skipped' ? 'skipped for now' : state === 'failed' ? 'failed' : 'waiting';
           return (
-            <li key={s.key} className={`hob-f-stage hob-f-stage-${state}`}>
+            <li key={s.key} className={`hob-f-stage hob-f-stage-${css}`}>
               <span className="hob-f-stage-ico" aria-hidden="true">
-                {state === 'done' ? <Icon name="check" /> : state === 'working' ? <span className="hob-f-spin" /> : null}
+                {state === 'done' || skipped ? <Icon name="check" /> : state === 'working' ? <span className="hob-f-spin" /> : state === 'failed' ? <Icon name="x" /> : null}
               </span>
-              <span>{s.label}<span className="hob-f-sr"> — {state === 'done' ? 'done' : state === 'working' ? 'working' : 'waiting'}</span></span>
+              <span>{label}<span className="hob-f-sr"> — {word}</span></span>
             </li>
           );
         })}

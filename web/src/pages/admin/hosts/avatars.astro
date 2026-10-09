@@ -1,0 +1,10 @@
+---
+// [HF-HOST-PLATFORM-1] Admin: avatar library.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import Avatars from '../../../islands/admin2/hosts/Avatars.tsx';
+---
+
+<Admin2 title="Avatars" active="host-avatars" subtitle="The picture library hosts choose from. Make a new batch or retire one.">
+  <Avatars client:load />
+</Admin2>

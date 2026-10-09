@@ -2,12 +2,13 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, type LucideIcon,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'voice-guides' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
+  | 'host-review' | 'host-avatars'
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -42,6 +43,9 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'consultants', label: 'Consultants', short: 'Consultants', href: '/admin/consultants', icon: GraduationCap, group: 'Consultants' },
   { key: 'consultant-bookings', label: 'Consultant bookings', short: 'Sessions', href: '/admin/consultant-bookings', icon: CalendarCheck, group: 'Consultants' },
   { key: 'consultant-reviews', label: 'Consultant reviews', short: 'Reviews', href: '/admin/consultant-reviews', icon: Star, group: 'Consultants' },
+  // [HF-HOST-PLATFORM-1] Hosts group. Keep contiguous.
+  { key: 'host-review', label: 'Host review', short: 'Hosts', href: '/admin/hosts', icon: UserCheck, group: 'Hosts' },
+  { key: 'host-avatars', label: 'Avatars', short: 'Avatars', href: '/admin/hosts/avatars', icon: Images, group: 'Hosts' },
   // [AUMFE-HELP-LEGAL-PREVIEW-1] Preview group: hidden-until-gateway help topics and legal sections (admin only).
   { key: 'preview-legal', label: 'Legal preview', short: 'Legal preview', href: '/admin/preview/legal', icon: Scale, group: 'Preview' },
 ];

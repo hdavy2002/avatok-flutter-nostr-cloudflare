@@ -1,0 +1,10 @@
+---
+// [HF-HOST-PLATFORM-1] Admin: host review queue.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import HostReview from '../../islands/admin2/hosts/HostReview.tsx';
+---
+
+<Admin2 title="Host review" active="host-review" subtitle="Check each host's profile, selfie and payout name, then approve or send back.">
+  <HostReview client:load />
+</Admin2>

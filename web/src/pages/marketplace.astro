@@ -14,6 +14,7 @@ export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
 import ProfileCard from '../components/callvaal/ProfileCard.astro';
+import LiveHostCards from '../islands/hosts/LiveHostCards';
 import ModernIcon from '../components/home/ModernIcon.astro';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
@@ -62,7 +63,7 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*�
       <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{(languages.length ? languages : ['Hindi','English','Kannada','Marathi']).map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[5,10,20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>Show everyone →</button></div>
       <p class="sr-only" data-favourites-status role="status" aria-live="polite"></p>
       <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
-      <div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} />)}</div>
+      <LiveHostCards client:visible /><div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} />)}</div>
       <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Availability, regulars, hours and conversation styles are samples too. Calls and payments are unavailable in this preview.</p>
     </section>
 

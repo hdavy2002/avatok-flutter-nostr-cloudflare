@@ -594,6 +594,17 @@ name = "avatok-deletion"
 binding = "WF_DELETION"
 class_name = "DeletionWorkflow"
 
+# [HF-HOST-PLATFORM-1] Hello Fraands host media generation + admin avatar batches.
+[[workflows]]
+name = "hf-host-media"
+binding = "HOST_MEDIA"
+class_name = "HostMediaWorkflow"
+
+[[workflows]]
+name = "hf-avatar-batch"
+binding = "AVATAR_BATCH"
+class_name = "AvatarBatchWorkflow"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]

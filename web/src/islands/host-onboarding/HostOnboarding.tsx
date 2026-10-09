@@ -7,10 +7,12 @@ import { publicImage } from '../../lib/config';
 import { capture } from '../../lib/analytics';
 import { EMPTY_DRAFT, GROUP_LABEL, STEPS } from './data';
 import { mockApi } from './api';
+import { realApi } from './api_real';
+import { request } from '../../lib/apiClient';
 import { loadDraft, saveDraft } from './storage';
 import PreviewCard from './PreviewCard';
 import Icon from './Icon';
-import type { Avatar, Draft, StepAction, StepGroup, StepKey, StepProps } from './types';
+import type { Avatar, Draft, OnboardingApi, StepAction, StepGroup, StepKey, StepProps } from './types';
 
 const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>> = {
   welcome: lazy(() => import('./steps/WelcomeStep')),
@@ -30,6 +32,21 @@ const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>>
   preview: lazy(() => import('./steps/PreviewStep')),
   done: lazy(() => import('./steps/DoneStep')),
 };
+
+// Real mode needs the Clerk session; load it only then (the mock preview stays light).
+const LazyClerkBridge = lazy(() => import('../../lib/clerk').then(m => ({ default: m.ClerkSessionBridge })));
+
+type Phase = 'boot' | 'auth' | 'gate' | 'error' | 'ready';
+const SIGN_IN_URL = `/sign-in?redirect_url=${encodeURIComponent('/hosts/onboarding')}`;
+
+/** Real mode only when the worker says both flags are on (cache-busted) and the URL does not ask for ?mock=1. */
+async function pickApi(): Promise<OnboardingApi> {
+  try { if (new URLSearchParams(window.location.search).get('mock') === '1') return mockApi; } catch { /* ignore */ }
+  try {
+    const cfg = await request<{ hostOnboardingEnabled?: boolean; hostKycEnabled?: boolean }>('/api/config', { query: { _: Date.now() }, timeoutMs: 8000 });
+    return cfg && cfg.hostOnboardingEnabled === true && cfg.hostKycEnabled === true ? realApi : mockApi;
+  } catch { return mockApi; }
+}
 
 const KEYS = STEPS.map(s => s.key);
 const DEFAULT_ACTION: StepAction = { label: 'Continue' };
@@ -77,10 +94,16 @@ function stepFromUrl(d: Draft): StepKey {
 const track = (event: string, props: Record<string, unknown>) => { try { capture(event, props as never); } catch { /* telemetry must never break the flow */ } };
 
 export default function HostOnboarding() {
-  const [draft, setDraft] = useState<Draft>(() => loadDraft() ?? EMPTY_DRAFT);
+  const [api, setApi] = useState<OnboardingApi>(mockApi);
+  const [phase, setPhase] = useState<Phase>('boot');
+  const [loadError, setLoadError] = useState('');
+  const [tryNo, setTryNo] = useState(0);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const [step, setStep] = useState<StepKey>(() => stepFromUrl(draftRef.current));
+  const touched = useRef(false);
+  const [step, setStep] = useState<StepKey>('welcome');
   const [action, setAction] = useState<StepAction>(DEFAULT_ACTION);
   const [busy, setBusy] = useState(false);
   const [avatars, setAvatars] = useState<Avatar[]>([]);
@@ -88,23 +111,80 @@ export default function HostOnboarding() {
   const pushed = useRef(0);
   const mainRef = useRef<HTMLDivElement>(null);
 
+  const apiRef = useRef(api);
+  apiRef.current = api;
   const update = useCallback((patch: Partial<Draft>) => {
-    setDraft(prev => { const next = { ...prev, ...patch }; saveDraft(next); return next; });
+    touched.current = true;
+    setDraft(prev => { const next = { ...prev, ...patch }; if (apiRef.current.mode === 'mock') saveDraft(next); return next; });
   }, []);
 
-  // Keep the URL in step with the initial (possibly corrected) step.
-  useEffect(() => {
-    try { window.history.replaceState({ hob: 1 }, '', `?step=${step}`); } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const finishBoot = useCallback((d: Draft) => {
+    setDraft(d);
+    draftRef.current = d;
+    const k = stepFromUrl(d);
+    setStep(k);
+    try { window.history.replaceState({ hob: 1 }, '', `?step=${k}`); } catch { /* ignore */ }
+    setPhase('ready');
   }, []);
 
+  // 1) Decide mock or real.
   useEffect(() => {
     let live = true;
-    mockApi.listAvatars().then(a => { if (live) setAvatars(a); }).catch(() => {});
+    void pickApi().then(chosen => {
+      if (!live) return;
+      setApi(chosen);
+      apiRef.current = chosen;
+      if (chosen.mode === 'mock') finishBoot(loadDraft() ?? EMPTY_DRAFT);
+      else setPhase('auth');
+    });
     return () => { live = false; };
-  }, []);
+  }, [finishBoot]);
+
+  // 2) Real mode: sign-in check, then the server's copy of the draft wins over anything stored locally.
+  useEffect(() => {
+    if (phase !== 'auth') return;
+    let live = true;
+    (async () => {
+      try {
+        const { getActiveTokenWaited } = await import('../../lib/clerk');
+        const t = await getActiveTokenWaited(10000);
+        if (!live) return;
+        if (!t) { setPhase('gate'); return; }
+        const server = await realApi.loadServerDraft();
+        if (!live || !server) return;
+        finishBoot({
+          ...EMPTY_DRAFT,
+          ...server.draft,
+          hours: { ...EMPTY_DRAFT.hours, ...(server.draft.hours || {}) },
+          selfie: { ...EMPTY_DRAFT.selfie, ...(server.draft.selfie || {}) },
+          payout: { ...EMPTY_DRAFT.payout, ...(server.draft.payout || {}) },
+          voice: { ...EMPTY_DRAFT.voice, ...(server.draft.voice || {}) },
+          agreements: { ...EMPTY_DRAFT.agreements, ...(server.draft.agreements || {}) },
+        });
+      } catch (e) {
+        if (!live) return;
+        setLoadError(e instanceof Error && e.message ? e.message : 'We could not load your details.');
+        setPhase('error');
+      }
+    })();
+    return () => { live = false; };
+  }, [phase, tryNo, finishBoot]);
+
+  // Real mode autosave of profile fields (debounced inside the client).
+  useEffect(() => {
+    if (phase !== 'ready' || api.mode !== 'real' || !touched.current) return;
+    api.saveServerDraft(draft, setErrors);
+  }, [draft, phase, api]);
 
   useEffect(() => {
+    if (phase !== 'ready') return;
+    let live = true;
+    api.listAvatars().then(a => { if (live) setAvatars(a); }).catch(() => {});
+    return () => { live = false; };
+  }, [phase, api]);
+
+  useEffect(() => {
+    if (phase !== 'ready') return;
     const onPop = () => {
       if (pushed.current > 0) pushed.current -= 1;
       setAction(DEFAULT_ACTION);
@@ -114,12 +194,13 @@ export default function HostOnboarding() {
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [phase]);
 
   useEffect(() => {
+    if (phase !== 'ready') return;
     track('host_onboarding_step_view', { step });
     try { window.scrollTo(0, 0); mainRef.current?.focus({ preventScroll: true }); } catch { /* ignore */ }
-  }, [step]);
+  }, [step, phase]);
 
   const stepRef = useRef(step);
   stepRef.current = step;
@@ -172,7 +253,37 @@ export default function HostOnboarding() {
   const curGroup = BAR_GROUPS.indexOf(meta.group);
   const StepView = LAZY[step];
 
-  const stepProps: StepProps = { draft, update, api: mockApi, setAction, goNext, goTo, avatars };
+  const stepProps: StepProps = { draft, update, api, setAction, goNext, goTo, avatars, errors };
+  const otherErrors = Object.entries(errors).filter(([k]) => !(step === 'about' && (k === 'displayName' || k === 'about')));
+
+  if (phase !== 'ready') {
+    return (
+      <div className="hob">
+        <div className="hob-body hob-wrap">
+          <main className="hob-main" aria-label="Become a host">
+            {phase === 'auth' && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
+            {phase === 'gate' ? (
+              <div className="hob-v-welcome">
+                <p className="hob-v-eyebrow">{BRAND.name} hosts</p>
+                <h1 className="hob-h1">Sign in with your WhatsApp number to start</h1>
+                <p className="hob-lead">We check your WhatsApp number first. It is the number your calls will come to, and we never show it to anyone.</p>
+                <a className="hob-btn hob-btn-primary hob-v-start" href={SIGN_IN_URL}>Sign in to start</a>
+                <p className="hob-v-rules"><a href="/hosts/join">Back to host info</a></p>
+              </div>
+            ) : phase === 'error' ? (
+              <div>
+                <h1 className="hob-h1">We could not open your details</h1>
+                <p className="hob-error" role="alert">{loadError}</p>
+                <button type="button" className="hob-btn hob-btn-primary" onClick={() => { setLoadError(''); setPhase('auth'); setTryNo(n => n + 1); }}>Try again</button>
+              </div>
+            ) : (
+              <p className="hob-loading" role="status">Loading…</p>
+            )}
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`hob${showPreview ? ' hob-has-preview' : ''}`}>
@@ -192,7 +303,7 @@ export default function HostOnboarding() {
             ))}
           </ol>
           <div className="hob-notice-row">
-            <p className="hob-notice">Preview — nothing is sent to us yet</p>
+            {api.mode === 'mock' ? <p className="hob-notice">Preview — nothing is sent to us yet</p> : <p className="hob-notice" />}
             {showPreview && <button type="button" className="hob-seecard" onClick={() => setSheet(true)}><Icon name="user" size={20} />See my card</button>}
           </div>
         </div>
@@ -203,6 +314,11 @@ export default function HostOnboarding() {
           <Suspense fallback={<p className="hob-loading" role="status">Loading…</p>}>
             <StepView key={step} {...stepProps} />
           </Suspense>
+          {otherErrors.length > 0 && (
+            <div className="hob-card" role="alert" aria-live="polite">
+              {otherErrors.map(([k, m]) => <p key={k} className="hob-error">{m}</p>)}
+            </div>
+          )}
         </main>
         {showPreview && (
           <aside className="hob-aside" aria-label="Card preview">
