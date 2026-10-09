@@ -31,15 +31,9 @@ export interface GeneratedProfile {
   tagline: string;
   about: string;
   quote: string;
-  /** ~20 s two-voice sample conversation, shown as a transcript in the mock. */
-  conversation: { speaker: 'caller' | 'host'; text: string }[];
   /** 5 AI gallery images (mock: avatar image + scene caption). */
   gallery: { image: string; caption: string }[];
   profileImage: string;
-  /** Real mode: public URL of the AI sample-conversation audio (null when the voice stage was skipped). */
-  sampleAudioUrl?: string | null;
-  /** Real mode: voice + conversation stages were skipped (voice provider not connected yet). */
-  voiceSkipped?: boolean;
 }
 
 export interface Draft {
@@ -64,13 +58,16 @@ export interface Draft {
   lgbtqLane: boolean;          // private LGBTQ+ lane, offered to all genders, callers must be verified
   lgbtqShowOnProfile: boolean; // separate opt-in: show 'LGBTQ+ friendly' publicly (only when lgbtqLane)
   womenOnlyLane: boolean;      // only offered when kycGender === 'woman'
-  voice: { recorded: boolean; durationSec: number; consent: boolean; source: 'mic' | 'upload' | null };
+  /** [HF-VOICE-INTRO-1] The host's OWN recorded introduction. `recorded` = saved on the server (real) or kept locally (mock).
+   *  `status` is the admin review state; null until saved. */
+  voice: { recorded: boolean; durationSec: number; consent: boolean; source: 'mic' | 'upload' | null; status: VoiceStatus };
   agreements: { rules: boolean; agreement: boolean; welfare: boolean };
   generated: GeneratedProfile | null;
   submitted: boolean;
 }
 
-export type GenerationStage = 'text' | 'images' | 'voice' | 'conversation' | 'safety';
+export type VoiceStatus = 'pending' | 'approved' | 'rejected' | null;
+export type GenerationStage = 'text' | 'images' | 'safety';
 export type StageState = 'waiting' | 'working' | 'done' | 'skipped' | 'failed';
 export type StageStates = Record<GenerationStage, StageState>;
 
@@ -110,10 +107,11 @@ export interface OnboardingApi {
   listAvatars(): Promise<Avatar[]>;
   /** Real: takes the avatar for this host (exclusive). Mock: always ok. */
   claimAvatar(id: string): Promise<ApiResult>;
-  /** Mock: stores nothing. Real: keeps the blob; call commitVoice() once the host has agreed to the voice-use notice. */
-  uploadVoice(blob: Blob, durationSec: number): Promise<{ ok: boolean; url?: string; error?: string }>;
-  /** Real only: sends the recording kept by uploadVoice (needs the consent header). */
-  commitVoice?(consent: boolean): Promise<ApiResult>;
+  /** [HF-VOICE-INTRO-1] Saves the host's own introduction. Mock: stores nothing, pretends it worked.
+   *  Real: PUT /api/hosts/me/voice with the consent header; the status comes back as 'pending'. */
+  uploadVoice(blob: Blob, durationSec: number, consent: boolean, onProgress?: (fraction: number) => void): Promise<ApiResult & { status?: VoiceStatus }>;
+  /** Real only: the host's own saved introduction as a playable object URL (needs the sign-in token, so it cannot be a plain src). Null when none. */
+  fetchMyVoice?(): Promise<string | null>;
   /** Real only: what the server already has for this host. Null in mock. */
   loadServerDraft(): Promise<ServerDraft | null>;
   /** Real only: debounced autosave of the profile fields (800 ms). Each field is sent on its own so one bad field never blocks the rest. */

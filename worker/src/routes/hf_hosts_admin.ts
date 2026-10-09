@@ -1,7 +1,9 @@
 // [HF-HOST-PLATFORM-1] HF host review + avatar library admin API (ADMIN_UIDS only).
 //   GET  /api/admin/hf/hosts?status=            list
 //   GET  /api/admin/hf/hosts/:uid               host + media + KYC summary (selfie/Aadhaar photo via /api/admin/hf/kyc signed URLs)
-//   POST /api/admin/hf/hosts/:uid/decision      { decision: approve|reject|pause, reason }
+//   POST /api/admin/hf/hosts/:uid/decision      { decision: approve|reject|pause, reason }   (approve also approves a pending voice intro)
+//   POST /api/admin/hf/hosts/:uid/intro         { decision: approve|reject, reason? }        [HF-VOICE-INTRO-1] review a (re-)recorded voice intro on its own
+//   GET  /api/admin/hf/hosts/intro-media?t=     streams the host's private intro (signed, 5 min, audited)
 //   GET  /api/admin/hf/avatars                  avatar library
 //   POST /api/admin/hf/avatars/generate         { count<=12, gender, age, look }  -> queues an avatar_batch job
 //   POST /api/admin/hf/avatars/fill             { target?: 1..8 (default 4) } -> ONE sequential avatar_batch job topping every gender x age x look up to target
@@ -9,13 +11,16 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { trackException } from "../hooks";
+import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { buildAvatarFillPlan, planTotal, MAX_PLAN_TOTAL, type AvatarPlanEntry } from "../lib/hf_avatar_plan";
 import { isAdminUid } from "../lib/preview";
 import { tryDecryptPii } from "../lib/pii_crypto";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
+import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
+import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
+
 
 const APP = BRAND.slug;
 const STATUSES = ["draft", "generating", "pending_host", "pending_review", "live", "paused", "rejected"];
@@ -52,7 +57,8 @@ type HostRow = {
   uid: string; slug: string | null; status: string; display_name: string | null; about: string | null; tagline: string | null; quote: string | null;
   about_polished: string | null; languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;
-  avatar_id: string | null; voice_seconds: number | null; gen_attempts: number; review_note: string | null; live_at: number | null;
+  avatar_id: string | null; voice_seconds: number | null; voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null;
+  intro_transcript: string | null; intro_flags_json: string | null; intro_uploaded_at: number | null; gen_attempts: number; review_note: string | null; live_at: number | null;
   submitted_at: number | null; updated_at: number; avatar_key?: string | null;
 };
 const HOST_SQL = `SELECT h.*, a.image_key AS avatar_key FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
@@ -63,9 +69,132 @@ function hostJson(env: Env, h: HostRow) {
     aboutPolished: h.about_polished, languages: arr(h.languages_json), style: h.style, topics: arr(h.topics_json), conversationLang: h.conversation_lang,
     pricePerMin: h.price_per_min, hours: obj(h.hours_json), healthConsent: !!h.health_consent, womenLane: !!h.women_lane, lgbtqLane: !!h.lgbtq_lane,
     lgbtqPublic: !!h.lgbtq_public, avatarId: h.avatar_id, avatarUrl: h.avatar_key ? `${mediaBase(env)}/${h.avatar_key}` : null,
-    voiceSeconds: h.voice_seconds, genAttempts: h.gen_attempts, reviewNote: h.review_note, liveAt: h.live_at,
+    voice: { seconds: h.intro_status ? h.voice_seconds : null, mime: h.intro_status ? h.intro_mime : null, status: introStatusOf(h.intro_status), uploadedAt: h.intro_status ? h.intro_uploaded_at : null },
+    genAttempts: h.gen_attempts, reviewNote: h.review_note, liveAt: h.live_at,
     submittedAt: h.submitted_at, updatedAt: h.updated_at,
   };
+}
+
+// ── voice intro: signed streaming + approval ─────────────────────────────────
+// [HF-VOICE-INTRO-1] Same signed-token pattern as hf_host_kyc media (HMAC over HF_PII_KEY, 5 min, admin-bound, audited), own domain string.
+const INTRO_URL_TTL_MS = 5 * 60_000;
+const b64u = (b: ArrayBuffer | Uint8Array): string => {
+  const a = b instanceof Uint8Array ? b : new Uint8Array(b);
+  let s = ""; for (const x of a) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const fromB64u = (s: string): Uint8Array => {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  const o = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) o[i] = bin.charCodeAt(i); return o;
+};
+async function introHmacKey(env: Env): Promise<CryptoKey> {
+  const raw = piiKeyBytes(env);
+  const seed = new Uint8Array(11 + raw.length);
+  seed.set(new TextEncoder().encode("hf-intro-v1")); seed.set(raw, 11);
+  const k = await crypto.subtle.digest("SHA-256", seed);
+  return crypto.subtle.importKey("raw", k, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+async function signIntro(env: Env, adminUid: string, uid: string, key: string, mime: string): Promise<string | null> {
+  if (!piiKeyConfigured(env)) return null;
+  const payload = b64u(new TextEncoder().encode(JSON.stringify({ e: Date.now() + INTRO_URL_TTL_MS, a: adminUid, u: uid, r: key, m: mime })));
+  const sig = await crypto.subtle.sign("HMAC", await introHmacKey(env), new TextEncoder().encode(payload));
+  return `/api/admin/hf/hosts/intro-media?t=${payload}.${b64u(sig)}`;
+}
+
+async function introMedia(req: Request, env: Env): Promise<Response> {
+  const t = new URL(req.url).searchParams.get("t") || "";
+  const [payload, sig] = t.split(".");
+  if (!payload || !sig || !piiKeyConfigured(env)) return err(403, "bad_token");
+  let c: { e: number; a: string; u: string; r: string; m: string };
+  try {
+    const ok = await crypto.subtle.verify("HMAC", await introHmacKey(env), fromB64u(sig), new TextEncoder().encode(payload));
+    if (!ok) return err(403, "bad_token");
+    c = JSON.parse(new TextDecoder().decode(fromB64u(payload)));
+  } catch { return err(403, "bad_token"); }
+  if (!(c.e > Date.now())) return err(403, "token_expired");
+  if (!isAdminUid(env, c.a)) return err(403, "forbidden");
+  if (typeof c.r !== "string" || !c.r.startsWith(`hf/intro/${c.u}/`)) return err(403, "bad_token");
+  const range = req.headers.get("range");
+  const obj = await env.VERIFICATION.get(c.r, range ? { range: req.headers } : undefined);
+  if (!obj) return err(404, "not_found");
+  await audit(env, c.a, "view_intro", c.u, { key: c.r });
+  const headers = new Headers({ "content-type": c.m || "audio/mp4", "cache-control": "private, no-store", "x-content-type-options": "nosniff", "accept-ranges": "bytes" });
+  const rg = (obj as unknown as { range?: { offset?: number; length?: number } }).range;
+  if (range && rg && rg.offset != null && rg.length != null) {
+    headers.set("content-range", `bytes ${rg.offset}-${rg.offset + rg.length - 1}/${obj.size}`);
+    headers.set("content-length", String(rg.length));
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers.set("content-length", String(obj.size));
+  return new Response(obj.body, { status: 200, headers });
+}
+
+/** Copies a PENDING private intro to the public BLOBS bucket and makes it the host's active intro_audio. */
+async function approvePendingIntro(env: Env, uid: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds FROM hf_hosts WHERE uid=?1")
+    .bind(uid).first<{ voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null }>().catch(() => null);
+  return approveIntroRow(env, uid, h);
+}
+async function approveIntroRow(env: Env, uid: string, h: { voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null } | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!h || h.intro_status !== "pending" || !h.voice_sample_r2) return { ok: false, error: "no_pending_intro" };
+  const src = await env.VERIFICATION.get(h.voice_sample_r2);
+  if (!src) return { ok: false, error: "intro_file_missing" };
+  const mime = h.intro_mime || src.httpMetadata?.contentType || "audio/mp4";
+  const ext = h.voice_sample_r2.split(".").pop() || "m4a";
+  const now = Date.now();
+  const pubKey = `hf/hosts/${uid}/intro-${now}.${ext}`;
+  await env.BLOBS.put(pubKey, await src.arrayBuffer(), { httpMetadata: { contentType: mime, cacheControl: "public, max-age=3600" } });
+  const prev = (await env.DB_META.prepare("SELECT r2_key FROM hf_host_media WHERE uid=?1 AND kind=?2 AND status='active'").bind(uid, INTRO_MEDIA_KIND).all<{ r2_key: string }>()).results ?? [];
+  try {
+    await env.DB_META.batch([
+      env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND kind=?2 AND status='active'").bind(uid, INTRO_MEDIA_KIND),
+      env.DB_META.prepare("INSERT INTO hf_host_media (id, uid, kind, r2_key, caption, sort, status, created_at) VALUES (?1,?2,?3,?4,?5,0,'active',?6)")
+        .bind(crypto.randomUUID(), uid, INTRO_MEDIA_KIND, pubKey, introCaption(h.voice_seconds, mime), now),
+      env.DB_META.prepare("UPDATE hf_hosts SET intro_status='approved', updated_at=?3 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending'").bind(uid, h.voice_sample_r2, now),
+    ]);
+  } catch (e) {
+    await env.BLOBS.delete(pubKey).catch(() => {});
+    throw e;
+  }
+  for (const r of prev) if (r.r2_key !== pubKey) await env.BLOBS.delete(r.r2_key).catch(() => {});
+  return { ok: true };
+}
+
+async function notifyHost(env: Env, adminUid: string, uid: string, msg: string, route: string): Promise<boolean> {
+  try {
+    const phone = await verifiedWhatsAppNumber(env, uid);
+    if (phone) return (await sendWhatsAppText(env, phone, msg)).ok;
+  } catch (e) {
+    await trackException(env, e, { uid: adminUid, route, handled: true, app_name: APP, extra: { area: "hf_hosts_admin", step: "whatsapp" } });
+  }
+  return false;
+}
+
+// POST /api/admin/hf/hosts/:uid/intro { decision: approve|reject, reason? }
+async function decideIntro(req: Request, env: Env, uid: string): Promise<Response> {
+  const a = await adminCtx(req, env); if (a instanceof Response) return a;
+  const b = await readJson(req);
+  const decision = String(b.decision || "");
+  const reason = typeof b.reason === "string" ? b.reason.trim().slice(0, 500) : "";
+  if (decision !== "approve" && decision !== "reject") return err(400, "bad_decision");
+  if (decision === "reject" && !reason) return err(400, "reason_required");
+  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds FROM hf_hosts WHERE uid=?1")
+    .bind(uid).first<{ voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null }>();
+  if (!h) return err(404, "not_found");
+  if (h.intro_status !== "pending") return err(409, "bad_state", { introStatus: h.intro_status });
+  const now = Date.now();
+  let notified = false;
+  if (decision === "approve") {
+    const r = await approveIntroRow(env, uid, h);
+    if (!r.ok) return err(r.error === "intro_file_missing" ? 410 : 409, r.error);
+  } else {
+    const r = await env.DB_META.prepare("UPDATE hf_hosts SET intro_status='rejected', updated_at=?3 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending'").bind(uid, h.voice_sample_r2, now).run();
+    if (!r.meta?.changes) return err(409, "bad_state");
+    notified = await notifyHost(env, a.uid, uid, `Please re-record your introduction: ${reason}`, "/api/admin/hf/hosts/intro");
+  }
+  await audit(env, a.uid, `intro_${decision}`, uid, { reason });
+  void track(env, uid, "hf_host_intro_reviewed", APP, { area: "hf_hosts_admin", decision });
+  return json({ ok: true, introStatus: decision === "approve" ? "approved" : "rejected", notified });
 }
 
 async function listHosts(req: Request, env: Env): Promise<Response> {
@@ -92,9 +221,19 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
   ]);
   await audit(env, a.uid, "view", uid, {});
   const base = mediaBase(env);
+  const live = (media.results ?? []).find((m) => m.kind === INTRO_MEDIA_KIND);
+  const intro = h.voice_sample_r2 && h.intro_status
+    ? {
+        url: await signIntro(env, a.uid, uid, h.voice_sample_r2, h.intro_mime || "audio/mp4"), urlExpiresInS: INTRO_URL_TTL_MS / 1000,
+        seconds: h.voice_seconds, mime: h.intro_mime, status: introStatusOf(h.intro_status), uploadedAt: h.intro_uploaded_at,
+        transcript: h.intro_transcript, flags: parseStoredFlags(h.intro_flags_json),
+      }
+    : null;
   return json({
     ok: true,
     host: hostJson(env, h),
+    intro,
+    liveIntroUrl: live ? `${base}/${live.r2_key}` : null,
     media: (media.results ?? []).map((m) => ({
       id: m.id, kind: m.kind, url: `${base}/${m.r2_key}`, caption: m.caption, sort: m.sort,
       transcript: m.transcript_json ? arr(m.transcript_json) : undefined,
@@ -143,7 +282,15 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     if (selfie?.review_status !== "approved") missing.push("selfie_not_approved");
     if (!payout?.name_match) missing.push("payout_name_mismatch");
     if (!media?.n) missing.push("no_media");
+    const ih = await env.DB_META.prepare("SELECT intro_status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ intro_status: string | null }>();
+    if (h.status === "pending_review" && ih?.intro_status !== "pending" && ih?.intro_status !== "approved") missing.push("no_intro");
     if (missing.length) return err(409, "not_ready", { missing });
+    // [HF-VOICE-INTRO-1] approving the profile also approves a pending voice intro (rejecting the profile leaves it as is)
+    if (ih?.intro_status === "pending") {
+      const ir = await approvePendingIntro(env, uid);
+      if (!ir.ok) return err(ir.error === "intro_file_missing" ? 410 : 409, ir.error);
+      await audit(env, a.uid, "intro_approve", uid, { via: "profile_approve" });
+    }
     const slug = h.slug || (await uniqueSlug(env, h.display_name || "host", uid));
     await env.DB_META.prepare("UPDATE hf_hosts SET status='live', slug=?2, live_at=COALESCE(live_at,?3), review_note=NULL, reviewed_by=?4, reviewed_at=?3, updated_at=?3 WHERE uid=?1")
       .bind(uid, slug, now, a.uid).run();
@@ -157,13 +304,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
       : `Your profile is paused for now. Reason: ${reason}. Please write to our support team if you have questions.`;
   }
   await audit(env, a.uid, decision, uid, { reason, from: h.status });
-  let notified = false;
-  try {
-    const phone = await verifiedWhatsAppNumber(env, uid);
-    if (phone) notified = (await sendWhatsAppText(env, phone, msg)).ok;
-  } catch (e) {
-    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/hosts/decision", handled: true, app_name: APP, extra: { area: "hf_hosts_admin", step: "whatsapp" } });
-  }
+  const notified = await notifyHost(env, a.uid, uid, msg, "/api/admin/hf/hosts/decision");
   return json({ ok: true, status: decision === "approve" ? "live" : decision === "reject" ? "rejected" : "paused", notified });
 }
 
@@ -259,10 +400,13 @@ export async function hfHostsAdminRoute(req: Request, env: Env, ctx?: ExecutionC
   if (!p.startsWith("/api/admin/hf/hosts") && !p.startsWith("/api/admin/hf/avatars")) return null;
   try {
     if (p === "/api/admin/hf/hosts" && m === "GET") return await listHosts(req, env);
+    if (p === "/api/admin/hf/hosts/intro-media" && m === "GET") return await introMedia(req, env);
     let x = p.match(/^\/api\/admin\/hf\/hosts\/([A-Za-z0-9._:-]{1,128})$/);
     if (x && m === "GET") return await hostDetail(req, env, x[1]);
     x = p.match(/^\/api\/admin\/hf\/hosts\/([A-Za-z0-9._:-]{1,128})\/decision$/);
     if (x && m === "POST") return await decide(req, env, x[1]);
+    x = p.match(/^\/api\/admin\/hf\/hosts\/([A-Za-z0-9._:-]{1,128})\/intro$/);
+    if (x && m === "POST") return await decideIntro(req, env, x[1]);
     if (p === "/api/admin/hf/avatars" && m === "GET") return await listAvatars(req, env);
     if (p === "/api/admin/hf/avatars/generate" && m === "POST") return await generateAvatars(req, env, ctx);
     if (p === "/api/admin/hf/avatars/fill" && m === "POST") return await fillAvatars(req, env);

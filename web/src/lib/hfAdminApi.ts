@@ -8,12 +8,17 @@ export interface AdminHost {
   uid: string; slug: string | null; status: HostStatus; displayName: string | null; about: string | null; tagline: string | null; quote: string | null;
   aboutPolished: string | null; languages: string[]; style: string | null; topics: string[]; conversationLang: string | null; pricePerMin: number;
   hours: { days?: string[]; from?: string; to?: string }; healthConsent: boolean; womenLane: boolean; lgbtqLane: boolean; lgbtqPublic: boolean;
-  avatarId: string | null; avatarUrl: string | null; voiceSeconds: number | null; genAttempts: number; reviewNote: string | null; liveAt: number | null;
+  avatarId: string | null; avatarUrl: string | null; genAttempts: number; reviewNote: string | null; liveAt: number | null;
   submittedAt: number | null; updatedAt: number;
 }
-export interface AdminHostMedia { id: string; kind: 'profile' | 'gallery' | 'sample_audio'; url: string; caption: string | null; sort: number; transcript?: { speaker: 'host' | 'caller'; text: string }[] }
+export interface AdminHostMedia { id: string; kind: 'profile' | 'gallery'; url: string; caption: string | null; sort: number }
+/** [HF-VOICE-INTRO-1] The host's own recorded introduction, as the reviewer sees it. `url` is signed (relative to the API origin). */
+export interface AdminIntro { url: string; seconds: number; mime: string; status: 'pending' | 'approved' | 'rejected'; transcript: string | null; flags: { type: string; text: string }[] }
 export interface AdminHostDetail {
   host: AdminHost; media: AdminHostMedia[];
+  intro: AdminIntro | null;
+  /** The previously approved introduction that is still live while a new one waits for review. */
+  liveIntroUrl?: string | null;
   kyc: {
     aadhaarDone: boolean; name: string | null; gender: string | null; last4: string | null; ageOk: boolean; hasPhoto: boolean;
     selfie: { id: string; status: 'pending' | 'approved' | 'rejected'; reason: string | null; at: number } | null;
@@ -33,6 +38,9 @@ export const hfAdminApi = {
   host: (uid: string) => adminCall<AdminHostDetail>(`/api/admin/hf/hosts/${e(uid)}`),
   decide: (uid: string, decision: 'approve' | 'reject' | 'pause', reason = '') =>
     adminCall<{ ok: true; status: string; notified: boolean }>(`/api/admin/hf/hosts/${e(uid)}/decision`, { method: 'POST', body: { decision, reason } }),
+  /** [HF-VOICE-INTRO-1] Approve the host's recorded introduction, or ask them to record it again (reason is shown to the host). */
+  introDecision: (uid: string, decision: 'approve' | 'reject', reason = '') =>
+    adminCall<{ ok: true }>(`/api/admin/hf/hosts/${e(uid)}/intro`, { method: 'POST', body: { decision, reason } }),
   /** Signed selfie video + Aadhaar photo URLs (5 min). Find the host by uid in the status the selfie is in. */
   kycMedia: async (uid: string, status: 'pending' | 'approved' | 'rejected') =>
     ((await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`)).items ?? []).find((i) => i.uid === uid) ?? null,

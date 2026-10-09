@@ -5,8 +5,6 @@ import type { GenerationStage, StageState, StageStates, StepProps } from '../typ
 const STAGES: { key: GenerationStage; label: string }[] = [
   { key: 'text', label: 'Writing your profile' },
   { key: 'images', label: 'Creating your avatar photos' },
-  { key: 'voice', label: 'Copying your voice' },
-  { key: 'conversation', label: 'Recording a sample conversation' },
   { key: 'safety', label: 'Safety check' },
 ];
 
@@ -37,7 +35,7 @@ export default function GeneratingStep({ draft, update, api, setAction, goNext }
         {STAGES.map((s) => {
           const state: StageState = states?.[s.key] ?? 'waiting';
           const skipped = state === 'skipped';
-          const label = skipped && (s.key === 'voice' || s.key === 'conversation') ? 'Voice clip coming soon' : s.label;
+          const label = s.label;
           const css = state === 'skipped' ? 'done' : state === 'failed' ? 'waiting' : state;
           const word = state === 'done' ? 'done' : state === 'working' ? 'working' : state === 'skipped' ? 'skipped for now' : state === 'failed' ? 'failed' : 'waiting';
           return (

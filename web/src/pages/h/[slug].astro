@@ -2,7 +2,7 @@
 // [HF-HOST-PLATFORM-1 2026-10-09] Public page of a real, approved host: /h/<slug>.
 // SSR (prerender = false): GET /api/hosts/public/:slug is fetched here so the HTML is complete for search and share.
 // The look is the sample profile page's (components/callvaal/ProfileDetail.astro + styles/callvaal-detail.css).
-// Every photo and the voice clip on this page is AI-generated from an avatar the host chose, and is labelled so.
+// Every photo on this page is AI-generated from an avatar the host chose, and is labelled so. The voice introduction is the host's OWN recording (admin-approved), labelled "Recorded by the host".
 // Flag hostsPublicEnabled off -> the API answers 404 -> this page is a friendly 404 (noindex).
 export const prerender = false;
 import Base from '../../layouts/Base.astro';
@@ -16,10 +16,10 @@ import '../../styles/callvaal-detail.css';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
-  pricePerMin: number; lgbtqFriendly: boolean; sampleAudioUrl: string | null;
+  pricePerMin: number; lgbtqFriendly: boolean;
+  introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
   aboutPolished: string | null; quote: string | null;
   gallery: { url: string; caption: string | null }[];
-  sampleAudio: { url: string; transcript: { speaker: 'host' | 'caller'; text: string }[] } | null;
 }
 const STYLE_LABEL: Record<string, string> = {
   warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
@@ -45,8 +45,8 @@ const name = host?.displayName ?? '';
 const price = host?.pricePerMin ?? 0;
 const topics = (host?.topics ?? []).map(moodLabel);
 const gallery = host?.gallery ?? [];
-const transcript = host?.sampleAudio?.transcript ?? [];
-const audioUrl = host?.sampleAudio?.url ?? host?.sampleAudioUrl ?? null;
+const audioUrl = host?.introAudioUrl ?? null;
+const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
 const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ₹${price}/min. Your number stays private.` : 'This host page is not available.';
 const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
 ---
@@ -79,20 +79,15 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
                 <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified host ✓</span></span>
                 {audioUrl && (
                   <div class="hf-clip">
-                    <span class="hf-ai-chip">AI voice clip · Sample conversation — not a real call</span>
-                    <audio controls preload="none" src={audioUrl} aria-label={`AI voice clip, sample conversation with ${name}`}></audio>
-                    {transcript.length > 0 && (
-                      <details class="hf-transcript">
-                        <summary>Read the sample conversation</summary>
-                        <ul>{transcript.map(l => <li class={`hf-line hf-line-${l.speaker}`}><strong>{l.speaker === 'host' ? name : 'Caller'}</strong>{l.text}</li>)}</ul>
-                      </details>
-                    )}
+                    <h2 class="hf-clip-title">Hear {name}’s introduction{introLen && <span> · {introLen}</span>}</h2>
+                    <audio controls preload="none" src={audioUrl} aria-label={`Hear ${name}’s introduction`}></audio>
+                    <span class="hf-ai-chip">Recorded by the host</span>
                   </div>
                 )}
                 {host.quote && <blockquote class="cv-profile-quote"><p>“{host.quote}”</p><cite>– {name}</cite></blockquote>}
               </div>
             </section>
-            <p class="cv-sample-disclosure">To protect our hosts’ privacy, the photos and audio clips on host profiles are AI-generated from an avatar the host chose. The person you talk to on a call is the real, ID-verified host.</p>
+            <p class="cv-sample-disclosure">To protect our hosts’ privacy, the photos on host profiles are AI-generated from an avatar the host chose. The voice introduction is the host’s own recording. The person you talk to on a call is the real, ID-verified host.</p>
             <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
@@ -141,11 +136,8 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
   .hf-ai-lb{display:block;width:max-content;margin:8px auto 0}
   .hf-clip{display:grid;gap:8px;width:100%;margin-top:12px;padding:12px;border-radius:14px;background:#f2ecfc}
   .hf-clip audio{width:100%;min-height:48px}
-  .hf-transcript summary{min-height:48px;display:flex;align-items:center;cursor:pointer;color:#4c0d47;font-weight:700;font-size:1rem}
-  .hf-transcript ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-  .hf-line{padding:10px 12px;border-radius:12px;background:#fff;color:#50307e;font-size:1rem;line-height:1.5}
-  .hf-line strong{display:block;font-size:.875rem;color:#806c84}
-  .hf-line-caller{margin-right:16px}.hf-line-host{margin-left:16px;background:#fff6e5}
+  .hf-clip-title{margin:0;font-size:1.1rem;color:#46113e}
+  .hf-clip-title span{font-weight:600}
   .hf-call-off{opacity:.75;cursor:not-allowed}
   .hf-missing{max-width:640px;margin:48px auto;padding:28px}
   .hf-missing-link{display:flex;margin-top:16px;max-width:320px;text-decoration:none}

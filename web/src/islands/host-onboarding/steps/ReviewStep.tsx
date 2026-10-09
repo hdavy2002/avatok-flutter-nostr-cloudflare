@@ -60,8 +60,8 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
         <p>{draft.womenOnlyLane ? 'Only women callers' : 'All callers'}</p>
         <p>LGBTQ+ space: {draft.lgbtqLane ? (draft.lgbtqShowOnProfile ? 'Yes (shown on profile)' : 'Yes (private)') : 'No'}</p>
       </Row>
-      <Row title="Voice" step="voice" goTo={goTo}>
-        <p>{draft.voice.recorded ? `Recorded, ${draft.voice.durationSec} seconds` : 'Not recorded yet'}</p>
+      <Row title="Voice introduction" step="voice" goTo={goTo}>
+        <p>{draft.voice.recorded ? `Voice introduction — ${Math.floor(draft.voice.durationSec / 60)}:${String(draft.voice.durationSec % 60).padStart(2, '0')}` : 'Not recorded yet'}</p>
       </Row>
 
       <div className="hob-f-agree">

@@ -605,6 +605,12 @@ name = "hf-avatar-batch"
 binding = "AVATAR_BATCH"
 class_name = "AvatarBatchWorkflow"
 
+# [HF-VOICE-INTRO-1] durable transcription + contact-detail flagging of a host voice intro.
+[[workflows]]
+name = "hf-intro-check"
+binding = "INTRO_CHECK"
+class_name = "IntroCheckWorkflow"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]

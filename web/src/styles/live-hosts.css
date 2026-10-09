@@ -9,3 +9,8 @@
 .hf-live-card .hf-live-clip{display:block;width:100%;min-height:48px;margin-top:10px}
 .hf-live-card .hf-live-clip-label{display:block;font-size:.875rem;margin-top:8px}
 .hf-live-sentinel{display:block;height:1px;margin-top:-1px;pointer-events:none}
+
+.hf-live-card .hf-live-intro{display:grid;gap:4px;margin-top:10px}
+.hf-live-card .hf-live-intro-btn{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border-radius:999px;border:0;background:#f2ecfc;color:#46113e;font:inherit;font-size:1rem;font-weight:700;cursor:pointer;justify-self:start}
+.hf-live-card .hf-live-intro-btn[aria-pressed=true]{background:#46113e;color:#fff}
+.hf-live-card .hf-live-intro-btn:focus-visible{outline:3px solid #7b388c;outline-offset:3px}

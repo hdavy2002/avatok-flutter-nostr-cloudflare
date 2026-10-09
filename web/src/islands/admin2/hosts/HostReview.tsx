@@ -93,9 +93,10 @@ function Drawer({ uid, onClose, onChanged }: { uid: string; onClose: () => void;
   const h = d?.host;
   const profile = d?.media.find((m) => m.kind === 'profile');
   const gallery = d?.media.filter((m) => m.kind === 'gallery') ?? [];
-  const audio = d?.media.find((m) => m.kind === 'sample_audio');
+  const intro = d?.intro ?? null;
+  const [introReason, setIntroReason] = useState('');
   const selfie = d?.kyc.selfie;
-  const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.nameMatch && d.media.some((m) => m.kind !== 'sample_audio');
+  const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.nameMatch && d.media.length > 0;
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Host detail" style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', justifyContent: 'flex-end', background: 'rgba(40,10,35,.45)' }} onClick={onClose}>
@@ -136,13 +137,45 @@ function Drawer({ uid, onClose, onChanged }: { uid: string; onClose: () => void;
               </div>
             </>)}
 
-            <p style={label}>Sample conversation</p>
-            {audio ? (
+            <p style={label}>Voice introduction (recorded by the host)</p>
+            {intro ? (
               <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>
-                <audio controls src={audio.url} style={{ width: '100%' }} />
-                {audio.transcript?.map((l, i) => <p key={i} style={{ margin: '6px 0 0', ...T14 }}><strong>{l.speaker === 'host' ? 'Host' : 'Caller'}:</strong> {l.text}</p>)}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                  <span className={`chip ${intro.status === 'approved' ? 'neel' : intro.status === 'rejected' ? 'red' : 'gold'}`}>{intro.status === 'pending' ? 'Waiting for review' : intro.status === 'approved' ? 'Approved' : 'Asked to re-record'}</span>
+                  <span>Length {Math.floor(intro.seconds / 60)}:{String(intro.seconds % 60).padStart(2, '0')}</span>
+                </div>
+                <audio controls preload="metadata" src={apiUrl(intro.url)} style={{ width: '100%' }} aria-label="Host introduction" />
+                {intro.flags.length > 0 && (
+                  <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#fff4c9', border: '1px solid #e0b400', ...T14 }}>
+                    <strong>Possible contact details heard. Please check before approving:</strong>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{intro.flags.map((f, i) => <li key={i}><strong>{f.type}:</strong> “{f.text}”</li>)}</ul>
+                  </div>
+                )}
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: 'pointer', minHeight: 32, ...T14, fontWeight: 700 }}>Transcript (made by Gemini, may have mistakes)</summary>
+                  <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', ...T14 }}>{intro.transcript || 'No transcript yet.'}</p>
+                </details>
+                {d.liveIntroUrl && intro.status !== 'approved' && (
+                  <div style={{ marginTop: 10 }}>
+                    <p style={{ ...label, margin: '0 0 4px' }}>Currently live</p>
+                    <audio controls preload="none" src={apiUrl(d.liveIntroUrl)} style={{ width: '100%' }} aria-label="Introduction currently live" />
+                  </div>
+                )}
+                {intro.status === 'pending' && (
+                  <div style={{ marginTop: 12 }}>
+                    <label htmlFor="hf-intro-reason" style={label}>Reason (needed to ask for a new recording; shown to the host)</label>
+                    <input id="hf-intro-reason" value={introReason} onChange={(e) => setIntroReason(e.target.value)} maxLength={300} style={{ width: '100%', margin: '6px 0 8px', padding: 10, borderRadius: 10, border: '1px solid #d9cbd6', ...T14 }} />
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn small" style={T14} disabled={busy} onClick={() => void run('intro_approve', () => hfAdminApi.introDecision(uid, 'approve'), false, 'Introduction approved. It is live on the card and profile.')}>Approve intro</button>
+                      <button type="button" className="btn small ghost" style={T14} disabled={busy} onClick={() => {
+                        if (!introReason.trim()) { setError('Please write a reason first.'); return; }
+                        void run('intro_reject', () => hfAdminApi.introDecision(uid, 'reject', introReason.trim()), false, 'Host asked to record again.').then(() => setIntroReason(''));
+                      }}>Ask to re-record</button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : <p className="muted" style={{ ...T14, marginBottom: 16 }}>No sample audio (voice step was skipped or not done).</p>}
+            ) : <p className="muted" style={{ ...T14, marginBottom: 16 }}>No introduction recorded yet.</p>}
 
             <p style={label}>Profile text</p>
             <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>

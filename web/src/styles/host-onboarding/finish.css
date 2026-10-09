@@ -103,3 +103,18 @@
 .hob-f-next{text-align:left}
 @media (prefers-reduced-motion:reduce){.hob-f-mic-live,.hob-f-spin,.hob-f-badge,.hob-f-dot{animation:none}}
 @media (min-width:640px){.hob-f-gallery{grid-template-columns:repeat(3,1fr)}}
+
+/* [HF-VOICE-INTRO-1] voice introduction recorder */
+.hob-f-ideas summary{font-weight:800;color:#46113e;font-size:1.05rem;min-height:48px;display:flex;align-items:center;cursor:pointer}
+.hob-f-ideas-body{display:grid;gap:.75rem;padding-top:.5rem}
+.hob-f-tabs{display:flex;gap:.5rem;flex-wrap:wrap}
+.hob-f-example{background:#fff4c9;border-radius:12px;padding:.9rem 1rem;margin:0;font-size:1.05rem}
+.hob-f-tips{margin:0;padding-left:1.2rem;display:grid;gap:.35rem;font-size:1rem;color:#46113e}
+.hob-f-donts{margin:0;font-size:1rem;color:#8a1f33;line-height:1.5}
+.hob-f-meter{width:100%;height:10px;border-radius:999px;background:#f2ecfc;overflow:hidden}
+.hob-f-meter span{display:block;height:100%;background:#bd2740;transition:width .25s linear}
+.hob-f-audio{width:100%;min-height:48px}
+.hob-f-vstatus{font-size:.95rem;font-weight:700}
+.hob-f-vstatus-approved{background:#dcd0f5;color:#46113e}
+.hob-f-vstatus-rejected{background:#fde4e4;color:#8a1f33}
+.hob-f-vstatus-pending{background:#fff4c9;color:#6b4e00}

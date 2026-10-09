@@ -29,10 +29,10 @@ export default function PreviewCard({ draft, avatar }: { draft: Draft; avatar: A
             <div><Icon name="user" size={25} /><p className="person-talks"><strong>0 people yet</strong><span>have talked to {draft.displayName.trim() || 'you'}</span></p></div>
             <div><Icon name="clock" size={25} /><p className="person-regulars"><strong>New host</strong><span>just joining</span></p></div>
           </div>
-          <div className="profile-card-voice" aria-label="Sample conversation">
-            <button type="button" disabled aria-label="Sample conversation, not available in preview"><Icon name="play" size={22} /></button>
-            <div><span>Sample conversation</span><div className="profile-card-wave" aria-hidden="true">{WAVE.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div></div>
-            <small>0:20</small>
+          <div className="profile-card-voice" aria-label="Your voice introduction">
+            <button type="button" disabled aria-label="Introduction player, not available in preview"><Icon name="play" size={22} /></button>
+            <div><span>Hear {draft.displayName.trim() || 'you'}</span><small className="hob-help">Recorded by the host</small><div className="profile-card-wave" aria-hidden="true">{WAVE.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div></div>
+            <small>{draft.voice.recorded ? `${Math.floor(draft.voice.durationSec / 60)}:${String(draft.voice.durationSec % 60).padStart(2, '0')}` : '0:00'}</small>
           </div>
           <dl className="profile-card-facts">
             <div><dt><Icon name="globe" size={25} />Languages</dt><dd>{draft.languages.length ? draft.languages.join(', ') : 'Not chosen yet'}</dd></div>

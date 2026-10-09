@@ -9499,5 +9499,27 @@
   "HF-HOST-POLISH-1": {
     "description": "[HF-HOST-POLISH-1 2026-10-09] Live host cards join the Explore/home filters (data-person attrs + hf:people-changed re-filter); DigiLocker link-back for the future Capacitor app (in-app browser, /hosts/kyc/return, custom scheme, Specs/HF-APP-DEEPLINK.md).",
     "no_telemetry": "Filter wiring and app link-back plumbing; existing hf_kyc_* events measure verification success."
+  },
+  "HF-VOICE-INTRO-1": {
+    "description": "[HF-VOICE-INTRO-1 2026-10-09] Hello Fraands hosts record their OWN 30 s - 5 min voice introduction in onboarding (voice cloning, the AI sample conversation and ElevenLabs removed). Stored privately, Gemini transcribes it and flags phone/email/social/UPI/address details for the admin reviewer; once approved (with the profile, or on its own via POST /api/admin/hf/hosts/:uid/intro for a live host re-recording) it plays on the public host card and detail page as \"Recorded by the host\". PUT/GET /api/hosts/me/voice, admin detail gains intro + signed stream URL, public host JSON gains introAudioUrl/introSeconds/introMime. Needs migration 2026-10-09-hf-voice-intro.sql. Dark behind hostOnboardingEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostOnboardingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_host_intro_uploaded",
+        "property": "seconds",
+        "gte": 30,
+        "note": "Host uploaded a voice introduction of at least 30 seconds (server validates 30-300)."
+      },
+      {
+        "event": "hf_host_intro_checked",
+        "property": "ok",
+        "equals": true,
+        "note": "Gemini transcription + contact-detail flagging finished and was saved. ok=false means the admin just listens (no transcript)."
+      }
+    ]
   }
 }

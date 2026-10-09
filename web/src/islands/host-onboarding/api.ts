@@ -72,13 +72,14 @@ export const mockApi: OnboardingApi = {
   saveServerDraft() { /* mock: nothing is sent */ },
   async flushServerDraft() { /* mock */ },
   async editGenerated() { return { ok: true }; },
-  async uploadVoice(blob) {
+  async uploadVoice(_blob, _sec, consent) {
     await wait();
-    return { ok: true, url: URL.createObjectURL(blob) };
+    if (!consent) return { ok: false, error: 'Please tick the box to continue.' };
+    return { ok: true, status: 'pending' };
   },
   async generateProfile(draft: Draft, onStages: (stages: StageStates) => void): Promise<GeneratedProfile> {
-    const stages: GenerationStage[] = ['text', 'images', 'voice', 'conversation', 'safety'];
-    const st: StageStates = { text: 'waiting', images: 'waiting', voice: 'waiting', conversation: 'waiting', safety: 'waiting' };
+    const stages: GenerationStage[] = ['text', 'images', 'safety'];
+    const st: StageStates = { text: 'waiting', images: 'waiting', safety: 'waiting' };
     for (const s of stages) { st[s] = 'working'; onStages({ ...st }); await new Promise(r => setTimeout(r, 900)); st[s] = 'done'; }
     onStages({ ...st });
     const av = SAMPLE_AVATARS.find(a => a.id === draft.avatarId);
@@ -93,14 +94,6 @@ export const mockApi: OnboardingApi = {
       tagline: TAGLINES[idx] ?? TAGLINES[0],
       about: draft.about.trim(),
       quote,
-      conversation: [
-        { speaker: 'caller', text: 'Hello... aaj ka din bahut bura tha. Office mein sab kuch ulta ho gaya.' },
-        { speaker: 'host', text: `Hello! Main ${name} hoon. Pehle thoda saans lijiye. Kya hua, aaram se bataiye.` },
-        { speaker: 'caller', text: 'Boss ne sabke saamne meri report pe bahut sunaya. Mujhe bahut bura laga.' },
-        { speaker: 'host', text: 'Ouch, yeh toh sach mein chubhne wali baat hai. Aapne itni mehnat ki thi, mujhe pata hai.' },
-        { speaker: 'caller', text: 'Haan... lagta hai main kuch bhi theek se nahi kar pata.' },
-        { speaker: 'host', text: 'Arre nahi! Ek kharab din poori kahani nahi hota. Chaliye, ab chai banaiye, phir mujhe aapka din sunna hai. Main yahin hoon.' },
-      ],
       gallery: ['Chai at home', 'Reading corner', 'Evening walk', 'Festival lights', 'Work desk'].map(caption => ({ image: img, caption })),
       profileImage: img,
     };

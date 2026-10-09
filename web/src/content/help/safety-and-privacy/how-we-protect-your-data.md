@@ -23,7 +23,7 @@ draft: false
 ## Your number and photos are protected
 
 - **Your number is masked.** The other person never sees your phone number. Both of you talk through a platform number.
-- **Hosts use AI avatars.** Hosts do not show their real photo. Callers see an AI avatar and hear an AI voice clip. The person on the call is still a real, verified host.
+- **Hosts use AI avatars.** Hosts do not show their real photo. Callers see an AI avatar. A host can also record a short voice introduction in their own voice. Our team listens to it before it goes live, and it is labelled "Recorded by the host". The person on the call is still a real, verified host.
 
 ## What we collect from callers
 

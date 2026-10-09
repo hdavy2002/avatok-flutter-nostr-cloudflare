@@ -2,7 +2,7 @@
  * Loads late (client:visible), fetches GET /api/hosts/public and prepends one card per live host into the existing
  * `.people-grid`, with the same markup/classes as components/callvaal/ProfileCard.astro. Renders nothing if the API
  * answers 404 (flag hostsPublicEnabled off), is empty, or fails. The sample cards stay exactly as they are. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { API_BASE } from '../../lib/env';
 import { moods } from '../../lib/callvaalHomeReference';
@@ -12,13 +12,55 @@ import '../../styles/live-hosts.css';
 
 interface HostCard {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
-  pricePerMin: number; lgbtqFriendly: boolean; sampleAudioUrl: string | null;
+  pricePerMin: number; lgbtqFriendly: boolean;
+  /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
+  introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
 }
 const STYLE_LABEL: Record<string, string> = {
   warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
   playful: 'Funny & light', straightforward: 'Straight-talking', thoughtful: 'Gentle & patient',
 };
 const moodLabel = (slug: string) => moods.find(m => m.slug === slug)?.label ?? slug;
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** Only one card plays at a time. */
+let playingNow: { audio: HTMLAudioElement; stop: () => void } | null = null;
+
+function IntroButton({ h }: { h: HostCard }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => () => { audioRef.current?.pause(); if (playingNow?.audio === audioRef.current) playingNow = null; }, []);
+  const toggle = () => {
+    if (!h.introAudioUrl) return;
+    if (!audioRef.current) {
+      const a = new Audio();
+      a.preload = 'none';
+      a.src = h.introAudioUrl;
+      a.onended = () => setPlaying(false);
+      a.onpause = () => setPlaying(false);
+      a.onerror = () => { setPlaying(false); setFailed(true); };
+      audioRef.current = a;
+    }
+    const a = audioRef.current;
+    if (!a.paused) { a.pause(); return; }
+    if (playingNow && playingNow.audio !== a) playingNow.stop();
+    playingNow = { audio: a, stop: () => { a.pause(); } };
+    setFailed(false);
+    a.play().then(() => setPlaying(true)).catch(() => { setPlaying(false); setFailed(true); });
+  };
+  const first = h.displayName.split(' ')[0];
+  return (
+    <div className="hf-live-intro">
+      <button type="button" className="hf-live-intro-btn" onClick={toggle} aria-pressed={playing}
+        aria-label={`${playing ? 'Pause' : 'Play'} ${first}’s voice introduction`}>
+        <Icon name={playing ? 'pause' : 'play'} size={22} />
+        <span>{playing ? 'Pause' : 'Hear'} {first}{h.introSeconds ? ` · ${mmss(h.introSeconds)}` : ''}</span>
+      </button>
+      <small className="hf-live-clip-label">{failed ? 'This recording would not play. Please try again.' : 'Recorded by the host'}</small>
+    </div>
+  );
+}
 
 function Card({ h }: { h: HostCard }) {
   const href = `/h/${h.slug}`;
@@ -38,12 +80,7 @@ function Card({ h }: { h: HostCard }) {
           <div className="person-heading"><h3><a className="person-detail-link" href={href}>{h.displayName}</a></h3></div>
         </div>
         <p className="person-tagline">{h.tagline || 'A little time for a good conversation'}</p>
-        {h.sampleAudioUrl && (
-          <div>
-            <audio className="hf-live-clip" controls preload="none" src={h.sampleAudioUrl} aria-label={`AI voice clip, sample conversation with ${h.displayName}`} />
-            <small className="hf-live-clip-label">AI voice clip · Sample conversation — not a real call</small>
-          </div>
-        )}
+        {h.introAudioUrl && <IntroButton h={h} />}
         <dl className="profile-card-facts">
           {h.languages.length > 0 && <div><dt><Icon name="globe" size={25} />Languages</dt><dd>{h.languages.join(', ')}</dd></div>}
           {h.style && <div><dt><Icon name="sparkle" size={25} />Conversation style</dt><dd>{STYLE_LABEL[h.style] ?? h.style}</dd></div>}

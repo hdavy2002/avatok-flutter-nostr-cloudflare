@@ -1,5 +1,6 @@
 // [HF-HOST-PLATFORM-1 2026-10-09] HF host onboarding APIs (profile, avatars, voice sample, submit). Contract: Specs/HF-HOST-PLATFORM-CONTRACT.md
-//   GET/PUT /api/hosts/me · GET /api/hosts/avatars · POST /api/hosts/avatars/:id/claim · POST /api/hosts/voice
+//   GET/PUT /api/hosts/me · GET /api/hosts/avatars · POST /api/hosts/avatars/:id/claim
+//   PUT /api/hosts/me/voice (POST /api/hosts/voice kept as an alias) · GET /api/hosts/me/voice   [HF-VOICE-INTRO-1: host's own recorded introduction]
 //   PUT /api/hosts/me/generated · POST /api/hosts/submit          (flag hostOnboardingEnabled; 404 not_enabled when off)
 // /api/hosts/generate* belongs to the workflow agent; /api/hosts/public* to hf_hosts_public.ts.
 import type { Env } from "../types";
@@ -11,13 +12,12 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { getHost, upsertHost, listMedia, hostToJson, mediaToJson, mediaUrl, avatarUrlFor, type HostPatch } from "../lib/hf_host_store";
+import { normalizeIntroMime, validateIntro, INTRO_ACCEPTED_TYPES, INTRO_MAX_BYTES } from "../lib/hf_intro";
+import { transcribeAndFlag } from "../lib/hf_intro_check";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
-const MAX_VOICE_BYTES = 6 * 1024 * 1024;
-const MIN_VOICE_BYTES = 8 * 1024;
-const VOICE_TYPES: Record<string, string> = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav" };
 
 function makeEmit(env: Env, ctx: ExecutionContext | undefined, uid: string) {
   return (event: string, props: Record<string, unknown> = {}): void => {
@@ -226,41 +226,80 @@ async function claimAvatar(req: Request, env: Env, ctx: ExecutionContext | undef
   return json({ ok: true, avatarId: id });
 }
 
-// ── POST /api/hosts/voice ────────────────────────────────────────────────────
+// ── PUT /api/hosts/me/voice  (alias: POST /api/hosts/voice) ──────────────────
+// [HF-VOICE-INTRO-1] The host's OWN voice introduction (30 s - 5 min). Private copy in VERIFICATION until an admin approves it.
+// A live/paused host may re-record: the profile stays online and the old approved intro keeps playing until the new one is approved.
 async function uploadVoice(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const uid = u.uid;
-  if ((req.headers.get("x-voice-consent") || "").trim() !== "v1") return err(400, "consent_required", { message: "Please agree to the voice-use notice to continue.", field: "consent" });
-  const secs = Math.round(Number(req.headers.get("x-voice-seconds") || 0));
-  if (!Number.isFinite(secs) || secs < 5 || secs > 180) return err(400, "bad_duration", { message: "Record between 5 seconds and 3 minutes.", field: "seconds" });
-  const mime = (req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-  const ext = VOICE_TYPES[mime];
-  if (!ext) return err(415, "unsupported_type", { message: "Unsupported audio format.", accepted: Object.keys(VOICE_TYPES) });
+  const consent = (req.headers.get("x-voice-consent") || "").trim();
+  if (consent !== "1" && consent !== "v1") return err(400, "consent_required", { message: "Please agree to the voice-use notice to continue.", field: "consent" });
+  const nm = normalizeIntroMime(req.headers.get("content-type"));
+  if (!nm) return err(415, "unsupported_type", { message: "Unsupported audio format.", accepted: INTRO_ACCEPTED_TYPES });
+  const secsRaw = req.headers.get("x-duration-seconds") ?? req.headers.get("x-voice-seconds");
   const declared = Number(req.headers.get("content-length") || 0);
-  if (declared > MAX_VOICE_BYTES) return err(413, "too_large", { max_bytes: MAX_VOICE_BYTES });
-  const cur = await getHost(env, u.uid);
-  if (cur && ["generating", "pending_review"].includes(cur.status)) return err(409, "locked");
-  const lim = await rateLimit(env, `hf_voice:${uid}`, 5, 3600);
+  if (declared > INTRO_MAX_BYTES) return err(413, "too_large", { message: "That recording is too large. Please record a shorter one.", max_bytes: INTRO_MAX_BYTES });
+  const cur = await getHost(env, uid);
+  if (cur && ["generating", "pending_review"].includes(cur.status)) return err(409, "locked", { message: "Your profile is being prepared or reviewed — you can record again once that finishes." });
+  const lim = await rateLimit(env, `hf_intro:${uid}`, 6, 3600);
   if (lim) return lim;
 
   const buf = await req.arrayBuffer().catch(() => null);
   if (!buf) return err(400, "bad_body");
-  if (buf.byteLength > MAX_VOICE_BYTES) return err(413, "too_large", { max_bytes: MAX_VOICE_BYTES });
-  if (buf.byteLength < MIN_VOICE_BYTES) return err(400, "too_small", { message: "That recording looks empty. Record again." });
+  const chk = validateIntro(secsRaw, buf.byteLength);
+  if (!chk.ok) return err(chk.status, chk.error, { message: chk.message });
 
-  const key = `hf/voice/${uid}/${Date.now()}.${ext}`;
+  const now = Date.now();
+  const key = `hf/intro/${uid}/${now}.${nm.ext}`;
   try {
-    await env.VERIFICATION.put(key, buf, { httpMetadata: { contentType: mime } });
-    await upsertHost(env, uid, { voice_sample_r2: key, voice_seconds: secs, voice_consent_at: Date.now() });
+    await env.VERIFICATION.put(key, buf, { httpMetadata: { contentType: nm.mime } });
+    await upsertHost(env, uid, {
+      voice_sample_r2: key, voice_seconds: chk.seconds, voice_consent_at: now,
+      intro_mime: nm.mime, intro_status: "pending", intro_transcript: null, intro_flags_json: null, intro_uploaded_at: now,
+    });
+    // The approved public copy lives in BLOBS, so the superseded private source can go.
     if (cur?.voice_sample_r2 && cur.voice_sample_r2 !== key) await env.VERIFICATION.delete(cur.voice_sample_r2).catch(() => {});
   } catch (e) {
     await env.VERIFICATION.delete(key).catch(() => {});
-    await trackException(env, e, { uid, route: "/api/hosts/voice", method: "POST", handled: true, app_name: APP, extra: { area: "hf_host" } });
+    await trackException(env, e, { uid, route: "/api/hosts/me/voice", method: "PUT", handled: true, app_name: APP, extra: { area: "hf_host" } });
     return err(500, "store_failed", { message: "We couldn’t save your recording. Please try again." });
   }
-  makeEmit(env, ctx, uid)("hf_host_voice_uploaded", { seconds: secs, bytes: buf.byteLength, mime });
-  return json({ ok: true });
+  makeEmit(env, ctx, uid)("hf_host_intro_uploaded", { seconds: chk.seconds, mime: nm.mime });
+  // Durable Workflow first (a 5-minute clip can outlive ctx.waitUntil); fall back to waitUntil if the binding is missing or create fails.
+  let queued = false;
+  if (env.INTRO_CHECK) {
+    try { await env.INTRO_CHECK.create({ id: `intro-${uid}-${now}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100), params: { uid, key, mime: nm.mime, uploadedAt: now } }); queued = true; }
+    catch (e) { await trackException(env, e, { uid, route: "/api/hosts/me/voice", method: "PUT", handled: true, app_name: APP, extra: { area: "hf_host", step: "intro_check_create" } }); }
+  }
+  if (!queued) {
+    const job = transcribeAndFlag(env, uid, key, nm.mime, now).catch(() => {});
+    if (ctx) ctx.waitUntil(job);
+  }
+  return json({ ok: true, voice: { seconds: chk.seconds, mime: nm.mime, status: "pending", uploadedAt: now } });
+}
+
+// ── GET /api/hosts/me/voice — the host's own latest intro (private) ──────────
+async function getVoice(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error);
+  const cur = await getHost(env, u.uid);
+  if (!cur?.voice_sample_r2 || !cur.intro_status) return err(404, "no_intro");
+  const range = req.headers.get("range");
+  const obj = await env.VERIFICATION.get(cur.voice_sample_r2, range ? { range: req.headers } : undefined);
+  if (!obj) return err(404, "no_intro");
+  const headers = new Headers({
+    "content-type": cur.intro_mime || obj.httpMetadata?.contentType || "audio/mp4", "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff", "accept-ranges": "bytes",
+  });
+  const rg = (obj as unknown as { range?: { offset?: number; length?: number } }).range;
+  if (range && rg && rg.offset != null && rg.length != null) {
+    headers.set("content-range", `bytes ${rg.offset}-${rg.offset + rg.length - 1}/${obj.size}`);
+    headers.set("content-length", String(rg.length));
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers.set("content-length", String(obj.size));
+  return new Response(obj.body, { status: 200, headers });
 }
 
 // ── PUT /api/hosts/me/generated ──────────────────────────────────────────────
@@ -301,6 +340,7 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
   if (!cur.agreements_at) missing.push("agreements");
   if (!cur.display_name || !cur.avatar_id) missing.push("profile");
   if (!media.some((m) => m.kind === "profile") || !media.some((m) => m.kind === "gallery")) missing.push("media");
+  if (!cur.voice_sample_r2 || (cur.intro_status !== "pending" && cur.intro_status !== "approved")) missing.push("voice");
   if (missing.length) return err(422, "incomplete", { missing, message: "A few steps are still missing." });
   const now = Date.now();
   const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_review', submitted_at=?2, updated_at=?2 WHERE uid=?1 AND status IN ('pending_host','rejected','paused')").bind(uid, now).run();
@@ -315,7 +355,7 @@ export async function hfHostsRoute(req: Request, env: Env, ctx?: ExecutionContex
   const p = new URL(req.url).pathname;
   const m = req.method;
   const claim = p.match(/^\/api\/hosts\/avatars\/([A-Za-z0-9._:-]{1,64})\/claim$/);
-  const ours = p === "/api/hosts/me" || p === "/api/hosts/me/generated" || p === "/api/hosts/avatars" || !!claim || p === "/api/hosts/voice" || p === "/api/hosts/submit";
+  const ours = p === "/api/hosts/me" || p === "/api/hosts/me/generated" || p === "/api/hosts/avatars" || !!claim || p === "/api/hosts/voice" || p === "/api/hosts/me/voice" || p === "/api/hosts/submit";
   if (!ours) return null;
   try {
     if ((await readConfig(env)).hostOnboardingEnabled !== true) return err(404, "not_enabled");
@@ -324,7 +364,8 @@ export async function hfHostsRoute(req: Request, env: Env, ctx?: ExecutionContex
     if (p === "/api/hosts/me/generated" && m === "PUT") return await putGenerated(req, env, ctx);
     if (p === "/api/hosts/avatars" && m === "GET") return await listAvatars(req, env);
     if (claim && m === "POST") return await claimAvatar(req, env, ctx, claim[1]);
-    if (p === "/api/hosts/voice" && m === "POST") return await uploadVoice(req, env, ctx);
+    if ((p === "/api/hosts/me/voice" && m === "PUT") || (p === "/api/hosts/voice" && m === "POST")) return await uploadVoice(req, env, ctx);
+    if (p === "/api/hosts/me/voice" && m === "GET") return await getVoice(req, env);
     if (p === "/api/hosts/submit" && m === "POST") return await submit(req, env, ctx);
     return null;
   } catch (e) {

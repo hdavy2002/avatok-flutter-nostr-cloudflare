@@ -1,6 +1,7 @@
 // [HF-HOST-PLATFORM-1] Row <-> JSON mapping + D1 access for HF hosts. Shared with the workflow/admin agents; keep exports stable.
 import type { Env } from "../types";
 import { makeSlug } from "./hf_options";
+import { introStatusOf, INTRO_MEDIA_KIND } from "./hf_intro";
 
 export interface HostRow {
   uid: string; slug: string | null; status: string;
@@ -8,6 +9,8 @@ export interface HostRow {
   languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;
   avatar_id: string | null; voice_sample_r2: string | null; voice_seconds: number | null; voice_consent_at: number | null;
+  // [HF-VOICE-INTRO-1] host's own recorded introduction (private copy in VERIFICATION until approved)
+  intro_mime: string | null; intro_status: string | null; intro_transcript: string | null; intro_flags_json: string | null; intro_uploaded_at: number | null;
   gen_attempts: number; agreements_at: number | null; review_note: string | null; reviewed_by: string | null; reviewed_at: number | null;
   submitted_at: number | null; live_at: number | null; created_at: number; updated_at: number;
 }
@@ -28,14 +31,18 @@ export function hostToJson(env: Env, r: HostRow, avatarUrl: string | null = null
     aboutPolished: r.about_polished, languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []),
     conversationLang: r.conversation_lang, pricePerMin: r.price_per_min, hours: parse<Record<string, unknown>>(r.hours_json, {}),
     healthConsent: r.health_consent === 1, womenLane: r.women_lane === 1, lgbtqLane: r.lgbtq_lane === 1, lgbtqPublic: r.lgbtq_public === 1,
-    avatarId: r.avatar_id, avatarUrl, voiceSeconds: r.voice_seconds, genAttempts: r.gen_attempts, agreementsAt: r.agreements_at, reviewNote: r.review_note, liveAt: r.live_at,
+    avatarId: r.avatar_id, avatarUrl,
+    voice: {
+      seconds: r.intro_status ? r.voice_seconds : null, mime: r.intro_status ? r.intro_mime : null,
+      status: introStatusOf(r.intro_status), uploadedAt: r.intro_status ? r.intro_uploaded_at : null,
+    }, genAttempts: r.gen_attempts, agreementsAt: r.agreements_at, reviewNote: r.review_note, liveAt: r.live_at,
   };
 }
 export type HostJson = ReturnType<typeof hostToJson>;
 
 export function mediaToJson(env: Env, m: MediaRow) {
   const t = parse<{ speaker: "host" | "caller"; text: string }[] | null>(m.transcript_json, null);
-  return { id: m.id, kind: m.kind, url: mediaUrl(env, m.r2_key), caption: m.caption, ...(t ? { transcript: t } : {}), sort: m.sort };
+  return { id: m.id, kind: m.kind, url: mediaUrl(env, m.r2_key), caption: m.kind === INTRO_MEDIA_KIND ? null : m.caption, ...(t ? { transcript: t } : {}), sort: m.sort };
 }
 
 export async function getHost(env: Env, uid: string): Promise<HostRow | null> {
@@ -51,6 +58,7 @@ export async function listMedia(env: Env, uid: string): Promise<MediaRow[]> {
 export type HostPatch = Partial<Omit<HostRow, "uid" | "created_at" | "updated_at">>;
 const COLS = new Set(["slug", "status", "display_name", "about", "tagline", "quote", "about_polished", "languages_json", "style", "topics_json", "conversation_lang",
   "price_per_min", "hours_json", "health_consent", "women_lane", "lgbtq_lane", "lgbtq_public", "avatar_id", "voice_sample_r2", "voice_seconds", "voice_consent_at",
+  "intro_mime", "intro_status", "intro_transcript", "intro_flags_json", "intro_uploaded_at",
   "gen_attempts", "agreements_at", "review_note", "reviewed_by", "reviewed_at", "submitted_at", "live_at"]);
 
 export async function upsertHost(env: Env, uid: string, patch: HostPatch): Promise<HostRow> {

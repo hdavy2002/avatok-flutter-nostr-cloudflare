@@ -4,19 +4,17 @@ import PreviewCard from '../PreviewCard';
 import { TOPICS } from '../data';
 import type { GeneratedProfile, StepProps } from '../types';
 
-const CLIP_SEC = 20;
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export default function PreviewStep({ draft, update, api, setAction, goTo, avatars }: StepProps) {
   const g = draft.generated as GeneratedProfile;
   const avatar = avatars.find(a => a.id === draft.avatarId) || null;
-  const [playing, setPlaying] = useState(false);
-  const [pos, setPos] = useState(0);
+  const [introUrl, setIntroUrl] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [editing, setEditing] = useState<'tagline' | 'about' | null>(null);
   const [text, setText] = useState('');
   const [editErr, setEditErr] = useState('');
   const [submitErr, setSubmitErr] = useState('');
-  const real = api.mode === 'real';
   const closeRef = useRef<HTMLButtonElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
 
@@ -33,16 +31,15 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
     });
   }, [api, draft, update, setAction]);
 
+  // The host's own introduction (real mode: fetched with the sign-in token; mock: nothing to play).
   useEffect(() => {
-    if (!playing) return;
-    const t = window.setInterval(() => {
-      setPos(p => {
-        if (p + 0.25 >= CLIP_SEC) { setPlaying(false); return 0; }
-        return p + 0.25;
-      });
-    }, 250);
-    return () => window.clearInterval(t);
-  }, [playing]);
+    if (!api.fetchMyVoice || !draft.voice.recorded) return;
+    let live = true;
+    let made: string | null = null;
+    void api.fetchMyVoice().then(u => { made = u; if (live) setIntroUrl(u); else if (u) URL.revokeObjectURL(u); });
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const n = g?.gallery.length || 0;
   useEffect(() => {
@@ -124,28 +121,17 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
         )}
       </section>
 
-      <h2 className="hob-f-h2">Sample conversation</h2>
+      <h2 className="hob-f-h2">Your voice introduction</h2>
       <section className="hob-card hob-f-clip">
-        <span className="hob-ai-label">AI voice clip · Sample conversation — not a real call</span>
-        {real && g.sampleAudioUrl && <audio className="hob-f-audio" controls preload="none" src={g.sampleAudioUrl} aria-label="AI voice clip, sample conversation" style={{ width: '100%', minHeight: 48, marginTop: 8 }} />}
-        {real && !g.sampleAudioUrl && <p className="hob-help">Voice clip coming soon. We will add your sample conversation as soon as it is ready.</p>}
-        {!real && <div className="hob-f-player">
-          <button type="button" className="hob-f-play" onClick={() => setPlaying(p => !p)} aria-label={playing ? 'Pause sample' : 'Play sample'}>
-            <Icon name={playing ? 'pause' : 'play'} />
-          </button>
-          <div className="hob-f-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CLIP_SEC} aria-valuenow={Math.round(pos)} aria-label="Sample progress">
-            <span style={{ width: `${(pos / CLIP_SEC) * 100}%` }} />
-          </div>
-          <span className="hob-f-time">0:{String(Math.floor(pos)).padStart(2, '0')} / 0:{CLIP_SEC}</span>
-        </div>}
-        {g.conversation.length > 0 && <ul className="hob-f-chat">
-          {g.conversation.map((l, i) => (
-            <li key={i} className={`hob-f-bubble hob-f-bubble-${l.speaker}`}>
-              <span className="hob-f-who">{l.speaker === 'host' ? draft.displayName || 'Host' : 'Caller'}</span>
-              {l.text}
-            </li>
-          ))}
-        </ul>}
+        <span className="hob-ai-label">Recorded by you</span>
+        {draft.voice.recorded ? (
+          <>
+            {introUrl && <audio className="hob-f-audio" controls preload="none" src={introUrl} aria-label="Your recorded introduction" style={{ width: '100%', minHeight: 48, marginTop: 8 }} />}
+            <p className="hob-help">Length {mmss(draft.voice.durationSec)}. Our team listens to it before it goes live on your card and profile.</p>
+          </>
+        ) : (
+          <p className="hob-help">You have not recorded your introduction yet. <button type="button" className="hob-f-link" onClick={() => goTo('voice')}>Record it now</button></p>
+        )}
       </section>
 
       <h2 className="hob-f-h2">Avatar gallery</h2>
@@ -163,7 +149,7 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
 
       <aside className="hob-card hob-f-privacy">
         <Icon name="shield" />
-        <p>To protect our hosts' privacy, the photos and audio clips on host profiles are AI-generated from an avatar the host chose. The person callers talk to is the real, KYC-verified host.</p>
+        <p>To protect our hosts' privacy, the photos on host profiles are AI-generated from an avatar the host chose. The voice introduction is the host's own recording. The person callers talk to is the real, KYC-verified host.</p>
       </aside>
 
       {submitErr && <p className="hob-error" role="alert" aria-live="polite">{submitErr}</p>}

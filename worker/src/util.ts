@@ -33,6 +33,11 @@ export const CORS: Record<string, string> = {
     "x-source-media-id",
     "x-ava-readable",
     "x-ava-approval",
+    // [HF-VOICE-INTRO-1] host voice introduction upload (routes/hf_hosts.ts) + ranged playback of the host's own recording
+    "x-duration-seconds",
+    "x-voice-consent",
+    "x-voice-seconds",
+    "range",
   ].join(","),
 };
 

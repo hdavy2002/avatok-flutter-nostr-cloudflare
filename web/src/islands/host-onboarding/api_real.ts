@@ -5,10 +5,10 @@ import { API_BASE } from '../../lib/env';
 import { DAYS, EMPTY_DRAFT } from './data';
 import type {
   ApiResult, Avatar, AgeBand, AvatarStyle, Draft, GeneratedProfile, GenerationStage, KycGender,
-  OnboardingApi, ServerDraft, StageState, StageStates,
+  OnboardingApi, ServerDraft, StageState, StageStates, VoiceStatus,
 } from './types';
 
-const STAGE_KEYS: GenerationStage[] = ['text', 'images', 'voice', 'conversation', 'safety'];
+const STAGE_KEYS: GenerationStage[] = ['text', 'images', 'safety'];
 const POLL_MS = 3000;
 const POLL_MAX_MS = 20 * 60_000;
 const SAVE_DEBOUNCE_MS = 800;
@@ -77,7 +77,26 @@ async function call<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: unkn
   } catch (e) { return failure(e, fallback); }
 }
 
-/** Raw binary POST (selfie video, voice sample): request() only speaks JSON. */
+/** [HF-VOICE-INTRO-1] Raw binary PUT with upload progress (XHR: fetch cannot report upload progress). 5 minutes of audio is ~5 MB, so allow 3 minutes on a slow link. */
+function rawPut(path: string, blob: Blob, headers: Record<string, string>, onProgress?: (f: number) => void): Promise<{ status: number; body: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${API_BASE}${path}`);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    xhr.timeout = 180_000;
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let body: Record<string, unknown> = {};
+      try { body = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch { /* non-JSON */ }
+      resolve({ status: xhr.status, body });
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.send(blob);
+  });
+}
+
+/** Raw binary POST (selfie video): request() only speaks JSON. */
 async function rawPost<T>(path: string, blob: Blob, headers: Record<string, string>, fallback: string): Promise<{ ok: true; data: T } | Failure> {
   const auth = await token();
   if (!auth) return { ok: false, status: 401, body: {}, error: 'Please sign in again to continue.', code: 'no_session' };
@@ -101,7 +120,7 @@ interface HostJson {
   slug: string | null; status: string; displayName: string | null; about: string | null; tagline: string | null; quote: string | null; aboutPolished: string | null;
   languages: string[]; style: string | null; topics: string[]; conversationLang: string | null; pricePerMin: number | null;
   hours: { days?: number[]; from?: string; to?: string }; healthConsent: boolean; womenLane: boolean; lgbtqLane: boolean; lgbtqPublic: boolean;
-  avatarId: string | null; avatarUrl: string | null; voiceSeconds: number | null; agreementsAt?: number | null;
+  avatarId: string | null; avatarUrl: string | null; voice: { seconds: number; mime: string; status: VoiceStatus; uploadedAt: number | string } | null; agreementsAt?: number | null;
 }
 interface KycJson {
   aadhaar: { done: boolean; gender: string | null; last4: string | null };
@@ -123,17 +142,13 @@ function buildGenerated(me: MeJson): GeneratedProfile | null {
   const h = me.host;
   if (!h || !h.tagline) return null;
   const profile = me.media.find(m => m.kind === 'profile');
-  const audio = me.media.find(m => m.kind === 'sample_audio');
   const gallery = me.media.filter(m => m.kind === 'gallery').sort((a, b) => a.sort - b.sort).map(m => ({ image: m.url, caption: m.caption || 'AI image' }));
   return {
     tagline: h.tagline,
     about: h.aboutPolished || h.about || '',
     quote: h.quote || '',
-    conversation: audio?.transcript ?? [],
     gallery,
     profileImage: profile?.url || h.avatarUrl || '',
-    sampleAudioUrl: audio?.url ?? null,
-    voiceSkipped: !audio,
   };
 }
 
@@ -142,7 +157,7 @@ function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string |
   const k = me.kyc;
   const selfieSent = k.selfie.status !== 'none' && k.selfie.status !== 'rejected';
   const submitted = !!h && (h.status === 'pending_review' || h.status === 'live');
-  const hasVoice = !!h && (h.voiceSeconds ?? 0) > 0;
+  const hasVoice = !!h && !!h.voice && (h.voice.seconds ?? 0) > 0;
   const out: Partial<Draft> = {
     phone: phone?.phone ? phone.phone.replace(/\D/g, '').slice(-10) : '',
     phoneVerified: !!phone?.verified,
@@ -167,7 +182,7 @@ function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string |
       womenOnlyLane: h.womenLane,
       lgbtqLane: h.lgbtqLane,
       lgbtqShowOnProfile: h.lgbtqPublic,
-      voice: { recorded: hasVoice, durationSec: h.voiceSeconds ?? 0, consent: hasVoice, source: null },
+      voice: { recorded: hasVoice, durationSec: h.voice?.seconds ?? 0, consent: hasVoice, source: null, status: h.voice?.status ?? null },
       agreements: { rules: submitted || !!h.agreementsAt, agreement: submitted || !!h.agreementsAt, welfare: submitted || !!h.agreementsAt },
       generated: buildGenerated(me),
       submitted,
@@ -239,8 +254,6 @@ function chain(): Promise<void> {
 }
 
 // ── the client ──────────────────────────────────────────────────────────────
-let pendingVoice: { blob: Blob; sec: number } | null = null;
-
 export const realApi: OnboardingApi = {
   mode: 'real',
 
@@ -321,19 +334,46 @@ export const realApi: OnboardingApi = {
     return r.ok ? { ok: true } : { ok: false, error: r.error, code: r.code };
   },
 
-  async uploadVoice(blob, durationSec) {
-    pendingVoice = { blob, sec: durationSec };
-    return { ok: true, url: URL.createObjectURL(blob) };
+  /* [HF-VOICE-INTRO-1] PUT the host's own introduction. 400 consent_required, 422 too_short/too_long, 413 too_large, 409 locked. */
+  async uploadVoice(blob, durationSec, consent, onProgress) {
+    if (!consent) return { ok: false, error: 'Please tick the box to continue.', code: 'consent_required' };
+    const auth = await token();
+    if (!auth) return { ok: false, error: 'Please sign in again to continue.', code: 'no_session' };
+    try {
+      const r = await rawPut('/api/hosts/me/voice', blob, {
+        Authorization: `Bearer ${auth}`,
+        'content-type': baseMime(blob.type, 'audio/mp4'),
+        'x-duration-seconds': String(Math.round(durationSec)),
+        'x-voice-consent': '1',
+      }, onProgress);
+      if (r.status >= 200 && r.status < 300) {
+        const v = r.body.voice as { status?: VoiceStatus } | undefined;
+        return { ok: true, status: v?.status ?? 'pending' };
+      }
+      const code = typeof r.body.error === 'string' ? r.body.error : '';
+      const msg = typeof r.body.message === 'string' && r.body.message.trim() ? r.body.message : '';
+      const byCode: Record<string, string> = {
+        consent_required: 'Please tick the box to say this is your own voice.',
+        too_short: 'Your introduction is too short. Please record at least 30 seconds.',
+        too_long: 'Your introduction is too long. Please keep it under 5 minutes.',
+        too_large: 'That recording is too big. Please record a shorter one.',
+        locked: 'Your introduction cannot be changed right now.',
+      };
+      return { ok: false, code, error: msg || byCode[code] || (r.status === 401 ? 'Please sign in again to continue.' : 'We could not save your recording. Please try again.') };
+    } catch (e) {
+      const timeout = e instanceof Error && e.message === 'timeout';
+      return { ok: false, code: 'network', error: timeout ? 'The upload is taking too long. Please check your internet and try again.' : 'We could not reach the server. Check your internet and try again.' };
+    }
   },
 
-  async commitVoice(consent) {
-    if (!pendingVoice) return { ok: true };
-    if (!consent) return { ok: false, error: 'Please agree to the voice-use notice to continue.' };
-    const { blob, sec } = pendingVoice;
-    const r = await rawPost<{ ok: boolean }>('/api/hosts/voice', blob, { 'content-type': baseMime(blob.type, 'audio/webm'), 'x-voice-seconds': String(sec), 'x-voice-consent': 'v1' }, 'We could not save your recording. Please try again.');
-    if (!r.ok) return { ok: false, error: r.error };
-    pendingVoice = null;
-    return { ok: true };
+  async fetchMyVoice() {
+    const auth = await token();
+    if (!auth) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/hosts/me/voice`, { headers: { Authorization: `Bearer ${auth}` }, cache: 'no-store' });
+      if (!res.ok) return null;
+      return URL.createObjectURL(await res.blob());
+    } catch { return null; }
   },
 
   async loadServerDraft(): Promise<ServerDraft> {

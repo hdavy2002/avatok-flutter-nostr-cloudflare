@@ -1,5 +1,5 @@
 // [HF-HOST-PLATFORM-1] Host profile media generation — Cloudflare Workflows.
-//   HostMediaWorkflow  (binding HOST_MEDIA)   text -> images -> voice -> conversation -> delete clone -> safety -> pending_host
+//   HostMediaWorkflow  (binding HOST_MEDIA)   text -> images -> safety -> pending_host   [HF-VOICE-INTRO-1: voice clone + sample conversation removed]
 //   AvatarBatchWorkflow (binding AVATAR_BATCH) admin "generate N synthetic avatars"
 // Step results stay small (keys/ids only); bytes go straight to R2 inside the step. Every step is idempotent on retry
 // (deterministic ids/keys derived from jobId). Stage/state is mirrored in hf_media_jobs.stages_json for the status API.
@@ -11,14 +11,13 @@ import { BRAND, brandUrl } from "../lib/brand";
 import { track, trackUser, trackException } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { generateImage } from "../routes/ava_image";
-import { generateHostCopy, textSafety, stripTags, type HostCopy } from "../lib/hf_media_text";
-import { elevenConfigured, ivcCreate, voiceDelete, textToDialogue, pickStockVoice } from "../lib/elevenlabs";
+import { generateHostCopy, textSafety, type HostCopy } from "../lib/hf_media_text";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { sanitizeAvatarPlan, type AvatarPlanEntry } from "../lib/hf_avatar_plan";
 
 const APP = BRAND.slug;
-type Stage = "text" | "images" | "voice" | "conversation" | "safety";
-type StageState = "waiting" | "working" | "done" | "skipped" | "failed";
+type Stage = "text" | "images" | "safety";
+type StageState = "waiting" | "working" | "done" | "failed";
 const RETRY = { retries: { limit: 1, delay: "5 seconds" as const, backoff: "exponential" as const }, timeout: "4 minutes" as const };
 const NO_RETRY = { retries: { limit: 0, delay: "1 second" as const }, timeout: "4 minutes" as const };
 
@@ -68,7 +67,7 @@ function toDataUrl(bytes: Uint8Array, mime: string): string {
 
 interface HostRow {
   display_name: string | null; about: string | null; languages_json: string; style: string | null; topics_json: string;
-  conversation_lang: string | null; avatar_id: string | null; voice_sample_r2: string | null; status: string;
+  conversation_lang: string | null; avatar_id: string | null; status: string;
 }
 const parseArr = (s: string | null | undefined): string[] => { try { const v = JSON.parse(s || "[]"); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 
@@ -99,21 +98,20 @@ export class HostMediaWorkflow extends WorkflowEntrypoint<Env, HostMediaParams> 
     const env = this.env;
     const { uid, jobId } = event.payload;
     let current: Stage = "text";
-    let cloneId = "";
 
     try {
       const ctx = await step.do("load", RETRY, async () => {
         const h = await env.DB_META.prepare(
-          "SELECT display_name, about, languages_json, style, topics_json, conversation_lang, avatar_id, voice_sample_r2, status FROM hf_hosts WHERE uid=?1",
+          "SELECT display_name, about, languages_json, style, topics_json, conversation_lang, avatar_id, status FROM hf_hosts WHERE uid=?1",
         ).bind(uid).first<HostRow>();
         if (!h || !h.avatar_id || !h.display_name) throw new Error("host_incomplete");
         const av = await env.DB_META.prepare("SELECT image_key, gender FROM hf_avatars WHERE id=?1").bind(h.avatar_id).first<{ image_key: string; gender: string }>();
         if (!av) throw new Error("avatar_missing");
         await env.DB_META.prepare("UPDATE hf_media_jobs SET status='running', stages_json=?2, updated_at=?3 WHERE id=?1")
-          .bind(jobId, JSON.stringify({ text: "waiting", images: "waiting", voice: "waiting", conversation: "waiting", safety: "waiting" }), Date.now()).run();
+          .bind(jobId, JSON.stringify({ text: "waiting", images: "waiting", safety: "waiting" }), Date.now()).run();
         return {
           ts: Date.now(), displayName: h.display_name, about: h.about ?? "", languages: parseArr(h.languages_json), style: h.style,
-          topics: parseArr(h.topics_json), lang: (h.conversation_lang || "hi").toLowerCase(), avatarKey: av.image_key, gender: av.gender, sample: h.voice_sample_r2,
+          topics: parseArr(h.topics_json), lang: (h.conversation_lang || "hi").toLowerCase(), avatarKey: av.image_key, gender: av.gender,
         };
       });
       const who = ctx.gender === "woman" ? "woman" : "man";
@@ -155,61 +153,7 @@ export class HostMediaWorkflow extends WorkflowEntrypoint<Env, HostMediaParams> 
       if (made < 3) throw new Error("images_failed");
       await step.do("images-done", RETRY, () => setStage(env, uid, jobId, "images", "done", { images: made }));
 
-      // 3) VOICE (IVC from the host's private sample)
-      current = "voice";
-      const canVoice = elevenConfigured(env) && !!ctx.sample;
-      if (!canVoice) {
-        await step.do("voice-skip", RETRY, async () => {
-          await setStage(env, uid, jobId, "voice", "skipped");
-          await setStage(env, uid, jobId, "conversation", "skipped");
-        });
-      } else {
-        cloneId = await step.do("voice", NO_RETRY, async () => {
-          await setStage(env, uid, jobId, "voice", "working");
-          const o = await env.VERIFICATION.get(ctx.sample!);
-          if (!o) throw new Error("voice_sample_missing");
-          const mime = o.httpMetadata?.contentType || "audio/mpeg";
-          const r = await ivcCreate(env, `hf-${jobId.slice(0, 8)}`, await o.arrayBuffer(), mime, { uid, jobId });
-          if (!r.ok) throw new Error(`voice_${r.reason}`);
-          await setStage(env, uid, jobId, "voice", "done", { voice_clones: 1 });
-          return r.voiceId;
-        });
-
-        // 4) CONVERSATION — never throws inside the step so the clone is always deleted next
-        current = "conversation";
-        const conv = await step.do("conversation", NO_RETRY, async () => {
-          await setStage(env, uid, jobId, "conversation", "working");
-          const callerVoice = await pickStockVoice(env, who === "woman" ? "man" : "woman", ctx.lang);
-          const inputs = copy.script.map((l) => ({ text: l.text, voice_id: l.speaker === "host" ? cloneId : callerVoice }));
-          const code = ctx.lang.length >= 2 ? ctx.lang.slice(0, 2) : null;
-          let last = "failed";
-          for (let attempt = 0; attempt < 2; attempt++) {
-            const r = await textToDialogue(env, inputs, code, { uid, jobId });
-            if (r.ok) {
-              const key = `hf/hosts/${uid}/sample-${ctx.ts}.mp3`;
-              await env.BLOBS.put(key, r.audio, { httpMetadata: { contentType: "audio/mpeg" } });
-              const transcript = copy.script.map((l) => ({ speaker: l.speaker, text: stripTags(l.text) }));
-              await env.DB_META.prepare("INSERT OR REPLACE INTO hf_host_media (id, uid, kind, r2_key, caption, transcript_json, sort, status, job_id, created_at) VALUES (?1,?2,'sample_audio',?3,NULL,?4,0,'active',?5,?6)")
-                .bind(`${jobId}-a`, uid, key, JSON.stringify(transcript), jobId, ctx.ts).run();
-              await setStage(env, uid, jobId, "conversation", "done", { characters: r.characters });
-              return { ok: true as const, reason: "" };
-            }
-            last = r.reason;
-            if (!["rate_limited", "provider_error", "network"].includes(r.reason)) break;
-          }
-          return { ok: false as const, reason: last };
-        });
-
-        // always delete the clone
-        await step.do("delete-clone", RETRY, async () => {
-          const r = await voiceDelete(env, cloneId);
-          if (!r.ok) throw new Error("clone_delete_failed");
-        });
-        cloneId = "";
-        if (!conv.ok) throw new Error(`conversation_${conv.reason}`);
-      }
-
-      // 5) SAFETY
+      // 3) SAFETY
       current = "safety";
       const verdict = await step.do("safety", RETRY, async () => {
         await setStage(env, uid, jobId, "safety", "working");
@@ -224,7 +168,7 @@ export class HostMediaWorkflow extends WorkflowEntrypoint<Env, HostMediaParams> 
       await step.do("finalize", RETRY, async () => {
         const now = Date.now();
         await env.DB_META.batch([
-          env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND status='active' AND COALESCE(job_id,'')<>?2").bind(uid, jobId),
+          env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND status='active' AND kind<>'intro_audio' AND COALESCE(job_id,'')<>?2").bind(uid, jobId),
           env.DB_META.prepare("UPDATE hf_hosts SET status='pending_host', tagline=?2, quote=?3, about_polished=?4, updated_at=?5 WHERE uid=?1").bind(uid, copy.tagline, copy.quote, copy.aboutPolished, now),
           env.DB_META.prepare("UPDATE hf_media_jobs SET status='done', error=NULL, updated_at=?2 WHERE id=?1").bind(jobId, now),
         ]);
@@ -242,7 +186,6 @@ export class HostMediaWorkflow extends WorkflowEntrypoint<Env, HostMediaParams> 
       });
     } catch (e) {
       const msg = String((e as any)?.message ?? e).replace(/[^a-zA-Z0-9_ :.-]/g, "").slice(0, 80) || "failed";
-      if (cloneId) await voiceDelete(env, cloneId).catch(() => {});
       await step.do("fail", NO_RETRY, async () => {
         const now = Date.now();
         await setStage(env, uid, jobId, current, "failed", undefined, msg).catch(() => {});

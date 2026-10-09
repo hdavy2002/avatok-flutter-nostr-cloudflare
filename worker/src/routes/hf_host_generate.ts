@@ -12,7 +12,8 @@ import { readConfig } from "./config";
 const APP = BRAND.slug;
 export const HF_MAX_GEN_ATTEMPTS = 3;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
-const STAGES = ["text", "images", "voice", "conversation", "safety"] as const;
+// [HF-VOICE-INTRO-1] voice + conversation stages removed (no cloning / sample conversation any more).
+const STAGES = ["text", "images", "safety"] as const;
 
 async function start(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
   const u = await requireUser(req, env);
@@ -21,10 +22,10 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
   if (!env.HOST_MEDIA) return err(503, "generation_unavailable");
 
   const host = await env.DB_META.prepare(
-    "SELECT status, display_name, about, languages_json, topics_json, conversation_lang, avatar_id, voice_sample_r2, gen_attempts, agreements_at FROM hf_hosts WHERE uid=?1",
+    "SELECT status, display_name, about, languages_json, topics_json, conversation_lang, avatar_id, gen_attempts, agreements_at FROM hf_hosts WHERE uid=?1",
   ).bind(uid).first<{
     status: string; display_name: string | null; about: string | null; languages_json: string; topics_json: string; conversation_lang: string | null;
-    avatar_id: string | null; voice_sample_r2: string | null; gen_attempts: number; agreements_at: number | null;
+    avatar_id: string | null; gen_attempts: number; agreements_at: number | null;
   }>();
   if (!host) return err(409, "profile_incomplete", { missing: ["profile"] });
   if (host.status === "generating") return err(409, "already_generating");
@@ -49,7 +50,6 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
   try { langs = JSON.parse(host.languages_json || "[]"); topics = JSON.parse(host.topics_json || "[]"); } catch { /* empty */ }
   if (!Array.isArray(langs) || !langs.length) missing.push("languages");
   if (!Array.isArray(topics) || !topics.length) missing.push("topics");
-  if (!host.voice_sample_r2) missing.push("voice");
   if (!host.agreements_at) missing.push("agreements");
   if (missing.length) return err(409, "profile_incomplete", { missing });
 

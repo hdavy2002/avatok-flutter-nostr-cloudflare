@@ -316,11 +316,10 @@ export interface Env {
   // HF_PII_KEY = base64 of 32 random bytes (`openssl rand -base64 32`); losing it makes every
   // encrypted KYC field unreadable, so back it up. See Specs/HF-HOST-KYC-1-RUNBOOK.md.
   SANDBOX_API_KEY?: string;
-  // [HF-HOST-PLATFORM-1] ElevenLabs (voice clone + text-to-dialogue). Missing => voice stages skipped.
-  ELEVENLABS_API_KEY?: string;
   // [HF-HOST-PLATFORM-1] Workflow binding for host media generation (class HostMediaWorkflow).
   HOST_MEDIA?: Workflow;
   AVATAR_BATCH?: Workflow;
+  INTRO_CHECK?: Workflow; // [HF-VOICE-INTRO-1] class IntroCheckWorkflow
   SANDBOX_API_SECRET?: string;
   HF_PII_KEY?: string;
   // Optional override of the Sandbox base URL (default https://api.sandbox.co.in). Use

@@ -14,7 +14,7 @@ export const STEPS: { key: StepKey; group: StepGroup; title: string }[] = [
   { key: 'topics', group: 'profile', title: 'What you like to talk about' },
   { key: 'price', group: 'profile', title: 'Your price' },
   { key: 'hours', group: 'profile', title: 'Hours & comfort' },
-  { key: 'voice', group: 'voice', title: 'Record your voice' },
+  { key: 'voice', group: 'voice', title: 'Record your introduction' },
   { key: 'review', group: 'finish', title: 'Check everything' },
   { key: 'generating', group: 'finish', title: 'Creating your profile' },
   { key: 'preview', group: 'finish', title: 'Your profile' },
@@ -68,14 +68,34 @@ export function contactLeak(text: string): string | null {
   return null;
 }
 
-export const VOICE_SCRIPT = 'Namaste! Main aapse baat karke khush hoon. Din kaisa raha? Aaram se baithiye, chai ki ek chuski lijiye, aur jo mann mein hai woh boliye. Main sun rahi hoon. Hello, I am happy to talk to you. Take your time — there is no rush, and no judgement here.';
 export const GENDER_LABEL: Record<'woman' | 'man' | 'transgender', string> = { woman: 'Woman', man: 'Man', transgender: 'Transgender' };
 export const SELFIE_SEC = 10;
 export const UPI_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
 export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 export const VOICE_MIN_SEC = 30;
-export const VOICE_MAX_SEC = 60;
+export const VOICE_MAX_SEC = 300;
+export const VOICE_SUGGEST_SEC = 60;
+
+/** [HF-VOICE-INTRO-1] Example scripts (tabs Hindi / English). Names are examples only; the host says their own first name. */
+export const VOICE_SCRIPTS: { lang: 'hi' | 'en'; label: string; items: string[] }[] = [
+  { lang: 'hi', label: 'हिंदी', items: [
+    'नमस्ते, मैं प्रिया हूँ। मैं हिंदी और अंग्रेज़ी में बात करती हूँ। मुझे लोगों की बातें सुनना अच्छा लगता है — चाहे दिन खराब रहा हो, घर की याद आ रही हो, या बस किसी से बात करनी हो। मुझे फ़िल्में, गाने और खाना बनाना पसंद है। मैं ज़्यादातर शाम को ऑनलाइन रहती हूँ। जब भी मन करे, बेझिझक कॉल कीजिए — मैं सुनने के लिए यहाँ हूँ।',
+    'नमस्ते, मेरा नाम अर्जुन है। मैं शांत स्वभाव का हूँ और ध्यान से सुनता हूँ। क्रिकेट, पुराने गाने, नौकरी की टेंशन या नए शहर का अकेलापन — किसी भी बारे में बात कर सकते हैं। मैं रात को देर तक जागता हूँ, तो देर शाम मुझसे बात करना आसान रहेगा।',
+  ] },
+  { lang: 'en', label: 'English', items: [
+    "Hi, I'm Arjun. I speak English and Hindi. I'm a calm listener — if you've had a long day, feel lonely in a new city, or just want to chat about cricket or movies, I'd love to hear from you. I'm usually around late evenings. No pressure, no judgement — just a friendly conversation.",
+    "Hello, I'm Meera. I love a good chat over chai — about books, family, work stress or anything on your mind. I speak English, Hindi and a little Marathi. I'm usually free in the afternoons. Call me whenever you need someone to talk to.",
+  ] },
+];
+export const VOICE_TIPS = [
+  'Say your first name only',
+  'Say the languages you speak',
+  'Say what you enjoy talking about',
+  'Say what kind of listener you are',
+  'Say when you are usually free',
+];
+export const VOICE_DONTS = 'Please do not say a phone number, WhatsApp, Instagram or any other social handle, an email, your workplace, your area or your address. We check every recording.';
 
 export const EMPTY_DRAFT: Draft = {
   phone: '', phoneVerified: false,
@@ -91,7 +111,7 @@ export const EMPTY_DRAFT: Draft = {
   hours: { days: [], from: '19:00', to: '22:00' },
   healthConsent: false, womenOnlyLane: false,
   lgbtqLane: false, lgbtqShowOnProfile: false,
-  voice: { recorded: false, durationSec: 0, consent: false, source: null },
+  voice: { recorded: false, durationSec: 0, consent: false, source: null, status: null },
   agreements: { rules: false, agreement: false, welfare: false },
   generated: null,
   submitted: false,

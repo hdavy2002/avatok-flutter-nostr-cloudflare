@@ -376,6 +376,7 @@ export { DynKV, DynBrain, DynComposio } from "./lib/dynw/caps";
 // deletionWorkflowEnabled (routes/config.ts).
 export { DeletionWorkflow } from "./workflows/deletion";
 export { HostMediaWorkflow, AvatarBatchWorkflow } from "./workflows/host_media"; // [HF-HOST-PLATFORM-1]
+export { IntroCheckWorkflow } from "./workflows/intro_check"; // [HF-VOICE-INTRO-1]
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
