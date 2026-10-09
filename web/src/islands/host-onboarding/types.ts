@@ -52,6 +52,8 @@ export interface Draft {
   pricePerMin: number;         // one price for all topics (owner decision 2026-10-09), ₹5 floor
   hours: { days: string[]; from: string; to: string };
   healthConsent: boolean;
+  lgbtqLane: boolean;          // private LGBTQ+ lane, offered to all genders, callers must be verified
+  lgbtqShowOnProfile: boolean; // separate opt-in: show 'LGBTQ+ friendly' publicly (only when lgbtqLane)
   womenOnlyLane: boolean;      // only offered when kycGender === 'woman'
   voice: { recorded: boolean; durationSec: number; consent: boolean; source: 'mic' | 'upload' | null };
   agreements: { rules: boolean; agreement: boolean; welfare: boolean };

@@ -69,3 +69,10 @@
   .hob-p-filters .hob-p-chips::-webkit-scrollbar { display: none; }
   .hob-p-filters .hob-chip { flex: none; }
 }
+
+/* LGBTQ+ lane card */
+.hob-p-sub { display: block; margin-top: 6px; font: 500 14px/1.5 'Nunito', sans-serif; color: #6b3a63; }
+.hob-p-link { display: inline-flex; align-items: center; min-height: 48px; color: #bd2740; font-weight: 700; text-decoration: underline; }
+.hob-p-check-sub { margin-left: 24px; }
+.hob-lgbtq-chip { margin: 0 0 12px; }
+.hob-lgbtq-chip li { font-size: 14px; }

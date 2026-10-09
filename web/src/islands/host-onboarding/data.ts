@@ -82,6 +82,7 @@ export const EMPTY_DRAFT: Draft = {
   pricePerMin: 20,
   hours: { days: [], from: '19:00', to: '22:00' },
   healthConsent: false, womenOnlyLane: false,
+  lgbtqLane: false, lgbtqShowOnProfile: false,
   voice: { recorded: false, durationSec: 0, consent: false, source: null },
   agreements: { rules: false, agreement: false, welfare: false },
   generated: null,

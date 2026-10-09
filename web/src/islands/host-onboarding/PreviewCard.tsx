@@ -38,6 +38,9 @@ export default function PreviewCard({ draft, avatar }: { draft: Draft; avatar: A
             <div><dt><Icon name="globe" size={25} />Languages</dt><dd>{draft.languages.length ? draft.languages.join(', ') : 'Not chosen yet'}</dd></div>
             <div><dt><Icon name="sparkle" size={25} />Conversation style</dt><dd>{draft.style || 'Not chosen yet'}</dd></div>
           </dl>
+          {draft.lgbtqLane && draft.lgbtqShowOnProfile && (
+            <ul className="person-moods hob-lgbtq-chip"><li><Icon name="sparkle" size={18} /><span>LGBTQ+ friendly</span></li></ul>
+          )}
           <div className="profile-card-topics">
             <h4>Let’s talk about</h4>
             {draft.topics.length

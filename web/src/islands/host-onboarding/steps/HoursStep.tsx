@@ -42,6 +42,20 @@ export default function HoursStep({ draft, update, setAction }: StepProps) {
         <span>I am comfortable talking about health topics (e.g. women's health) when a caller asks</span>
       </label>
 
+      <label className="hob-card hob-p-check-card">
+        <input type="checkbox" role="switch" checked={draft.lgbtqLane} onChange={(e) => update({ lgbtqLane: e.target.checked, ...(e.target.checked ? {} : { lgbtqShowOnProfile: false }) })} />
+        <span>
+          <strong>Join the LGBTQ+ space</strong>
+          <span className="hob-p-sub">A private lane where LGBTQ+ callers talk to LGBTQ+ hosts. Only verified callers can reach you there. This choice is private — we never guess, and you can change it any time. <a className="hob-p-link" href="/lgbtq" target="_blank" rel="noopener">Learn more</a></span>
+        </span>
+      </label>
+      {draft.lgbtqLane && (
+        <label className="hob-card hob-p-check-card hob-p-check-sub">
+          <input type="checkbox" checked={draft.lgbtqShowOnProfile} onChange={(e) => update({ lgbtqShowOnProfile: e.target.checked })} />
+          <span>Also show 'LGBTQ+ friendly' on my public profile (optional)</span>
+        </label>
+      )}
+
       {draft.kycGender === 'woman' && (
         <label className="hob-card hob-p-check-card">
           <input type="checkbox" role="switch" checked={draft.womenOnlyLane} onChange={(e) => update({ womenOnlyLane: e.target.checked })} />

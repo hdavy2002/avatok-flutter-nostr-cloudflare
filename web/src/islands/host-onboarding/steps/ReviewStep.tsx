@@ -57,6 +57,7 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
       <Row title="Hours & comfort" step="hours" goTo={goTo}>
         <p>{h.days.join(', ') || 'No days chosen'} · {h.from} to {h.to}</p>
         <p>{draft.womenOnlyLane ? 'Only women callers' : 'All callers'}</p>
+        <p>LGBTQ+ space: {draft.lgbtqLane ? (draft.lgbtqShowOnProfile ? 'Yes (shown on profile)' : 'Yes (private)') : 'No'}</p>
       </Row>
       <Row title="Voice" step="voice" goTo={goTo}>
         <p>{draft.voice.recorded ? `Recorded, ${draft.voice.durationSec} seconds` : 'Not recorded yet'}</p>
