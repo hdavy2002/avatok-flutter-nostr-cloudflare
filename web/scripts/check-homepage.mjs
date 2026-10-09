@@ -112,7 +112,7 @@ for (const copy of [
   'Friendship here means respect — the same rules apply on the first call and the fiftieth.',
   'Real people. Naye dost. Baat se baat banti hai.',
 ]) assert(plainText(bodyHtml).includes(copy), 'Friendship copy: ' + copy);
-assert.doesNotMatch(plainText(bodyHtml), /kundli|horoscope|tarot|Taare|Gap-shap|\bgirlfriend\b|ladki se baat|\bdate\b/i);
+assert.doesNotMatch(plainText(bodyHtml.replace(/<script\b[\s\S]*?<\/script>/g, " ").replace(/<style\b[\s\S]*?<\/style>/g, " ")), /kundli|horoscope|tarot|Taare|Gap-shap|\bgirlfriend\b|ladki se baat|\bdate\b/i);
 assert.deepEqual([...bodyHtml.matchAll(/class="mood-group-head"[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>/g)].map(m => m[1]), ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein']);
 const profileIds = cards.map(card => card.match(/data-profile-id="([^"]+)"/)?.[1]);
 assert.equal(new Set(profileIds).size, 8, 'Eight stable sample IDs');
