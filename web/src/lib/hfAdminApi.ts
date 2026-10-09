@@ -40,6 +40,12 @@ export interface AdminCall {
   createdAt?: number | string | null;
 }
 
+/** [HF-ADMIN-CREDIT-1] One row of the caller picker (admin only: full phone and email). */
+export interface AdminUserHit {
+  uid: string; name: string | null; phone: string | null; email: string | null; whatsappVerified: boolean;
+  isHost: boolean; hostSlug?: string; balanceRupees: number; createdAt: number | null;
+}
+
 const e = encodeURIComponent;
 /** Signed media paths come back relative to the API origin. */
 export const apiUrl = (p: string | null | undefined) => (p ? (p.startsWith('http') ? p : `${API_BASE}${p}`) : '');
@@ -68,6 +74,8 @@ export const hfAdminApi = {
   decideReview: (id: string, decision: 'approve' | 'reject', reason = '') =>
     adminCall<{ ok: true }>(`/api/admin/hf/reviews/${e(id)}`, { method: 'POST', body: { decision, reason: reason || undefined } }),
   calls: async () => (await adminCall<{ items: AdminCall[] }>('/api/admin/hf/calls')).items ?? [],
-  creditWallet: (b: { uid: string; rupees: number; note: string }) =>
-    adminCall<{ ok: true; balanceRupees?: number; balance?: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
+  /** [HF-ADMIN-CREDIT-1] Credit by uid (search result / advanced) or by WhatsApp number. */
+  creditWallet: (b: { uid?: string; phone?: string; rupees: number; note: string; via?: 'search'; opId?: string }) =>
+    adminCall<{ ok: true; uid: string; name: string | null; balanceRupees: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
+  searchUsers: async (q: string) => (await adminCall<{ items: AdminUserHit[] }>(`/api/admin/hf/users/search?q=${e(q)}`)).items ?? [],
 };

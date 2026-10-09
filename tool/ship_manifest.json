@@ -9604,5 +9604,21 @@
         "note": "Notify-me WhatsApp sent when a host came online."
       }
     ]
+  },
+  "HF-ADMIN-CREDIT-1": {
+    "description": "[HF-ADMIN-CREDIT-1 2026-10-09] Admin adds test credits to any caller without a uid: search by WhatsApp number, email or name on /admin/hosts/calls, one-tap credit (100/200/500/custom); credit route also accepts a phone. Admin only, audited.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_admin_credit_added",
+        "property": "via",
+        "equals": "search",
+        "note": "Test credit added from a search result."
+      }
+    ]
   }
 }

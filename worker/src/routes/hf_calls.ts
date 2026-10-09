@@ -6,7 +6,7 @@
 //   GET  /api/hf/wallet                               -> {balanceRupees, testCredits:true}
 //   GET|PUT /api/hosts/me/presence {online}           -> {ok, presence}      POST /api/hosts/me/presence/beat
 //   GET  /api/hosts/me/calls                          -> {ok, calls:[...], today:{calls,minutes,earningRupees}}   (handles only, never numbers)
-//   POST /api/admin/hf/wallet/credit {uid, rupees 1..2000, note, opId?}      GET /api/admin/hf/calls?status=&limit=&offset=
+//   POST /api/admin/hf/wallet/credit {uid | phone, rupees 1..2000, note, opId?, via?}   GET /api/admin/hf/users/search?q=      GET /api/admin/hf/calls?status=&limit=&offset=
 //   POST /api/hf/vobiz/<VOBIZ_WEBHOOK_SECRET>/{answer/<host|caller>/<id> | digits/host/<id> | hangup/<host|caller>/<id> | conf/<id>/<host|caller> | notice/host-nopickup/<id>}
 // Phone numbers are never present in any response, log or event here; they are read from the verified-WhatsApp store only at dial time (do/hf_call.ts).
 import type { Env } from "../types";
@@ -15,9 +15,12 @@ import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { track, trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
+import { personName } from "../lib/admin2_people_data";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { notifyHostOnline } from "../lib/hf_notify";
 import { walletOp } from "./wallet";
+import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
+import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
 import { readConfig } from "./config";
 import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
@@ -234,20 +237,45 @@ async function adminCredit(req: Request, env: Env): Promise<Response> {
   const a = await adminCtx(req, env);
   if (a instanceof Response) return a;
   const b = await readJson(req);
-  const uid = String(b.uid ?? "").trim();
+  let uid = String(b.uid ?? "").trim();
+  const phoneIn = String(b.phone ?? "").trim();
   const amount = Number(b.rupees);
   const note = String(b.note ?? "").trim().slice(0, 200);
-  if (!uid || uid.length > 128) return err(400, "invalid_field", "uid is required.", { field: "uid" });
+  let via: "search" | "uid" | "phone" = b.via === "search" && uid ? "search" : "uid";
+  let name: string | null = null;
+  if (!uid && phoneIn) {
+    const q = classifyAdminQuery(phoneIn);
+    if (q.type !== "phone") return err(400, "invalid_field", "Enter a valid WhatsApp number.", { field: "phone" });
+    const hits = await resolvePhone(env, q);
+    if (hits.length === 0) return err(404, "not_found", "No user with that number.");
+    if (hits.length > 1) return err(409, "ambiguous", "More than one user matches that number. Search and pick one.");
+    uid = hits[0].uid; name = hits[0].name; via = "phone";
+  }
+  if (!uid || uid.length > 128) return err(400, "invalid_field", "uid or phone is required.", { field: "uid" });
   if (!Number.isInteger(amount) || amount < 1 || amount > 2000) return err(400, "invalid_field", "rupees must be a whole number from 1 to 2000.", { field: "rupees" });
   if (!note) return err(400, "invalid_field", "Add a note saying why.", { field: "note" });
-  const exists = await env.DB_META.prepare("SELECT 1 AS x FROM users WHERE uid=?1").bind(uid).first().catch(() => null);
+  const exists = await env.DB_META.prepare("SELECT display_name, first_name, last_name FROM users WHERE uid=?1").bind(uid).first<{ display_name: string | null; first_name: string | null; last_name: string | null }>().catch(() => null);
   if (!exists) return err(404, "not_found", "No such user.");
+  if (name === null) name = personName(exists);
   const opKey = String(b.opId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || crypto.randomUUID();
   const r = await walletOp(env, uid, { op: "credit", uid, amount, type: "hf_test_credit", app_name: WALLET_APP, ref: `hftest:${a.uid}`, op_id: `hftest:${opKey}`, context: `Test credits: ${note}`.slice(0, 120) });
   if (r.status !== 200 || r.body?.ok !== true) return err(502, "wallet_error", "The credit didn't go through.");
-  await audit(env, a.uid, "wallet_test_credit", uid, { rupees: amount, note, op: opKey });
+  await audit(env, a.uid, "wallet_test_credit", uid, { rupees: amount, note, op: opKey, via });
   void track(env, a.uid, "hf_test_credit_added", HF_CALL_APP, { area: "hf_call", rupees: amount }).catch(() => undefined);
-  return json({ ok: true, balanceRupees: Math.max(0, Math.trunc(Number(r.body?.balance ?? 0))) });
+  void track(env, a.uid, "hf_admin_credit_added", HF_CALL_APP, { area: "hf_call", rupees: amount, via }).catch(() => undefined);
+  return json({ ok: true, uid, name, balanceRupees: Math.max(0, Math.trunc(Number(r.body?.balance ?? 0))) });
+}
+
+// GET /api/admin/hf/users/search?q=  (admin only; full phone is shown on purpose, the audit row keeps only type + count)
+async function adminUserSearch(req: Request, env: Env): Promise<Response> {
+  const a = await adminCtx(req, env);
+  if (a instanceof Response) return a;
+  const q = classifyAdminQuery(new URL(req.url).searchParams.get("q"));
+  if (!searchable(q)) return json({ items: [] }, 200, { "cache-control": "private, no-store" });
+  const items = await searchHfUsers(env, q);
+  await audit(env, a.uid, "user_search", "-", { type: q.type, results: items.length });
+  void track(env, a.uid, "hf_admin_user_search", HF_CALL_APP, { area: "hf_call", type: q.type, results: items.length }).catch(() => undefined);
+  return json({ items }, 200, { "cache-control": "private, no-store" });
 }
 
 async function adminCalls(req: Request, env: Env): Promise<Response> {
@@ -322,6 +350,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (p === "/api/hosts/me/presence/beat" && m === "POST") return await presenceRoute(req, env, p, ctx);
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);
     if (p === "/api/admin/hf/wallet/credit" && m === "POST") return await adminCredit(req, env);
+    if (p === "/api/admin/hf/users/search" && m === "GET") return await adminUserSearch(req, env);
     if (p === "/api/admin/hf/calls" && m === "GET") return await adminCalls(req, env);
     return null;
   } catch (e) {
