@@ -1,0 +1,172 @@
+import { useEffect, useRef, useState } from 'react';
+import Icon from '../Icon';
+import PreviewCard from '../PreviewCard';
+import { TOPICS } from '../data';
+import type { GeneratedProfile, StepProps } from '../types';
+
+const CLIP_SEC = 20;
+
+export default function PreviewStep({ draft, update, api, setAction, goTo, avatars }: StepProps) {
+  const g = draft.generated as GeneratedProfile;
+  const avatar = avatars.find(a => a.id === draft.avatarId) || null;
+  const [playing, setPlaying] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  const [editing, setEditing] = useState<'tagline' | 'about' | null>(null);
+  const [text, setText] = useState('');
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const lastFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setAction({
+      label: 'Looks good — send for review',
+      run: async () => {
+        const r = await api.submitForReview(draft);
+        if (!r.ok) return false;
+        update({ submitted: true });
+        return true;
+      },
+    });
+  }, [api, draft, update, setAction]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const t = window.setInterval(() => {
+      setPos(p => {
+        if (p + 0.25 >= CLIP_SEC) { setPlaying(false); return 0; }
+        return p + 0.25;
+      });
+    }, 250);
+    return () => window.clearInterval(t);
+  }, [playing]);
+
+  const n = g?.gallery.length || 0;
+  useEffect(() => {
+    if (lightbox === null) return;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightbox(null);
+      else if (e.key === 'ArrowRight') setLightbox(i => (i === null ? i : (i + 1) % n));
+      else if (e.key === 'ArrowLeft') setLightbox(i => (i === null ? i : (i - 1 + n) % n));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); lastFocus.current?.focus(); };
+  }, [lightbox, n]);
+
+  if (!g) return <p className="hob-lead">Your profile is not ready yet.</p>;
+
+  const patch = (p: Partial<GeneratedProfile>) => update({ generated: { ...g, ...p } });
+  const startEdit = (k: 'tagline' | 'about') => { setEditing(k); setText(g[k]); };
+  const saveEdit = () => { if (editing && text.trim()) patch({ [editing]: text.trim() } as Partial<GeneratedProfile>); setEditing(null); };
+  const topicLabels = draft.topics.map(s => TOPICS.find(t => t.slug === s)?.label || s);
+
+  return (
+    <div>
+      <h1 className="hob-h1">This is how callers will see you</h1>
+      <p className="hob-lead">Have a look. You can change the tagline and the about text.</p>
+
+      <h2 className="hob-f-h2">Your card</h2>
+      <div className="hob-f-cardwrap"><PreviewCard draft={draft} avatar={avatar} /></div>
+
+      <h2 className="hob-f-h2">Your profile page</h2>
+      <section className="hob-card hob-f-profile">
+        <div className="hob-f-hero">
+          <img src={g.profileImage} alt={`${draft.displayName}, AI avatar`} />
+          <span className="hob-ai-label">AI avatar chosen by the host</span>
+        </div>
+        <h3 className="hob-f-name">{draft.displayName}</h3>
+
+        {editing === 'tagline' ? (
+          <div className="hob-field">
+            <label className="hob-label" htmlFor="hob-f-tag">Tagline</label>
+            <input id="hob-f-tag" className="hob-input" value={text} maxLength={80} onChange={e => setText(e.target.value)} />
+            <div className="hob-f-editrow">
+              <button type="button" className="hob-btn hob-btn-primary" onClick={saveEdit}>Save</button>
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <p className="hob-f-tagline">{g.tagline} <button type="button" className="hob-f-link" onClick={() => startEdit('tagline')}>Edit tagline</button></p>
+        )}
+
+        <blockquote className="hob-f-quote">“{g.quote}”</blockquote>
+        {topicLabels.length > 0 && <div className="hob-f-chips">{topicLabels.map(t => <span key={t} className="hob-f-pill">{t}</span>)}</div>}
+
+        <h3 className="hob-f-h3">About</h3>
+        {editing === 'about' ? (
+          <div className="hob-field">
+            <label className="hob-label" htmlFor="hob-f-about">About</label>
+            <textarea id="hob-f-about" className="hob-input" rows={6} value={text} maxLength={800} onChange={e => setText(e.target.value)} />
+            <div className="hob-f-editrow">
+              <button type="button" className="hob-btn hob-btn-primary" onClick={saveEdit}>Save</button>
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="hob-f-about">{g.about}</p>
+            <button type="button" className="hob-f-link" onClick={() => startEdit('about')}>Edit about</button>
+          </>
+        )}
+      </section>
+
+      <h2 className="hob-f-h2">Sample conversation</h2>
+      <section className="hob-card hob-f-clip">
+        <span className="hob-ai-label">AI voice clip · Sample conversation — not a real call</span>
+        <div className="hob-f-player">
+          <button type="button" className="hob-f-play" onClick={() => setPlaying(p => !p)} aria-label={playing ? 'Pause sample' : 'Play sample'}>
+            <Icon name={playing ? 'pause' : 'play'} />
+          </button>
+          <div className="hob-f-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CLIP_SEC} aria-valuenow={Math.round(pos)} aria-label="Sample progress">
+            <span style={{ width: `${(pos / CLIP_SEC) * 100}%` }} />
+          </div>
+          <span className="hob-f-time">0:{String(Math.floor(pos)).padStart(2, '0')} / 0:{CLIP_SEC}</span>
+        </div>
+        <ul className="hob-f-chat">
+          {g.conversation.map((l, i) => (
+            <li key={i} className={`hob-f-bubble hob-f-bubble-${l.speaker}`}>
+              <span className="hob-f-who">{l.speaker === 'host' ? draft.displayName || 'Host' : 'Caller'}</span>
+              {l.text}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <h2 className="hob-f-h2">Avatar gallery</h2>
+      <p className="hob-help">AI images</p>
+      <div className="hob-f-gallery">
+        {g.gallery.map((it, i) => (
+          <button type="button" key={i} className="hob-f-tile" aria-label={`Open picture: ${it.caption}`}
+            onClick={(e) => { lastFocus.current = e.currentTarget; setLightbox(i); }}>
+            <img src={it.image} alt={it.caption} loading="lazy" />
+            <span className="hob-ai-label">AI image</span>
+            <span className="hob-f-cap">{it.caption}</span>
+          </button>
+        ))}
+      </div>
+
+      <aside className="hob-card hob-f-privacy">
+        <Icon name="shield" />
+        <p>To protect our hosts' privacy, the photos and audio clips on host profiles are AI-generated from an avatar the host chose. The person callers talk to is the real, KYC-verified host.</p>
+      </aside>
+
+      <button type="button" className="hob-btn hob-btn-ghost" onClick={() => goTo('review')}>Change something</button>
+
+      {lightbox !== null && (
+        <div className="hob-f-lb" role="dialog" aria-modal="true" aria-label="Picture viewer" onClick={() => setLightbox(null)}>
+          <div className="hob-f-lb-in" onClick={e => e.stopPropagation()}>
+            <button ref={closeRef} type="button" className="hob-f-lb-close" onClick={() => setLightbox(null)} aria-label="Close"><Icon name="x" /></button>
+            <img src={g.gallery[lightbox].image} alt={g.gallery[lightbox].caption} />
+            <span className="hob-ai-label">AI image</span>
+            <p className="hob-f-lb-cap">{g.gallery[lightbox].caption}</p>
+            <div className="hob-f-lb-nav">
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setLightbox((lightbox - 1 + n) % n)}>Previous</button>
+              <span>{lightbox + 1} / {n}</span>
+              <button type="button" className="hob-btn hob-btn-ghost" onClick={() => setLightbox((lightbox + 1) % n)}>Next</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,105 @@
+/* [HF-HOST-ONBOARD-1] Lane D: voice + finish screens. Prefix .hob-f-  No green. Min 14px. */
+.hob-f-h2{font-family:'Nunito',sans-serif;font-size:1.25rem;font-weight:800;color:#46113e;margin:1.5rem 0 .6rem}
+.hob-f-h3{font-family:'Nunito',sans-serif;font-size:1.1rem;font-weight:800;color:#46113e;margin:1rem 0 .3rem}
+.hob-f-strong{font-weight:700;color:#46113e}
+.hob-f-link{background:none;border:0;color:#bd2740;font:inherit;font-size:.95rem;text-decoration:underline;min-height:48px;padding:0 .25rem;cursor:pointer}
+.hob-f-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.hob-f-full{display:flex;width:100%;justify-content:center;align-items:center;margin-top:.75rem;text-decoration:none}
+.hob-f-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0}
+.hob-f-pill{background:#f2ecfc;color:#46113e;border-radius:999px;padding:.35rem .8rem;font-size:.9rem}
+.hob-f-list{list-style:none;margin:0;padding:0;display:grid;gap:.6rem}
+.hob-f-list li{display:flex;gap:.6rem;align-items:center}
+.hob-f-list svg{width:22px;height:22px;flex:none;stroke:#46113e;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* voice */
+.hob-f-script{background:#fff4c9}
+.hob-f-script-label{font-size:.95rem;font-weight:700;color:#785979;margin:0 0 .5rem}
+.hob-f-script-text{font-size:1.2rem;line-height:1.7;color:#46113e;margin:0}
+.hob-f-rec{text-align:center;display:grid;gap:.9rem;justify-items:center}
+.hob-f-rec-status{font-size:1.05rem;font-weight:700;color:#46113e}
+.hob-f-mic{width:88px;height:88px;border-radius:50%;border:0;background:#bd2740;color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(189,39,64,.3)}
+.hob-f-mic svg{width:38px;height:38px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.hob-f-mic:disabled{opacity:.5}
+.hob-f-mic-live{background:#46113e;animation:hob-f-pulse 1.4s ease-in-out infinite}
+@keyframes hob-f-pulse{0%,100%{box-shadow:0 0 0 0 rgba(70,17,62,.35)}50%{box-shadow:0 0 0 14px rgba(70,17,62,0)}}
+.hob-f-rec-actions{display:flex;flex-wrap:wrap;gap:.6rem;justify-content:center}
+.hob-f-rec-actions .hob-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.2;margin-right:.4rem}
+.hob-f-upload-btn{position:relative;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer}
+.hob-f-upload-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.2}
+.hob-f-file{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:16px}
+.hob-f-consent{display:flex;gap:.8rem;align-items:flex-start;cursor:pointer;min-height:48px}
+.hob-f-consent input{width:24px;height:24px;flex:none;margin-top:.1rem;accent-color:#46113e}
+.hob-f-consent a{color:#bd2740}
+.hob-f-agree{display:grid;gap:.6rem;margin-top:1rem}
+
+/* review */
+.hob-f-rev-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+.hob-f-rev-head .hob-f-h2{margin:0}
+.hob-f-edit{min-height:48px;min-width:72px}
+.hob-f-rev-body p{margin:.25rem 0}
+.hob-f-thumb{width:96px;height:96px;object-fit:cover;border-radius:16px}
+
+/* generating */
+.hob-f-stages{list-style:none;display:grid;gap:1rem;margin:1.2rem 0;padding:1.2rem}
+.hob-f-stage{display:flex;gap:.8rem;align-items:center;font-size:1.05rem;color:#785979}
+.hob-f-stage-working{color:#46113e;font-weight:700}
+.hob-f-stage-done{color:#46113e}
+.hob-f-stage-ico{width:28px;height:28px;border-radius:50%;border:2px solid #d9c9e4;display:grid;place-items:center;flex:none}
+.hob-f-stage-done .hob-f-stage-ico{background:#46113e;border-color:#46113e}
+.hob-f-stage-done svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.hob-f-spin{width:16px;height:16px;border-radius:50%;border:3px solid #e6d6f0;border-top-color:#46113e;animation:hob-f-rot .8s linear infinite}
+@keyframes hob-f-rot{to{transform:rotate(360deg)}}
+
+/* preview */
+.hob-f-cardwrap{display:flex;justify-content:center}
+.hob-f-hero{position:relative;border-radius:20px;overflow:hidden;aspect-ratio:4/5;max-height:440px;background:#f2ecfc}
+.hob-f-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.hob-f-hero .hob-ai-label,.hob-f-tile .hob-ai-label,.hob-f-lb .hob-ai-label{position:absolute;left:.6rem;top:.6rem}
+.hob-f-name{font-family:'Nunito',sans-serif;font-size:1.6rem;font-weight:800;color:#46113e;margin:.9rem 0 .2rem}
+.hob-f-tagline{margin:0 0 .5rem;color:#785979;font-size:1.05rem}
+.hob-f-quote{margin:.6rem 0;padding:.8rem 1rem;border-left:4px solid #ff585c;background:#fde8ef;border-radius:0 12px 12px 0;color:#46113e;font-style:italic}
+.hob-f-about{margin:0;line-height:1.7;white-space:pre-line}
+.hob-f-editrow{display:flex;gap:.6rem;margin-top:.6rem}
+.hob-f-clip{position:relative}
+.hob-f-clip>.hob-ai-label{position:static;display:inline-block}
+.hob-f-player{display:flex;align-items:center;gap:.8rem;margin:.9rem 0}
+.hob-f-play{width:56px;height:56px;border-radius:50%;border:0;background:#46113e;display:grid;place-items:center;flex:none;cursor:pointer}
+.hob-f-play svg{width:24px;height:24px;stroke:#fff;fill:#fff;stroke-width:2}
+.hob-f-bar{flex:1;height:8px;border-radius:99px;background:#e6d6f0;overflow:hidden}
+.hob-f-bar span{display:block;height:100%;background:#bd2740;transition:width .25s linear}
+.hob-f-time{font-size:.9rem;color:#785979;white-space:nowrap}
+.hob-f-chat{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+.hob-f-bubble{max-width:85%;padding:.6rem .9rem;border-radius:16px;font-size:1rem;line-height:1.5}
+.hob-f-who{display:block;font-size:.875rem;font-weight:700;opacity:.8}
+.hob-f-bubble-caller{background:#f2ecfc;color:#46113e;justify-self:start;border-bottom-left-radius:4px}
+.hob-f-bubble-host{background:#46113e;color:#fff;justify-self:end;border-bottom-right-radius:4px}
+.hob-f-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:.7rem}
+.hob-f-tile{position:relative;border:0;padding:0;border-radius:16px;overflow:hidden;background:#f2ecfc;cursor:pointer;text-align:left;min-height:48px}
+.hob-f-tile img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.hob-f-cap{display:block;padding:.5rem .7rem;font-size:.9rem;color:#46113e}
+.hob-f-privacy{display:flex;gap:.8rem;align-items:flex-start;background:#f8f1fc;margin:1.2rem 0}
+.hob-f-privacy svg{width:28px;height:28px;flex:none;stroke:#46113e;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hob-f-privacy p{margin:0;line-height:1.6}
+.hob-f-lb{position:fixed;inset:0;background:rgba(70,17,62,.88);z-index:100;display:grid;place-items:center;padding:1rem}
+.hob-f-lb-in{position:relative;width:min(92vw,520px);background:#fffdf7;border-radius:20px;padding:1rem;text-align:center}
+.hob-f-lb-in img{width:100%;max-height:60dvh;object-fit:cover;border-radius:14px;display:block}
+.hob-f-lb-in .hob-ai-label{top:1.6rem;left:1.6rem}
+.hob-f-lb-close{position:absolute;top:-14px;right:-6px;width:48px;height:48px;border-radius:50%;border:0;background:#bd2740;display:grid;place-items:center;cursor:pointer}
+.hob-f-lb-close svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:3}
+.hob-f-lb-cap{margin:.7rem 0;color:#46113e}
+.hob-f-lb-nav{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+
+/* done */
+.hob-f-done{text-align:center}
+.hob-f-done .hob-f-list{text-align:left}
+.hob-f-burst{position:relative;width:140px;height:140px;margin:1rem auto}
+.hob-f-badge{position:absolute;inset:25px;border-radius:50%;background:#bd2740;display:grid;place-items:center;animation:hob-f-pop .6s ease-out}
+.hob-f-badge svg{width:44px;height:44px;stroke:#fff;fill:#fff;stroke-width:1}
+.hob-f-dot{position:absolute;width:14px;height:14px;border-radius:50%;animation:hob-f-pop .8s ease-out}
+.hob-f-d1{background:#ff585c;top:4px;left:60px}.hob-f-d2{background:#fff4c9;top:24px;right:6px;border:2px solid #46113e}
+.hob-f-d3{background:#46113e;bottom:20px;right:10px}.hob-f-d4{background:#ff585c;bottom:2px;left:56px}
+.hob-f-d5{background:#fde8ef;bottom:30px;left:4px;border:2px solid #bd2740}.hob-f-d6{background:#46113e;top:26px;left:8px}
+@keyframes hob-f-pop{0%{transform:scale(0)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+.hob-f-next{text-align:left}
+@media (prefers-reduced-motion:reduce){.hob-f-mic-live,.hob-f-spin,.hob-f-badge,.hob-f-dot{animation:none}}
+@media (min-width:640px){.hob-f-gallery{grid-template-columns:repeat(3,1fr)}}

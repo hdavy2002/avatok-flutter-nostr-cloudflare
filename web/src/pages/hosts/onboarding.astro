@@ -1,0 +1,30 @@
+---
+// [HF-HOST-ONBOARD-1] Host onboarding (Phase 1 clickable mock). Standalone page, not indexed.
+import brandConfig from '../../../../Specs/brand.json';
+import HostOnboarding from '../../islands/host-onboarding/HostOnboarding';
+import '../../styles/callvaal-notebook.css';
+import '../../styles/profile-card.css';
+import '../../styles/host-onboarding/base.css';
+import '../../styles/host-onboarding/verify.css';
+import '../../styles/host-onboarding/profile.css';
+import '../../styles/host-onboarding/finish.css';
+export const prerender = true;
+const identity = brandConfig.homepageIdentity;
+---
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`Become a host | ${identity.name}`}</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#46113e" />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <HostOnboarding client:only="react" />
+    <noscript><p style="padding:24px;font-family:sans-serif;font-size:1rem">Please turn on JavaScript to become a host.</p></noscript>
+  </body>
+</html>

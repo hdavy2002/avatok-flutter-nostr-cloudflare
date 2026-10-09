@@ -1,0 +1,36 @@
+/* [HF-HOST-ONBOARD-1] Verification steps (welcome, phone, KYC, Aadhaar). Prefix .hob-v- */
+.hob-v-eyebrow{font-family:'Comfortaa',sans-serif;font-size:14px;font-weight:700;color:#bd2740;letter-spacing:.04em;text-transform:uppercase;margin:0 0 8px}
+.hob-v-h2{font-family:'Nunito',sans-serif;font-size:18px;font-weight:800;color:#46113e;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+.hob-v-hinglish{color:#785979;font-style:italic}
+.hob-v-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.hob-v-list li{display:flex;align-items:center;gap:12px;min-height:48px;font-size:16px;color:#46113e}
+.hob-v-ico{flex:none;width:40px;height:40px;border-radius:50%;background:#fde8ef;color:#bd2740;display:inline-flex;align-items:center;justify-content:center}
+.hob-v-ico svg{width:20px;height:20px}
+.hob-v-privacy{background:#f8f1fc}
+.hob-v-privacy p{margin:0;font-size:16px;line-height:1.5;color:#46113e}
+.hob-v-facts{list-style:none;margin:16px 0 24px;padding:0;display:grid;gap:10px}
+.hob-v-facts li{display:flex;align-items:center;gap:10px;font-size:15px;color:#785979}
+.hob-v-facts svg{width:18px;height:18px;color:#ff585c;flex:none}
+.hob-v-start{width:100%;min-height:56px;font-size:18px}
+.hob-v-rules{text-align:center;margin:16px 0 0;font-size:15px}
+.hob-v-rules a,.hob-v-link{color:#bd2740;font-weight:700;text-decoration:underline}
+.hob-v-link{background:none;border:0;padding:12px 0;min-height:48px;font:inherit;font-size:15px;cursor:pointer}
+.hob-v-phone-row{display:flex;gap:8px;align-items:stretch}
+.hob-v-prefix{display:inline-flex;align-items:center;padding:0 14px;min-height:52px;border-radius:14px;background:#f2ecfc;color:#46113e;font-weight:700;font-size:16px}
+.hob-v-phone-row .hob-input{flex:1;min-width:0}
+.hob-v-code{font-size:28px;letter-spacing:.5em;text-align:center;font-weight:700}
+.hob-v-aadhaar{font-size:22px;letter-spacing:.12em}
+.hob-v-done{display:flex;align-items:center;gap:14px}
+.hob-v-done p{margin:0}
+.hob-v-badge{flex:none;width:44px;height:44px;border-radius:50%;background:#46113e;color:#fff;display:inline-flex;align-items:center;justify-content:center}
+.hob-v-badge svg{width:22px;height:22px}
+.hob-v-strong{font-weight:800;font-size:17px;color:#46113e}
+.hob-v-preview{margin:20px 0 8px;padding:16px;border:2px dashed #ff585c;border-radius:16px;background:#fff4c9;color:#46113e;font-size:15px}
+.hob-v-preview p{margin:0 0 10px}
+.hob-v-tag{display:inline-block;background:#46113e;color:#fff;border-radius:999px;padding:4px 12px;font-size:14px;font-weight:700}
+.hob-v-chips{display:flex;gap:10px}
+.hob-v-chips .hob-chip{flex:1;min-height:48px}
+.hob-v-busy{text-align:center;padding:48px 0}
+.hob-v-spinner{display:inline-block;width:48px;height:48px;border-radius:50%;border:5px solid #f2ecfc;border-top-color:#ff585c;animation:hob-v-spin 0.9s linear infinite;margin-bottom:16px}
+@keyframes hob-v-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.hob-v-spinner{animation-duration:3s}}

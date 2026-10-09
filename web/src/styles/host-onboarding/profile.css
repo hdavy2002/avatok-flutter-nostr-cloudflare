@@ -1,0 +1,71 @@
+/* [HF-HOST-ONBOARD-1] Lane C — profile steps. Prefix .hob-p- */
+.hob-p-step { display: block; width: 100%; }
+.hob-p-fieldset { border: 0; margin: 0 0 18px; padding: 0; min-width: 0; }
+.hob-p-fieldset > legend { padding: 0; margin-bottom: 8px; }
+.hob-p-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.hob-p-chips .hob-chip { min-height: 48px; }
+.hob-chip:disabled { opacity: .45; cursor: not-allowed; }
+.hob-p-filters { display: grid; gap: 4px; margin-bottom: 8px; }
+.hob-p-group { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 18px; color: #46113e; }
+.hob-p-h2 { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 20px; color: #46113e; margin: 24px 0 10px; }
+
+/* avatars */
+.hob-p-avatar-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (min-width: 640px) { .hob-p-avatar-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1100px) { .hob-p-avatar-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1500px) { .hob-p-avatar-grid { grid-template-columns: repeat(5, 1fr); } }
+.hob-p-avatar { position: relative; aspect-ratio: 1 / 1; padding: 0; border: 3px solid transparent; border-radius: 18px; overflow: hidden; background: #f2ecfc; cursor: pointer; min-height: 48px; }
+.hob-p-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hob-p-avatar.is-selected { border-color: #46113e; box-shadow: 0 0 0 3px #fde8ef, 0 0 0 6px #46113e; }
+.hob-p-avatar.is-taken { cursor: not-allowed; }
+.hob-p-avatar.is-taken img { filter: grayscale(1); opacity: .5; }
+.hob-p-ai { position: absolute; left: 8px; bottom: 8px; }
+.hob-p-taken { position: absolute; inset: auto 8px 8px auto; background: #46113e; color: #fffdf7; font: 700 14px 'Comfortaa', sans-serif; padding: 4px 10px; border-radius: 999px; }
+.hob-p-check { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; background: #46113e; color: #fffdf7; display: grid; place-items: center; }
+.hob-p-empty { text-align: center; }
+.hob-p-note { margin-top: 14px; }
+
+/* about */
+.hob-p-textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+.hob-p-row { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.hob-p-count { font: 700 14px 'Comfortaa', sans-serif; color: #785979; white-space: nowrap; }
+.hob-p-count.is-low { color: #bd2740; }
+.hob-p-examples { display: grid; gap: 8px; margin-top: 8px; }
+.hob-p-example { text-align: left; min-height: 48px; padding: 10px 14px; border-radius: 14px; border: 1.5px dashed #bd2740; background: #fffdf7; color: #46113e; font: 500 15px 'Comfortaa', sans-serif; cursor: pointer; }
+
+/* languages */
+.hob-p-style-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .hob-p-style-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1100px) { .hob-p-style-grid { grid-template-columns: repeat(3, 1fr); } }
+.hob-p-style { text-align: left; min-height: 72px; padding: 14px 16px; border-radius: 16px; border: 2px solid #f2ecfc; background: #fffdf7; color: #46113e; font-family: 'Comfortaa', sans-serif; cursor: pointer; display: grid; gap: 4px; }
+.hob-p-style strong { font-size: 16px; }
+.hob-p-style span { font-size: 14px; color: #785979; }
+.hob-p-style[aria-pressed="true"] { border-color: #46113e; background: #f8f1fc; box-shadow: 0 0 0 2px #46113e inset; }
+
+/* topics */
+.hob-p-sticky { position: sticky; top: 0; z-index: 5; background: #fff4c9; color: #46113e; padding: 12px 14px; border-radius: 14px; margin-bottom: 16px; font: 500 15px 'Comfortaa', sans-serif; }
+
+/* price */
+.hob-p-price-card { text-align: center; }
+.hob-p-price-big { font: 800 56px/1.1 'Nunito', sans-serif; color: #46113e; margin-bottom: 12px; }
+.hob-p-price-big small { font: 700 20px 'Comfortaa', sans-serif; color: #785979; }
+.hob-p-stepper { display: flex; align-items: center; gap: 12px; }
+.hob-p-round { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 2px solid #46113e; background: #fffdf7; color: #46113e; font: 700 24px 'Comfortaa', sans-serif; cursor: pointer; }
+.hob-p-round:disabled { opacity: .4; cursor: not-allowed; }
+.hob-p-range { flex: 1; min-width: 0; height: 48px; accent-color: #bd2740; }
+.hob-p-range-ends { display: flex; justify-content: space-between; padding: 0 60px; color: #785979; font: 500 14px 'Comfortaa', sans-serif; }
+.hob-p-price-card .hob-p-fieldset { margin-top: 16px; text-align: left; }
+.hob-p-breakdown { margin-top: 14px; }
+.hob-p-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f2ecfc; font: 500 16px 'Comfortaa', sans-serif; color: #46113e; }
+.hob-p-line.is-you { background: #f8f1fc; margin: 0 -8px; padding: 10px 8px; border-radius: 10px; }
+.hob-p-example-line { margin: 14px 0 0; font: 500 16px/1.5 'Comfortaa', sans-serif; color: #46113e; }
+
+/* hours */
+.hob-p-check-card { display: flex; gap: 14px; align-items: flex-start; min-height: 48px; margin-bottom: 12px; cursor: pointer; font: 500 16px/1.5 'Comfortaa', sans-serif; color: #46113e; }
+.hob-p-check-card input { flex: none; width: 28px; height: 28px; margin: 0; accent-color: #bd2740; }
+/* Phones: each avatar filter is one swipeable row so the grid shows sooner. */
+@media (max-width: 599px) {
+  .hob-p-filters .hob-p-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+  .hob-p-filters .hob-p-chips::-webkit-scrollbar { display: none; }
+  .hob-p-filters .hob-chip { flex: none; }
+}
