@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import Icon from '../Icon';
-import { hostShare, rupees, TOPICS } from '../data';
+import { GENDER_LABEL, hostShare, rupees, TOPICS } from '../data';
 import type { StepKey, StepProps } from '../types';
 
 function Row({ title, step, goTo, children }: { title: string; step: StepKey; goTo: (s: StepKey) => void; children: React.ReactNode }) {
@@ -33,8 +33,9 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
       <Row title="Verified" step="phone" goTo={goTo}>
         <ul className="hob-f-list">
           <li><Icon name="check" /> Phone +91 •••••• {draft.phone.slice(-4)}</li>
-          <li><Icon name={draft.kycDone ? 'check' : 'x'} /> Video KYC {draft.kycDone ? 'done' : 'not done'}</li>
-          <li><Icon name={draft.aadhaarDone ? 'check' : 'x'} /> Aadhaar ending {draft.aadhaarLast4 || '----'}</li>
+          <li><Icon name={draft.aadhaarDone ? 'check' : 'x'} /> Aadhaar ending {draft.aadhaarLast4 || '----'}{draft.kycGender ? ` · ${GENDER_LABEL[draft.kycGender]}` : ''}</li>
+          <li><Icon name={draft.selfie.recorded ? 'check' : 'x'} /> Selfie video {draft.selfie.recorded ? 'done' : 'not done'}</li>
+          <li><Icon name={draft.payout.verified ? 'check' : 'x'} /> Payout: {draft.payout.upi || 'no UPI'}{draft.payout.accountLast4 ? ` · bank ••••${draft.payout.accountLast4}` : ''}{draft.payout.verified ? ' (name matched)' : ''}</li>
         </ul>
       </Row>
       <Row title="Avatar" step="avatar" goTo={goTo}>

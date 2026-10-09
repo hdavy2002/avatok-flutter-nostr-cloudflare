@@ -6,13 +6,15 @@
  * Spec: Specs/SPEC-2026-10-09-HF-HOST-ONBOARDING.md */
 
 export type StepKey =
-  | 'welcome' | 'phone' | 'kyc' | 'aadhaar'
+  | 'welcome' | 'phone' | 'aadhaar' | 'selfie' | 'payout'
   | 'avatar' | 'about' | 'languages' | 'topics' | 'price' | 'hours'
   | 'voice' | 'review' | 'generating' | 'preview' | 'done';
 
 export type StepGroup = 'start' | 'verify' | 'profile' | 'voice' | 'finish';
 
 export type Gender = 'woman' | 'man';
+/** What the (mock) UIDAI record says; avatars stay woman/man. */
+export type KycGender = Gender | 'transgender';
 export type AgeBand = '20s' | '30s' | '40s' | '50s+';
 export type AvatarStyle = 'traditional' | 'casual' | 'office';
 
@@ -39,10 +41,13 @@ export interface GeneratedProfile {
 export interface Draft {
   phone: string;               // 10 digits, no +91
   phoneVerified: boolean;
-  kycDone: boolean;
-  kycGender: Gender | null;    // what video KYC reports (mock: chosen on the KYC screen)
+  kycGender: KycGender | null; // gender on the Aadhaar record (mock: chosen on the Aadhaar screen)
   aadhaarDone: boolean;
   aadhaarLast4: string;
+  aadhaarName: string;         // name as read from Aadhaar (payout name must match)
+  selfie: { recorded: boolean; consent: boolean; code: string };
+  /** Never holds the full account number: only the last 4 digits. */
+  payout: { upi: string; accountLast4: string; ifsc: string; nameAtBank: string; verified: boolean };
   avatarId: string | null;
   displayName: string;
   about: string;               // host's own words, 40–500 chars
@@ -66,10 +71,13 @@ export type GenerationStage = 'text' | 'images' | 'voice' | 'conversation' | 'sa
 export interface OnboardingApi {
   sendOtp(phone: string): Promise<{ ok: boolean; error?: string }>;
   verifyOtp(phone: string, code: string): Promise<{ ok: boolean; error?: string }>;
-  /** Mock: resolves after a short delay with the gender passed in. */
-  runVideoKyc(mockGender: Gender): Promise<{ ok: boolean; gender: Gender }>;
   sendAadhaarOtp(aadhaar: string): Promise<{ ok: boolean; error?: string }>;
-  verifyAadhaarOtp(code: string): Promise<{ ok: boolean; last4?: string; error?: string }>;
+  /** Mock: `mockGender` is what the fake UIDAI record returns. */
+  verifyAadhaarOtp(code: string, mockGender: KycGender): Promise<{ ok: boolean; last4?: string; name?: string; gender?: KycGender; age?: number; error?: string }>;
+  /** Mock: stores nothing; the real one uploads the 10-second video and the spoken code. */
+  uploadSelfie(blob: Blob, code: string): Promise<{ ok: boolean }>;
+  /** Mock: penny-drop check. Real one compares nameAtBank with the Aadhaar name. */
+  verifyPayout(input: { upi: string; account: string; ifsc: string }): Promise<{ ok: boolean; nameAtBank?: string; match?: boolean; error?: string }>;
   listAvatars(): Promise<Avatar[]>;
   uploadVoice(blob: Blob, durationSec: number): Promise<{ ok: boolean; url?: string }>;
   generateProfile(draft: Draft, onStage: (stage: GenerationStage) => void): Promise<GeneratedProfile>;

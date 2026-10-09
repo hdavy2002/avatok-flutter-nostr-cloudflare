@@ -28,10 +28,6 @@ export const mockApi: OnboardingApi = {
     if (d.length !== 6 || d === '000000') return { ok: false, error: 'Wrong code. Try again.' };
     return { ok: true };
   },
-  async runVideoKyc(mockGender) {
-    await new Promise(r => setTimeout(r, 2000));
-    return { ok: true, gender: mockGender };
-  },
   async sendAadhaarOtp(aadhaar) {
     await wait();
     const d = digits(aadhaar);
@@ -39,10 +35,19 @@ export const mockApi: OnboardingApi = {
     aadhaarOnFile = d;
     return { ok: true };
   },
-  async verifyAadhaarOtp(code) {
+  async verifyAadhaarOtp(code, mockGender) {
     await wait();
     if (digits(code).length !== 6) return { ok: false, error: 'Wrong code. Try again.' };
-    return { ok: true, last4: aadhaarOnFile.slice(-4) };
+    return { ok: true, last4: aadhaarOnFile.slice(-4), name: 'SEEMA DEVI', gender: mockGender, age: 34 };
+  },
+  async uploadSelfie(_blob, _code) {
+    await wait(700, 1400);
+    return { ok: true };
+  },
+  async verifyPayout({ upi, account, ifsc }) {
+    await wait(900, 1600);
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc) || !/^\d{9,18}$/.test(account) || !upi.includes('@')) return { ok: false, error: 'We could not check these details. Please look at them again.' };
+    return { ok: true, nameAtBank: 'SEEMA DEVI', match: true };
   },
   async listAvatars() {
     await wait(300, 700);

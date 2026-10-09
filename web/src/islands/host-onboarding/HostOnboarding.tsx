@@ -15,8 +15,9 @@ import type { Avatar, Draft, StepAction, StepGroup, StepKey, StepProps } from '.
 const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>> = {
   welcome: lazy(() => import('./steps/WelcomeStep')),
   phone: lazy(() => import('./steps/PhoneStep')),
-  kyc: lazy(() => import('./steps/KycStep')),
   aadhaar: lazy(() => import('./steps/AadhaarStep')),
+  selfie: lazy(() => import('./steps/SelfieStep')),
+  payout: lazy(() => import('./steps/PayoutStep')),
   avatar: lazy(() => import('./steps/AvatarStep')),
   about: lazy(() => import('./steps/AboutStep')),
   languages: lazy(() => import('./steps/LanguagesStep')),
@@ -40,8 +41,9 @@ function isComplete(key: StepKey, d: Draft): boolean {
   switch (key) {
     case 'welcome': return true;
     case 'phone': return d.phoneVerified;
-    case 'kyc': return d.kycDone;
     case 'aadhaar': return d.aadhaarDone;
+    case 'selfie': return d.selfie.recorded && d.selfie.consent;
+    case 'payout': return d.payout.verified;
     case 'avatar': return !!d.avatarId;
     case 'about': return !!d.displayName.trim() && d.about.trim().length >= 40;
     case 'languages': return d.languages.length > 0 && !!d.style;

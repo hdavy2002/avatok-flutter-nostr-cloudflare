@@ -5,8 +5,9 @@ import type { Avatar, Draft, StepGroup, StepKey } from './types';
 export const STEPS: { key: StepKey; group: StepGroup; title: string }[] = [
   { key: 'welcome', group: 'start', title: 'Welcome' },
   { key: 'phone', group: 'verify', title: 'Your WhatsApp number' },
-  { key: 'kyc', group: 'verify', title: 'Video KYC' },
   { key: 'aadhaar', group: 'verify', title: 'Aadhaar check' },
+  { key: 'selfie', group: 'verify', title: 'Selfie video' },
+  { key: 'payout', group: 'verify', title: 'Where we pay you' },
   { key: 'avatar', group: 'profile', title: 'Choose your avatar' },
   { key: 'about', group: 'profile', title: 'About you' },
   { key: 'languages', group: 'profile', title: 'Languages & style' },
@@ -68,13 +69,20 @@ export function contactLeak(text: string): string | null {
 }
 
 export const VOICE_SCRIPT = 'Namaste! Main aapse baat karke khush hoon. Din kaisa raha? Aaram se baithiye, chai ki ek chuski lijiye, aur jo mann mein hai woh boliye. Main sun rahi hoon. Hello, I am happy to talk to you. Take your time — there is no rush, and no judgement here.';
+export const GENDER_LABEL: Record<'woman' | 'man' | 'transgender', string> = { woman: 'Woman', man: 'Man', transgender: 'Transgender' };
+export const SELFIE_SEC = 10;
+export const UPI_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
+export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
 export const VOICE_MIN_SEC = 30;
 export const VOICE_MAX_SEC = 60;
 
 export const EMPTY_DRAFT: Draft = {
   phone: '', phoneVerified: false,
-  kycDone: false, kycGender: null,
-  aadhaarDone: false, aadhaarLast4: '',
+  kycGender: null,
+  aadhaarDone: false, aadhaarLast4: '', aadhaarName: '',
+  selfie: { recorded: false, consent: false, code: '' },
+  payout: { upi: '', accountLast4: '', ifsc: '', nameAtBank: '', verified: false },
   avatarId: null,
   displayName: '', about: '',
   languages: [], style: null,

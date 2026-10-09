@@ -13,6 +13,8 @@ export function loadDraft(): Draft | null {
     return {
       ...EMPTY_DRAFT, ...j,
       hours: { ...EMPTY_DRAFT.hours, ...(j.hours || {}) },
+      selfie: { ...EMPTY_DRAFT.selfie, ...(j.selfie || {}) },
+      payout: { ...EMPTY_DRAFT.payout, ...(j.payout || {}), },
       voice: { ...EMPTY_DRAFT.voice, ...(j.voice || {}) },
       agreements: { ...EMPTY_DRAFT.agreements, ...(j.agreements || {}) },
     };

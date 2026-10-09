@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import Icon from '../Icon';
-import type { StepProps } from '../types';
+import { GENDER_LABEL } from '../data';
+import type { KycGender, StepProps } from '../types';
 
 const group = (d: string) => d.replace(/(\d{4})(?=\d)/g, '$1 ');
 
 export default function AadhaarStep({ draft, update, api, setAction }: StepProps) {
   const [digits, setDigits] = useState('');
   const [code, setCode] = useState('');
+  const [mockGender, setMockGender] = useState<KycGender>(draft.kycGender ?? 'woman');
   const [phase, setPhase] = useState<1 | 2>(1);
   const [error, setError] = useState('');
   const done = draft.aadhaarDone;
@@ -29,22 +31,29 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
       disabled: code.length !== 6,
       run: async () => {
         setError('');
-        const r = await api.verifyAadhaarOtp(code);
+        const r = await api.verifyAadhaarOtp(code, mockGender);
         if (!r.ok) { setError(r.error || 'That OTP is not right. Please try again.'); return false; }
-        update({ aadhaarDone: true, aadhaarLast4: r.last4 || digits.slice(-4) });
-        return true;
+        update({ aadhaarDone: true, aadhaarLast4: r.last4 || digits.slice(-4), aadhaarName: r.name || '', kycGender: r.gender ?? mockGender });
+        return false;
       },
     });
-  }, [done, phase, digits, code, api, update, setAction]);
+  }, [done, phase, digits, code, mockGender, api, update, setAction]);
 
   if (done) {
     return (
       <div>
-        <h1 className="hob-h1">Aadhaar check</h1>
+        <h1 className="hob-h1">Aadhaar verified</h1>
+        <p className="hob-lead">Here is what we read from your Aadhaar through our licensed verification partner.</p>
         <div className="hob-card hob-v-done">
           <span className="hob-v-badge" aria-hidden="true"><Icon name="check" /></span>
-          <p className="hob-v-strong">Aadhaar ending {draft.aadhaarLast4} verified</p>
+          <p className="hob-v-strong">Aadhaar ending {draft.aadhaarLast4}</p>
         </div>
+        <dl className="hob-card hob-v-read">
+          <div><dt>Name</dt><dd>{draft.aadhaarName || '-'}</dd></div>
+          <div><dt>Gender</dt><dd>{draft.kycGender ? GENDER_LABEL[draft.kycGender] : '-'}</dd></div>
+          <div><dt>Age</dt><dd>18 or older ✓</dd></div>
+        </dl>
+        <p className="hob-help">We keep only your name, gender, 18+ result and the last 4 digits. Never the full number.</p>
       </div>
     );
   }
@@ -53,7 +62,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
     return (
       <div>
         <h1 className="hob-h1">Your Aadhaar number</h1>
-        <p className="hob-lead">We send an OTP to the mobile linked with your Aadhaar.</p>
+        <p className="hob-lead">Our licensed verification partner sends an OTP to the mobile linked with your Aadhaar.</p>
         <div className="hob-field">
           <label className="hob-label" htmlFor="hob-v-aadhaar">Aadhaar number</label>
           <input
@@ -83,6 +92,15 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
           onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
         />
         <p id="hob-v-err" className="hob-error" role="alert" aria-live="polite">{error}</p>
+      </div>
+      <div className="hob-v-preview" role="group" aria-labelledby="hob-v-prev">
+        <p className="hob-v-tag">Preview only</p>
+        <p id="hob-v-prev">For this preview, choose the gender the Aadhaar record would show:</p>
+        <div className="hob-v-chips">
+          {(['woman', 'man', 'transgender'] as KycGender[]).map((g) => (
+            <button key={g} type="button" className="hob-chip" aria-pressed={mockGender === g} onClick={() => setMockGender(g)}>{GENDER_LABEL[g]}</button>
+          ))}
+        </div>
       </div>
     </div>
   );

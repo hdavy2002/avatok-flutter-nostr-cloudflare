@@ -34,3 +34,28 @@
 .hob-v-spinner{display:inline-block;width:48px;height:48px;border-radius:50%;border:5px solid #f2ecfc;border-top-color:#ff585c;animation:hob-v-spin 0.9s linear infinite;margin-bottom:16px}
 @keyframes hob-v-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.hob-v-spinner{animation-duration:3s}}
+
+/* Aadhaar read-out, selfie, payout (2026-10-09) */
+.hob-v-read{margin:16px 0;display:grid;gap:4px}
+.hob-v-read div{display:flex;justify-content:space-between;gap:12px;min-height:48px;align-items:center;border-bottom:1px solid #f2ecfc;font-size:16px}
+.hob-v-read div:last-child{border-bottom:0}
+.hob-v-read dt{color:#785979;margin:0}
+.hob-v-read dd{margin:0;color:#46113e;font-weight:800;text-align:right;word-break:break-all}
+.hob-v-codecard{text-align:center;background:#fff4c9;border-color:#ff585c;margin-bottom:16px}
+.hob-v-codelabel{margin:0;font-size:14px;font-weight:700;color:#785979;text-transform:uppercase;letter-spacing:.06em}
+.hob-v-bigcode{margin:4px 0 8px;font-family:'Nunito',sans-serif;font-weight:900;font-size:56px;line-height:1.1;letter-spacing:.18em;color:#46113e}
+.hob-v-say{margin:0;font-size:16px;line-height:1.5;color:#46113e}
+.hob-v-cam{display:grid;gap:14px;margin-bottom:16px}
+.hob-v-stage{position:relative;border-radius:14px;overflow:hidden;background:#46113e;aspect-ratio:3/4;max-height:60vh;margin:0 auto;width:100%;max-width:360px}
+.hob-v-video{width:100%;height:100%;object-fit:cover;display:block;background:#46113e}
+.hob-v-mirror{transform:scaleX(-1)}
+.hob-v-count{position:absolute;inset:0;display:grid;place-items:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:120px;color:#fff;background:#46113e66}
+.hob-v-recbar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;border-radius:999px;background:#fffdf7e6;color:#46113e;font-weight:700;font-size:15px}
+.hob-v-dot{width:12px;height:12px;border-radius:50%;background:#bd2740;animation:hob-v-pulse 1s ease-in-out infinite}
+@keyframes hob-v-pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.hob-v-dot{animation:none}}
+.hob-v-camidle{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0;text-align:center}
+.hob-v-camactions{display:flex;flex-direction:column;align-items:center;gap:6px}
+.hob-v-camactions .hob-btn{width:100%;max-width:360px}
+.hob-v-filebtn{position:relative;cursor:pointer}
+.hob-v-file{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
