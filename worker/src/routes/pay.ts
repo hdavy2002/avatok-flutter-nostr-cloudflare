@@ -40,6 +40,7 @@ import type { GatewayAdapter } from "../lib/payments/types";
 import { track, trackException } from "../hooks";
 import { payAffiliateBountyOnPurchase } from "./affiliate";
 import { bookability } from "../lib/listing_schedule";
+import { isHfTopupId, settleParsedWebhook } from "../lib/hf_topup"; // [HF-TOPUP-1]
 // [MKT-PROMO-GATEWAY-1 / M5] The SAME promo resolution the wallet checkout uses, read from
 // the PRIMARY. Without it this lane quoted list price while the web page advertised the
 // discounted one, and GatewayPicker's drift check refused to open the sheet at all.
@@ -403,6 +404,9 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
 
   const parsed = adapter.parseWebhook(raw);
   if (!parsed) return json({ ok: true, ignored: "unparseable" });
+  // [HF-TOPUP-1] HF wallet top-ups share the gateway's one webhook URL: an `hftop_` order id goes to the top-up settler, before the
+  // booking-side dedupe table, so whichever URL the owner configures in the gateway dashboard credits the wallet.
+  if (isHfTopupId(parsed.our_order_id)) return await settleParsedWebhook(env, adapter, parsed);
   if (!parsed.gateway_payment_id) {
     // No stable payment id to dedupe on yet (e.g. an order-created event before capture).
     // Nothing to provision either — acknowledge and wait for the event that carries one.

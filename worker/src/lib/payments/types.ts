@@ -40,8 +40,9 @@ export interface GatewayAdapter {
     amountPaise: number;
     currency: string;
     uid: string;
-    listingId: string;
-    kind: "live_event" | "consult_1to1";
+    listingId: string; // "" for kind "wallet_topup" (no listing)
+    /** [HF-TOPUP-1] "wallet_topup" = HF wallet top-up; orderId is then an `hftop_…` id and is what each gateway echoes back. */
+    kind: "live_event" | "consult_1to1" | "wallet_topup";
   }): Promise<GatewayOrder | { error: string; status: number }>;
   /** Verify over the RAW body. Must not parse before verifying. */
   verifyWebhook(env: Env, raw: string, headers: Headers): Promise<boolean>;

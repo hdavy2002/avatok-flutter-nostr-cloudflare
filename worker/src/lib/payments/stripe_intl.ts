@@ -58,7 +58,7 @@ export const stripeIntlAdapter: GatewayAdapter = {
     form.set("automatic_payment_methods[enabled]", "true");
     form.set("metadata[our_order_id]", a.orderId);
     form.set("metadata[uid]", a.uid);
-    form.set("metadata[listing_id]", a.listingId);
+    if (a.listingId) form.set("metadata[listing_id]", a.listingId); // [HF-TOPUP-1] empty for wallet_topup
     form.set("metadata[kind]", a.kind);
     let res: Response;
     try {

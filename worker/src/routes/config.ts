@@ -4,6 +4,7 @@
 // reaches every client within ~15 min (RemoteConfig poll) with no APK release.
 import type { Env } from "../types";
 import { json } from "../util";
+import { hfTopupPublic, HF_TOPUP_GATEWAYS } from "../lib/hf_topup_config"; // [HF-TOPUP-1]
 import { isFail, requireUser } from "../authz";
 
 const KEY = "platform_config";
@@ -2087,6 +2088,14 @@ export interface PlatformConfig {
   hostKycEnabled: boolean;
   hostOnboardingEnabled: boolean; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/generate/submit APIs
   hostsPublicEnabled: boolean; // [HF-HOST-PLATFORM-1] live hosts on Explore + /h/<slug>
+  // [HF-TOPUP-1] HF wallet top-up. Its OWN switch: NOT in PERMANENTLY_DISABLED_PAYMENT_FLAGS and not gated by MONEY_IN_DISABLED
+  // (both belong to the retired main-app rails). Real money stays off until the owner sets a gateway AND flips this.
+  // Gateway: "none" | razorpay | cashfree | paytm. Packs: comma list of rupees (string, so flags.sh can set it). Numbers go in numericKeys.
+  hfTopupEnabled: boolean;
+  hfTopupGateway: string;
+  hfTopupPacks: string;
+  hfTopupMinRupees: number;
+  hfTopupMaxRupees: number;
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2838,6 +2847,11 @@ const DEFAULTS: PlatformConfig = {
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
+  hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
+  hfTopupGateway: "none",
+  hfTopupPacks: "100,200,500,1000",
+  hfTopupMinRupees: 50,
+  hfTopupMaxRupees: 5000,
   consultantsEnabled: false, // [AUMFE-CONSULT-FOUNDATION-1] dark until the owner flips it (previewers can use it meanwhile) // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,
@@ -2977,7 +2991,11 @@ export async function getConfig(env: Env): Promise<Response> {
   // only opens party sockets when this is true. Flip via `wrangler secret put
   // PARTY_ENABLED` = "1" once the PartyDO migration (v11) is deployed.
   const partyEnabled = env.PARTY_ENABLED === "1";
-  return json({ ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }), partyEnabled }, 200, {
+  // [HF-TOPUP-1] The browser gets only a derived `hfTopup` block (enabled already means "flag on + gateway chosen + adapter has keys").
+  const merged: Record<string, unknown> = { ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }) };
+  merged.hfTopup = hfTopupPublic(env, merged as any);
+  delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
+  return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
   });
 }
@@ -3144,6 +3162,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-VOICE-RUNTIME-1] numeric — must be here or `flags.sh set voiceAgentMaxSeconds=600` 400s `bad type`.
     "panditHistoryMessages", "panditTopicMaxTurns", "panditDailyMaxMessages", // [AUMFE-PANDIT-COST-1]
     "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
+    "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3154,6 +3173,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "shopPodProvider",
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
+    "hfTopupGateway", "hfTopupPacks", // [HF-TOPUP-1]
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -3189,6 +3209,16 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: "virtualNumberPrimaryProvider must be vobiz or frejun" }, 400);
     }
     // [AGENT-LIVE-1] bounds validation (BUILD SPEC §2/WS-A).
+    // [HF-TOPUP-1]
+    if (k === "hfTopupGateway" && v !== "none" && !(HF_TOPUP_GATEWAYS as readonly string[]).includes(String(v))) {
+      return json({ error: "hfTopupGateway must be none, razorpay, cashfree or paytm" }, 400);
+    }
+    if ((k === "hfTopupMinRupees" || k === "hfTopupMaxRupees") && (!Number.isInteger(v) || (v as number) < 10 || (v as number) > 50000)) {
+      return json({ error: `${k} must be an integer 10-50000` }, 400);
+    }
+    if (k === "hfTopupPacks" && (typeof v !== "string" || !/^\d+(\s*,\s*\d+){0,7}$/.test(v))) {
+      return json({ error: "hfTopupPacks must be a comma list of up to 8 rupee amounts, e.g. 100,200,500" }, 400);
+    }
     if (k === "shopPodProvider" && v !== "manual" && v !== "printrove") {
       return json({ error: "shopPodProvider must be manual or printrove" }, 400);
     }

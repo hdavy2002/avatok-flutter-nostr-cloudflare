@@ -299,6 +299,8 @@ import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLA
 import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
 import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
+import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
+import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
 import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
@@ -487,6 +489,7 @@ export default {
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
+        expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
         recoverAiMediaJobs(env)
           .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
         sweepAvaReadableCopies(env)
@@ -1098,6 +1101,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
+      if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
       if (p.startsWith("/api/hosts/")) { // [HF-HOST-PLATFORM-1]

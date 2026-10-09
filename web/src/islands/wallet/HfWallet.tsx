@@ -1,6 +1,7 @@
 /* [HF-WALLET-1] /wallet: Paid balance (real money) and Test credits (spend-only, never withdrawable), plus recent history.
- * Worker: GET /api/hf/wallet. The empty #hf-topup-slot is where the top-up panel will mount later. */
+ * Worker: GET /api/hf/wallet. [HF-TOPUP-1] TopupPanel (add money) mounts below the balance. */
 import { useEffect, useState } from 'react';
+import TopupPanel from './TopupPanel'; // [HF-TOPUP-1]
 import SessionBridge from '../calls/SessionBridge';
 import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
@@ -44,7 +45,7 @@ export default function HfWallet() {
         <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
       </section>
 
-      <div id="hf-topup-slot" />
+      <TopupPanel onPaid={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
 
       {w.host && (
         <section className="hfc-card" aria-labelledby="hfw-earn">

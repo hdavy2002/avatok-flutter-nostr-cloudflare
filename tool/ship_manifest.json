@@ -9636,5 +9636,22 @@
         "note": "Admin added spend-only test credits (hf_credits)."
       }
     ]
+  },
+  "HF-TOPUP-1": {
+    "description": "[HF-TOPUP-1 2026-10-09] HF wallet top-up through any payment gateway (razorpay, cashfree or paytm adapter): POST /api/hf/wallet/topup, signed webhook /api/hf/wallet/topup/webhook/<gateway> (also reached through /api/pay/<gateway>/webhook), status poll, admin list + reconcile, 24 h expiry cron, Add money panel on /wallet. Credits exactly once (WalletDO op hftop:<id>). Dark behind hfTopupEnabled + hfTopupGateway; needs a gateway's keys and the hf_topups migration. Spec: Specs/HF-WALLET-TOPUP.md.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTopupEnabled",
+      "hfTopupGateway"
+    ],
+    "success": [
+      {
+        "event": "hf_topup_paid",
+        "property": "area",
+        "equals": "hf_topup",
+        "note": "A gateway payment was confirmed and the wallet credited."
+      }
+    ]
   }
 }
