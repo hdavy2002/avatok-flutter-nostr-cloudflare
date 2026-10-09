@@ -9521,5 +9521,38 @@
         "note": "Gemini transcription + contact-detail flagging finished and was saved. ok=false means the admin just listens (no transcript)."
       }
     ]
+  },
+  "HF-RETENTION-1": {
+    "description": "[HF-RETENTION-1 2026-10-09] HF DPDP retention (HF-PRIV-6): daily purge of call records/incidents (1y), KYC OTP ledger (30d), notify (90d), abandoned host drafts and idle lane callers (1y); account deletion (consumers cascade + dark workflow) purges all HF rows and R2 (hf/kyc, hf/selfie, hf/intro, hf/hosts).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_retention_run",
+        "property": "errors",
+        "equals": 0,
+        "note": "Daily run completed without step errors; other props carry per-table counts."
+      }
+    ]
+  },
+  "HF-LANE-VERIFY-1": {
+    "description": "[HF-LANE-VERIFY-1 2026-10-09] HF protected-lane caller verification: /verify/lane (18+ ack, Aadhaar OTP/DigiLocker as lane_caller, private LGBTQ+ declaration), /api/hf/lanes/*, hf_lane_access, ?lane= host lists gated to eligible callers, women-only badge.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_lane_joined",
+        "property": "lane",
+        "in": [
+          "women",
+          "lgbtq"
+        ],
+        "note": "Caller verified and joined a protected lane."
+      }
+    ]
   }
 }

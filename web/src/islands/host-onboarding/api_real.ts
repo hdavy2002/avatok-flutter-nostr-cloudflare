@@ -39,7 +39,7 @@ async function token(): Promise<string | null> {
   return getActiveTokenWaited(6000);
 }
 
-interface Failure extends ApiResult { ok: false; status: number; body: Record<string, unknown> }
+export interface Failure extends ApiResult { ok: false; status: number; body: Record<string, unknown> }
 
 const FRIENDLY: Record<string, string> = {
   not_enabled: 'This is not open yet. Please check back soon.',
@@ -59,7 +59,7 @@ function failure(e: unknown, fallback: string): Failure {
 }
 
 /** [HF-KYC-OTP-FALLBACK-1] Keep the worker's fallback / attemptsLeft / field hints for the Aadhaar step. */
-function otpFailure(r: Failure): ApiResult & { fallback?: 'digilocker'; attemptsLeft?: number } {
+export function otpFailure(r: Failure): ApiResult & { fallback?: 'digilocker'; attemptsLeft?: number } {
   const b = r.body;
   return {
     ok: false, error: r.error, field: r.field, code: r.code,
@@ -68,7 +68,7 @@ function otpFailure(r: Failure): ApiResult & { fallback?: 'digilocker'; attempts
   };
 }
 
-async function call<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown, fallback = 'Something went wrong. Please try again.'): Promise<{ ok: true; data: T } | Failure> {
+export async function call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, fallback = 'Something went wrong. Please try again.'): Promise<{ ok: true; data: T } | Failure> {
   const auth = await token();
   if (!auth) return { ok: false, status: 401, body: {}, error: 'Please sign in again to continue.', code: 'no_session' };
   try {
@@ -130,7 +130,7 @@ interface KycJson {
 interface MeJson { host: HostJson | null; kyc: KycJson; media: MediaJson[]; job: unknown }
 interface StatusJson { status?: string; stages?: Partial<Record<GenerationStage, StageState>>; error?: string }
 
-const kycGender = (g: string | null): KycGender | null => (g === 'F' ? 'woman' : g === 'M' ? 'man' : g === 'T' ? 'transgender' : null);
+export const kycGender = (g: string | null): KycGender | null => (g === 'F' ? 'woman' : g === 'M' ? 'man' : g === 'T' ? 'transgender' : null);
 
 function stagesFrom(s: StatusJson | undefined): StageStates {
   const out = {} as StageStates;

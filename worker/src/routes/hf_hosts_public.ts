@@ -1,10 +1,12 @@
 // [HF-HOST-PLATFORM-1] Public HF host cards. Flag hostsPublicEnabled. Only status='live'. Never exposes uid, KYC, phone, or an unapproved voice intro.
-//   GET /api/hosts/public?limit=&offset=   GET /api/hosts/public/:slug
+//   GET /api/hosts/public?limit=&offset=[&lane=women|lgbtq]   [HF-LANE-VERIFY-1] lane needs a bearer token + lane access (403 lane_required); women-lane hosts carry womenOnly:true in the default list   GET /api/hosts/public/:slug
 import type { Env } from "../types";
 import { json } from "../util";
 import { trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
+import { requireUser, isFail } from "../authz";
+import { parseLane, getLaneAccess } from "../lib/hf_lanes";
 import { parseIntroCaption } from "../lib/hf_intro";
 import { mediaUrl, mediaToJson, type HostRow, type MediaRow } from "../lib/hf_host_store";
 
@@ -28,7 +30,7 @@ function card(env: Env, r: LiveRow) {
   return {
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), pricePerMin: r.price_per_min,
-    rating: null, reviewCount: 0, talkedTo: 0, lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: false,
+    rating: null, reviewCount: 0, talkedTo: 0, lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,
     ...intro(env, r), status: "offline" as const,
   };
 }
@@ -52,8 +54,19 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
     }
     const limit = Math.min(48, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 24)) || 24));
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)) || 0);
-    const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
-    return json(rows.map((r) => card(env, r)), 200, CACHE);
+    // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
+    const laneRaw = url.searchParams.get("lane");
+    const lane = parseLane(laneRaw);
+    if (laneRaw && !lane) return err(400, "bad_lane");
+    let laneWhere = "";
+    if (lane) {
+      const u = await requireUser(req, env);
+      if (isFail(u)) return err(u.status, u.error);
+      if (!(await getLaneAccess(env, u.uid))[lane]) return err(403, "lane_required");
+      laneWhere = lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
+    }
+    const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
+    return json(rows.map((r) => card(env, r)), 200, lane ? { "cache-control": "private, no-store" } : CACHE);
   } catch (e) {
     await trackException(env, e, { route: p, method: "GET", handled: true, app_name: BRAND.slug, extra: { area: "hf_host_public" } });
     return err(500, "internal_error");

@@ -96,6 +96,7 @@ import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
 import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
 import { runPreetiDailyMaintenance } from "./lib/preeti/knowledge"; // [SAATHUM-PREETI-1]
 import { runPreetiChatMaintenance } from "./lib/preeti/maintenance"; // [SAATHUM-PREETI-1]
+import { runHfRetention } from "./lib/hf_retention"; // [HF-RETENTION-1]
 import { runPreetiTranscriptEmails } from "./lib/preeti/transcripts"; // [SAATHUM-PREETI-LEADGATE-1]
 // [SAATHUM-UPI-3LAYER 2026-09-29] Admin review queue + cron sweeps for the 3-layer UPI confirmation.
 import { smsForwarderIncoming, adminForwarderCaptures } from "./routes/sms_forwarder";
@@ -290,8 +291,9 @@ import { mePreview } from "./routes/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
 import { consultRoute } from "./routes/consultants"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants REST
-import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] Hello Fraands host verification (flag hostKycEnabled)
+import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] HF host verification (flag hostKycEnabled)
 import { hfHostsRoute } from "./routes/hf_hosts"; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/submit (flag hostOnboardingEnabled)
+import { hfLanesRoute } from "./routes/hf_lanes"; // [HF-LANE-VERIFY-1] protected-lane caller verification (flag hostKycEnabled)
 import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
 import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLATFORM-1] media generation
 import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
@@ -591,6 +593,10 @@ export default {
         runPreetiChatMaintenance(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_chat_maintenance", handled: true, app_name: "saathum" })); console.error("[preeti-chat-maint] failed:", String(e)); }),
         // [SAATHUM-PREETI-LEADGATE-1 2026-09-30] Email the chat transcript once a conversation has been idle 30 min.
+        // [HF-RETENTION-1 2026-10-09] HF DPDP retention purge (HF-PRIV-6): calls/incidents 1 year, KYC OTP ledger 30 days,
+        // abandoned drafts / closed hosts / idle lane callers 1 year. Self-throttled to once per IST day; each step isolated.
+        runHfRetention(env, ctx)
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "hf_retention", handled: true })); console.error("[hf-retention] failed:", String(e)); }),
         runPreetiTranscriptEmails(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "preeti_transcript_emails", handled: true, app_name: "saathum" })); console.error("[preeti-transcripts] failed:", String(e)); }),
         runAgentLiveSweeps(env)
@@ -1085,6 +1091,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
+      if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
       if (p.startsWith("/api/hosts/")) { // [HF-HOST-PLATFORM-1]
         const r = (await hfHostsPublicRoute(req, env, ctx)) ?? (await hfHostGenerateRoute(req, env, ctx)) ?? (await hfHostsRoute(req, env, ctx));

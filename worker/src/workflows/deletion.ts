@@ -54,6 +54,7 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import type { Env } from "../types";
 import { voicemailR2Prefixes } from "../lib/deletion_prefixes"; // [DEL-VOICEMAIL-R2-1]
+import { purgeHfUser } from "../lib/hf_purge"; // [HF-RETENTION-1]
 
 /** Params a `deletion:<uid>` instance is created with (routes/account.ts, admin_delete_user.ts). */
 export interface DeletionWorkflowParams {
@@ -453,6 +454,16 @@ export class DeletionWorkflow extends WorkflowEntrypoint<Env, DeletionWorkflowPa
     // ---- 8. DB_MODERATION — drop the user's own reports (keep reports filed AGAINST others). ----
     done.push(...await step.do("db_moderation", STEP_RETRY, async () => {
       try { await env.DB_MODERATION.prepare("DELETE FROM user_reports WHERE reporter_npub=?1").bind(uid).run(); return ["db_moderation"]; } catch { return []; }
+    }));
+
+    // ---- 8b. [HF-RETENTION-1] HF call-platform data: KYC/selfie/payout/OTP rows, voice intro + profile media (R2 in
+    // VERIFICATION and BLOBS), host profile, lane access, reviews; releases the catalogue avatar. Call records,
+    // incidents and blocks are NOT deleted here: they are kept 1 year (HF-PRIV-6) and removed by lib/hf_retention.ts.
+    // Throws on a partial failure so the step retries (idempotent); anchor rows survive an R2 failure by design. ----
+    done.push(...await step.do("hf_purge", STEP_RETRY, async () => {
+      const r = await purgeHfUser(env, uid, { scope: "full" });
+      if (r.errors.length) throw new Error(`hf_purge: ${r.errors.join("|")}`);
+      return [`hf_purge:rows=${Object.values(r.counts).reduce((a, b) => a + b, 0)}:r2=${r.r2.verification + r.r2.blobs}`];
     }));
 
     // ---- 9. DB_META — identity, social, settings, verification, deletion bookkeeping. ----

@@ -3,10 +3,10 @@ import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
 <HelloFraandsPage title="Women-only space" summary="Apni baat, apni marzi — pehle privacy aur safety ke niyam samjhein." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/recording-policy',label:'Recording & AI safety'}]}>
-<p><strong>Preview:</strong> this page explains the planned women-only calling lane. Browsing the preview does not verify your identity or activate private calls, number masking, blocking or moderation.</p>
-<h2>Who the planned lane is for</h2>
-<p>All participants must be 18 or older. Both the host and caller must have a verified KYC gender field of F or T (female or transgender). An unverified account cannot enter. This is an eligibility check, not a guarantee of anyone's behaviour.</p>
-<p>Women-lane hosts are planned to appear only in the eligible lane, outside general listings. Calls will use a separate platform number. The public preview is not a private member area: do not upload private stories or identity documents here.</p>
+<p><strong>Caller verification is open.</strong> Browsing this page does not verify you. <a class="hf-lane-cta" href="/verify/lane?lane=women">Verify to enter the women-only space</a> with an Aadhaar check (OTP, or DigiLocker if OTP does not work). Women-only calls, number masking, blocking and moderation are coming soon.</p>
+<h2>Who the lane is for</h2>
+<p>All participants must be 18 or older. Both the host and caller must have a verified Aadhaar gender of female or transgender. An unverified account cannot enter. This is an eligibility check, not a guarantee of anyone's behaviour.</p>
+<p>Women-lane hosts are marked as women-only, and only verified eligible callers can call them. Calls will use a separate platform number. The public preview is not a private member area: do not upload private stories or identity documents here.</p>
 <h2>What you can talk about</h2>
 <p>Everyday life, work, family, relationships and personal experiences are welcome. You may discuss experiences such as periods, PCOS, pregnancy or menopause without being treated as making sexual conversation. Moderation is planned to consider this context. Harassment, sexual pressure and abuse remain reportable. Hosts offer company and listening, not diagnosis, treatment, therapy or counselling.</p>
 <h2>Your boundaries come first</h2>
@@ -32,6 +32,7 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 </div>
 <p>These are separate services, not {BRAND.name} support. See <a href="/emergency">Emergency support</a> or the official <a href="https://112.gov.in/">112</a>, <a href="https://missionshakti.wcd.gov.in/">Mission Shakti</a>, <a href="https://dghs.mohfw.gov.in/national-mental-health-programme.php">Tele-MANAS</a> and <a href="https://www.cybercrime.gov.in/">Cyber Crime Portal</a> pages.</p>
 <style>
+.hf-lane-cta{font-weight:700}
 .hf-before-call{margin:1.5rem 0;padding:1.25rem 1.5rem;border:2px solid #b2367e;border-radius:24px;background:#f3eeff}
 .hf-before-call h2{margin:0 0 .6rem}
 .hf-before-call p{margin:0}

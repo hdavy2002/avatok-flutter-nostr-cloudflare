@@ -24,7 +24,10 @@ const label = document.querySelector<HTMLElement>('[data-selected-mood-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
 const noResultsText = noResults?.querySelector<HTMLElement>('p');
-let womenLane = new URLSearchParams(location.search).get('lane') === 'women';
+// [HF-LANE-VERIFY-1] ?lane=women|lgbtq shows only that lane's hosts (cards LiveHostCards fetched for a verified caller); samples and ordinary hosts are hidden.
+const laneParam = new URLSearchParams(location.search).get('lane');
+let laneMode: 'women' | 'lgbtq' | null = laneParam === 'women' || laneParam === 'lgbtq' ? laneParam : null;
+const laneTitle = { women: 'Women-only space', lgbtq: 'LGBTQ+ space' } as const;
 function filterPeople() {
   let count = 0;
   let liveShown = 0;
@@ -32,18 +35,20 @@ function filterPeople() {
   for (const card of getCards()) {
     const isLive = card.hasAttribute('data-live-host');
     if (isLive) liveExists = true;
-    // Live hosts are hidden in the women-only lane like samples: the public API does not say who opted in.
-    const match = !womenLane && (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
+    // In a lane, only cards fetched for a verified member (data-lane-host) are shown; the other filters still apply to them.
+    const match = (!laneMode || card.hasAttribute('data-lane-host')) && (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
       && (!language?.value || card.dataset.languages?.split(', ').includes(language.value))
       && (!price?.value || Number(card.dataset.price) <= Number(price.value))
       && (!online?.checked || card.dataset.online === 'true');
     card.hidden = !match;
     if (match) { count++; if (isLive) liveShown++; }
   }
-  if (label) { label.hidden = !womenLane && !mood?.value; label.textContent = womenLane ? 'Women-only space preview' : mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
-  if (noResults) noResults.hidden = count > 0;
-  if (noResultsText) noResultsText.textContent = womenLane ? 'Women-only hosts are coming at launch. No verified women-only hosts are shown in this preview.' : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
-  if (status) status.textContent = womenLane ? 'Women-only hosts are coming at launch.' : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
+  const laneState = document.documentElement.dataset.laneState || 'checking'; // set by LiveHostCards: checking | locked | granted | error
+  if (label) { label.hidden = !laneMode && !mood?.value; label.textContent = laneMode ? laneTitle[laneMode] : mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
+  // While locked, LiveHostCards shows its own "Verify to see this space" panel instead of an empty-results message.
+  if (noResults) noResults.hidden = count > 0 || (!!laneMode && (laneState === 'locked' || laneState === 'checking'));
+  if (noResultsText) noResultsText.textContent = laneMode ? (laneState === 'error' ? 'We could not load this space just now. Please try again.' : 'No hosts are in this space yet. Please check back soon.') : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
+  if (status) status.textContent = laneMode ? (laneState === 'locked' ? 'Verify to see this space.' : `${count} ${count === 1 ? 'host' : 'hosts'} shown.`) : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
 }
 for (const select of [mood, language, price]) select?.addEventListener('change', filterPeople);
 online?.addEventListener('change', filterPeople);
@@ -51,8 +56,8 @@ document.addEventListener('hf:people-changed', filterPeople);
 document.querySelectorAll<HTMLButtonElement>('[data-reset-filters]').forEach(button => button.addEventListener('click', () => {
   for (const select of [mood, language, price]) if (select) select.value = '';
   if (online) online.checked = false;
-  if (womenLane) {
-    womenLane = false;
+  if (laneMode) {
+    laneMode = null;
     const url = new URL(location.href);
     url.searchParams.delete('lane');
     history.replaceState(null, '', url);

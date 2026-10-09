@@ -1,10 +1,13 @@
+/* [HF-LANE-VERIFY-1] `?lane=women|lgbtq`: shows only that lane's hosts to a signed-in caller who has joined it (fetched with their bearer token);
+ * everyone else gets a short "Verify to see this space" panel. Lane cards carry data-lane-host so notebookHome.ts keeps them and hides samples. */
 /* [HF-HOST-PLATFORM-1] Real hosts on Explore and the home page.
  * Loads late (client:visible), fetches GET /api/hosts/public and prepends one card per live host into the existing
  * `.people-grid`, with the same markup/classes as components/callvaal/ProfileCard.astro. Renders nothing if the API
  * answers 404 (flag hostsPublicEnabled off), is empty, or fails. The sample cards stay exactly as they are. */
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { API_BASE } from '../../lib/env';
+import { request } from '../../lib/apiClient';
 import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
 import '../../styles/profile-card.css';
@@ -13,6 +16,8 @@ import '../../styles/live-hosts.css';
 interface HostCard {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
   pricePerMin: number; lgbtqFriendly: boolean;
+  /** [HF-LANE-VERIFY-1] Women-lane host: only verified eligible callers can call. */
+  womenOnly?: boolean;
   /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
 }
@@ -20,6 +25,20 @@ const STYLE_LABEL: Record<string, string> = {
   warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
   playful: 'Funny & light', straightforward: 'Straight-talking', thoughtful: 'Gentle & patient',
 };
+const LazyClerkBridge = lazy(() => import('../../lib/clerk').then(m => ({ default: m.ClerkSessionBridge })));
+type LaneName = 'women' | 'lgbtq';
+const LANE_TITLE: Record<LaneName, string> = { women: 'women-only', lgbtq: 'LGBTQ+' };
+function laneFromUrl(): LaneName | null {
+  try { const v = new URLSearchParams(window.location.search).get('lane'); return v === 'women' || v === 'lgbtq' ? v : null; } catch { return null; }
+}
+function looksSignedOut(): boolean {
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+    if (m && m[1] && m[1] !== '0') return false;
+    try { if (localStorage.getItem('saathum_guest_jwt')) return false; } catch { /* ignore */ }
+    return true;
+  } catch { return false; }
+}
 const moodLabel = (slug: string) => moods.find(m => m.slug === slug)?.label ?? slug;
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -62,11 +81,11 @@ function IntroButton({ h }: { h: HostCard }) {
   );
 }
 
-function Card({ h }: { h: HostCard }) {
+function Card({ h, lane }: { h: HostCard; lane?: LaneName | null }) {
   const href = `/h/${h.slug}`;
   return (
     <article
-      className="profile-card hf-live-card" data-live-host={h.slug} data-person data-profile-id={`live-${h.slug}`}
+      className="profile-card hf-live-card" data-live-host={h.slug} {...(lane ? { 'data-lane-host': lane } : {})} data-person data-profile-id={`live-${h.slug}`}
       data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={h.pricePerMin} data-online="false"
       data-search={`${h.displayName} ${h.languages.join(' ')} ${h.topics.map(moodLabel).join(' ')}`}
     >
@@ -85,6 +104,7 @@ function Card({ h }: { h: HostCard }) {
           {h.languages.length > 0 && <div><dt><Icon name="globe" size={25} />Languages</dt><dd>{h.languages.join(', ')}</dd></div>}
           {h.style && <div><dt><Icon name="sparkle" size={25} />Conversation style</dt><dd>{STYLE_LABEL[h.style] ?? h.style}</dd></div>}
         </dl>
+        {h.womenOnly && <ul className="person-moods"><li><Icon name="shield" size={18} /><span>Women-only</span></li></ul>}
         {h.lgbtqFriendly && <ul className="person-moods"><li><Icon name="sparkle" size={18} /><span>LGBTQ+ friendly</span></li></ul>}
         {h.topics.length > 0 && (
           <div className="profile-card-topics">
@@ -95,7 +115,9 @@ function Card({ h }: { h: HostCard }) {
         <div className="profile-card-footer">
           <div className="person-actions">
             <div className="profile-card-price"><strong className="person-price">₹{h.pricePerMin}/min</strong><small>10 min ≈ ₹{h.pricePerMin * 10}</small></div>
-            <button type="button" className="sample-call hf-call-soon" disabled aria-disabled="true"><Icon name="bell" size={22} />Calls open soon</button>
+            {h.womenOnly && !lane
+              ? <a className="sample-call hf-lane-verify" href="/verify/lane?lane=women"><Icon name="shield" size={22} />Verify to call</a>
+              : <button type="button" className="sample-call hf-call-soon" disabled aria-disabled="true"><Icon name="bell" size={22} />Calls open soon</button>}
           </div>
           <a className="profile-card-link" href={href}>View full profile <span aria-hidden="true">→</span></a>
         </div>
@@ -104,11 +126,65 @@ function Card({ h }: { h: HostCard }) {
   );
 }
 
+function LanePanel({ lane }: { lane: LaneName }) {
+  return (
+    <section className="hf-lane-panel" aria-labelledby="hf-lane-panel-title">
+      <h3 id="hf-lane-panel-title">Verify to see this space</h3>
+      <p>The {LANE_TITLE[lane]} space is private. A short, one-time verification opens it for you.</p>
+      <a className="hf-lane-panel-cta" href={`/verify/lane?lane=${lane}`}>Verify to enter</a>
+    </section>
+  );
+}
+
 export default function LiveHostCards() {
   const [hosts, setHosts] = useState<HostCard[]>([]);
   const [mount, setMount] = useState<HTMLElement | null>(null);
+  const lane = useRef<LaneName | null>(laneFromUrl()).current;
+  const [locked, setLocked] = useState(false);
+  const [needBridge, setNeedBridge] = useState(false);
+
+  const mountWrap = (): HTMLElement | null => {
+    const grid = document.querySelector<HTMLElement>('#people .people-grid') ?? document.querySelector<HTMLElement>('.people-grid');
+    if (!grid) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'hf-live-wrap';
+    grid.insertBefore(wrap, grid.firstChild);
+    return wrap;
+  };
+
+  // [HF-LANE-VERIFY-1] Lane view.
+  useEffect(() => {
+    if (!lane) return;
+    let live = true;
+    const state = (v: string) => { document.documentElement.dataset.laneState = v; document.dispatchEvent(new CustomEvent('hf:people-changed')); };
+    const lock = () => { const w = mountWrap(); if (w) setMount(w); setLocked(true); state('locked'); };
+    (async () => {
+      state('checking');
+      try {
+        if (looksSignedOut()) { if (live) lock(); return; }
+        setNeedBridge(true);
+        const { getActiveTokenWaited } = await import('../../lib/clerk');
+        const auth = await getActiveTokenWaited(8000);
+        if (!live) return;
+        if (!auth) { lock(); return; }
+        const list = await request<HostCard[]>('/api/hosts/public', { auth, query: { lane, limit: 24 }, timeoutMs: 15000 });
+        if (!live) return;
+        const w = mountWrap();
+        if (w) setMount(w);
+        setHosts(Array.isArray(list) ? list : []);
+        state('granted');
+      } catch (e) {
+        if (!live) return;
+        const status = (e as { status?: number } | null)?.status;
+        if (status === 403 || status === 401 || status === 404) lock();
+        else state('error');
+      }
+    })();
+    return () => { live = false; };
+  }, [lane]);
 
   useEffect(() => {
+    if (lane) return;
     let live = true;
     (async () => {
       try {
@@ -141,7 +217,9 @@ export default function LiveHostCards() {
   return (
     <>
       <span className="hf-live-sentinel" aria-hidden="true" />
-      {mount && hosts.length > 0 ? createPortal(<>{hosts.map(h => <Card key={h.slug} h={h} />)}</>, mount) : null}
+      {needBridge && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
+      {mount && locked && lane ? createPortal(<LanePanel lane={lane} />, mount) : null}
+      {mount && hosts.length > 0 ? createPortal(<>{hosts.map(h => <Card key={h.slug} h={h} lane={lane} />)}</>, mount) : null}
     </>
   );
 }

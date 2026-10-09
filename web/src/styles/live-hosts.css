@@ -14,3 +14,10 @@
 .hf-live-card .hf-live-intro-btn{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px;border-radius:999px;border:0;background:#f2ecfc;color:#46113e;font:inherit;font-size:1rem;font-weight:700;cursor:pointer;justify-self:start}
 .hf-live-card .hf-live-intro-btn[aria-pressed=true]{background:#46113e;color:#fff}
 .hf-live-card .hf-live-intro-btn:focus-visible{outline:3px solid #7b388c;outline-offset:3px}
+
+/* [HF-LANE-VERIFY-1] Protected-lane panel and the women-only "Verify to call" link */
+.hf-lane-panel{grid-column:1 / -1;padding:20px;border:2px solid #b2367e;border-radius:20px;background:#f3eeff;color:#46113e}
+.hf-lane-panel h3{margin:0 0 8px;font-family:Nunito,sans-serif;font-weight:900;font-size:1.25rem}
+.hf-lane-panel p{margin:0 0 14px;font-size:1rem;line-height:1.5}
+.hf-lane-panel-cta,.hf-live-card .hf-lane-verify{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:999px;background:#9f305e;color:#fff;font-weight:700;font-size:1rem;text-decoration:none}
+.hf-lane-panel-cta:hover,.hf-live-card .hf-lane-verify:hover{background:#7e244a}

@@ -278,7 +278,7 @@ try {
       await womenEntry.click();
       const womenDialog = page.locator('#hf-women-dialog');
       await expect(womenDialog).toBeVisible();
-      await expect(womenDialog.getByRole('button', { name: 'Start verification' })).toBeDisabled();
+      await expect(womenDialog.getByRole('link', { name: 'Start verification' })).toHaveAttribute('href', '/verify/lane?lane=women'); // [HF-LANE-VERIFY-1]
       await womenDialog.getByRole('button', { name: 'Later' }).click();
       await expect(womenDialog).not.toBeVisible();
       await expect(womenEntry).toBeFocused();

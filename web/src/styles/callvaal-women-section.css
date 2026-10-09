@@ -80,3 +80,5 @@
   .hf-women-sticker{border-width:4px}
   .hf-women-sticker--note{bottom:8%;left:0}
 }
+
+.hf-women-dialog-actions .hf-women-start{display:inline-flex;align-items:center;justify-content:center;padding:.75rem 1.25rem;min-height:44px;border-radius:2rem;background:#9f305e;color:#fff;font-weight:700;text-decoration:none}.hf-women-dialog-actions .hf-women-start:hover{background:#7e244a}

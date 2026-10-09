@@ -10,6 +10,7 @@
 // cleanly, so the cascade is correct now and stays correct as later phases add them.
 import type { Env, DeletionMsg } from "./types";
 import { recordDeletionRetention } from "./retention"; // [AVA-IDGATE-1] spec §10.1
+import { purgeHfUser } from "./hf_purge"; // [HF-RETENTION-1] verbatim copy of worker/src/lib/hf_purge.ts
 
 const npubToPubkeyHex = (msg: DeletionMsg) => msg.pubkey_hex ?? null;
 
@@ -298,6 +299,16 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
 
   // 8. DB_MODERATION — drop the user's own reports (keep reports filed AGAINST others).
   try { await env.DB_MODERATION.prepare("DELETE FROM user_reports WHERE reporter_npub=?1").bind(uid).run(); done.push("db_moderation"); } catch { /* optional */ }
+
+  // 8b. [HF-RETENTION-1 2026-10-09] HF call-platform data (HF-PRIV-6): KYC/selfie/payout/OTP rows, voice intro + profile
+  // media (R2 VERIFICATION + BLOBS), host profile, lane access, reviews; releases the catalogue avatar. Call records,
+  // incidents and blocks are kept 1 year and removed by worker/src/lib/hf_retention.ts. Runs BEFORE the users row is
+  // deleted. A partial failure (e.g. R2) throws so the queue redelivers; the anchor rows (hf_kyc/hf_hosts) survive it.
+  {
+    const hf = await purgeHfUser(env, uid, { scope: "full" });
+    if (hf.errors.length) throw new Error(`hf_purge: ${hf.errors.join("|")}`);
+    done.push(`hf_purge:rows=${Object.values(hf.counts).reduce((a, b) => a + b, 0)}:r2=${hf.r2.verification + hf.r2.blobs}`);
+  }
 
   // 9. DB_META — identity, social, settings, verification, deletion bookkeeping last.
   const metaStmts = [

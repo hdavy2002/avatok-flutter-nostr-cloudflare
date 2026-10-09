@@ -1,0 +1,28 @@
+---
+// [HF-LANE-VERIFY-1] Caller verification for the women-only and LGBTQ+ lanes. Standalone page, not indexed; ?lane=women|lgbtq.
+import brandConfig from '../../../../Specs/brand.json';
+import LaneVerify from '../../islands/lanes/LaneVerify';
+import '../../styles/callvaal-notebook.css';
+import '../../styles/host-onboarding/base.css';
+import '../../styles/host-onboarding/verify.css';
+import '../../styles/host-onboarding/finish.css';
+export const prerender = true;
+const identity = brandConfig.homepageIdentity;
+---
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`Verify to enter | ${identity.name}`}</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#46113e" />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <LaneVerify client:only="react" />
+    <noscript><p style="padding:24px;font-family:sans-serif;font-size:1rem">Please turn on JavaScript to verify.</p></noscript>
+  </body>
+</html>
