@@ -1,0 +1,10 @@
+---
+// [HF-WALLET-EXIT-1] Admin: refunds of unused wallet top-ups (back to the original payment) and account-closure refunds.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import HostRefunds from '../../../islands/admin2/hosts/HostRefunds.tsx';
+---
+
+<Admin2 title="Wallet refunds" active="host-refunds" subtitle="Approve refunds to the original payment, retry failures, or mark one paid by hand.">
+  <HostRefunds client:load />
+</Admin2>

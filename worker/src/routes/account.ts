@@ -15,6 +15,7 @@ import { readConfig } from "./config"; // [DYNW-FLOWS-1] deletionWorkflowEnabled
 // purge. Enqueue + retry asynchronously; NEVER blocks canonical deletion (plan §1.1
 // rule 5: an external SaaS can never block account deletion). No-ops without a key.
 import { enqueueMem0Purge } from "../sentinel/purge";
+import { exitGate } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1] pay out real money before the account is deleted
 
 // [ACCT-RELINK-1] Reverted the [TEMP-1H-GRACE] test hack back to the spec's 30-day
 // grace (§10.5). The 1-hour window let the deletion cascade mature and DELETE the
@@ -57,6 +58,23 @@ export async function enqueueDeletion(
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // [HF-WALLET-EXIT-1] Real HF money (paid balance, held earnings, open payout/refund) must be paid out first: deletion is PAUSED and
+  // the user goes to the exit flow (/account/close), which triggers scheduleDeletion() itself once everything is settled.
+  // A wallet that cannot be read for an HF user refuses (503) rather than deleting blind.
+  try {
+    const gate = await exitGate(env, ctx.uid);
+    if (gate.deferred) return json({ scheduled: false, deferred: true, reason: "settle_money_first", exit_url: "/account/close", exit_status: gate.exitStatus }, 409);
+  } catch (e) {
+    console.error("[HF-WALLET-EXIT-1] exit gate failed", ctx.uid, String(e));
+    return json({ error: "try_again", message: "We could not check your wallet. Please try again in a moment." }, 503);
+  }
+  const out = await scheduleDeletion(env, ctx.uid);
+  return json({ scheduled: true, uid: ctx.uid, grace_ends_at: out.scheduled, cancellable: true });
+}
+
+/** Records the deletion request (30-day grace) and enqueues the cascade. Shared by deleteAccount and the HF exit flow. */
+export async function scheduleDeletion(env: Env, uid: string): Promise<{ scheduled: number }> {
+  const ctx = { uid };
   const now = Date.now();
   const scheduled = now + GRACE_MS;
 
@@ -93,7 +111,7 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   try { await enqueueDeletion(env, { uid: ctx.uid, clerk_user_id: ctx.uid, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }
 
   track(env, ctx.uid, "account_deletion_requested", "platform", { scheduled_at: scheduled });
-  return json({ scheduled: true, uid: ctx.uid, grace_ends_at: scheduled, cancellable: true });
+  return { scheduled };
 }
 
 export async function cancelDeletion(req: Request, env: Env): Promise<Response> {

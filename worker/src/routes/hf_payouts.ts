@@ -79,7 +79,7 @@ const publicRow = (r: PayoutRow) => {
   const b = parseSnapshot(r.bank_snapshot);
   return {
     id: r.id, amount: r.amount_rupees, status: r.status, accountLast4: b.accountLast4, ifsc: b.ifsc, utr: r.status === "paid" ? r.utr : null,
-    reason: r.status === "rejected" ? r.reject_reason : null, createdAt: r.created_at, updatedAt: r.updated_at, paidAt: r.paid_at,
+    reason: r.status === "rejected" ? r.reject_reason : null, createdAt: r.created_at, updatedAt: r.updated_at, paidAt: r.paid_at, exit: r.exit === 1,
   };
 };
 
@@ -165,6 +165,7 @@ async function hostCancel(req: Request, env: Env, id: string): Promise<Response>
   const row = await getRow(env, id);
   if (!row || row.host_uid !== u.uid) return err(404, "not_found");
   if (row.status === "cancelled") return json({ ok: true, status: "cancelled", replay: true });
+  if (row.exit === 1) return err(409, "exit_request", "This withdrawal belongs to your account closure. Cancel the closure instead.");
   if (!canCancel(row.status)) return err(409, "not_cancellable", "This request can no longer be cancelled.");
   const r = await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
   if (r.status !== 200) return err(502, "wallet_error", "We couldn't release that money. Please try again.");
@@ -196,7 +197,7 @@ async function adminList(req: Request, env: Env): Promise<Response> {
       return {
         id: r.id, hostUid: r.host_uid, hostName: r.host_name, hostSlug: r.host_slug, amount: r.amount_rupees, status: r.status,
         accountLast4: b.accountLast4, ifsc: b.ifsc, accountName: b.name, withdrawableAtRequest: r.withdrawable_at_request, utr: r.utr,
-        reason: r.reject_reason, adminUid: r.admin_uid, createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,
+        reason: r.reject_reason, adminUid: r.admin_uid, exit: r.exit === 1, createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,
       };
     }),
     counts: Object.fromEntries(counts.map((c) => [c.status, { n: Number(c.n), rupees: Number(c.s) }])),
@@ -270,7 +271,9 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='rejected', reject_reason=?2, admin_uid=?3, updated_at=?4 WHERE id=?1 AND status IN ('requested','approved')").bind(id, reason, a.uid, Date.now()).run();
   if (!up.meta?.changes) return err(409, "invalid_state", "This request changed. Refresh and try again.");
   await audit(env, a.uid, "rejected", id, { host: row.host_uid, amount: row.amount_rupees, reason });
-  notifyHost(env, ctx, row.host_uid, `Your ${BRAND.name} withdrawal of ₹${row.amount_rupees} was not paid: ${reason}. The money is back in your available balance.`);
+  notifyHost(env, ctx, row.host_uid, row.exit === 1
+    ? `Your ${BRAND.name} final withdrawal of ₹${row.amount_rupees} was not paid: ${reason}. Your account closure will continue.`
+    : `Your ${BRAND.name} withdrawal of ₹${row.amount_rupees} was not paid: ${reason}. The money is back in your available balance.`);
   return json({ ok: true, status: "rejected" });
 }
 

@@ -9668,5 +9668,21 @@
         "note": "A host asked to withdraw earnings."
       }
     ]
+  },
+  "HF-WALLET-EXIT-1": {
+    "description": "[HF-WALLET-EXIT-1 2026-10-10] Pay-out-first account closure and refunds of unused HF top-ups. A user with real money cannot delete the account until a final payout (hosts) and/or a refund to the original payment (callers) is paid; held earnings wait for the 7-day hold, then the cron deletes. Refunds: caller asks on /wallet, admin approves, one gateway refund() per top-up slice (newest first, 180 days, unspent part only), or marks it paid by hand with a UTR. New hf_refund_requests and hf_exit_requests tables, /api/hf/wallet/refunds, /api/hf/account/exit, /api/admin/hf/refunds, /account/close, /wallet refund section, admin Wallet refunds page. Refunds dark behind hfRefundsEnabled; the closure gate (hfExitGateEnabled) is on but only acts when real money exists.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfRefundsEnabled",
+      "hfExitGateEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_refund_requested",
+        "property": "amount",
+        "note": "A caller asked for unused top-up money back, or the closure flow created a refund."
+      }
+    ]
   }
 }

@@ -4,11 +4,14 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 <HelloFraandsPage title="Data deletion" summary="Account aur apni jaankari hatane ka anurodh kar sakte hain." review={true} related={[]}>
 <h2>How deletion works</h2>
 <p>When your account deletion is processed, we remove your verification records (KYC details and photo, selfie video, and payout details), your voice intro and your profile media, along with your host profile and any lane access. Reviews you wrote or received are removed too. Your public profile stops being shown.</p>
+<h2>Your money is paid out first</h2>
+<p>If you still have real money in your wallet, we pay it out before we delete your account, so you never lose money by closing it. Unused top-up money is refunded to the payment you used. Host earnings are withdrawn to your verified bank account; earnings still inside the 7-day hold are paid when the hold ends. Test credits are not real money and are simply removed.</p>
+<p>Deletion completes after your money is settled. Each payment is approved by a person, so this can take a few days. You can start it, see its progress, or cancel it (until a payment has been approved) at <a href="/account/close">Close my account</a>. If you have no money to settle, deletion starts straight away and follows the steps below.</p>
 <h2>Requesting deletion</h2>
 <p>The proposed contact is {'{{CONTACT_EMAIL}}'}, which is still a placeholder. Once the service is available, a request should identify the account using its registered contact details. Identity must be verified before deletion. Never email an OTP, Aadhaar number, or KYC document image.</p>
 <h2>What is removed</h2>
 <p>Account deletion removes verification records, voice intro and profile media. Call records (time, length, price, how the call ended) and safety flags are kept for 1 year for safety and legal reasons, then deleted. There are no call recordings to delete, because calls are not recorded.</p>
-<p>Any unused balance must be handled under the final <a href="/refunds">refund terms</a>. Deletion alone does not establish refund eligibility or timing.</p>
+<p>Unused balance is handled as described above and under the <a href="/refunds">refund terms</a>: top-up refunds go back to the original payment within 180 days of paying; older amounts are paid to you by bank transfer when you close your account.</p>
 <h2>Records that may remain</h2>
 <p>No call audio is kept. Call records and safety logs are kept for 1 year, in line with the DPDP Rules 2025, which ask us to keep records for at least one year, and then deleted. Payment records, unresolved disputes, and lawful preservation requests may require different treatment. Any retained records should have restricted access and must not keep a deleted profile publicly active.</p>
 <p>The planned ban mechanism retains a phone-number restriction to prevent re-registration after three confirmed strikes. Its retention and handling of deletion requests must be resolved before launch. The application design stores KYC result flags and provider references, not Aadhaar numbers or document images; providers' own retention also needs to be explained.</p>

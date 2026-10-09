@@ -8,6 +8,7 @@ import { walletOp } from "../routes/wallet";
 import { WALLET_APP } from "./hf_calls_store";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
+import { noteGatewayRefund } from "./hf_refunds"; // [HF-WALLET-EXIT-1]
 
 export const TOPUP_PREFIX = "hftop_";
 export const TOPUP_EXPIRE_MS = 24 * 3600_000;
@@ -130,10 +131,11 @@ export async function settleParsedWebhook(
   const row = await findTopup(env, adapter.id, parsed.our_order_id, parsed.gateway_order_id);
   if (!row) { console.warn("[hf-topup] webhook for unknown top-up", adapter.id, parsed.our_order_id); return Response.json({ ok: true, ignored: "unknown_topup" }); }
   if (parsed.status === "refunded") {
-    // Refunds are handled by hand (no automatic debit of a spent balance). Record it so admin sees it.
-    await env.DB_META.prepare("UPDATE hf_topups SET raw_status='refunded', updated_at=?2 WHERE id=?1").bind(row.id, Date.now()).run().catch(() => undefined);
-    console.warn("[hf-topup] refund webhook, needs manual review", row.id);
-    return Response.json({ ok: true, ignored: "refund_manual" });
+    // [HF-WALLET-EXIT-1] A refund WE started (hf_refund_requests) was already debited once, at consume_reserved: never debit again here.
+    // Anything else is a refund made in the gateway's dashboard: record it so admin sees it; the wallet is not touched.
+    const who = await noteGatewayRefund(env, row.id);
+    if (who === "external") console.warn("[hf-topup] refund webhook not started by us, needs manual review", row.id);
+    return Response.json({ ok: true, ignored: who === "ours" ? "refund_confirmed" : "refund_manual" });
   }
   const out = await settleHfTopup(env, adapter, row, {
     status: parsed.status, amountPaise: parsed.amount_paise, currency: parsed.currency || "INR",

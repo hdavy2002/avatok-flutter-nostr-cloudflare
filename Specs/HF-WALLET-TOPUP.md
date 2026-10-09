@@ -36,7 +36,7 @@ smoke rail, so both are rejected (`hfTopupGateway` falls back to "none"; `flags.
 2. The credit is a WalletDO `credit` (type `hf_topup`, app `hf_call`) with op_id `hftop:<id>`, which the DO dedupes. Only after it
    succeeds does the row become `paid`, `credited=1`. A crash in between is healed by the next webhook/poll/reconcile, never doubled.
 3. Amounts are whole rupees, 1 token = Rs 1, and are fixed server-side from our own row, never from the browser.
-4. Refund webhooks are only recorded (`raw_status='refunded'`) and logged for a person to handle; nothing is debited automatically.
+4. Refund webhooks are only recorded (`raw_status='refunded'`) and logged for a person to handle; nothing is debited automatically. [HF-WALLET-EXIT-1] Refunds WE start (hf_refund_requests, HF-PAY-15) debit the wallet once, when the admin-approved refund is consumed; the matching gateway webhook is then only confirmed, never debited again.
 
 ## How to switch on a gateway
 Do it with TEST keys first. Nothing below is done by code; each step is the owner's.

@@ -2,6 +2,7 @@
  * Worker: GET /api/hf/wallet. [HF-TOPUP-1] TopupPanel (add money) mounts below the balance. */
 import { useEffect, useState } from 'react';
 import TopupPanel from './TopupPanel'; // [HF-TOPUP-1]
+import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
 import SessionBridge from '../calls/SessionBridge';
 import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
@@ -47,6 +48,8 @@ export default function HfWallet() {
 
       <TopupPanel onPaid={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
 
+      <RefundPanel onChanged={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
+
       {w.host && (
         <section className="hfc-card" aria-labelledby="hfw-earn">
           <h2 id="hfw-earn">Host earnings</h2>
@@ -69,6 +72,7 @@ export default function HfWallet() {
           </ul>
         )}
       </section>
+      <p className="hfc-sub"><a href="/account/close">Close my account</a></p>
     </main>
   );
 }

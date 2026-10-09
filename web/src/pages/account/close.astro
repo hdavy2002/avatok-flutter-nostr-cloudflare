@@ -1,0 +1,12 @@
+---
+// [HF-WALLET-EXIT-1] Close my account: pay out real money first, then delete. Signed-in only, not indexed.
+export const prerender = true;
+import Base from '../../layouts/Base.astro';
+import AccountClose from '../../islands/wallet/AccountClose';
+import '../../styles/hf-calls.css';
+import brandConfig from '../../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+---
+<Base title={`Close my account | ${identity.name}`} description="Pay out your money, then close your account." noindex keywords="" lang="en-IN">
+  <AccountClose client:only="react" />
+</Base>

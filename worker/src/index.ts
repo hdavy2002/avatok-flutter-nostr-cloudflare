@@ -49,7 +49,7 @@ import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
 import { brainExport, brainMemoryList, brainMemoryConfirm, brainMemoryCorrect, brainMemoryDelete, brainMemoryExport } from "./routes/brain_export"; // [AVABRAIN-EXPORT-1]
-import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
+import { deleteAccount, cancelDeletion, deletionStatus, scheduleDeletion } from "./routes/account"; // [HF-WALLET-EXIT-1] scheduleDeletion: the exit cron triggers the normal deletion once money is settled
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
 import { listingReview } from "./routes/listing_review";
@@ -302,6 +302,9 @@ import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid ca
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
+import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refunds of unused top-up money (flag hfRefundsEnabled)
+import { hfExitRoute } from "./routes/hf_exit"; // [HF-WALLET-EXIT-1] pay-out-first account closure (flag hfExitGateEnabled)
+import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
 import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
@@ -491,6 +494,7 @@ export default {
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
+        runHfExitCron(env, scheduleDeletion).catch((e) => { console.error("[hf-exit-cron] failed:", String(e)); }), // [HF-WALLET-EXIT-1]
         recoverAiMediaJobs(env)
           .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
         sweepAvaReadableCopies(env)
@@ -1103,6 +1107,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
+      if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
+      if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hosts/me/payouts" || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]

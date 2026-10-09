@@ -2101,6 +2101,12 @@ export interface PlatformConfig {
   hfTopupPacks: string;
   hfTopupMinRupees: number;
   hfTopupMaxRupees: number;
+  // [HF-WALLET-EXIT-1] Refunds of unused top-up money (HF-PAY-15) and the pay-out-first account-closure gate (HF-PAY-14).
+  // hfRefundsEnabled: dark until the owner flips it (the /wallet refund section shows nothing while off). hfRefundWindowDays: NUMERIC.
+  // hfExitGateEnabled: default ON; it only acts when the user has real HF money, so it is safe even while money-in is off.
+  hfRefundsEnabled: boolean;
+  hfRefundWindowDays: number;
+  hfExitGateEnabled: boolean;
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2861,6 +2867,9 @@ const DEFAULTS: PlatformConfig = {
   hfTopupPacks: "100,200,500,1000",
   hfTopupMinRupees: 50,
   hfTopupMaxRupees: 5000,
+  hfRefundsEnabled: false, // [HF-WALLET-EXIT-1] dark until the owner flips it
+  hfRefundWindowDays: 180,
+  hfExitGateEnabled: true,
   consultantsEnabled: false, // [AUMFE-CONSULT-FOUNDATION-1] dark until the owner flips it (previewers can use it meanwhile) // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,
@@ -3172,6 +3181,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "panditHistoryMessages", "panditTopicMaxTurns", "panditDailyMaxMessages", // [AUMFE-PANDIT-COST-1]
     "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
+    "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3227,6 +3237,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfTopupPacks" && (typeof v !== "string" || !/^\d+(\s*,\s*\d+){0,7}$/.test(v))) {
       return json({ error: "hfTopupPacks must be a comma list of up to 8 rupee amounts, e.g. 100,200,500" }, 400);
+    }
+    if (k === "hfRefundWindowDays" && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 3650)) {
+      return json({ error: "hfRefundWindowDays must be an integer 1-3650" }, 400);
     }
     if (k === "shopPodProvider" && v !== "manual" && v !== "printrove") {
       return json({ error: "shopPodProvider must be manual or printrove" }, 400);

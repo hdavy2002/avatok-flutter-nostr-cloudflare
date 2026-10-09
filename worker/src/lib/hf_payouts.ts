@@ -88,6 +88,8 @@ export interface PayoutRow {
   id: string; host_uid: string; amount_rupees: number; status: PayoutStatus; bank_snapshot: string | null; wallet_ref: string | null;
   utr: string | null; reject_reason: string | null; admin_uid: string | null; withdrawable_at_request: number | null;
   created_at: number; updated_at: number; approved_at: number | null; paid_at: number | null;
+  /** [HF-WALLET-EXIT-1] 1 = made by the account-closure flow (no minimum, no weekly cap). Absent before the migration. */
+  exit?: number | null;
 }
 
 export interface Withdrawable {

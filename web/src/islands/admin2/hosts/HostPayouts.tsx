@@ -12,7 +12,7 @@ type Status = 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled';
 interface Item {
   id: string; hostUid: string; hostName: string | null; hostSlug: string | null; amount: number; status: Status;
   accountLast4: string | null; ifsc: string | null; accountName: string | null; withdrawableAtRequest: number | null;
-  utr: string | null; reason: string | null; createdAt: number; paidAt: number | null;
+  utr: string | null; reason: string | null; createdAt: number; paidAt: number | null; exit?: boolean;
 }
 interface Dest { amount: number; accountName: string | null; account: string | null; ifsc: string | null; upi: string | null; upiVerified: boolean }
 interface List { items: Item[]; counts: Record<string, { n: number; rupees: number }> }
@@ -45,11 +45,12 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
   return (
     <div className="card" style={{ background: '#fff', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-        <strong style={{ fontSize: 16 }}>{it.hostName || it.hostSlug || 'Host'}</strong>
+        <strong style={{ fontSize: 16 }}>{it.hostName || it.hostSlug || 'Host'}{it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#f2ecfc', color: '#46113e' }} title="Final payout: this person is closing their account">Exit</span>}</strong>
         <strong style={{ fontSize: 18 }}>{rupees(it.amount)}</strong>
       </div>
       <div style={{ ...T14, display: 'grid', gap: 2 }}>
         <span>Asked {dateIST(it.createdAt)} · could withdraw {rupees(it.withdrawableAtRequest)} at the time</span>
+        {it.exit && <span><strong>Account closure:</strong> the account is deleted automatically once this is paid. Rejecting it also lets the closure finish, so give a clear reason.</span>}
         <span>Bank: {it.accountName || 'name not stored'} · account ending {it.accountLast4 || '—'} · {it.ifsc || '—'}</span>
         {it.status === 'paid' && <span>Paid {dateIST(it.paidAt)} · UTR {it.utr}</span>}
         {it.status === 'rejected' && <span>Reason: {it.reason}</span>}

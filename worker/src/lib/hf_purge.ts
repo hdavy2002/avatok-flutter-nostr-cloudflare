@@ -190,5 +190,22 @@ export async function purgeHfUser(env: HfPurgeEnv, uid: string, opts: HfPurgeOpt
       } else res.skipped.push("hf_payout_requests_absent");
     } catch (e) { res.errors.push(`hf_payout_requests:${String(e).slice(0, 120)}`); }
   }
+  // 5. [HF-WALLET-EXIT-1] Refund requests are financial records too: same rule as payouts. Only REFUNDED rows (money moved) are kept,
+  //    with the uid replaced by a one-way hash; every other row is deleted. Account-closure bookkeeping (hf_exit_requests) is deleted.
+  if (scope === "full") {
+    try {
+      const cols = await tableColumns(env.DB_META, "hf_refund_requests", opts.colsCache);
+      if (cols.includes("uid")) {
+        const d = await env.DB_META.prepare("DELETE FROM hf_refund_requests WHERE uid=?1 AND status<>'refunded'").bind(uid).run();
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hfrefund:${uid}`)))).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+        const a = await env.DB_META.prepare("UPDATE hf_refund_requests SET uid=?2 WHERE uid=?1").bind(uid, `del:${hash}`).run();
+        res.counts["hf_refund_requests"] = Number(d.meta?.changes ?? 0) + Number(a.meta?.changes ?? 0);
+      } else res.skipped.push("hf_refund_requests_absent");
+      const ecols = await tableColumns(env.DB_META, "hf_exit_requests", opts.colsCache);
+      const esql = buildDeleteSql("hf_exit_requests", ecols, ["uid"]);
+      if (esql) { const e = await env.DB_META.prepare(esql).bind(uid).run(); res.counts["hf_exit_requests"] = Number(e.meta?.changes ?? 0); }
+      else res.skipped.push("hf_exit_requests_absent");
+    } catch (e) { res.errors.push(`hf_refund_requests:${String(e).slice(0, 120)}`); }
+  }
   return res;
 }

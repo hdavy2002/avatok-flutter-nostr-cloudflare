@@ -2,13 +2,13 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, type LucideIcon,
+  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'voice-guides' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
-  | 'host-review' | 'host-avatars' | 'host-reviews' | 'host-calls' | 'host-payouts'
+  | 'host-review' | 'host-avatars' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds'
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -50,6 +50,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'host-reviews', label: 'Call reviews', short: 'Call reviews', href: '/admin/hosts/reviews', icon: MessageSquareQuote, group: 'Hosts' },
   { key: 'host-calls', label: 'Calls & credits', short: 'Calls', href: '/admin/hosts/calls', icon: PhoneCall, group: 'Hosts' },
   { key: 'host-payouts', label: 'Host payouts', short: 'Payouts', href: '/admin/hosts/payouts', icon: Banknote, group: 'Hosts' }, // [HF-PAYOUT-1]
+  { key: 'host-refunds', label: 'Wallet refunds', short: 'Refunds', href: '/admin/hosts/refunds', icon: HandCoins, group: 'Hosts' }, // [HF-WALLET-EXIT-1]
   // [AUMFE-HELP-LEGAL-PREVIEW-1] Preview group: hidden-until-gateway help topics and legal sections (admin only).
   { key: 'preview-legal', label: 'Legal preview', short: 'Legal preview', href: '/admin/preview/legal', icon: Scale, group: 'Preview' },
 ];
