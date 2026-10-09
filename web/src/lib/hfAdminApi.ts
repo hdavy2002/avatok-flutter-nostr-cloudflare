@@ -29,6 +29,17 @@ export interface KycItem { selfieId: string; uid: string; selfieUrl: string; pho
 export interface AdminAvatar { id: string; url: string; gender: string; age: string; look: string; status: 'active' | 'retired'; taken: boolean; createdAt: number }
 export interface AvatarJob { id: string; status: string; error: string | null; created_at: number }
 
+/** [HF-CALLS-1] Review moderation + calls list + test credits. Row fields beyond the contract are optional; screens read them defensively. */
+export interface AdminReview {
+  id: string; callId?: string; stars: number; text: string | null; topic: string | null; status?: string; rejectReason?: string | null;
+  createdAt?: number | string | null; hostSlug?: string | null; hostName?: string | null; callerName?: string | null; callerUid?: string | null; hostUid?: string | null; minutes?: number | null;
+}
+export interface AdminCall {
+  id: string; status: string; callerUid?: string; hostUid?: string; hostName?: string | null; hostSlug?: string | null;
+  ratePaise?: number; billedMinutes?: number | null; chargedPaise?: number | null; hostEarningPaise?: number | null; endReason?: string | null;
+  createdAt?: number | string | null;
+}
+
 const e = encodeURIComponent;
 /** Signed media paths come back relative to the API origin. */
 export const apiUrl = (p: string | null | undefined) => (p ? (p.startsWith('http') ? p : `${API_BASE}${p}`) : '');
@@ -52,4 +63,11 @@ export const hfAdminApi = {
   fillAvatars: (target = 4) =>
     adminCall<{ ok: true; jobId?: string; queued: number }>('/api/admin/hf/avatars/fill', { method: 'POST', body: { target } }),
   retireAvatar: (id: string) => adminCall<{ ok: true }>(`/api/admin/hf/avatars/${e(id)}/retire`, { method: 'POST', body: {} }),
+  // [HF-CALLS-1]
+  reviews: async (status: 'pending' | 'approved' | 'rejected' = 'pending') => (await adminCall<{ items: AdminReview[] }>(`/api/admin/hf/reviews?status=${e(status)}`)).items ?? [],
+  decideReview: (id: string, decision: 'approve' | 'reject', reason = '') =>
+    adminCall<{ ok: true }>(`/api/admin/hf/reviews/${e(id)}`, { method: 'POST', body: { decision, reason: reason || undefined } }),
+  calls: async () => (await adminCall<{ items: AdminCall[] }>('/api/admin/hf/calls')).items ?? [],
+  creditWallet: (b: { uid: string; rupees: number; note: string }) =>
+    adminCall<{ ok: true; balanceRupees?: number; balance?: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
 };

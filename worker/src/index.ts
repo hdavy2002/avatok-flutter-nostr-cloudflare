@@ -297,6 +297,10 @@ import { hfLanesRoute } from "./routes/hf_lanes"; // [HF-LANE-VERIFY-1] protecte
 import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
 import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLATFORM-1] media generation
 import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
+import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
+import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
+import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
+import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
 import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -366,6 +370,7 @@ export { CampaignDO } from "./do/campaign_do"; // [AVA-CAMP-B2-WIRE] per-campaig
 export { AgentSeatAuthorityDO } from "./do/agent_seat_authority"; // [AGENT-LIVE-1] single global seat/capacity authority (WS-B)
 export { AgentLiveRoom } from "./do/agent_live_room"; // [AGENT-LIVE-1] per-booking live room DO bridging browser <-> OpenAI gpt-live-1 (WS-E1)
 export { ConsultCallDO } from "./do/consult_call"; // [AUMFE-CONSULT-FOUNDATION-1]
+export { HfCallDO } from "./do/hf_call"; // [HF-CALLS-1] one per HF masked call
 export { VoiceSessionDO } from "./do/voice_session"; // [AUMFE-VOICE-RUNTIME-1] voice guides — browser <-> Gemini Live relay
 // [DYNW-CORE-1] Dynamic Workers capability entrypoints. Top-level exports are
 // REQUIRED so lib/dynw can mint scoped stubs via ctx.exports (enable_ctx_exports)
@@ -481,6 +486,7 @@ export default {
           .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
+        runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
         recoverAiMediaJobs(env)
           .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
         sweepAvaReadableCopies(env)
@@ -1092,12 +1098,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
+      if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
       if (p.startsWith("/api/hosts/")) { // [HF-HOST-PLATFORM-1]
         const r = (await hfHostsPublicRoute(req, env, ctx)) ?? (await hfHostGenerateRoute(req, env, ctx)) ?? (await hfHostsRoute(req, env, ctx));
         if (r) return r;
       }
       if (p.startsWith("/api/admin/hf/hosts") || p.startsWith("/api/admin/hf/avatars")) { const r = await hfHostsAdminRoute(req, env, ctx); if (r) return r; } // [HF-HOST-PLATFORM-1]
+      if (p.startsWith("/api/hf/") || p.startsWith("/api/admin/hf/reviews")) { const r = (await hfReviewsRoute(req, env, ctx)) ?? (await hfNotifyRoute(req, env, ctx)); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"
           || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {

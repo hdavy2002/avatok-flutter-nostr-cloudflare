@@ -10,6 +10,8 @@ import { API_BASE } from '../../lib/env';
 import { request } from '../../lib/apiClient';
 import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
+import HostCallActions from '../calls/HostCallActions';
+import { callsEnabled, type HostPresence } from '../../lib/hfCallsApi';
 import '../../styles/profile-card.css';
 import '../../styles/live-hosts.css';
 
@@ -20,6 +22,8 @@ interface HostCard {
   womenOnly?: boolean;
   /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
+  /** [HF-CALLS-1] From presence (online | busy | offline); rating is the average of approved reviews. */
+  status?: HostPresence; rating?: number | null; reviewCount?: number;
 }
 const STYLE_LABEL: Record<string, string> = {
   warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
@@ -81,23 +85,30 @@ function IntroButton({ h }: { h: HostCard }) {
   );
 }
 
-function Card({ h, lane }: { h: HostCard; lane?: LaneName | null }) {
+const STATUS_TEXT: Record<HostPresence, string> = { online: 'Online', busy: 'On a call', offline: 'Offline' };
+
+function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; callsOn: boolean }) {
   const href = `/h/${h.slug}`;
+  const status: HostPresence = h.status === 'online' || h.status === 'busy' ? h.status : 'offline';
+  const reviews = h.reviewCount ?? 0;
   return (
     <article
       className="profile-card hf-live-card" data-live-host={h.slug} {...(lane ? { 'data-lane-host': lane } : {})} data-person data-profile-id={`live-${h.slug}`}
-      data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={h.pricePerMin} data-online="false"
+      data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={h.pricePerMin} data-online={callsOn && status === 'online' ? 'true' : 'false'}
       data-search={`${h.displayName} ${h.languages.join(' ')} ${h.topics.map(moodLabel).join(' ')}`}
     >
       <div className="portrait-wrap">
         {h.avatarUrl && <img className="person-portrait" src={h.avatarUrl} alt={`${h.displayName}, an AI avatar chosen by the host`} width={1254} height={1254} loading="lazy" />}
         <span className="hf-live-ai">AI avatar chosen by the host</span>
-        <p className="person-status is-offline"><span aria-hidden="true" />Calls open soon</p>
+        {callsOn
+          ? <p className={`person-status ${status === 'online' ? '' : status === 'busy' ? 'is-busy' : 'is-offline'}`}><span aria-hidden="true" />{STATUS_TEXT[status]}</p>
+          : <p className="person-status is-offline"><span aria-hidden="true" />Calls open soon</p>}
       </div>
       <div className="person-copy">
         <div className="profile-card-heading">
           <div className="person-heading"><h3><a className="person-detail-link" href={href}>{h.displayName}</a></h3></div>
         </div>
+        <p className="hfc-rate">{reviews > 0 && h.rating != null ? <><span aria-hidden="true">★</span> <strong>{h.rating.toFixed(1)}</strong> <span>({reviews})</span><span className="sr-only"> rating from {reviews} reviews</span></> : <span className="hfc-new">New</span>}</p>
         <p className="person-tagline">{h.tagline || 'A little time for a good conversation'}</p>
         {h.introAudioUrl && <IntroButton h={h} />}
         <dl className="profile-card-facts">
@@ -115,9 +126,9 @@ function Card({ h, lane }: { h: HostCard; lane?: LaneName | null }) {
         <div className="profile-card-footer">
           <div className="person-actions">
             <div className="profile-card-price"><strong className="person-price">₹{h.pricePerMin}/min</strong><small>10 min ≈ ₹{h.pricePerMin * 10}</small></div>
-            {h.womenOnly && !lane
+            {h.womenOnly && !lane && !callsOn
               ? <a className="sample-call hf-lane-verify" href="/verify/lane?lane=women"><Icon name="shield" size={22} />Verify to call</a>
-              : <button type="button" className="sample-call hf-call-soon" disabled aria-disabled="true"><Icon name="bell" size={22} />Calls open soon</button>}
+              : <HostCallActions variant="card" host={{ slug: h.slug, displayName: h.displayName, pricePerMin: h.pricePerMin, status, womenOnly: h.womenOnly }} />}
           </div>
           <a className="profile-card-link" href={href}>View full profile <span aria-hidden="true">→</span></a>
         </div>
@@ -182,6 +193,8 @@ export default function LiveHostCards() {
     })();
     return () => { live = false; };
   }, [lane]);
+  const [callsOn, setCallsOn] = useState(false);
+  useEffect(() => { let live = true; void callsEnabled().then(v => { if (live) setCallsOn(v); }); return () => { live = false; }; }, []);
 
   useEffect(() => {
     if (lane) return;
@@ -211,7 +224,7 @@ export default function LiveHostCards() {
   useEffect(() => {
     if (!mount || hosts.length === 0) return;
     document.dispatchEvent(new CustomEvent('hf:people-changed'));
-  }, [mount, hosts]);
+  }, [mount, hosts, callsOn]);
 
   // The 1px sentinel gives client:visible something to watch before any card exists.
   return (
@@ -219,7 +232,7 @@ export default function LiveHostCards() {
       <span className="hf-live-sentinel" aria-hidden="true" />
       {needBridge && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
       {mount && locked && lane ? createPortal(<LanePanel lane={lane} />, mount) : null}
-      {mount && hosts.length > 0 ? createPortal(<>{hosts.map(h => <Card key={h.slug} h={h} lane={lane} />)}</>, mount) : null}
+      {mount && hosts.length > 0 ? createPortal(<>{hosts.map(h => <Card key={h.slug} h={h} lane={lane} callsOn={callsOn} />)}</>, mount) : null}
     </>
   );
 }

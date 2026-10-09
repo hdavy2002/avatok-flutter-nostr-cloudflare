@@ -11,8 +11,11 @@ import DetailIcon from '../../components/callvaal/DetailIcon.astro';
 import brandConfig from '../../../../Specs/brand.json';
 import { API_BASE } from '../../lib/config';
 import { moods } from '../../lib/callvaalHomeReference';
+import HostCallActions from '../../islands/calls/HostCallActions';
+import { relDate } from '../../lib/hfCallsApi';
 import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
 import '../../styles/callvaal-detail.css';
+import '../../styles/hf-calls.css';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
@@ -20,6 +23,10 @@ interface Card {
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
   aboutPolished: string | null; quote: string | null;
   gallery: { url: string; caption: string | null }[];
+  /** [HF-CALLS-1] presence + public rating aggregates (reviews agent) */
+  status?: 'online' | 'busy' | 'offline'; womenOnly?: boolean;
+  rating?: number | null; reviewCount?: number; ratingBreakdown?: Record<'5' | '4' | '3' | '2' | '1', number>; talkedTo?: number; regulars?: number;
+  reviews?: { firstName: string; stars: number; text: string; topic: string | null; minutes: number | null; regular: boolean; date: string | number }[];
 }
 const STYLE_LABEL: Record<string, string> = {
   warm: 'Steady & encouraging', energetic: 'Cheerful & chatty', calm: 'Calm listener',
@@ -45,6 +52,13 @@ const name = host?.displayName ?? '';
 const price = host?.pricePerMin ?? 0;
 const topics = (host?.topics ?? []).map(moodLabel);
 const gallery = host?.gallery ?? [];
+const reviewCount = host?.reviewCount ?? 0;
+const rating = host?.rating ?? null;
+const reviews = host?.reviews ?? [];
+const breakdown = host?.ratingBreakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
+const talkedTo = host?.talkedTo ?? 0;
+const regulars = host?.regulars ?? 0;
+const callHost = host ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
 const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
 const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ₹${price}/min. Your number stays private.` : 'This host page is not available.';
@@ -76,6 +90,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               </div>
               <div class="cv-identity">
                 <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
+                <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New host</span>}</p>
                 <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified host ✓</span></span>
                 {audioUrl && (
                   <div class="hf-clip">
@@ -88,7 +103,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               </div>
             </section>
             <p class="cv-sample-disclosure">To protect our hosts’ privacy, the photos on host profiles are AI-generated from an avatar the host chose. The voice introduction is the host’s own recording. The person you talk to on a call is the real, ID-verified host.</p>
-            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
+            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
                 <h2 id="about-heading">About {name}</h2>
@@ -102,6 +117,27 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               <section class="cv-info-card" id="moods" aria-labelledby="moods-heading"><h2 id="moods-heading">Let’s talk <em>about</em></h2><ul class="cv-detail-topics">{topics.map(t => <li><DetailIcon name="chat" /><span>{t}</span></li>)}</ul><p class="cv-mood-note">Pick a topic, bring a story, or just say hello.</p></section>
             </div>
             <p class="cv-service-disclosure">{shortCallDisclaimer}</p>
+            {reviewCount > 0 && rating != null && (
+              <section class="cv-info-card hfc-reviews" id="reviews" aria-labelledby="reviews-heading">
+                <h2 id="reviews-heading">What callers say</h2>
+                <div class="hfc-rev-top">
+                  <div class="hfc-rev-avg"><strong>{rating.toFixed(1)}</strong><span class="hfc-stars" aria-hidden="true">{'★'.repeat(Math.round(rating))}{'☆'.repeat(5 - Math.round(rating))}</span><small>{reviewCount} {reviewCount === 1 ? 'review' : 'reviews'}</small></div>
+                  <ul class="hfc-bars" aria-label="Rating breakdown">
+                    {(['5', '4', '3', '2', '1'] as const).map(n => <li><span>{n} ★</span><span class="hfc-bar"><i style={`width:${Math.round(((breakdown[n] ?? 0) / reviewCount) * 100)}%`}></i></span><span>{breakdown[n] ?? 0}</span></li>)}
+                  </ul>
+                </div>
+                {talkedTo > 0 && <p class="hfc-rev-stat">Talked to {talkedTo} {talkedTo === 1 ? 'person' : 'people'}{regulars > 0 && <> · {regulars} {regulars === 1 ? 'regular' : 'regulars'}</>}</p>}
+                <ul class="hfc-rev-list">
+                  {reviews.map(r => (
+                    <li>
+                      <div class="hfc-rev-head"><strong>{r.firstName || 'A caller'}</strong><span class="hfc-stars" role="img" aria-label={`${r.stars} out of 5 stars`}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>{r.regular && <span class="hfc-tag">Regular</span>}</div>
+                      {r.text && <p>{r.text}</p>}
+                      <div class="hfc-rev-meta">{r.topic && <span class="hfc-tag hfc-tag-soft">{moodLabel(r.topic)}</span>}{r.minutes ? <span>{r.minutes} min call</span> : null}<span>{relDate(r.date)}</span></div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {gallery.length > 0 && (
               <section class="cv-gallery-section" id="gallery" aria-labelledby="gallery-heading">
                 <div class="cv-section-heading"><h2 id="gallery-heading">Gallery</h2><span class="hf-ai-chip">AI images</span></div>
@@ -116,13 +152,13 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
           </div>
           <aside class="cv-booking-rail" aria-label="Call options">
             <div class="cv-booking-card"><strong class="cv-rate">₹{price}/min</strong><p class="cv-rate-estimate">10 min ≈ ₹{price * 10}</p>
-              <button class="cv-call-button hf-call-off" type="button" disabled aria-disabled="true"><ModernIcon name="bell" />Calls open soon</button>
+              {callHost && <HostCallActions client:idle variant="rail" refresh host={callHost} />}
               <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified host</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
             </div>
           </aside>
         </div>
       </main>
-      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>₹{price}/min</strong><small>10 min ≈ ₹{price * 10}</small></div><button class="cv-call-button hf-call-off" type="button" disabled aria-disabled="true"><ModernIcon name="bell" />Calls open soon</button></div>
+      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>₹{price}/min</strong><small>10 min ≈ ₹{price * 10}</small></div>{callHost && <HostCallActions client:idle variant="bar" refresh host={callHost} />}</div>
       <dialog class="cv-detail-dialog cv-gallery-dialog" id="hf-lightbox" aria-labelledby="hf-lightbox-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><span class="hf-ai-chip hf-ai-lb">AI image</span><figcaption id="hf-lightbox-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous picture">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next picture">→</button></div></dialog>
       <script type="application/json" id="hf-gallery-data" set:html={galleryJson} />
     </>

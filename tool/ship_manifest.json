@@ -9554,5 +9554,55 @@
         "note": "Caller verified and joined a protected lane."
       }
     ]
+  },
+  "HF-CALLS-1": {
+    "description": "[HF-CALLS-1 2026-10-09] HF masked paid calls: host rings first (press 1/2), caller dialled on accept, safety notice, Vobiz conference with '#' end-and-block, per-started-minute billing via WalletDO (2-min reserve, host share with hold), host presence + dashboard, admin test credits, call buttons and call flow UI. Dark behind hfCallsEnabled; needs HF_CALL_DID.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_started",
+        "property": "area",
+        "equals": "hf_call",
+        "note": "Caller started a call (host ringing)."
+      },
+      {
+        "event": "hf_call_connected",
+        "property": "max_minutes",
+        "gte": 2,
+        "note": "Both legs joined the conference."
+      },
+      {
+        "event": "hf_call_ended",
+        "property": "billed_minutes",
+        "gte": 1,
+        "note": "Call finished and billed."
+      }
+    ]
+  },
+  "HF-REVIEWS-1": {
+    "description": "[HF-REVIEWS-1 2026-10-09] HF post-call reviews (WhatsApp token link + signed-in), admin moderation, rating aggregates on cards/profiles, and Notify-me WhatsApp when a host comes online. Dark behind hfCallsEnabled.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_review_submitted",
+        "property": "stars",
+        "gte": 1,
+        "note": "Caller reviewed a completed call."
+      },
+      {
+        "event": "hf_notify_sent",
+        "property": "count",
+        "gte": 1,
+        "note": "Notify-me WhatsApp sent when a host came online."
+      }
+    ]
   }
 }

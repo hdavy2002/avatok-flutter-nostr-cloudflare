@@ -1,0 +1,12 @@
+---
+// [HF-CALLS-1] Host dashboard (presence switch, today, recent calls). Signed-in only, not indexed.
+export const prerender = true;
+import Base from '../../layouts/Base.astro';
+import HostDashboard from '../../islands/calls/HostDashboard';
+import '../../styles/hf-calls.css';
+import brandConfig from '../../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+---
+<Base title={`Host dashboard | ${identity.name}`} description="Go online, see your calls and earnings." noindex keywords="" lang="en-IN">
+  <HostDashboard client:only="react" />
+</Base>

@@ -1,0 +1,19 @@
+---
+// [HF-CALLS-1] Rate a finished call from the WhatsApp link. SSR + noindex; the token never goes to analytics or other sites.
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import '../../styles/hf-calls.css';
+import ReviewPage from '../../islands/calls/ReviewPage';
+import brandConfig from '../../../../Specs/brand.json';
+const identity = brandConfig.homepageIdentity;
+const { token } = Astro.params;
+const ok = !!token && /^[A-Za-z0-9_-]{8,128}$/.test(token);
+Astro.response.headers.set('cache-control', 'private, no-store');
+Astro.response.headers.set('referrer-policy', 'no-referrer');
+---
+<Base title={`Rate your call | ${identity.name}`} description="Tell us how your call went." noindex keywords="" lang="en-IN">
+  <Fragment slot="head"><meta name="referrer" content="no-referrer" /></Fragment>
+  {ok
+    ? <ReviewPage client:load token={token!} />
+    : <main class="hfc-page"><h1>This link isn’t valid</h1><p>Please open the link from your WhatsApp message again.</p><a class="hfc-btn hfc-primary" href="/marketplace">Explore hosts</a></main>}
+</Base>

@@ -157,6 +157,7 @@ export interface Env {
   /** [AUMFE-VOICE-RUNTIME-1] voice guide call (browser <-> Gemini Live relay), one DO per call. */
   VOICE_SESSION: DurableObjectNamespace;
   CONSULT_CALL: DurableObjectNamespace; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants 1:1 audio signalling, one per booking
+  HF_CALL: DurableObjectNamespace; // [HF-CALLS-1] HfCallDO: one per masked paid call (state machine, alarms, billing)
   // Durable Object — [AVA-PSTN-AGENT-1] live Gemini agent on CELL (Vobiz DID)
   // calls via bidirectional media streams. One instance per PSTN agent session
   // (`pstn-<CallUUID>`); speaks the Vobiz JSON frame protocol to the caller and
@@ -632,6 +633,8 @@ export interface Env {
   // `wrangler secret put VOBIZ_AUTH_ID` / `VOBIZ_AUTH_TOKEN`.
   VOBIZ_AUTH_ID?: string;
   VOBIZ_AUTH_TOKEN?: string;
+  // [HF-CALLS-1] The one Indian number (E.164) both legs of a masked paid call present. `wrangler secret put HF_CALL_DID`.
+  HF_CALL_DID?: string;
   // [AUMFE-KNOWLEDGE-VECTOR-1] Vectorize indexes for the shared knowledge layer. Optional so the
   // worker runs before the indexes exist (searches then return []).
   VEC_CATALOG?: VectorizeIndex;

@@ -1,0 +1,10 @@
+---
+// [HF-CALLS-1] Admin: moderate caller reviews of hosts.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import CallReviews from '../../../islands/admin2/hosts/CallReviews.tsx';
+---
+
+<Admin2 title="Call reviews" active="host-reviews" subtitle="Reviews show on a host's page only after you approve them.">
+  <CallReviews client:load />
+</Admin2>

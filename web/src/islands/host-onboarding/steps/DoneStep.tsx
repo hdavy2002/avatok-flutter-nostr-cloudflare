@@ -25,7 +25,7 @@ export default function DoneStep({ setAction, api }: StepProps) {
           <li><Icon name="shield" /> You can decline any call.</li>
         </ul>
       </section>
-      <a className="hob-btn hob-btn-primary hob-f-full" href="/dashboard/profile">Go to dashboard</a>
+      <a className="hob-btn hob-btn-primary hob-f-full" href="/hosts/dashboard">Go to my host dashboard</a>
       {api.mode === 'mock' && <button type="button" className="hob-btn hob-btn-ghost hob-f-full" onClick={restart}>Start the preview again</button>}
     </div>
   );

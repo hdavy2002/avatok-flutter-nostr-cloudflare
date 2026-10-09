@@ -49,6 +49,7 @@ works; the backend must be built to match these rules before calls go live.
 | HF-CALL-3 | No app needed: calls come to the normal phone number. Wallet, favourites and history live on the website. | ADOPTED | DONE | TODO |
 | HF-CALL-4 | Either person can hang up any time. **#** at any time ends the call, blocks the other person and reports the incident. | ADOPTED | DONE | TODO |
 | HF-CALL-5 | Both people hear a short **safety notice** before connecting (not a recording notice). Proposed wording: *"This is a friendly chat, not counselling. In crisis, dial 14416."* | ADOPTED (wording PROPOSED) | DONE (wording in terms) | TODO |
+| HF-CALL-6 | **Notify me, no queue** (owner decision 2026-10-09). When a host is busy or offline, the caller sees "Busy — Notify me" / "Offline — Notify me". We send one WhatsApp when the host goes online (at most one per 24 h per caller), then the subscription ends. Nobody waits in a line. If a host declines or misses a call, the caller is offered the same Notify me. | ADOPTED | DONE (HF-CALLS-1, behind hfCallsEnabled) | TODO (HF-CALLS-1) |
 
 ## 3. Privacy and recording
 
@@ -99,6 +100,7 @@ works; the backend must be built to match these rules before calls go live.
 | HF-PAY-5 | Unused wallet balance is always the user's: withdraw to own UPI ID any time (also after a ban, before deleting the account). | ADOPTED | DONE | TODO |
 | HF-PAY-6 | Platform share per minute: ₹2 + 40% of the amount above ₹2, 18% GST included in the platform share. ₹5 → host ₹1.80; ₹10 → ₹4.80; ₹20 → ₹10.80; ₹30 → ₹16.80. Host earnings paid to a UPI ID in the host's own name. Payout minimum and timing not decided. | ADOPTED | DONE | TODO |
 | HF-PAY-7 | **Daily spending limit** for callers, and an "Are you sure?" step on large top-ups (money trouble is a risk factor). Amounts to be decided. | PROPOSED | DONE (described as coming at launch) | TODO |
+| HF-PAY-8 | **Test credits before real top-up** (owner decision 2026-10-09). Until money-in is built, the only way to get balance is credits added by an admin (₹1–2000 each, logged). The call screen says "Test credits only for now". Real UPI top-up (HF-PAY-1) comes later and stays off until then. | ADOPTED | DONE (HF-CALLS-1, admin form + call screen) | TODO (HF-CALLS-1) |
 
 ## 8. Wellbeing, mental health and attachment (added 2026-10-08)
 
@@ -262,6 +264,7 @@ else, or come back later."
 | Date | Change |
 |---|---|
 | 2026-10-09 | HF-PRIV-6 backend DONE (HF-RETENTION-1): daily purge deletes call records and safety incidents after 1 year, KYC OTP ledger after 30 days, notifications after 90 days, abandoned host drafts and idle lane callers after 1 year; account deletion now removes all verification records, voice intro and profile media. |
+| 2026-10-09 | HF-CALLS-1 (web): call button + call flow, Notify me (HF-CALL-6) and test credits (HF-PAY-8) added; host dashboard /hosts/dashboard, review page /review/<token>, ratings on cards and profile pages, admin call reviews and calls/credits pages. All behind hfCallsEnabled. |
 | 2026-10-09 | HF-KYC-1 changed: Aadhaar OTP → DigiLocker (owner decision; UIDAI deprecated OKYC). Site copy updated on /hosts/kyc, /hosts/join, /privacy, /lgbtq, women-only dialog and help articles; HF-WOM-2, HF-HOST-1, HF-LGBT-3 wording follows. Everything else in KYC unchanged. |
 | 2026-10-09 | Section 13 added (HF-DPDP-COPY-1): India KYC = WasenderAPI WhatsApp OTP + Sandbox.co.in Aadhaar OTP + own selfie video + UPI/bank check; Didit kept for international. Only last 4 Aadhaar digits kept. DPDP Act 2023 wording on /hosts/kyc, /privacy, FAQ, new help article. AI-avatar rules, one price, LGBTQ+ lane (new /lgbtq page, footer link). HF-HOST-1 and HF-WOM-2 updated (Didit removed). |
 | 2026-10-09 | HF-KYC-1 changed: Aadhaar OTP first, DigiLocker as fallback (owner decision). Web onboarding Aadhaar step is two-mode; site copy and HF-KYC-2/4, HF-WOM-2, HF-HOST-1, HF-LGBT-3 wording follow. |

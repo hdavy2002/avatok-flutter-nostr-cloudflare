@@ -29,6 +29,8 @@ const JOIN_LINK_RE = /^\/api\/join-link\/[^/]+\/session$/;
 function normalizeEndpoint(path: string): string {
   const clean = path.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
   if (JOIN_LINK_RE.test(clean)) return '/api/join-link/:token/session';
+  // [HF-CALLS-1] A review link token is a bearer secret too.
+  if (/^\/api\/hf\/review\/[^/]+$/.test(clean)) return '/api/hf/review/:token';
   return clean
     .split('/')
     .map((seg) => (UUID_RE.test(seg) || ID_LIKE_RE.test(seg) ? ':id' : seg))

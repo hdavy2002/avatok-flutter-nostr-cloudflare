@@ -2081,12 +2081,13 @@ export interface PlatformConfig {
   // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants (human astrologers etc., paid 1:1 audio). While false only previewers
   // (ADMIN_UIDS / AGENT_ADMIN_UIDS) see /consultants and can book. Boolean -> NOT in numericKeys.
   consultantsEnabled: boolean;
-  // [HF-HOST-KYC-1 2026-10-09] Hello Fraands real host verification backend (Aadhaar OTP via Sandbox.co.in,
+  // [HF-HOST-KYC-1 2026-10-09] HF real host verification backend (Aadhaar OTP via Sandbox.co.in,
   // selfie-video liveness, payout bank/UPI check) — routes/hf_host_kyc.ts. Default OFF: every route answers
   // 404 not_enabled until the owner flips it (after SANDBOX_* / HF_PII_KEY secrets + migration are in).
   hostKycEnabled: boolean;
   hostOnboardingEnabled: boolean; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/generate/submit APIs
   hostsPublicEnabled: boolean; // [HF-HOST-PLATFORM-1] live hosts on Explore + /h/<slug>
+  hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -2836,6 +2837,7 @@ const DEFAULTS: PlatformConfig = {
   hostKycEnabled: false, // [HF-HOST-KYC-1] dark until the owner flips it
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
+  hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   consultantsEnabled: false, // [AUMFE-CONSULT-FOUNDATION-1] dark until the owner flips it (previewers can use it meanwhile) // [AUMFE-GUIDE-BRAIN-1] dark until the owner flips it (admins can test meanwhile)
   panditHistoryMessages: 8, // [AUMFE-PANDIT-COST-1]
   panditTopicMaxTurns: 20,

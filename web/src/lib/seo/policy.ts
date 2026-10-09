@@ -14,6 +14,8 @@ const PRIVATE_PREFIXES = [
   // [WEB-SEO-REBRAND-1 2026-09-27] Creator profile pages: no outside creators any
   // more, and profiles name real people. Never indexed.
   '/c',
+  // [HF-CALLS-1] Review links carry a private token.
+  '/review',
 ];
 
 const PRIVATE_EXACT = new Set([
@@ -21,6 +23,8 @@ const PRIVATE_EXACT = new Set([
   '/pricing-preview', '/landing-steps-preview', '/global-next', '/india-next',
   // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Per-visitor checkout: never indexed.
   '/shop/checkout',
+  // [HF-CALLS-1] Host dashboard: signed-in only.
+  '/hosts/dashboard',
 ]);
 
 const PUBLIC_EXACT = new Set([

@@ -577,6 +577,12 @@ class_name = "VoiceSessionDO"
 name = "CONSULT_CALL"
 class_name = "ConsultCallDO"
 
+# [HF-CALLS-1] Hello Fraands masked paid call, one per call (idFromName(callId)): state machine, alarms (60 s warning, time limit), billing.
+# DARK behind hfCallsEnabled (routes/config.ts).
+[[durable_objects.bindings]]
+name = "HF_CALL"
+class_name = "HfCallDO"
+
 # [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
 # Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
 # `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
@@ -732,6 +738,11 @@ new_sqlite_classes = ["VoiceSessionDO"]
 [[migrations]]
 tag = "v26"
 new_sqlite_classes = ["ConsultCallDO"]
+
+# [HF-CALLS-1] Hello Fraands call DO.
+[[migrations]]
+tag = "v27"
+new_sqlite_classes = ["HfCallDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -1134,6 +1145,11 @@ class_name = "VoiceSessionDO"
 name = "CONSULT_CALL"
 class_name = "ConsultCallDO"
 
+# [HF-CALLS-1] Hello Fraands call DO.
+[[env.staging.durable_objects.bindings]]
+name = "HF_CALL"
+class_name = "HfCallDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -1244,3 +1260,8 @@ new_sqlite_classes = ["VoiceSessionDO"]
 [[env.staging.migrations]]
 tag = "v26"
 new_sqlite_classes = ["ConsultCallDO"]
+
+# [HF-CALLS-1] Hello Fraands call DO.
+[[env.staging.migrations]]
+tag = "v27"
+new_sqlite_classes = ["HfCallDO"]
