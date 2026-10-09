@@ -1,0 +1,10 @@
+---
+// [HF-PAYOUT-1] Admin: HF host withdrawals (approve, pay by hand, enter the UTR).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import HostPayouts from '../../../islands/admin2/hosts/HostPayouts.tsx';
+---
+
+<Admin2 title="Host payouts" active="host-payouts" subtitle="Approve withdrawals, pay the host yourself, then enter the bank reference.">
+  <HostPayouts client:load />
+</Admin2>

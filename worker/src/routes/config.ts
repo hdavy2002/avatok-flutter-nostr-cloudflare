@@ -2086,6 +2086,11 @@ export interface PlatformConfig {
   // selfie-video liveness, payout bank/UPI check) — routes/hf_host_kyc.ts. Default OFF: every route answers
   // 404 not_enabled until the owner flips it (after SANDBOX_* / HF_PII_KEY secrets + migration are in).
   hostKycEnabled: boolean;
+  // [HF-PAYOUT-1 2026-10-09] HF host withdrawals (manual: request -> admin approves -> owner pays by bank/UPI and enters the UTR). routes/hf_payouts.ts. Default OFF.
+  hfPayoutsEnabled: boolean;
+  hfPayoutMinRupees: number; // smallest withdrawal, whole rupees
+  hfPayoutHoldDays: number; // informational: the real 7-day hold is WalletDO HOLD_MS
+  hfPayoutMaxPerWeek: number; // most OPEN (requested/approved) requests a host may have at once
   hostOnboardingEnabled: boolean; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/generate/submit APIs
   hostsPublicEnabled: boolean; // [HF-HOST-PLATFORM-1] live hosts on Explore + /h/<slug>
   // [HF-TOPUP-1] HF wallet top-up. Its OWN switch: NOT in PERMANENTLY_DISABLED_PAYMENT_FLAGS and not gated by MONEY_IN_DISABLED
@@ -2844,6 +2849,10 @@ const DEFAULTS: PlatformConfig = {
   guidesPublic: false, // [AUMFE-PREVIEW-GATE-1] dark until a payment gateway approves; previewers see it meanwhile
   panditChatEnabled: false,
   hostKycEnabled: false, // [HF-HOST-KYC-1] dark until the owner flips it
+  hfPayoutsEnabled: false, // [HF-PAYOUT-1] dark until the owner flips it
+  hfPayoutMinRupees: 500,
+  hfPayoutHoldDays: 7,
+  hfPayoutMaxPerWeek: 2,
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it

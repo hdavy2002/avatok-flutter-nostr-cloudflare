@@ -3,6 +3,7 @@
  * Calls list is read defensively (array, or {items|calls, today?}); see the report for the assumed row fields. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SessionBridge from './SessionBridge';
+import WithdrawPanel from './WithdrawPanel'; // [HF-PAYOUT-1]
 import { API_BASE } from '../../lib/env';
 import { callsEnabled, fetchWallet, hfCall, inr, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
@@ -184,6 +185,8 @@ export default function HostDashboard() {
           <p className="hfc-sub" style={{ margin: 0 }}><a href="/wallet">See wallet and history</a></p>
         </section>
       )}
+
+      <WithdrawPanel onChanged={() => void loadCalls()} />
 
       <section className="hfc-card" aria-labelledby="hfc-recent">
         <h2 id="hfc-recent">Recent calls</h2>

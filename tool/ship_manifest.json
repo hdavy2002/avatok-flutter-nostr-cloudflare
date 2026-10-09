@@ -9653,5 +9653,20 @@
         "note": "A gateway payment was confirmed and the wallet credited."
       }
     ]
+  },
+  "HF-PAYOUT-1": {
+    "description": "[HF-PAYOUT-1 2026-10-09] Manual HF host withdrawals: host requests (min Rs500, paid-funded earnings past the 7-day hold only), admin approves, owner pays by bank/UPI and enters the UTR. Amount is reserved in the WalletDO and consumed on paid / released on reject or cancel. New hf_payout_requests table, /api/hosts/me/payouts and /api/admin/hf/payouts routes, WithdrawPanel on the host dashboard, admin Host payouts page. Dark behind hfPayoutsEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPayoutsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_payout_requested",
+        "property": "amount",
+        "note": "A host asked to withdraw earnings."
+      }
+    ]
   }
 }

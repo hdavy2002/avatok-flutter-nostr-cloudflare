@@ -176,5 +176,19 @@ export async function purgeHfUser(env: HfPurgeEnv, uid: string, opts: HfPurgeOpt
       res.counts[spec.table] = Number(r.meta?.changes ?? 0);
     } catch (e) { res.errors.push(`${spec.table}:${String(e).slice(0, 120)}`); }
   }
+  // 4. [HF-PAYOUT-1] Withdrawal requests are FINANCIAL records. The retention rulebook is silent, so: rows that never moved money
+  //    (requested/approved/rejected/cancelled) are deleted; PAID rows keep amount, UTR and dates (tax/audit, kept 8 years) but lose
+  //    the identity: host_uid becomes a one-way hash and the bank snapshot (name, IFSC, last 4) is blanked. Idempotent.
+  if (scope === "full") {
+    try {
+      const cols = await tableColumns(env.DB_META, "hf_payout_requests", opts.colsCache);
+      if (cols.includes("host_uid")) {
+        const d = await env.DB_META.prepare("DELETE FROM hf_payout_requests WHERE host_uid=?1 AND status<>'paid'").bind(uid).run();
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hfpayout:${uid}`)))).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+        const a = await env.DB_META.prepare("UPDATE hf_payout_requests SET host_uid=?2, bank_snapshot='{}' WHERE host_uid=?1").bind(uid, `del:${hash}`).run();
+        res.counts["hf_payout_requests"] = Number(d.meta?.changes ?? 0) + Number(a.meta?.changes ?? 0);
+      } else res.skipped.push("hf_payout_requests_absent");
+    } catch (e) { res.errors.push(`hf_payout_requests:${String(e).slice(0, 120)}`); }
+  }
   return res;
 }
