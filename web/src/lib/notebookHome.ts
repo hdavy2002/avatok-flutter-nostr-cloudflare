@@ -7,9 +7,10 @@ const mood = document.querySelector<HTMLSelectElement>('#mood-filter');
 const language = document.querySelector<HTMLSelectElement>('#language-filter');
 const price = document.querySelector<HTMLSelectElement>('#price-filter');
 const online = document.querySelector<HTMLInputElement>('#online-filter');
-const cards = [...document.querySelectorAll<HTMLElement>('[data-person]')];
+// Read fresh every time: real host cards are portalled in late by LiveHostCards [HF-HOST-POLISH-1].
+const getCards = () => [...document.querySelectorAll<HTMLElement>('[data-person]')];
 // Preview samples are intentionally memory-only, reset on navigation/reload.
-const favourites = new Set(cards.filter(card => card.dataset.previewFavourite === 'true').map(card => card.dataset.profileId!));
+const favourites = new Set(getCards().filter(card => card.dataset.previewFavourite === 'true').map(card => card.dataset.profileId!));
 const favouriteButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-favourite]')];
 function renderFavouriteButtons() {
   for (const button of favouriteButtons) {
@@ -26,21 +27,27 @@ const noResultsText = noResults?.querySelector<HTMLElement>('p');
 let womenLane = new URLSearchParams(location.search).get('lane') === 'women';
 function filterPeople() {
   let count = 0;
-  for (const card of cards) {
+  let liveShown = 0;
+  let liveExists = false;
+  for (const card of getCards()) {
+    const isLive = card.hasAttribute('data-live-host');
+    if (isLive) liveExists = true;
+    // Live hosts are hidden in the women-only lane like samples: the public API does not say who opted in.
     const match = !womenLane && (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
       && (!language?.value || card.dataset.languages?.split(', ').includes(language.value))
       && (!price?.value || Number(card.dataset.price) <= Number(price.value))
       && (!online?.checked || card.dataset.online === 'true');
     card.hidden = !match;
-    if (match) count++;
+    if (match) { count++; if (isLive) liveShown++; }
   }
   if (label) { label.hidden = !womenLane && !mood?.value; label.textContent = womenLane ? 'Women-only space preview' : mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
   if (noResults) noResults.hidden = count > 0;
-  if (noResultsText) noResultsText.textContent = womenLane ? 'Women-only hosts are coming at launch. No verified women-only hosts are shown in this preview.' : 'No sample profiles match those filters.';
-  if (status) status.textContent = womenLane ? 'Women-only hosts are coming at launch.' : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
+  if (noResultsText) noResultsText.textContent = womenLane ? 'Women-only hosts are coming at launch. No verified women-only hosts are shown in this preview.' : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
+  if (status) status.textContent = womenLane ? 'Women-only hosts are coming at launch.' : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
 }
 for (const select of [mood, language, price]) select?.addEventListener('change', filterPeople);
 online?.addEventListener('change', filterPeople);
+document.addEventListener('hf:people-changed', filterPeople);
 document.querySelectorAll<HTMLButtonElement>('[data-reset-filters]').forEach(button => button.addEventListener('click', () => {
   for (const select of [mood, language, price]) if (select) select.value = '';
   if (online) online.checked = false;

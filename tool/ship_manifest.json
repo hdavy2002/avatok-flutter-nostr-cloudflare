@@ -9482,5 +9482,22 @@
       }
     ],
     "_verified_at": "worker/src/routes/hf_host_kyc.ts emit() call sites: hf_kyc_aadhaar_otp_sent {ok:true,role}, hf_kyc_aadhaar_verified {method:'otp'|'digilocker'} via storeVerifiedKyc. Not yet exercised against live Sandbox; tsc clean 2026-10-09."
+  },
+  "HF-AVATAR-FILL-1": {
+    "description": "[HF-AVATAR-FILL-1 2026-10-09] Hello Fraands AI image generation made resilient: each avatar / host gallery image is its own durable Workflow step with real retries (4, exponential from 20 s; content_blocked is fatal; failures reported to PostHog). New admin 'Fill catalogue to 4 each' (POST /api/admin/hf/avatars/fill) runs one sequential avatar_batch job with a 10 s pause between images.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "success": [
+      {
+        "event": "hf_avatar_generated",
+        "property": "ok",
+        "equals": true,
+        "note": "Emitted per avatar successfully generated and stored by AvatarBatchWorkflow; failures emit $exception {area:hf_avatar_batch}."
+      }
+    ]
+  },
+  "HF-HOST-POLISH-1": {
+    "description": "[HF-HOST-POLISH-1 2026-10-09] Live host cards join the Explore/home filters (data-person attrs + hf:people-changed re-filter); DigiLocker link-back for the future Capacitor app (in-app browser, /hosts/kyc/return, custom scheme, Specs/HF-APP-DEEPLINK.md).",
+    "no_telemetry": "Filter wiring and app link-back plumbing; existing hf_kyc_* events measure verification success."
   }
 }

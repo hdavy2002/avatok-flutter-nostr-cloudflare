@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';
 import { GENDER_LABEL } from '../data';
+import { isNativeApp, openAuthInApp } from '../../../lib/nativeBridge';
 import { capture } from '../../../lib/analytics';
 import { clearDigilockerPending, digilockerReturning, markDigilockerPending, stripDlParam } from '../storage';
 import type { KycGender, StepProps } from '../types';
@@ -13,6 +14,7 @@ import type { KycGender, StepProps } from '../types';
 type Phase = 'idle' | 'starting' | 'checking' | 'pending' | 'error';
 type Mode = 'otp' | 'digilocker';
 type Via = 'fallback' | 'link' | 'direct';
+const NATIVE_RETURN_PATH = '/hosts/kyc/return?app=1';
 const AUTO_RETRY_MS = 3000;
 const RESEND_SECONDS = 30;
 const group = (d: string) => d.replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -43,6 +45,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
   const ran = useRef(false);
   const autoRetried = useRef(false);
   const live = useRef(true);
+  const stopAuth = useRef<(() => void) | null>(null);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
 
   const finish = useCallback((r: { last4?: string; name?: string; gender?: KycGender | null }, src: 'otp' | 'digilocker' = 'digilocker') => {
@@ -73,7 +76,8 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
   const start = useCallback(async (): Promise<boolean> => {
     setError(''); setPhase('starting');
     track('hf_kyc_digilocker_clicked', { mode: api.mode, via: via.current });
-    const r = await api.digilockerStart(true);
+    const native = isNativeApp();
+    const r = await api.digilockerStart(true, native ? NATIVE_RETURN_PATH : undefined);
     if (!live.current) return false;
     if (!r.ok) { setPhase('error'); setError(r.error || 'We could not open DigiLocker right now. Please try again.'); setCanRecheck(false); return false; }
     if (r.alreadyVerified) {
@@ -82,13 +86,20 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
     }
     if (r.url) {
       markDigilockerPending();
-      window.location.assign(r.url); // full page on purpose: works inside the app wrapper too
+      if (native) {
+        // [HF-HOST-POLISH-1] Inside the app wrapper DigiLocker opens in the in-app browser; when it hands back, finish the check.
+        stopAuth.current?.();
+        stopAuth.current = openAuthInApp(r.url, () => { if (live.current) void complete(); });
+        return false;
+      }
+      window.location.assign(r.url); // full page on purpose
       return false;
     }
     // Preview: no page to visit, so pretend the host came back.
     await complete();
     return false;
   }, [api, finish, complete]);
+  useEffect(() => () => { stopAuth.current?.(); }, []);
 
   // Resend timer
   useEffect(() => {

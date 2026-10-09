@@ -23,7 +23,11 @@ const moodLabel = (slug: string) => moods.find(m => m.slug === slug)?.label ?? s
 function Card({ h }: { h: HostCard }) {
   const href = `/h/${h.slug}`;
   return (
-    <article className="profile-card hf-live-card" data-live-host={h.slug}>
+    <article
+      className="profile-card hf-live-card" data-live-host={h.slug} data-person data-profile-id={`live-${h.slug}`}
+      data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={h.pricePerMin} data-online="false"
+      data-search={`${h.displayName} ${h.languages.join(' ')} ${h.topics.map(moodLabel).join(' ')}`}
+    >
       <div className="portrait-wrap">
         {h.avatarUrl && <img className="person-portrait" src={h.avatarUrl} alt={`${h.displayName}, an AI avatar chosen by the host`} width={1254} height={1254} loading="lazy" />}
         <span className="hf-live-ai">AI avatar chosen by the host</span>
@@ -89,6 +93,12 @@ export default function LiveHostCards() {
   }, []);
 
   useEffect(() => () => { mount?.remove(); }, [mount]);
+
+  // Tell the page filters (notebookHome.ts) that real cards now exist so they apply the active filters to them.
+  useEffect(() => {
+    if (!mount || hosts.length === 0) return;
+    document.dispatchEvent(new CustomEvent('hf:people-changed'));
+  }, [mount, hosts]);
 
   // The 1px sentinel gives client:visible something to watch before any card exists.
   return (

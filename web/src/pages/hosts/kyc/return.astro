@@ -1,0 +1,52 @@
+---
+// [HF-HOST-POLISH-1] DigiLocker lands here inside the app's in-app browser (?app=1) and sends the host back to the app.
+// On the plain web it just forwards to the onboarding page. Standalone, not indexed.
+import brandConfig from '../../../../../Specs/brand.json';
+import { BRAND } from '../../../lib/brand';
+export const prerender = true;
+const identity = brandConfig.homepageIdentity;
+const scheme = `${BRAND.domain.split('.')[0]}://`;
+const back = 'hosts/onboarding?step=aadhaar&dl=return';
+const appUrl = `${scheme}${back}`;
+const webUrl = `/${back}`;
+---
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`DigiLocker is done | ${identity.name}`}</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#46113e" />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
+    <style>
+      body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fff8ef;color:#2b1a27;font-family:Nunito,system-ui,sans-serif;font-size:1rem;line-height:1.5}
+      main{width:100%;max-width:420px;padding:32px 20px;box-sizing:border-box;text-align:center}
+      h1{font-size:1.5rem;margin:0 0 12px}
+      p{margin:0 0 16px}
+      .big{display:block;box-sizing:border-box;width:100%;padding:16px 20px;border-radius:14px;background:#46113e;color:#fff;font-size:1.125rem;font-weight:800;text-decoration:none}
+      .small{font-size:.875rem;color:#5b4656;margin-top:16px}
+      [hidden]{display:none}
+    </style>
+  </head>
+  <body>
+    <main id="app-return" hidden data-app-url={appUrl} data-web-url={webUrl}>
+      <h1>DigiLocker is done</h1>
+      <p>Thank you. Head back to the {BRAND.name} app to carry on.</p>
+      <a class="big" id="back-link" href={appUrl}>Back to the app</a>
+      <p class="small">If nothing happens, close this window — the app will check your Aadhaar automatically.</p>
+    </main>
+    <noscript><p style="padding:24px;font-size:1rem">DigiLocker is done. Please go back to the app, or <a href={webUrl}>continue here</a>.</p></noscript>
+    <script is:inline>
+      (function () {
+        var el = document.getElementById('app-return');
+        if (!el) return;
+        var isApp = false;
+        try { isApp = new URLSearchParams(location.search).get('app') === '1'; } catch (e) {}
+        if (!isApp) { location.replace(el.getAttribute('data-web-url')); return; }
+        el.hidden = false;
+        try { location.href = el.getAttribute('data-app-url'); } catch (e) {}
+      })();
+    </script>
+  </body>
+</html>

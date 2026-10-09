@@ -31,6 +31,21 @@ export default function Avatars() {
     try { await hfAdminApi.generateAvatars(g); track('avatars_generate', { ok: true }); setInfo('Batch started. New pictures appear here in a few minutes. Press Refresh.'); await load(); }
     catch (e) { setError(fail('avatars_generate', e)); } finally { setBusy(null); }
   };
+  const fill = async () => {
+    if (!window.confirm('Generate the missing avatars so every gender, age and look has 4? This runs one image at a time and takes a while.')) return;
+    setBusy('fill'); setError(null); setInfo(null);
+    try {
+      const r = await hfAdminApi.fillAvatars(4);
+      track('avatars_fill', { ok: true, queued: r.queued });
+      setInfo(r.queued === 0 ? 'Nothing missing. Every gender, age and look already has 4.' : `Started: ${r.queued} pictures queued, one at a time. Press Refresh to see progress.`);
+      await load();
+    } catch (e) { setError(fail('avatars_fill', e)); } finally { setBusy(null); }
+  };
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of items ?? []) if (a.status === 'active') { const k = `${a.gender}|${a.age}|${a.look}`; m.set(k, (m.get(k) ?? 0) + 1); }
+    return m;
+  }, [items]);
   const retire = async (a: AdminAvatar) => {
     setBusy(a.id); setError(null);
     try { await hfAdminApi.retireAvatar(a.id); track('avatar_retire', { ok: true }); await load(); }
@@ -47,7 +62,24 @@ export default function Avatars() {
           <label style={T14}>Age<br /><select value={g.age} onChange={(e) => setG({ ...g, age: e.target.value })} style={sel}>{AGES.map((x) => <option key={x}>{x}</option>)}</select></label>
           <label style={T14}>Look<br /><select value={g.look} onChange={(e) => setG({ ...g, look: e.target.value })} style={sel}>{LOOKS.map((x) => <option key={x}>{x}</option>)}</select></label>
           <button type="button" className="btn" style={T14} disabled={busy === 'gen'} onClick={() => void generate()}>{busy === 'gen' ? 'Starting…' : 'Generate batch'}</button>
+          <button type="button" className="btn ghost" style={T14} disabled={busy === 'fill'} onClick={() => void fill()}>{busy === 'fill' ? 'Starting…' : 'Fill catalogue to 4 each'}</button>
         </div>
+        {items && (
+          <div style={{ overflowX: 'auto', marginTop: 12 }}>
+            <table style={{ borderCollapse: 'collapse', ...T14 }}>
+              <caption style={{ textAlign: 'left', fontWeight: 700, paddingBottom: 4 }}>Active avatars per combination (target 4)</caption>
+              <thead><tr><th style={{ textAlign: 'left', padding: '4px 10px' }}>Gender · look</th>{AGES.map((x) => <th key={x} style={{ padding: '4px 10px' }}>{x}</th>)}</tr></thead>
+              <tbody>
+                {GENDERS.flatMap((gd) => LOOKS.map((lk) => (
+                  <tr key={`${gd}-${lk}`}>
+                    <td style={{ padding: '4px 10px' }}>{gd} · {lk}</td>
+                    {AGES.map((ag) => { const n = counts.get(`${gd}|${ag}|${lk}`) ?? 0; return <td key={ag} style={{ padding: '4px 10px', textAlign: 'center', fontWeight: n < 4 ? 700 : 400 }}>{n}</td>; })}
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {jobs.length > 0 && <p className="muted" style={{ ...T14, margin: '10px 0 0' }}>Recent batches: {jobs.map((j) => `${j.status}${j.error ? ` (${j.error})` : ''} · ${dateIST(j.created_at)}`).join('  |  ')}</p>}
       </div>
 

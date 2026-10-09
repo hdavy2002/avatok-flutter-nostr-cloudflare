@@ -41,5 +41,7 @@ export const hfAdminApi = {
   avatars: () => adminCall<{ items: AdminAvatar[]; jobs: AvatarJob[] }>('/api/admin/hf/avatars'),
   generateAvatars: (b: { count: number; gender: string; age: string; look: string }) =>
     adminCall<{ ok: true; jobId: string }>('/api/admin/hf/avatars/generate', { method: 'POST', body: b }),
+  fillAvatars: (target = 4) =>
+    adminCall<{ ok: true; jobId?: string; queued: number }>('/api/admin/hf/avatars/fill', { method: 'POST', body: { target } }),
   retireAvatar: (id: string) => adminCall<{ ok: true }>(`/api/admin/hf/avatars/${e(id)}/retire`, { method: 'POST', body: {} }),
 };

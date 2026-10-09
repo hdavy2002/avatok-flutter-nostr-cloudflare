@@ -4,12 +4,14 @@
 //   POST /api/admin/hf/hosts/:uid/decision      { decision: approve|reject|pause, reason }
 //   GET  /api/admin/hf/avatars                  avatar library
 //   POST /api/admin/hf/avatars/generate         { count<=12, gender, age, look }  -> queues an avatar_batch job
+//   POST /api/admin/hf/avatars/fill             { target?: 1..8 (default 4) } -> ONE sequential avatar_batch job topping every gender x age x look up to target
 //   POST /api/admin/hf/avatars/:id/retire
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
+import { buildAvatarFillPlan, planTotal, MAX_PLAN_TOTAL, type AvatarPlanEntry } from "../lib/hf_avatar_plan";
 import { isAdminUid } from "../lib/preview";
 import { tryDecryptPii } from "../lib/pii_crypto";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
@@ -206,6 +208,44 @@ async function generateAvatars(req: Request, env: Env, ctx: ExecutionContext | u
   return json({ ok: true, jobId: id });
 }
 
+async function fillAvatars(req: Request, env: Env): Promise<Response> {
+  const a = await adminCtx(req, env); if (a instanceof Response) return a;
+  const b = await readJson(req);
+  const target = b.target === undefined || b.target === null ? 4 : Math.floor(Number(b.target));
+  if (!(target >= 1 && target <= 8)) return err(400, "bad_target");
+  const running = await env.DB_META.prepare(
+    "SELECT id FROM hf_media_jobs WHERE kind='avatar_batch' AND status IN ('queued','running') AND stages_json LIKE '%\"plan\"%' AND updated_at>?1 LIMIT 1",
+  ).bind(Date.now() - 2 * 3600 * 1000).first<{ id: string }>();
+  if (running) return err(409, "fill_running", { jobId: running.id });
+  const have = (await env.DB_META.prepare("SELECT gender, age_band, look, COUNT(*) AS n FROM hf_avatars WHERE status='active' GROUP BY gender, age_band, look")
+    .all<{ gender: string; age_band: string; look: string; n: number }>()).results ?? [];
+  const full = buildAvatarFillPlan(have, target);
+  // Workflow accepts at most MAX_PLAN_TOTAL images per run; trim the tail (run fill again for the rest).
+  const plan: AvatarPlanEntry[] = [];
+  let total = 0;
+  for (const e of full) {
+    if (total + e.count > MAX_PLAN_TOTAL) break;
+    plan.push(e); total += e.count;
+  }
+  if (plan.length === 0) return json({ ok: true, queued: 0 });
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  await env.DB_META.prepare("INSERT INTO hf_media_jobs (id, uid, kind, status, stages_json, created_at, updated_at) VALUES (?1,?2,'avatar_batch','queued',?3,?4,?4)")
+    .bind(id, a.uid, JSON.stringify({ plan, target, done: 0, total, failed: 0 }), now).run();
+  try {
+    const wf = (env as any).AVATAR_BATCH;
+    if (!wf) throw new Error("AVATAR_BATCH binding missing");
+    const inst = await wf.create({ id, params: { jobId: id, count: 0, gender: "woman", age: "30s", look: "casual", plan } });
+    await env.DB_META.prepare("UPDATE hf_media_jobs SET instance_id=?2, status='running', updated_at=?3 WHERE id=?1").bind(id, inst?.id ?? id, Date.now()).run();
+  } catch (e) {
+    await env.DB_META.prepare("UPDATE hf_media_jobs SET status='failed', error=?2, updated_at=?3 WHERE id=?1").bind(id, String((e as Error)?.message || e).slice(0, 300), Date.now()).run();
+    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/avatars/fill", handled: true, app_name: APP, extra: { area: "hf_hosts_admin", step: "workflow_create" } });
+    return err(502, "workflow_unavailable", { jobId: id });
+  }
+  await audit(env, a.uid, "avatars_fill", id, { target, entries: plan.length, images: planTotal(plan) });
+  return json({ ok: true, jobId: id, queued: total });
+}
+
 async function retireAvatar(req: Request, env: Env, id: string): Promise<Response> {
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
   const r = await env.DB_META.prepare("UPDATE hf_avatars SET status='retired' WHERE id=?1").bind(id).run();
@@ -225,6 +265,7 @@ export async function hfHostsAdminRoute(req: Request, env: Env, ctx?: ExecutionC
     if (x && m === "POST") return await decide(req, env, x[1]);
     if (p === "/api/admin/hf/avatars" && m === "GET") return await listAvatars(req, env);
     if (p === "/api/admin/hf/avatars/generate" && m === "POST") return await generateAvatars(req, env, ctx);
+    if (p === "/api/admin/hf/avatars/fill" && m === "POST") return await fillAvatars(req, env);
     x = p.match(/^\/api\/admin\/hf\/avatars\/([A-Za-z0-9._:-]{1,128})\/retire$/);
     if (x && m === "POST") return await retireAvatar(req, env, x[1]);
     return null;

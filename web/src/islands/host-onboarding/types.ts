@@ -97,7 +97,7 @@ export interface OnboardingApi {
   /** Mock only: `mockGender` is what the fake record returns. */
   aadhaarVerifyOtp(otp: string, mockGender?: KycGender): Promise<KycOtpResult & { last4?: string; name?: string; gender?: KycGender }>;
   /** [HF-KYC-DIGILOCKER-1] DigiLocker (fallback). Step 1: ask the worker for the DigiLocker sign-in link. Mock never returns a url. */
-  digilockerStart(consent: boolean): Promise<{ ok: boolean; url?: string; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
+  digilockerStart(consent: boolean, returnPath?: string): Promise<{ ok: boolean; url?: string; error?: string; alreadyVerified?: { gender: KycGender | null; last4: string } }>;
   /** Step 2 (after the host comes back): finish the check. `pending` = DigiLocker has not answered yet, ask again shortly.
    *  `retry` = the sign-in cannot be finished, start again. Mock: `mockGender` is what the fake record returns. */
   digilockerComplete(mockGender?: KycGender): Promise<{ ok: boolean; pending?: boolean; retry?: boolean; last4?: string; name?: string; gender?: KycGender; error?: string }>;

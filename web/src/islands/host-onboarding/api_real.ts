@@ -263,10 +263,10 @@ export const realApi: OnboardingApi = {
     return { ok: true, last4: r.data.last4, name: r.data.firstName || '', gender: kycGender(r.data.gender) ?? undefined };
   },
 
-  async digilockerStart(consent) {
+  async digilockerStart(consent, returnPath) {
     const r = await call<{ ok: boolean; url?: string; already_verified?: boolean; gender?: string | null; last4?: string }>(
       'POST', '/api/hosts/kyc/digilocker/start',
-      { consent, role: 'host', returnPath: '/hosts/onboarding?step=aadhaar&dl=return' },
+      { consent, role: 'host', returnPath: returnPath || '/hosts/onboarding?step=aadhaar&dl=return' },
       'We could not open DigiLocker right now. Please try again.');
     if (!r.ok) return { ok: false, error: r.error };
     if (r.data.already_verified) return { ok: true, alreadyVerified: { gender: kycGender(r.data.gender ?? null), last4: r.data.last4 || '' } };

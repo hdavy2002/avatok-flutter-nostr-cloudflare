@@ -5,14 +5,16 @@
 // (deterministic ids/keys derived from jobId). Stage/state is mirrored in hf_media_jobs.stages_json for the status API.
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import type { Env } from "../types";
 import { BRAND, brandUrl } from "../lib/brand";
-import { track, trackUser } from "../hooks";
+import { track, trackUser, trackException } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { generateImage } from "../routes/ava_image";
 import { generateHostCopy, textSafety, stripTags, type HostCopy } from "../lib/hf_media_text";
 import { elevenConfigured, ivcCreate, voiceDelete, textToDialogue, pickStockVoice } from "../lib/elevenlabs";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
+import { sanitizeAvatarPlan, type AvatarPlanEntry } from "../lib/hf_avatar_plan";
 
 const APP = BRAND.slug;
 type Stage = "text" | "images" | "voice" | "conversation" | "safety";
@@ -21,7 +23,27 @@ const RETRY = { retries: { limit: 1, delay: "5 seconds" as const, backoff: "expo
 const NO_RETRY = { retries: { limit: 0, delay: "1 second" as const }, timeout: "4 minutes" as const };
 
 export interface HostMediaParams { uid: string; jobId: string }
-export interface AvatarBatchParams { count: number; gender: "woman" | "man"; age: string; look: string; jobId: string }
+export interface AvatarBatchParams { count: number; gender: "woman" | "man"; age: string; look: string; jobId: string; plan?: AvatarPlanEntry[] }
+
+// [HF-AVATAR-FILL-1] One image = one durable step with real Workflow retries (rate limits are transient).
+// fn throws on failure; content_blocked is fatal (no point retrying). Exhaustion reports once and returns false.
+const IMAGE_STEP = { retries: { limit: 4, delay: "20 seconds" as const, backoff: "exponential" as const }, timeout: "4 minutes" as const };
+async function imageStep(
+  env: Env, step: WorkflowStep, name: string, area: "hf_host_media" | "hf_avatar_batch", fn: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await step.do(name, IMAGE_STEP, async () => {
+      try { await fn(); } catch (e) {
+        if (String((e as any)?.message ?? e).includes("content_blocked")) throw new NonRetryableError(String((e as any)?.message ?? e).slice(0, 200), "content_blocked");
+        throw e;
+      }
+    });
+    return true;
+  } catch (e) {
+    await trackException(env, e, { route: `/workflow/${area}`, handled: true, app_name: APP, extra: { area, step: name } }).catch(() => {});
+    return false;
+  }
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function setStage(env: Env, uid: string, jobId: string, stage: Stage, state: StageState, cost?: Record<string, number>, error?: string): Promise<void> {
@@ -118,21 +140,15 @@ export class HostMediaWorkflow extends WorkflowEntrypoint<Env, HostMediaParams> 
       });
       let made = 0;
       for (let n = 1; n <= SCENES.length; n++) {
-        const ok = await step.do(`image-${n}`, NO_RETRY, async () => {
+        const ok = await imageStep(env, step, `image-${n}`, "hf_host_media", async () => {
           const ref = await env.BLOBS.get(ctx.avatarKey);
           if (!ref) throw new Error("avatar_image_missing");
           const dataUrl = toDataUrl(new Uint8Array(await ref.arrayBuffer()), "image/png");
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              const img = await generateImage(env, jobId, GALLERY_RULES(who, SCENES[n - 1]), uid, dataUrl, { aspectRatio: "4:5" });
-              const key = `hf/hosts/${uid}/gallery-${n}-${ctx.ts}.png`;
-              await env.BLOBS.put(key, img.bytes, { httpMetadata: { contentType: "image/png" } });
-              await env.DB_META.prepare("INSERT OR REPLACE INTO hf_host_media (id, uid, kind, r2_key, caption, sort, status, job_id, created_at) VALUES (?1,?2,'gallery',?3,NULL,?4,'active',?5,?6)")
-                .bind(`${jobId}-g${n}`, uid, key, n, jobId, ctx.ts).run();
-              return true;
-            } catch { /* try once more */ }
-          }
-          return false;
+          const img = await generateImage(env, jobId, GALLERY_RULES(who, SCENES[n - 1]), uid, dataUrl, { aspectRatio: "4:5" });
+          const key = `hf/hosts/${uid}/gallery-${n}-${ctx.ts}.png`;
+          await env.BLOBS.put(key, img.bytes, { httpMetadata: { contentType: "image/png" } });
+          await env.DB_META.prepare("INSERT OR REPLACE INTO hf_host_media (id, uid, kind, r2_key, caption, sort, status, job_id, created_at) VALUES (?1,?2,'gallery',?3,NULL,?4,'active',?5,?6)")
+            .bind(`${jobId}-g${n}`, uid, key, n, jobId, ctx.ts).run();
         });
         if (ok) made++;
       }
@@ -258,40 +274,54 @@ export class AvatarBatchWorkflow extends WorkflowEntrypoint<Env, AvatarBatchPara
   async run(event: WorkflowEvent<AvatarBatchParams>, step: WorkflowStep): Promise<void> {
     const env = this.env;
     const { jobId } = event.payload;
-    const count = Math.max(1, Math.min(12, Math.trunc(Number(event.payload.count) || 1)));
-    const woman = event.payload.gender === "woman";
-    const age = AGE_TXT[event.payload.age] ? event.payload.age : "30s";
-    const look = ["traditional", "casual", "office"].includes(event.payload.look) ? event.payload.look : "casual";
+    const plan = event.payload.plan !== undefined ? sanitizeAvatarPlan(event.payload.plan) : null;
+    if (event.payload.plan !== undefined && !plan) {
+      await env.DB_META.prepare("UPDATE hf_media_jobs SET status='failed', error='bad_plan', updated_at=?2 WHERE id=?1").bind(jobId, Date.now()).run();
+      throw new NonRetryableError("bad_plan", "bad_plan");
+    }
+    // Single-batch params become a one-entry list; with a plan we run entries strictly one after another.
+    const entries: Array<{ gender: "woman" | "man"; age: string; look: string; count: number }> = plan ?? [{
+      gender: event.payload.gender === "woman" ? "woman" : "man",
+      age: AGE_TXT[event.payload.age] ? event.payload.age : "30s",
+      look: ["traditional", "casual", "office"].includes(event.payload.look) ? event.payload.look : "casual",
+      count: Math.max(1, Math.min(12, Math.trunc(Number(event.payload.count) || 1))),
+    }];
+    const total = entries.reduce((n, e) => n + e.count, 0);
     const salt = Math.floor(Math.random() * 97);
-    let done = 0;
+    let done = 0, failed = 0;
     const setJob = async (status: string, error?: string): Promise<void> => {
       await env.DB_META.prepare("UPDATE hf_media_jobs SET status=?2, stages_json=?3, cost_json=?4, error=?5, updated_at=?6 WHERE id=?1")
-        .bind(jobId, status, JSON.stringify({ done, total: count }), JSON.stringify({ images: done }), error ?? null, Date.now()).run();
+        .bind(jobId, status, JSON.stringify({ done, total, failed }), JSON.stringify({ images: done }), error ?? null, Date.now()).run();
     };
     try {
       await step.do("start", RETRY, () => setJob("running"));
-      for (let i = 0; i < count; i++) {
-        const ok = await step.do(`avatar-${i}`, NO_RETRY, async () => {
-          const id = `${jobId}-${i}`;
-          const prompt =
-            `Photorealistic head-and-shoulders portrait photograph of a fully synthetic ${pick(REGION, i, salt)} Indian ${woman ? "woman" : "man"} ${AGE_TXT[age]}, ` +
-            `${pick(SKIN, i, salt + 2)} skin tone, ${pick(FACE, i, salt + 1)} face, ${pick(woman ? HAIR_W : HAIR_M, i, salt + 4)}, warm natural gentle smile, ` +
-            `${LOOK_TXT(look, woman)}, fully clothed, natural window light, 85mm lens, 4:5 portrait framing. ` +
-            `Must not resemble any real person or celebrity. No text, logos or watermarks.`;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              const img = await generateImage(env, jobId, prompt, "system:hf-avatar", undefined, { aspectRatio: "4:5" });
-              const key = `hf/avatars/${id}.png`;
-              await env.BLOBS.put(key, img.bytes, { httpMetadata: { contentType: "image/png" } });
-              await env.DB_META.prepare("INSERT OR IGNORE INTO hf_avatars (id, image_key, gender, age_band, look, status, prompt, created_at) VALUES (?1,?2,?3,?4,?5,'active',?6,?7)")
-                .bind(id, key, woman ? "woman" : "man", age, look, prompt.slice(0, 600), Date.now()).run();
-              return true;
-            } catch { /* retry once */ }
-          }
-          return false;
-        });
-        if (ok) done++;
-        await step.do(`progress-${i}`, RETRY, () => setJob("running"));
+      let idx = 0;
+      for (let e = 0; e < entries.length; e++) {
+        const { gender, age, look, count } = entries[e];
+        const woman = gender === "woman";
+        for (let i = 0; i < count; i++, idx++) {
+          // Deterministic names; without a plan keep the legacy `avatar-${i}` names.
+          const name = plan ? `avatar-${e}-${i}` : `avatar-${i}`;
+          const id = plan ? `${jobId}-${e}-${i}` : `${jobId}-${i}`;
+          if (plan && idx > 0) await step.sleep(`pause-${idx}`, "10 seconds");
+          const ok = await imageStep(env, step, name, "hf_avatar_batch", async () => {
+            const prompt =
+              `Photorealistic head-and-shoulders portrait photograph of a fully synthetic ${pick(REGION, i + e, salt)} Indian ${woman ? "woman" : "man"} ${AGE_TXT[age]}, ` +
+              `${pick(SKIN, i + e, salt + 2)} skin tone, ${pick(FACE, i + e, salt + 1)} face, ${pick(woman ? HAIR_W : HAIR_M, i + e, salt + 4)}, warm natural gentle smile, ` +
+              `${LOOK_TXT(look, woman)}, fully clothed, natural window light, 85mm lens, 4:5 portrait framing. ` +
+              `Must not resemble any real person or celebrity. No text, logos or watermarks.`;
+            const img = await generateImage(env, jobId, prompt, "system:hf-avatar", undefined, { aspectRatio: "4:5" });
+            const key = `hf/avatars/${id}.png`;
+            await env.BLOBS.put(key, img.bytes, { httpMetadata: { contentType: "image/png" } });
+            await env.DB_META.prepare("INSERT OR IGNORE INTO hf_avatars (id, image_key, gender, age_band, look, status, prompt, created_at) VALUES (?1,?2,?3,?4,?5,'active',?6,?7)")
+              .bind(id, key, gender, age, look, prompt.slice(0, 600), Date.now()).run();
+          });
+          if (ok) {
+            done++;
+            await step.do(`ok-${name}`, NO_RETRY, async () => { void track(env, "server", "hf_avatar_generated", APP, { ok: true, area: "hf_avatar_batch", job_id: jobId }); }).catch(() => {});
+          } else failed++;
+          await step.do(`progress-${name}`, RETRY, () => setJob("running"));
+        }
       }
       await step.do("finish", RETRY, () => setJob(done > 0 ? "done" : "failed", done > 0 ? undefined : "no_avatars_generated"));
     } catch (e) {
