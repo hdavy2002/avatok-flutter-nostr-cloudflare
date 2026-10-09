@@ -270,3 +270,6 @@ web/image-delivery-report.json
 Claude outputs/
 reports/EMAIL-REBRAND-REPORT-2026-09-27.md
 web/homepage-review/
+
+# Owner-local folder (2026-10-09)
+/api/
