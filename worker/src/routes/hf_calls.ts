@@ -19,6 +19,7 @@ import { isAdminUid } from "../lib/preview";
 import { personName } from "../lib/admin2_people_data";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { notifyHostOnline } from "../lib/hf_notify";
+import { isClosing, forceHostOffline, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
@@ -68,6 +69,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
   const uid = u.uid;
+  // [HF-WALLET-EXIT-1] A user closing their account starts no new calls.
+  if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
   const body = await readJson(req);
   const slug = String(body.hostSlug ?? "").trim().toLowerCase();
   const laneIn = body.lane == null || body.lane === "" ? null : String(body.lane);
@@ -81,6 +84,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
     .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
   if (!host || host.status !== "live" || host.uid === uid || host.presence !== "online") return UNAVAILABLE();
+  if (await isClosing(env, host.uid)) return UNAVAILABLE(); // [HF-WALLET-EXIT-1] a host who is closing their account takes no calls
   if (await isBlockedEitherWay(env, uid, host.uid)) return UNAVAILABLE();
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return UNAVAILABLE();
 
@@ -272,6 +276,7 @@ async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionC
   const body = await readJson(req);
   if (typeof body.online !== "boolean") return err(400, "invalid_field", "online must be true or false.");
   if (body.online) {
+    if (await isClosing(env, u.uid)) { await forceHostOffline(env, u.uid); return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" }); } // [HF-WALLET-EXIT-1]
     if (!(await verifiedWhatsAppNumber(env, u.uid))) return err(403, "not_verified", "Verify your WhatsApp number to take calls.");
     await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'busy' ELSE 'online' END, presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
   } else {

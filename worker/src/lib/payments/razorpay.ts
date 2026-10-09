@@ -214,7 +214,8 @@ export const razorpayAdapter: GatewayAdapter = {
           // Razorpay's idempotency key — a retry with the same opId must not double-refund.
           "x-razorpay-idempotency-key": a.opId,
         },
-        body: JSON.stringify({ amount: Math.trunc(a.amountPaise), notes: { reason: a.reason.slice(0, 200) } }),
+        // [HF-WALLET-EXIT-1] our per-slice id goes in BOTH receipt (<= 40 chars) and notes so listRefunds() can find it later.
+        body: JSON.stringify({ amount: Math.trunc(a.amountPaise), receipt: a.opId.slice(0, 40), notes: { reason: a.reason.slice(0, 200), slice_id: a.opId } }),
       });
       const parsed = await res.json().catch(() => null) as any;
       if (!res.ok) return { accepted: false, gateway_refund_id: null, error: String(parsed?.error?.description ?? `gateway_${res.status}`).slice(0, 200) };
@@ -222,5 +223,23 @@ export const razorpayAdapter: GatewayAdapter = {
     } catch {
       return { accepted: false, gateway_refund_id: null, error: "gateway_unreachable" };
     }
+  },
+
+  /** [HF-WALLET-EXIT-1] GET /payments/:id/refunds, matched on the slice id we put in notes / receipt. null = could not tell. */
+  async listRefunds(env, a) {
+    if (!razorpayConfigured(env)) return null;
+    try {
+      const paymentsRes = await fetch(`${BASE}/orders/${encodeURIComponent(a.gatewayOrderId)}/payments`, { headers: { authorization: authHeader(env) } });
+      if (!paymentsRes.ok) return null;
+      const payments = await paymentsRes.json().catch(() => null) as any;
+      const captured = (payments?.items ?? []).find((p: any) => p?.status === "captured" || p?.status === "refunded");
+      if (!captured?.id) return null;
+      const res = await fetch(`${BASE}/payments/${encodeURIComponent(String(captured.id))}/refunds?count=100`, { headers: { authorization: authHeader(env) } });
+      if (!res.ok) return null;
+      const list = await res.json().catch(() => null) as any;
+      if (!Array.isArray(list?.items)) return null;
+      const hit = list.items.find((r: any) => r?.notes?.slice_id === a.opId || r?.receipt === a.opId.slice(0, 40));
+      return hit ? { found: true, gateway_refund_id: hit.id != null ? String(hit.id) : null } : { found: false, gateway_refund_id: null };
+    } catch { return null; }
   },
 };

@@ -82,6 +82,7 @@ export default function AccountClose() {
           {ex.status === 'waiting_hold' && (
             <p className="hfc-note">Some of your earnings ({inr(info.held)}) are still in the 7-day hold{info.heldReleaseAt ? `, which ends on ${dateIN(info.heldReleaseAt)}` : ''}. After that we create your final withdrawal.</p>
           )}
+          <p className="hfc-sub" style={{ margin: 0 }}>While your account is closing you can’t make calls, go online as a host or add money.</p>
           {info.refund && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{inr(info.refund.amount)}</strong>

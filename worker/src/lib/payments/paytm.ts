@@ -383,4 +383,19 @@ export const paytmAdapter: GatewayAdapter = {
       gateway_refund_id: sent.parsed?.body?.refId != null ? String(sent.parsed.body.refId) : null,
     };
   },
+
+  /**
+   * [HF-WALLET-EXIT-1] POST /v2/refund/status by refId (our per-slice id, sent as refId by refund()). TXN_SUCCESS / PENDING = the refund
+   * exists; resultCode 631 ("refund id not found") = it does not; anything else is not a clear answer, so null.
+   */
+  async listRefunds(env, a) {
+    if (!paytmConfigured(env)) return null;
+    const sent = await signedPost(env, "/v2/refund/status", { mid: String(env.PAYTM_MID), orderId: a.gatewayOrderId, refId: a.opId });
+    if (!sent.ok) return null;
+    const info = sent.parsed?.body?.resultInfo;
+    const st = String(info?.resultStatus ?? "");
+    if (st === "TXN_SUCCESS" || st === "PENDING") return { found: true, gateway_refund_id: sent.parsed?.body?.refId != null ? String(sent.parsed.body.refId) : a.opId };
+    if (String(info?.resultCode ?? "") === "631") return { found: false, gateway_refund_id: null };
+    return null;
+  },
 };

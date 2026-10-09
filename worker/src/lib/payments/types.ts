@@ -71,6 +71,13 @@ export interface GatewayAdapter {
    * says `captured`.
    */
   fetchPayment?(env: Env, gatewayPaymentId: string): Promise<{ status: string; amount_paise: number; order_id: string } | null>;
+  /**
+   * [HF-WALLET-EXIT-1] OPTIONAL. Did a refund we may already have sent (identified by OUR per-slice `opId`, which refund() passes to the
+   * gateway as its idempotency / receipt / refund id) reach the gateway? Used to recover after a crash between "gateway accepted" and
+   * "we recorded it", so a retry never refunds twice. `found:false` = the gateway positively has no such refund (safe to send);
+   * `null` = the gateway could not be asked or did not give a clear answer (a person must check).
+   */
+  listRefunds?(env: Env, a: { gatewayOrderId: string; opId: string }): Promise<{ found: boolean; gateway_refund_id: string | null } | null>;
   refund(env: Env, a: { gatewayOrderId: string; amountPaise: number; reason: string; opId: string }):
     Promise<{ accepted: boolean; gateway_refund_id: string | null; error?: string }>;
 }

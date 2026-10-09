@@ -153,6 +153,19 @@ export async function verifyCashfreeSignature(
  * confirms it. Marking a refund complete on this response is how a buyer gets told they
  * were refunded when they were not.
  */
+/** [HF-WALLET-EXIT-1] GET /orders/:id/refunds -> the refund whose refund_id is ours. null = could not tell. */
+export async function findCashfreeRefund(env: Env, orderId: string, refundId: string): Promise<{ found: boolean; id: string | null } | null> {
+  if (!cashfreeConfigured(env)) return null;
+  try {
+    const res = await fetch(`${baseUrl(env)}/orders/${encodeURIComponent(orderId)}/refunds`, { headers: headers(env) });
+    if (!res.ok) return res.status === 404 ? { found: false, id: null } : null;
+    const list = await res.json().catch(() => null) as any;
+    if (!Array.isArray(list)) return null;
+    const hit = list.find((r: any) => r?.refund_id === refundId);
+    return hit ? { found: true, id: hit.cf_refund_id != null ? String(hit.cf_refund_id) : refundId } : { found: false, id: null };
+  } catch { return null; }
+}
+
 export async function refundCashfreeOrder(env: Env, args: {
   orderId: string;
   refundId: string;      // idempotency key at the gateway — stable, never random

@@ -15,6 +15,7 @@ import { readConfig } from "./config";
 import { BRAND } from "../lib/brand";
 import { resolveGateway } from "../lib/payments/registry";
 import { hfTopupFlags, hfTopupLive } from "../lib/hf_topup_config";
+import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import {
   newTopupId, getTopup, isHfTopupId, reconcileHfTopup, settleParsedWebhook, type HfTopupRow,
 } from "../lib/hf_topup";
@@ -40,6 +41,8 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error, u.error);
   const adapter = resolveGateway(flags.gateway);
   if (!adapter) return UNAVAILABLE();
+  // [HF-WALLET-EXIT-1] No new money in while the account is being closed (it would only have to be paid straight back out).
+  if (await isClosing(env, u.uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
 
   return withIdempotency(req, env, u.uid, async () => {
     const b = await readJson(req);

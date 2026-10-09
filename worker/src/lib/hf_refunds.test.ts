@@ -24,7 +24,7 @@ vi.mock("../routes/wallet", () => ({
     return out;
   },
 }));
-const gw = { refund: vi.fn(), configured: () => true, id: "razorpay" };
+const gw: any = { refund: vi.fn(), listRefunds: vi.fn(), configured: () => true, id: "razorpay" };
 vi.mock("./payments/registry", () => ({ resolveGateway: () => gw }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackException: async () => {} }));
 vi.mock("./whatsapp_notify", () => ({ verifiedWhatsAppNumber: async () => null }));
@@ -32,7 +32,7 @@ vi.mock("./whatsapp_send", () => ({ sendWhatsAppText: async () => ({ ok: true })
 
 import {
   allocateRefund, rawCallerMoney, topupRemaining, createRefundRequest, processRefund, markPaidManually, rejectRefund, cancelRefund,
-  refundableFor, getRefund, parseAllocations, gatewayRefundOpId,
+  refundableFor, getRefund, parseAllocations, gatewayRefundOpId, markSliceSent,
 } from "./hf_refunds";
 
 const require_ = createRequire(import.meta.url);
@@ -67,7 +67,7 @@ function topup(id: string, rupees: number, ageDays: number, refunded = 0, uid = 
 beforeEach(() => {
   h = makeEnv();
   wallet.balance = 0; wallet.held = 0; wallet.resv.clear(); wallet.ops.clear();
-  gw.refund.mockReset();
+  gw.refund.mockReset(); gw.listRefunds = vi.fn(async () => ({ found: false, gateway_refund_id: null }));
   gw.refund.mockImplementation(async (_e: any, a: any) => ({ accepted: true, gateway_refund_id: `rfnd_${a.opId}` }));
 });
 
@@ -237,5 +237,100 @@ describe("processRefund / manual / reject / cancel", () => {
     try { expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "failed" }); }
     finally { gw.configured = () => true; }
     expect(gw.refund).not.toHaveBeenCalled();
+  });
+});
+
+describe("double-refund safety (submitting / needs_check)", () => {
+  async function open() {
+    topup("t1", 300, 5); wallet.balance = 300;
+    return (await createRefundRequest(h.env, "u1", { exit: false, amount: 300, windowDays: 180 })).id as string;
+  }
+  const setAlloc = (id: string, patch: any, status = "failed") => {
+    const row = h.db.prepare("SELECT allocations FROM hf_refund_requests WHERE id=?").get(id);
+    const al = JSON.parse(row.allocations); Object.assign(al[0], patch);
+    h.db.prepare("UPDATE hf_refund_requests SET allocations=?, status=? WHERE id=?").run(JSON.stringify(al), status, id);
+  };
+  const alloc0 = async (id: string) => parseAllocations((await getRefund(h.env, id)).allocations)[0];
+
+  it("the slice is written as 'submitting' BEFORE the gateway is called, and the gateway gets our slice id", async () => {
+    const id = await open();
+    let seen: any = null;
+    gw.refund.mockImplementation(async (_e: any, a: any) => { seen = JSON.parse(h.db.prepare("SELECT allocations FROM hf_refund_requests WHERE id=?").get(id).allocations)[0]; return { accepted: true, gateway_refund_id: "r1" }; });
+    await processRefund(h.env, id, "admin1");
+    expect(seen.status).toBe("submitting"); expect(typeof seen.attemptAt).toBe("number");
+    const opId = gw.refund.mock.calls[0][1].opId;
+    expect(opId).toBe(gatewayRefundOpId(id, "t1"));
+    expect(opId.length).toBeLessThanOrEqual(40); expect(opId).toMatch(/^[A-Za-z0-9_]+$/);
+  });
+  it("crash after gateway success: retry finds the existing refund and makes NO second call", async () => {
+    const id = await open();
+    setAlloc(id, { status: "submitting", attemptAt: NOW }, "processing"); // what a crashed run leaves behind
+    h.db.prepare("UPDATE hf_refund_requests SET status='failed' WHERE id=?").run(id);
+    gw.listRefunds.mockResolvedValue({ found: true, gateway_refund_id: "rfnd_existing" });
+    const r = await processRefund(h.env, id, "admin1");
+    expect(r).toMatchObject({ ok: true, status: "refunded" });
+    expect(gw.refund).not.toHaveBeenCalled();
+    expect(gw.listRefunds.mock.calls[0][1]).toMatchObject({ gatewayOrderId: "order_t1", opId: gatewayRefundOpId(id, "t1") });
+    expect((await alloc0(id)).gatewayRefundId).toBe("rfnd_existing");
+    expect(Number(h.db.prepare("SELECT refunded_rupees AS r FROM hf_topups WHERE id='t1'").get().r)).toBe(300);
+    expect(wallet.balance).toBe(0);
+  });
+  it("gateway says no such refund exists: safe to send it", async () => {
+    const id = await open();
+    setAlloc(id, { status: "submitting", attemptAt: NOW });
+    gw.refund.mockResolvedValue({ accepted: true, gateway_refund_id: "new1" });
+    expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "refunded" });
+    expect(gw.refund).toHaveBeenCalledTimes(1);
+  });
+  it("gateway cannot be asked -> needs_check, nothing sent, nothing debited; a plain retry still does not resend", async () => {
+    const id = await open();
+    setAlloc(id, { status: "submitting", attemptAt: NOW });
+    gw.listRefunds.mockResolvedValue(null);
+    expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "failed" });
+    expect((await alloc0(id)).status).toBe("needs_check");
+    expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "failed" });
+    expect(gw.refund).not.toHaveBeenCalled();
+    expect(wallet.balance).toBe(300);
+  });
+  it("an adapter without listRefunds also ends in needs_check", async () => {
+    const id = await open();
+    setAlloc(id, { status: "submitting", attemptAt: NOW });
+    gw.listRefunds = undefined;
+    await processRefund(h.env, id, "admin1");
+    expect((await alloc0(id)).status).toBe("needs_check");
+    expect(gw.refund).not.toHaveBeenCalled();
+  });
+  it("a timeout during the call leaves the slice needs_check (it may have gone through), not failed", async () => {
+    const id = await open();
+    gw.refund.mockResolvedValue({ accepted: false, gateway_refund_id: null, error: "gateway_unreachable" });
+    expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "failed" });
+    expect((await alloc0(id)).status).toBe("needs_check");
+    gw.refund.mockReset(); gw.listRefunds.mockResolvedValue({ found: true, gateway_refund_id: "late1" });
+    expect(await processRefund(h.env, id, "admin1")).toMatchObject({ ok: true, status: "refunded" });
+    expect(gw.refund).not.toHaveBeenCalled();
+  });
+  it("admin can resubmit a needs_check slice explicitly (and only that one)", async () => {
+    const id = await open();
+    setAlloc(id, { status: "needs_check" });
+    gw.listRefunds.mockResolvedValue(null);
+    gw.refund.mockResolvedValue({ accepted: true, gateway_refund_id: "again1" });
+    expect(await processRefund(h.env, id, "admin1", { resubmit: ["t1"] })).toMatchObject({ ok: true, status: "refunded" });
+    expect(gw.refund).toHaveBeenCalledTimes(1);
+  });
+  it("admin 'mark sent' records the slice once and finishes the request", async () => {
+    const id = await open();
+    setAlloc(id, { status: "needs_check" });
+    gw.listRefunds.mockResolvedValue(null);
+    const r = await markSliceSent(h.env, id, "admin1", "t1", "rfnd_seen_in_dashboard");
+    expect(r).toMatchObject({ ok: true, status: "refunded" });
+    expect(gw.refund).not.toHaveBeenCalled();
+    expect(Number(h.db.prepare("SELECT refunded_rupees AS r FROM hf_topups WHERE id='t1'").get().r)).toBe(300);
+    expect(await markSliceSent(h.env, id, "admin1", "t1", null)).toMatchObject({ ok: true, replay: true });
+    expect(Number(h.db.prepare("SELECT refunded_rupees AS r FROM hf_topups WHERE id='t1'").get().r)).toBe(300);
+  });
+  it("reject is refused while a slice is submitting / needs_check", async () => {
+    const id = await open();
+    setAlloc(id, { status: "needs_check" });
+    expect(await rejectRefund(h.env, id, "admin1", "no way")).toMatchObject({ ok: false, error: "partly_refunded" });
   });
 });

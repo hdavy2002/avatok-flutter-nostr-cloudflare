@@ -3,7 +3,8 @@
 //   POST /api/hf/wallet/refunds {amount?}             (Idempotency-Key required) -> { ok, id, status:"requested", amount } | error codes below
 //   POST /api/hf/wallet/refunds/:id/cancel            (only while "requested")   -> { ok, status:"cancelled" }
 //   GET  /api/admin/hf/refunds?status=requested|approved|processing|failed|refunded|rejected|cancelled|all
-//   POST /api/admin/hf/refunds/:id/approve | /retry | /reject {reason} | /paid-manually {utr}     (all idempotent)
+//   POST /api/admin/hf/refunds/:id/approve | /retry {resubmit?:[topupId]} | /reject {reason} | /paid-manually {utr} | /mark-sent {topupId, ref?}   (all idempotent)
+//   A slice in "needs_check" is never re-sent on its own: /retry with resubmit:[topupId] sends it again, /mark-sent records that the admin saw it sent.
 // Error codes (POST): not_enabled 404, invalid_amount 400, insufficient_refundable 402, nothing_refundable 402, wallet_error 502.
 import type { Env } from "../types";
 import { json } from "../util";
@@ -14,7 +15,7 @@ import { isAdminUid } from "../lib/preview";
 import { cleanUtr } from "../lib/hf_payouts";
 import { exitFlags } from "../lib/hf_exit";
 import {
-  REFUND_STATUSES, createRefundRequest, refundableFor, cancelRefund, processRefund, markPaidManually, rejectRefund, parseAllocations, type RefundRow,
+  REFUND_STATUSES, createRefundRequest, refundableFor, cancelRefund, processRefund, markSliceSent, markPaidManually, rejectRefund, parseAllocations, type RefundRow,
 } from "../lib/hf_refunds";
 
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) => json({ error, message: message ?? error, ...extra }, status);
@@ -106,8 +107,17 @@ async function adminAct(req: Request, env: Env, id: string, action: string): Pro
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
   let res;
   if (action === "approve" || action === "retry") {
-    res = await processRefund(env, id, a.uid);
-    if (res.ok) await audit(env, a.uid, action, id, { status: res.status });
+    const b = action === "retry" ? await readJson(req) : {};
+    const resubmit = Array.isArray(b.resubmit) ? b.resubmit.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
+    res = await processRefund(env, id, a.uid, { resubmit });
+    if (res.ok) await audit(env, a.uid, action, id, { status: res.status, resubmit });
+  } else if (action === "mark-sent") {
+    const b = await readJson(req);
+    const topupId = String(b.topupId ?? "");
+    if (!/^hftop_[a-f0-9]{24}$/.test(topupId)) return err(400, "invalid_topup", "Choose which part you checked.");
+    const ref = typeof b.ref === "string" && b.ref.trim() ? b.ref.trim().slice(0, 60) : null;
+    res = await markSliceSent(env, id, a.uid, topupId, ref);
+    if (res.ok) await audit(env, a.uid, "mark_sent", id, { topupId, ref, status: res.status });
   } else if (action === "paid-manually") {
     const utr = cleanUtr((await readJson(req)).utr);
     if (!utr) return err(400, "invalid_utr", "Enter the UTR: 6 to 30 letters or numbers.");
@@ -126,7 +136,7 @@ async function adminAct(req: Request, env: Env, id: string, action: string): Pro
 // ── router ───────────────────────────────────────────────────────────────────
 const ID = "([A-Za-z0-9-]{8,64})";
 const USER_CANCEL_RE = new RegExp(`^/api/hf/wallet/refunds/${ID}/cancel$`);
-const ADMIN_RE = new RegExp(`^/api/admin/hf/refunds/${ID}/(approve|retry|reject|paid-manually)$`);
+const ADMIN_RE = new RegExp(`^/api/admin/hf/refunds/${ID}/(approve|retry|reject|paid-manually|mark-sent)$`);
 /** Returns null when the path is not ours so index.ts can fall through. */
 export async function hfRefundsRoute(req: Request, env: Env, p: string): Promise<Response | null> {
   const m = req.method;

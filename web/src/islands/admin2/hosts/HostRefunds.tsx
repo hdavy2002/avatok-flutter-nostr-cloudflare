@@ -10,7 +10,7 @@ const T14 = { fontSize: 14 } as const;
 const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
 
 type Status = 'requested' | 'processing' | 'failed' | 'refunded' | 'rejected' | 'cancelled';
-interface Alloc { topupId: string | null; rupees: number; status: 'pending' | 'refunded' | 'manual' | 'failed'; gatewayRefundId?: string | null; error?: string }
+interface Alloc { topupId: string | null; rupees: number; status: 'pending' | 'submitting' | 'needs_check' | 'refunded' | 'manual' | 'failed'; gatewayRefundId?: string | null; error?: string }
 interface Item {
   id: string; uid: string; amount: number; status: Status | 'approved'; exit: boolean; utr: string | null; reason: string | null;
   allocations: Alloc[]; createdAt: number; refundedAt: number | null;
@@ -22,10 +22,14 @@ const TABS: { key: Status; label: string }[] = [
   { key: 'refunded', label: 'Refunded' }, { key: 'rejected', label: 'Rejected' }, { key: 'cancelled', label: 'Cancelled' },
 ];
 const post = <T,>(path: string, body?: unknown) => adminCall<T>(path, { method: 'POST', body: body ?? {} });
-const allocLabel: Record<Alloc['status'], string> = { pending: 'waiting', refunded: 'sent to the original payment', manual: 'paid by hand', failed: 'failed' };
+const allocLabel: Record<Alloc['status'], string> = {
+  pending: 'waiting', submitting: 'sending (interrupted: check before resending)', needs_check: 'NEEDS CHECK: we could not confirm whether the gateway already sent it',
+  refunded: 'sent to the original payment', manual: 'paid by hand', failed: 'failed',
+};
 
 function Row({ it, onDone }: { it: Item; onDone: () => void }) {
   const [dialog, setDialog] = useState<null | 'manual' | 'reject'>(null);
+  const [slice, setSlice] = useState<null | { topupId: string; mode: 'sent' | 'resend' }>(null);
   const [utr, setUtr] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,6 +71,12 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
           <li key={`${a.topupId ?? 'manual'}-${i}`}>
             {rupees(a.rupees)} {a.topupId ? <>back to the payment <span className="muted" style={{ wordBreak: 'break-all' }}>{a.topupId}</span></> : <strong>no payment to return it to: pay by hand</strong>} · {allocLabel[a.status]}
             {a.error ? ` (${a.error})` : ''}{a.gatewayRefundId ? ` · ${a.gatewayRefundId}` : ''}
+            {(a.status === 'needs_check' || a.status === 'submitting') && a.topupId && open && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'sent' })}>I checked: it was sent</button>
+                <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'resend' })}>Send it again</button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -84,6 +94,12 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       {note && <Banner tone="info">{note}</Banner>}
       {err && <Banner tone="error">{err}</Banner>}
 
+      <ConfirmDialog open={slice?.mode === 'sent'} title="Record this part as already sent" confirmLabel="Yes, it was sent" busy={busy} error={err}
+        body="Only do this after you looked in the payment gateway’s dashboard and saw this refund there. The rest of the refund then continues."
+        onConfirm={() => void run(() => post(`${base}/mark-sent`, { topupId: slice!.topupId }), 'hf_refund_mark_sent').then(() => setSlice(null))} onCancel={() => setSlice(null)} />
+      <ConfirmDialog open={slice?.mode === 'resend'} title="Send this part again" confirmLabel="Send again" danger busy={busy} error={err}
+        body="Only do this after you looked in the payment gateway’s dashboard and saw NO refund for this part. Sending it when one already exists could pay the person twice."
+        onConfirm={() => void run(() => post(`${base}/retry`, { resubmit: [slice!.topupId] }), 'hf_refund_resend').then(() => setSlice(null))} onCancel={() => setSlice(null)} />
       <ConfirmDialog open={dialog === 'manual'} title={`Mark ${rupees(it.amount)} as paid by hand`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
         body="Only do this after the money has reached the person. Every part still waiting is marked as paid by hand. This can’t be undone."
         onConfirm={() => void run(() => post(`${base}/paid-manually`, { utr: utr.trim() }), 'hf_refund_manual')} onCancel={() => setDialog(null)}>

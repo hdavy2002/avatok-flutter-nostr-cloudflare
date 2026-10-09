@@ -160,6 +160,20 @@ export async function exitGate(env: Env, uid: string): Promise<{ deferred: false
   return d === "exit" ? { deferred: true, exitStatus: s.exit?.status ?? null } : { deferred: false };
 }
 
+// ── closing guards ───────────────────────────────────────────────────────────
+export const CLOSING_MESSAGE = "Your account is being closed, so this is paused until the closure is finished. You can cancel the closure on the Close my account page.";
+/** True while this user has an open closure (hf_exit_requests waiting_hold / waiting_payouts / ready). Fails open: no table = not closing. */
+export async function isClosing(env: Env, uid: string): Promise<boolean> {
+  try {
+    const r = await env.DB_META.prepare("SELECT status FROM hf_exit_requests WHERE uid=?1").bind(uid).first<{ status: string }>();
+    return !!r && isActiveExit(r.status);
+  } catch { return false; }
+}
+/** A host in closure takes no calls: online or busy -> offline. An ongoing call is not cut; it just does not return the host to "online". */
+export async function forceHostOffline(env: Env, uid: string): Promise<void> {
+  try { await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?2 WHERE uid=?1 AND presence IN ('online','busy')").bind(uid, Date.now()).run(); } catch { /* no host row / table */ }
+}
+
 // ── exit payout ──────────────────────────────────────────────────────────────
 export type MakePayout = { ok: true; id: string } | { ok: false; status: number; error: string; message: string };
 /** Same shape as a normal withdrawal (reserve in the wallet, admin approves, UTR), flagged exit=1: no minimum, no weekly cap. */
@@ -243,6 +257,7 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
   }
   const status: ExitStatus = s.held > 0 ? "waiting_hold" : payoutId || refundId ? "waiting_payouts" : "ready";
   await upsertExit(env, uid, status, payoutId, refundId, s.forfeitRupees > 0 ? `forfeit:${s.forfeitRupees}` : null);
+  await forceHostOffline(env, uid);
   void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, refund: !!refundId, forfeit: s.forfeitRupees });
   if (status === "ready") await advanceExit(env, (await getExitRow(env, uid))!, o.trigger);
   return { ok: true, status, payoutId, refundId };
@@ -268,6 +283,7 @@ export async function cancelExit(env: Env, uid: string): Promise<{ ok: true } | 
 /** Advance one exit row by one step (a row may take several ticks: hold, payout, then settle). Never throws. */
 export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now = Date.now()): Promise<ExitStatus> {
   let status = row.status, payoutId = row.payout_id, note = row.note;
+  await forceHostOffline(env, row.uid); // the calls cron can put a "busy" host back online; keep them off while closing
   try {
     const [pay, ref] = await Promise.all([
       payoutId ? env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(payoutId).first<{ status: string }>().catch(() => null) : null,

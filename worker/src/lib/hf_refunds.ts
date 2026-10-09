@@ -29,15 +29,23 @@ export const REFUND_STATUSES: RefundStatus[] = ["requested", "approved", "proces
 export const OPEN_REFUND_STATUSES: RefundStatus[] = ["requested", "approved", "processing", "failed"];
 const OPEN_SQL = OPEN_REFUND_STATUSES.map((s) => `'${s}'`).join(",");
 
-export type AllocStatus = "pending" | "refunded" | "manual" | "failed";
-export interface Allocation { topupId: string | null; rupees: number; status: AllocStatus; gatewayRefundId?: string | null; error?: string }
+// pending = not sent yet. submitting = WRITTEN BEFORE the gateway call, so a crash leaves proof we may have sent it.
+// needs_check = it was "submitting" and the gateway could not tell us whether the refund exists: a person must check, we never auto-resend.
+// failed = the gateway cleanly refused (safe to send again). refunded / manual = done.
+export type AllocStatus = "pending" | "submitting" | "needs_check" | "refunded" | "manual" | "failed";
+const ALLOC_STATUSES: AllocStatus[] = ["pending", "submitting", "needs_check", "refunded", "manual", "failed"];
+export interface Allocation { topupId: string | null; rupees: number; status: AllocStatus; gatewayRefundId?: string | null; error?: string; attemptAt?: number }
+const isDone = (a: Allocation) => a.status === "refunded" || a.status === "manual";
 
 export const refundRef = (id: string) => `hfrefund:${id}`;
 export const refundReserveOp = (id: string) => `hfrefund_res:${id}`;
 export const refundPayOp = (id: string) => `hfrefund_pay:${id}`;
 export const refundReleaseOp = (id: string) => `hfrefund_rel:${id}`;
-/** Passed to the gateway as the refund's idempotency key: one per (request, top-up), so approving twice cannot refund twice. */
-export const gatewayRefundOpId = (id: string, topupId: string) => `hfrefund:${id}:${topupId}`;
+/**
+ * OUR per-slice id: one per (request, top-up). It is the gateway's idempotency key AND the field we search by afterwards (Razorpay receipt +
+ * notes.slice_id, Cashfree refund_id, Paytm refId), so it is short (<= 40) and only [A-Za-z0-9_] -- Cashfree and Razorpay both limit it.
+ */
+export const gatewayRefundOpId = (id: string, topupId: string) => `hfr_${id.replace(/-/g, "").slice(0, 10)}_${topupId.replace(/^hftop_/, "")}`;
 
 export interface RefundRow {
   id: string; uid: string; amount_rupees: number; status: RefundStatus; reason: string | null; wallet_ref: string | null; allocations: string;
@@ -51,9 +59,10 @@ export function parseAllocations(s: string | null | undefined): Allocation[] {
     return j.map((a: Record<string, unknown>) => ({
       topupId: typeof a.topupId === "string" ? a.topupId : null,
       rupees: Math.max(0, Math.floor(Number(a.rupees) || 0)),
-      status: (["pending", "refunded", "manual", "failed"].includes(String(a.status)) ? a.status : "pending") as AllocStatus,
+      status: ((ALLOC_STATUSES as string[]).includes(String(a.status)) ? a.status : "pending") as AllocStatus,
       gatewayRefundId: typeof a.gatewayRefundId === "string" ? a.gatewayRefundId : null,
       error: typeof a.error === "string" ? a.error : undefined,
+      attemptAt: typeof a.attemptAt === "number" ? a.attemptAt : undefined,
     }));
   } catch { return []; }
 }
@@ -149,7 +158,7 @@ export async function refundableFor(env: Env, uid: string, windowDays: number | 
   for (const r of open) {
     openReserved += r.amount_rupees;
     for (const a of parseAllocations(r.allocations)) {
-      if (a.topupId && (a.status === "pending" || a.status === "failed")) pendingByTopup.set(a.topupId, (pendingByTopup.get(a.topupId) ?? 0) + a.rupees);
+      if (a.topupId && !isDone(a)) pendingByTopup.set(a.topupId, (pendingByTopup.get(a.topupId) ?? 0) + a.rupees);
     }
   }
   const raw = rawCallerMoney({ balance: w.balance, held: w.held, totalHostPaid: Number(host?.s ?? 0), paidPayouts: Number(paidOut?.s ?? 0), openRefundReserved: openReserved });
@@ -251,8 +260,24 @@ async function consumeReservation(env: Env, row: RefundRow): Promise<boolean> {
   return r.status === 200 && Number(r.body?.consumed ?? 0) === row.amount_rupees;
 }
 
-/** Approve and run (also used for retry). Idempotent per allocation: a slice that already has a gateway refund is never sent again. */
-export async function processRefund(env: Env, id: string, adminUid: string): Promise<ActionResult> {
+const AMBIGUOUS_ERRORS = ["gateway_unreachable"];
+
+/** Ask the gateway whether a slice we may already have sent exists. */
+async function lookupSlice(env: Env, id: string, a: Allocation): Promise<{ found: boolean; gateway_refund_id: string | null } | null> {
+  const t = await env.DB_META.prepare("SELECT gateway, gateway_order_id FROM hf_topups WHERE id=?1").bind(a.topupId).first<{ gateway: string; gateway_order_id: string | null }>().catch(() => null);
+  const adapter = t ? resolveGateway(t.gateway) : null;
+  if (!t || !t.gateway_order_id || !adapter?.listRefunds || !adapter.configured(env)) return null;
+  try { return await adapter.listRefunds(env, { gatewayOrderId: t.gateway_order_id, opId: gatewayRefundOpId(id, a.topupId!) }); } catch { return null; }
+}
+
+/**
+ * Approve and run (also used for retry). Per slice:
+ *  1. status is written as "submitting" BEFORE the gateway call;
+ *  2. a slice found in "submitting"/"needs_check" is NEVER re-sent on its own: the gateway is asked for an existing refund with our slice id.
+ *     Found -> recorded. Gateway says none exists -> sent. Cannot tell -> "needs_check" for a person.
+ *  3. `resubmit` (admin confirmed in the UI) lists needs_check slices to send again anyway (the gateway's idempotency key still guards it).
+ */
+export async function processRefund(env: Env, id: string, adminUid: string, o: { resubmit?: string[] } = {}): Promise<ActionResult> {
   const row = await getRefund(env, id);
   if (!row) return bad(404, "not_found", "Not found.");
   if (row.status === "refunded") return { ok: true, status: "refunded", replay: true };
@@ -262,20 +287,36 @@ export async function processRefund(env: Env, id: string, adminUid: string): Pro
   if (!claim.meta?.changes) return bad(409, "invalid_state", "This request changed. Refresh and try again.");
 
   const allocs = parseAllocations(row.allocations);
+  const resubmit = new Set(o.resubmit ?? []);
   let failures = 0;
+  const finish = async (i: number) => { allocs[i].status = "refunded"; delete allocs[i].error; await persistAlloc(env, row, allocs, i, true); };
   for (let i = 0; i < allocs.length; i++) {
     const a = allocs[i];
-    if (a.status === "refunded" || a.status === "manual") continue;
+    if (isDone(a)) continue;
     if (!a.topupId) { a.status = "failed"; a.error = "manual_only"; failures++; continue; }
+    let mayHaveBeenSent = (a.status === "submitting" || a.status === "needs_check") && !a.gatewayRefundId;
+    if (a.status === "needs_check" && resubmit.has(a.topupId)) mayHaveBeenSent = false; // a person confirmed: send again
+    if (mayHaveBeenSent) {
+      const found = await lookupSlice(env, id, a);
+      if (found?.found) { a.gatewayRefundId = found.gateway_refund_id; await finish(i); continue; }
+      if (!found) { a.status = "needs_check"; a.error = "gateway_could_not_confirm"; await persistAlloc(env, row, allocs, i, false); failures++; continue; }
+      // found.found === false: the gateway positively has no such refund, so sending is safe
+    }
     const t = await env.DB_META.prepare("SELECT gateway, gateway_order_id FROM hf_topups WHERE id=?1").bind(a.topupId).first<{ gateway: string; gateway_order_id: string | null }>().catch(() => null);
     const adapter = t ? resolveGateway(t.gateway) : null;
     if (!t || !t.gateway_order_id || !adapter || !adapter.configured(env)) { a.status = "failed"; a.error = "gateway_unavailable"; failures++; continue; }
+    a.status = "submitting"; a.attemptAt = Date.now(); delete a.error;
+    await persistAlloc(env, row, allocs, i, false); // durable BEFORE the call
     let out: { accepted: boolean; gateway_refund_id: string | null; error?: string };
     try {
       out = await adapter.refund(env, { gatewayOrderId: t.gateway_order_id, amountPaise: a.rupees * 100, reason: `${BRAND.name} wallet refund`, opId: gatewayRefundOpId(id, a.topupId) });
-    } catch (e) { out = { accepted: false, gateway_refund_id: null, error: String(e).slice(0, 80) }; }
-    if (out.accepted) { a.status = "refunded"; a.gatewayRefundId = out.gateway_refund_id; delete a.error; await persistAlloc(env, row, allocs, i, true); }
-    else { a.status = "failed"; a.error = (out.error ?? "refused").slice(0, 80); failures++; }
+    } catch (e) { out = { accepted: false, gateway_refund_id: null, error: "gateway_unreachable" }; }
+    if (out.accepted) { a.gatewayRefundId = out.gateway_refund_id; await finish(i); continue; }
+    a.error = (out.error ?? "refused").slice(0, 80);
+    // A clean refusal is safe to send again. A timeout / unreachable gateway is not: the request may have gone through.
+    a.status = AMBIGUOUS_ERRORS.includes(a.error) ? "needs_check" : "failed";
+    await persistAlloc(env, row, allocs, i, false);
+    failures++;
   }
   if (failures > 0) {
     await env.DB_META.prepare("UPDATE hf_refund_requests SET status='failed', allocations=?2, reason=?3, updated_at=?4 WHERE id=?1").bind(id, JSON.stringify(allocs), "system:gateway_failed", Date.now()).run();
@@ -289,6 +330,26 @@ export async function processRefund(env: Env, id: string, adminUid: string): Pro
   await env.DB_META.prepare("UPDATE hf_refund_requests SET status='refunded', allocations=?2, reason=NULL, refunded_at=?3, updated_at=?3 WHERE id=?1").bind(id, JSON.stringify(allocs), now).run();
   await notifyUser(env, row.uid, `Your ${BRAND.name} refund of ₹${row.amount_rupees} has been sent back to the payment you used. Banks can take a few days to show it.`);
   return { ok: true, status: "refunded", detail: allocs };
+}
+
+/** An admin checked the gateway dashboard and saw this slice was sent: record it (credits the top-up once), then finish the request. */
+export async function markSliceSent(env: Env, id: string, adminUid: string, topupId: string, gatewayRefundId: string | null): Promise<ActionResult> {
+  const row = await getRefund(env, id);
+  if (!row) return bad(404, "not_found", "Not found.");
+  if (row.status === "processing") return bad(409, "in_progress", "This refund is being processed. Refresh in a moment.");
+  if (!canApproveRefund(row.status) && row.status !== "refunded") return bad(409, "invalid_state", `This request is ${row.status}.`);
+  const allocs = parseAllocations(row.allocations);
+  const i = allocs.findIndex((a) => a.topupId === topupId);
+  if (i < 0) return bad(404, "no_such_slice", "That part of the refund does not exist.");
+  if (!isDone(allocs[i])) {
+    // Claim the row so a concurrent approve cannot run while we edit.
+    const claim = await env.DB_META.prepare("UPDATE hf_refund_requests SET status='processing', admin_uid=?2, updated_at=?3 WHERE id=?1 AND status IN ('requested','approved','failed')").bind(id, adminUid, Date.now()).run();
+    if (!claim.meta?.changes) return bad(409, "invalid_state", "This request changed. Refresh and try again.");
+    allocs[i].status = "refunded"; allocs[i].gatewayRefundId = gatewayRefundId; delete allocs[i].error;
+    await persistAlloc(env, row, allocs, i, true);
+    await env.DB_META.prepare("UPDATE hf_refund_requests SET status='failed', updated_at=?2 WHERE id=?1 AND status='processing'").bind(id, Date.now()).run();
+  }
+  return processRefund(env, id, adminUid);
 }
 
 /** Admin paid the user by hand (gateway refused, or the top-up is past the window). */
@@ -324,7 +385,7 @@ export async function rejectRefund(env: Env, id: string, adminUid: string, reaso
   if (!row) return bad(404, "not_found", "Not found.");
   if (row.status === "rejected") return { ok: true, status: "rejected", replay: true };
   if (!canRejectRefund(row.status)) return bad(409, "invalid_state", `This request is ${row.status}.`);
-  if (parseAllocations(row.allocations).some((a) => a.status === "refunded" || a.status === "manual")) {
+  if (parseAllocations(row.allocations).some((a) => a.status === "refunded" || a.status === "manual" || a.status === "submitting" || a.status === "needs_check")) {
     return bad(409, "partly_refunded", "Part of this refund already went out. Retry it or mark it paid by hand instead.");
   }
   const r = await walletOp(env, row.uid, { op: "release_reservation", uid: row.uid, ref: refundRef(id), op_id: refundReleaseOp(id), app_name: WALLET_APP });

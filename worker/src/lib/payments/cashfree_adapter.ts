@@ -10,7 +10,7 @@
 // So for this adapter, gateway_order_id and our_order_id are the same string.
 import type { Env } from "../../types";
 import {
-  cashfreeConfigured, createCashfreeOrder, fetchCashfreeOrder, refundCashfreeOrder,
+  cashfreeConfigured, createCashfreeOrder, fetchCashfreeOrder, refundCashfreeOrder, findCashfreeRefund,
   verifyCashfreeSignature,
 } from "../cashfree";
 import type { GatewayAdapter, GatewayOrder } from "./types";
@@ -98,5 +98,11 @@ export const cashfreeAdapter: GatewayAdapter = {
     return r.ok
       ? { accepted: true, gateway_refund_id: null }
       : { accepted: false, gateway_refund_id: null, error: r.error };
+  },
+
+  /** [HF-WALLET-EXIT-1] our per-slice id IS the Cashfree refund_id (refund() above passes opId as refundId). */
+  async listRefunds(env, a) {
+    const r = await findCashfreeRefund(env, a.gatewayOrderId, a.opId);
+    return r ? { found: r.found, gateway_refund_id: r.id } : null;
   },
 };
