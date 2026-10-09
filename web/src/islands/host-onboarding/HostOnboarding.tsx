@@ -146,6 +146,9 @@ export default function HostOnboarding() {
     let live = true;
     (async () => {
       try {
+        // [HF-ONBOARD-GATE-1] The head script already knows when nobody is signed in: show the gate at once
+        // instead of waiting up to 10 s for a Clerk token that will never come.
+        if (document.documentElement.getAttribute('data-site-auth') === 'out') { setPhase('gate'); return; }
         const { getActiveTokenWaited } = await import('../../lib/clerk');
         const t = await getActiveTokenWaited(10000);
         if (!live) return;

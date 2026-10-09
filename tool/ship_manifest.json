@@ -9421,5 +9421,9 @@
         "note": "Host submitted profile for admin review."
       }
     ]
+  },
+  "HF-ONBOARD-GATE-1": {
+    "description": "[HF-ONBOARD-GATE-1 2026-10-09] Host onboarding shows the sign-in gate immediately for signed-out visitors (uses the head auth hint) instead of a 10 s token wait.",
+    "no_telemetry": "Load-timing fix only; host onboarding success is measured by HF-HOST-PLATFORM-1 events."
   }
 }
