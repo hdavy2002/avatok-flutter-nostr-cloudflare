@@ -9351,5 +9351,40 @@
         "equals": true
       }
     ]
+  },
+  "HF-HOST-KYC-1": {
+      "description": "[HF-HOST-KYC-1 2026-10-09] Hello Fraands real host verification backend (onboarding Phase 2): Sandbox.co.in Aadhaar OTP (only last4 kept; name/DOB/address/guardian AES-GCM encrypted), 18+ and gender from Aadhaar, 10-second selfie-video liveness with a random on-screen code (private R2, admin review with signed streamed media, audited), payout bank (penniless) check with Aadhaar-name match. Routes /api/hosts/kyc/*, /api/hosts/payout/verify, /api/admin/hf/kyc*. Dark behind hostKycEnabled.",
+      "two_sided": false,
+      "min_devices_on_build": 1,
+      "flags": [
+          "hostKycEnabled"
+      ],
+      "success": [
+          {
+              "event": "hf_kyc_aadhaar_otp_sent",
+              "property": "ok",
+              "equals": true,
+              "note": "Aadhaar OTP accepted by Sandbox. Emitted only on success; failures emit hf_kyc_failed {step,reason} and $exception."
+          },
+          {
+              "event": "hf_kyc_aadhaar_verified",
+              "property": "age_ok",
+              "equals": true,
+              "note": "Aadhaar OTP verified, 18+, record stored. Also carries gender (F/M/T) and role; never name, DOB or Aadhaar number. Under-18 and unreadable records emit hf_kyc_declined instead."
+          },
+          {
+              "event": "hf_kyc_selfie_uploaded",
+              "property": "ok",
+              "equals": true,
+              "note": "Selfie video stored in private VERIFICATION bucket, review pending."
+          },
+          {
+              "event": "hf_payout_verified",
+              "property": "match",
+              "equals": true,
+              "note": "Bank account holder name matched the Aadhaar name (token overlap >= 0.6). upi_verified stays false until a VPA vendor is added (Sandbox has none)."
+          }
+      ],
+      "_verified_at": "worker/src/routes/hf_host_kyc.ts emit() call sites: hf_kyc_aadhaar_otp_sent {ok:true}, hf_kyc_aadhaar_verified {gender, age_ok:true}, hf_kyc_selfie_uploaded {ok:true}, hf_payout_verified {match}. Not yet exercised against live Sandbox; tsc clean 2026-10-09."
   }
 }

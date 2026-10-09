@@ -290,6 +290,7 @@ import { mePreview } from "./routes/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
 import { consultRoute } from "./routes/consultants"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants REST
+import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] Hello Fraands host verification (flag hostKycEnabled)
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
 import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -1078,6 +1079,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
+      if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"
           || (p.startsWith("/api/admin/listings/") && p.endsWith("/youtube"))) {

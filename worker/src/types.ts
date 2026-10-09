@@ -310,6 +310,17 @@ export interface Env {
   // Secret — `scripts/cf.sh worker secret put WASENDER_API_KEY`. SET => every phone code
   // goes on WhatsApp. UNSET => break-glass fallback to 2Factor SMS above.
   WASENDER_API_KEY?: string;
+  // [HF-HOST-KYC-1 2026-10-09] Sandbox.co.in (Aadhaar OTP + bank check) credentials and the
+  // field-encryption key for Hello Fraands host KYC. All SECRETS — never in the repo, never logged:
+  //   scripts/cf.sh worker secret put SANDBOX_API_KEY | SANDBOX_API_SECRET | HF_PII_KEY
+  // HF_PII_KEY = base64 of 32 random bytes (`openssl rand -base64 32`); losing it makes every
+  // encrypted KYC field unreadable, so back it up. See Specs/HF-HOST-KYC-1-RUNBOOK.md.
+  SANDBOX_API_KEY?: string;
+  SANDBOX_API_SECRET?: string;
+  HF_PII_KEY?: string;
+  // Optional override of the Sandbox base URL (default https://api.sandbox.co.in). Use
+  // https://test-api.sandbox.co.in on staging with test keys.
+  SANDBOX_BASE_URL?: string;
   // [SAATHUM-WATCH-1 2026-09-28] YouTube Data API v3 key used by the 5-minute
   // cron (index.ts scheduled() -> lib/saathum_stream_state.ts) to detect when a
   // saved live stream has actually ended (liveStreamingDetails.actualEndTime).
