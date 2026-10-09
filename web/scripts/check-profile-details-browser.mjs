@@ -61,7 +61,7 @@ try {
         assert.equal(canonicalUrl.pathname.replace(/\/$/, ''), `/people/${id}`, `${id}/${width}: canonical path`);
         await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonical);
         await expect(page.locator('header[data-callvaal-chrome] .cv-wordmark')).toContainText(identity.name);
-        await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
+        await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(37);
 
         const layout = await page.evaluate(() => {
           const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
