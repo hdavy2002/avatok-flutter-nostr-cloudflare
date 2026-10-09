@@ -9452,5 +9452,9 @@
   "HF-ONBOARD-GATE-2": {
     "description": "[HF-ONBOARD-GATE-2 2026-10-09] Fix HF-ONBOARD-GATE-1: onboarding page has no head auth hint, so read the Clerk __client_uat cookie directly to show the sign-in gate at once.",
     "no_telemetry": "Load-timing fix only; host onboarding success is measured by HF-HOST-PLATFORM-1 events."
+  },
+  "HF-KYC-COPY-FIX-1": {
+    "description": "[HF-KYC-COPY-FIX-1 2026-10-09] Aadhaar verified card states truthfully what is stored (encrypted details + photo, last 4 digits only).",
+    "no_telemetry": "Copy-only change."
   }
 }

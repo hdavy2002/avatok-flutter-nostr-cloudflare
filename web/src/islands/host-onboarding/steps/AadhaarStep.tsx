@@ -100,7 +100,7 @@ export default function AadhaarStep({ draft, update, api, setAction }: StepProps
           <div><dt>Gender</dt><dd>{draft.kycGender ? GENDER_LABEL[draft.kycGender] : '-'}</dd></div>
           <div><dt>Age</dt><dd>18 or older ✓</dd></div>
         </dl>
-        <p className="hob-help">We keep only your name, gender, 18+ result and the last 4 digits of your Aadhaar number. Never the full number.</p>
+        <p className="hob-help">Your Aadhaar details and photo are stored encrypted and seen only by our verification team. We never receive or keep your full Aadhaar number — only the last 4 digits.</p>
       </div>
     );
   }
