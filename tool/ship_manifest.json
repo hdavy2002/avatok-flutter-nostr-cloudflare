@@ -9702,8 +9702,13 @@
       }
     ]
   },
+<<<<<<< HEAD
   "HF-APP-1": {
     "description": "[HF-APP-1 2026-10-10] Android app shell (Capacitor wrapper of the live website) in hf-app/, built only by .github/workflows/hf-android.yml (started by hand, \"ship hf\"). Success = the app installs from Play internal testing and opens the live site. Telemetry for it (hf_app_open with platform=android-app) is added by HF-APP-8 in the web code.",
+=======
+  "HF-APP-3": {
+    "description": "[HF-APP-3 2026-10-10] App mode on the Hello Fraands website, for the Android Capacitor shell (UA marker HelloFraandsApp/ or window.Capacitor): html.hf-app class set before first paint, bottom tab bar (Home, Calls/Host, Wallet, Me), footer and marketing links hidden, safe areas, Android back button with an Exit sheet, external links open outside, platform=android-app super property. Web vs app money gating: the wallet's Add money card is replaced by 'Add tokens in the app' on the plain web (and 'Add tokens: Coming soon' in the app), and the Call button on the plain web becomes 'Open the app to call' unless the caller has test credits. The plain website is otherwise unchanged. Web only: ships no worker or app code.",
+>>>>>>> b5677f1b ([HF-APP-3] App mode on the Hello Fraands website: tab bar, back button, external links, safe areas, web-vs-app token and call gating)
     "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
@@ -9712,6 +9717,7 @@
         "event": "hf_app_open",
         "property": "platform",
         "equals": "android-app",
+<<<<<<< HEAD
         "note": "The installed app opened the live site once (event is added by HF-APP-8). Until then this is confirmed by hand on the owner's phone after installing from the Play internal testing link."
       }
     ]
@@ -9724,5 +9730,10 @@
       "hfTokensEnabled"
     ],
     "no_telemetry": "No runtime change: pure functions, new files, an unapplied migration and declared-but-unread config keys. Nothing emits, gates or branches on any of it, so there is no event to assert. Success is worker/src/lib/hf_token_math.test.ts and hf_token_config.test.ts passing. The flag is verifiable directly: hfTokensEnabled must read false and must NOT appear in the public /api/config response."
+=======
+        "note": "Fires once per session from inside the Android app once the shell ships; the plain website never sends it. Until the app is installed this stays empty by design."
+      }
+    ]
+>>>>>>> b5677f1b ([HF-APP-3] App mode on the Hello Fraands website: tab bar, back button, external links, safe areas, web-vs-app token and call gating)
   }
 }

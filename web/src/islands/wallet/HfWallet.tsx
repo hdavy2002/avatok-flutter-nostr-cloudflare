@@ -1,10 +1,11 @@
 /* [HF-WALLET-1] /wallet: Paid balance (real money) and Test credits (spend-only, never withdrawable), plus recent history.
  * Worker: GET /api/hf/wallet. [HF-TOPUP-1] TopupPanel (add money) mounts below the balance. */
 import { useEffect, useState } from 'react';
-import TopupPanel from './TopupPanel'; // [HF-TOPUP-1]
+import TokensPanel from './TokensPanel'; // [HF-APP-3] replaces TopupPanel (kept in the repo, dark behind its flags)
 import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
 import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
+import { isAppMode } from '../../lib/nativeBridge';
 import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 
@@ -13,7 +14,7 @@ const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
 export default function HfWallet() {
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
   const [w, setW] = useState<WalletInfo | null>(null);
-  const [rcptKey, setRcptKey] = useState(0); // [HF-WALLET-LIMITS-1] bump to reload receipts after a top-up
+  const [rcptKey] = useState(0); // [HF-WALLET-LIMITS-1] reload key for receipts (was bumped by the web top-up, now unused: [HF-APP-3])
 
   useEffect(() => {
     if (looksSignedOut()) { setPhase('signedout'); return; }
@@ -26,6 +27,18 @@ export default function HfWallet() {
     })();
     return () => { live = false; };
   }, []);
+
+  // [HF-APP-3] App mode only: remember whether this person is a host (the tab bar then shows Host instead of Calls)
+  // and scroll to a #hash section such as the Calls tab's #hfw-hist once the page has rendered.
+  useEffect(() => {
+    if (phase !== 'ready' || !isAppMode()) return;
+    try {
+      if (w?.host) localStorage.setItem('hf_is_host', '1'); else localStorage.removeItem('hf_is_host');
+      document.documentElement.classList.toggle('hf-host', !!w?.host);
+    } catch { /* storage blocked: tab bar keeps Calls */ }
+    const id = location.hash.slice(1);
+    if (id) document.getElementById(id)?.scrollIntoView();
+  }, [phase, w]);
 
   if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading your wallet…</p></main>;
   if (phase === 'signedout') {
@@ -53,7 +66,7 @@ export default function HfWallet() {
         )}
       </section>
 
-      <TopupPanel onPaid={() => { setRcptKey(k => k + 1); fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
+      <TokensPanel />
       <ReceiptsPanel reloadKey={rcptKey} />
 
       <RefundPanel onChanged={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />

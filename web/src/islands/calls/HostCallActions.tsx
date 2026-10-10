@@ -6,8 +6,10 @@ import Icon from '../host-onboarding/Icon';
 import SessionBridge from './SessionBridge';
 import ReviewForm from './ReviewForm';
 import { API_BASE } from '../../lib/env';
+import { isAppMode } from '../../lib/nativeBridge';
+import { HF_PLAY_URL, trackWebBlocked } from '../../lib/hfApp';
 import {
-  callsEnabled, firstName, hfCall, inr, isTerminal, looksSignedOut, mmss, signInUrl, soFar, toMs,
+  callsEnabled, fetchWallet, firstName, hfCall, inr, isTerminal, looksSignedOut, mmss, signInUrl, soFar, toMs,
   type CallInfo, type HostPresence,
 } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
@@ -249,6 +251,23 @@ function freshHost(slug: string) {
   return p;
 }
 
+/* [HF-APP-3] Web vs app call gate (spec HF-APP-D11 / HF-TOK-D7). Calls paid with Play tokens start only in the app.
+ * The client cannot ask "would test credits cover this call?" without starting it, so the plain web uses this rule:
+ * show the normal Call button only when the signed-in caller has test credits (GET /api/hf/wallet testBalance > 0);
+ * everyone else (signed out, no test credits, wallet unreachable) sees "Open the app to call". App mode is never gated.
+ * One wallet request per page; a failed request is not cached, so a later card retries. */
+let webCreditsP: Promise<boolean> | null = null;
+function webHasTestCredits(): Promise<boolean> {
+  if (!webCreditsP) {
+    const p = fetchWallet().then(r => {
+      if (!r.ok) { if (webCreditsP === p) webCreditsP = null; return false; }
+      return Number(r.data.testBalance) > 0;
+    }).catch(() => { if (webCreditsP === p) webCreditsP = null; return false; });
+    webCreditsP = p;
+  }
+  return webCreditsP;
+}
+
 /* ── Public component ──────────────────────────────────────────────────── */
 export default function HostCallActions({ host, variant, refresh }: { host: CallHost; variant: Variant; refresh?: boolean }) {
   const [on, setOn] = useState<boolean | null>(null);
@@ -258,6 +277,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   const [everOpen, setEverOpen] = useState(false);
   const [bridge, setBridge] = useState(false);
   const [subscribed, setSubscribed] = useState<boolean | undefined>(undefined);
+  const [gate, setGate] = useState<'pending' | 'open' | 'app'>('pending'); // [HF-APP-3] starts 'pending' on server and client alike (no hydration mismatch)
 
   useEffect(() => { let live = true; void callsEnabled().then(v => { if (live) setOn(v); }); return () => { live = false; }; }, []);
 
@@ -290,6 +310,17 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
     return () => { live = false; };
   }, [on, variant, status, host.slug]);
 
+  // [HF-APP-3] decide whether this person may start a call from here (see webHasTestCredits)
+  useEffect(() => {
+    if (!on || status !== 'online') return;
+    if (isAppMode()) { setGate('open'); return; }
+    if (looksSignedOut()) { setGate('app'); return; }
+    setBridge(true); // the wallet request needs the Clerk token bridge
+    let live = true;
+    void webHasTestCredits().then(ok => { if (live) setGate(ok ? 'open' : 'app'); });
+    return () => { live = false; };
+  }, [on, status]);
+
   const h: CallHost = { ...host, status, womenOnly };
   const onClose = useCallback(() => setOpen(false), []);
 
@@ -303,10 +334,17 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   if (status !== 'online') {
     return <NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'Busy' : 'Offline'} initial={subscribed} />;
   }
+  if (gate === 'app') {
+    return (
+      <a className={btnClass(variant, 'hfc-call hf-call-app')} href={HF_PLAY_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackWebBlocked('call')}>
+        <Icon name="phone" size={22} />Open the app to call
+      </a>
+    );
+  }
   return (
     <>
       <SessionBridge on={bridge || open} />
-      <button type="button" className={btnClass(variant, 'hfc-call')} onClick={() => {
+      <button type="button" className={btnClass(variant, 'hfc-call')} disabled={gate === 'pending'} onClick={() => {
         if (looksSignedOut()) { window.location.assign(signInUrl()); return; }
         setBridge(true); setEverOpen(true); setOpen(true);
       }}>

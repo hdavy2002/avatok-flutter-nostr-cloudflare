@@ -1,0 +1,37 @@
+---
+// [HF-APP-3] Bottom tab bar for the Android app shell. Always in the markup, display:none unless <html class="hf-app">
+// (CSS in styles/callvaal-chrome.css), so the plain website renders exactly as before and cached HTML is identical for everyone.
+// Tabs: Home · Calls (Host for hosts) · Wallet · Me. There is no separate caller call-history page, so Calls opens the
+// call history on the wallet page. Hosts are recognised client-side from a localStorage hint (hf_is_host) that the wallet page sets.
+import ModernIcon from '../home/ModernIcon.astro';
+const tabs = [
+  { id: 'home', href: '/', label: 'Home', icon: 'home' },
+  { id: 'calls', href: '/wallet#hfw-hist', label: 'Calls', icon: 'phone' },
+  { id: 'host', href: '/hosts/dashboard', label: 'Host', icon: 'sparkle' },
+  { id: 'wallet', href: '/wallet', label: 'Wallet', icon: 'payment' },
+  { id: 'me', href: '/dashboard/profile', label: 'Me', icon: 'user' },
+];
+---
+<nav class="hf-tabbar" aria-label="App navigation" data-hf-tabbar>
+  {tabs.map((t) => <a href={t.href} data-hf-tab={t.id}><ModernIcon name={t.icon} /><span>{t.label}</span></a>)}
+</nav>
+<script>
+  // Highlight the current tab. Runs on every page but only touches the DOM in app mode.
+  import { isAppMode } from '../../lib/nativeBridge';
+  if (isAppMode()) {
+    const path = location.pathname.replace(/\/+$/, '') || '/';
+    let current = '';
+    if (path === '/') current = 'home';
+    else if (path === '/hosts/dashboard') current = 'host';
+    else if (path === '/wallet') current = location.hash === '#hfw-hist' ? 'calls' : 'wallet';
+    else if (path.startsWith('/dashboard') || path.startsWith('/account')) current = 'me';
+    else if (path === '/marketplace' || path.startsWith('/h/') || path.startsWith('/people')) current = 'home';
+    document.querySelector(`[data-hf-tab="${current}"]`)?.setAttribute('aria-current', 'page');
+    try {
+      // A host who opens the dashboard gets the Host tab from then on; signed-out clears it.
+      if (path === '/hosts/dashboard') localStorage.setItem('hf_is_host', '1');
+      if (document.documentElement.getAttribute('data-site-auth') === 'out') localStorage.removeItem('hf_is_host');
+      document.documentElement.classList.toggle('hf-host', localStorage.getItem('hf_is_host') === '1');
+    } catch { /* storage blocked: the Calls tab stays */ }
+  }
+</script>

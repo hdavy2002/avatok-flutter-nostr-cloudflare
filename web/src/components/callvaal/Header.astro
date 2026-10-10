@@ -3,11 +3,26 @@ import brandConfig from '../../../../Specs/brand.json';
 import ModernIcon from '../home/ModernIcon.astro';
 import BrandLogo from './BrandLogo.astro';
 import '../../styles/callvaal-chrome.css';
+import { APP_UA_MARKER } from '../../lib/nativeBridge';
 interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; }
 const { hideAuth = false, auth = 'auto' } = Astro.props;
 const identity = brandConfig.homepageIdentity;
 const homeAnchor = (id: string) => `${Astro.url.pathname === '/' ? '' : '/'}#${id}`;
 ---
+{/* [HF-APP-3] App mode flag, set before first paint (this is the first thing in <body>, ahead of any visible markup):
+    inside the Android shell (UA marker or window.Capacitor) the CSS under html.hf-app turns on the tab bar and hides the
+    footer / marketing links. The document stays identical for every client, so it remains fully cacheable. */}
+<script is:inline define:vars={{ marker: APP_UA_MARKER }}>
+  (function () {
+    try {
+      var root = document.documentElement;
+      if ((navigator.userAgent || '').indexOf(marker) !== -1 || window.Capacitor) {
+        root.classList.add('hf-app');
+        try { if (localStorage.getItem('hf_is_host') === '1') root.classList.add('hf-host'); } catch (e) {}
+      }
+    } catch (e) {}
+  })();
+</script>
 {/* Match the existing SiteHeader session hint before paint. This only selects
     navigation links; it never authorizes a request or loads a Clerk island. */}
 <script is:inline>
@@ -38,6 +53,9 @@ const homeAnchor = (id: string) => `${Astro.url.pathname === '/' ? '' : '/'}#${i
 </header>
 <script>
   import { capture } from '../../lib/analytics';
+  import { isAppMode } from '../../lib/nativeBridge';
+  // [HF-APP-3] back button, external links and app telemetry; loaded only inside the app shell.
+  if (isAppMode()) void import('../../lib/appMode').then((m) => m.initAppMode());
   const toggle = document.querySelector<HTMLButtonElement>('.cv-menu-toggle');
   const nav = document.querySelector<HTMLElement>('.cv-navigation');
   function closeMenu(focus = false) {

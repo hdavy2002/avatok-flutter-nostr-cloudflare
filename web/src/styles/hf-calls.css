@@ -97,3 +97,6 @@ fieldset.hfc-field legend{font-weight:800;font-size:1.125rem;padding:0;margin-bo
 .hfc-calls small{font-size:.875rem;color:#785979;flex-basis:100%}
 .hfc-table{width:100%;border-collapse:collapse;font-size:.875rem}
 .hfc-table th,.hfc-table td{padding:8px 10px;text-align:left;border-bottom:1px solid #eee4ef;vertical-align:top}
+
+/* [HF-APP-3] "Open the app to call" link on the plain web (same look as the Call button, which is a <button>) */
+a.hf-call-app{text-decoration:none;text-align:center}

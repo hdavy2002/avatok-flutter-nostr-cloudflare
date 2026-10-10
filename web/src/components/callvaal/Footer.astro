@@ -1,6 +1,7 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
 import BrandLogo from './BrandLogo.astro';
+import AppTabBar from './AppTabBar.astro';
 import '../../styles/callvaal-chrome.css';
 const identity = brandConfig.homepageIdentity;
 const groups = [
@@ -31,6 +32,7 @@ const groups = [
     <p class="cv-footer-copyright footer-copyright"><span class="cv-age-badge">18+</span> © {'{{DATE_YEAR}}'} {'{{COMPANY_NAME}}'} · CIN {'{{CIN}}'} · Grievance officer: <a href="/grievance">{'{{GRIEVANCE_EMAIL}}'}</a></p>
   </div>
 </footer>
+<AppTabBar />
 <script>
   import { capture } from '../../lib/analytics';
   const mobile = window.matchMedia('(max-width: 699px)');

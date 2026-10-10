@@ -4,13 +4,16 @@
 import { BRAND } from './brand';
 
 interface Handle { remove?: () => unknown }
-interface CapPlugins {
+export interface CapPlugins {
   Browser?: {
     open?: (o: { url: string; presentationStyle?: string }) => unknown;
     close?: () => unknown;
     addListener?: (e: string, cb: () => void) => unknown;
   };
-  App?: { addListener?: (e: string, cb: (d: { url?: string }) => void) => unknown };
+  App?: {
+    addListener?: (e: string, cb: (d: { url?: string; canGoBack?: boolean }) => void) => unknown;
+    exitApp?: () => unknown;
+  };
 }
 interface CapacitorGlobal { isNativePlatform?: () => boolean; Plugins?: CapPlugins }
 const cap = (): CapacitorGlobal | undefined => {
@@ -54,4 +57,30 @@ export function openAuthInApp(url: string, onDone: () => void): () => void {
     window.location.assign(url);
   }
   return cleanup;
+}
+
+/* [HF-APP-3] App mode: the site running inside the Android shell (Capacitor wrapper that loads this site).
+ * The shell appends " HelloFraandsApp/<shellVersion>" to the user agent. Everything here is safe on the plain web. */
+
+/** User-agent marker the shell appends. Also read by the inline boot script in the site header (before first paint). */
+export const APP_UA_MARKER = 'HelloFraandsApp/';
+
+const ua = (): string => {
+  try { return navigator.userAgent || ''; } catch { return ''; }
+};
+
+/** True inside the app shell: Capacitor native platform OR the shell's user-agent marker. */
+export function isAppMode(): boolean {
+  return isNativeApp() || ua().includes(APP_UA_MARKER);
+}
+
+/** Shell version from the user agent ("HelloFraandsApp/3" -> 3). 0 when unknown (older shell or plain web). */
+export function appShellVersion(): number {
+  const m = ua().match(/HelloFraandsApp\/(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+/** Native plugin handles used by app mode (all optional; callers must guard). */
+export function appPlugins(): CapPlugins {
+  return cap()?.Plugins ?? {};
 }

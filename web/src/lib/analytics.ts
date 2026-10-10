@@ -143,6 +143,12 @@ export function reset(): void {
   currentUid = null;
   enqueue((sdk) => sdk.reset());
 }
+/** [HF-APP-3] Register super properties (applied after the SDK loads; overrides the default platform:'web'). */
+export function registerSuperProps(props: Properties): void {
+  if (!isBrowser) return;
+  const snapshot = { ...props };
+  enqueue((sdk) => sdk.registerSuperProps(snapshot));
+}
 export function capture(event: string, props?: Properties): void {
   const snapshot = { ...props, ...(trace ? { trace_id: trace } : {}) };
   enqueue((sdk) => sdk.capture(event, snapshot), true);

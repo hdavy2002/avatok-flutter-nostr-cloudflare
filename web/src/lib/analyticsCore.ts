@@ -284,6 +284,12 @@ export function reset(): void {
   }
 }
 
+/** [HF-APP-3] Add or override super properties on every later event (e.g. platform:'android-app' inside the app shell). */
+export function registerSuperProps(props: Properties): void {
+  if (!isBrowser) return;
+  posthog.register(props);
+}
+
 /** Generic capture — every named event in the catalog goes through this. */
 export function capture(event: string, props?: Properties): void {
   if (!isBrowser) return;

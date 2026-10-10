@@ -984,3 +984,29 @@ Errors (all via `captureException`, tagged `where`): `studio_list`, `studio_get_
 | `shop_fulfilment_failed` | `code` | Partner call failed (`not_configured\|auth_failed\|rejected\|unavailable\|not_found`). |
 | `shop_fulfilment_status` | `from, to, provider` | Partner status moved (poll). |
 | `$ai_generation` | — | Studio best-match text and product-copy draft (Gemini text only; no image generation anywhere). |
+
+## Hello Fraands Android app — app mode on the website (`[HF-APP-3]`, 2026-10-10)
+
+Spec: the Hello Fraands Android app spec, HF-APP-3 / HF-APP-8 (project doc `hello-fraands-android-app-spec`). The app is a Capacitor shell that loads the
+live site; the site runs in **app mode** when the user agent carries the `HelloFraandsApp/<shellVersion>` marker or `window.Capacitor` exists.
+All web events go through `web/src/lib/analytics.ts` (`capture`, `registerSuperProps`); failures through `captureException`. No phone number, no uid in props
+(identity comes from `identify`).
+
+**Super properties (app mode only, registered once per page load; override the default `platform: 'web'`):** `platform: 'android-app'`, `shell_version` (number from the
+user agent, `0` = unknown/older shell). On the plain web `platform` stays `'web'`.
+
+### Web (`lib/appMode.ts`, `lib/hfApp.ts`)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_open` | `platform: 'android-app', shell_version` | Once per session (sessionStorage flag) when the site loads in app mode. **Success value:** arrives with `platform = android-app` once the app ships; none from plain web. |
+| `hf_app_back_exit` | — | The Android back button was pressed on the home screen (or with no history), the "Exit Hello Fraands?" sheet was shown and the person tapped Exit. |
+| `hf_app_external_link` | `host` | In app mode a tapped link left the app: `host` is the other domain (e.g. `wa.me`) or the scheme for `tel`, `mailto`, `sms`, `whatsapp`. Brand domain, api, auth and media hosts never fire this. |
+| `hf_token_web_blocked` | `reason: 'topup' \| 'call'` | **Plain web only.** The person tapped the "Get the app" link on the wallet's "Add tokens in the app" panel (`reason: 'topup'`) or the "Open the app to call" button on a host card or profile (`reason: 'call'`). Never fires in app mode. |
+
+Errors (`captureException`, tagged `where`): `hf_app_init`, `hf_app_back_listener`.
+
+### Ship manifest note
+
+Success for `HF-APP-3`: `hf_app_open` with `platform = android-app` (only possible once the Android shell ships; the plain website is unchanged and emits none of these
+except `hf_token_web_blocked`). The `hf_app_offline_shown`, `hf_app_deeplink_opened`, `hf_app_permission` and push events of HF-APP-8 belong to the later phases.
