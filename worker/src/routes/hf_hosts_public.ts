@@ -16,8 +16,8 @@ const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
 
-type LiveRow = HostRow & { presence?: string | null; image_key: string | null; audio_key: string | null; audio_caption: string | null };
-const SEL = `SELECT h.*, a.image_key AS image_key,
+export type LiveRow = HostRow & { presence?: string | null; image_key: string | null; audio_key: string | null; audio_caption: string | null };
+export const SEL = `SELECT h.*, a.image_key AS image_key,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
   FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
@@ -28,7 +28,7 @@ function intro(env: Env, r: LiveRow) {
   return { introAudioUrl: r.audio_key ? mediaUrl(env, r.audio_key) : null, introSeconds: r.audio_key ? c.seconds : null, introMime: r.audio_key ? c.mime : null };
 }
 
-function card(env: Env, r: LiveRow, agg?: HostAggregate) {
+export function card(env: Env, r: LiveRow, agg?: HostAggregate) {
   return {
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), pricePerMin: r.price_per_min,

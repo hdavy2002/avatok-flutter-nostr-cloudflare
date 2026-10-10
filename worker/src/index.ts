@@ -298,6 +298,7 @@ import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] HF hos
 import { hfHostsRoute } from "./routes/hf_hosts"; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/submit (flag hostOnboardingEnabled)
 import { hfLanesRoute } from "./routes/hf_lanes"; // [HF-LANE-VERIFY-1] protected-lane caller verification (flag hostKycEnabled)
 import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
+import { hfHostsListRoute } from "./routes/hf_hosts_list"; // [HF-NATIVE-S2/S3] native host list + options
 import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLATFORM-1] media generation
 import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
 import { hfVobizAdminRoute } from "./routes/hf_vobiz_admin"; // [HF-VOBIZ-SPEND-1] admin Phone costs API, PDF/CSV
@@ -1115,6 +1116,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
+      if (p === "/api/hf/hosts" || p === "/api/hf/options") { const r = await hfHostsListRoute(req, env, ctx); if (r) return r; } // [HF-NATIVE-S2/S3]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
