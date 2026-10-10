@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { hfAdminApi, type AdminCall, type AdminUserHit } from '../../../lib/hfAdminApi';
 import { toMs } from '../../../lib/hfCallsApi';
 import { Banner, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
-import SpendLimitEditor from './SpendLimitEditor'; // [HF-WALLET-LIMITS-1]
 
 const T14 = { fontSize: 14 } as const;
 const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
@@ -54,7 +53,6 @@ function UserRow({ u, onBalance }: { u: AdminUserHit; onBalance: (uid: string, b
         <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={!customOk || busy !== null} onClick={() => void credit(customAmt)}>{busy === customAmt && customOk ? 'Adding…' : 'Add'}</button>
       </div>
       {msg && <Banner tone={msg.tone}>{msg.text}</Banner>}
-      <SpendLimitEditor uid={u.uid} />
     </div>
   );
 }

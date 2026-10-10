@@ -70,11 +70,6 @@ export default function HfWallet() {
                 You owe {inr2(w.tokens.debt.valuePaise / 100)} after a refund. It is cleared from your next token purchase. Please clear the amount owed before calling.
               </p>
             )}
-            {w.limits && (
-              <p className="hfc-sub" style={{ margin: 0 }}>
-                Bought today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)}. Limits count what you pay for tokens, and today’s resets at midnight.
-              </p>
-            )}
           </>
         ) : (
           <>
@@ -83,11 +78,6 @@ export default function HfWallet() {
               <div className="hfc-stat"><strong>{inr(w.testBalance)}</strong><span>Test credits: spend only, can’t be withdrawn</span></div>
             </div>
             <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
-            {w.limits && (
-              <p className="hfc-sub" style={{ margin: 0 }}>
-                Today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} used · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)} used. Limits count real money only, and today’s resets at midnight.
-              </p>
-            )}
           </>
         )}
       </section>

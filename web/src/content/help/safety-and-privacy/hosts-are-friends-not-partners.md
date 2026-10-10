@@ -41,7 +41,7 @@ When calling launches, the platform will have limits to keep things healthy for 
 
 - A **daily time limit** with the same host.
 - A short **cooling-off gap** before calling the same host again.
-- A **daily spending limit** and a check before large top-ups.
+- A check before large top-ups.
 
 ## "This host isn't available right now"
 
