@@ -294,7 +294,8 @@ void main() {
       await tapKey(tester, 'payout-verify');
       expect(find.byKey(const ValueKey<String>('payout-mismatch')), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('payout-verify')), findsOneWidget);
-      expect(find.textContaining('123456789012'), findsNothing);
+      // The field keeps what was typed (hidden); no label or message repeats the number.
+      expect(find.byWidgetPredicate((w) => w is Text && (w.data ?? '').contains('123456789012')), findsNothing);
     });
 
     testWidgets('a field error from the server shows under that field', (tester) async {
