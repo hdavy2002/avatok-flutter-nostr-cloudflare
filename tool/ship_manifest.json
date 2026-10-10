@@ -9834,5 +9834,21 @@
         "note": "On a phone with the new build: send a host page link by WhatsApp or email, tap it, the app opens (no browser, no chooser) on that host page. path carries no slug or token."
       }
     ]
+  },
+  "HF-TOK-PLAY-1": {
+    "description": "[HF-TOK-PLAY-1 2026-10-10] Server side of Hello Fraands token purchases with Google Play Billing, dark behind hfTokensEnabled (default false): GET /api/hf/tokens/products, POST /api/hf/tokens/play/prepare (limits on rupees paid, HMAC obfuscated account id), POST /api/hf/tokens/play/verify (idempotent: one lot per Play order, then acknowledge + consume), POST /api/hf/tokens/play/rtdn (Pub/Sub push, Google-signed JWT, 401 bad / 503 unconfigured), cron retry of ack/consume, voided-purchases sweep and pending re-check, Google refunds -> lot removed + debt (host earnings untouched). Play API calls take the package id (play.ts ...For functions). New table hf_play_accounts: migration written, NOT applied. Needs secrets HF_PLAY_ACCOUNT_SALT, HF_RTDN_AUDIENCE, HF_RTDN_PUSH_SA and the Play service account invited to the app (Specs/HF-PLAY-BILLING-RUNBOOK.md). The Android client is a separate issue.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_token_purchase_verified",
+        "property": "duplicate",
+        "equals": false,
+        "note": "The owner's first real Play purchase of hf_tokens_100 (Rs 100) was verified and its lot created (tokens=100). Only possible once the Android app ships, the secrets are set and hfTokensEnabled is on, so absence is expected until then."
+      }
+    ]
   }
 }

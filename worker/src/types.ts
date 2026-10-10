@@ -323,6 +323,11 @@ export interface Env {
   INTRO_CHECK?: Workflow; // [HF-VOICE-INTRO-1] class IntroCheckWorkflow
   SANDBOX_API_SECRET?: string;
   HF_PII_KEY?: string;
+  // [HF-TOK-PLAY-1] Play token purchases. HF_PLAY_ACCOUNT_SALT = HMAC key for the obfuscated account id (fail closed when unset);
+  // HF_RTDN_AUDIENCE / HF_RTDN_PUSH_SA = the Pub/Sub push subscription's OIDC audience and service-account email (503 when unset).
+  HF_PLAY_ACCOUNT_SALT?: string;
+  HF_RTDN_AUDIENCE?: string;
+  HF_RTDN_PUSH_SA?: string;
   // Optional override of the Sandbox base URL (default https://api.sandbox.co.in). Use
   // https://test-api.sandbox.co.in on staging with test keys.
   SANDBOX_BASE_URL?: string;

@@ -312,6 +312,7 @@ import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
 import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
 import { hfPushRoute } from "./routes/hf_push"; // [HF-APP-4] push token register
+import { hfTokensPlayRoute, runHfPlayCron } from "./routes/hf_tokens_play"; // [HF-TOK-PLAY-1] Play Billing token purchases + RTDN + cron
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
 import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -500,6 +501,7 @@ export default {
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
         runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }), // [HF-VOBIZ-SPEND-2] every 5 min (a 1-min trigger halted all crons)
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
+        runHfPlayCron(env).then((r) => { if (r.consumeRetried || r.rechecked || r.swept) console.log("[hf-play-cron]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-play-cron] failed:", String(e)); }), // [HF-TOK-PLAY-1]
         runHfExitCron(env, scheduleDeletion).catch((e) => { console.error("[hf-exit-cron] failed:", String(e)); }), // [HF-WALLET-EXIT-1]
         readConfig(env).then((c) => runMonthlyStatements(env, c as unknown as Record<string, unknown>)).then((r) => { if (r?.issued) console.log("[hf-statements]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-statements] failed:", String(e)); }), // [HF-WALLET-LIMITS-1]
         recoverAiMediaJobs(env)
@@ -1118,6 +1120,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p.startsWith("/api/admin/hf/limits/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
+      if (p === "/api/hf/tokens/products" || p.startsWith("/api/hf/tokens/play/")) { const r = await hfTokensPlayRoute(req, env, p); if (r) return r; } // [HF-TOK-PLAY-1]
       if (p === "/api/hosts/me/payouts" || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]
       if (p.startsWith("/api/admin/hf/vobiz/")) { const r = await hfVobizAdminRoute(req, env, ctx); if (r) return r; } // [HF-VOBIZ-SPEND-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]

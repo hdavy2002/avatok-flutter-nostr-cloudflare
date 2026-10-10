@@ -263,3 +263,104 @@ export async function listVoidedPlayPurchases(
     nextPageToken: typeof data.tokenPagination?.nextPageToken === "string" ? data.tokenPagination.nextPageToken : undefined,
   };
 }
+
+// ── [HF-TOK-PLAY-1] package-id-as-parameter variants ────────────────────────
+// The functions above are tied to playPackageId(env) and gated by MONEY_IN_DISABLED (the old avaTOK wallet switch). The "...For"
+// functions below take the package id explicitly (HF = hfPlayPackageId from config) and are NOT gated by MONEY_IN_DISABLED: HF has its
+// own gate (hfTokensEnabled, checked by the callers). Existing avaTOK behaviour is unchanged.
+const PLAY_API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
+const pkgUrl = (packageId: string, tail: string) => `${PLAY_API}/${encodeURIComponent(packageId)}/${tail}`;
+
+export interface PlayProductFull {
+  ok: boolean;
+  /** HTTP status of the Play call (0 = never reached Play). 4xx = Google rejected the token; 5xx / 0 = transient. */
+  status: number;
+  purchased: boolean;
+  orderId?: string;
+  purchaseState?: number;          // 0 purchased, 1 canceled, 2 pending
+  consumptionState?: number;       // 0 yet to consume, 1 consumed
+  acknowledgementState?: number;   // 0 yet to acknowledge, 1 acknowledged
+  priceAmountMicros?: number;
+  priceCurrencyCode?: string;
+  purchaseTimeMillis?: number;
+  obfuscatedExternalAccountId?: string;
+  reason?: string;
+}
+
+async function playCall(env: Env, method: "GET" | "POST", url: string): Promise<{ ok: boolean; status: number; data: any; reason?: string }> {
+  let accessToken: string;
+  try { accessToken = await getAccessToken(env); }
+  catch (e) { return { ok: false, status: 0, data: {}, reason: (e as Error).message }; }
+  try {
+    const res = await fetch(url, { method, headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = (await res.json().catch(() => ({}))) as any;
+    return { ok: res.ok, status: res.status, data, reason: res.ok ? undefined : data?.error?.message || `play_api_${res.status}` };
+  } catch (e) {
+    return { ok: false, status: 0, data: {}, reason: `play_fetch_${String((e as Error)?.message ?? e).slice(0, 80)}` };
+  }
+}
+
+/** purchases.products.get for an explicit package. Includes the obfuscated account id and the acknowledgement state. */
+export async function verifyPlayProductFor(env: Env, packageId: string, productId: string, purchaseToken: string): Promise<PlayProductFull> {
+  const r = await playCall(env, "GET", pkgUrl(packageId, `purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`));
+  if (!r.ok) return { ok: false, status: r.status, purchased: false, reason: r.reason };
+  const d = r.data;
+  const num = (v: unknown) => (Number.isFinite(Number(v)) && v !== null && v !== undefined && v !== "" ? Number(v) : undefined);
+  const purchaseState = typeof d.purchaseState === "number" ? d.purchaseState : undefined;
+  return {
+    ok: true, status: r.status, purchased: purchaseState === 0, orderId: typeof d.orderId === "string" ? d.orderId : undefined,
+    purchaseState,
+    consumptionState: typeof d.consumptionState === "number" ? d.consumptionState : undefined,
+    acknowledgementState: typeof d.acknowledgementState === "number" ? d.acknowledgementState : undefined,
+    priceAmountMicros: num(d.priceAmountMicros),
+    priceCurrencyCode: typeof d.priceCurrencyCode === "string" ? d.priceCurrencyCode.toLowerCase() : undefined,
+    purchaseTimeMillis: num(d.purchaseTimeMillis),
+    obfuscatedExternalAccountId: typeof d.obfuscatedExternalAccountId === "string" ? d.obfuscatedExternalAccountId : undefined,
+  };
+}
+
+export interface PlayActionResult { ok: boolean; status: number; reason?: string }
+
+/** purchases.products.acknowledge. Google refunds purchases that are not acknowledged within 3 days. */
+export async function acknowledgeProductFor(env: Env, packageId: string, productId: string, purchaseToken: string): Promise<PlayActionResult> {
+  const r = await playCall(env, "POST", pkgUrl(packageId, `purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`));
+  return { ok: r.ok, status: r.status, reason: r.reason };
+}
+
+/** purchases.products.consume: lets the buyer purchase the same product again (consumables). */
+export async function consumeProductFor(env: Env, packageId: string, productId: string, purchaseToken: string): Promise<PlayActionResult> {
+  const r = await playCall(env, "POST", pkgUrl(packageId, `purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}:consume`));
+  return { ok: r.ok, status: r.status, reason: r.reason };
+}
+
+/** purchases.voidedpurchases.list for an explicit package (one page; pass `pageToken` from the previous page). */
+export async function listVoidedFor(
+  env: Env, packageId: string, startTimeMs: number, pageToken?: string,
+): Promise<{ ok: boolean; purchases: PlayVoidedPurchase[]; nextPageToken?: string; reason?: string }> {
+  const u = new URL(pkgUrl(packageId, "purchases/voidedpurchases"));
+  u.searchParams.set("startTime", String(Math.max(0, Math.trunc(startTimeMs))));
+  u.searchParams.set("maxResults", "1000");
+  if (pageToken) u.searchParams.set("pageToken", pageToken);
+  const r = await playCall(env, "GET", u.toString());
+  if (!r.ok) return { ok: false, purchases: [], reason: r.reason };
+  const rows = Array.isArray(r.data.voidedPurchases) ? r.data.voidedPurchases : [];
+  return {
+    ok: true,
+    purchases: rows.map((p: any) => ({
+      purchaseToken: String(p.purchaseToken || ""),
+      orderId: typeof p.orderId === "string" ? p.orderId : undefined,
+      productId: typeof p.productId === "string" ? p.productId : undefined,
+      voidedTimeMillis: Number.isFinite(Number(p.voidedTimeMillis)) ? Number(p.voidedTimeMillis) : undefined,
+      voidedReason: Number.isFinite(Number(p.voidedReason)) ? Number(p.voidedReason) : undefined,
+    })).filter((p: PlayVoidedPurchase) => p.purchaseToken),
+    nextPageToken: typeof r.data.tokenPagination?.nextPageToken === "string" ? r.data.tokenPagination.nextPageToken : undefined,
+  };
+}
+
+/** orders.refund: refund (and for the Orders API, void) a Play order. For the EXIT agent's caller-refund flow. */
+export async function refundOrderFor(env: Env, packageId: string, orderId: string, opts: { revoke?: boolean } = {}): Promise<PlayActionResult> {
+  const u = new URL(pkgUrl(packageId, `orders/${encodeURIComponent(orderId)}:refund`));
+  if (opts.revoke) u.searchParams.set("revoke", "true");
+  const r = await playCall(env, "POST", u.toString());
+  return { ok: r.ok, status: r.status, reason: r.reason };
+}
