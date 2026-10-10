@@ -289,19 +289,19 @@ Closed testing → production · iOS (Capacitor iOS, App Store person-to-person 
 ## 11. Tokens, Google Play Billing and host earnings — `HF-TOK-*` (owner brief 2026-10-10)
 
 ### 11.0 In simple words
-- Callers buy **tokens** in the app with Google Play: **100 tokens for ₹100**.
-- At launch each token is worth **₹0.82 of call time**. The two numbers are separate settings: ₹1 is the price, ₹0.82 is the value. We never call the gap "Google's fee" or "GST".
-- A host keeps the price in **rupees per minute** (say ₹20/min). The app turns it into tokens: ₹20 ÷ ₹0.82 = **24.39 tokens a minute**. 100 tokens buy **4 min 6 s** with that host. We never round this up to 25.
+- Callers buy **tokens** in the app with Google Play. **[HF-TOK-GPV2, 2026-10-10] packs are ₹120 / ₹240 / ₹600 / ₹1,200 and give 200 / 400 / 1000 / 2000 tokens** (product ids stay `hf_tokens_100/200/500/1000`). The first launch version gp-v1 was 100 tokens for ₹100 (kept for old lots).
+- From gp-v2 each token is worth **₹0.51 of call time** (a ₹120 pack = 200 tokens = ₹102 of call time). The two numbers are separate settings: ₹0.60 is the price paid per token, ₹0.51 is the value. (gp-v1: ₹1 price, ₹0.82 value.) We never call the gap "Google's fee" or "GST".
+- A host keeps the price in **rupees per minute** (say ₹20/min). The app turns it into tokens: ₹20 ÷ ₹0.51 = **39.22 tokens a minute** (gp-v2; ₹10/min is 19.61 tokens a minute). 200 tokens (₹102) buy **5 min 6 s** at ₹20/min, **10 min 12 s** at ₹10/min. (Under gp-v1: 24.39 tokens a minute, 100 tokens = 4 min 6 s.) We never round this up to 25.
 - Calls are charged by the second, adding up over the whole call. Rounding to the paisa happens once, when the call ends.
 - **Hosts only ever see rupees.** Per full minute at ₹20: ₹2 covers the call cost (Vobiz), and of the ₹18 left the host gets 60% = **₹10.80** and the platform 40% = **₹7.20**, with any GST inside the platform's part. Google's fee is never taken off again here.
-- Later, when Paytm or another gateway approves us, new tokens will be worth ₹1. Tokens bought before keep their ₹0.82 value. The host still earns ₹10.80/min either way.
+- Later, when Paytm or another gateway approves us, new tokens will be worth ₹1. Tokens bought before keep their own value (₹0.82 for gp-v1, ₹0.51 for gp-v2). The host still earns the same rupees either way (₹10.80/min at ₹20/min) and always sees actual rupees earned.
 - The **website can't use Google Play**, so tapping "Add tokens" on the web says "Download the Hello Fraands app to add tokens", with the Play link. Calls paid with tokens start from the app (HF-APP-D11).
 
 ### 11.1 Owner decisions (2026-10-10)
 | ID | Decision |
 |---|---|
 | HF-TOK-D1 | Launch checkout = Google Play Billing only (consumable products). No customer UPI / BaseUPI / Paytm checkout now. Existing gateway top-up code (`HF-TOPUP-1`) stays dark. |
-| HF-TOK-D2 | Pricing version v1: provider `google_play`, purchase price ₹1/token, redemption value ₹0.82/token, assumed provider fee 15%. |
+| HF-TOK-D2 | Pricing version v1 (retired 2026-10-10, replaced by gp-v2: ₹0.60 price, ₹0.51 value, same 15% fee; HF-TOK-GPV2): provider `google_play`, purchase price ₹1/token, redemption value ₹0.82/token, assumed provider fee 15%. |
 | HF-TOK-D3 | Host rate stays in ₹/min. Tokens/min = rate ÷ token value, not rounded. |
 | HF-TOK-D4 | Split from the **rupee value consumed**: call-cost allocation ₹2/min (prorated), host 60% of the rest, platform 40% of the rest (any GST inside it). |
 | HF-TOK-D5 | Hosts see INR only; separate INR host ledger in paise; payouts outside Play. |
@@ -309,13 +309,13 @@ Closed testing → production · iOS (Capacitor iOS, App Store person-to-person 
 | HF-TOK-D7 | Calls paid with Play tokens start only in the app; the web shows "Open the app to call". |
 | HF-TOK-D8 | Google refund after some tokens were spent: unspent tokens of that lot are removed, and the spent part becomes an **amount owed**. It is cleared automatically from the next purchase, and no new calls until it is cleared. The host keeps what they earned. |
 | HF-TOK-D9 | DROPPED 2026-10-10 (HF-NOLIMITS-1): no daily or monthly spend limits. Only the "Are you sure?" step at ₹1,000+ stays. |
-| HF-TOK-D10 | Admin test credits are lots of kind `test` at the active value (₹0.82). Spend-only, never withdrawable. A host's earnings from them stay non-withdrawable test earnings. |
+| HF-TOK-D10 | Admin test credits are lots of kind `test` at the active value (₹0.51 under gp-v2). Spend-only, never withdrawable. A host's earnings from them stay non-withdrawable test earnings. |
 
 ### 11.2 What exists today (inspected 2026-10-10) and what changes
 | Today | File | Change |
 |---|---|---|
 | Caller paid balance = whole rupees in the WalletDO (1 token = ₹1) | `routes/wallet.ts`, `hf_calls_store.ts` (`hfReserve`) | Replaced for HF by a **token-lot ledger** in D1 (below). The WalletDO is no longer used for HF callers. No real money has ever been in it, so only test data moves. |
-| Test credits in `hf_credits` (whole rupees) | `lib/hf_credits.ts` | Migrated into `test` lots at ₹0.82. Keeps the same idempotency pattern (UNIQUE `op_id`, one D1 batch). |
+| Test credits in `hf_credits` (whole rupees) | `lib/hf_credits.ts` | Migrated into `test` lots at the active Play value (₹0.51), keeping the rupee value: rupees ÷ 0.51 tokens. Keeps the same idempotency pattern (UNIQUE `op_id`, one D1 batch). |
 | Billing per **started minute** (`Math.ceil`) in whole rupees | `lib/hf_call_math.ts` `billedMinutes`, `settleCall` | Replaced by **per-second cumulative** billing. Rule HF-PAY changes; rulebook updated in the same commit. |
 | Host share floored **per minute** (`hostSharePerMinPaise`) | `hf_call_math.ts` | Computed once per call from the consumed rupee value (formula below). The per-minute result is the same (₹10.80 at ₹20). |
 | Host earnings credited as **whole-rupee tokens** into the host's WalletDO, with fractions carried (`hostTokensToCredit`, `hf_calls.host_earned_tokens`) | `hf_call_math.ts`, `hf_calls.ts` | New **INR host ledger in paise** (`hf_host_ledger`). Hosts see ₹10.80, not 10 tokens. |
@@ -325,7 +325,7 @@ Closed testing → production · iOS (Capacitor iOS, App Store person-to-person 
 | Receipts + GST invoices on the "platform share" (₹2 + 40%) ÷ 1.18 | `lib/hf_receipts.ts` | Tax basis becomes a **setting** (§11.7). Not changed until the CA answers. |
 
 ### 11.3 Data model (DB_META; CREATE tables in their own migration file)
-- `hf_pricing_versions`: `id` (e.g. `gp-v1`), `provider` (`google_play`|`paytm`|…), `purchase_paise_per_token` (100), `redemption_paise_per_token` (82), `provider_fee_bps` (1500, assumed), `tax_mode` (text; see §11.7), `effective_from` (ms), `status` (`active`|`scheduled`|`retired`), `note`. Rows are never edited once active; a change is a new version.
+- `hf_pricing_versions`: `id` (e.g. `gp-v1`), `provider` (`google_play`|`paytm`|…), `purchase_paise_per_token` (100 in gp-v1, 60 in gp-v2), `redemption_paise_per_token` (82 in gp-v1, 51 in gp-v2), `provider_fee_bps` (1500, assumed), `tax_mode` (text; see §11.7), `effective_from` (ms), `status` (`active`|`scheduled`|`retired`), `note`. Rows are never edited once active; a change is a new version.
 - `hf_token_products`: `product_id` (Play SKU, e.g. `hf_tokens_100`), `tokens` (100), `pricing_version`, `active`. The price shown to the buyer comes **from Play** (`ProductDetails`), never typed beside the button.
 - `hf_token_lots`: `id`, `uid`, `kind` (`purchase`|`test`|`adjustment`), `pricing_version`, `redemption_paise_per_token`, `tokens_granted_micro`, `tokens_left_micro`, `tokens_reserved_micro`, `paid_paise` (what the buyer paid incl. tax; 0 for test), `provider`, `provider_ref` (Play orderId), `created_at`, `status` (`active`|`revoked`).
   **Unit:** micro-tokens (1 token = 1,000,000) as integers. This is what makes 24.390244 tokens/min exact enough.
@@ -335,7 +335,7 @@ Closed testing → production · iOS (Capacitor iOS, App Store person-to-person 
 - `hf_host_ledger` (INR, paise): `id`, `host_uid`, `kind` (`call_earning`|`call_earning_test`|`payout_reserve`|`payout_paid`|`payout_cancel`|`admin_adjust`), `amount_paise` (signed), `call_id`, `payout_id`, `available_at` (call end + 7 days), `created_at`, plus UNIQUE `op_id`.
 - `hf_calls` gains a **pricing snapshot** taken at call start: `rate_paise`, `call_cost_paise_per_min` (200), `host_share_bps` (6000), `tax_mode`, `split_rule_version`, and results `billable_seconds`, `consumed_value_paise`, `call_cost_paise`, `host_earning_paise`, `platform_paise`, `tokens_spent_micro`, `lots_used` (JSON: lot id, micro-tokens, paise per lot).
 
-Settings live in `worker/src/routes/config.ts` DEFAULTS (declared, so not fake flags): `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-v1`), `hfCallCostPaisePerMin` (200), `hfHostShareBps` (6000), `hfTokensEnabled` (false until tested), `hfPlayPackageId` (`com.hellofraands.app`). Number flags get `numericKeys` entries.
+Settings live in `worker/src/routes/config.ts` DEFAULTS (declared, so not fake flags): `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-v2`), `hfCallCostPaisePerMin` (200), `hfHostShareBps` (6000), `hfTokensEnabled` (false until tested), `hfPlayPackageId` (`com.hellofraands.app`). Number flags get `numericKeys` entries.
 
 ### 11.4 The money maths (pure functions in `lib/hf_token_math.ts`, unit-tested)
 For a call snapshot with rate **R** paise/min and **s** billable seconds:
@@ -362,7 +362,7 @@ For a call snapshot with rate **R** paise/min and **s** billable seconds:
 
 ### 11.6 Provider switch, prepared now, used later (`HF-TOK-PROVIDER-1`)
 - `CheckoutProvider` interface: `listProducts`, `startPurchase`, `verify`, `handleNotification`, `refund`. `google_play` is implemented now. `paytm` (and the existing Razorpay/Cashfree adapters) get wrapped in it but stay **disabled**.
-- Call billing reads **only lots and the call snapshot**. It never reads the provider or a hard-coded ₹0.82.
+- Call billing reads **only lots and the call snapshot**. It never reads the provider or a hard-coded value (₹0.82 in gp-v1, ₹0.51 in gp-v2).
 - Future version, e.g. `pt-v1`: provider `paytm`, ₹1 price, **₹1 value**. A ₹20/min host then costs 20 tokens/min, and the host still earns ₹10.80/min.
 - Switching = insert the new version with an `effective_from`, then set `hfCheckoutProvider` / `hfPricingVersion`. New purchases get new lots; old lots keep ₹0.82.
 - **Mixed balances:** the wallet shows "45.20 tokens worth ₹0.82 each + 100 tokens worth ₹1 each". The call screen estimate uses the lots in the order they will be used ("about 6 min 52 s with this host").
@@ -410,3 +410,5 @@ Telemetry: `hf_token_purchase_started|verified|duplicate|failed`, `hf_token_refu
 9. Mixed lots: 50 tokens @ ₹0.82 + 100 @ ₹1.00, ₹20/min → the first 123 s use the ₹0.82 lot, then the ₹1 lot (20 tokens/min). Host earnings = ₹10.80/min throughout.
 10. Provider switch mid-balance: old lot keeps ₹0.82, the new purchase is ₹1; a call already running keeps its snapshot after a config change.
 11. Paise only: no floats in stored balances; property test over random rates and durations shows V = C + H + P exactly.
+12. [HF-TOK-GPV2] Under gp-v2 (value ₹0.51): ₹10/min → 10 ÷ 0.51 = 19.607844 tokens/min; a 200-token lot = ₹102 = 10.2 min at ₹10/min; one minute at ₹10 → call cost ₹2.00, host ₹4.80, platform ₹3.20. Items 1–11 above are written with the gp-v1 numbers and still hold for old gp-v1 lots.
+13. [HF-TOK-GPV2] Test-credit migration: ₹120 of old test balance → 235.294118 tokens at ₹0.51 (rupee value kept, rounded up to the micro-token).

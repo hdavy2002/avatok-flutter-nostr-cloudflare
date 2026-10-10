@@ -14,6 +14,8 @@ export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"], o: {
   for (const m of migrations) {
     const lines = readFileSync(new URL(`../../migrations/${m}`, import.meta.url), "utf8").split("\n");
     db.exec(lines.filter((l) => !l.trim().startsWith("ALTER TABLE")).join("\n"));
+    // [HF-TOK-GPV2] production has the gp-v2 migration right after the token tables: tests see the same pricing and packs.
+    if (m === "2026-10-10-hf-tokens.sql") db.exec(readFileSync(new URL("../../migrations/2026-10-10-hf-pricing-gpv2.sql", import.meta.url), "utf8"));
     if (o.alters) for (const l of lines.filter((x) => x.trim().startsWith("ALTER TABLE"))) { try { db.exec(l.replace(/--.*$/, "")); } catch { /* column already there */ } }
   }
   const stmt = (q: string, args: unknown[] = []) => ({

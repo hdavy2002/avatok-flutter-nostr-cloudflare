@@ -520,7 +520,7 @@ async function adminMigrateTestCredits(req: Request, env: Env): Promise<Response
 }
 
 // POST /api/admin/hf/tokens/migrate-test-credits {dry_run?: boolean (default true)}   [HF-TOK-LEDGER-1]
-// One-off: hf_credits.test_balance -> `test` lots (same NUMBER of tokens, note "migrated from test credits"). Idempotent per user (op hftmig:<uid>).
+// One-off: hf_credits.test_balance (rupees) -> `test` lots worth the same rupees at the active Play value (rupees / 0.51 tokens), note "migrated from test credits". Idempotent per user (op hftmig:<uid>).
 // Admin only; works whether or not hfTokensEnabled is on (run it BEFORE flipping the flag). hf_credits rows are kept.
 async function adminMigrateTestToLots(req: Request, env: Env): Promise<Response> {
   const a = await adminCtx(req, env);

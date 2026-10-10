@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MICRO, tokensPerMinuteMicro, formatTokens, formatDuration, consumedValuePaise, callSplit, microForValue, cumulativeMicro,
-  planSpend, affordableSeconds, canStart, applyRefund, PRICING_GP_V1, PRICING_PT_V1_EXAMPLE, type Lot,
+  planSpend, affordableSeconds, canStart, applyRefund, PRICING_GP_V1, PRICING_GP_V2, PRICING_PT_V1_EXAMPLE, type Lot,
 } from "./hf_token_math";
 
 const R20 = 2000; // Rs 20 per minute, in paise
@@ -249,5 +249,37 @@ describe("11.10 #11 property: V = C + H + P exactly", () => {
         expect(p.secondsCovered).toBe(s);
       }
     }
+  });
+});
+
+// [HF-TOK-GPV2] Google Play packs Rs 120/240/600/1200 -> 200/400/1000/2000 tokens; 1 token = Rs 0.51 of call value.
+describe("gp-v2 pricing", () => {
+  const V51 = 51;
+  const R10 = 1000;
+  it("constants: pays 60 paise a token, worth 51 paise; gp-v1 stays for old lots", () => {
+    expect(PRICING_GP_V2).toEqual({ id: "gp-v2", provider: "google_play", purchasePaisePerToken: 60, redemptionPaisePerToken: 51, providerFeeBps: 1500, taxMode: "none_unregistered" });
+    expect(PRICING_GP_V1.redemptionPaisePerToken).toBe(82);
+    // Rs 120 pack = 200 tokens; 200 x Rs 0.60 = Rs 120; 200 x Rs 0.51 = Rs 102 (what is left after 15% of Rs 120)
+    expect(200 * PRICING_GP_V2.purchasePaisePerToken).toBe(12000);
+    expect(200 * PRICING_GP_V2.redemptionPaisePerToken).toBe(10200);
+    expect([120, 240, 600, 1200].map((rs) => (rs * 100) / PRICING_GP_V2.purchasePaisePerToken)).toEqual([200, 400, 1000, 2000]);
+  });
+  it("host Rs 10/min costs 10 / 0.51 = 19.607844 tokens a minute (rounded up to the micro, never to 20)", () => {
+    expect(tokensPerMinuteMicro(R10, V51)).toBe(19_607_844);
+    expect(formatTokens(19_607_844)).toBe("19.61");
+  });
+  it("a 200-token lot is Rs 102 = 10.2 minutes at Rs 10/min (612 s)", () => {
+    const lots: Lot[] = [{ id: "a", valuePaisePerToken: V51, leftMicro: 200 * MICRO }];
+    expect(cumulativeMicro(R10, 612, V51)).toBe(200 * MICRO);
+    expect(affordableSeconds(lots, R10, 3600)).toBe(612);
+    expect(formatDuration(612)).toBe("10 min 12 s");
+  });
+  it("one minute at Rs 10: call cost Rs 2.00, host Rs 4.80, platform Rs 3.20", () => {
+    expect(callSplit({ ratePaise: 1000, billableSeconds: 60 })).toMatchObject({ callCostPaise: 200, hostPaise: 480, platformPaise: 320 });
+  });
+  it("an old gp-v1 lot is spent first at its own Rs 0.82, then the gp-v2 lot at Rs 0.51", () => {
+    const lots: Lot[] = [{ id: "old", valuePaisePerToken: 82, leftMicro: 10 * MICRO }, { id: "new", valuePaisePerToken: V51, leftMicro: 200 * MICRO }];
+    const p = planSpend(lots, R10, 120); // Rs 20 of call value: Rs 8.20 from the old lot, the rest from the new one
+    expect(p.uses.map((u) => [u.lotId, u.valuePaise])).toEqual([["old", 820], ["new", 1180]]);
   });
 });

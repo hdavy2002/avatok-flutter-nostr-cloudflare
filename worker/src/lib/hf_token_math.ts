@@ -29,7 +29,7 @@ const num = (b: bigint): number => Number(b);
 
 // ── display helpers ─────────────────────────────────────────────────────────
 
-/** Micro-tokens a host's minute costs at a token value, rounded UP to the micro. Rs20 @ Rs0.82 -> 24_390_244 (24.390244 tokens). */
+/** Micro-tokens a host's minute costs at a token value, rounded UP to the micro. Rs20 @ Rs0.82 -> 24_390_244 (24.390244 tokens); Rs10 @ Rs0.51 -> 19_607_844. */
 export function tokensPerMinuteMicro(ratePaise: number, valuePaisePerToken: number): number {
   return num(ceilDiv(nat(ratePaise) * MICRO_N, posValue(valuePaisePerToken)));
 }
@@ -188,8 +188,14 @@ export interface PricingVersion {
   taxMode: TaxMode;
 }
 
+/** Retired 2026-10-10 (packs were Rs 100 for 100 tokens, 1 token = Rs 0.82). Kept so old lots keep their own value and refunds still work. */
 export const PRICING_GP_V1: PricingVersion = {
   id: "gp-v1", provider: "google_play", purchasePaisePerToken: 100, redemptionPaisePerToken: 82, providerFeeBps: 1500, taxMode: "none_unregistered",
+};
+
+/** ACTIVE Google Play pricing [HF-TOK-GPV2]: Rs 120 pack = 200 tokens (Rs 0.60 paid per token); 1 token = Rs 0.51 of call value (Rs 102 per Rs 120 pack). */
+export const PRICING_GP_V2: PricingVersion = {
+  id: "gp-v2", provider: "google_play", purchasePaisePerToken: 60, redemptionPaisePerToken: 51, providerFeeBps: 1500, taxMode: "none_unregistered",
 };
 
 /** FUTURE example (tests only, wired nowhere): a Paytm version where a token is worth the full Re 1. */

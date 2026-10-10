@@ -41,7 +41,7 @@ String tokensPlain(num tokens) {
   return plain == '1' ? '1 token' : '$plain tokens';
 }
 
-/// One line of the balance breakdown: `45.20 tokens worth ₹0.82 each`.
+/// One line of the balance breakdown: `45.20 tokens worth ₹0.51 each`.
 class ByValue {
   const ByValue({required this.valuePaisePerToken, required this.micro});
 
@@ -223,7 +223,7 @@ class TokenPack {
   final String productId;
   final num tokens;
 
-  /// What each token is worth in call time (paise). Shown as "worth ₹0.82 each".
+  /// What each token is worth in call time (paise). Shown as "worth ₹0.51 each".
   final int? redemptionPaisePerToken;
 
   /// The catalogue price per token (paise). Only a fallback to decide "Are you sure?" when Play's price

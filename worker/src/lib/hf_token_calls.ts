@@ -8,7 +8,7 @@ import {
 import { creditCallEarning } from "./hf_host_ledger";
 import {
   callSplit, canStart, planSpend, microForValue, tokensPerMinuteMicro, formatTokens, formatDuration, MAX_CALL_SECONDS, START_RESERVE_MINUTES,
-  PRICING_GP_V1, type Lot,
+  PRICING_GP_V2, type Lot,
 } from "./hf_token_math";
 import type { HfTokenConfig } from "./hf_token_config";
 
@@ -32,7 +32,7 @@ export function snapshotFor(ratePaise: number, tk: HfTokenConfig): CallSnapshot 
 
 /** Value (paise per token) a NEW token would have: used to say how many tokens a top-up must add. */
 async function activeValue(env: Env, tk: HfTokenConfig): Promise<number> {
-  return (await getPricingVersion(env, tk.pricingVersion))?.redemptionPaisePerToken ?? PRICING_GP_V1.redemptionPaisePerToken;
+  return (await getPricingVersion(env, tk.pricingVersion))?.redemptionPaisePerToken ?? PRICING_GP_V2.redemptionPaisePerToken;
 }
 
 /** Tokens short of a 2-minute start, valued at the active pricing version. */

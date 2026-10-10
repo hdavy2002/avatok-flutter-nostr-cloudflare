@@ -24,8 +24,10 @@ Worker secrets (`scripts/cf.sh worker secret put NAME`):
 | `HF_RTDN_AUDIENCE` | new: the exact audience string set on the push subscription (section 3, step 5) | Unset = the RTDN route answers 503. |
 | `HF_RTDN_PUSH_SA` | new: the push subscription's service-account email | Unset = the RTDN route answers 503. |
 
-Flags (already declared): `hfTokensEnabled` (false), `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-v1`), `hfPlayPackageId` (`com.hellofraands.app`), `hfTopupConfirmAboveRupees` (1000, returned to the app as `confirmAbovePaise`).
+Flags (already declared): `hfTokensEnabled` (false), `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-v2`; if an admin ever saved `gp-v1` in the config row, set it to `gp-v2`), `hfPlayPackageId` (`com.hellofraands.app`), `hfTopupConfirmAboveRupees` (1000, returned to the app as `confirmAbovePaise`).
 There are no daily or monthly spend limits (removed, HF-NOLIMITS-1).
+
+D1 (gp-v2 pricing, [HF-TOK-GPV2]): after `2026-10-10-hf-tokens.sql`, apply `2026-10-10-hf-pricing-gpv2.sql` with `cf.sh worker d1 execute --file` (INSERT/UPDATE only, safe to run twice; adds gp-v2, retires gp-v1, moves the four packs to 200/400/1000/2000 tokens). Run it BEFORE the worker that defaults to gp-v2 goes live, and before any purchase on the new Play prices. Then run the test-credit migration (it values test credits at Rs 0.51 a token).
 
 D1: apply `2026-10-10-hf-play-accounts.sql` with `cf.sh worker d1 execute` (it only CREATEs).
 
@@ -45,7 +47,7 @@ Use the Google Cloud project that owns the Play API service account (the one beh
 6. **Set the secrets** `HF_RTDN_AUDIENCE` and `HF_RTDN_PUSH_SA` (section 2), then deploy the worker (owner approval needed for deploys).
 7. **Point Play at the topic.** Play Console, select the HF app, **Monetize with Play, Monetization setup**, section "Real-time developer notifications": Topic name `projects/<project>/topics/hf-play-rtdn`. Notification content: choose the option that includes **one-time products** ("All notifications" or "Subscriptions, voided purchases, and all one-time products"). Save.
 8. **Test.** Click "Send test notification" in the same section. Expected: the worker logs an RTDN request answered 200 with `ignored: "test"`. A 401 means the audience or service-account email does not match the secrets; a 503 means a secret is missing.
-9. **Create the in-app products** (Monetize with Play, Products, In-app products): `hf_tokens_100`, `hf_tokens_200`, `hf_tokens_500`, `hf_tokens_1000`, consumable, active, INR price Rs 100 / 200 / 500 / 1,000. The server only credits product ids that are active in `hf_token_products`.
+9. **Create the in-app products** (Monetize with Play, Products, In-app products): `hf_tokens_100`, `hf_tokens_200`, `hf_tokens_500`, `hf_tokens_1000`, consumable, active, INR price **Rs 120 / 240 / 600 / 1,200** (gp-v2: 200 / 400 / 1000 / 2000 tokens; the ids keep their old names and cannot change). The server only credits product ids that are active in `hf_token_products`.
 10. **Invite the service account to the app** (section 2, `PLAY_SERVICE_ACCOUNT_JSON` row). Google can take hours to apply new permissions.
 
 Pub/Sub retries any non-2xx answer. The worker answers 503 only when Play itself is unreachable for a PURCHASED notification; everything else (handled, ignored, unknown order, other package) is 200 so it is never redelivered.
@@ -98,8 +100,8 @@ Tokens are spent on calls only inside the app (HF-TOK-D7). Balances show tokens;
 ## 6. First real-money test (owner, after deploy and flag)
 
 1. Apply the migration, set the three secrets, grant the service account, create the products, set up RTDN (section 3) and send the test notification.
-2. Install the app from the internal testing link, sign in, buy `hf_tokens_100` (Rs 100) with a **license tester** account first (no charge), then once with real money.
-3. Expect: `hf_token_purchase_prepared`, then `hf_token_purchase_verified` with `duplicate=false`, `tokens=100`; a lot of 100 tokens at Rs 0.82; the Play order shows acknowledged and the purchase no longer in `queryPurchases`.
+2. Install the app from the internal testing link, sign in, buy `hf_tokens_100` (Rs 120) with a **license tester** account first (no charge), then once with real money.
+3. Expect: `hf_token_purchase_prepared`, then `hf_token_purchase_verified` with `duplicate=false`, `tokens=200`; a lot of 200 tokens at Rs 0.51 (pricing version gp-v2); the Play order shows acknowledged and the purchase no longer in `queryPurchases`.
 4. Refund the order in Play Console. Expect `hf_token_refund_applied` within seconds (RTDN) or within the hour (sweep), lot revoked, no debt if nothing was spent.
 
 > [HF-TOK-PLAY-2 2026-10-10] The avatok-api Worker is at the 128 text-binding limit, so `HF_PLAY_ACCOUNT_SALT` was NOT set; the account hash key is derived from `HF_PII_KEY` with a fixed label. Never rotate `HF_PII_KEY`. RTDN (`HF_RTDN_AUDIENCE`, `HF_RTDN_PUSH_SA`) is also unset for the same reason; refunds are caught by the hourly voided-purchases sweep until bindings are freed.

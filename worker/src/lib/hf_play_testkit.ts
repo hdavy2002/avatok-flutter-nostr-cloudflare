@@ -2,7 +2,7 @@
 import { makeDb } from "./hf_token_d1_shim";
 
 export const PKG = "com.hellofraands.app";
-export const CFG = { enabled: true, provider: "google_play", pricingVersion: "gp-v1", callCostPaisePerMin: 200, hostShareBps: 6000, playPackageId: PKG };
+export const CFG = { enabled: true, provider: "google_play", pricingVersion: "gp-v2", callCostPaisePerMin: 200, hostShareBps: 6000, playPackageId: PKG };
 
 export function makePlayWorld() {
   const purchases = new Map(); // token -> play state
@@ -35,7 +35,7 @@ export function makePlayWorld() {
   };
   return {
     purchases, voided, calls, flags, jwks, fetchImpl,
-    buy(token, o = {}) { purchases.set(token, { sku: "hf_tokens_100", orderId: `GPA.${token}`, purchaseState: 0, consumptionState: 0, acknowledgementState: 0, priceMicros: 100_000_000, currency: "INR", obfuscated: "", ...o }); return purchases.get(token); },
+    buy(token, o = {}) { purchases.set(token, { sku: "hf_tokens_100", orderId: `GPA.${token}`, purchaseState: 0, consumptionState: 0, acknowledgementState: 0, priceMicros: 120_000_000, currency: "INR", obfuscated: "", ...o }); return purchases.get(token); },
   };
 }
 

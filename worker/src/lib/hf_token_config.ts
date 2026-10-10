@@ -8,7 +8,7 @@ export type HfCheckoutProvider = "none" | (typeof HF_CHECKOUT_PROVIDERS)[number]
 export const HF_TOKEN_DEFAULTS = {
   enabled: false,
   provider: "google_play" as HfCheckoutProvider,
-  pricingVersion: "gp-v1",
+  pricingVersion: "gp-v2",
   callCostPaisePerMin: 200,
   hostShareBps: 6000,
   playPackageId: "com.hellofraands.app",

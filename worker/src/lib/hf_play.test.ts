@@ -33,21 +33,21 @@ describe("verify + credit", () => {
     expect(r.ok).toBe(true);
     expect(r.status).toBe("consumed");
     expect(r.duplicate).toBe(false);
-    expect(r.tokensMicro).toBe(100 * MICRO);
-    expect(r.paidPaise).toBe(10000);
+    expect(r.tokensMicro).toBe(200 * MICRO); // hf_tokens_100 is the Rs 120 pack = 200 tokens
+    expect(r.paidPaise).toBe(12000);
     const lots = await getLots(env, "u1");
     expect(lots.length).toBe(1);
-    expect(lots[0]).toMatchObject({ kind: "purchase", valuePaisePerToken: 82, leftMicro: 100 * MICRO, paidPaise: 10000, provider: "google_play", providerRef: "GPA." + t });
+    expect(lots[0]).toMatchObject({ kind: "purchase", valuePaisePerToken: 51, pricingVersion: "gp-v2", leftMicro: 200 * MICRO, paidPaise: 12000, provider: "google_play", providerRef: "GPA." + t });
     expect(row(t).state).toBe("consumed");
     expect(row(t).lot_id).toBe(lots[0].id);
     expect(world.calls.filter((c: string) => c.includes(":acknowledge")).length).toBe(1);
     expect(world.calls.filter((c: string) => c.includes(":consume")).length).toBe(1);
-    expect(events("hf_token_purchase_verified")[0].props).toMatchObject({ tokens: 100, paid_paise: 10000, duplicate: false });
+    expect(events("hf_token_purchase_verified")[0].props).toMatchObject({ tokens: 200, paid_paise: 12000, duplicate: false });
   });
 
   it("falls back to the catalogue price when Play reports no rupee price", async () => {
     const t = await buyFor("u1", 1, { priceMicros: undefined });
-    expect((await verify("u1", t)).paidPaise).toBe(10000);
+    expect((await verify("u1", t)).paidPaise).toBe(12000);
   });
 
   it("the same purchase three times (verify, notification, cron) is ONE lot and one ledger row", async () => {
@@ -60,7 +60,7 @@ describe("verify + credit", () => {
     expect(count("SELECT COUNT(*) AS n FROM hf_token_lots")).toBe(1);
     expect(count("SELECT COUNT(*) AS n FROM hf_token_ledger WHERE kind='purchase'")).toBe(1);
     expect(count("SELECT COUNT(*) AS n FROM hf_play_purchases")).toBe(1);
-    expect((await balanceSummary(env, "u1")).totalMicro).toBe(100 * MICRO);
+    expect((await balanceSummary(env, "u1")).totalMicro).toBe(200 * MICRO);
     expect(events("hf_token_purchase_verified").map((e: any) => e.props.duplicate)).toEqual([false, true, true]);
   });
 
@@ -161,7 +161,7 @@ describe("acknowledge + consume", () => {
     world.flags.failConsume = true;
     const r = await verify("u1", t);
     expect(r).toMatchObject({ ok: true, status: "credited" });
-    expect((await balanceSummary(env, "u1")).totalMicro).toBe(100 * MICRO);
+    expect((await balanceSummary(env, "u1")).totalMicro).toBe(200 * MICRO);
     expect(row(t).state).toBe("credited");
     // too fresh for the retry
     expect((await runPlayCron(env, CFG)).consumeRetried).toBe(0);
@@ -199,7 +199,7 @@ describe("refunds", () => {
     const t = await buyFor("u1", 1);
     await verify("u1", t);
     const r = await applyPlayRefund(env, "GPA." + t, "rtdn");
-    expect(r).toMatchObject({ found: true, applied: true, debtValuePaise: 0, removedMicro: 100 * MICRO });
+    expect(r).toMatchObject({ found: true, applied: true, debtValuePaise: 0, removedMicro: 200 * MICRO });
     expect((await balanceSummary(env, "u1")).totalMicro).toBe(0);
     expect(await hasOpenDebt(env, "u1")).toBe(false);
     expect(row(t).state).toBe("refunded");
@@ -220,12 +220,12 @@ describe("refunds", () => {
   it("voided after partial spend: unspent removed, spent part becomes a debt, calls blocked, host ledger untouched", async () => {
     const t = await buyFor("u1", 1);
     await verify("u1", t);
-    const s = await settleCall(env, "u1", "call1", 2000, 148); // Rs 20/min for 148 s = about 60.16 tokens at Rs 0.82
+    const s = await settleCall(env, "u1", "call1", 2000, 148); // Rs 20/min for 148 s = about 96.73 tokens at Rs 0.51
     expect(s.ok).toBe(true);
     const r = await applyPlayRefund(env, "GPA." + t, "voided_sweep");
     expect(r.applied).toBe(true);
-    expect(r.debtMicro).toBeGreaterThan(60 * MICRO);
-    expect(r.debtMicro).toBeLessThan(61 * MICRO);
+    expect(r.debtMicro).toBeGreaterThan(96 * MICRO);
+    expect(r.debtMicro).toBeLessThan(97 * MICRO);
     expect(r.debtValuePaise).toBeGreaterThan(4900);
     expect(await hasOpenDebt(env, "u1")).toBe(true);
     expect((await balanceSummary(env, "u1")).totalMicro).toBe(0);
@@ -244,9 +244,9 @@ describe("refunds", () => {
     expect(r.ok).toBe(true);
     expect(await hasOpenDebt(env, "u1")).toBe(false);
     const bal = await balanceSummary(env, "u1");
-    // 100 tokens bought, 60.16 tokens' value (4,933 paise) cleared at the new lot's value: about 39.84 tokens left
-    expect(bal.totalMicro).toBeGreaterThan(39 * MICRO);
-    expect(bal.totalMicro).toBeLessThan(40 * MICRO);
+    // 200 tokens bought, 96.73 tokens' value (4,933 paise) cleared at the new lot's value: about 103.27 tokens left
+    expect(bal.totalMicro).toBeGreaterThan(103 * MICRO);
+    expect(bal.totalMicro).toBeLessThan(104 * MICRO);
     expect(debt).toBeGreaterThan(0);
   });
 

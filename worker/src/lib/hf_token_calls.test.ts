@@ -34,14 +34,14 @@ const rowOf = (id: string) => env.DB_META._raw.prepare("SELECT * FROM hf_calls W
 
 describe("start gate", () => {
   it("refuses under 2 minutes and reports the shortfall in tokens; nothing stays reserved", async () => {
-    await lot("u1", "purchase", 100, 82, "a"); // Rs 82 of value; 2 min at Rs 50/min needs Rs 100
+    await lot("u1", "purchase", 100, 82, "a"); // Rs 82 of value (an old gp-v1 lot); 2 min at Rs 50/min needs Rs 100
     const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 5000, tk: TK });
     expect(r.ok).toBe(false);
     expect(r.status).toBe(402);
     expect(r.error).toBe("low_balance");
     expect(r.extra.shortfallPaise).toBe(1800);
-    expect(r.extra.shortfallTokens).toBe("21.95"); // Rs 18.00 / 0.82
-    expect(r.message).toContain("21.95");
+    expect(r.extra.shortfallTokens).toBe("35.29"); // Rs 18.00 / 0.51 (a NEW token is worth the active gp-v2 value)
+    expect(r.message).toContain("35.29");
     expect(await getReservation(env, "c1")).toBe(null);
     expect((await balanceSummary(env, "u1")).availableMicro).toBe(T(100));
   });
