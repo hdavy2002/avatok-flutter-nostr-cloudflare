@@ -10052,5 +10052,38 @@
         "note": "On the owner's phone with a build that has this issue, signed in with a Play license-tester account: Wallet, Buy tokens, the Rs 100 pack. Expect hf_token_purchase_started (product_id = hf_tokens_100), then hf_app_purchase_result status = credited with tokens = 100 and source = buy, and the worker's hf_token_purchase_verified with duplicate = false. The Wallet then shows 100.00 tokens worth Rs 0.82 each. Needs hfTokensEnabled on, hfCheckoutProvider = google_play and the runbook's Play Console steps done; until then the Wallet says Buying tokens is coming soon."
       }
     ]
+  },
+  "HF-NATIVE-8": {
+    "description": "[HF-NATIVE-8 2026-10-10] Native app shared identity checks (hf-flutter/lib/features/kyc/, lib/features/lanes/): Aadhaar widget (number, OTP, verify; any fallback:digilocker error switches to DigiLocker in a Custom Tab with returnPath, finishes on app resume or the custom-scheme return link with 202 polling, remembers the attempt across an app restart), selfie-video widget (camera package, front camera, server code on screen, exactly 10 s, preview and retake, upload with progress, size and MIME checks, code_expired gets a new code), permission flow (explainer, Android prompt, denied with Open settings, re-check on resume), and the women-only and LGBTQ+ lane screens (18+ and declaration boxes, Aadhaar, join, You're in, Leave). Uses the existing /api/hosts/kyc/* and /api/hf/lanes/* routes, no worker change. Camera, microphone and the DigiLocker round trip only work on a phone.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_lane_join",
+        "property": "result",
+        "equals": "joined",
+        "note": "On a phone with the native build: open the women-only or LGBTQ+ space, tick the boxes, verify Aadhaar (OTP or DigiLocker) and tap Join; hf_app_lane_join arrives with result=joined and the lane. Failures show result=not_eligible|aadhaar_required|error with reason (worker code). Aadhaar and selfie steps show as hf_app_kyc_step {step, result}, camera and mic prompts as hf_app_permission {kind, result}."
+      }
+    ]
+  },
+  "HF-NATIVE-9": {
+    "description": "[HF-NATIVE-9 2026-10-10] Native host onboarding, part A (hf-flutter/lib/features/host_onboarding/): the step shell with progress header and Back, resume at the right step from GET /api/hosts/me (+ /api/account/phone/status) and the /host/onboarding?step= link (never past the first unfinished step), welcome / what you need, phone check (auto-pass), Aadhaar (HF-NATIVE-8 widget, role host), selfie video, payout (UPI + bank account + IFSC with the Aadhaar name-match result), the dl=return link, and a documented step registry (README.md, part_b/part_b_steps.dart) so part B (HF-NATIVE-10) plugs in avatar..done. Uses existing worker routes, no worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostOnboardingEnabled",
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_kyc_step",
+        "property": "step",
+        "equals": "payout_verify",
+        "note": "On a phone with the native build: Become a host, finish phone, Aadhaar, selfie video and payout with a bank account in the same name as the Aadhaar; hf_app_kyc_step arrives with step=payout_verify and result=ok (result=mismatch if the names differ). Closing the app midway and reopening resumes at the next unfinished step."
+      }
+    ]
   }
 }

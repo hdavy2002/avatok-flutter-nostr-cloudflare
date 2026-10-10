@@ -1118,3 +1118,22 @@ The earlier `hf_app_call_tapped` (host profile, HF-NATIVE-4) comes first in the 
 
 `HF-NATIVE-5` is two-sided (the host's phone has to ring and be answered): `min_devices_on_build` is 2. Success: `hf_app_call_ended` with `status = completed` and a `seconds`
 value, and `hf_app_review_submitted` with `outcome = ok`.
+
+`HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`.
+
+## Hello Fraands native app: identity checks (`[HF-NATIVE-8]`, `[HF-NATIVE-9]`, 2026-10-10)
+
+Native Flutter app (`hf-flutter/`), same super properties as above (`platform = android-app`, `service_name = hf-app`). Aadhaar, selfie, payout and lane joins
+call the same worker routes as the website (`/api/hosts/kyc/*`, `/api/hosts/payout/verify`, `/api/hf/lanes/*`). **Never in any prop:** Aadhaar number, name,
+gender, bank details, the lane self-declaration (HF-PRIV-6, HF-KYC-2).
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_permission` | `kind: 'camera' \| 'mic'`, `result: 'granted' \| 'denied' \| 'error'` | One event per Android prompt, from the shared permission flow (selfie video; the part B voice step uses the same widget with `kind = mic`). `granted` = allowed, `denied` = the person said no (the "Open settings" panel shows), `error` = the prompt or camera failed (no camera, camera in use). Same event name as the Capacitor app: filter by `service_name = hf-app`. **Success value:** `result = granted` for `kind = camera` and `kind = mic` during the owner's test host sign-up on a phone. |
+| `hf_app_kyc_step` | `step`, `result`, `reason?`, `status?` | `step`: `aadhaar_otp`, `aadhaar_verify`, `digilocker_start`, `digilocker_complete`, `selfie_code`, `selfie_upload`, `payout_verify`. `result`: `sent`, `ok`, `already_verified`, `started`, `pending` (DigiLocker 202, polled every 3 s), `wrong_code`, `fallback` (the worker said `fallback: digilocker`, the app switched), `mismatch` (payout name differs), `error`. Failures carry `reason` (the worker error code, for example `otp_unavailable`, `code_expired`, `too_large`) and `status` (HTTP). **Success value:** `step = aadhaar_verify` or `digilocker_complete` with `result = ok`, then `step = selfie_upload` with `result = ok`, then `step = payout_verify` with `result = ok`. |
+| `hf_app_lane_join` | `lane: 'women' \| 'lgbtq'`, `result`, `reason?`, `status?` | `result`: `joined`, `not_eligible` (women space and Aadhaar is not female or transgender, `reason` = `aadhaar_record` or the worker code), `aadhaar_required`, `error` (any other failure, `reason` = worker code). **Success value:** `result = joined` for `lane = women` from a test account whose Aadhaar shows female, and for `lane = lgbtq`. |
+
+### Ship manifest note
+
+Success for `HF-NATIVE-8`: `hf_app_lane_join` with `result = joined`. Success for `HF-NATIVE-9`: `hf_app_kyc_step` with `step = payout_verify` and `result = ok`
+(the last of the identity steps part A owns). Both need a phone with the native build; the Aadhaar OTP and DigiLocker run against the live vendor.
