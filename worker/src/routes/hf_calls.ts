@@ -24,6 +24,9 @@ import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
 import { readConfig } from "./config";
+import { readHfTokenConfig } from "../lib/hf_token_config";
+import { formatTokens } from "../lib/hf_token_math";
+import { grantTestLot, migrateTestCreditsToLots } from "../lib/hf_token_test_credits";
 import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
 } from "../lib/hf_calls_store";
@@ -343,8 +346,16 @@ async function adminCredit(req: Request, env: Env): Promise<Response> {
   if (name === null) name = personName(exists);
   const opKey = String(b.opId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || crypto.randomUUID();
   // [HF-WALLET-1] Test credits are spend-only and live in hf_credits, never in the withdrawable wallet.
+  // [HF-TOK-LEDGER-1] With hfTokensEnabled on, the amount is TOKENS and becomes a `test` lot at the active pricing value instead.
+  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
   let g: { applied: boolean; balance: number };
-  try { g = await grantTestCredits(env, uid, amount, `hftest:${opKey}`, note); } catch (e) {
+  try {
+    if (tk.enabled) {
+      const t = await grantTestLot(env, uid, amount, opKey, note, tk.pricingVersion);
+      if (!t.ok) return err(t.reason === "invalid_amount" ? 400 : 502, t.reason === "invalid_amount" ? "invalid_field" : "pricing_not_ready", t.reason === "invalid_amount" ? "Tokens must be a whole number from 1 to 2000." : "The pricing version is not set up.");
+      g = { applied: t.applied, balance: Number(formatTokens(t.totalMicro, 2)) };
+    } else g = await grantTestCredits(env, uid, amount, `hftest:${opKey}`, note);
+  } catch (e) {
     await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/wallet/credit", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "grant" } });
     return err(502, "wallet_error", "The credit didn't go through.");
   }
@@ -390,6 +401,24 @@ async function adminMigrateTestCredits(req: Request, env: Env): Promise<Response
     ok: true, dryRun, users: report, totalAmount: report.reduce((t, x) => t + Number(x.amount ?? 0), 0),
     unclassifiedHostEarnings: hosts.map((h) => ({ hostUid: h.host_uid, calls: Number(h.calls), rupees: Number(h.rupees) })),
   }, 200, { "cache-control": "private, no-store" });
+}
+
+// POST /api/admin/hf/tokens/migrate-test-credits {dry_run?: boolean (default true)}   [HF-TOK-LEDGER-1]
+// One-off: hf_credits.test_balance -> `test` lots (same NUMBER of tokens, note "migrated from test credits"). Idempotent per user (op hftmig:<uid>).
+// Admin only; works whether or not hfTokensEnabled is on (run it BEFORE flipping the flag). hf_credits rows are kept.
+async function adminMigrateTestToLots(req: Request, env: Env): Promise<Response> {
+  const a = await adminCtx(req, env);
+  if (a instanceof Response) return a;
+  const b = await readJson(req);
+  const dryRun = b.dry_run !== false;
+  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  let out;
+  try { out = await migrateTestCreditsToLots(env, { dryRun, pricingVersionId: tk.pricingVersion }); } catch (e) {
+    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/tokens/migrate-test-credits", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_tokens", step: "migrate" } });
+    return err(502, "migration_failed", "The migration did not run. Check that the token tables exist.");
+  }
+  await audit(env, a.uid, "migrate_test_credits_to_lots", "-", { dry_run: dryRun, users: out.rows.length, moved: out.rows.filter((r) => r.migrated).length, tokens: out.totalTokens });
+  return json({ ok: true, dryRun, pricingVersion: tk.pricingVersion, users: out.rows, totalTokens: out.totalTokens }, 200, { "cache-control": "private, no-store" });
 }
 
 // GET /api/admin/hf/users/search?q=  (admin only; full phone is shown on purpose, the audit row keeps only type + count)
@@ -477,6 +506,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);
     if (p === "/api/admin/hf/wallet/credit" && m === "POST") return await adminCredit(req, env);
     if (p === "/api/admin/hf/wallet/migrate-test-credits" && m === "POST") return await adminMigrateTestCredits(req, env);
+    if (p === "/api/admin/hf/tokens/migrate-test-credits" && m === "POST") return await adminMigrateTestToLots(req, env);
     if (p === "/api/admin/hf/users/search" && m === "GET") return await adminUserSearch(req, env);
     if (p === "/api/admin/hf/calls" && m === "GET") return await adminCalls(req, env);
     return null;

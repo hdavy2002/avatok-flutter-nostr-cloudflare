@@ -9738,5 +9738,14 @@
         "note": "Fires once per session from inside the Android app once the shell ships; the plain website never sends it. Until the app is installed this stays empty by design."
       }
     ]
+  },
+  "HF-TOK-LEDGER-1": {
+    "description": "[HF-TOK-LEDGER-1 2026-10-10] Hello Fraands token-lot ledger on D1 (worker/src/lib/hf_token_ledger.ts): credit a lot, oldest-first reserve/settle/release over lots, debts cleared from the next purchase, refund revoke, all single-batch and idempotent by op_id. Admin 'add test credits' writes a `test` lot at the active pricing value when hfTokensEnabled is on (amount = tokens), plus the admin one-off POST /api/admin/hf/tokens/migrate-test-credits (hf_credits test balance -> test lots). Dark behind hfTokensEnabled (default false): the old WalletDO/hf_credits path is unchanged while it is off. Token tables migration is written, NOT applied.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "no_telemetry": "Dark behind hfTokensEnabled=false and no caller path uses the lots yet (call start/settle is HF-TOK-CALLS-1). The only reachable change is the flag-on branch of the admin test-credit route, which keeps emitting the existing hf_test_credit_added / hf_admin_credit_added events, and an admin-only migration endpoint that writes an audit row. Success is worker/src/lib/hf_token_ledger.test.ts and hf_token_test_credits.test.ts passing and hfTokensEnabled still reading false in prod."
   }
 }
