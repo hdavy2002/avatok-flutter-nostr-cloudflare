@@ -5,6 +5,7 @@ import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/router/deep_link_handler.dart';
 import 'package:hf_app/features/push/data/push_controller.dart';
 import 'package:hf_app/features/push/data/push_gateway.dart';
+import 'package:hf_app/features/push/data/push_payload.dart';
 import 'package:hf_app/features/push/data/push_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
