@@ -198,7 +198,7 @@ void main() {
 
       await tapInSheet(tester, find.text('Exam tension'));
       await tapInSheet(tester, find.text('Hindi'));
-      await tester.tap(find.byKey(const ValueKey<String>('filter-online')));
+      await tapInSheet(tester, find.byKey(const ValueKey<String>('filter-online')));
       await tapInSheet(tester, find.text('Price: low to high'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Show results'));

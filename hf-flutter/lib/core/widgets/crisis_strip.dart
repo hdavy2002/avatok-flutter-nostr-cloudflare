@@ -12,6 +12,12 @@ class CrisisStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget call(String label, String number) => HfButton(
+          label: label,
+          icon: Icons.phone_rounded,
+          kind: HfButtonKind.secondary,
+          onPressed: () => LinkOpener.instance.tel(number),
+        );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -25,27 +31,20 @@ class CrisisStrip extends StatelessWidget {
         children: [
           const Text(Strings.crisisTitle, style: HfText.subtitle),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: HfButton(
-                  label: Strings.crisisTeleManas,
-                  icon: Icons.phone_rounded,
-                  kind: HfButtonKind.secondary,
-                  onPressed: () => LinkOpener.instance.tel(Strings.crisisTeleManasNumber),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: HfButton(
-                  label: Strings.crisisEmergency,
-                  icon: Icons.phone_rounded,
-                  kind: HfButtonKind.secondary,
-                  onPressed: () => LinkOpener.instance.tel(Strings.crisisEmergencyNumber),
-                ),
-              ),
-            ],
-          ),
+          // At large text sizes the two buttons stack, so the labels never overflow.
+          if (MediaQuery.textScalerOf(context).scale(14) > 22)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber), const SizedBox(height: 12), call(Strings.crisisEmergency, Strings.crisisEmergencyNumber)],
+            )
+          else
+            Row(
+              children: [
+                Expanded(child: call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber)),
+                const SizedBox(width: 12),
+                Expanded(child: call(Strings.crisisEmergency, Strings.crisisEmergencyNumber)),
+              ],
+            ),
         ],
       ),
     );
