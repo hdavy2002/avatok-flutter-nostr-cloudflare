@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- [HF-APP-4] Accent colour behind the status-bar icon, and the channel id the worker's pushes name. -->
+    <color name="hf_notification_color">#46113E</color>
+    <string name="hf_notification_channel_id" translatable="false">hf_default</string>
+</resources>
