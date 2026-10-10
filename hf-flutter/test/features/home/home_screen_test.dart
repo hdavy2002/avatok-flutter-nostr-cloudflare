@@ -175,6 +175,6 @@ void main() {
           pageJson([hostJson('asha', name: 'Asha with a long name', intro: 'https://x/a.m4a')]));
     await pumpScreen(tester, api: api, location: '/', size: const Size(360, 4000));
     final e = tester.takeException();
-    expect(e, isNull, reason: '$e');
+    expect(e, isNull, reason: e is FlutterError ? e.toStringDeep() : '$e');
   });
 }
