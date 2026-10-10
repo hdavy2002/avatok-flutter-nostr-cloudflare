@@ -197,11 +197,13 @@ class HostMiniCard extends ConsumerWidget {
             const SizedBox(height: 10),
             Text(host.displayName, style: HfText.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(host.priceLabel, style: HfText.bodyStrong),
-                const SizedBox(width: 8),
-                Flexible(child: HostRating(host: host)),
+                HostRating(host: host),
               ],
             ),
             const SizedBox(height: 8),
