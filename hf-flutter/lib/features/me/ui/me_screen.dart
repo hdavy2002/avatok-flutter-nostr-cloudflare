@@ -6,7 +6,6 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 
 /// Tab 4. Built in HF-NATIVE-12 (profile, language, notifications, legal, help, delete). This stub already

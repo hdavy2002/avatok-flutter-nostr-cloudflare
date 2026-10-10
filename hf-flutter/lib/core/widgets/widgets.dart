@@ -1,4 +1,4 @@
-/// Shared widgets. `import '.../core/widgets/widgets.dart';` gives a screen all of them.
+// Shared widgets. `import '.../core/widgets/widgets.dart';` gives a screen all of them.
 export 'ai_label.dart';
 export 'crisis_strip.dart';
 export 'hf_button.dart';

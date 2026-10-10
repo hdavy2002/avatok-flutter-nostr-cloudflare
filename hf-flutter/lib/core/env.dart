@@ -3,10 +3,10 @@ import 'brand.dart';
 /// Build-time and brand-derived constants. Hosts, scheme and package id come from the
 /// generated [Brand] (Specs/brand.json); never type them here.
 abstract final class Env {
-  /// API origin, e.g. https://api.<domain> (from Brand).
+  /// API origin, e.g. `https://api.<domain>` (from Brand).
   static const String apiOrigin = Brand.apiOrigin;
 
-  /// Site origin, e.g. https://<domain>.
+  /// Site origin, e.g. `https://<domain>`.
   static const String webOrigin = Brand.webOrigin;
 
   /// Custom URL scheme (first label of the domain).

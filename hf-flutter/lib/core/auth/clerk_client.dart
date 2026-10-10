@@ -60,7 +60,7 @@ class ClerkClient implements ClerkApi {
   int _mintBackoffUntil = 0;
   int _mintFailures = 0;
 
-  /// "clerk.<domain>" from `pk_live_<base64("clerk.<domain>$")>`.
+  /// `clerk.<domain>`, from the publishable key.
   static String deriveDomain(String key) {
     final part = key.substring(key.lastIndexOf('_') + 1);
     final decoded = utf8.decode(base64.decode(base64.normalize(part)));

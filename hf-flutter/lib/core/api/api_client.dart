@@ -105,7 +105,7 @@ class ApiCallReport {
 
 /// The real client: `http`, a Clerk Bearer token, JSON, timeouts, one retry on 401.
 ///
-/// - Base: `Env.apiOrigin` (https://api.<domain>, from Brand).
+/// - Base: `Env.apiOrigin` (`https://api.<domain>`, from Brand).
 /// - Headers: `Authorization: Bearer <jwt>`, `Accept: application/json`, `X-Client: hf-android/<versionCode>`.
 /// - Timeouts: 15 s, 60 s for uploads.
 /// - A 401 forces ONE token refresh and ONE retry. If that fails, [onSessionLost] runs (sign out) and the
