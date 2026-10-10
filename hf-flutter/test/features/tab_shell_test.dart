@@ -6,6 +6,7 @@ import 'package:hf_app/core/router/tab_shell.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 
 import '../support/app_harness.dart';
+import '../support/fake_api_client.dart';
 
 Finder tabLabel(String label) =>
     find.descendant(of: find.byType(HfTabBar), matching: find.text(label));
@@ -49,10 +50,15 @@ void main() {
   });
 
   testWidgets('Wallet opens for a signed-in person', (tester) async {
-    await pumpApp(tester, session: signedInState());
+    final api = FakeApiClient()
+      ..onJson('GET', '/api/hf/wallet', {'paidBalance': 0, 'testBalance': 0, 'spendable': 0, 'history': []})
+      ..onJson('GET', '/api/hf/tokens/products', {'ok': true, 'enabled': false, 'products': []})
+      ..onJson('GET', '/api/hf/wallet/refunds', {'enabled': false, 'requests': []})
+      ..onJson('GET', '/api/hf/wallet/receipts', {'ok': true, 'receipts': []});
+    await pumpApp(tester, session: signedInState(), api: api);
     await tester.tap(find.byKey(const ValueKey<String>('tab-wallet')));
     await tester.pumpAndSettle();
-    expect(find.text('This screen is built in HF-NATIVE-6.'), findsOneWidget);
+    expect(find.text('Your balance'), findsOneWidget);
   });
 
   testWidgets('Explore and host profiles open without an account', (tester) async {

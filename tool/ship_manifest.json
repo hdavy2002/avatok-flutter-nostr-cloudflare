@@ -10020,5 +10020,21 @@
         "note": "On a phone with the native build, open a host from a link or the list: hf_app_profile_viewed arrives with platform = android-app, service_name = hf-app and the host slug. Tap Notify me on an offline host while signed in: hf_app_notify_me arrives with outcome = ok and on = true. Failures carry outcome = error and the worker code in reason."
       }
     ]
+  },
+  "HF-NATIVE-6": {
+    "description": "[HF-NATIVE-6 2026-10-10] Native Wallet and Google Play token purchases (hf-flutter/lib/features/wallet/). Wallet screen: balance in tokens (2 dp) with the by-value breakdown (45.20 tokens worth Rs 0.82 each), test tokens apart, debt banner, history, purchase records, limits, refunds of unused purchased tokens (per purchase lot, POST /api/hf/wallet/refunds with an Idempotency-Key, inside the server window) plus the Google way (order history link, support mail); the old rupee shape still renders while tokens are off, with a Buying tokens is coming soon card. Buy tokens: GET /api/hf/tokens/products merged with Play ProductDetails (the price on each button is Play's own string, never ours), prepare to get the obfuscatedAccountId, an Are you sure? step at or above confirmAbovePaise, in_app_purchase buyConsumable(autoConsume false, applicationUserName = obfuscatedAccountId), verify with the purchase token (idempotent), and messages for success, duplicate, pending, cancelled, limit and error. The device never acknowledges or consumes (the server does both, runbook 4.3): completePurchase is never called, so an unverified purchase stays listed by Play and is re-verified on app start (signed in), on every resume and on every Wallet open. A thin BillingAdapter seam with a fake for tests. One line in app.dart starts the recovery. Dark until hfTokensEnabled is on and the Play products and service-account grant exist (HF-PLAY-BILLING-RUNBOOK sections 2 and 3).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_purchase_result",
+        "property": "status",
+        "equals": "credited",
+        "note": "On the owner's phone with a build that has this issue, signed in with a Play license-tester account: Wallet, Buy tokens, the Rs 100 pack. Expect hf_token_purchase_started (product_id = hf_tokens_100), then hf_app_purchase_result status = credited with tokens = 100 and source = buy, and the worker's hf_token_purchase_verified with duplicate = false. The Wallet then shows 100.00 tokens worth Rs 0.82 each. Needs hfTokensEnabled on, hfCheckoutProvider = google_play and the runbook's Play Console steps done; until then the Wallet says Buying tokens is coming soon."
+      }
+    ]
   }
 }

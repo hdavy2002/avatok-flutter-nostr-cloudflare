@@ -1074,6 +1074,17 @@ Errors (`captureException`): uncaught Flutter, platform and zone errors. Later i
 | `hf_app_notify_me` | `slug`, `on: boolean`, `outcome: 'ok' \| 'error'`, `reason`, `status`, `ms` | Notify me turned on or off (`POST` / `DELETE /api/hf/hosts/:slug/notify`). `reason` is the worker code (`not_verified`, `own_profile`, `not_found`, `network`, ...) and `status` the HTTP status, on error only. **Success value:** `outcome = ok`, `on = true` for a signed-in test on an offline host. |
 | `hf_app_report_tapped` | `slug` | "Report this profile" opened the web report page in a Custom Tab. |
 
+### Wallet and token purchases (`[HF-NATIVE-6]`, `hf-flutter/lib/features/wallet/`)
+
+Client events of the native Wallet. The server half of a purchase is `hf_token_purchase_prepared` / `_verified` / `_failed` above (worker). Product ids are `hf_tokens_*`; no token, order id, uid or phone is ever sent.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_wallet_viewed` | `mode: 'tokens' \| 'legacy'`, `has_debt: boolean` | Once per opening of the Wallet tab, when the balance is on screen. `legacy` = the old rupee shape (tokens off). |
+| `hf_token_purchase_started` | `product_id`, `tokens` | Client. The Play purchase sheet is about to open: `prepare` passed (limits fine) and, for a pack at or above `confirmAbovePaise`, the buyer said yes to "Are you sure?". The buyer may still cancel in the sheet. |
+| `hf_app_purchase_result` | `status`, `product_id`, `source: 'buy' \| 'recovery'`, `reason`, `tokens` | End of one purchase attempt. `status`: `credited` (tokens added, `tokens` = amount), `duplicate` (server already had it), `pending` (Google has not confirmed the payment yet), `payment_canceled` / `refunded` (server says nothing was credited), `limit` (prepare refused: day or month limit, `binding` also sent), `user_cancelled` (`reason`: `play_sheet` or `not_confirmed`), `failed` (`reason`: the worker error code, or `launch`, `prepare`, `play_error`, `no_account_id`). `source = recovery` is a purchase found unfinished on start, on resume or when the Wallet opens. **Success value:** `status = credited` with `tokens = 100` and `source = buy` for the owner's first Rs 100 test purchase on a phone. |
+| `hf_app_refund_requested` | `outcome: 'ok' \| 'error'`, `reason`, `status`, `ms`, `kind: 'tokens' \| 'money'` | The refund request for unused purchased tokens (`POST /api/hf/wallet/refunds`) answered. `reason` is the worker code on error (`insufficient_refundable`, `nothing_refundable`, `active_call`, `lot_changed`, ...). |
+
 ### Ship manifest note
 
 `HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`. Success for `HF-NATIVE-2`: `hf_app_signin_success` with `platform = android-app` (and `hf_app_signin_code_sent` before it) from the owner's phone.

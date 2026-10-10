@@ -9,6 +9,7 @@ import 'core/brand.dart';
 import 'core/router/app_router.dart';
 import 'core/router/deep_link_handler.dart';
 import 'core/theme/hf_theme.dart';
+import 'features/wallet/wallet_providers.dart';
 
 /// Root widget. [listenForLinks] is false in widget tests (no platform channel).
 class HfApp extends ConsumerStatefulWidget {
@@ -75,6 +76,8 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-NATIVE-6] Signed in: start the Play purchase listener and finish any unfinished purchase.
+    ref.watch(purchaseRecoveryProvider);
     return MaterialApp.router(
       title: Brand.name,
       debugShowCheckedModeBanner: false,
