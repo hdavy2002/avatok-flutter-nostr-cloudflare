@@ -1169,3 +1169,17 @@ Native Host tab (`hf-flutter/lib/features/host_dashboard/`), same super properti
 ### Ship manifest note
 
 `HF-NATIVE-11` is one-sided (one phone). Success: `hf_app_host_presence` with `online = true` and `outcome = ok`, and `hf_app_payout_requested` with `outcome = ok` once Rs 500 has cleared the 7-day hold.
+## Hello Fraands native app: Me, settings, delete account and update prompts (`[HF-NATIVE-12]`, 2026-10-10)
+
+Native Flutter app (`hf-flutter/`), same super properties as above (`platform = android-app`, `service_name = hf-app`). **Never in any prop:** the name,
+the phone number, an amount of money or a token count.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_me_viewed` | `signed_in: boolean` | The Me tab was opened (once per process, the tab keeps its state afterwards). **Success value:** arrives with `platform = android-app` and `signed_in = true` after opening Me on the native build. |
+| `hf_app_name_updated` | `outcome: 'ok' \| 'failed'`, `reason?`, `status?` | The name sheet saved (`PATCH /api/hf/me`). `failed`: `reason` is the worker code (`invalid_field` for a name with numbers, a phone number or a link, `rate_limited`, `network`, ...) or `empty` (refused on the phone, no request sent), `status` the HTTP status. |
+| `hf_app_account_delete_started` | `decision: 'delete' \| 'exit'` | The person ticked the box and confirmed on the delete screen. `decision` is what `GET /api/hf/account/exit` said: `delete` = nothing to settle, `exit` = unused purchased tokens are refunded through Google Play and host earnings are paid out first. |
+| `hf_app_account_delete_result` | `decision`, `outcome: 'ok' \| 'deferred' \| 'failed'`, `reason?`, `status?` | How the confirmed step ended. `ok` = the 30-day deletion was scheduled (`delete`) or the closing started (`exit`). `deferred` = `POST /api/account/delete` answered 409 `deferred` and the screen switched to the settle path. `failed`: `reason` is the worker code (`active_call`, `forfeit_required`, `bank_required`, `nothing_to_settle`, `try_again`, `network`, ...). |
+| `hf_app_update_prompt` | `kind: 'soft' \| 'forced'`, `action: 'shown' \| 'update_tapped' \| 'dismissed'`, `installed` | The update banner (`soft`, installed build below `hfAppLatestBuild`) or the blocking screen (`forced`, below `hfAppMinBuild`). `shown` once per process and kind, `update_tapped` = the Update button opened the Play Store, `dismissed` = Not now on the banner (the blocking screen has no such button). `installed` is the build number. **Success value:** after the owner sets `hfAppLatestBuild` above the installed build, `kind = soft`, `action = shown` arrives. |
+
+Success for `HF-NATIVE-12`: `hf_app_me_viewed` with `platform = android-app`.

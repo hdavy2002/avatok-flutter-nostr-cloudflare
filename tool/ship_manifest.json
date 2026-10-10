@@ -10124,5 +10124,19 @@
         "note": "With at least Rs 500 withdrawable (earnings older than 7 days), request a withdrawal from the Host tab: hf_app_payout_requested arrives with amount_rupees and outcome=ok and the request shows as Requested in the withdrawal history."
       }
     ]
+  },
+  "HF-NATIVE-12": {
+    "description": "[HF-NATIVE-12 2026-10-10] Native Me / settings, delete account and update prompts (hf-flutter/lib/features/me/, lib/core/update/, one builder line in app.dart). Me: name (change with PATCH /api/hf/me, the worker's validation message shows under the field), masked WhatsApp number, women-only and LGBTQ+ spaces with Leave (DELETE /api/hf/lanes/:lane), host dashboard link or Become a host, notifications switch (Android permission, or the phone's settings), help and legal links in a Custom Tab (help, safety, community guidelines, terms, wallet terms, privacy, data deletion, grievance, report), crisis strip, sign out, version line; signed out it shows a sign-in card and the same links. Delete account (/me/delete): GET /api/hf/account/exit decides the path. delete = 30-day wait with a tick (POST /api/account/delete; 409 deferred switches to the settle path); exit = unused purchased tokens refunded through Google Play, host earnings paid out first, forfeit tick when money cannot be paid, POST /api/hf/account/exit with an Idempotency-Key kept across offline retries (409 active_call, forfeit_required, bank_required, nothing_to_settle shown or handled), status screen with hold date, payout and refund state and a cancel; a pending deletion shows its date with Keep my account. Update check: below hfAppLatestBuild a soft banner (Not now), below hfAppMinBuild a blocking screen, both open the Play Store (market:// then https). No worker change; needs hfAppLatestBuild / hfAppMinBuild in config (HF-NATIVE-S7, merged) to be set by the owner for the prompts to appear.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_me_viewed",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "On a phone with the native build, signed in, open the Me tab: hf_app_me_viewed arrives with platform = android-app, service_name = hf-app and signed_in = true. Change the name: hf_app_name_updated {outcome: ok} (outcome = failed with reason = invalid_field when the worker refuses it). Open Delete my account and confirm on a throw-away account: hf_app_account_delete_started {decision} then hf_app_account_delete_result {outcome: ok}. Set hfAppLatestBuild above the installed build: hf_app_update_prompt {kind: soft, action: shown}; above hfAppMinBuild: kind = forced."
+      }
+    ]
   }
 }
