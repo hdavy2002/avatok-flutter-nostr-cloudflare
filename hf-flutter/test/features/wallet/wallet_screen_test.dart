@@ -31,12 +31,12 @@ void main() {
     testWidgets('shows the balance with 2 decimals, the value breakdown, test tokens and history', (tester) async {
       await pumpWallet(tester, api: walletApi(), billing: billing);
       expect(find.text('Your balance'), findsOneWidget);
-      expect(find.text('45.20 tokens'), findsOneWidget);
-      expect(find.text('45.20 tokens worth ₹0.82 each'), findsOneWidget);
-      expect(find.text('Test tokens (spend only): 5.00 tokens'), findsOneWidget);
+      expect(find.text('₹45.20'), findsOneWidget);
+      expect(find.textContaining('worth'), findsNothing);
+      expect(find.text('Test credit (spend only): ₹5.00'), findsOneWidget);
       expect(find.text('Call with Asha (4 min)'), findsOneWidget);
-      expect(find.text('-3.20 tokens'), findsOneWidget);
-      expect(find.text('+100.00 tokens'), findsOneWidget);
+      expect(find.text('-₹3.20'), findsOneWidget);
+      expect(find.text('+₹100.00'), findsOneWidget);
     });
 
     testWidgets('no test tokens line when there are none; an empty wallet says how to start', (tester) async {
@@ -46,18 +46,18 @@ void main() {
         billing: billing,
       );
       expect(find.byKey(const ValueKey<String>('test-tokens')), findsNothing);
-      expect(find.text('No tokens yet. Buy tokens below to start calling.'), findsOneWidget);
+      expect(find.text('No money in your wallet yet. Add money below to start calling.'), findsOneWidget);
     });
 
-    testWidgets('several values are listed one per line', (tester) async {
+    testWidgets('old lots of other values are not listed per value: the wallet is one rupee number', (tester) async {
       final w = tokenWallet(balance: '60.00', balanceMicro: 60000000);
       (w['tokens'] as Map)['byValue'] = [
         {'valuePaisePerToken': 82, 'tokens': '45.20', 'micro': 45200000},
         {'valuePaisePerToken': 90, 'tokens': '14.80', 'micro': 14800000},
       ];
       await pumpWallet(tester, api: walletApi(wallet: w), billing: billing);
-      expect(find.text('45.20 tokens worth ₹0.82 each'), findsOneWidget);
-      expect(find.text('14.80 tokens worth ₹0.90 each'), findsOneWidget);
+      expect(find.textContaining('worth'), findsNothing);
+      expect(find.text('₹60.00'), findsOneWidget);
     });
 
     testWidgets('tokens held for a call are explained', (tester) async {
@@ -65,14 +65,14 @@ void main() {
       (w['tokens'] as Map)['availableMicro'] = 30000000;
       (w['tokens'] as Map)['available'] = '30.00';
       await pumpWallet(tester, api: walletApi(wallet: w), billing: billing);
-      expect(find.text('30.00 tokens are free to spend. The rest is held for a call in progress.'), findsOneWidget);
+      expect(find.text('₹30.00 is free to spend. The rest is held for a call in progress.'), findsOneWidget);
     });
 
     testWidgets('debt banner: what is owed and that the next purchase clears it', (tester) async {
       final w = tokenWallet(debt: {'tokens': '12.50', 'micro': 12500000, 'valuePaise': 1025, 'open': true});
       await pumpWallet(tester, api: walletApi(wallet: w), billing: billing);
       expect(find.byKey(const ValueKey<String>('debt-banner')), findsOneWidget);
-      expect(find.text('You owe 12.50 tokens after a refund.'), findsOneWidget);
+      expect(find.text('You owe ₹12.50 after a refund.'), findsOneWidget);
       expect(find.text('Your next purchase clears it first. Calls stay paused until then.'), findsOneWidget);
     });
 
@@ -95,7 +95,7 @@ void main() {
       expect(find.text('Paid via Google Play'), findsOneWidget);
       expect(find.textContaining('Order GPA.3300-1'), findsOneWidget);
       expect(
-        find.descendant(of: find.byKey(const ValueKey<String>('purchases')), matching: find.text('100 tokens')),
+        find.descendant(of: find.byKey(const ValueKey<String>('purchases')), matching: find.text('₹100')),
         findsOneWidget,
       );
     });
@@ -120,7 +120,7 @@ void main() {
       expect(find.text('₹250'), findsOneWidget);
       expect(find.text('Test credits (spend only): ₹40'), findsOneWidget);
       expect(find.text('-₹40'), findsOneWidget);
-      expect(find.text('Buying tokens is coming soon'), findsOneWidget);
+      expect(find.text('Adding money is coming soon'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('purchases')), findsNothing, reason: 'purchase records are a token-mode section');
       expect(find.text('Receipt R-0001'), findsOneWidget);
       expect(find.text('These count the money you spend.'), findsOneWidget);
@@ -129,7 +129,7 @@ void main() {
 
     testWidgets('"Buying tokens is coming soon" also when the products route says enabled:false in token mode', (tester) async {
       await pumpWallet(tester, api: walletApi(productsEnabled: false), billing: billing);
-      expect(find.text('Buying tokens is coming soon'), findsOneWidget);
+      expect(find.text('Adding money is coming soon'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('buy-hf_tokens_100')), findsNothing);
     });
   });
@@ -161,7 +161,7 @@ void main() {
       fail = false;
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
-      expect(find.text('45.20 tokens'), findsOneWidget);
+      expect(find.text('₹45.20'), findsOneWidget);
     });
 
     testWidgets('no internet shows the offline message', (tester) async {
@@ -173,7 +173,7 @@ void main() {
     testWidgets('Google Play missing on the device: packs are not buyable and it says why', (tester) async {
       billing.available = false;
       await pumpWallet(tester, api: walletApi(), billing: billing);
-      expect(find.text('Google Play is not available on this device, so tokens cannot be bought here.'), findsOneWidget);
+      expect(find.text('Google Play is not available on this device, so you cannot add money here.'), findsOneWidget);
       final b = tester.widget<ElevatedButton>(
           find.descendant(of: find.byKey(const ValueKey<String>('buy-hf_tokens_100')), matching: find.byType(ElevatedButton)));
       expect(b.onPressed, isNull);
@@ -225,8 +225,8 @@ void main() {
 
     testWidgets('unused purchased tokens: the lot, what comes back, and the window', (tester) async {
       await pumpWallet(tester, api: walletApi(refunds: refundsTokens()), billing: billing);
-      expect(find.text('You can ask for a refund of unused tokens within 180 days of buying them.'), findsOneWidget);
-      expect(find.text('100.00 unused tokens'), findsOneWidget);
+      expect(find.text('You can ask for a refund of unused wallet money within 180 days of buying them.'), findsOneWidget);
+      expect(find.text('₹100.00 unused'), findsOneWidget);
       expect(find.text('You paid ₹100. Refund: ₹82'), findsOneWidget);
     });
 
@@ -270,7 +270,7 @@ void main() {
 
     testWidgets('nothing refundable says so', (tester) async {
       await pumpWallet(tester, api: walletApi(refunds: refundsTokens(lots: <Object?>[])), billing: billing);
-      expect(find.text('You have no unused tokens that can be refunded right now.'), findsOneWidget);
+      expect(find.text('You have no unused wallet money that can be refunded right now.'), findsOneWidget);
     });
 
     testWidgets('requests are listed with their status, and a waiting one can be cancelled', (tester) async {
@@ -354,10 +354,10 @@ void main() {
     });
 
     test('tokensPlain drops .00 only', () {
-      expect(tokensPlain(100), '100 tokens');
-      expect(tokensPlain(1), '1 token');
-      expect(tokensPlain(45.2), '45.20 tokens');
-      expect(tokensPlain(1000), '1,000 tokens');
+      expect(tokensPlain(100), '₹100');
+      expect(tokensPlain(1), '₹1');
+      expect(tokensPlain(45.2), '₹45.20');
+      expect(tokensPlain(1000), '₹1,000');
     });
 
     test('the Are-you-sure price: Play\'s rupees first, the catalogue price as a fallback, unknown otherwise', () {

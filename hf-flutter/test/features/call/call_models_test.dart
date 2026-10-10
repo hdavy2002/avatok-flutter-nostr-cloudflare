@@ -61,7 +61,7 @@ void main() {
       });
       expect(i.isTokenCall, isTrue);
       expect(i.talkedSeconds, 72);
-      expect(CallStrings.chargedText(i), '1.20 tokens');
+      expect(CallStrings.chargedText(i), '₹1.20');
       expect(CallStrings.hasCharge(i), isTrue);
     });
 

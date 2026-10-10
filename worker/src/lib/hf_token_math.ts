@@ -29,7 +29,7 @@ const num = (b: bigint): number => Number(b);
 
 // ── display helpers ─────────────────────────────────────────────────────────
 
-/** Micro-tokens a host's minute costs at a token value, rounded UP to the micro. Rs20 @ Rs0.82 -> 24_390_244 (24.390244 tokens); Rs10 @ Rs0.51 -> 19_607_844. */
+/** Micro-tokens a host's minute costs at a token value, rounded UP to the micro. Rs20 @ Rs0.82 -> 24_390_244 (24.390244 tokens); Rs10 @ Rs1.00 (gp-r1) -> 10_000_000. */
 export function tokensPerMinuteMicro(ratePaise: number, valuePaisePerToken: number): number {
   return num(ceilDiv(nat(ratePaise) * MICRO_N, posValue(valuePaisePerToken)));
 }
@@ -193,9 +193,13 @@ export const PRICING_GP_V1: PricingVersion = {
   id: "gp-v1", provider: "google_play", purchasePaisePerToken: 100, redemptionPaisePerToken: 82, providerFeeBps: 1500, taxMode: "none_unregistered",
 };
 
-/** ACTIVE Google Play pricing [HF-TOK-GPV2]: Rs 120 pack = 200 tokens (Rs 0.60 paid per token); 1 token = Rs 0.51 of call value (Rs 102 per Rs 120 pack). */
-export const PRICING_GP_V2: PricingVersion = {
-  id: "gp-v2", provider: "google_play", purchasePaisePerToken: 60, redemptionPaisePerToken: 51, providerFeeBps: 1500, taxMode: "none_unregistered",
+/**
+ * ACTIVE Google Play pricing [HF-WALLET-RUPEES]: no tokens for the user. The wallet holds rupees: 1 internal unit = Rs 1 of call value (value 100 paise).
+ * Rs 120 pack -> Rs 102 in the wallet (102 units). purchasePaisePerToken (118 = about 120/102) is an APPROXIMATE fallback only, used when Play
+ * reports no INR price; the real paid_paise always comes from Play's own price.
+ */
+export const PRICING_GP_R1: PricingVersion = {
+  id: "gp-r1", provider: "google_play", purchasePaisePerToken: 118, redemptionPaisePerToken: 100, providerFeeBps: 1500, taxMode: "none_unregistered",
 };
 
 /** FUTURE example (tests only, wired nowhere): a Paytm version where a token is worth the full Re 1. */

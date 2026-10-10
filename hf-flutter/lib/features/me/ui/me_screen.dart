@@ -22,7 +22,7 @@ import 'name_sheet.dart';
 abstract final class MeCopy {
   static const String title = 'Me';
   static const String signInTitle = 'Sign in';
-  static const String signInBody = 'Sign in with your WhatsApp number to call, add tokens and manage your account.';
+  static const String signInBody = 'Sign in with your WhatsApp number to call, add money and manage your account.';
   static const String signInButton = 'Sign in';
   static const String noName = 'Add your name';
   static const String editName = 'Change name';
@@ -59,7 +59,7 @@ abstract final class MeCopy {
     ('safety', 'Safety', '/safety'),
     ('community', 'Community guidelines', '/community-guidelines'),
     ('terms', 'Terms of use', '/terms'),
-    ('wallet-terms', 'Wallet and token terms', '/wallet-terms'),
+    ('wallet-terms', 'Wallet terms', '/wallet-terms'),
     ('privacy', 'Privacy policy', '/privacy'),
     ('data-deletion', 'Data deletion', '/data-deletion'),
     ('grievance', 'Grievance officer', '/grievance'),

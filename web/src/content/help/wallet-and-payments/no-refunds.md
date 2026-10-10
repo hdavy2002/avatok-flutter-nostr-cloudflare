@@ -55,6 +55,6 @@ If you were charged for a call that never connected, or charged twice, that is a
 
 ## Your unused balance
 
-Unused purchased tokens can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
+Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
 
 You can read the full [refunds page](/refunds) for more.

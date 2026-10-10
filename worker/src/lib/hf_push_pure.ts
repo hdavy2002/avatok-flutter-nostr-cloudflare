@@ -45,7 +45,7 @@ export function hfPushCopy(kind: HfPushKind, brand: string, v: { name?: string; 
     case "withdrawal_paid":
       return { kind, title: "Withdrawal paid", body: v.rupees ? `₹${v.rupees} has been sent to your bank.` : "Your money has been sent to your bank.", path: "/hosts/dashboard" };
     case "low_balance":
-      return { kind, title: "Your balance is low", body: "Add tokens to keep talking without a break.", path: "/wallet" };
+      return { kind, title: "Your balance is low", body: "Add money to your wallet to keep talking without a break.", path: "/wallet" };
     case "review_request":
       return { kind, title: "How was your call?", body: `Tell us about your call with ${v.name?.trim() || "your host"}. It takes a few seconds.`, path: v.token ? `/review/${v.token}` : "/" };
   }

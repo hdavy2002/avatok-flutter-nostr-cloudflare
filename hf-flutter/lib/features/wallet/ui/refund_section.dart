@@ -15,9 +15,9 @@ import '../wallet_providers.dart';
 
 abstract final class RefundCopy {
   static const String title = 'Refunds';
-  static const String viaGoogle = 'Tokens bought on Google Play are refunded by Google. Open your Google Play order history, or write to us at ';
+  static const String viaGoogle = 'Money added on Google Play is refunded by Google. Open your Google Play order history, or write to us at ';
   static const String orderHistory = 'Open Google Play order history';
-  static const String nothing = 'You have no unused tokens that can be refunded right now.';
+  static const String nothing = 'You have no unused wallet money that can be refunded right now.';
   static const String asked = 'Refund requested. We will check it and tell you here.';
   static const String confirmTitle = 'Ask for a refund?';
   static const String confirmYes = 'Yes, ask';
@@ -28,7 +28,7 @@ abstract final class RefundCopy {
 /// Where Google lists a person's orders (and lets them ask Google for a refund).
 final Uri kPlayOrderHistory = Uri.https('play.google.com', '/store/account/orderhistory');
 
-/// Refunds: unused purchased tokens can be refunded within the window (token mode), plus the Google way.
+/// Refunds: unused wallet money can be refunded within the window (token mode), plus the Google way.
 class RefundSection extends ConsumerStatefulWidget {
   const RefundSection({super.key});
 
@@ -165,7 +165,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
     }
     return [
       const SizedBox(height: HfSpacing.gap),
-      Text('You can ask for a refund of unused tokens within ${info.windowDays} days of buying them.', style: HfText.note),
+      Text('You can ask for a refund of unused wallet money within ${info.windowDays} days of buying them.', style: HfText.note),
       for (final l in info.lots) ...[
         const SizedBox(height: HfSpacing.gap),
         HfCard(
@@ -175,7 +175,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
             children: [
               Text('Bought ${shortDate(l.boughtAt)}', style: HfText.bodyStrong),
               const SizedBox(height: 4),
-              Text('${l.tokens} unused tokens', style: HfText.bodyText),
+              Text('₹${l.tokens} unused', style: HfText.bodyText),
               Text(
                 l.wholeOrder
                     ? 'You paid ${Money.rupees(l.paidRupees)}. Refund: ${Money.rupees(l.refundRupees)}'
@@ -191,7 +191,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
                 onPressed: _busyId == null
                     ? () => _ask(
                           lotId: l.lotId,
-                          confirmText: 'We will refund ${Money.rupees(l.refundRupees)} for the ${l.tokens} unused tokens from this purchase, and remove those tokens.',
+                          confirmText: 'We will refund ${Money.rupees(l.refundRupees)} for the unused ₹${l.tokens} from this purchase, and remove it from your wallet.',
                         )
                     : null,
               ),

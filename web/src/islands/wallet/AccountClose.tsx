@@ -91,7 +91,7 @@ export default function AccountClose() {
           {info.refund && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.refund.amount)}</strong>
-              <span>{tk ? 'Refund of your unused tokens through Google Play:' : 'Refund of unused top-ups to the payment you used:'} {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
+              <span>{tk ? 'Refund of your unused wallet money through Google Play:' : 'Refund of unused top-ups to the payment you used:'} {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
             </div>
           )}
           {info.payout && (
@@ -110,12 +110,12 @@ export default function AccountClose() {
           <h2 id="hfx-sum">Your money comes first</h2>
           <p style={{ margin: 0 }}>You have money in your wallet, so we pay it out before deleting your account. Your account is deleted once it is paid. This can take a few days because people approve each payment.</p>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{m(info.refundable + info.manualRefund)}</strong><span>{tk ? 'unused tokens you bought, refunded through Google Play' : 'unused top-ups, refunded to the original payment'}</span></div>
+            <div className="hfc-stat"><strong>{m(info.refundable + info.manualRefund)}</strong><span>{tk ? 'unused wallet money, refunded through Google Play' : 'unused top-ups, refunded to the original payment'}</span></div>
             <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, withdrawn to your bank</span></div>
             <div className="hfc-stat"><strong>{m(info.held)}</strong><span>earnings in the 7-day hold{info.heldReleaseAt ? `, until ${dateIN(info.heldReleaseAt)}` : ''}</span></div>
           </div>
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
-          {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some tokens were already used. Our team refunds that part for you in Google Play.` : `${inr(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
+          {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some of the money was already used. Our team refunds that part for you in Google Play.` : `${inr(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
             <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/hosts/dashboard">add it on your host dashboard</a>). If you would rather not, you can give up those earnings below.</p>
           )}

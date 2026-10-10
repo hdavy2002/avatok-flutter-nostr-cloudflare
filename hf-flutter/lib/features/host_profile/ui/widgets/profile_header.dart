@@ -112,15 +112,9 @@ class ProfileHeader extends ConsumerWidget {
             Text('10 min ≈ ${Money.rupees(price * 10)}', style: HfText.note),
           ],
         ),
-        if (est != null && est.isTokens && est.tokensPerMinute != null) ...[
+        if (est != null && est.isTokens && est.aboutText != null) ...[
           const SizedBox(height: 4),
-          Text(
-            [
-              '${est.tokensPerMinute} tokens/min',
-              if (est.aboutText != null) est.aboutText!,
-            ].join(' · '),
-            style: HfText.note,
-          ),
+          Text(est.aboutText!, style: HfText.note),
         ],
         if (badges.isNotEmpty) ...[
           const SizedBox(height: HfSpacing.gap),

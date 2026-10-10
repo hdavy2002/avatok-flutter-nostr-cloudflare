@@ -10,7 +10,7 @@ faq:
   - q: "How many strikes lead to a ban?"
     a: "Three confirmed strikes lead to a permanent ban."
   - q: "Can a banned person get their wallet money?"
-    a: "Yes. A banned user can still sign in, and unused purchased tokens can be refunded on request through Google Play within 180 days. Your money is never taken as a penalty."
+    a: "Yes. A banned user can still sign in, and unused wallet money can be refunded on request through Google Play within 180 days. Your money is never taken as a penalty."
   - q: "What if I think a strike is wrong?"
     a: "Raise it at /grievance. A person will review it."
 draft: false
@@ -59,7 +59,7 @@ A banned account:
 
 ## Wallet money is safe
 
-**A banned user can still sign in, and unused purchased tokens can be refunded on request through Google Play within 180 days.** We never take your money as a penalty.
+**A banned user can still sign in, and unused wallet money can be refunded on request through Google Play within 180 days.** We never take your money as a penalty.
 
 ## What if there was a mistake?
 

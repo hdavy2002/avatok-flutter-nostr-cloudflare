@@ -11,7 +11,7 @@
 //  - Lots are used OLDEST FIRST and never revalued. Reservations are held INSIDE tokens_left (available = left - reserved).
 //  - Gate rows carry delta_micro 0 (kind decides the meaning); the per-lot rows carry the amounts, so SUMs never double count.
 import type { Env } from "../types";
-import { planSpend, microForValue, applyRefund, PRICING_GP_V1, PRICING_GP_V2, MICRO, type Lot } from "./hf_token_math";
+import { planSpend, microForValue, applyRefund, PRICING_GP_V1, PRICING_GP_R1, MICRO, type Lot } from "./hf_token_math";
 
 export const resOpId = (callId: string) => `hftres:${callId}`;
 export const relOpId = (callId: string) => `hftrel:${callId}`;
@@ -95,13 +95,13 @@ export async function hasOpenDebt(env: Env, uid: string): Promise<boolean> {
 }
 
 export interface PricingRow { id: string; provider: string; purchasePaisePerToken: number; redemptionPaisePerToken: number; providerFeeBps: number }
-/** The pricing version row by id; gp-v1 and gp-v2 fall back to the built-in constants when the seed is not applied. Null = unknown version. */
+/** The pricing version row by id; gp-v1 and gp-r1 fall back to the built-in constants when the seed is not applied. Null = unknown version. */
 export async function getPricingVersion(env: Env, id: string): Promise<PricingRow | null> {
   const r = await env.DB_META.prepare(
     "SELECT id, provider, purchase_paise_per_token AS p, redemption_paise_per_token AS v, provider_fee_bps AS f FROM hf_pricing_versions WHERE id=?1",
   ).bind(id).first<{ id: string; provider: string; p: number; v: number; f: number }>().catch(() => null);
   if (r) return { id: r.id, provider: r.provider, purchasePaisePerToken: Number(r.p), redemptionPaisePerToken: Number(r.v), providerFeeBps: Number(r.f) };
-  for (const c of [PRICING_GP_V1, PRICING_GP_V2]) {
+  for (const c of [PRICING_GP_V1, PRICING_GP_R1]) {
     if (id === c.id) return { id, provider: c.provider, purchasePaisePerToken: c.purchasePaisePerToken, redemptionPaisePerToken: c.redemptionPaisePerToken, providerFeeBps: c.providerFeeBps };
   }
   return null;

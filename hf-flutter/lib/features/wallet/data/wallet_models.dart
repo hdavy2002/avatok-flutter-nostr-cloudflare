@@ -34,14 +34,10 @@ DateTime? _date(Object? v) {
   return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms.toInt());
 }
 
-/// "100 tokens", "45.20 tokens": whole amounts drop the decimals. Display only.
-String tokensPlain(num tokens) {
-  final text = Money.tokens(tokens);
-  final plain = text.endsWith('.00') ? text.substring(0, text.length - 3) : text;
-  return plain == '1' ? '1 token' : '$plain tokens';
-}
+/// "₹100", "₹45.20": a wallet amount in rupees, whole amounts drop the decimals. Display only.
+String tokensPlain(num tokens) => Money.rupees(tokens);
 
-/// One line of the balance breakdown: `45.20 tokens worth ₹0.51 each`.
+/// One line of the balance breakdown: `₹45.20` (old lots may have a different value).
 class ByValue {
   const ByValue({required this.valuePaisePerToken, required this.micro});
 
@@ -84,10 +80,13 @@ class HistoryItem {
   final num? rupees;
   final String? callId;
 
-  /// Shown on the right: `+100.00 tokens`, `-3.20 tokens`, `-₹40`.
+  /// Shown on the right: `+₹100.00`, `-₹3.20`, `-₹40`.
   String get amountText {
     final t = tokens;
-    if (t != null) return '$t tokens';
+    if (t != null) {
+      final signed = t.startsWith('+') || t.startsWith('-');
+      return signed ? '${t[0]}₹${t.substring(1)}' : '₹$t';
+    }
     final r = rupees;
     if (r == null) return '';
     return '${r > 0 ? '+' : ''}${Money.rupees(r)}';
@@ -184,7 +183,7 @@ class WalletData {
       purchases = [
         for (final h in history)
           if (h.kind == 'purchase')
-            PurchaseRecord(label: 'Paid via Google Play', tokens: h.tokens?.replaceFirst('+', ''), at: h.at),
+            PurchaseRecord(label: 'Paid via Google Play', tokens: h.tokens == null ? null : '₹${h.tokens!.replaceFirst('+', '')}', at: h.at),
       ];
     }
     if (j['mode'] == 'tokens' && j['tokens'] is Map) {
@@ -218,23 +217,27 @@ class WalletData {
 /// A token pack from `GET /api/hf/tokens/products`. There is NO price here on purpose: the price beside a
 /// Play button is Play's own `ProductDetails.price`.
 class TokenPack {
-  const TokenPack({required this.productId, required this.tokens, this.redemptionPaisePerToken, this.purchasePaisePerToken});
+  const TokenPack({required this.productId, required this.tokens, this.redemptionPaisePerToken, this.purchasePaisePerToken, this.creditPaise});
 
   final String productId;
   final num tokens;
 
-  /// What each token is worth in call time (paise). Shown as "worth ₹0.51 each".
+  /// What each unit is worth in call time (paise). Not shown to people.
   final int? redemptionPaisePerToken;
 
   /// The catalogue price per token (paise). Only a fallback to decide "Are you sure?" when Play's price
   /// is not in rupees. Never shown.
   final int? purchasePaisePerToken;
 
+  /// What the pack adds to the wallet, in paise (`10200` = "Adds ₹102 to your wallet"). The server computes it.
+  final int? creditPaise;
+
   factory TokenPack.fromJson(Map<String, dynamic> j) => TokenPack(
         productId: _str(j['productId']) ?? '',
         tokens: _num(j['tokens']) ?? 0,
         redemptionPaisePerToken: j['redemptionPaisePerToken'] == null ? null : _int(j['redemptionPaisePerToken']),
         purchasePaisePerToken: j['purchasePaisePerToken'] == null ? null : _int(j['purchasePaisePerToken']),
+        creditPaise: j['creditPaise'] == null ? null : _int(j['creditPaise']),
       );
 }
 

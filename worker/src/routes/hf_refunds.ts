@@ -62,7 +62,7 @@ async function tokenGet(env: Env, uid: string, windowDays: number): Promise<Resp
   try { lots = await refundableLots(env, uid, windowDays); }
   catch (e) {
     await trackException(env, e, { uid, route: "/api/hf/wallet/refunds", handled: true, extra: { area: "hf_refund", step: "lots" } });
-    return err(502, "wallet_error", "We couldn't check your tokens. Please try again.");
+    return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
   }
   const paise = lots.reduce((t, l) => t + l.sharePaise, 0);
   const rows = (await env.DB_META.prepare("SELECT * FROM hf_refund_requests WHERE uid=?1 ORDER BY created_at DESC LIMIT 50").bind(uid).all<RefundRow>().catch(() => ({ results: [] as RefundRow[] }))).results ?? [];

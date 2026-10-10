@@ -275,7 +275,7 @@ abstract final class CallStrings {
       'This is a friendly chat, not counselling. In crisis, dial 14416. Press # at any time to end the call and block.';
   static const String startCall = 'Start call';
   static const String notNow = 'Not now';
-  static const String addTokens = 'Add tokens';
+  static const String addTokens = 'Add money';
   static const String clearWhatYouOwe = 'Clear what you owe';
   static const String notifyMe = 'Notify me';
   static const String verifyToCall = 'Verify to call';
@@ -334,12 +334,12 @@ abstract final class CallStrings {
     return null;
   }
 
-  /// A rupee or token figure for the summary. Token calls show the server's text with a unit.
+  /// A rupee figure for the summary. Wallet calls show the server's amount as rupees.
   static String chargedText(CallInfo info) {
     final tokens = info.tokensSpent;
     if (tokens != null) {
       final n = num.tryParse(tokens);
-      return n == null ? '$tokens tokens' : Money.tokensWithUnit(n);
+      return n == null ? '₹$tokens' : Money.tokensWithUnit(n);
     }
     return Money.rupees(info.chargedRupees);
   }

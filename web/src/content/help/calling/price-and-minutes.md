@@ -66,4 +66,4 @@ Connected calls are not refunded. You choose the host, you see the price, and yo
 
 If we charged you for a call that never connected, or charged you twice, tell us. That is a billing error. The wrong amount is put back in your wallet. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
 
-Unused purchased tokens can be refunded on request through Google Play within 180 days.
+Unused wallet money can be refunded on request through Google Play within 180 days.

@@ -94,6 +94,8 @@ export async function listActiveProducts(env: Env): Promise<PlayProduct[]> {
   return out;
 }
 export const productPricePaise = (p: PlayProduct): number => p.tokens * p.purchasePaisePerToken;
+/** What the pack adds to the wallet, in paise (units x value): gp-r1 hf_tokens_100 = 102 x 100 = 10,200 paise = Rs 102. */
+export const productCreditPaise = (p: PlayProduct): number => p.tokens * p.redemptionPaisePerToken;
 
 // ── purchase rows ────────────────────────────────────────────────────────────
 interface PurchaseRow {
@@ -151,7 +153,7 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
     await emit(env, knownUid, "hf_token_purchase_failed", { reason: code, source: a.source, product_id: a.productId });
     return { ok: false, code, httpStatus, message, transient };
   };
-  if (!cfg.enabled || cfg.provider !== "google_play") return fail("disabled", 503, "Token purchases are not available right now.", false);
+  if (!cfg.enabled || cfg.provider !== "google_play") return fail("disabled", 503, "Adding money is not available right now.", false);
 
   if (row0 && a.uid && row0.uid !== a.uid) return fail("account_mismatch", 403, "This purchase belongs to another account.");
 
@@ -167,7 +169,7 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
   if (row0 && (row0.state === "refunded" || row0.state === "revoked")) return { ok: true, status: "refunded", orderId: row0.order_id, uid: row0.uid };
 
   const prod = await loadProduct(env, a.productId);
-  if (!prod) return fail("unknown_product", 400, "That token pack is not available.");
+  if (!prod) return fail("unknown_product", 400, "That pack is not available.");
 
   const p = await verifyPlayProductFor(env, pkg, a.productId, a.purchaseToken);
   if (!p.ok) {
@@ -229,7 +231,7 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
     kind: "purchase", pricingVersion: prod.pricingVersion, valuePaisePerToken: prod.redemptionPaisePerToken, micro, paidPaise,
     provider: "google_play", providerRef: orderId, note: `play:${a.source}`,
   }, `hfplay:${orderId}`);
-  if (!credit.lotId) return fail("internal", 500, "Could not credit the tokens. Please try again.", true);
+  if (!credit.lotId) return fail("internal", 500, "Could not add the money to your wallet. Please try again.", true);
 
   const upd = await db.prepare("UPDATE hf_play_purchases SET state='credited', lot_id=?2 WHERE purchase_token=?1 AND state IN ('verified','pending')").bind(a.purchaseToken, credit.lotId).run();
   if (Number((upd as any)?.meta?.changes ?? 0) === 0) {

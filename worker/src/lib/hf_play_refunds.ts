@@ -183,10 +183,10 @@ export async function requestPlayRefunds(env: Env, uid: string, o: { exit: boole
   try { lots = await refundableLots(env, uid, o.exit ? null : o.windowDays, now); }
   catch (e) {
     await trackException(env, e, { uid, route: "hf_play_refunds.create", handled: true, app_name: APP, extra: { area: "hf_play_refund", step: "lots" } });
-    return bad(502, "wallet_error", "We couldn't check your tokens. Please try again.");
+    return bad(502, "wallet_error", "We couldn't check your balance. Please try again.");
   }
   if (o.lotId) lots = lots.filter((l) => l.lotId === o.lotId);
-  if (lots.length === 0) return bad(402, "nothing_refundable", "There are no unused purchased tokens to refund.");
+  if (lots.length === 0) return bad(402, "nothing_refundable", "There is no unused money from purchases to refund.");
   const ids: string[] = [];
   let total = 0;
   for (const l of lots) {
@@ -204,7 +204,7 @@ export async function requestPlayRefunds(env: Env, uid: string, o: { exit: boole
     }
     ids.push(id); total += l.sharePaise;
   }
-  if (ids.length === 0) return bad(409, "already_requested", "You already have a refund in progress for these tokens.");
+  if (ids.length === 0) return bad(409, "already_requested", "You already have a refund in progress for this money.");
   void track(env, uid, "hf_play_refund_requested", APP, { amount_paise: total, lots: ids.length, exit: o.exit });
   return { ok: true, ids, amountPaise: total, lots: ids.length };
 }
@@ -231,11 +231,11 @@ export async function rejectPlayRefund(env: Env, id: string, adminUid: string, r
   if (row.status === "rejected") return { ok: true, status: "rejected", replay: true };
   if (!["requested", "approved", "failed"].includes(row.status)) return bad(409, "invalid_state", `This request is ${row.status}.`);
   const done = await env.DB_META.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id=?1").bind(playRefundOpId(id)).first();
-  if (done) return bad(409, "partly_refunded", "The tokens were already removed. Mark this refund as done instead.");
+  if (done) return bad(409, "partly_refunded", "The money was already removed. Mark this refund as done instead.");
   const up = await env.DB_META.prepare("UPDATE hf_refund_requests SET status='rejected', reason=?2, admin_uid=?3, updated_at=?4 WHERE id=?1 AND status IN ('requested','approved','failed')")
     .bind(id, reason, adminUid, Date.now()).run();
   if (!up.meta?.changes) return bad(409, "invalid_state", "This request changed. Refresh and try again.");
-  await notify(env, row.uid, `Your ${BRAND.name} refund request of ${inr2(Number(row.amount_paise ?? 0))} was not processed: ${reason}. Your tokens are still in your account.`);
+  await notify(env, row.uid, `Your ${BRAND.name} refund request of ${inr2(Number(row.amount_paise ?? 0))} was not processed: ${reason}. Your money is still in your wallet.`);
   void track(env, row.uid, "hf_play_refund_rejected", APP, { id });
   return { ok: true, status: "rejected" };
 }
@@ -286,14 +286,14 @@ export async function confirmPlayRefund(env: Env, id: string, adminUid: string, 
       // Google already refunded this order and HF-TOK-PLAY-1's refund path removed the tokens: the money is back with the buyer.
       const p = await env.DB_META.prepare("SELECT state FROM hf_play_purchases WHERE order_id=?1").bind(lot.provider_ref).first<{ state: string }>().catch(() => null);
       if (p && (p.state === "refunded" || p.state === "revoked")) recorded = recorded || nz(lot.paid_paise);
-      else return back(bad(409, "lot_not_active", "The tokens of this purchase were already removed. Reject this request."));
+      else return back(bad(409, "lot_not_active", "The money from this purchase was already removed. Reject this request."));
     } else {
       const current = unspentSharePaise(lot.paid_paise, lot.tokens_granted_micro, lot.tokens_left_micro);
       if (nz(lot.tokens_reserved_micro) > 0 || (await hasActiveCall(env, row.uid, now))) {
         return back(bad(409, "active_call", "The buyer is on a call. Try again when it ends."));
       }
       if (current !== owed) {
-        return back({ ok: false, status: 409, error: "lot_changed", message: `The unused tokens changed since this was asked (now worth ${inr2(current)}). Reject it and ask the buyer to request again.`, currentPaise: current });
+        return back({ ok: false, status: 409, error: "lot_changed", message: `The unused money changed since this was asked (now ${inr2(current)}). Reject it and ask the buyer to request again.`, currentPaise: current });
       }
       const whole = nz(lot.tokens_left_micro) >= nz(lot.tokens_granted_micro) && owed === nz(lot.paid_paise);
       if (whole && !o.manual) {
@@ -317,7 +317,7 @@ export async function confirmPlayRefund(env: Env, id: string, adminUid: string, 
     // Remember what went back BEFORE removing the tokens, so a retry after a crash still knows the amount.
     await env.DB_META.prepare("UPDATE hf_refund_requests SET recorded_paise=?2 WHERE id=?1").bind(id, recorded).run();
     const rt = await retireLot(env, lot.id, playRefundOpId(id), "refund_revoke");
-    if (rt.stillActive || !rt.found) return fail("tokens_not_removed", bad(409, "conflict", "The money was refunded but the tokens could not be removed yet. Press Retry to finish."));
+    if (rt.stillActive || !rt.found) return fail("tokens_not_removed", bad(409, "conflict", "The money was refunded but the money could not be removed from the wallet yet. Press Retry to finish."));
   }
 
   const note = (o.note ?? "").trim().slice(0, 200) || null;
@@ -325,7 +325,7 @@ export async function confirmPlayRefund(env: Env, id: string, adminUid: string, 
     env.DB_META.prepare("UPDATE hf_refund_requests SET status='refunded', recorded_paise=?2, reason=?3, refunded_at=?4, updated_at=?4 WHERE id=?1").bind(id, recorded, note, Date.now()),
     env.DB_META.prepare("UPDATE hf_play_purchases SET state='refunded', refunded_at=COALESCE(refunded_at,?2) WHERE order_id=?1 AND state<>'refunded'").bind(lot.provider_ref, Date.now()),
   ]);
-  await notify(env, row.uid, `Your ${BRAND.name} refund of ${inr2(recorded)} for unused tokens has been sent back through Google Play. Google can take a few days to show it.`);
+  await notify(env, row.uid, `Your ${BRAND.name} refund of ${inr2(recorded)} for your unused wallet money has been sent back through Google Play. Google can take a few days to show it.`);
   void track(env, row.uid, "hf_play_refund_confirmed", APP, { id, recorded_paise: recorded, whole: recorded === nz(lot.paid_paise) });
   return { ok: true, status: "refunded", recordedPaise: recorded };
 }

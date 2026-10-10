@@ -381,14 +381,14 @@ void main() {
           'canStart': true,
         });
       await pumpProfile(tester, api: api, session: signedIn());
-      expect(find.text('14.63 tokens/min · about 8 min 12 s'), findsOneWidget);
+      expect(find.text('about 8 min 12 s'), findsOneWidget);
     });
 
     testWidgets('no token estimate when signed out', (tester) async {
       final api = apiWith(profileJson());
       await pumpProfile(tester, api: api);
       expect(api.callsTo('GET', '/api/hf/wallet/estimate'), isEmpty);
-      expect(find.textContaining('tokens/min'), findsNothing);
+      expect(find.textContaining('about 8 min'), findsNothing);
     });
   });
 

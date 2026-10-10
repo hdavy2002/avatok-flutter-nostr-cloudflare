@@ -15,7 +15,7 @@ class PackOffer {
   String? get priceText => store?.priceText;
 }
 
-/// Everything the "Buy tokens" section needs to draw itself.
+/// Everything the "Add money" section needs to draw itself.
 class PackOffers {
   const PackOffers({
     required this.enabled,

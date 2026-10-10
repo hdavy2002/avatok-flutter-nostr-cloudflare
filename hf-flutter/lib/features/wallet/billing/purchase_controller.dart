@@ -54,21 +54,21 @@ class PurchaseState {
 
 /// Copy for the purchase flow. Simple English, one place.
 abstract final class PurchaseCopy {
-  static const String pending = "Payment pending. We'll add your tokens when Google confirms it.";
+  static const String pending = "Payment pending. We'll add the money to your wallet when Google confirms it.";
   static const String cancelled = 'Purchase cancelled. You were not charged.';
-  static const String alreadyAdded = 'These tokens were already added to your wallet.';
-  static const String tokensAdded = 'Tokens added to your wallet.';
+  static const String alreadyAdded = 'This money was already added to your wallet.';
+  static const String tokensAdded = 'Money added to your wallet.';
   static const String stillConfirming =
-      "We're still confirming your payment. Your tokens will be added automatically. Open this screen again in a few minutes.";
-  static const String paymentCanceled = 'This payment was cancelled, so no tokens were added.';
-  static const String refunded = 'Google refunded this payment, so no tokens were added.';
+      "We're still confirming your payment. The money will be added automatically. Open this screen again in a few minutes.";
+  static const String paymentCanceled = 'This payment was cancelled, so no money was added.';
+  static const String refunded = 'Google refunded this payment, so no money was added.';
   static const String playFailed = 'Google Play could not complete this purchase. Please try again.';
   static const String playClosed = 'Google Play could not open. Please try again.';
-  static const String notAvailable = 'Buying tokens is not available right now. Please try again soon.';
+  static const String notAvailable = 'Adding money is not available right now. Please try again soon.';
   static const String packMissing = 'This pack is not available on Google Play yet.';
   static const String otherAccount = 'This purchase was made with a different account, so we cannot add it here.';
 
-  static String added(num? tokens) => tokens == null ? tokensAdded : '${tokensPlain(tokens)} added';
+  static String added(num? tokens) => tokens == null ? tokensAdded : '${tokensPlain(tokens)} added to your wallet';
 }
 
 /// Buying tokens with Google Play Billing, and finishing purchases that were never finished.

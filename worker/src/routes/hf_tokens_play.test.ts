@@ -39,8 +39,9 @@ describe("products", () => {
     const j = await r.json();
     expect(r.status).toBe(200);
     expect(j.products.map((p: any) => p.productId)).toEqual(["hf_tokens_100", "hf_tokens_200", "hf_tokens_500", "hf_tokens_1000"]);
-    expect(j.products[0]).toEqual({ productId: "hf_tokens_100", tokens: 200, pricingVersion: "gp-v2", redemptionPaisePerToken: 51, purchasePaisePerToken: 60 });
-    expect(j.products.map((p: any) => p.tokens)).toEqual([200, 400, 1000, 2000]); // Rs 120 / 240 / 600 / 1,200 packs
+    expect(j.products[0]).toEqual({ productId: "hf_tokens_100", tokens: 102, pricingVersion: "gp-r1", redemptionPaisePerToken: 100, purchasePaisePerToken: 118, creditPaise: 10200 });
+    expect(j.products.map((p: any) => p.tokens)).toEqual([102, 204, 510, 1020]); // Rs 120 / 240 / 600 / 1,200 packs add Rs 102 / 204 / 510 / 1,020
+    expect(j.products.map((p: any) => p.creditPaise)).toEqual([10200, 20400, 51000, 102000]);
     expect(JSON.stringify(j)).not.toMatch(/price"|display|rupee/i);
   });
 });
@@ -92,9 +93,9 @@ describe("verify route", () => {
     const body = { productId: "hf_tokens_100", purchaseToken: TOK };
     const a = await (await call("/api/hf/tokens/play/verify", body)).json();
     const b = await (await call("/api/hf/tokens/play/verify", body)).json();
-    expect(a).toMatchObject({ ok: true, status: "consumed", duplicate: false, tokens: 200, paidPaise: 12000, consumed: true });
-    expect(a.balance).toMatchObject({ totalTokens: 200, availableTokens: 200 });
-    expect(b).toMatchObject({ ok: true, status: "consumed", duplicate: true, tokens: 200 });
+    expect(a).toMatchObject({ ok: true, status: "consumed", duplicate: false, tokens: 102, paidPaise: 12000, consumed: true });
+    expect(a.balance).toMatchObject({ totalTokens: 102, availableTokens: 102 });
+    expect(b).toMatchObject({ ok: true, status: "consumed", duplicate: true, tokens: 102 });
     expect((await getLots(env, "u1")).length).toBe(1);
   });
 

@@ -146,7 +146,7 @@ class ApiError implements Exception {
     'no_code': 'Please enter the code we sent you.',
     'code_expired': 'That code has expired. Please ask for a new one.',
     'too_many_attempts': 'Too many wrong tries. Please ask for a new code.',
-    'low_balance': 'Your balance is too low for this call. Please add tokens.',
+    'low_balance': 'Your balance is too low for this call. Please add money.',
     'debt_open': 'Please clear what you owe first. Your next purchase clears it.',
     'lane_required': 'Please verify to enter this space.',
     'not_verified': 'Please sign in again with your WhatsApp number.',

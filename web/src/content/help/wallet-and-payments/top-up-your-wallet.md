@@ -50,7 +50,7 @@ Every top-up and every call charge shows in your wallet history. For each line y
 ## Good to know
 
 - Charging starts only when both of you are connected. Ringing, a host declining, or a call that never connects costs ₹0.
-- Unused purchased tokens can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
+- Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
 - Read the full [wallet terms](/wallet-terms) if you want every detail.
 
 ## Stay safe

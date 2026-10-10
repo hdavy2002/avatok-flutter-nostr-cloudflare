@@ -2,7 +2,7 @@
 import { makeDb } from "./hf_token_d1_shim";
 
 export const PKG = "com.hellofraands.app";
-export const CFG = { enabled: true, provider: "google_play", pricingVersion: "gp-v2", callCostPaisePerMin: 200, hostShareBps: 6000, playPackageId: PKG };
+export const CFG = { enabled: true, provider: "google_play", pricingVersion: "gp-r1", callCostPaisePerMin: 200, hostShareBps: 6000, playPackageId: PKG };
 
 export function makePlayWorld() {
   const purchases = new Map(); // token -> play state

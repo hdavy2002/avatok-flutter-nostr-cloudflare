@@ -35,9 +35,9 @@ void main() {
     test('negative', () => expect(Money.microTokens(-1500000), '-1.50'));
     test('grouping', () => expect(Money.microTokens(1234567000000), '12,34,567.00'));
     test('unit word follows the shown number', () {
-      expect(Money.tokensWithUnit(1), '1.00 token');
-      expect(Money.tokensWithUnit(3), '3.00 tokens');
-      expect(Money.tokensWithUnit(0.5), '0.50 tokens');
+      expect(Money.tokensWithUnit(1), '₹1.00');
+      expect(Money.tokensWithUnit(3), '₹3.00');
+      expect(Money.tokensWithUnit(0.5), '₹0.50');
     });
   });
 

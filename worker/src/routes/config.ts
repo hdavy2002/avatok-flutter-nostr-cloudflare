@@ -2905,7 +2905,7 @@ const DEFAULTS: PlatformConfig = {
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
-  hfPricingVersion: "gp-v2",
+  hfPricingVersion: "gp-r1",
   hfCallCostPaisePerMin: 200,
   hfHostShareBps: 6000,
   hfPlayPackageId: "com.hellofraands.app",
@@ -3298,7 +3298,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: "hfCheckoutProvider must be none, google_play, paytm, razorpay or cashfree" }, 400);
     }
     if (k === "hfPricingVersion" && !/^[a-z0-9][a-z0-9-]{0,31}$/.test(String(v))) {
-      return json({ error: "hfPricingVersion must be a short id like gp-v2" }, 400);
+      return json({ error: "hfPricingVersion must be a short id like gp-r1" }, 400);
     }
     if (k === "hfPlayPackageId" && !/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(String(v))) {
       return json({ error: "hfPlayPackageId must be an Android package id" }, 400);

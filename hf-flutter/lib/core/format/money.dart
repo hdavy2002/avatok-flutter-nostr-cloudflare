@@ -1,4 +1,4 @@
-/// Money and token formatting. The server sends integers (paise, micro-tokens) or already-computed
+/// Money formatting. The wallet holds rupees (1 internal unit = Rs 1; the word "token" is never shown to people). The server sends integers (paise, micro-tokens) or already-computed
 /// rupee numbers; the app only DISPLAYS them. No balance, price or fee is ever computed on the phone.
 ///
 /// - 1 rupee = 100 paise. Rupees use Indian digit grouping (12,34,567).
@@ -31,14 +31,14 @@ abstract final class Money {
     return '$sign${_group(whole)}.$frac';
   }
 
-  /// A token amount the server sent as a `num` (for example `45.2`): 2 decimals.
+  /// An amount the server sent as a `num` (for example `45.2`): 2 decimals.
   static String tokens(num tokens) => microTokens((tokens * 1000000).round());
 
-  /// `3 tokens` / `1 token` / `0.50 tokens`: the unit word follows the shown number.
-  static String tokensWithUnit(num tokens) {
-    final text = Money.tokens(tokens);
-    return text == '1.00' ? '$text token' : '$text tokens';
-  }
+  /// A wallet amount as rupees with 2 decimals: `3` -> `₹3.00`, `0.5` -> `₹0.50`, `-3.2` -> `₹-3.20`.
+  static String tokensWithUnit(num tokens) => '₹${Money.tokens(tokens)}';
+
+  /// Micro-units (1 unit = Rs 1) as rupees with 2 decimals: `45200000` -> `₹45.20`.
+  static String microRupees(int micro) => '₹${microTokens(micro)}';
 
   /// Seconds as a call clock: `65` -> `01:05`, `3725` -> `1:02:05`.
   static String clock(int seconds) {

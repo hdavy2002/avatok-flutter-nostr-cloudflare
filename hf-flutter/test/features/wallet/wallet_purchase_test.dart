@@ -36,7 +36,7 @@ void main() {
       });
       billing.answerWith(StorePurchaseStatus.purchased, token: 'tok-abc');
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.text('0.00 tokens'), findsOneWidget);
+      expect(find.text('₹0.00'), findsOneWidget);
 
       await buy100(tester);
 
@@ -50,9 +50,9 @@ void main() {
       expect(verify, hasLength(1));
       expect(verify.single.body, {'productId': 'hf_tokens_100', 'purchaseToken': 'tok-abc'});
 
-      expect(find.text('100 tokens added'), findsOneWidget);
+      expect(find.text('₹102 added to your wallet'), findsOneWidget);
       expect(balanceReads, 2, reason: 'the wallet is read again after the credit');
-      expect(find.text('100.00 tokens'), findsOneWidget);
+      expect(find.text('₹100.00'), findsOneWidget);
     });
 
     testWidgets('the price on the button is Play\'s own string, not a number from our server', (tester) async {
@@ -65,7 +65,9 @@ void main() {
       await pumpWallet(tester, api: api, billing: billing);
       expect(find.text('Buy for Rs 99.99 (from Play)'), findsOneWidget);
       expect(find.text('Buy for Rs 999.99 (from Play)'), findsOneWidget);
-      expect(find.text('Each token worth ₹0.82 of call time'), findsNWidgets(2));
+      expect(find.text('Adds ₹102 to your wallet'), findsOneWidget);
+      expect(find.text('Adds ₹1,020 to your wallet'), findsOneWidget);
+      expect(find.textContaining('token'), findsNothing);
     });
 
     testWidgets('a pack Play does not know is shown as not available and cannot be bought', (tester) async {
@@ -86,8 +88,8 @@ void main() {
       billing.answerWith(StorePurchaseStatus.purchased);
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
-      expect(find.text('These tokens were already added to your wallet.'), findsOneWidget);
-      expect(find.text('100 tokens added'), findsNothing);
+      expect(find.text('This money was already added to your wallet.'), findsOneWidget);
+      expect(find.text('₹102 added to your wallet'), findsNothing);
     });
 
     testWidgets('a "credited" answer (server not yet consumed) is also success', (tester) async {
@@ -95,7 +97,7 @@ void main() {
       billing.answerWith(StorePurchaseStatus.purchased);
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
-      expect(find.text('100 tokens added'), findsOneWidget);
+      expect(find.text('₹102 added to your wallet'), findsOneWidget);
     });
 
     testWidgets('pending: tells the buyer tokens come when Google confirms, and adds nothing', (tester) async {
@@ -103,8 +105,8 @@ void main() {
       billing.answerWith(StorePurchaseStatus.pending, token: 'tok-pending');
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
-      expect(find.text("Payment pending. We'll add your tokens when Google confirms it."), findsOneWidget);
-      expect(find.text('100 tokens added'), findsNothing);
+      expect(find.text("Payment pending. We'll add the money to your wallet when Google confirms it."), findsOneWidget);
+      expect(find.text('₹102 added to your wallet'), findsNothing);
       expect(api.callsTo('POST', '/api/hf/tokens/play/verify').single.body, containsPair('purchaseToken', 'tok-pending'));
     });
 
@@ -134,7 +136,7 @@ void main() {
       api.onError('POST', '/api/hf/tokens/play/prepare', const ApiError(status: 503, code: 'disabled', message: 'Token purchases are not available right now.'));
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
-      expect(find.text('Buying tokens is not available right now. Please try again soon.'), findsOneWidget);
+      expect(find.text('Adding money is not available right now. Please try again soon.'), findsOneWidget);
       expect(billing.boughtProductIds, isEmpty);
     });
 
@@ -151,7 +153,7 @@ void main() {
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
       expect(find.textContaining("We're still confirming your payment"), findsOneWidget);
-      expect(find.text('100 tokens added'), findsNothing);
+      expect(find.text('₹102 added to your wallet'), findsNothing);
     });
 
     testWidgets('verify refuses the purchase (account mismatch): a clear message', (tester) async {
@@ -167,7 +169,7 @@ void main() {
       billing.answerWith(StorePurchaseStatus.purchased);
       await pumpWallet(tester, api: api, billing: billing);
       await buy100(tester);
-      expect(find.text('Google refunded this payment, so no tokens were added.'), findsOneWidget);
+      expect(find.text('Google refunded this payment, so no money was added.'), findsOneWidget);
     });
 
     testWidgets('the notice can be dismissed', (tester) async {
@@ -191,7 +193,7 @@ void main() {
 
     testWidgets('a pack at or above the server threshold asks first; Yes buys', (tester) async {
       billing.answerWith(StorePurchaseStatus.purchased);
-      api.onJson('POST', '/api/hf/tokens/play/verify', verifyAnswer(tokens: 1000));
+      api.onJson('POST', '/api/hf/tokens/play/verify', verifyAnswer(tokens: 1020));
       await pumpWallet(tester, api: api, billing: billing);
       await buy1000(tester);
       expect(find.text('Are you sure?'), findsOneWidget);
@@ -200,7 +202,7 @@ void main() {
       await tester.tap(find.text('Yes, buy'));
       await tester.pumpAndSettle();
       expect(billing.boughtProductIds, ['hf_tokens_1000']);
-      expect(find.text('1,000 tokens added'), findsOneWidget);
+      expect(find.text('₹1,020 added to your wallet'), findsOneWidget);
     });
 
     testWidgets('No stops it: Play never opens', (tester) async {
@@ -234,7 +236,7 @@ void main() {
       expect(verify, hasLength(1));
       expect(verify.single.body, {'productId': 'hf_tokens_100', 'purchaseToken': 'tok-old'});
       expect(billing.recoverCalls, greaterThanOrEqualTo(1));
-      expect(find.text('100 tokens added'), findsOneWidget, reason: 'late tokens are news');
+      expect(find.text('₹102 added to your wallet'), findsOneWidget, reason: 'late tokens are news');
     });
 
     testWidgets('an already-credited unfinished purchase is silent', (tester) async {
@@ -257,7 +259,7 @@ void main() {
         status: StorePurchaseStatus.pending,
       ));
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.text("Payment pending. We'll add your tokens when Google confirms it."), findsOneWidget);
+      expect(find.text("Payment pending. We'll add the money to your wallet when Google confirms it."), findsOneWidget);
     });
 
     testWidgets('the same token reported twice is verified once', (tester) async {
@@ -302,7 +304,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(billing.recoverCalls, 1);
       expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), hasLength(1));
-      expect(container.read(purchaseControllerProvider).notice?.message, '100 tokens added');
+      expect(container.read(purchaseControllerProvider).notice?.message, '₹102 added to your wallet');
     });
 
     test('the recovery provider does nothing for a guest', () async {

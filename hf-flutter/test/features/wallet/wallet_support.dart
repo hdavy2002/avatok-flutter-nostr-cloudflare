@@ -33,11 +33,11 @@ Map<String, Object?> tokenWallet({
                 {'valuePaisePerToken': 82, 'valueRupees': '0.82', 'tokens': balance, 'micro': balanceMicro},
               ],
         'debt': debt ?? {'tokens': '0.00', 'micro': 0, 'valuePaise': 0, 'open': false},
-        'activeValuePaisePerToken': 82,
+        'activeValuePaisePerToken': 100,
       },
       'history': history ??
           [
-            {'at': 1760000000000, 'kind': 'purchase', 'tokens': '+100.00', 'label': 'Tokens added'},
+            {'at': 1760000000000, 'kind': 'purchase', 'tokens': '+100.00', 'label': 'Money added'},
             {'at': 1760100000000, 'kind': 'call_spent', 'tokens': '-3.20', 'label': 'Call with Asha (4 min)', 'callId': 'c1'},
           ],
       if (purchases != null) 'purchases': purchases,
@@ -59,8 +59,8 @@ Map<String, Object?> productsAnswer({bool enabled = true}) => {
       'enabled': enabled,
       'products': enabled
           ? [
-              {'productId': 'hf_tokens_100', 'tokens': 100, 'pricingVersion': 'gp-v1', 'redemptionPaisePerToken': 82, 'purchasePaisePerToken': 100},
-              {'productId': 'hf_tokens_1000', 'tokens': 1000, 'pricingVersion': 'gp-v1', 'redemptionPaisePerToken': 82, 'purchasePaisePerToken': 100},
+              {'productId': 'hf_tokens_100', 'tokens': 102, 'pricingVersion': 'gp-r1', 'redemptionPaisePerToken': 100, 'purchasePaisePerToken': 118, 'creditPaise': 10200},
+              {'productId': 'hf_tokens_1000', 'tokens': 1020, 'pricingVersion': 'gp-r1', 'redemptionPaisePerToken': 100, 'purchasePaisePerToken': 118, 'creditPaise': 102000},
             ]
           : <Object?>[],
     };
@@ -69,18 +69,18 @@ Map<String, Object?> prepareAnswer(String productId) => {
       'ok': true,
       'obfuscatedAccountId': 'acct_hash_1',
       'productId': productId,
-      'tokens': productId == 'hf_tokens_1000' ? 1000 : 100,
+      'tokens': productId == 'hf_tokens_1000' ? 1020 : 102,
       'confirmAbovePaise': 100000,
     };
 
-Map<String, Object?> verifyAnswer({String status = 'consumed', bool duplicate = false, num tokens = 100}) => {
+Map<String, Object?> verifyAnswer({String status = 'consumed', bool duplicate = false, num tokens = 102}) => {
       'ok': true,
       'status': status,
       'duplicate': duplicate,
       'orderId': 'GPA.1',
       'productId': 'hf_tokens_100',
       'tokens': tokens,
-      'paidPaise': 10000,
+      'paidPaise': 12000,
       'consumed': status == 'consumed',
       'balance': {'totalTokens': 145.2, 'availableTokens': 145.2, 'debtValuePaise': 0, 'byValue': <Object?>[]},
     };

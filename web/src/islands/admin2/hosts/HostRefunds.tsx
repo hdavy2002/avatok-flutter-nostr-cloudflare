@@ -75,7 +75,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
         {it.status === 'rejected' && <span>Reason: {it.reason}</span>}
         {it.exit && open && <span><strong>Account closure:</strong> the account is deleted automatically after this is settled. Rejecting it also lets the closure finish.</span>}
         {play && it.orderId && <span>Google Play order <span style={{ wordBreak: 'break-all' }}>{it.orderId}</span></span>}
-        {play && it.lot && <span>Bought {it.lot.tokensBought} tokens for {paiseRupees(it.lot.paidPaise)} · {it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
+        {play && it.lot && <span>Added ₹{it.lot.tokensBought} to the wallet for {paiseRupees(it.lot.paidPaise)} · ₹{it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
         {play && it.status === 'refunded' && it.recordedPaise != null && <span>Recorded refund {paiseRupees(it.recordedPaise)}</span>}
         <span className="muted" style={{ wordBreak: 'break-all' }}>{it.uid}</span>
       </div>
@@ -118,8 +118,8 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       {note && <Banner tone="info">{note}</Banner>}
       {err && <Banner tone="error">{err}</Banner>}
 
-      <ConfirmDialog open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the tokens" busy={busy} error={err} disabled={!recordedOk}
-        body={`Only do this after you refunded the person in the Google Play Console. The unused tokens are then removed from their account. Owed: ${paiseRupees(owedPaise)}. If you refunded less, write a note.`}
+      <ConfirmDialog open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the money" busy={busy} error={err} disabled={!recordedOk}
+        body={`Only do this after you refunded the person in the Google Play Console. The unused wallet money is then removed from their account. Owed: ${paiseRupees(owedPaise)}. If you refunded less, write a note.`}
         onConfirm={() => void run(() => post(`${base}/play-confirm`, { manual: true, recordedPaise, note: playNote.trim() || undefined }), 'hf_play_refund_manual')} onCancel={() => setDialog(null)}>
         <input aria-label="Rupees you refunded" style={field} value={recorded} inputMode="decimal" autoComplete="off" placeholder="Rupees you refunded" onChange={(e) => setRecorded(e.target.value.replace(/[^0-9.]/g, ''))} />
         <input aria-label="Note" style={{ ...field, marginTop: 8 }} value={playNote} maxLength={200} placeholder="Note (needed if less than owed)" onChange={(e) => setPlayNote(e.target.value)} />

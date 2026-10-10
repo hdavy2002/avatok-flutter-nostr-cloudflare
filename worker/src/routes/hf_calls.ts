@@ -315,7 +315,7 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
   const led = (await env.DB_META.prepare(
     "SELECT kind, delta_micro, created_at FROM hf_token_ledger WHERE uid=?1 AND kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear') ORDER BY created_at DESC LIMIT 50",
   ).bind(uid).all<{ kind: string; delta_micro: number; created_at: number }>().catch(() => ({ results: [] }))).results ?? [];
-  const lbl: Record<string, string> = { purchase: "Tokens added", admin_adjust: "Test tokens added", refund_revoke: "Tokens removed (refund)", debt_create: "Amount owed after a refund", debt_clear: "Amount owed paid from new tokens" };
+  const lbl: Record<string, string> = { purchase: "Money added", admin_adjust: "Test credit added", refund_revoke: "Money removed (refund)", debt_create: "Amount owed after a refund", debt_clear: "Amount owed paid from new money" };
   for (const l of led) {
     const d = Number(l.delta_micro);
     hist.push({ at: Number(l.created_at), kind: l.kind, tokens: `${d < 0 ? "-" : l.kind === "debt_create" ? "" : "+"}${formatTokens(Math.abs(d), 2)}`, label: lbl[l.kind] ?? l.kind });
@@ -462,13 +462,13 @@ async function adminCredit(req: Request, env: Env): Promise<Response> {
   if (name === null) name = personName(exists);
   const opKey = String(b.opId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || crypto.randomUUID();
   // [HF-WALLET-1] Test credits are spend-only and live in hf_credits, never in the withdrawable wallet.
-  // [HF-TOK-LEDGER-1] With hfTokensEnabled on, the amount is TOKENS and becomes a `test` lot at the active pricing value instead.
+  // [HF-TOK-LEDGER-1] With hfTokensEnabled on, the amount is RUPEES (1 unit = Rs 1 under gp-r1) and becomes a `test` lot at the active pricing value instead.
   const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
   let g: { applied: boolean; balance: number };
   try {
     if (tk.enabled) {
       const t = await grantTestLot(env, uid, amount, opKey, note, tk.pricingVersion);
-      if (!t.ok) return err(t.reason === "invalid_amount" ? 400 : 502, t.reason === "invalid_amount" ? "invalid_field" : "pricing_not_ready", t.reason === "invalid_amount" ? "Tokens must be a whole number from 1 to 2000." : "The pricing version is not set up.");
+      if (!t.ok) return err(t.reason === "invalid_amount" ? 400 : 502, t.reason === "invalid_amount" ? "invalid_field" : "pricing_not_ready", t.reason === "invalid_amount" ? "Amount must be whole rupees from 1 to 2000." : "The pricing version is not set up.");
       g = { applied: t.applied, balance: Number(formatTokens(t.totalMicro, 2)) };
     } else g = await grantTestCredits(env, uid, amount, `hftest:${opKey}`, note);
   } catch (e) {
@@ -520,7 +520,7 @@ async function adminMigrateTestCredits(req: Request, env: Env): Promise<Response
 }
 
 // POST /api/admin/hf/tokens/migrate-test-credits {dry_run?: boolean (default true)}   [HF-TOK-LEDGER-1]
-// One-off: hf_credits.test_balance (rupees) -> `test` lots worth the same rupees at the active Play value (rupees / 0.51 tokens), note "migrated from test credits". Idempotent per user (op hftmig:<uid>).
+// One-off: hf_credits.test_balance (rupees) -> `test` lots worth the same rupees at the active Play value (gp-r1: Rs 1 = 1 unit, so 1:1), note "migrated from test credits". Idempotent per user (op hftmig:<uid>).
 // Admin only; works whether or not hfTokensEnabled is on (run it BEFORE flipping the flag). hf_credits rows are kept.
 async function adminMigrateTestToLots(req: Request, env: Env): Promise<Response> {
   const a = await adminCtx(req, env);

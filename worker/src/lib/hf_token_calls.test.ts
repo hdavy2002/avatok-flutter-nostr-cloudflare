@@ -40,8 +40,8 @@ describe("start gate", () => {
     expect(r.status).toBe(402);
     expect(r.error).toBe("low_balance");
     expect(r.extra.shortfallPaise).toBe(1800);
-    expect(r.extra.shortfallTokens).toBe("35.29"); // Rs 18.00 / 0.51 (a NEW token is worth the active gp-v2 value)
-    expect(r.message).toContain("35.29");
+    expect(r.extra.shortfallTokens).toBe("18.00"); // Rs 18.00 / Rs 1 (a NEW unit is worth the active gp-r1 value, Rs 1)
+    expect(r.message).toContain("₹18.00");
     expect(await getReservation(env, "c1")).toBe(null);
     expect((await balanceSummary(env, "u1")).availableMicro).toBe(T(100));
   });
@@ -327,11 +327,11 @@ describe("caller estimate", () => {
     expect(e.affordableSeconds).toBe(423);
     expect(e.aboutText).toBe("about 7 min 3 s");
   });
-  it("an empty wallet quotes at the active value and says to add tokens", () => {
+  it("an empty wallet quotes at the active value and says to add money", () => {
     const e = estimateForHost([], 2000, 82);
     expect(e.tokensPerMinute).toBe("24.39");
     expect(e.canStart).toBe(false);
-    expect(e.aboutText).toBe("add tokens to call");
+    expect(e.aboutText).toBe("add money to call");
   });
   it("a future Re 1 value costs 20 tokens a minute while the host still earns Rs 10.80 (11.10 #10)", async () => {
     expect(estimateForHost([{ id: "p", valuePaisePerToken: 100, leftMicro: T(100) }], 2000, 100).tokensPerMinute).toBe("20.00");

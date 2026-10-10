@@ -8,7 +8,7 @@ import {
 import { creditCallEarning } from "./hf_host_ledger";
 import {
   callSplit, canStart, planSpend, microForValue, tokensPerMinuteMicro, formatTokens, formatDuration, MAX_CALL_SECONDS, START_RESERVE_MINUTES,
-  PRICING_GP_V2, type Lot,
+  PRICING_GP_R1, type Lot,
 } from "./hf_token_math";
 import type { HfTokenConfig } from "./hf_token_config";
 
@@ -32,7 +32,7 @@ export function snapshotFor(ratePaise: number, tk: HfTokenConfig): CallSnapshot 
 
 /** Value (paise per token) a NEW token would have: used to say how many tokens a top-up must add. */
 async function activeValue(env: Env, tk: HfTokenConfig): Promise<number> {
-  return (await getPricingVersion(env, tk.pricingVersion))?.redemptionPaisePerToken ?? PRICING_GP_V2.redemptionPaisePerToken;
+  return (await getPricingVersion(env, tk.pricingVersion))?.redemptionPaisePerToken ?? PRICING_GP_R1.redemptionPaisePerToken;
 }
 
 /** Tokens short of a 2-minute start, valued at the active pricing version. */
@@ -56,7 +56,7 @@ export async function prepareTokenStart(env: Env, a: { uid: string; callId: stri
     const s = await startShortfall(env, tk, lots, ratePaise);
     return {
       ok: false, status: 402, error: "low_balance",
-      message: `You need about ${formatTokens(s.shortfallMicro, 2)} more tokens to start this call.`,
+      message: `You need about ₹${formatTokens(s.shortfallMicro, 2)} more in your wallet to start this call.`,
       extra: { shortfallMicro: s.shortfallMicro, shortfallTokens: formatTokens(s.shortfallMicro, 2), shortfallPaise: s.shortfallPaise },
     };
   };
@@ -169,7 +169,7 @@ export function estimateForHost(lots: Lot[], ratePaise: number, fallbackValuePai
   const secs = planSpend(lots, ratePaise, MAX_CALL_SECONDS).secondsCovered;
   return {
     tokensPerMinute: formatTokens(perMin, 2), tokensPerMinuteMicro: perMin, ratePaise, affordableSeconds: secs,
-    aboutText: lots.length ? `about ${formatDuration(secs)}` : "add tokens to call", canStart: canStart(lots, ratePaise),
+    aboutText: lots.length ? `about ${formatDuration(secs)}` : "add money to call", canStart: canStart(lots, ratePaise),
   };
 }
 export async function activeValuePaise(env: Env, tk: HfTokenConfig): Promise<number> { return activeValue(env, tk); }

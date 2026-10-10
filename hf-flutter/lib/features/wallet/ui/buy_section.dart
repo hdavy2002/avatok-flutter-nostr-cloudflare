@@ -10,15 +10,15 @@ import '../data/pack_offer.dart';
 import '../data/wallet_models.dart';
 import '../wallet_providers.dart';
 
-/// Copy of the Buy tokens section.
+/// Copy of the Add money section.
 abstract final class BuyCopy {
-  static const String title = 'Buy tokens';
-  static const String comingSoon = 'Buying tokens is coming soon';
-  static const String comingSoonBody = 'We will let you know here as soon as you can add tokens.';
-  static const String noStore = 'Google Play is not available on this device, so tokens cannot be bought here.';
+  static const String title = 'Add money';
+  static const String comingSoon = 'Adding money is coming soon';
+  static const String comingSoonBody = 'We will let you know here as soon as you can add money.';
+  static const String noStore = 'Google Play is not available on this device, so you cannot add money here.';
   static const String noPrices = 'We could not load the prices from Google Play.';
   static const String unavailable = 'Not available';
-  static const String loading = 'Loading token packs…';
+  static const String loading = 'Loading packs…';
   static const String preparing = 'Getting ready…';
   static const String verifying = 'Confirming your payment…';
   static const String areYouSure = 'Are you sure?';
@@ -49,7 +49,7 @@ class BuySection extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  e is ApiError ? e.userMessage : 'We could not load the token packs. Please try again.',
+                  e is ApiError ? e.userMessage : 'We could not load the packs. Please try again.',
                   style: HfText.bodyText,
                 ),
                 const SizedBox(height: 12),
@@ -152,18 +152,14 @@ class _PackCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final per = offer.pack.redemptionPaisePerToken;
+    final credit = offer.pack.creditPaise;
     final price = offer.priceText;
     return HfCard(
       key: ValueKey<String>('pack-${offer.productId}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tokensPlain(offer.pack.tokens), style: HfText.subtitle),
-          if (per != null) ...[
-            const SizedBox(height: 4),
-            Text('Each token worth ${Money.paise(per)} of call time', style: HfText.note),
-          ],
+          if (price != null) Text(price, style: HfText.subtitle),
           const SizedBox(height: 12),
           // The label carries Play's own price string. No price is ever typed or taken from our server.
           HfButton(
@@ -171,6 +167,10 @@ class _PackCard extends ConsumerWidget {
             label: price == null ? BuyCopy.unavailable : 'Buy for $price',
             onPressed: enabled ? () => _buy(context, ref) : null,
           ),
+          if (credit != null) ...[
+            const SizedBox(height: 8),
+            Text('Adds ${Money.paise(credit)} to your wallet', key: ValueKey<String>('credit-${offer.productId}'), style: HfText.note),
+          ],
         ],
       ),
     );
@@ -186,7 +186,7 @@ class _PackCard extends ConsumerWidget {
           builder: (ctx) => AlertDialog(
             title: const Text(BuyCopy.areYouSure),
             content: Text(
-              'You are about to buy ${tokensPlain(offer.pack.tokens)} for ${offer.priceText ?? ''}. You pay through Google Play.',
+              'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} through Google Play.',
               style: HfText.bodyText,
             ),
             actions: [

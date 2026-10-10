@@ -68,7 +68,7 @@ void main() {
           extra: {'billableSeconds': 72, 'tokensSpent': '1.20'}));
     await pumpCallApp(tester, api: api);
     expect(find.text('1 min 12 s'), findsOneWidget);
-    expect(find.text('1.20 tokens'), findsOneWidget);
+    expect(find.text('₹1.20'), findsOneWidget);
     expect(find.text('Asha ended the call.'), findsOneWidget);
     expect(find.text('Rate your call'), findsNothing, reason: 'canReview is false');
     await closeApp(tester);

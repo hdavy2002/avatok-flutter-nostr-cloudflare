@@ -14,7 +14,7 @@ import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
 import { readHfTokenConfig, type HfTokenConfig } from "../lib/hf_token_config";
 import { MICRO } from "../lib/hf_token_math";
-import {
+import { productCreditPaise,
   accountHashFor, rememberAccount, listActiveProducts, productPricePaise, processPlayPurchase, balanceFor, emit,
   validProductId, validPurchaseToken, verifyPushJwt, handleRtdn, runPlayCron, type PlayCronResult,
 } from "../lib/hf_play";
@@ -42,7 +42,7 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
       const products = await listActiveProducts(env);
       return json({
         ok: true, enabled: playOn(tok), provider: tok.provider, packageId: tok.playPackageId,
-        products: products.map((x) => ({ productId: x.productId, tokens: x.tokens, pricingVersion: x.pricingVersion, redemptionPaisePerToken: x.redemptionPaisePerToken, purchasePaisePerToken: x.purchasePaisePerToken })),
+        products: products.map((x) => ({ productId: x.productId, tokens: x.tokens, pricingVersion: x.pricingVersion, redemptionPaisePerToken: x.redemptionPaisePerToken, purchasePaisePerToken: x.purchasePaisePerToken, creditPaise: productCreditPaise(x) })),
       }, 200, { "cache-control": "public, max-age=60" });
     }
     if (req.method !== "POST") return err(405, "method_not_allowed");
@@ -52,15 +52,15 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
     const u = await requireUser(req, env);
     if (isFail(u)) return err(u.status, u.error);
     const { raw, tok } = await cfgBoth(env);
-    if (!playOn(tok)) return err(503, "disabled", "Token purchases are not available right now.");
+    if (!playOn(tok)) return err(503, "disabled", "Adding money is not available right now.");
     const b = await readJson(req);
-    if (!validProductId(b.productId)) return err(400, "bad_product", "That token pack is not available.");
+    if (!validProductId(b.productId)) return err(400, "bad_product", "That pack is not available.");
 
     if (p === "/api/hf/tokens/play/prepare") {
       const lim = await rateLimit(env, `hfplayprep:${u.uid}`, 30, 3600);
       if (lim) return lim;
       const prod = (await listActiveProducts(env)).find((x) => x.productId === b.productId);
-      if (!prod) return err(400, "unknown_product", "That token pack is not available.");
+      if (!prod) return err(400, "unknown_product", "That pack is not available.");
       const hash = await accountHashFor(env, u.uid);
       if (!hash) return err(503, "unconfigured", "Purchases are not configured yet.");
       await rememberAccount(env, u.uid, hash);

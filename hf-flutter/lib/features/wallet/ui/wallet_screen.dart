@@ -19,8 +19,8 @@ import 'refund_section.dart';
 abstract final class WalletCopy {
   static const String title = 'Wallet';
   static const String balance = 'Your balance';
-  static const String noTokens = 'No tokens yet. Buy tokens below to start calling.';
-  static const String testTokens = 'Test tokens (spend only)';
+  static const String noTokens = 'No money in your wallet yet. Add money below to start calling.';
+  static const String testTokens = 'Test credit (spend only)';
   static const String history = 'History';
   static const String historyEmpty = 'Nothing here yet.';
   static const String purchases = 'Purchases';
@@ -187,21 +187,13 @@ class _TokenBalanceCard extends StatelessWidget {
         children: [
           const Text(WalletCopy.balance, style: HfText.label),
           const SizedBox(height: 4),
-          Text('${data.balanceText} tokens', key: const ValueKey<String>('balance-total'), style: HfText.hero),
+          Text('₹${data.balanceText}', key: const ValueKey<String>('balance-total'), style: HfText.hero),
           const SizedBox(height: 8),
           if (data.byValue.isEmpty && data.balanceMicro == 0) const Text(WalletCopy.noTokens, style: HfText.bodyText),
-          for (final b in data.byValue)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${Money.microTokens(b.micro)} tokens worth ${Money.paise(b.valuePaisePerToken)} each',
-                style: HfText.bodyText,
-              ),
-            ),
           if (data.hasTestTokens) ...[
             const SizedBox(height: 8),
             Text(
-              '${WalletCopy.testTokens}: ${data.testTokensText} tokens',
+              '${WalletCopy.testTokens}: ₹${data.testTokensText}',
               key: const ValueKey<String>('test-tokens'),
               style: HfText.bodyText,
             ),
@@ -209,7 +201,7 @@ class _TokenBalanceCard extends StatelessWidget {
           if (data.hasReserved) ...[
             const SizedBox(height: 8),
             Text(
-              '${data.availableText} tokens are free to spend. The rest is held for a call in progress.',
+              '₹${data.availableText} is free to spend. The rest is held for a call in progress.',
               style: HfText.note,
             ),
           ],
@@ -267,7 +259,7 @@ class _DebtBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('You owe ${debt.tokensText} tokens after a refund.', style: HfText.bodyStrong),
+                  Text('You owe ₹${debt.tokensText} after a refund.', style: HfText.bodyStrong),
                   const SizedBox(height: 4),
                   const Text(
                     'Your next purchase clears it first. Calls stay paused until then.',

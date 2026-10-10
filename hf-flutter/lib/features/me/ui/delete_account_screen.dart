@@ -94,7 +94,7 @@ String formatDay(int epochMs) {
 /// The worker decides the path (`GET /api/hf/account/exit`):
 ///  - `delete`: nothing to settle. Confirm, then `POST /api/account/delete` starts the 30-day wait.
 ///    A `409 {deferred:true}` means money turned up: the screen switches to the settle path.
-///  - `exit`: unused purchased tokens are refunded through Google Play, host earnings are paid out first,
+///  - `exit`: unused wallet money is refunded through Google Play, host earnings are paid out first,
 ///    then the account is deleted. `POST /api/hf/account/exit {forfeit}` with an Idempotency-Key starts it.
 ///    Refusals: `409 active_call` (finish the call), `forfeit_required {forfeitRupees}` (tick to give it up),
 ///    `bank_required`, `nothing_to_settle` (switches to the delete path).
@@ -426,7 +426,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             if (s.refundable > 0)
               _bullet(
                 Icons.undo_rounded,
-                'Your unused tokens, worth ${Money.rupees(s.refundable)}, are refunded through Google Play. We send the request to Google for you.',
+                'Your unused wallet money, ${Money.rupees(s.refundable)}, is refunded through Google Play. We send the request to Google for you.',
                 key: const ValueKey<String>('exit-refund'),
               ),
             if (s.withdrawable > 0 && s.bankOk)
@@ -558,7 +558,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         _settlementCard(
           key: const ValueKey<String>('exit-status-refund'),
           icon: Icons.undo_rounded,
-          title: 'Token refund ${Money.rupees(refund.amount)}',
+          title: 'Wallet refund ${Money.rupees(refund.amount)}',
           status: DeleteCopy.refundStatus(refund.status),
           detail: refund.status == 'rejected' ? refund.reason : null,
         ),

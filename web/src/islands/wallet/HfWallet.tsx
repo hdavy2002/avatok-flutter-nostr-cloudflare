@@ -59,15 +59,12 @@ export default function HfWallet() {
         {tokenMode && w.tokens ? (
           <>
             <div className="hfc-stats">
-              <div className="hfc-stat"><strong>{w.tokens.balance}</strong><span>tokens</span></div>
+              <div className="hfc-stat"><strong>₹{w.tokens.balance}</strong><span>in your wallet</span></div>
             </div>
-            {w.tokens.byValue.map(b => (
-              <p key={b.valuePaisePerToken} className="hfc-sub" style={{ margin: 0 }}>{b.tokens} tokens worth {inr2(Number(b.valueRupees))} each</p>
-            ))}
-            {Number(w.tokens.testTokens) > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{w.tokens.testTokens} of these are test tokens: spend only, can’t be withdrawn.</p>}
+            {Number(w.tokens.testTokens) > 0 && <p className="hfc-sub" style={{ margin: 0 }}>₹{w.tokens.testTokens} of this is test credit: spend only, can’t be withdrawn.</p>}
             {w.tokens.debt.open && (
               <p className="hfc-note hfc-warn" role="status">
-                You owe {inr2(w.tokens.debt.valuePaise / 100)} after a refund. It is cleared from your next token purchase. Please clear the amount owed before calling.
+                You owe {inr2(w.tokens.debt.valuePaise / 100)} after a refund. It is cleared from the next money you add. Please clear the amount owed before calling.
               </p>
             )}
           </>

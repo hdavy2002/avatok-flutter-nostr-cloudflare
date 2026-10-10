@@ -1,7 +1,7 @@
 // [HF-TOK-LEDGER-1] Admin test credits as token lots (HF-TOK-D10): kind "test", worth the ACTIVE pricing version's redemption value
-// (gp-v2: Rs 0.51 = 51 paise a token), spend-only, never withdrawable. The amount an admin types is in TOKENS.
+// (gp-r1: 1 unit = Rs 1 = 100 paise), spend-only, never withdrawable. The amount an admin types is in units = RUPEES under gp-r1.
 // Also the one-off helper that turns the old hf_credits test balance (rupees) into test lots worth the SAME RUPEES at the active value
-// (owner: test credits are valued "same as Play tokens"; gp-v2: Rs 0.51 a token, so Rs 51 -> 100 tokens).
+// (owner: test credits are valued "same as Play"; gp-r1: Rs 1 of test credit = Rs 1 in the wallet = 1 unit).
 import type { Env } from "../types";
 import { creditLot, getPricingVersion, balanceSummary } from "./hf_token_ledger";
 import { MICRO, microForValue } from "./hf_token_math";
@@ -24,7 +24,7 @@ export async function grantTestLot(env: Env, uid: string, tokens: number, opKey:
 /** tokens is the (fractional) token count, micro the exact micro-tokens, rupees the old whole-rupee balance. */
 export interface MigrationRow { uid: string; rupees: number; tokens: number; micro: number; alreadyMigrated: boolean; migrated: boolean }
 /**
- * hf_credits.test_balance (whole rupees) -> a `test` lot that keeps the RUPEE value: rupees / redemption value tokens (Rs 100 / Rs 0.51 = 196.078431 tokens),
+ * hf_credits.test_balance (whole rupees) -> a `test` lot that keeps the RUPEE value: rupees / redemption value units (gp-r1 value Rs 1: Rs 100 -> 100 units; any other value would convert the same way),
  * rounded up to the micro-token like every other conversion. Idempotent per uid (op hftmig:<uid>). hf_credits rows are NOT deleted or zeroed.
  * Credits currently reserved by a call in progress (test_reserved) are not moved; run it when no HF call is open.
  */

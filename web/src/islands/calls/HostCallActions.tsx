@@ -149,7 +149,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
     let p: Problem;
     if (r.code === 'not_verified') p = { text: 'Please verify your WhatsApp number first. We use it to ring you.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
     else if (r.code === 'lane_required') p = { text: lane === 'lgbtq' ? 'This is an LGBTQ+ space host. Verify to call.' : 'This is a women-only space host. Verify to call.', link: { href: `/verify/lane?lane=${encodeURIComponent(lane || 'women')}`, label: 'Verify to call' } };
-    else if (r.code === 'low_balance' && typeof r.body.shortfallTokens === 'string') p = { text: r.message || 'You need more tokens to start this call.', tokens: true };
+    else if (r.code === 'low_balance' && typeof r.body.shortfallTokens === 'string') p = { text: r.message || 'You need more money in your wallet to start this call.', tokens: true };
     else if (r.code === 'debt_open') p = { text: r.message || 'Please clear the amount owed before calling' };
     else if (r.code === 'low_balance') { const b = Number(r.body.balance); if (Number.isFinite(b)) setBalance(b); p = { text: `You need at least ${inr(Number(r.body.needed) || rate * 2)} to start a call.`, balance: true }; }
     else if (r.code === 'host_unavailable') p = { text: r.message || 'This host isn’t available right now.', notify: true };
@@ -170,7 +170,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
   const lowBalance = tok ? tok.hasDebt || tok.est?.canStart === false : balance != null && balance < need;
   const canMax = tok ? null : balance != null ? Math.min(60, Math.floor(balance / rate)) : null;
   const twoMinTokens = tok?.est ? (Number(tok.est.tokensPerMinute) * 2).toFixed(2) : null;
-  const balanceText = tok ? `${tok.balance} tokens` : balance == null ? '…' : inr(balance);
+  const balanceText = tok ? `₹${tok.balance}` : balance == null ? '…' : inr(balance);
   const connectedMs = toMs(info?.connectedAt) ?? null;
   let sec = 0;
   if (connected) {
@@ -192,7 +192,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
           <p className="hfc-chip" aria-live="polite">Your balance: <strong>{balanceText}</strong>{!tok && <> <span>Test credits only for now</span></>}</p>
           <ul className="hfc-facts">
             {tok ? (
-              <li><Icon name="rupee" size={22} /><span><strong>{tok.est ? `${tok.est.tokensPerMinute} tokens/min · ` : ''}{inr(rate)}/min</strong> · billed per second. Ringing or no answer costs nothing.</span></li>
+              <li><Icon name="rupee" size={22} /><span><strong>{inr(rate)}/min</strong> · billed per second. Ringing or no answer costs nothing.</span></li>
             ) : (
               <li><Icon name="rupee" size={22} /><span><strong>{inr(rate)}/min</strong> · billed per started minute. Ringing or no answer costs nothing.</span></li>
             )}
@@ -206,7 +206,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
             <div className="hfc-note hfc-warn" role="status">
               {tok.hasDebt
                 ? <strong>Please clear the amount owed before calling.</strong>
-                : <><strong>Add tokens to call.</strong> You need at least 2 minutes of balance{twoMinTokens ? ` (about ${twoMinTokens} tokens)` : ''} to start. Add tokens in the app.</>}
+                : <><strong>Add money to call.</strong> You need at least 2 minutes of balance{twoMinTokens ? ` (about ₹${twoMinTokens})` : ''} to start. Add money in the app.</>}
             </div>
           )}
           {lowBalance && !tok && (
@@ -232,7 +232,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
             : <><p className="hfc-status hfc-live">Connected · {mmss(sec)} · {inr(soFar(sec, rate))} so far</p><p className="hfc-sub">Billed per started minute{maxMin ? `, up to ${maxMin} min` : ''}. Press # on your phone to end the call and block.</p></>)}
           {st === 'completed' && <>
             <p className="hfc-status">{tok || info.tokensSpent !== undefined
-              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · ${info.tokensSpent ?? '0.00'} tokens` : 'Call ended · No charge')
+              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · ₹${info.tokensSpent ?? '0.00'}` : 'Call ended · No charge')
               : mins > 0 ? `Call ended · ${mins} min · ${inr(info.chargedRupees ?? mins * rate)}` : 'Call ended · No charge'}</p>
             {info.canReview && !rating && <button type="button" className="hfc-btn hfc-primary" onClick={() => setRating(true)}><Icon name="star" size={22} />Rate your call</button>}
             {info.canReview && rating && <ReviewForm mode="call" callId={info.id} hostName={name} />}
@@ -258,7 +258,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
         <div className="hfc-body">
           <p className="hfc-status" role="alert">{problem.text}</p>
           {problem.balance && <p className="hfc-note hfc-warn">Add balance to call. <em>Test credits only for now.</em></p>}
-          {problem.tokens && <p className="hfc-note hfc-warn">Add tokens in the app to call.</p>}
+          {problem.tokens && <p className="hfc-note hfc-warn">Add money in the app to call.</p>}
           {problem.link && <a className="hfc-btn hfc-primary" href={problem.link.href}>{problem.link.label}</a>}
           {problem.notify && <NotifyButton host={host} variant="rail" big />}
           <div className="hfc-actions"><button type="button" className="hfc-btn" onClick={onClose}>Close</button></div>

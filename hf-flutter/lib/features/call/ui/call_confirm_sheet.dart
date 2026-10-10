@@ -243,10 +243,6 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${Money.rupees(est.ratePerMinRupees)}/min', style: HfText.hero),
-              if (est.isTokens && est.tokensPerMinute != null) ...[
-                const SizedBox(height: 4),
-                Text('${est.tokensPerMinute} tokens/min', style: HfText.subtitle),
-              ],
               const SizedBox(height: 8),
               Text(
                 est.isTokens
@@ -276,7 +272,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
           )
         else if (!est.canStart)
           _Warning(
-            text: 'You need at least 2 minutes of balance to start. Add tokens to call.',
+            text: 'You need at least 2 minutes of balance to start. Add money to call.',
             actionLabel: CallStrings.addTokens,
             onAction: () => widget.onOutcome(const CallSheetOutcome(CallSheetAction.wallet)),
           )

@@ -77,7 +77,7 @@ void main() {
     await _pumpSheet(tester);
     expect(find.text('Call Asha Verma'), findsOneWidget);
     expect(find.text('₹12/min'), findsOneWidget);
-    expect(find.text('15.00 tokens/min'), findsOneWidget);
+    expect(find.textContaining('tokens'), findsNothing);
     expect(find.text('Estimate: about 3 min 20 s with your balance'), findsOneWidget);
     expect(find.textContaining('2 minutes of balance'), findsOneWidget);
     expect(find.textContaining('Your phone will ring'), findsOneWidget);
@@ -121,7 +121,7 @@ void main() {
     expect(s.api.callsTo('POST', '/api/hf/calls').first.body, {'hostSlug': 'asha'});
   });
 
-  testWidgets('not enough balance: Add tokens opens the Wallet, no Start call', (tester) async {
+  testWidgets('not enough balance: Add money opens the Wallet, no Start call', (tester) async {
     prepareStorage();
     final s = await _pumpSheet(tester, estimate: _tokenEstimate(canStart: false, about: 'add tokens to call'));
     expect(find.text('Start call'), findsNothing);
@@ -192,8 +192,8 @@ void main() {
   group('start errors', () {
     // code, status, extra body fields, message the screen must show, the action button (null = none), outcome of that button
     final cases = <(String, int, Map<String, Object?>, String, String?, CallSheetAction?)>[
-      ('low_balance', 402, {'message': 'You need about 2.00 more tokens to start this call.', 'shortfallTokens': '2.00', 'shortfallPaise': 200},
-          'You need about 2.00 more tokens to start this call.', CallStrings.addTokens, CallSheetAction.wallet),
+      ('low_balance', 402, {'message': 'You need about ₹2.00 more in your wallet to start this call.', 'shortfallTokens': '2.00', 'shortfallPaise': 200},
+          'You need about ₹2.00 more in your wallet to start this call.', CallStrings.addTokens, CallSheetAction.wallet),
       ('debt_open', 409, {'message': 'Please clear the amount owed before calling'},
           'Please clear the amount owed before calling', CallStrings.clearWhatYouOwe, CallSheetAction.wallet),
       ('lane_required', 403, {'message': 'Please verify to use this lane.', 'lane': 'lgbtq'},
