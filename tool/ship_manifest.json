@@ -9715,5 +9715,14 @@
         "note": "The installed app opened the live site once (event is added by HF-APP-8). Until then this is confirmed by hand on the owner's phone after installing from the Play internal testing link."
       }
     ]
+  },
+  "HF-TOK-MATH-1": {
+    "description": "[HF-TOK-MATH-1 2026-10-10] Hello Fraands token maths base (spec 11.4): pure integer-only hf_token_math.ts (paise + micro-tokens, per-second consumed value, call split C/H/P, lot walk oldest first, refund debt), pricing-version and lot/ledger/Play-purchase/debt/host-ledger tables (migration written, not applied), and declared-only config keys (hfTokensEnabled, hfCheckoutProvider, hfPricingVersion, hfCallCostPaisePerMin, hfHostShareBps, hfPlayPackageId). No runtime change: nothing reads any of it yet.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "no_telemetry": "No runtime change: pure functions, new files, an unapplied migration and declared-but-unread config keys. Nothing emits, gates or branches on any of it, so there is no event to assert. Success is worker/src/lib/hf_token_math.test.ts and hf_token_config.test.ts passing. The flag is verifiable directly: hfTokensEnabled must read false and must NOT appear in the public /api/config response."
   }
 }

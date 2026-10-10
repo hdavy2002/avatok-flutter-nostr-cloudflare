@@ -5,6 +5,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { hfTopupPublic, HF_TOPUP_GATEWAYS } from "../lib/hf_topup_config"; // [HF-TOPUP-1]
+import { HF_CHECKOUT_PROVIDERS } from "../lib/hf_token_config"; // [HF-TOK-MATH-1]
 import { isFail, requireUser } from "../authz";
 
 const KEY = "platform_config";
@@ -2111,6 +2112,14 @@ export interface PlatformConfig {
   hfDailySpendLimitRupees: number;
   hfMonthlySpendLimitRupees: number;
   hfTopupConfirmAboveRupees: number;
+  // [HF-TOK-MATH-1] Play-token pricing (spec 11.3). DECLARED ONLY: nothing reads these until HF-TOK-LEDGER/CALLS-1. Never sent raw to the browser.
+  // hfCheckoutProvider: none|google_play|paytm|razorpay|cashfree. Numbers (paise per minute, basis points) go in numericKeys.
+  hfTokensEnabled: boolean;
+  hfCheckoutProvider: string;
+  hfPricingVersion: string;
+  hfCallCostPaisePerMin: number;
+  hfHostShareBps: number;
+  hfPlayPackageId: string;
   // [HF-WALLET-LIMITS-1] Supplier details for receipts / GST tax invoices (HF-PAY-16). Empty hfGstin = plain payment receipts only; set it and
   // monthly tax invoices on the platform share start. Config-only switch: no deploy needed.
   hfGstin: string;
@@ -2884,6 +2893,12 @@ const DEFAULTS: PlatformConfig = {
   hfDailySpendLimitRupees: 2000, // [HF-WALLET-LIMITS-1]
   hfMonthlySpendLimitRupees: 15000,
   hfTopupConfirmAboveRupees: 1000,
+  hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
+  hfCheckoutProvider: "google_play",
+  hfPricingVersion: "gp-v1",
+  hfCallCostPaisePerMin: 200,
+  hfHostShareBps: 6000,
+  hfPlayPackageId: "com.hellofraands.app",
   hfGstin: "",
   hfLegalName: "",
   hfLegalAddress: "",
@@ -3032,6 +3047,7 @@ export async function getConfig(env: Env): Promise<Response> {
   const merged: Record<string, unknown> = { ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }) };
   merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
+  delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
   });
@@ -3202,6 +3218,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
     "hfDailySpendLimitRupees", "hfMonthlySpendLimitRupees", "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
+    "hfCallCostPaisePerMin", "hfHostShareBps", // [HF-TOK-MATH-1]
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3213,6 +3230,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
     "hfTopupGateway", "hfTopupPacks", // [HF-TOPUP-1]
+    "hfCheckoutProvider", "hfPricingVersion", "hfPlayPackageId", // [HF-TOK-MATH-1]
     "hfGstin", "hfLegalName", "hfLegalAddress", "hfStateCode", "hfInvoicePrefix", // [HF-WALLET-LIMITS-1]
   ]);
   for (const [k, v] of Object.entries(body)) {
@@ -3261,6 +3279,22 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfRefundWindowDays" && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 3650)) {
       return json({ error: "hfRefundWindowDays must be an integer 1-3650" }, 400);
+    }
+    // [HF-TOK-MATH-1]
+    if (k === "hfCheckoutProvider" && v !== "none" && !(HF_CHECKOUT_PROVIDERS as readonly string[]).includes(String(v))) {
+      return json({ error: "hfCheckoutProvider must be none, google_play, paytm, razorpay or cashfree" }, 400);
+    }
+    if (k === "hfPricingVersion" && !/^[a-z0-9][a-z0-9-]{0,31}$/.test(String(v))) {
+      return json({ error: "hfPricingVersion must be a short id like gp-v1" }, 400);
+    }
+    if (k === "hfPlayPackageId" && !/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(String(v))) {
+      return json({ error: "hfPlayPackageId must be an Android package id" }, 400);
+    }
+    if (k === "hfCallCostPaisePerMin" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000)) {
+      return json({ error: "hfCallCostPaisePerMin must be an integer 0-100000 (paise)" }, 400);
+    }
+    if (k === "hfHostShareBps" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 10_000)) {
+      return json({ error: "hfHostShareBps must be an integer 0-10000" }, 400);
     }
     // [HF-WALLET-LIMITS-1]
     if ((k === "hfDailySpendLimitRupees" || k === "hfMonthlySpendLimitRupees" || k === "hfTopupConfirmAboveRupees") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {
