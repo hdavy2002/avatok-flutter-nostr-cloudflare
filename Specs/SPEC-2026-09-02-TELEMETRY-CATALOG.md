@@ -1060,6 +1060,15 @@ Spec: the Hello Fraands Android app spec, section 8 (project doc `hello-fraands-
 
 Errors (`captureException`): uncaught Flutter, platform and zone errors. Later issues add their own events to this section.
 
+### Host profile (`[HF-NATIVE-4]`, `hf-flutter/lib/features/host_profile/`)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_profile_viewed` | `slug`, `status: 'online' \| 'busy' \| 'offline'` | Once per opening of `/h/:slug`, when the profile (live or the saved copy) is on screen. Not fired for not-found or error states. **Success value:** arrives with `platform = android-app` after opening a host on the native build. |
+| `hf_app_call_tapped` | `slug`, `status` | The Call button was tapped (before the sign-in check, so signed-out taps count). The call itself is reported by the call screen events. |
+| `hf_app_notify_me` | `slug`, `on: boolean`, `outcome: 'ok' \| 'error'`, `reason`, `status`, `ms` | Notify me turned on or off (`POST` / `DELETE /api/hf/hosts/:slug/notify`). `reason` is the worker code (`not_verified`, `own_profile`, `not_found`, `network`, ...) and `status` the HTTP status, on error only. **Success value:** `outcome = ok`, `on = true` for a signed-in test on an offline host. |
+| `hf_app_report_tapped` | `slug` | "Report this profile" opened the web report page in a Custom Tab. |
+
 ### Ship manifest note
 
 `HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`.

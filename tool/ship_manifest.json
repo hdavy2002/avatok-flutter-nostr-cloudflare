@@ -9961,5 +9961,22 @@
       "hostsPublicEnabled"
     ],
     "no_telemetry": "New read-only endpoint with no consumer yet: the native app (HF-NATIVE-3) is its only caller and will emit hf_hosts_list_loaded {result, count, from_cache, ms} client-side; nothing server-side could carry a failure value to read back. Verify after an owner-authorised deploy and migration: curl -s 'https://<api host>/api/hf/hosts?online=1&limit=2' must return items, total and nextOffset, with cache-control: public, max-age=45; the same call with an Authorization header returns private, no-store; ?lane=women without a token is 401 and with a non-member token 403 lane_required."
+  },
+  "HF-NATIVE-4": {
+    "description": "[HF-NATIVE-4 2026-10-10] Native host profile screen (hf-flutter/lib/features/host_profile/): /h/:slug from GET /api/hosts/public/:slug with avatar + AI label, status pill (never green), price, rating and breakdown, languages, topics (labels from /api/hf/options), women-only / LGBTQ+ badges, voice intro player (play/pause/seek), about + quote, swipeable gallery with AI image labels, reviews (first name, stars, text), report link (web report page), saved copy of the last 20 profiles for offline. Sticky action: Call (sign-in first, then the call confirm step of HF-NATIVE-5), Notify me / Stop notifying me (GET/POST/DELETE /api/hf/hosts/:slug/notify, sign-in first), Verify to call for a women-only host when the caller has not joined the lane, disabled Calls open soon when hfCallsEnabled is off. Token estimate from GET /api/hf/wallet/estimate when signed in. Client only, no worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostsPublicEnabled",
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_profile_viewed",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "On a phone with the native build, open a host from a link or the list: hf_app_profile_viewed arrives with platform = android-app, service_name = hf-app and the host slug. Tap Notify me on an offline host while signed in: hf_app_notify_me arrives with outcome = ok and on = true. Failures carry outcome = error and the worker code in reason."
+      }
+    ]
   }
 }
