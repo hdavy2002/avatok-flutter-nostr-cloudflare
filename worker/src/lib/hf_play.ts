@@ -51,10 +51,14 @@ const fromB64url = (s: string): Uint8Array => {
   return Uint8Array.from(atob(p), (c) => c.charCodeAt(0));
 };
 
-/** base64url HMAC-SHA256(uid) keyed by HF_PLAY_ACCOUNT_SALT. Null = salt missing or too short: callers FAIL CLOSED. */
+/** base64url HMAC-SHA256(uid). Key = HF_PLAY_ACCOUNT_SALT when set, else derived from HF_PII_KEY with a fixed label
+ * ([HF-TOK-PLAY-2]: the Worker is at Cloudflare's 128 text-binding limit, so no new secret can be added).
+ * NEVER rotate the key source: every user's Play account id would change. Null = no key: callers FAIL CLOSED. */
 export async function accountHashFor(env: Env, uid: string): Promise<string | null> {
-  const salt = env.HF_PLAY_ACCOUNT_SALT;
-  if (!salt || salt.length < 16 || !uid) return null;
+  const direct = env.HF_PLAY_ACCOUNT_SALT;
+  const pii = env.HF_PII_KEY;
+  const salt = direct && direct.length >= 16 ? direct : (pii && pii.length >= 16 ? `hf-play-account-v1:${pii}` : "");
+  if (!salt || !uid) return null;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(salt), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(uid))));
 }

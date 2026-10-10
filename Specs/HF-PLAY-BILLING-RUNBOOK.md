@@ -102,3 +102,5 @@ Tokens are spent on calls only inside the app (HF-TOK-D7). Balances show tokens;
 2. Install the app from the internal testing link, sign in, buy `hf_tokens_100` (Rs 100) with a **license tester** account first (no charge), then once with real money.
 3. Expect: `hf_token_purchase_prepared`, then `hf_token_purchase_verified` with `duplicate=false`, `tokens=100`; a lot of 100 tokens at Rs 0.82; the Play order shows acknowledged and the purchase no longer in `queryPurchases`.
 4. Refund the order in Play Console. Expect `hf_token_refund_applied` within seconds (RTDN) or within the hour (sweep), lot revoked, no debt if nothing was spent.
+
+> [HF-TOK-PLAY-2 2026-10-10] The avatok-api Worker is at the 128 text-binding limit, so `HF_PLAY_ACCOUNT_SALT` was NOT set; the account hash key is derived from `HF_PII_KEY` with a fixed label. Never rotate `HF_PII_KEY`. RTDN (`HF_RTDN_AUDIENCE`, `HF_RTDN_PUSH_SA`) is also unset for the same reason; refunds are caught by the hourly voided-purchases sweep until bindings are freed.
