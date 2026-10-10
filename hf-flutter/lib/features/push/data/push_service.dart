@@ -96,7 +96,7 @@ class PushService {
     try {
       result = await _gateway.requestPermission();
     } catch (e, st) {
-      Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_permission'});
+      await Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_permission'});
       result = PushPermission.notGranted;
     }
     final granted = result == PushPermission.granted;
@@ -151,7 +151,7 @@ class PushService {
         'shell_version': shell,
       });
     } catch (e, st) {
-      Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_register'});
+      await Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_register'});
       await Analytics.capture('hf_push_registered', {
         'outcome': 'failed',
         'reason': 'error',
