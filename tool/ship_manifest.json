@@ -9909,5 +9909,41 @@
         "note": "A phone with the native build opened the app: hf_app_open arrives with platform = android-app and service_name = hf-app (cold_ms and signed_in are on the event). Deep links show as hf_app_deeplink_opened {path, source: link|scheme|push, launch}."
       }
     ]
+  },
+  "HF-NATIVE-S1": {
+    "description": "[HF-NATIVE-S1 2026-10-10] Native Hello Fraands app, server side 1: GET /api/hf/me (signed in) answers {uid, displayName, phoneMasked (last 4 digits only), whatsappVerified, ackVersion, age18ConfirmedAt, isHost, host:{status,slug}|null, lanes:{women,lgbtq}, closing, tokensMode} from one joined D1 read plus the lane/ack/closing reads; PATCH /api/hf/me {displayName} saves a name (2-40 chars, no digits, no phone/link/handle). Worker only (routes/hf_me.ts); no flag, no migration (ackVersion reads hf_user_ack from HF-NATIVE-S4 and falls back to null if that table is not there yet). Cache-Control: private, no-store.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_me_name_updated",
+        "property": "outcome",
+        "equals": "ok",
+        "note": "From the native app's Me screen: edit the name, save; the event arrives with outcome=ok and GET /api/hf/me then shows the new displayName. The native app itself ships later (HF-NATIVE-12); until then check by calling PATCH /api/hf/me with a Clerk token."
+      }
+    ]
+  },
+  "HF-NATIVE-S7": {
+    "description": "[HF-NATIVE-S7 2026-10-10] Native Hello Fraands app, server side 7: numeric config keys hfAppLatestBuild and hfAppMinBuild (default 0 = never prompt/block), in config.ts DEFAULTS and numericKeys, validated as whole numbers 0-100000000, and PUBLIC in /api/config (the app reads them for its update banner and forced-update screen). Config only, no binding, no migration. Set after deploy with scripts/flags.sh set hfAppLatestBuild=<versionCode>.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Config-only change: two numeric keys read by the native app's update check (HF-NATIVE-12). It emits no events of its own; the app's hf_update_prompt_shown event is added with that screen.",
+    "success": []
+  },
+  "HF-NATIVE-S4": {
+    "description": "[HF-NATIVE-S4 2026-10-10] Native Hello Fraands app, server side 4: POST /api/hf/me/ack {version, ack18} (signed in) stores the terms/safety acknowledgement in D1 hf_user_ack(uid, version, at) (migration 2026-10-10-hf-user-ack.sql, CREATE only, apply before the Worker deploy) and, when ack18 is true, writes the existing hf_age_confirm row (same table and first-wins rule as POST /api/hf/account/age-confirm). GET /api/hf/me returns the latest ackVersion. Config hfAckVersion (public, default 2026-10-10) is the version the app asks users to accept. hf_user_ack is added to purgeHfUser (worker lib + the verbatim consumers copy) so account deletion removes it. Worker + consumers.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_user_ack",
+        "property": "outcome",
+        "equals": "ok",
+        "note": "From the native app's Welcome screen (HF-NATIVE-2): tick the 18+ box and Continue while signed in; the event arrives with outcome=ok and GET /api/hf/me shows ackVersion and age18ConfirmedAt. Until the app ships, check by calling POST /api/hf/me/ack with a Clerk token."
+      }
+    ]
   }
 }
