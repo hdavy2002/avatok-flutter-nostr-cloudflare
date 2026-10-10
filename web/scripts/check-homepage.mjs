@@ -219,6 +219,7 @@ assert(!existsSync(resolve(root, 'ideas/index.html')), '/ideas is a redirect, no
 // [SAATHUM-GUIDE-2] Articles 404'd in prod when /rituals/* overflowed the 100-rule _routes.json.
 const routesJson = JSON.parse(readFileSync(resolve(root, '_routes.json'), 'utf8'));
 assert(routesJson.exclude.includes('/rituals/*'), '_routes.json must exclude /rituals/* (else articles hit the Function and 404)');
+assert(routesJson.exclude.includes('/.well-known/*'), '_routes.json must exclude /.well-known/* (else assetlinks.json hits the [username]/[slug] Function and 404s)');
 assert(routesJson.include.length + routesJson.exclude.length <= 100, 'Cloudflare 100-rule _routes.json ceiling');
 for (const list of [routesJson.include, routesJson.exclude]) {
   const splats = list.filter(rule => rule.endsWith('/*')).map(rule => rule.slice(0, -1));

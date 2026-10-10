@@ -194,6 +194,31 @@ jobs:
           workingDirectory: web
           command: pages deploy dist --project-name=avatok-app --branch=main --commit-hash=${{ github.sha }}
 
+      # [HF-APP-LINKS-1] Android App Links only verify when the brand host serves
+      # /.well-known/assetlinks.json as a plain 200 application/json (no redirect) that
+      # lists the app package. hellofraands.com answered 404 for weeks because the file
+      # was not excluded from _routes.json. Host and package come from Specs/brand.json.
+      - name: Verify assetlinks.json is live (App Links)
+        run: |
+          DOMAIN=$(jq -r '.domain' Specs/brand.json)
+          PKG=$(jq -r '.hfPlayPackageId' Specs/brand.json)
+          [ -n "$DOMAIN" ] && [ "$DOMAIN" != null ] && [ -n "$PKG" ] && [ "$PKG" != null ] || { echo "brand.json lacks domain/hfPlayPackageId"; exit 1; }
+          for HOST in "$DOMAIN" "www.$DOMAIN"; do
+            ok=0
+            for attempt in 1 2 3 4 5 6; do
+              # No -L: a redirect must fail the check, Android does not follow redirects here.
+              OUT=$(curl -sS -o /tmp/assetlinks.json -w '%{http_code} %{content_type}' "https://$HOST/.well-known/assetlinks.json" || true)
+              if [[ "$OUT" == 200\ application/json* ]] && jq -e --arg p "$PKG" 'any(.[]; .target.package_name == $p)' /tmp/assetlinks.json >/dev/null 2>&1; then
+                echo "$HOST: assetlinks.json OK ($OUT, lists $PKG)"; ok=1; break
+              fi
+              echo "$HOST: attempt $attempt got '$OUT'; retrying in 15s"; sleep 15
+            done
+            if [ "$ok" != 1 ]; then
+              echo "::error title=assetlinks.json::https://$HOST/.well-known/assetlinks.json is not 200 application/json listing $PKG - App Links will not verify"
+              head -c 300 /tmp/assetlinks.json; exit 1
+            fi
+          done
+
       # Automatic deploy tracking: drop a PostHog annotation (commit SHA + message)
       # on the project timeline so every web deploy is visible against metrics and
       # errors. Best-effort — skips cleanly if POSTHOG_PERSONAL_API_KEY isn't set

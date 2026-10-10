@@ -13,6 +13,7 @@ const checks = [
   ['data performance', 'check-data-performance.mjs'],
   ['image coverage', 'check-image-coverage.mjs'],
   ['brand leaks', 'check-brand-leaks.mjs'],
+  ['App Links assetlinks', 'check-assetlinks.mjs'],
 ];
 
 const failures = [];

@@ -35,7 +35,7 @@ export default defineConfig({
     // prerendered /rituals/<slug> article went to the Function — which 404s.
     // One wildcard keeps all 55 guide articles on the static asset path.
     // Keep this; check-homepage.mjs asserts it.
-    routes: { extend: { exclude: [{ pattern: '/rituals/*' }] } }, // [WEB-BLOG-RITUALS-1 2026-09-27] /blog/creator-ideas/* exclude removed: those guides were deleted and /blog/* is now an SSR 410 route, so it must reach the worker
+    routes: { extend: { exclude: [{ pattern: '/rituals/*' }, { pattern: '/.well-known/*' }] } }, // [HF-APP-LINKS-1] /.well-known/* must stay static: without it assetlinks.json hit the [username]/[slug] Function and 404'd (App Links never verified). Keep; check-homepage.mjs + check-assetlinks.mjs assert it. // [WEB-BLOG-RITUALS-1 2026-09-27] /blog/creator-ideas/* exclude removed: those guides were deleted and /blog/* is now an SSR 410 route, so it must reach the worker
   }),
   integrations: [
     react(),
