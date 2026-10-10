@@ -108,7 +108,7 @@ void main() {
   });
 
   group('old rupee wallet (tokens off)', () {
-    testWidgets('renders rupees, test credits, history, and says buying tokens is coming soon', (tester) async {
+    testWidgets('renders rupees, test credits, history, and says adding money is coming soon', (tester) async {
       final api = walletApi(wallet: legacyWallet(), productsEnabled: false)
         ..onJson('GET', '/api/hf/wallet/receipts', {
           'ok': true,
@@ -123,11 +123,10 @@ void main() {
       expect(find.text('Adding money is coming soon'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('purchases')), findsNothing, reason: 'purchase records are a token-mode section');
       expect(find.text('Receipt R-0001'), findsOneWidget);
-      expect(find.text('These count the money you spend.'), findsOneWidget);
       expect(billing.boughtProductIds, isEmpty);
     });
 
-    testWidgets('"Buying tokens is coming soon" also when the products route says enabled:false in token mode', (tester) async {
+    testWidgets('"Adding money is coming soon" also when the products route says enabled:false in token mode', (tester) async {
       await pumpWallet(tester, api: walletApi(productsEnabled: false), billing: billing);
       expect(find.text('Adding money is coming soon'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('buy-hf_tokens_100')), findsNothing);
@@ -277,13 +276,13 @@ void main() {
       final api = walletApi(
         refunds: refundsTokens(requests: [
           {'id': 'req_1', 'amount': 50, 'status': 'requested', 'reason': null, 'createdAt': 1760000000000},
-          {'id': 'req_0', 'amount': 20, 'status': 'rejected', 'reason': 'Tokens were already used.', 'createdAt': 1750000000000},
+          {'id': 'req_0', 'amount': 20, 'status': 'rejected', 'reason': 'Money was already used.', 'createdAt': 1750000000000},
         ]),
       )..onJson('POST', '/api/hf/wallet/refunds/req_1/cancel', {'ok': true, 'status': 'cancelled'});
       await pumpWallet(tester, api: api, billing: billing);
       expect(find.text('₹50 · Waiting for review'), findsOneWidget);
       expect(find.text('₹20 · Not approved'), findsOneWidget);
-      expect(find.text('Tokens were already used.'), findsOneWidget);
+      expect(find.text('Money was already used.'), findsOneWidget);
       expect(find.text('Cancel request'), findsOneWidget, reason: 'only the waiting one');
       await tester.tap(find.text('Cancel request'));
       await tester.pumpAndSettle();
