@@ -487,11 +487,6 @@ export default {
   // per-minute) on purpose: the qualification window is measured in days, and
   // each tick is bounded to QUALIFY_BATCH rows.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    // [HF-VOBIZ-SPEND-1] The every-minute trigger runs ONLY the Vobiz spend watcher; every other job stays on */5.
-    if (_event.cron === "* * * * *") {
-      ctx.waitUntil(runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }));
-      return;
-    }
     ctx.waitUntil(
       Promise.all([
         gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
@@ -503,6 +498,7 @@ export default {
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
+        runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }), // [HF-VOBIZ-SPEND-2] every 5 min (a 1-min trigger halted all crons)
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
         runHfExitCron(env, scheduleDeletion).catch((e) => { console.error("[hf-exit-cron] failed:", String(e)); }), // [HF-WALLET-EXIT-1]
         readConfig(env).then((c) => runMonthlyStatements(env, c as unknown as Record<string, unknown>)).then((r) => { if (r?.issued) console.log("[hf-statements]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-statements] failed:", String(e)); }), // [HF-WALLET-LIMITS-1]

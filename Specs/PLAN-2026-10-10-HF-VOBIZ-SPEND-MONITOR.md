@@ -6,7 +6,7 @@ Date: 2026-10-10. Owner: Davy.
 ## Why
 
 Last time Vobiz suspended the account, kept the balance and wiped the data, and we had no record of what was spent.
-From now on **we keep our own copy of every rupee Vobiz takes**, check it every minute, and send copies outside
+From now on **we keep our own copy of every rupee Vobiz takes**, check it every 5 minutes, and send copies outside
 Vobiz and outside our own servers (to the owner's Gmail) every day. If Vobiz ever disputes or deletes anything,
 we still have the proof.
 
@@ -48,8 +48,8 @@ duration, billed seconds, Vobiz cost, total cost, currency, hangup cause, qualit
 - **Append-only and tamper-evident**: rows are never edited or deleted; each row carries a hash of itself plus
   the previous row (a chain). If anyone changes an old row, the chain breaks and the report says so.
 
-### 2. Live watcher (every minute)
-- Every minute: read the Vobiz balance and save a snapshot (`hf_vobiz_balance`), and pull `cdr/recent`.
+### 2. Live watcher (every 5 minutes)
+- Every 5 minutes (changed 2026-10-10: a 1-minute trigger stopped all the worker's scheduled jobs): read the Vobiz balance and save a snapshot (`hf_vobiz_balance`), and pull `cdr/recent`.
 - Any Vobiz call that **does not belong to one of our calls** is saved as "unknown traffic" and alerted.
 - **Money check**: balance drop in each window vs the CDR costs in that window. Any difference = "unexplained
   charge" (rental, hidden fees, or theft) — shown as a warning and alerted.

@@ -19,7 +19,7 @@ compatibility_flags = ["nodejs_compat", "enable_ctx_exports"]
 # schedule is code wiring only; production remains dark until the flags and
 # migration are deliberately enabled.
 [triggers]
-crons = ["*/5 * * * *", "* * * * *"]  # [HF-VOBIZ-SPEND-1] second trigger = Vobiz spend watcher only
+crons = ["*/5 * * * *"]  # [HF-VOBIZ-SPEND-2] a second "* * * * *" trigger stopped ALL cron runs on 2026-10-10; the Vobiz watcher runs on this one
 
 # Apex-zone custom domain. The long *.workers.dev host intermittently fails mobile
 # DNS resolution (errno 7) on wifi/LTE transitions — fatal for the persistent
