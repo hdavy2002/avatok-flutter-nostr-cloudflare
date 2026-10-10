@@ -12,16 +12,15 @@ void main() {
     testWidgets('does nothing until the host is online', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       await tester.pump(const Duration(minutes: 30));
       expect(beats, 0);
       expect(h.running, isFalse);
+      h.dispose();
     });
 
     testWidgets('online and foreground: one beat per interval', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setOnline(true);
       expect(h.running, isTrue);
       await tester.pump(const Duration(minutes: 4, seconds: 59));
@@ -30,20 +29,20 @@ void main() {
       expect(beats, 1);
       await tester.pump(const Duration(minutes: 10));
       expect(beats, 3);
+      h.dispose();
     });
 
     testWidgets('beatNow sends one at once', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setOnline(true, beatNow: true);
       expect(beats, 1);
+      h.dispose();
     });
 
     testWidgets('background stops it; foreground again beats once and restarts', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setOnline(true);
       h.setForeground(false);
       expect(h.running, isFalse);
@@ -53,38 +52,39 @@ void main() {
       expect(beats, 1);
       await tester.pump(const Duration(minutes: 5));
       expect(beats, 2);
+      h.dispose();
     });
 
     testWidgets('offline in the foreground never beats, even after a resume', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setForeground(false);
       h.setForeground(true);
       await tester.pump(const Duration(hours: 1));
       expect(beats, 0);
+      h.dispose();
     });
 
     testWidgets('going offline stops it', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setOnline(true);
       await tester.pump(const Duration(minutes: 5));
       h.setOnline(false);
       await tester.pump(const Duration(hours: 1));
       expect(beats, 1);
       expect(h.running, isFalse);
+      h.dispose();
     });
 
     testWidgets('setting online twice does not start two timers', (tester) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
-      addTearDown(h.dispose);
       h.setOnline(true);
       h.setOnline(true);
       await tester.pump(const Duration(minutes: 5));
       expect(beats, 1);
+      h.dispose();
     });
   });
 

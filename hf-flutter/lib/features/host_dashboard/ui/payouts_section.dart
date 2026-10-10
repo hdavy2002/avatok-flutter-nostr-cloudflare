@@ -186,14 +186,16 @@ class PayoutRow extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(Money.rupees(request.amount), style: HfText.bodyStrong)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(HfRadius.pill),
-                  border: Border.all(color: HfColors.line),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(HfRadius.pill),
+                    border: Border.all(color: HfColors.line),
+                  ),
+                  child: Text(label, style: HfText.badge.copyWith(color: fg), key: ValueKey<String>('payout-status-${request.id}')),
                 ),
-                child: Text(label, style: HfText.badge.copyWith(color: fg), key: ValueKey<String>('payout-status-${request.id}')),
               ),
             ],
           ),
