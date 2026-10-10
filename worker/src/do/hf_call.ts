@@ -46,7 +46,7 @@ interface Bill {
 interface S {
   callId: string; callerUid: string; hostUid: string;
   // reservedRupees = PAID rupees reserved in the wallet at start; testReservedRupees = test credits held for this call; fundsRupees = test + paid available at start.
-  rateRupees: number; reservedRupees: number; testReservedRupees?: number; fundsRupees: number; maxMinutes: number; limitReason: "time_limit" | "balance" | "spend_limit";
+  rateRupees: number; reservedRupees: number; testReservedRupees?: number; fundsRupees: number; maxMinutes: number; limitReason: "time_limit" | "balance";
   status: string; createdAt: number;
   hostLeg: string | null; callerLeg: string | null;
   hostPicked: boolean; hostAccepted: boolean; callerPicked: boolean; callerPickedAt: number | null;
@@ -120,7 +120,7 @@ export class HfCallDO {
     const s: S = {
       callId: String(b.callId), callerUid: String(b.callerUid), hostUid: String(b.hostUid),
       rateRupees: Math.trunc(Number(b.rateRupees)), reservedRupees: Math.trunc(Number(b.reservedRupees)), testReservedRupees: Math.max(0, Math.trunc(Number(b.testReservedRupees ?? 0))), fundsRupees: Math.trunc(Number(b.fundsRupees)),
-      maxMinutes: Math.trunc(Number(b.maxMinutes)), limitReason: b.limitReason === "balance" ? "balance" : b.limitReason === "spend_limit" ? "spend_limit" : "time_limit",
+      maxMinutes: Math.trunc(Number(b.maxMinutes)), limitReason: b.limitReason === "balance" ? "balance" : "time_limit",
       status: "ringing_host", createdAt: now, hostLeg: null, callerLeg: null,
       hostPicked: false, hostAccepted: false, callerPicked: false, callerPickedAt: null,
       inRoom: { host: false, caller: false }, member: {}, anyEnter: false,

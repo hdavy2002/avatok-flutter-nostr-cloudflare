@@ -7,7 +7,6 @@ import { makeDb } from "./hf_token_d1_shim";
 import { creditLot, getLots, balanceSummary, createDebt, reserveForCall, release, getReservation } from "./hf_token_ledger";
 import { prepareTokenStart, settleTokenCall, splitHostByKind, estimateForHost, snapshotFor, DEBT_MESSAGE } from "./hf_token_calls";
 import { hostSummary, creditCallEarning, reservePayout, cancelPayoutReserve, markPayoutPaid, listCallEarnings, wholeRupees, HOST_HOLD_MS } from "./hf_host_ledger";
-import { checkPurchaseAllowed, decidePurchase, paidTodayPaise, paidMonthPaise } from "./hf_limits";
 import { readHfTokenConfig } from "./hf_token_config";
 import { MICRO } from "./hf_token_math";
 
@@ -307,43 +306,9 @@ describe("host INR ledger and payouts in paise", () => {
   });
 });
 
-describe("purchase limits count rupees paid for tokens (HF-TOK-D9)", () => {
-  const cfg = {};
-  it("counts only active purchase lots, in paise, for today and this month", async () => {
-    await lot("u1", "purchase", 1000, 82, "a", 1000);
-    await lot("u1", "test", 500, 82, "t");
-    expect(await paidTodayPaise(env, "u1")).toBe(100000);
-    expect(await paidMonthPaise(env, "u1")).toBe(100000);
-  });
-
-  it("allows up to the daily Rs 2,000 and refuses the purchase that would pass it", async () => {
-    await lot("u1", "purchase", 1500, 82, "a", 1500);
-    expect((await checkPurchaseAllowed(env, "u1", 50000, cfg)).ok).toBe(true); // 1500 + 500 = 2000 exactly
-    const no = await checkPurchaseAllowed(env, "u1", 50100, cfg);
-    expect(no.ok).toBe(false);
-    expect(no.binding).toBe("day");
-    expect(no.message).toContain("today's limit");
-    expect(no.dayRemainingPaise).toBe(50000);
-  });
-
-  it("a refunded (revoked) purchase no longer counts; test credits never count", async () => {
-    const c = await lot("u1", "purchase", 1500, 82, "a", 1500);
-    env.DB_META._raw.prepare("UPDATE hf_token_lots SET status='revoked' WHERE id=?").run(c.lotId);
-    expect(await paidTodayPaise(env, "u1")).toBe(0);
-  });
-
-  it("monthly limit binds when the day has room (pure)", () => {
-    const limits = { daily: 2000, monthly: 15000 };
-    const r = decidePurchase(limits, 0, 1_450_000, 100_000);
-    expect(r.ok).toBe(false);
-    expect(r.binding).toBe("month");
-    expect(r.message).toContain("this month's limit");
-    expect(decidePurchase(limits, 0, 0, 200_000).ok).toBe(true);
-    expect(decidePurchase(limits, 0, 0, 200_001).ok).toBe(false);
-  });
-
-  it("calls are not limited by spend: starting a call never looks at purchase totals", async () => {
-    await lot("u1", "purchase", 2000, 82, "a", 2000); // already at the daily limit of purchases
+describe("no spend limits (HF-NOLIMITS-1)", () => {
+  it("calls are not limited by spend: a big day of purchases never blocks a call", async () => {
+    await lot("u1", "purchase", 2000, 82, "a", 2000); // a large amount bought in one day
     const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 2000, tk: TK });
     expect(r.ok).toBe(true);
   });

@@ -1,5 +1,5 @@
 // @ts-nocheck -- uses node:sqlite, which the worker tsconfig has no types for
-// [HF-WALLET-LIMITS-1] Route level: receipt issued on top-up settle, owner-only receipt pages, admin limit override, reconciliation endpoint.
+// [HF-WALLET-LIMITS-1] Route level: receipt issued on top-up settle, owner-only receipt pages, reconciliation endpoint.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
@@ -74,34 +74,6 @@ describe("receipt on top-up settle", () => {
     currentUid = "u2";
     expect((await hit("GET", `/api/hf/wallet/receipts/${list.receipts[0].id}`)).status).toBe(404);
     expect((await (await hit("GET", "/api/hf/wallet/receipts")).json()).receipts).toHaveLength(0);
-  });
-});
-
-describe("admin spend-limit override", () => {
-  it("non-admin is refused", async () => {
-    expect((await hit("GET", "/api/admin/hf/limits/u1")).status).toBe(403);
-  });
-  it("sets, reads, partially updates and clears the override, with an audit row", async () => {
-    currentUid = "admin";
-    const g0 = await (await hit("GET", "/api/admin/hf/limits/u1")).json();
-    expect(g0).toMatchObject({ defaults: { daily: 2000, monthly: 15000 }, override: null, effective: { daily: 2000, monthly: 15000 } });
-
-    expect((await hit("PUT", "/api/admin/hf/limits/u1", { dailyRupees: 5000 })).status).toBe(400); // note required
-    expect((await hit("PUT", "/api/admin/hf/limits/u1", { dailyRupees: -1, note: "x" })).status).toBe(400);
-    expect((await hit("PUT", "/api/admin/hf/limits/nobody", { dailyRupees: 5000, note: "x" })).status).toBe(404);
-
-    const r1 = await (await hit("PUT", "/api/admin/hf/limits/u1", { dailyRupees: 5000, note: "long-time regular" })).json();
-    expect(r1.effective).toEqual({ daily: 5000, monthly: 15000 });
-    const r2 = await (await hit("PUT", "/api/admin/hf/limits/u1", { monthlyRupees: 4000, note: "lower on request" })).json();
-    expect(r2.effective).toEqual({ daily: 5000, monthly: 4000 }); // omitted column kept
-    expect(r2.override).toMatchObject({ dailyRupees: 5000, monthlyRupees: 4000, note: "lower on request", adminUid: "admin" });
-    const r3 = await (await hit("PUT", "/api/admin/hf/limits/u1", { dailyRupees: null, monthlyRupees: null, note: "back to default" })).json();
-    expect(r3.override).toBeNull();
-    expect(h.wdb.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action='hf_spend_limit_set'").get().n).toBe(3);
-  });
-  it("reads the defaults from the flags", async () => {
-    currentUid = "admin"; cfg = { hfDailySpendLimitRupees: 1000, hfMonthlySpendLimitRupees: 8000 };
-    expect((await (await hit("GET", "/api/admin/hf/limits/u1")).json()).effective).toEqual({ daily: 1000, monthly: 8000 });
   });
 });
 

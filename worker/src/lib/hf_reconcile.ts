@@ -3,7 +3,7 @@
 // payouts paid (UTR), refunds; plus a mismatch list and approximate outstanding liabilities. buildReconciliation() is pure (fixtures in tests);
 // loadReconciliation() is the D1 reader. Read-only: nothing here writes.
 import type { Env } from "../types";
-import { istDateStr, istDayStart, parseIstDate } from "./hf_limits";
+import { istDateStr, istDayStart, parseIstDate } from "./hf_ist";
 
 export const MAX_RANGE_DAYS = 93;
 /** A wallet credit is audited through a queue; a paid top-up younger than this is "pending", not a mismatch. */

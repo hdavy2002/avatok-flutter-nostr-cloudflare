@@ -1,10 +1,7 @@
-// [HF-WALLET-LIMITS-1] Receipts, admin spend-limit override and admin reconciliation. Rules HF-PAY-7, HF-PAY-16, HF-PAY-17.
+// [HF-WALLET-LIMITS-1] Receipts and admin reconciliation. Rules HF-PAY-16, HF-PAY-17. [HF-NOLIMITS-1] The spend-limit override endpoints were removed.
 //   GET  /api/hf/wallet/receipts                          -> {ok, receipts:[{id,number,kind,source,amountRupees,issuedAt}], invoicing}
 //   GET  /api/hf/wallet/receipts/:id                      -> printable HTML (owner only)
-//   GET  /api/admin/hf/limits/:uid                        -> {ok, uid, defaults, override, effective, spentToday, spentThisMonth}
-//   PUT  /api/admin/hf/limits/:uid {dailyRupees?, monthlyRupees?, note}   (null clears that column; omitted keeps it)
 //   GET  /api/admin/hf/reconciliation?from=&to=[&format=csv]   (IST dates, inclusive, max 93 days)
-// The wallet endpoint itself (GET /api/hf/wallet) gains `limits` in routes/hf_calls.ts; call-start enforcement is there too.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -12,7 +9,6 @@ import { trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
 import { HF_CALL_APP } from "../lib/hf_calls_store";
-import { getOverride, limitDefaults, limitSummary, setOverride, MAX_LIMIT_RUPEES } from "../lib/hf_limits";
 import { backfillTopupReceipts, backfillPurchaseRecords, getReceipt, listReceipts, renderReceiptHtml, supplierFrom, invoicingOn } from "../lib/hf_receipts";
 import { loadReconciliation, parseRange, reconciliationCsv } from "../lib/hf_reconcile";
 import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-EXIT-1]
@@ -68,42 +64,6 @@ async function receiptView(req: Request, env: Env, id: string): Promise<Response
   });
 }
 
-// ── admin: spend-limit override ──────────────────────────────────────────────
-async function limitGet(req: Request, env: Env, uid: string): Promise<Response> {
-  const a = await adminCtx(req, env);
-  if (a instanceof Response) return a;
-  const cfg = await cfgOf(env);
-  const [override, s] = await Promise.all([getOverride(env, uid), limitSummary(env, uid, cfg)]);
-  return json({
-    ok: true, uid, defaults: limitDefaults(cfg),
-    override: override ? { dailyRupees: override.daily_rupees, monthlyRupees: override.monthly_rupees, note: override.note, adminUid: override.admin_uid, updatedAt: override.updated_at } : null,
-    effective: { daily: s.daily, monthly: s.monthly }, spentToday: s.spentToday, spentThisMonth: s.spentThisMonth, resetsAt: s.resetsAt,
-  }, 200, NO_STORE);
-}
-const limitField = (v: unknown): number | null | undefined | "bad" => {
-  if (v === undefined) return undefined;
-  if (v === null) return null;
-  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_LIMIT_RUPEES ? v : "bad";
-};
-async function limitPut(req: Request, env: Env, uid: string): Promise<Response> {
-  const a = await adminCtx(req, env);
-  if (a instanceof Response) return a;
-  const b = await readJson(req);
-  const d = limitField(b.dailyRupees), m = limitField(b.monthlyRupees);
-  if (d === "bad") return err(400, "invalid_field", `dailyRupees must be a whole number from 0 to ${MAX_LIMIT_RUPEES}, or null.`, { field: "dailyRupees" });
-  if (m === "bad") return err(400, "invalid_field", `monthlyRupees must be a whole number from 0 to ${MAX_LIMIT_RUPEES}, or null.`, { field: "monthlyRupees" });
-  if (d === undefined && m === undefined) return err(400, "invalid_field", "Send dailyRupees and/or monthlyRupees.");
-  const note = String(b.note ?? "").trim().slice(0, 200);
-  if (!note) return err(400, "invalid_field", "Add a note saying why.", { field: "note" });
-  if (!(await env.DB_META.prepare("SELECT 1 AS x FROM users WHERE uid=?1").bind(uid).first().catch(() => null))) return err(404, "not_found", "No such user.");
-  const prior = await getOverride(env, uid);
-  const nextDaily = d === undefined ? (prior?.daily_rupees ?? null) : d;
-  const nextMonthly = m === undefined ? (prior?.monthly_rupees ?? null) : m;
-  await setOverride(env, uid, a.uid, nextDaily, nextMonthly, note);
-  await audit(env, a.uid, "spend_limit_set", uid, { daily: nextDaily, monthly: nextMonthly, was: { daily: prior?.daily_rupees ?? null, monthly: prior?.monthly_rupees ?? null }, note });
-  return limitGet(req, env, uid);
-}
-
 // ── admin: reconciliation ────────────────────────────────────────────────────
 async function reconciliation(req: Request, env: Env): Promise<Response> {
   const a = await adminCtx(req, env);
@@ -130,9 +90,6 @@ export async function hfWalletLimitsRoute(req: Request, env: Env, p: string): Pr
     if (p === "/api/hf/wallet/receipts" && m === "GET") return await receiptList(req, env);
     let x = p.match(/^\/api\/hf\/wallet\/receipts\/(hfr_[a-f0-9]{32})$/);
     if (x && m === "GET") return await receiptView(req, env, x[1]);
-    x = p.match(/^\/api\/admin\/hf\/limits\/([^/]{1,128})$/);
-    if (x && m === "GET") return await limitGet(req, env, decodeURIComponent(x[1]));
-    if (x && m === "PUT") return await limitPut(req, env, decodeURIComponent(x[1]));
     if (p === "/api/admin/hf/reconciliation" && m === "GET") return await reconciliation(req, env);
     return null;
   } catch (e) {

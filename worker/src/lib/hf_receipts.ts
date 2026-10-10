@@ -9,7 +9,7 @@
 // Numbers are gapless per series and idempotent per (kind, source, source_id): one D1 batch (atomic) inserts the row and bumps the counter only if it landed.
 import type { Env } from "../types";
 import { BRAND } from "./brand";
-import { financialYear, istMonthStart, istMonthStr, istNextMonthStart, istPrevMonthStart, IST_OFFSET_MS } from "./hf_limits";
+import { financialYear, istMonthStart, istMonthStr, istNextMonthStart, istPrevMonthStart, IST_OFFSET_MS } from "./hf_ist";
 
 export type DocKind = "receipt" | "tax_invoice";
 export interface Supplier { gstin: string; legalName: string; address: string; stateCode: string; prefix: string }

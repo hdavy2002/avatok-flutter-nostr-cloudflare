@@ -1,5 +1,5 @@
 // @ts-nocheck -- uses node:sqlite via the D1 shim
-// [HF-TOK-PLAY-1] Routes: products, prepare (limits), verify (idempotent), RTDN (Google-signed JWT, 401 / 503 / handled).
+// [HF-TOK-PLAY-1] Routes: products, prepare, verify (idempotent), RTDN (Google-signed JWT, 401 / 503 / handled).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const state = { uid: "u1", cfg: { hfTokensEnabled: true, hfCheckoutProvider: "google_play" } as any };
@@ -65,17 +65,13 @@ describe("prepare", () => {
     expect(a.obfuscatedAccountId).not.toBe(b.obfuscatedAccountId);
   });
 
-  it("limit exceeded: 403 {error:'limit'} with the existing wording and no account row", async () => {
-    // Rs 1,500 already paid today; a Rs 1,000 pack would pass Rs 2,000
+  it("no spend limit: a big day of purchases never stops prepare (HF-NOLIMITS-1)", async () => {
     env.DB_META._raw.prepare("INSERT INTO hf_token_lots (id, uid, kind, pricing_version, redemption_paise_per_token, tokens_granted_micro, tokens_left_micro, tokens_reserved_micro, paid_paise, provider, provider_ref, created_at, status) VALUES ('l1','u1','purchase','gp-v1',82,1,1,0,150000,'google_play','o',?, 'active')").run(Date.now());
     const r = await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_1000" });
     const j = await r.json();
-    expect(r.status).toBe(403);
-    expect(j.error).toBe("limit");
-    expect(j.message).toBe("You've reached today's limit of ₹2,000. It resets at midnight.");
-    expect(count("SELECT COUNT(*) AS n FROM hf_play_accounts")).toBe(0);
-    // a smaller pack still fits
-    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).status).toBe(200);
+    expect(r.status).toBe(200);
+    expect(j.dayRemainingPaise).toBeUndefined();
+    expect(j.monthRemainingPaise).toBeUndefined();
   });
 
   it("refuses when tokens are off, for an unknown pack, and without the salt", async () => {

@@ -2108,9 +2108,7 @@ export interface PlatformConfig {
   hfRefundsEnabled: boolean;
   hfRefundWindowDays: number;
   hfExitGateEnabled: boolean;
-  // [HF-WALLET-LIMITS-1] Caller spend limits on REAL money (test credits never count; IST day / month) and the "Are you sure?" step on large top-ups (HF-PAY-7).
-  hfDailySpendLimitRupees: number;
-  hfMonthlySpendLimitRupees: number;
+  // [HF-WALLET-LIMITS-1] The "Are you sure?" step on large top-ups. [HF-NOLIMITS-1] Daily / monthly spend limits were removed (owner decision).
   hfTopupConfirmAboveRupees: number;
   // [HF-TOK-MATH-1] Play-token pricing (spec 11.3). DECLARED ONLY: nothing reads these until HF-TOK-LEDGER/CALLS-1. Never sent raw to the browser.
   // hfCheckoutProvider: none|google_play|paytm|razorpay|cashfree. Numbers (paise per minute, basis points) go in numericKeys.
@@ -2903,9 +2901,7 @@ const DEFAULTS: PlatformConfig = {
   hfRefundsEnabled: false, // [HF-WALLET-EXIT-1] dark until the owner flips it
   hfRefundWindowDays: 180,
   hfExitGateEnabled: true,
-  hfDailySpendLimitRupees: 2000, // [HF-WALLET-LIMITS-1]
-  hfMonthlySpendLimitRupees: 15000,
-  hfTopupConfirmAboveRupees: 1000,
+  hfTopupConfirmAboveRupees: 1000, // [HF-WALLET-LIMITS-1]
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
@@ -3233,7 +3229,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "voiceAgentMaxSeconds", "voiceAgentFreeSeconds", "voiceAgentPricePerMinPaise",
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
-    "hfDailySpendLimitRupees", "hfMonthlySpendLimitRupees", "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
+    "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
     "hfCallCostPaisePerMin", "hfHostShareBps", // [HF-TOK-MATH-1]
   ]);
   const stringKeys = new Set([
@@ -3314,7 +3310,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: "hfHostShareBps must be an integer 0-10000" }, 400);
     }
     // [HF-WALLET-LIMITS-1]
-    if ((k === "hfDailySpendLimitRupees" || k === "hfMonthlySpendLimitRupees" || k === "hfTopupConfirmAboveRupees") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {
+    if (k === "hfTopupConfirmAboveRupees" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {
       return json({ error: `${k} must be a whole rupee amount 0-1000000` }, 400);
     }
     if (k === "hfGstin" && v !== "" && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(String(v))) {

@@ -34,7 +34,6 @@ import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance } from "../lib/hf_credits";
-import { limitSummary, decideStart, callLimitReason, limitMessage, limitsFor, paidTodayPaise, paidMonthPaise, istNextDayStart } from "../lib/hf_limits"; // [HF-WALLET-LIMITS-1]
 import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -113,13 +112,11 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
   if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk });
   const needed = rate * START_RESERVE_MINUTES;
-  // [HF-WALLET-LIMITS-1] Real-money spend limits (HF-PAY-7): the paid funds a call may use are capped at what is left today / this month.
-  const lim = await limitSummary(env, uid, (await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
 
   // [HF-WALLET-1] Test credits are held first (up to a full-length call); the paid wallet reserves only what they do not cover.
   const testReserved = await reserveTestCredits(env, uid, callId, rate * MAX_CALL_MINUTES);
   const shortfall = paidShortfall(needed, testReserved);
-  let paidReserved = 0, paidFunds = 0, limitCapped = false;
+  let paidReserved = 0, paidFunds = 0;
   if (shortfall > 0) {
     const rsv = await hfReserve(env, uid, shortfall, callId, "reserve");
     if (!rsv.ok) {
@@ -128,21 +125,14 @@ async function startCall(req: Request, env: Env): Promise<Response> {
       if (rsv.status === 402) return err(402, "low_balance", `You need at least ₹${needed} for this call.`, { needed, balance: spendable });
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
     }
-    const dec = decideStart({ shortfall, paidAvailable: rsv.available + shortfall, room: lim.room, binding: lim.binding });
-    if (!dec.ok) {
-      await hfRelease(env, uid, callId).catch(() => false);
-      await settleTestCredits(env, uid, callId, 0).catch(() => 0);
-      return err(403, "spend_limit", limitMessage(dec.binding, lim), { reason: "spend_limit", period: dec.binding, resetsAt: dec.binding === "month" ? undefined : lim.resetsAt });
-    }
     paidReserved = shortfall;
-    paidFunds = dec.paidUsable; limitCapped = dec.capped;
+    paidFunds = rsv.available + shortfall;
   } else {
-    const dec = decideStart({ shortfall: 0, paidAvailable: await hfWalletBalance(env, uid), room: lim.room, binding: lim.binding });
-    paidFunds = dec.ok ? dec.paidUsable : 0; limitCapped = dec.ok && dec.capped;
+    paidFunds = await hfWalletBalance(env, uid);
   }
   const fundsRupees = testReserved + paidFunds;
   const maxMinutes = maxMinutesFor(fundsRupees, rate);
-  const limitReason = callLimitReason({ fundsRupees, rateRupees: rate, maxCallMinutes: MAX_CALL_MINUTES, capped: limitCapped });
+  const limitReason: "time_limit" | "balance" = Math.floor(fundsRupees / rate) >= MAX_CALL_MINUTES ? "time_limit" : "balance";
 
   const freeAll = async () => { await hfRelease(env, uid, callId).catch(() => false); await settleTestCredits(env, uid, callId, 0).catch(() => 0); };
   if (!(await claimHost(env, host.uid))) {
@@ -151,16 +141,9 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   }
   const undo = async () => { await releaseHost(env, host.uid).catch(() => undefined); await freeAll(); };
   try {
-    try {
-      await env.DB_META.prepare(
-        "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, limit_cap_rupees) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8)",
-      ).bind(callId, uid, host.uid, rate * 100, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, paidFunds).run();
-    } catch {
-      // [HF-WALLET-LIMITS-1] limit_cap_rupees not migrated yet: place the call without it (limits then count settled money only).
-      await env.DB_META.prepare(
-        "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7)",
-      ).bind(callId, uid, host.uid, rate * 100, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`).run();
-    }
+    await env.DB_META.prepare(
+      "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7)",
+    ).bind(callId, uid, host.uid, rate * 100, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`).run();
   } catch (e) {
     await undo();
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert" } });
@@ -312,15 +295,9 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
     const life = await env.DB_META.prepare("SELECT COALESCE(SUM(COALESCE(host_paid_rupees, host_earned_tokens)),0) AS p FROM hf_calls WHERE host_uid=?1").bind(u.uid).first<{ p: number }>().catch(() => null);
     host = { heldRupees: held, availableRupees: paidBalance, testEarningsRupees: Number(te?.t ?? 0), lifetimePaidEarnings: Number(life?.p ?? 0) };
   }
-  // [HF-WALLET-LIMITS-1] Real-money spend so far today / this month against the caller's limits.
-  let limits: Record<string, number> | undefined;
-  try {
-    const l = await limitSummary(env, u.uid, (await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
-    limits = { daily: l.daily, monthly: l.monthly, spentToday: l.spentToday, spentThisMonth: l.spentThisMonth, resetsAt: l.resetsAt };
-  } catch { limits = undefined; }
   return json({
     balanceRupees: paidBalance, testCredits: true, // legacy fields kept for older clients
-    paidBalance, testBalance: test.balance, spendable: paidBalance + test.balance, ...(host ? { host } : {}), ...(limits ? { limits } : {}), history: hist.slice(0, 50),
+    paidBalance, testBalance: test.balance, spendable: paidBalance + test.balance, ...(host ? { host } : {}), history: hist.slice(0, 50),
   }, 200, { "cache-control": "private, no-store" });
 }
 
@@ -367,9 +344,6 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
       payouts: payouts.map((p) => ({ id: p.id, amountPaise: Number(p.amount_rupees) * 100, status: p.status, createdAt: Number(p.created_at), paidAt: p.paid_at == null ? null : Number(p.paid_at) })),
     };
   }
-  const cfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
-  const now = Date.now();
-  const [lim, today, month] = await Promise.all([limitsFor(env, uid, cfg), paidTodayPaise(env, uid, now).catch(() => 0), paidMonthPaise(env, uid, now).catch(() => 0)]);
   return json({
     mode: "tokens",
     tokens: {
@@ -381,7 +355,6 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
     // legacy fields kept so an older client renders zeros instead of breaking
     balanceRupees: 0, testCredits: true, paidBalance: 0, testBalance: Number(formatTokens(testMicro, 2)), spendable: 0,
     ...(host ? { host } : {}),
-    limits: { daily: lim.daily, monthly: lim.monthly, spentToday: Math.floor(today / 100), spentThisMonth: Math.floor(month / 100), paidTodayPaise: today, paidThisMonthPaise: month, resetsAt: istNextDayStart(now), basis: "paid_for_tokens" },
     history: hist.slice(0, 50),
   }, 200, { "cache-control": "private, no-store" });
 }

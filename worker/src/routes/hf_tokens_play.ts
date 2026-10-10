@@ -1,7 +1,7 @@
 // [HF-TOK-PLAY-1] HF token purchases with Google Play Billing (server side). Contract: Specs/HF-PLAY-BILLING-RUNBOOK.md.
 //   GET  /api/hf/tokens/products        public; active packs {productId, tokens, pricingVersion, redemptionPaisePerToken, purchasePaisePerToken}.
 //                                       Never a display price: the app shows Play's ProductDetails price.
-//   POST /api/hf/tokens/play/prepare    {productId} signed in -> {ok, obfuscatedAccountId, confirmAbovePaise, ...} | 403 {error:'limit', message}
+//   POST /api/hf/tokens/play/prepare    {productId} signed in -> {ok, obfuscatedAccountId, confirmAbovePaise, ...}
 //   POST /api/hf/tokens/play/verify     {productId, purchaseToken} signed in, idempotent -> {ok, status, duplicate, orderId, tokens, balance}
 //   POST /api/hf/tokens/play/rtdn       Pub/Sub push (Google-signed JWT); 401 bad JWT, 503 unconfigured, 200 handled / ignored
 // verify / prepare need hfTokensEnabled && hfCheckoutProvider === 'google_play'. The cron half is runHfPlayCron (index.ts scheduled()).
@@ -13,7 +13,6 @@ import { trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
 import { readHfTokenConfig, type HfTokenConfig } from "../lib/hf_token_config";
-import { checkPurchaseAllowed } from "../lib/hf_limits";
 import { MICRO } from "../lib/hf_token_math";
 import {
   accountHashFor, rememberAccount, listActiveProducts, productPricePaise, processPlayPurchase, balanceFor, emit,
@@ -62,12 +61,6 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
       if (lim) return lim;
       const prod = (await listActiveProducts(env)).find((x) => x.productId === b.productId);
       if (!prod) return err(400, "unknown_product", "That token pack is not available.");
-      // HF-TOK-D9: daily / monthly limits count rupees paid for tokens. The estimate is tokens x purchase price; Play's real price is what is credited.
-      const chk = await checkPurchaseAllowed(env, u.uid, productPricePaise(prod), raw as any);
-      if (!chk.ok) {
-        await emit(env, u.uid, "hf_token_purchase_failed", { reason: "limit", source: "prepare", product_id: prod.productId, binding: chk.binding });
-        return err(403, "limit", chk.message, { binding: chk.binding, resetsAt: chk.resetsAt, dayRemainingPaise: chk.dayRemainingPaise, monthRemainingPaise: chk.monthRemainingPaise });
-      }
       const hash = await accountHashFor(env, u.uid);
       if (!hash) return err(503, "unconfigured", "Purchases are not configured yet.");
       await rememberAccount(env, u.uid, hash);
@@ -75,7 +68,6 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
       return json({
         ok: true, obfuscatedAccountId: hash, productId: prod.productId, tokens: prod.tokens,
         confirmAbovePaise: Math.max(0, Math.trunc(Number(raw.hfTopupConfirmAboveRupees ?? 1000))) * 100,
-        dayRemainingPaise: chk.dayRemainingPaise, monthRemainingPaise: chk.monthRemainingPaise,
       }, 200, { "cache-control": "no-store" });
     }
 

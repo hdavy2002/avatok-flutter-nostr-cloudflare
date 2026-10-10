@@ -291,7 +291,7 @@ import { mePreview } from "./routes/preview"; // [AUMFE-PREVIEW-GATE-1]
 import { voiceAgentsList, voiceTicket, voiceWs } from "./routes/voice"; // [AUMFE-VOICE-RUNTIME-1] voice guides
 import { guidesRoute } from "./routes/guides"; // [AUMFE-GUIDE-BRAIN-1] Pandit ji text guide
 import { consultRoute } from "./routes/consultants"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants REST
-import { hfWalletLimitsRoute } from "./routes/hf_wallet_limits"; // [HF-WALLET-LIMITS-1] receipts, admin spend-limit override, reconciliation
+import { hfWalletLimitsRoute } from "./routes/hf_wallet_limits"; // [HF-WALLET-LIMITS-1] receipts, reconciliation
 import { runMonthlyStatements } from "./lib/hf_receipts"; // [HF-WALLET-LIMITS-1] monthly GST tax invoices (only when hfGstin is set)
 import { hfPayoutsRoute } from "./routes/hf_payouts"; // [HF-PAYOUT-1] HF host withdrawals (flag hfPayoutsEnabled)
 import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] HF host verification (flag hostKycEnabled)
@@ -1122,7 +1122,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
-      if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p.startsWith("/api/admin/hf/limits/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
+      if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
       if (p === "/api/hf/tokens/products" || p.startsWith("/api/hf/tokens/play/")) { const r = await hfTokensPlayRoute(req, env, p); if (r) return r; } // [HF-TOK-PLAY-1]

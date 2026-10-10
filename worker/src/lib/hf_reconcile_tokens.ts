@@ -11,7 +11,7 @@
 //   purchase_without_lot / lot_without_purchase   a credited Play purchase must have its lot and every Play lot its purchase
 // buildTokenReconciliation() is pure (rows in, report out); loadTokenReconciliation() is the D1 reader. Read-only: nothing here writes.
 import type { Env } from "../types";
-import { istDateStr } from "./hf_limits";
+import { istDateStr } from "./hf_ist";
 
 const DAY = 86_400_000;
 const n = (v: unknown): number => Math.trunc(Number(v ?? 0)) || 0;
