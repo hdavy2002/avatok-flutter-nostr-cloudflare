@@ -9780,5 +9780,25 @@
         "note": "On the caller's phone: asked Notify-me on a host, the host went online on a second phone, the push arrived and tapping it opened the host page."
       }
     ]
+  },
+  "HF-APP-5": {
+    "description": "[HF-APP-5 2026-10-10] Camera and microphone inside the Android app: Capacitor's own WebView client asks Android for CAMERA / RECORD_AUDIO when the site calls getUserMedia; in app mode the host selfie video and voice intro steps first show a 'why we need it' screen, and a denied permission shows an Open settings button (new local plugin HfSettings in the shell, needs a new app build). Recorders choose a supported type (webm/mp4/ogg), all already accepted by the worker. Web plus a shell change; the worker is unchanged.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_permission",
+        "property": "kind",
+        "equals": "camera",
+        "note": "result=granted for kind=camera: the selfie step opened the camera inside the Android app. Only the app sends it; confirmed by hand on the owner's phone during the test host sign-up."
+      },
+      {
+        "event": "hf_app_permission",
+        "property": "kind",
+        "equals": "mic",
+        "note": "result=granted for kind=mic: the voice intro step opened the microphone inside the Android app. Only the app sends it; confirmed by hand on the owner's phone during the test host sign-up."
+      }
+    ]
   }
 }

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';
 import { SELFIE_SEC } from '../data';
 import type { StepProps } from '../types';
+import { isAppMode } from '../../../lib/nativeBridge';
+import { isPermissionDenied, needsExplainer, pickRecorderMime, trackPermission, VIDEO_MIME_CHOICES } from '../../../lib/appPermissions';
+import { PermissionDenied, PermissionExplainer } from '../PermissionPanel';
 
 const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof (window as any).MediaRecorder !== 'undefined';
 type Phase = 'idle' | 'count' | 'rec';
@@ -20,6 +23,8 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
   const [error, setError] = useState('');
   const [fallback, setFallback] = useState(() => !canRecord());
   const [busy, setBusy] = useState(false);
+  const [explain, setExplain] = useState(false); // [HF-APP-5] app mode: why we need the camera, before Android asks
+  const [denied, setDenied] = useState(false); // [HF-APP-5] app mode: camera refused
   const [url, setUrl] = useState<string | null>(null);
   const liveRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -69,7 +74,8 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
 
   const beginRecording = (stream: MediaStream) => {
     chunksRef.current = [];
-    const rec = new MediaRecorder(stream);
+    const mime = pickRecorderMime(VIDEO_MIME_CHOICES); // [HF-APP-5] webm (vp9/vp8 + opus) on Android WebView, mp4 where that is what it supports
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     recRef.current = rec;
     rec.ondataavailable = e => { if (e.data.size) chunksRef.current.push(e.data); };
     rec.onstop = () => {
@@ -91,8 +97,15 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
   const start = async () => {
     setError('');
     if (!code) { setError('Wait for your code to show, then start.'); return; }
+    if (await needsExplainer('camera')) { setExplain(true); return; } // [HF-APP-5] app mode only
+    await openCamera();
+  };
+
+  const openCamera = async () => {
+    setExplain(false); setDenied(false); setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+      trackPermission('camera', 'granted');
       streamRef.current = stream;
       setPhase('count'); setCount(3);
       let n = 3;
@@ -102,8 +115,11 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
         clearTimer();
         if (streamRef.current) beginRecording(streamRef.current);
       }, 1000);
-    } catch {
-      stopTracks(); setPhase('idle'); setFallback(true);
+    } catch (e) {
+      stopTracks(); setPhase('idle');
+      if (isAppMode() && isPermissionDenied(e)) { trackPermission('camera', 'denied'); setDenied(true); return; }
+      trackPermission('camera', 'error');
+      setFallback(true);
       setError('We could not use your camera. Allow it in your settings, or record with your phone camera instead.');
     }
   };
@@ -161,7 +177,9 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
           </div>
         )}
         {!live && recorded && !url && <p className="hob-v-strong">Selfie video saved ✓</p>}
-        {!live && !recorded && (
+        {!live && !recorded && explain && <PermissionExplainer kind="camera" onContinue={() => { void openCamera(); }} />}
+        {!live && !recorded && denied && <PermissionDenied kind="camera" onRetry={() => { void openCamera(); }} />}
+        {!live && !recorded && !explain && !denied && (
           <div className="hob-v-camidle">
             <span className="hob-v-ico" aria-hidden="true"><Icon name="video" /></span>
             <p className="hob-help">{busy ? 'Saving…' : 'Hold the phone at eye level, in good light.'}</p>
@@ -169,16 +187,16 @@ export default function SelfieStep({ draft, update, api, setAction }: StepProps)
         )}
 
         <div className="hob-v-camactions">
-          {!live && !recorded && !fallback && (
+          {!live && !recorded && !fallback && !explain && !denied && (
             <button type="button" className="hob-btn hob-btn-primary" onClick={start} disabled={busy || !code}><Icon name="video" size={20} />Start recording</button>
           )}
-          {!live && !recorded && fallback && (
+          {!live && !recorded && (fallback || denied) && !explain && (
             <label className="hob-btn hob-btn-primary hob-v-filebtn" aria-disabled={!code}>
               <Icon name="video" size={20} />Record with phone camera
               <input type="file" accept="video/*" capture="user" onChange={onFile} className="hob-v-file" disabled={!code} />
             </label>
           )}
-          {!live && !recorded && !fallback && (
+          {!live && !recorded && !fallback && !explain && !denied && (
             <button type="button" className="hob-v-link" onClick={() => setFallback(true)}>Use my phone camera app instead</button>
           )}
           {!live && recorded && <button type="button" className="hob-btn hob-btn-ghost" onClick={retake} disabled={busy}>Retake</button>}

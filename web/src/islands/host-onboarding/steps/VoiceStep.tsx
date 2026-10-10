@@ -4,17 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';
 import { VOICE_DONTS, VOICE_MAX_SEC, VOICE_MIN_SEC, VOICE_SCRIPTS, VOICE_SUGGEST_SEC, VOICE_TIPS } from '../data';
 import type { StepProps, VoiceStatus } from '../types';
+import { isAppMode } from '../../../lib/nativeBridge';
+import { isPermissionDenied, needsExplainer, pickRecorderMime, trackPermission } from '../../../lib/appPermissions';
+import { PermissionDenied, PermissionExplainer } from '../PermissionPanel';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof (window as any).MediaRecorder !== 'undefined';
 
-/** First recording format this browser supports. MP4 first: it plays on every phone and browser. */
-const MIME_CHOICES = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm'];
+/** First recording format this browser supports. MP4 first: it plays on every phone and browser.
+ * [HF-APP-5] Android WebView usually gives audio/webm;codecs=opus (newer ones audio/mp4); ogg is the last resort. The worker accepts all of them. */
+const MIME_CHOICES = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
 export function pickMime(): string | undefined {
-  try {
-    const MR = (window as any).MediaRecorder;
-    return MIME_CHOICES.find(m => MR?.isTypeSupported?.(m));
-  } catch { return undefined; }
+  return pickRecorderMime(MIME_CHOICES);
 }
 
 const STATUS_TEXT: Record<Exclude<VoiceStatus, null>, string> = {
@@ -29,6 +30,8 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
   const [error, setError] = useState('');
   const [canMic] = useState(() => canRecord());
   const [denied, setDenied] = useState(false);
+  const [explain, setExplain] = useState(false); // [HF-APP-5] app mode: why we need the microphone, before Android asks
+  const [appDenied, setAppDenied] = useState(false); // [HF-APP-5] app mode: microphone refused
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState(0);
   const [replacing, setReplacing] = useState(false);
@@ -78,10 +81,19 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
 
   const start = async () => {
     setError('');
+    if (await needsExplainer('mic')) { setExplain(true); return; } // [HF-APP-5] app mode only
+    await openMic();
+  };
+
+  const openMic = async () => {
+    setExplain(false); setAppDenied(false); setError('');
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+      trackPermission('mic', 'granted');
+    } catch (e) {
+      if (isAppMode() && isPermissionDenied(e)) { trackPermission('mic', 'denied'); setAppDenied(true); return; }
+      trackPermission('mic', 'error');
       setDenied(true);
       setError('We could not use your microphone. Allow the microphone for this site in your browser or phone settings, then try again. Or upload a recording instead.');
       return;
@@ -191,12 +203,14 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
 
       {showRecorder && (
         <div className="hob-card hob-f-rec">
-          {!local && (
+          {!local && explain && <PermissionExplainer kind="mic" onContinue={() => { void openMic(); }} />}
+          {!local && appDenied && <PermissionDenied kind="mic" onRetry={() => { void openMic(); }} />}
+          {!local && !explain && (
             <>
               <div role="status" aria-live="polite" className="hob-f-rec-status">
-                {recording ? `Recording… ${mmss(elapsed)}` : canMic && !denied ? 'Tap the microphone to start' : 'Upload a recording of your voice'}
+                {recording ? `Recording… ${mmss(elapsed)}` : canMic && !denied && !appDenied ? 'Tap the microphone to start' : 'Upload a recording of your voice'}
               </div>
-              {canMic && !denied && (recording ? (
+              {canMic && !denied && !appDenied && (recording ? (
                 <button type="button" className="hob-f-mic hob-f-mic-live" onClick={finish} disabled={tooShort} aria-label="Stop recording">
                   <Icon name="stop" />
                 </button>
@@ -216,7 +230,7 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
                 </>
               )}
               {!recording && (
-                <label className={`hob-btn ${canMic && !denied ? 'hob-btn-ghost' : 'hob-btn-primary'} hob-f-upload-btn`}>
+                <label className={`hob-btn ${canMic && !denied && !appDenied ? 'hob-btn-ghost' : 'hob-btn-primary'} hob-f-upload-btn`}>
                   <Icon name="upload" /> Upload a file instead
                   <input type="file" accept="audio/*" onChange={onFile} className="hob-f-file" aria-label="Upload an audio file" />
                 </label>
