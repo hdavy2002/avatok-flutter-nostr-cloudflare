@@ -235,7 +235,7 @@ void main() {
         tester,
         session: meSession(),
         api: api,
-        overrides: [notificationControlProvider.overrideWithValue(control)],
+        notifications: control,
       );
       expect(tester.widget<Switch>(_key('me-notifications')).value, isFalse);
 
@@ -254,7 +254,7 @@ void main() {
         tester,
         session: meSession(),
         api: api,
-        overrides: [notificationControlProvider.overrideWithValue(control)],
+        notifications: control,
       );
       await tapKeyed(tester, 'me-notifications', ms: 300);
       expect(control.requests, [true]);

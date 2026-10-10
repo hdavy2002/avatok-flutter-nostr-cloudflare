@@ -99,6 +99,7 @@ Future<ProviderContainer> pumpMe(
   String location = '/me',
   List<Override> overrides = const <Override>[],
   FakeLinkOpener? links,
+  NotificationControl? notifications,
 }) async {
   usePhoneScreen(tester);
   if (links != null) {
@@ -110,7 +111,7 @@ Future<ProviderContainer> pumpMe(
     apiClientProvider.overrideWithValue(api),
     secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
     initialLocationProvider.overrideWithValue(location),
-    notificationControlProvider.overrideWithValue(FakeNotificationControl()),
+    notificationControlProvider.overrideWithValue(notifications ?? FakeNotificationControl()),
     ...overrides,
   ]);
   addTearDown(container.dispose);
