@@ -7,7 +7,6 @@ import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../billing/purchase_controller.dart';
 import '../data/pack_offer.dart';
-import '../data/wallet_models.dart';
 import '../wallet_providers.dart';
 
 /// Copy of the Add money section.
