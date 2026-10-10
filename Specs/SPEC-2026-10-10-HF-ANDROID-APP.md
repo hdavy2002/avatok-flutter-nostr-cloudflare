@@ -308,7 +308,7 @@ Closed testing → production · iOS (Capacitor iOS, App Store person-to-person 
 | HF-TOK-D6 | Every purchase is a **lot** with its pricing version and value; lots are used **oldest first**; old lots are never revalued. |
 | HF-TOK-D7 | Calls paid with Play tokens start only in the app; the web shows "Open the app to call". |
 | HF-TOK-D8 | Google refund after some tokens were spent: unspent tokens of that lot are removed, and the spent part becomes an **amount owed**. It is cleared automatically from the next purchase, and no new calls until it is cleared. The host keeps what they earned. |
-| HF-TOK-D9 | Daily ₹2,000 / monthly ₹15,000 limits count **rupees paid to Google** for tokens. |
+| HF-TOK-D9 | DROPPED 2026-10-10 (HF-NOLIMITS-1): no daily or monthly spend limits. Only the "Are you sure?" step at ₹1,000+ stays. |
 | HF-TOK-D10 | Admin test credits are lots of kind `test` at the active value (₹0.82). Spend-only, never withdrawable. A host's earnings from them stay non-withdrawable test earnings. |
 
 ### 11.2 What exists today (inspected 2026-10-10) and what changes
@@ -357,7 +357,7 @@ For a call snapshot with rate **R** paise/min and **s** billable seconds:
 5. Then the purchase is **acknowledged and consumed** server-side. Unacknowledged purchases are auto-refunded by Google after 3 days, so a daily cron re-tries any `credited` but unconsumed rows.
 6. **Real-time developer notifications** (Cloud Pub/Sub push → `POST /api/hf/tokens/play/rtdn`, JWT checked) for purchase, refund and revoke. Plus a **daily `voidedpurchases` sweep** as the backstop.
 7. **Refund / revoke** (op_id `hfvoid:<orderId>`, applied once): remove the lot's unspent micro-tokens and any reservation. The spent part becomes an `hf_token_debts` row, and calls are blocked until it is cleared. **Host earnings are never touched** (HF-TOK-D8, §11.8).
-8. Spending limits (HF-TOK-D9): before the Play sheet opens, the server checks today's and this month's **rupees paid** (`paid_paise` of purchase lots). Over the limit → "You've reached today's limit…". The "Are you sure?" step at ₹1,000+ stays.
+8. No spending limits (HF-TOK-D9 dropped, HF-NOLIMITS-1). The "Are you sure?" step at ₹1,000+ stays.
 9. Receipts: Google sends its own receipt. `/wallet` shows a "Purchase record — paid via Google Play" with the order id. It is not a tax invoice.
 
 ### 11.6 Provider switch, prepared now, used later (`HF-TOK-PROVIDER-1`)
@@ -381,7 +381,6 @@ For a call snapshot with rate **R** paise/min and **s** billable seconds:
    - "1 token = ₹1" becomes priced and valued tokens.
    - Billing per started minute becomes per second, cumulative.
    - HF-PAY-6: same numbers, but ₹2 is relabelled as call cost.
-   - HF-PAY-7 limits count rupees paid to Google.
    - **HF-PAY-15 refunds** of unused top-ups: with Play, refunds go through Google (Orders API / Play Console), not to a UPI.
    - **Account closure "pay out first"** for callers becomes a Google refund of unspent purchase lots, where Google allows it.
    - The earlier "balance can be transferred back to UPI" promise (memory/FAQ) **conflicts** with Play tokens and must be reworded. That needs the owner's OK on the new wording.

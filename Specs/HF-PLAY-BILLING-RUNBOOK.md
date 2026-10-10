@@ -25,7 +25,7 @@ Worker secrets (`scripts/cf.sh worker secret put NAME`):
 | `HF_RTDN_PUSH_SA` | new: the push subscription's service-account email | Unset = the RTDN route answers 503. |
 
 Flags (already declared): `hfTokensEnabled` (false), `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-v1`), `hfPlayPackageId` (`com.hellofraands.app`), `hfTopupConfirmAboveRupees` (1000, returned to the app as `confirmAbovePaise`).
-Daily / monthly limits: `hfDailySpendLimitRupees` (2000) / `hfMonthlySpendLimitRupees` (15000), per-user overrides in `hf_spend_limits`.
+There are no daily or monthly spend limits (removed, HF-NOLIMITS-1).
 
 D1: apply `2026-10-10-hf-play-accounts.sql` with `cf.sh worker d1 execute` (it only CREATEs).
 
@@ -59,10 +59,9 @@ All routes are under `https://<api-host>`; signed-in routes need the normal `Aut
 Query Play `ProductDetails` for those `productId`s and show **Play's** localized price. Never show a price from this response and never type a price beside the buy button. If `enabled` is false, hide the buy buttons.
 
 ### 4.2 Before the Play sheet: `POST /api/hf/tokens/play/prepare {productId}`
-- 200: `{ok, obfuscatedAccountId, productId, tokens, confirmAbovePaise, dayRemainingPaise, monthRemainingPaise}`.
+- 200: `{ok, obfuscatedAccountId, productId, tokens, confirmAbovePaise}`.
   - If the pack's Play price in paise is at or above `confirmAbovePaise` (Rs 1,000 by default), show "Are you sure?" first.
   - Keep `obfuscatedAccountId` for the next step.
-- 403 `{error:'limit', message, binding:'day'|'month', resetsAt}`: show `message` ("You've reached today's limit of Rs 2,000. It resets at midnight."), do not open the Play sheet.
 - 503 `disabled` / `unconfigured`: purchases are off, show a friendly "not available right now".
 - 429: rate limited, retry later.
 

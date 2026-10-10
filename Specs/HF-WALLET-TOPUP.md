@@ -64,4 +64,4 @@ register it in `lib/payments/registry.ts`, add its id to `HF_TOPUP_GATEWAYS`, an
 - Adapters were written from each gateway's documented contract and never run against a live sandbox (see `lib/payments/types.ts`). The
   test-key run in step 5 is what proves the field names; do not skip it.
 - Paytm's hosted-page and Cashfree's modal return paths are the least exercised; Razorpay Checkout is the simplest to verify first.
-- GST/invoicing on top-ups and the daily spending limit (HF-PAY-7) are not part of this change.
+- GST/invoicing on top-ups is not part of this change. (There is no daily spending limit: HF-PAY-7 was dropped, HF-NOLIMITS-1.)

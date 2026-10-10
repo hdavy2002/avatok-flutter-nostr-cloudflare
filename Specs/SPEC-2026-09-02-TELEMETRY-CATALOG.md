@@ -1036,9 +1036,9 @@ Server only (`worker/src/lib/hf_play.ts`, `routes/hf_tokens_play.ts`), all throu
 
 | Event | Props | Note |
 |---|---|---|
-| `hf_token_purchase_prepared` | `product_id`, `tokens`, `estimate_paise` | `POST /api/hf/tokens/play/prepare` passed the spend-limit check and returned the account id. The buyer may still cancel in the Play sheet. |
+| `hf_token_purchase_prepared` | `product_id`, `tokens`, `estimate_paise` | `POST /api/hf/tokens/play/prepare` returned the account id. The buyer may still cancel in the Play sheet. |
 | `hf_token_purchase_verified` | `tokens`, `paid_paise`, `duplicate`, `source: 'verify' \| 'rtdn' \| 'cron'` | A Play purchase was confirmed and its lot exists. `duplicate: true` = the lot already existed (retry, notification or cron saw the same purchase again; never a second lot). `paid_paise` is Play's rupee price when Play reports rupees, else the catalogue price. **Success value:** arrives with `duplicate = false` and `tokens = 100` for the owner's first real Rs 100 test purchase. |
-| `hf_token_purchase_failed` | `reason`, `source: 'verify' \| 'rtdn' \| 'cron' \| 'prepare'`, `product_id` | `reason` is one of `limit` (prepare, daily/monthly limit), `disabled`, `unconfigured` (missing salt or Play key), `unknown_product`, `invalid_purchase` (Play does not know the token), `account_mismatch` (purchase belongs to another account), `unknown_account`, `no_order`, `unavailable` (Play unreachable, retry), `internal`. |
+| `hf_token_purchase_failed` | `reason`, `source: 'verify' \| 'rtdn' \| 'cron' \| 'prepare'`, `product_id` | `reason` is one of `disabled`, `unconfigured` (missing salt or Play key), `unknown_product`, `invalid_purchase` (Play does not know the token), `account_mismatch` (purchase belongs to another account), `unknown_account`, `no_order`, `unavailable` (Play unreachable, retry), `internal`. |
 | `hf_token_refund_applied` | `debt_paise`, `source: 'rtdn' \| 'voided_sweep' \| 'race' \| ...`, `removed_tokens` | A Google refund / void removed a purchase lot, once. `debt_paise > 0` = some of those tokens were already spent: an open debt blocks calls until the next purchase clears it. Host earnings are never touched. |
 
 Errors: worker `trackException` routes `/api/hf/tokens/play/*` and `hf_play` (`step: insert_purchase`).
