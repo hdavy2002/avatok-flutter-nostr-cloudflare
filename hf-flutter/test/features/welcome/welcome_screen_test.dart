@@ -32,8 +32,11 @@ bool continueEnabled(WidgetTester tester) {
 }
 
 /// The list builds lazily: scroll until [f] exists and is on screen.
-Future<void> reveal(WidgetTester tester, Finder f) =>
-    tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
+Future<void> reveal(WidgetTester tester, Finder f) async {
+  await tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
+  await tester.ensureVisible(f);
+  await tester.pump();
+}
 
 void main() {
   late RecordingLinks links;
@@ -49,9 +52,10 @@ void main() {
     await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
     expect(find.text(Brand.name), findsOneWidget);
     expect(find.text(Brand.slogan), findsOneWidget);
-    expect(find.text(WelcomeCopy.rule1Title), findsOneWidget);
-    expect(find.text(WelcomeCopy.rule2Title), findsOneWidget);
-    expect(find.text(WelcomeCopy.rule3Title), findsOneWidget);
+    for (final t in [WelcomeCopy.rule1Title, WelcomeCopy.rule2Title, WelcomeCopy.rule3Title]) {
+      await reveal(tester, find.text(t));
+      expect(find.text(t), findsOneWidget);
+    }
     await reveal(tester, find.text('Tele-MANAS 14416'));
     expect(find.text('Tele-MANAS 14416'), findsOneWidget);
     expect(find.text('Emergency 112'), findsOneWidget);
