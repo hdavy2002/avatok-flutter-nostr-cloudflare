@@ -9716,6 +9716,28 @@
       }
     ]
   },
+  "HF-TOK-EXIT-1": {
+    "description": "[HF-TOK-EXIT-1 2026-10-10] Hello Fraands exit side of tokens, all behind hfTokensEnabled (flag OFF keeps the old WalletDO behaviour exactly): account closing refunds each unspent purchase lot through Google Play (one refund request per lot, unspent share of the rupees paid), removes test lots, writes off open debts, pays a host's INR ledger earnings out first after the 7-day hold, and is refused while the user is on a call; admin account deletion needs force + a note when money remains (audit logged); caller refunds of unused purchased tokens within 180 days (admin approves, Google Orders API for a whole unspent order, otherwise the admin refunds in the Play Console and records the paise, then the tokens are removed once); purchase records (paid via Google Play, no GST) instead of top-up receipts; monthly tax invoices use the platform share of token-era calls; token reconciliation with invariants; token money records kept 8 years under a hashed id; low-balance push once per call. Needs worker/migrations/2026-10-10-hf-tok-exit-alters.sql applied (scripts/d1_apply_alters.py) before the flag is flipped.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_play_refund_requested",
+        "property": "amount_paise",
+        "gt": 0,
+        "note": "A caller (or the closure flow) asked for unused purchased tokens to be refunded through Google Play. Also carries lots and exit."
+      },
+      {
+        "event": "hf_play_refund_confirmed",
+        "property": "recorded_paise",
+        "gt": 0,
+        "note": "An admin confirmed the refund (Google Orders API or recorded from the Play Console) and the unused tokens were removed."
+      }
+    ]
+  },
   "HF-TOK-MATH-1": {
     "description": "[HF-TOK-MATH-1 2026-10-10] Hello Fraands token maths base (spec 11.4): pure integer-only hf_token_math.ts (paise + micro-tokens, per-second consumed value, call split C/H/P, lot walk oldest first, refund debt), pricing-version and lot/ledger/Play-purchase/debt/host-ledger tables (migration written, not applied), and declared-only config keys (hfTokensEnabled, hfCheckoutProvider, hfPricingVersion, hfCallCostPaisePerMin, hfHostShareBps, hfPlayPackageId). No runtime change: nothing reads any of it yet.",
     "two_sided": false,
