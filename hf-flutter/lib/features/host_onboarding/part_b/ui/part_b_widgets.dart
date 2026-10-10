@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/hf_tokens.dart';
-import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../ui/widgets/step_page.dart';
 import '../data/part_b_rules.dart';

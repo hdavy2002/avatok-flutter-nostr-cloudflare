@@ -8,6 +8,7 @@ import '../../../explore/data/host_options.dart';
 import '../../../host_profile/data/host_profile.dart';
 import '../../../host_profile/ui/widgets/gallery_pager.dart';
 import '../../../host_profile/ui/widgets/net_image.dart';
+import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
 import '../../flow/onboarding_steps.dart';
 import '../data/edit_lock.dart';
