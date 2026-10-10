@@ -35,7 +35,7 @@ void main() {
     await pumpApp(tester);
     await tester.tap(find.byKey(const ValueKey<String>('tab-explore')));
     await tester.pumpAndSettle();
-    expect(find.text('This screen is built in HF-NATIVE-3.'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('open-filters')), findsOneWidget);
     expect(find.text('Explore'), findsWidgets);
   });
 

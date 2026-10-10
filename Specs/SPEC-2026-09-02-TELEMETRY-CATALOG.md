@@ -1065,6 +1065,16 @@ Spec: the Hello Fraands Android app spec, section 8 (project doc `hello-fraands-
 
 Errors (`captureException`): uncaught Flutter, platform and zone errors. Later issues add their own events to this section.
 
+### Home and Explore (`[HF-NATIVE-3]`, `hf-flutter/lib/features/home/` and `lib/features/explore/`)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_explore_viewed` | `filtered: boolean`, `lane: 'women' \| 'lgbtq'` (only on a lane) | The Explore screen was opened for the first time in this process (the tab keeps its state afterwards). `filtered` = it opened with filters from a Home tile or a link. **Success value:** arrives with `platform = android-app` after opening the Explore tab on the native build. |
+| `hf_app_filter_applied` | `filters: {topics[], languages[], min_price, max_price, online, lane, sort}` (only the set ones plus `sort`), `source: 'sheet' \| 'lane' \| 'route' \| 'clear'` | The list filters changed: the filter sheet (`sheet`), a lane tab (`lane`), a Home tile or link (`route`), "Clear filters" (`clear`). Topic slugs and language codes only, never free text. |
+| `hf_app_host_card_tapped` | `slug`, `from: 'explore' \| 'home'` | A host card (full card in Explore, narrow card in the Home "Online now" strip) was tapped and the profile opened. The profile's own view is `hf_app_profile_viewed`. |
+| `hf_app_intro_played` | `slug`, `from: 'explore' \| 'home'` | The inline voice intro on a host card started playing (play, not pause). One speaker at a time: starting another card stops the first. A playback failure is reported as a handled exception (`where: intro_play`). |
+| `hf_hosts_list_loaded` | `screen_name: 'explore' \| 'home'`, `outcome: 'ok' \| 'error'`, `result: 'cards' \| 'empty' \| 'error'`, `count`, `from_cache: boolean`, `ms`, and on error `reason` (worker code or `network`, `timeout`, ...) and `status` | Once per load of the first page of `GET /api/hf/hosts`. `from_cache: true` on an error means a saved list was on screen instead. A `lane_required` / `not_enabled` answer is also `error` with that `reason`. Later pages are not reported (failures show in `api_error`). |
+
 ### Host profile (`[HF-NATIVE-4]`, `hf-flutter/lib/features/host_profile/`)
 
 | Event | Props | Note |

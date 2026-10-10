@@ -9952,6 +9952,22 @@
       }
     ]
   },
+  "HF-NATIVE-3": {
+    "description": "[HF-NATIVE-3 2026-10-10] Native Home and Explore (hf-flutter/lib/features/home/ and lib/features/explore/): Home with greeting, 'Online now' strip, mood tiles from GET /api/hf/options that open Explore pre-filtered, women-only and LGBTQ+ space cards, safety line + crisis strip, Become a host card (sign-in first); Explore marketplace on GET /api/hf/hosts with infinite scroll (nextOffset), pull to refresh, filter sheet (mood/topic, language, price range inside the server bounds, online only, sort), lane tabs All/Women-only/LGBTQ+ (signed out -> sign-in prompt, 403 lane_required -> Verify to join panel), cached-then-fresh offline list with a 'Showing saved list' pill, empty and error states; shared host card with cached avatar, 'AI picture' label, status pill (never green) and an inline voice-intro play/pause button (one at a time). Works signed out (browse first). Needs worker routes HF-NATIVE-S2/S3 (already merged).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostsPublicEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_explore_viewed",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "On a phone with the native build, open the Explore tab: hf_app_explore_viewed arrives with platform = android-app and service_name = hf-app, followed by hf_hosts_list_loaded {screen_name: explore, outcome: ok}. Apply a filter: hf_app_filter_applied; tap a card: hf_app_host_card_tapped; tap a card's play button: hf_app_intro_played."
+      }
+    ]
+  },
   "HF-NATIVE-S1": {
     "description": "[HF-NATIVE-S1 2026-10-10] Native Hello Fraands app, server side 1: GET /api/hf/me (signed in) answers {uid, displayName, phoneMasked (last 4 digits only), whatsappVerified, ackVersion, age18ConfirmedAt, isHost, host:{status,slug}|null, lanes:{women,lgbtq}, closing, tokensMode} from one joined D1 read plus the lane/ack/closing reads; PATCH /api/hf/me {displayName} saves a name (2-40 chars, no digits, no phone/link/handle). Worker only (routes/hf_me.ts); no flag, no migration (ackVersion reads hf_user_ack from HF-NATIVE-S4 and falls back to null if that table is not there yet). Cache-Control: private, no-store.",
     "two_sided": false,
