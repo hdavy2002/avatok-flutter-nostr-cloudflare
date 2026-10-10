@@ -28,7 +28,7 @@ abstract final class Brand {
   static const String helloEmail = 'hello@aumfe.com';
   /// PERMANENT — a Play package id can never change.
   static const String playPackageId = 'com.saathum.app';
-  /// PERMANENT — package id of the Android app wrapping the website (hf-app/).
+  /// PERMANENT — package id of the native HF Android app (hf-flutter/).
   static const String hfPlayPackageId = 'com.hellofraands.app';
 
   /// Absolute URL on the public website.

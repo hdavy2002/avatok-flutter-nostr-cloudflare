@@ -131,7 +131,7 @@ def render_ts(b: dict, client: bool = False) -> str:
         f"  emailFromName: {js(b['emailFromName'])},",
         f"  /** PERMANENT — a Play package id can never change. */",
         f"  playPackageId: {js(b['playPackageId'])},",
-        f"  /** PERMANENT — package id of the Android app wrapping the website (hf-app/). */",
+        f"  /** PERMANENT — package id of the native HF Android app (hf-flutter/). */",
         f"  hfPlayPackageId: {js(b.get('hfPlayPackageId', b['playPackageId']))},",
         "} as const;",
         "",
@@ -215,7 +215,7 @@ def render_dart(b: dict, hf: bool = False) -> str:
         f"  static const String helloEmail = {dart(e['hello'])};",
         "  /// PERMANENT — a Play package id can never change.",
         f"  static const String playPackageId = {dart(b['playPackageId'])};",
-        "  /// PERMANENT — package id of the Android app wrapping the website (hf-app/).",
+        "  /// PERMANENT — package id of the native HF Android app (hf-flutter/).",
         f"  static const String hfPlayPackageId = {dart(b.get('hfPlayPackageId', b['playPackageId']))};",
     ] + ([
         "",

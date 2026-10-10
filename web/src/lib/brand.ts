@@ -37,7 +37,7 @@ export const BRAND = {
   emailFromName: "Aum Fe",
   /** PERMANENT — a Play package id can never change. */
   playPackageId: "com.saathum.app",
-  /** PERMANENT — package id of the Android app wrapping the website (hf-app/). */
+  /** PERMANENT — package id of the native HF Android app (hf-flutter/). */
   hfPlayPackageId: "com.hellofraands.app",
 } as const;
 
