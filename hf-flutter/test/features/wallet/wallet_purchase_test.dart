@@ -36,7 +36,7 @@ void main() {
       });
       billing.answerWith(StorePurchaseStatus.purchased, token: 'tok-abc');
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.descendant(of: find.byKey(const ValueKey<String>('balance-total')), matching: find.text('₹0.00')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey<String>('balance-total')), matching: find.text('₹0.00'), matchRoot: true), findsOneWidget);
 
       await buy100(tester);
 
@@ -52,7 +52,7 @@ void main() {
 
       expect(find.text('₹102 added to your wallet'), findsOneWidget);
       expect(balanceReads, 2, reason: 'the wallet is read again after the credit');
-      expect(find.descendant(of: find.byKey(const ValueKey<String>('balance-total')), matching: find.text('₹100.00')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey<String>('balance-total')), matching: find.text('₹100.00'), matchRoot: true), findsOneWidget);
     });
 
     testWidgets('the price on the button is Play\'s own string, not a number from our server', (tester) async {
