@@ -1,3 +1,4 @@
+// @ts-nocheck -- response bodies are read as untyped JSON
 // [HF-NATIVE-S7] hfAppLatestBuild / hfAppMinBuild: default 0, public in /api/config, settable as NUMBERS after deploy (the fake-flag rule).
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -57,5 +58,17 @@ describe("HF app build keys [HF-NATIVE-S7]", () => {
 
   it("only admins can set them", async () => {
     expect((await put({ hfAppLatestBuild: 5 }, "someone")).status).toBe(403);
+  });
+});
+
+describe("hfAckVersion [HF-NATIVE-S4]", () => {
+  it("defaults to the current terms version and is public", async () => {
+    expect((await (await getConfig(env)).json()).hfAckVersion).toBe("2026-10-10");
+  });
+  it("an admin can bump it (a string); bad shapes are refused", async () => {
+    expect((await put({ hfAckVersion: "2026-12-01" })).status).toBe(200);
+    bustConfigMemo();
+    expect((await (await getConfig(env)).json()).hfAckVersion).toBe("2026-12-01");
+    for (const v of ["", "has space", "x".repeat(41), 5]) expect((await put({ hfAckVersion: v })).status).toBe(400);
   });
 });

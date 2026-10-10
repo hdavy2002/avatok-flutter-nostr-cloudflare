@@ -86,6 +86,8 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_lane_access", cols: OTHER_UID_COLS },
     { table: "hf_review_tokens", cols: OTHER_UID_COLS },
     { table: "hf_push_tokens", cols: ["user_id"] }, // [HF-APP-4] device tokens
+    { table: "hf_user_ack", cols: ["uid"] }, // [HF-NATIVE-S4] terms/safety acknowledgements
+    { table: "hf_age_confirm", cols: ["uid"] }, // [HF-AUTH-WA-1] "I am 18 or over" confirmation (S4 writes it too)
     { table: "hf_notify", cols: ["uid", "caller_uid", "host_uid", "recipient_uid"] },
     { table: "hf_reviews", cols: ["caller_uid", "host_uid", "reviewer_uid", "uid"] },
     { table: "hf_calls", cols: ["caller_uid", "host_uid"], safety: true },

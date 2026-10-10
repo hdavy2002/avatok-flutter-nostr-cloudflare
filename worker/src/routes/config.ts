@@ -2131,6 +2131,8 @@ export interface PlatformConfig {
   hfInvoicePrefix: string; // document-number prefix, max 4 chars
   // [HF-NATIVE-S7] Native Hello Fraands app update check. PUBLIC (the app reads them from /api/config). NUMERIC -> also in `numericKeys`.
   // Installed build < hfAppLatestBuild = soft "new version" banner; < hfAppMinBuild = blocking update screen. 0 = never prompt.
+  // [HF-NATIVE-S4] Current terms/safety acknowledgement version the app asks users to accept (POST /api/hf/me/ack). PUBLIC. STRING -> also in the string-key list.
+  hfAckVersion: string;
   hfAppLatestBuild: number;
   hfAppMinBuild: number;
   hfPhoneOnlySignupEnabled: boolean; // [HF-AUTH-WA-1] a brand-new WhatsApp number can sign up with no email (routes/whatsapp_auth.ts). Server-only: not in the public config.
@@ -2889,6 +2891,7 @@ const DEFAULTS: PlatformConfig = {
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hfPhoneOnlySignupEnabled: false, // [HF-AUTH-WA-1] dark until the owner flips it
+  hfAckVersion: "2026-10-10", // [HF-NATIVE-S4] bump when the terms/safety text changes; the app re-asks users whose ackVersion differs.
   hfAppLatestBuild: 0, // [HF-NATIVE-S7] newest published native build; 0 = never prompt. Owner bumps in KV per release.
   hfAppMinBuild: 0, // [HF-NATIVE-S7] oldest build still allowed; below it the app shows a blocking update screen. 0 = never block.
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
@@ -3245,6 +3248,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfTopupGateway", "hfTopupPacks", // [HF-TOPUP-1]
     "hfCheckoutProvider", "hfPricingVersion", "hfPlayPackageId", // [HF-TOK-MATH-1]
     "hfGstin", "hfLegalName", "hfLegalAddress", "hfStateCode", "hfInvoicePrefix", // [HF-WALLET-LIMITS-1]
+    "hfAckVersion", // [HF-NATIVE-S4]
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -3318,6 +3322,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfStateCode" && v !== "" && !/^\d{2}$/.test(String(v))) {
       return json({ error: "hfStateCode must be empty or a two-digit GST state code" }, 400);
+    }
+    if (k === "hfAckVersion" && !/^[A-Za-z0-9._-]{1,40}$/.test(String(v))) {
+      return json({ error: "hfAckVersion must be 1-40 letters, digits, dot, dash or underscore" }, 400); // [HF-NATIVE-S4]
     }
     if ((k === "hfAppLatestBuild" || k === "hfAppMinBuild") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
       return json({ error: `${k} must be a whole build number 0-100000000` }, 400); // [HF-NATIVE-S7]

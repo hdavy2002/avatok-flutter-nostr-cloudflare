@@ -2,6 +2,8 @@
 //   GET   /api/hf/me   signed in -> { uid, displayName, phoneMasked, whatsappVerified, ackVersion, age18ConfirmedAt, isHost,
 //                                     host: {status, slug} | null, lanes: {women, lgbtq}, closing, tokensMode }
 //   PATCH /api/hf/me   { displayName }   signed in -> { ok, displayName }   (2-40 chars, no digits, no contact details)
+//   POST  /api/hf/me/ack { version, ack18? }  signed in -> { ok, ackVersion, age18ConfirmedAt }   [HF-NATIVE-S4]
+//        stores hf_user_ack(uid, version, at) (first ack of a version wins) and, when ack18 is true, the existing hf_age_confirm row.
 // Not avaTOK's /api/me (that one is avaTOK-shaped). Never returns a full phone number, an email or a Clerk id other than uid.
 import type { Env } from "../types";
 import { json } from "../util";
@@ -44,11 +46,13 @@ interface MeRow {
 }
 
 export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Response | null> {
-  if (p !== "/api/hf/me") return null;
-  if (req.method !== "GET" && req.method !== "PATCH") return err(405, "method_not_allowed");
+  if (p !== "/api/hf/me" && p !== "/api/hf/me/ack") return null;
+  const ok = p === "/api/hf/me/ack" ? req.method === "POST" : req.method === "GET" || req.method === "PATCH";
+  if (!ok) return err(405, "method_not_allowed");
   try {
     const u = await requireUser(req, env);
     if (isFail(u)) return err(u.status, u.error);
+    if (p === "/api/hf/me/ack") return await postAck(req, env, u.uid);
     return req.method === "GET" ? await getMe(env, u.uid) : await patchMe(req, env, u.uid);
   } catch (e) {
     await trackException(env, e, { route: p, method: req.method, handled: true, app_name: APP, extra: { area: "hf_me" } });
@@ -104,4 +108,41 @@ async function patchMe(req: Request, env: Env, uid: string): Promise<Response> {
   if (!Number(r.meta?.changes ?? 0)) return err(404, "no_account", "We couldn't find your account. Please sign in again.");
   void track(env, uid, "hf_me_name_updated", APP, { outcome: "ok", length: [...v.name].length });
   return json({ ok: true, displayName: v.name });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/hf/me/ack {version, ack18?} (signed in) -- [HF-NATIVE-S4]
+// The Welcome screen's "friendly conversation, not counselling... I am 18 or older" tick. `version` is the terms/safety text the user saw
+// (config hfAckVersion is the current one; any well-formed version is stored, the app compares). ack18 true also records the 18+ confirmation
+// in hf_age_confirm (same table and first-confirmation-wins rule as POST /api/hf/account/age-confirm). Re-sending is harmless.
+// ---------------------------------------------------------------------------
+const VERSION_RE = /^[A-Za-z0-9._-]{1,40}$/;
+function sourceHint(v: unknown): string {
+  const c = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return /^[a-z0-9_-]{1,16}$/.test(c) ? c : "app";
+}
+
+async function postAck(req: Request, env: Env, uid: string): Promise<Response> {
+  const lim = await rateLimit(env, `hfack:${uid}`, 30, 3600);
+  if (lim) return lim;
+  const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!b || typeof b !== "object") return err(400, "invalid_body", "Please send the version you accepted.");
+  if (typeof b.version !== "string" || !VERSION_RE.test(b.version)) return err(400, "invalid_field", "That version is not valid.", { field: "version" });
+  if (b.ack18 !== undefined && typeof b.ack18 !== "boolean") return err(400, "invalid_field", "ack18 must be true or false.", { field: "ack18" });
+  const version = b.version;
+  const ack18 = b.ack18 === true;
+  const now = Date.now();
+  const db = env.DB_META;
+  const stmts = [db.prepare("INSERT OR IGNORE INTO hf_user_ack (uid, version, at) VALUES (?1,?2,?3)").bind(uid, version, now)];
+  if (ack18) stmts.push(db.prepare("INSERT OR IGNORE INTO hf_age_confirm (uid, confirmed_at, source) VALUES (?1,?2,?3)").bind(uid, now, sourceHint(b.client)));
+  try {
+    await db.batch(stmts);
+  } catch (e) {
+    void track(env, uid, "hf_user_ack", APP, { outcome: "failed", reason: "db", version, ack18 });
+    await trackException(env, e, { uid, route: "/api/hf/me/ack", method: "POST", handled: true, app_name: APP });
+    return err(503, "ack_failed", "We couldn\u2019t save that just now. Please try again.");
+  }
+  const age = await db.prepare("SELECT confirmed_at FROM hf_age_confirm WHERE uid=?1").bind(uid).first<{ confirmed_at: number }>().catch(() => null);
+  void track(env, uid, "hf_user_ack", APP, { outcome: "ok", version, ack18, age18_on_file: !!age });
+  return json({ ok: true, ackVersion: version, age18ConfirmedAt: age?.confirmed_at ?? null });
 }
