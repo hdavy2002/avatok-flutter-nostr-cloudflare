@@ -36,7 +36,7 @@ jobs:
     env:
       # Secrets cannot be read inside an `if:`, but an env var derived from one can.
       HAS_UPLOAD_KEYSTORE: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
-      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
+      HAS_PLAY_SA: ${{ secrets.HF_PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
       HAS_GOOGLE_SERVICES: ${{ secrets.HF_GOOGLE_SERVICES_JSON != '' && 'true' || 'false' }}
     steps:
       - name: Checkout
@@ -58,7 +58,7 @@ jobs:
               ;;
           esac
           if [ "${MODE}" = "internal" ] && [ "${HAS_PLAY_SA}" != "true" ]; then
-            echo "::error::mode=internal but the PLAY_SERVICE_ACCOUNT_JSON secret is not set."
+            echo "::error::mode=internal but the HF_PLAY_SERVICE_ACCOUNT_JSON secret is not set."
             exit 1
           fi
 
@@ -255,7 +255,7 @@ jobs:
         if: env.MODE == 'internal'
         uses: r0adkll/upload-google-play@v1
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          serviceAccountJsonPlainText: ${{ secrets.HF_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: ${{ steps.brand.outputs.app_id }}
           releaseFiles: hf-flutter/build/app/outputs/bundle/release/app-release.aab
           track: internal
