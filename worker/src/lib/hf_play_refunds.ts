@@ -14,6 +14,7 @@ import { BRAND } from "./brand";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { sendWhatsAppText } from "./whatsapp_send";
 import { valuePaiseOfMicro } from "./hf_token_ledger";
+import { refundOrderFor } from "../play";
 
 export const PLAY_REFUND = "play_refund";
 export const DAY_MS = 86_400_000;
@@ -31,7 +32,16 @@ const OPEN_SQL = OPEN_PLAY_STATUSES.map((s) => `'${s}'`).join(",");
 // refunds in the Play Console and records it (manual: true), which works for any lot.
 export type PlayRefundResult = { ok: true } | { ok: false; error: string; alreadyRefunded?: boolean };
 export interface PlayRefundPort { refundOrderFor(env: Env, a: { orderId: string; packageId: string }): Promise<PlayRefundResult> }
-let port: PlayRefundPort | null = null;
+// [HF-TOK-EXIT-1] Wired to HF-TOK-PLAY-1's Orders API refund by default; tests may swap it with setPlayRefundPort.
+const defaultPort: PlayRefundPort = {
+  async refundOrderFor(env, a) {
+    const r = await refundOrderFor(env, a.packageId, a.orderId, { revoke: false });
+    if (r.ok) return { ok: true };
+    const reason = String(r.reason ?? "");
+    return { ok: false, error: r.status === 0 ? "play_refund_unreachable" : `play_refund_failed_${r.status}`, alreadyRefunded: /already|refunded/i.test(reason) };
+  },
+};
+let port: PlayRefundPort | null = defaultPort;
 export const setPlayRefundPort = (p: PlayRefundPort | null): void => { port = p; };
 async function refundWholeOrder(env: Env, orderId: string, packageId: string): Promise<PlayRefundResult> {
   if (!port) return { ok: false, error: "play_refund_unavailable" };

@@ -18,6 +18,8 @@ import { acknowledgeProductFor, consumeProductFor, verifyPlayProductFor, listVoi
 import { trackUser, trackException } from "../hooks";
 import { emailFor } from "./identity";
 import { BRAND } from "./brand";
+import { issuePurchaseRecord } from "./hf_receipts";
+import { readConfig } from "../routes/config";
 
 const APP = BRAND.slug;
 const DAY = 86_400_000;
@@ -235,6 +237,13 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
     }
   }
 
+  if (credit.applied) {
+    // [HF-TOK-EXIT-1] Purchase record for /wallet; best-effort (backfill covers a miss).
+    try {
+      const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
+      await issuePurchaseRecord(env, cfg, { id: credit.lotId, uid, tokens_granted_micro: micro, paid_paise: paidPaise, redemption_paise_per_token: prod.redemptionPaisePerToken, provider_ref: orderId, created_at: Date.now(), pricing_version: prod.pricingVersion });
+    } catch { /* backfill */ }
+  }
   const consumed = await ackAndConsume(env, pkg, { purchase_token: a.purchaseToken, product_id: a.productId }, p);
   await emit(env, uid, "hf_token_purchase_verified", { tokens: prod.tokens, paid_paise: paidPaise, duplicate: !credit.applied, source: a.source });
   return { ok: true, status: consumed ? "consumed" : "credited", duplicate: !credit.applied, orderId, productId: a.productId, tokensMicro: micro, paidPaise, lotId: credit.lotId, uid };
