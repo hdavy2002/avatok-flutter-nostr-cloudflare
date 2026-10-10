@@ -1,4 +1,4 @@
-/// Shared KYC models (HF-NATIVE-8). The shapes are copied from worker/src/routes/hf_host_kyc.ts.
+// Shared KYC models (HF-NATIVE-8). The shapes are copied from worker/src/routes/hf_host_kyc.ts.
 
 /// Who the Aadhaar check is for. The worker stores it with the record (`hf_kyc.role`).
 enum KycRole {

@@ -224,8 +224,8 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
         const Text(OnboardingCopy.payoutKeep, style: HfText.note),
         if (_result != null && !_result!.match) ...[
           const SizedBox(height: 16),
-          InfoBox(
-            key: const ValueKey<String>('payout-mismatch'),
+          const InfoBox(
+            key: ValueKey<String>('payout-mismatch'),
             title: OnboardingCopy.payoutMismatchTitle,
             body: OnboardingCopy.payoutMismatch,
             color: HfColors.blush,

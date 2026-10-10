@@ -101,9 +101,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   }
 
   @override
-  void didUpdateWidget(covariant AadhaarVerifyWidget old) {
-    super.didUpdateWidget(old);
-    if (widget.resumeNow && !old.resumeNow && !_finished) unawaited(_restorePending(force: true));
+  void didUpdateWidget(covariant AadhaarVerifyWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.resumeNow && !oldWidget.resumeNow && !_finished) unawaited(_restorePending(force: true));
   }
 
   @override

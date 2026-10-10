@@ -137,7 +137,7 @@ bool _anyProgress(OnboardingServerState s) =>
 
 /// Every step, in order. Part B may refine an `isDone` rule for its own steps.
 final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
-  OnboardingStepDef(OnboardingKeys.welcome, OnboardingGroup.start, 'Welcome', _anyProgress),
+  const OnboardingStepDef(OnboardingKeys.welcome, OnboardingGroup.start, 'Welcome', _anyProgress),
   OnboardingStepDef(OnboardingKeys.phone, OnboardingGroup.verify, 'Your WhatsApp number', (s) => s.phoneVerified),
   OnboardingStepDef(OnboardingKeys.aadhaar, OnboardingGroup.verify, 'Aadhaar check', (s) => s.kyc.aadhaarDone),
   OnboardingStepDef(

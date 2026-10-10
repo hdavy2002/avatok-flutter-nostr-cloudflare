@@ -285,7 +285,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
               if (clip != null) Text('${clip.seconds} s, $mb MB', style: HfText.note),
               if (uploading) ...[
                 const SizedBox(height: 16),
-                Text(KycCopy.uploading, style: HfText.bodyText, semanticsLabel: KycCopy.uploading),
+                const Text(KycCopy.uploading, style: HfText.bodyText, semanticsLabel: KycCopy.uploading),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
