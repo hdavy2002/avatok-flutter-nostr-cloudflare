@@ -24,5 +24,18 @@
         "76:31:21:81:58:AA:01:C4:1F:C6:F1:99:23:CF:3B:01:46:29:40:E6:70:A4:0F:A9:CB:1F:51:92:73:A8:6A:4C"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.hellofraands.app",
+      "sha256_cert_fingerprints": [
+        "BD:FC:59:09:3B:00:CC:27:0F:C4:48:A0:21:1E:DC:AA:40:FD:2C:D6:5A:B1:54:2E:A5:1C:B1:81:3E:B9:51:9A",
+        "B3:0A:47:06:69:8C:D7:5E:C4:CD:39:94:00:09:2E:74:87:8D:31:45:41:B2:92:C6:06:78:80:FA:32:F8:52:6A"
+      ]
+    }
   }
 ]
