@@ -13,17 +13,21 @@ class OnboardingStepPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    // A short column in a scroll view (not a lazy list): every child is built, so a step's buttons always exist.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(HfSpacing.page, 8, HfSpacing.page, 32),
-      children: [
-        if (title != null) Text(title!, style: HfText.title),
-        if (lead != null) ...[
-          const SizedBox(height: 8),
-          Text(lead!, style: HfText.bodyText),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null) Text(title!, style: HfText.title),
+          if (lead != null) ...[
+            const SizedBox(height: 8),
+            Text(lead!, style: HfText.bodyText),
+          ],
+          if (title != null || lead != null) const SizedBox(height: 20),
+          ...children,
         ],
-        if (title != null || lead != null) const SizedBox(height: 20),
-        ...children,
-      ],
+      ),
     );
   }
 }

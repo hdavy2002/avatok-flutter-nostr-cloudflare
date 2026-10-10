@@ -93,4 +93,10 @@ final lanesApiProvider = Provider<LanesApi>((ref) => LanesApi(ref.watch(apiClien
 
 /// The person's lane state. `ref.invalidate(laneStatusProvider)` after a join or a leave.
 /// The Me screen (HF-NATIVE-12) can read it for "My spaces" and call `ref.read(lanesApiProvider).leave(lane)`.
-final laneStatusProvider = FutureProvider.autoDispose<LaneStatus>((ref) => ref.watch(lanesApiProvider).me());
+final laneStatusProvider = FutureProvider.autoDispose<LaneStatus>(
+  retry: _noAutoRetry,
+  (ref) => ref.watch(lanesApiProvider).me(),
+);
+
+/// A failed read shows its message with a Try again button; it is not retried behind the person's back.
+Duration? _noAutoRetry(int retryCount, Object error) => null;

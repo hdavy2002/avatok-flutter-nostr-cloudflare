@@ -208,6 +208,9 @@ String resumeStepKey(OnboardingServerState s) {
       return OnboardingKeys.done;
     case 'generating':
       return OnboardingKeys.generating;
+    case 'rejected':
+    case 'paused':
+      return OnboardingKeys.preview;
   }
   for (final step in kOnboardingSteps) {
     if (!step.isDone(s)) return step.key;

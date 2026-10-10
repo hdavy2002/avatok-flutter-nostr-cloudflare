@@ -42,7 +42,7 @@ typedef OnboardingStepBuilder = Widget Function(BuildContext context, Onboarding
 /// `GET /api/hosts/me` plus `GET /api/account/phone/status`. A `404 not_enabled` (flag `hostOnboardingEnabled` off)
 /// arrives as an `ApiError` and the shell shows "Coming soon". Part B calls `ref.invalidate(onboardingStateProvider)`
 /// only through [OnboardingStepContext.refresh].
-final onboardingStateProvider = FutureProvider.autoDispose<OnboardingServerState>((ref) async {
+final onboardingStateProvider = FutureProvider.autoDispose<OnboardingServerState>(retry: _noAutoRetry, (ref) async {
   final api = ref.watch(apiClientProvider);
   final me = await api.getJson('/api/hosts/me');
   Map<String, dynamic>? phone;
@@ -59,3 +59,6 @@ final onboardingStateProvider = FutureProvider.autoDispose<OnboardingServerState
     sessionPhoneMasked: session.me?.phoneMasked,
   );
 });
+
+/// A failed read shows its message with a Try again button; it is not retried behind the person's back.
+Duration? _noAutoRetry(int retryCount, Object error) => null;
