@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/features/host_dashboard/ui/host_dashboard_copy.dart';
 
-import '../../support/fake_api_client.dart';
 import 'host_dashboard_support.dart';
 
 Future<void> _openSheet(WidgetTester tester) async {
