@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
@@ -175,6 +176,17 @@ void main() {
           pageJson([hostJson('asha', name: 'Asha with a long name', intro: 'https://x/a.m4a')]));
     await pumpScreen(tester, api: api, location: '/', size: const Size(360, 4000));
     final e = tester.takeException();
-    expect(e, isNull, reason: e is FlutterError ? e.toStringDeep() : '$e');
+    final where = <String>[];
+    void walk(RenderObject ro) {
+      if (ro.toStringShort().contains('OVERFLOWING')) {
+        final c = ro.debugCreator;
+        where.add(c is DebugCreator ? c.element.debugGetCreatorChain(10) : ro.toStringShort());
+      }
+      ro.visitChildren(walk);
+    }
+
+    final root = tester.binding.rootElement?.renderObject;
+    if (root != null) walk(root);
+    expect(e, isNull, reason: where.join('\n---\n'));
   });
 }
