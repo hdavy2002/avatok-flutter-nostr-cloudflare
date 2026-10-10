@@ -9945,5 +9945,21 @@
         "note": "From the native app's Welcome screen (HF-NATIVE-2): tick the 18+ box and Continue while signed in; the event arrives with outcome=ok and GET /api/hf/me shows ackVersion and age18ConfirmedAt. Until the app ships, check by calling POST /api/hf/me/ack with a Clerk token."
       }
     ]
+  },
+  "HF-NATIVE-S3": {
+    "description": "[HF-NATIVE-S3 2026-10-10] GET /api/hf/options (public, no flag, Cache-Control public max-age=3600): {topics:[{slug,label,group}], moodGroups:[{slug,label}], languages:[{code,label}], styles:[{slug,label}], priceMin, priceMax}. The worker (lib/hf_options.ts: TOPICS now carry group, MOOD_GROUPS, buildHfOptions) is the single source for the native app. Known duplicate: web/src/lib/callvaalHomeReference.ts keeps its own mood list; lib/hf_options_web_sync.test.ts fails if the two drift, until the web is switched to read this endpoint.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "New read-only endpoint with no consumer yet: the native app (HF-NATIVE-3/10) is its only caller and emits the client-side events. Nothing server-side could carry a failure value to read back. Verify after an owner-authorised deploy with: curl -s https://<api host>/api/hf/options | head -c 300 must show topics with group, moodGroups, languages with code, priceMin 5, priceMax 100, and the response header cache-control: public, max-age=3600."
+  },
+  "HF-NATIVE-S2": {
+    "description": "[HF-NATIVE-S2 2026-10-10] GET /api/hf/hosts?topic=a,b&lang=hi,en&minPrice=&maxPrice=&online=1&lane=women|lgbtq&sort=online_first|price_low|rating&limit=24&offset= -> {items:[card], nextOffset|null, total} for the native app (routes/hf_hosts_list.ts, lib/hf_hosts_list.ts). Cards are exactly the /api/hosts/public card (that route and its bare-array shape are unchanged for the web, only card/SEL/LiveRow are now exported). Server-side SQL filters (topic any-of via json_each, language by code or name, price range, online) and sort (online_first = online, busy, offline, then rating; unrated last). Same flag (hostsPublicEnabled) and lane rule as the public route: lane needs bearer + lane access else 403 lane_required, lane/authenticated responses are Cache-Control private no-store; anonymous non-lane responses are edge-cached 45 s keyed by the canonical validated query. Bad topic/lang/sort/lane = 400; limit clamped 1..48, offset 0..10000, prices 5..100. Migration 2026-10-10-hf-hosts-list-idx.sql (CREATE INDEX only, apply before the app uses it for speed; correct without it).",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hostsPublicEnabled"
+    ],
+    "no_telemetry": "New read-only endpoint with no consumer yet: the native app (HF-NATIVE-3) is its only caller and will emit hf_hosts_list_loaded {result, count, from_cache, ms} client-side; nothing server-side could carry a failure value to read back. Verify after an owner-authorised deploy and migration: curl -s 'https://<api host>/api/hf/hosts?online=1&limit=2' must return items, total and nextOffset, with cache-control: public, max-age=45; the same call with an Authorization header returns private, no-store; ?lane=women without a token is 401 and with a non-member token 403 lane_required."
   }
 }

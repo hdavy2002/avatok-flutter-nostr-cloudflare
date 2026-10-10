@@ -1,38 +1,46 @@
 // [HF-HOST-PLATFORM-1] HF host options + pure validators. Worker-side mirror of web/src/lib/callvaalHomeReference.ts moods.
 // Keep TOPICS in sync with that file (slug is the stored value).
-export interface Topic { slug: string; label: string }
+export type MoodGroupLabel = "Naye dost" | "Mann ki baat" | "Tension" | "Zindagi ki baatein";
+export interface Topic { slug: string; label: string; group: MoodGroupLabel }
 export const TOPICS: readonly Topic[] = [
-  { slug: "roz-thodi-baat", label: "roz thodi baat" },
-  { slug: "koi-jo-mujhe-jaane", label: "koi jo mujhe jaane" },
-  { slug: "shaam-ka-saathi", label: "shaam ka saathi" },
-  { slug: "ek-dost-jo-sune", label: "ek dost jo sune" },
-  { slug: "apni-bhasha-mein-dost", label: "apni bhasha mein dost" },
-  { slug: "kisi-topic-pe-baat", label: "kisi topic pe baat (cricket, films, books)" },
-  { slug: "apni-bhasha-mein-baat", label: "apni bhasha mein baat (Garhwali, Kumaoni, Bhojpuri, Tamil…)" },
-  { slug: "english-mein-casual-chat", label: "English mein casual chat" },
-  { slug: "bas-baat-karni-hai", label: "bas baat karni hai" },
-  { slug: "aaj-akela-lag-raha-hai", label: "aaj akela lag raha hai" },
-  { slug: "din-kharab-tha", label: "din kharab tha" },
-  { slug: "raat-ko-neend-nahi-aati", label: "raat ko neend nahi aati" },
-  { slug: "shaam-ki-company", label: "shaam ki company" },
-  { slug: "ghar-ki-yaad-aa-rahi-hai", label: "ghar ki yaad aa rahi hai" },
-  { slug: "kisi-se-share-karna-hai", label: "kisi se share karna hai" },
-  { slug: "bore-ho-raha-hoon", label: "bore ho raha hoon" },
-  { slug: "raat-ki-shift-koi-jaga-hai", label: "raat ki shift, koi jaga hai?" },
-  { slug: "subah-ki-chai-thodi-baat", label: "subah ki chai, thodi baat" },
-  { slug: "mann-bhaari-hai", label: "mann bhaari hai" },
-  { slug: "exam-ki-tension", label: "exam ki tension" },
-  { slug: "interview-se-darr", label: "interview se darr" },
-  { slug: "shaadi-ka-pressure", label: "shaadi ka pressure" },
-  { slug: "ghar-waalon-se-jhagda", label: "ghar waalon se jhagda" },
-  { slug: "naukri-ki-chinta", label: "naukri ki chinta" },
-  { slug: "breakup", label: "breakup" },
-  { slug: "shaadi-ki-baatein", label: "shaadi ki baatein" },
-  { slug: "naya-sheher-nayi-job", label: "naya sheher, nayi job" },
-  { slug: "paise-ki-tension", label: "paise ki tension" },
-  { slug: "bachchon-ki-padhai", label: "bachchon ki padhai" },
-  { slug: "maa-baap-ki-sehat", label: "maa-baap ki sehat" },
-  { slug: "sehat-ki-chinta", label: "sehat ki chinta" },
+  { slug: "roz-thodi-baat", label: "roz thodi baat", group: "Naye dost" },
+  { slug: "koi-jo-mujhe-jaane", label: "koi jo mujhe jaane", group: "Naye dost" },
+  { slug: "shaam-ka-saathi", label: "shaam ka saathi", group: "Naye dost" },
+  { slug: "ek-dost-jo-sune", label: "ek dost jo sune", group: "Naye dost" },
+  { slug: "apni-bhasha-mein-dost", label: "apni bhasha mein dost", group: "Naye dost" },
+  { slug: "kisi-topic-pe-baat", label: "kisi topic pe baat (cricket, films, books)", group: "Naye dost" },
+  { slug: "apni-bhasha-mein-baat", label: "apni bhasha mein baat (Garhwali, Kumaoni, Bhojpuri, Tamil…)", group: "Naye dost" },
+  { slug: "english-mein-casual-chat", label: "English mein casual chat", group: "Naye dost" },
+  { slug: "bas-baat-karni-hai", label: "bas baat karni hai", group: "Mann ki baat" },
+  { slug: "aaj-akela-lag-raha-hai", label: "aaj akela lag raha hai", group: "Mann ki baat" },
+  { slug: "din-kharab-tha", label: "din kharab tha", group: "Mann ki baat" },
+  { slug: "raat-ko-neend-nahi-aati", label: "raat ko neend nahi aati", group: "Mann ki baat" },
+  { slug: "shaam-ki-company", label: "shaam ki company", group: "Mann ki baat" },
+  { slug: "ghar-ki-yaad-aa-rahi-hai", label: "ghar ki yaad aa rahi hai", group: "Mann ki baat" },
+  { slug: "kisi-se-share-karna-hai", label: "kisi se share karna hai", group: "Mann ki baat" },
+  { slug: "bore-ho-raha-hoon", label: "bore ho raha hoon", group: "Mann ki baat" },
+  { slug: "raat-ki-shift-koi-jaga-hai", label: "raat ki shift, koi jaga hai?", group: "Mann ki baat" },
+  { slug: "subah-ki-chai-thodi-baat", label: "subah ki chai, thodi baat", group: "Mann ki baat" },
+  { slug: "mann-bhaari-hai", label: "mann bhaari hai", group: "Mann ki baat" },
+  { slug: "exam-ki-tension", label: "exam ki tension", group: "Tension" },
+  { slug: "interview-se-darr", label: "interview se darr", group: "Tension" },
+  { slug: "shaadi-ka-pressure", label: "shaadi ka pressure", group: "Tension" },
+  { slug: "ghar-waalon-se-jhagda", label: "ghar waalon se jhagda", group: "Tension" },
+  { slug: "naukri-ki-chinta", label: "naukri ki chinta", group: "Tension" },
+  { slug: "breakup", label: "breakup", group: "Tension" },
+  { slug: "shaadi-ki-baatein", label: "shaadi ki baatein", group: "Zindagi ki baatein" },
+  { slug: "naya-sheher-nayi-job", label: "naya sheher, nayi job", group: "Zindagi ki baatein" },
+  { slug: "paise-ki-tension", label: "paise ki tension", group: "Zindagi ki baatein" },
+  { slug: "bachchon-ki-padhai", label: "bachchon ki padhai", group: "Zindagi ki baatein" },
+  { slug: "maa-baap-ki-sehat", label: "maa-baap ki sehat", group: "Zindagi ki baatein" },
+  { slug: "sehat-ki-chinta", label: "sehat ki chinta", group: "Zindagi ki baatein" },
+];
+/** [HF-NATIVE-S3] Mood groups, in display order (web twin: moodGroups in web/src/lib/callvaalHomeReference.ts). */
+export const MOOD_GROUPS: readonly { slug: string; label: MoodGroupLabel }[] = [
+  { slug: "naye-dost", label: "Naye dost" },
+  { slug: "mann-ki-baat", label: "Mann ki baat" },
+  { slug: "tension", label: "Tension" },
+  { slug: "zindagi-ki-baatein", label: "Zindagi ki baatein" },
 ];
 export const TOPIC_SLUGS: ReadonlySet<string> = new Set(TOPICS.map((t) => t.slug));
 
@@ -81,3 +89,15 @@ export function randomSuffix(n = 4): string {
 /** `<first-name-lowercase>-<4 random a-z0-9>` */
 export function makeSlug(displayName: string | null | undefined): string { return `${slugBase(displayName)}-${randomSuffix(4)}`; }
 export const SLUG_RE = /^[a-z0-9]{1,16}-[a-z0-9]{4}$/;
+
+/** [HF-NATIVE-S3] Public options payload for the native app (GET /api/hf/options). Worker is the single source. */
+export function buildHfOptions() {
+  return {
+    topics: TOPICS.map((t) => ({ slug: t.slug, label: t.label, group: t.group })),
+    moodGroups: MOOD_GROUPS.map((g) => ({ slug: g.slug, label: g.label })),
+    languages: LANGUAGES.map((label) => ({ code: LANGUAGE_TO_CODE[label], label })),
+    styles: STYLES.map((slug) => ({ slug, label: slug.charAt(0).toUpperCase() + slug.slice(1) })),
+    priceMin: PRICE_MIN,
+    priceMax: PRICE_MAX,
+  };
+}
