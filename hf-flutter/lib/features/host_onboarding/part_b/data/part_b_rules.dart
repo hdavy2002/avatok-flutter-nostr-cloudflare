@@ -1,5 +1,5 @@
-/// Pure rules of onboarding part B, copied from the website (`web/src/islands/host-onboarding/data.ts`) and the
-/// worker (`worker/src/lib/hf_options.ts`, `hf_intro.ts`). No widgets: unit-tested.
+// Pure rules of onboarding part B, copied from the website (`web/src/islands/host-onboarding/data.ts`) and the
+// worker (`worker/src/lib/hf_options.ts`, `hf_intro.ts`). No widgets: unit-tested.
 
 // ---------------------------------------------------------------------------------------------
 // About you
