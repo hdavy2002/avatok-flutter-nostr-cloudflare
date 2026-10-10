@@ -136,7 +136,7 @@ void main() {
   });
 
   group('resizedImageUrl', () {
-    final media = '${Brand.mediaOrigin}/hosts/a/photo.jpg';
+    const media = '${Brand.mediaOrigin}/hosts/a/photo.jpg';
 
     test('our own media goes through Cloudflare resizing, width snapped to a size', () {
       final u = resizedImageUrl(media, width: 250);

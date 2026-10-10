@@ -103,10 +103,10 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
     state = IntroPlayerState(playingSlug: slug);
     try {
       await _audio.play(url);
-      Analytics.capture('hf_app_intro_played', <String, Object>{'slug': slug, 'from': from});
+      unawaited(Analytics.capture('hf_app_intro_played', <String, Object>{'slug': slug, 'from': from}));
     } catch (e, st) {
       if (state.playingSlug == slug) state = IntroPlayerState(failedSlug: slug);
-      Analytics.captureException(e, st, screen: from, handled: true, extra: {'where': 'intro_play'});
+      unawaited(Analytics.captureException(e, st, screen: from, handled: true, extra: {'where': 'intro_play'}));
     }
   }
 

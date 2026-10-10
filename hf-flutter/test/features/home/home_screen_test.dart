@@ -48,9 +48,9 @@ void main() {
 
   testWidgets('a signed-in person is greeted by first name', (tester) async {
     final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-    final session = SessionState(
+    const session = SessionState(
       status: SessionStatus.signedIn,
-      me: const HfMe(uid: 'u1', displayName: 'Asha Rao'),
+      me: HfMe(uid: 'u1', displayName: 'Asha Rao'),
     );
     await pumpScreen(tester, api: api, session: session, location: '/', size: tall);
     expect(find.text('Hello, Asha'), findsOneWidget);

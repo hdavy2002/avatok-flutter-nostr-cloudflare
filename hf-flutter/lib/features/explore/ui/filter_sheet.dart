@@ -37,7 +37,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   late HostFilters _draft = widget.initial;
 
   void _toggle(List<String> list, String v, HostFilters Function(List<String>) set) {
-    final next = list.contains(v) ? [...list]..remove(v) : [...list, v];
+    final next = list.contains(v) ? [for (final x in list) if (x != v) x] : [...list, v];
     setState(() => _draft = set(next));
   }
 
