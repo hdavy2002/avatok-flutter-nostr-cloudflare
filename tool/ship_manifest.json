@@ -10085,5 +10085,21 @@
         "note": "On a phone with the native build: Become a host, finish phone, Aadhaar, selfie video and payout with a bank account in the same name as the Aadhaar; hf_app_kyc_step arrives with step=payout_verify and result=ok (result=mismatch if the names differ). Closing the app midway and reopening resumes at the next unfinished step."
       }
     ]
+  },
+  "HF-NATIVE-7": {
+    "description": "[HF-NATIVE-7 2026-10-10] Native push notifications and link wiring (hf-flutter/lib/features/push/, one builder line in app.dart). Push: Firebase Messaging behind a small gateway (guarded when google-services.json is missing), the hf_default channel and FCM defaults already in the manifest, an opt-in sheet shown once after sign-in (Know when your favourite host comes online; hosts see Know when your profile is approved) that waits for the hfPushEnabled flag and comes back only 14 days after Not now or a refused Android prompt, token registration with POST /api/hf/push/register {token, platform android, shell native-<build>} after sign-in and on token refresh, DELETE on sign-out through signOutHooksProvider, a banner with Open for a push that arrives while the app is open, and taps from background or closed routed by data.path through the same link mapper as App Links (a route that needs sign-in goes to sign-in first and continues). Tests cover all 7 payload kinds, the 14-day timing, register and unregister calls, and the cold and warm link handler. App Links and the custom scheme were wired in HF-NATIVE-1 (app_links in app.dart, manifest filters); this issue adds the handler tests and the push source. No worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPushEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_push_opened",
+        "property": "kind",
+        "equals": "notify_me",
+        "note": "On a phone with the native build and HF_GOOGLE_SERVICES_JSON set in the CI secrets: sign in, tap Allow on the sheet (hf_app_permission kind=push result=granted, hf_push_registered outcome=ok), then have the worker send a notify_me push. With the app closed, tap the notification: it opens that host profile and hf_push_opened arrives with kind=notify_me, followed by hf_app_deeplink_opened with source=push and launch=cold. Repeat with the app in the background (launch=warm) and open (banner, then Open). The other kinds (host_approved, host_changes, withdrawal_approved, withdrawal_paid, low_balance, review_request) arrive the same way."
+      }
+    ]
   }
 }

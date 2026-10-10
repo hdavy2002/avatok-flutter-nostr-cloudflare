@@ -1137,3 +1137,21 @@ gender, bank details, the lane self-declaration (HF-PRIV-6, HF-KYC-2).
 
 Success for `HF-NATIVE-8`: `hf_app_lane_join` with `result = joined`. Success for `HF-NATIVE-9`: `hf_app_kyc_step` with `step = payout_verify` and `result = ok`
 (the last of the identity steps part A owns). Both need a phone with the native build; the Aadhaar OTP and DigiLocker run against the live vendor.
+
+## Hello Fraands native app: push and links (`[HF-NATIVE-7]`, `hf-flutter/lib/features/push/`, 2026-10-10)
+
+Same super properties as the native section above (`platform = android-app`, `service_name = hf-app`). Same event names as the Capacitor app's push events
+(section `[HF-APP-4]`): filter by `service_name`. Behind `hfPushEnabled` for the opt-in sheet; the token is registered while the flag is off, as the worker allows.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_permission` | `kind: 'push'`, `result: 'granted' \| 'denied' \| 'dismissed'` | `granted` / `denied` = the answer of the Android 13+ notification prompt, shown only after Allow on our sheet. `dismissed` = Not now (or a swipe down or Back) on the sheet; the Android prompt was not shown. Re-asked 14 days later. **Success value:** `result = granted` on the owner's phone. |
+| `hf_push_registered` | `outcome: 'ok' \| 'failed'`, `reason?`, `status?`, `ms`, `shell_version` | `POST /api/hf/push/register` after sign-in (quietly, when notifications are already allowed), after Allow, and on every FCM token refresh. `shell_version` is `native-<versionCode>`. `reason`: `no_token` (Firebase gave none), the worker's error code, or `error`. |
+| `hf_push_opened` | `kind: 'notify_me' \| 'host_approved' \| 'host_changes' \| 'withdrawal_approved' \| 'withdrawal_paid' \| 'low_balance' \| 'review_request' \| 'other'` | The person tapped a notification (app closed or in the background) or tapped Open on the in-app banner. Followed by `hf_app_deeplink_opened` with `source = push`. **Success value:** arrives for each kind; the shipped proof is `kind = notify_me`. |
+| `hf_app_deeplink_opened` | `path`, `source: 'push'`, `launch: 'cold' \| 'warm'` | Same event as the native links section: `cold` = the push or link started the app (held until the splash finished), `warm` = the app was running. The path is anonymised (`/h/:id`, `/review/:id`). |
+
+Errors (`captureException`, `handled`): `where: 'hf_push_permission' \| 'hf_push_register'`.
+
+### Ship manifest note
+
+Success for `HF-NATIVE-7`: `hf_push_opened` with `kind = notify_me`. It needs a phone with the native build, `HF_GOOGLE_SERVICES_JSON` in the repository secrets (the build is silent about push without it) and `hfPushEnabled` on.

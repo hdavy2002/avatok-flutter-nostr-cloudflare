@@ -9,6 +9,7 @@ import 'core/brand.dart';
 import 'core/router/app_router.dart';
 import 'core/router/deep_link_handler.dart';
 import 'core/theme/hf_theme.dart';
+import 'features/push/ui/push_overlay.dart';
 import 'features/wallet/wallet_providers.dart';
 
 /// Root widget. [listenForLinks] is false in widget tests (no platform channel).
@@ -83,6 +84,8 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: buildHfTheme(),
       routerConfig: ref.watch(appRouterProvider),
+      // [HF-NATIVE-7] push banner, opt-in sheet and token registration
+      builder: (context, child) => PushOverlay(child: child ?? const SizedBox.shrink()),
     );
   }
 }
