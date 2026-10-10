@@ -36,7 +36,7 @@ If you believe the AI got it wrong, raise it on the grievance page. **A person r
 
 Three confirmed strikes lead to a permanent ban. Threats, sexual harassment or fraud can lead to an immediate ban. If you think a strike or ban is wrong, ask for a review.
 
-Remember, a banned account can still sign in to the dashboard and withdraw wallet balance to UPI. Wallet money is never taken as a penalty.
+Remember, a banned account can still sign in, and unused purchased tokens can be refunded on request through Google Play within 180 days. Your money is never taken as a penalty.
 
 ## What to include
 

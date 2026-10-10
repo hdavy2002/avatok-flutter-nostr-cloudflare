@@ -58,7 +58,7 @@ Your phone number is never shared with the other person on a call. See [How does
 
 ## Leaving later
 
-You can delete your account any time. Take your wallet balance back to your UPI first. Steps are at [data deletion](/data-deletion).
+You can delete your account any time. Unused purchased tokens are refunded through Google Play first. Steps are at [data deletion](/data-deletion).
 
 ## Next step
 

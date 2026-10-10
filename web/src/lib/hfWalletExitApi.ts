@@ -3,10 +3,15 @@
 import { ApiError, request } from './apiClient';
 
 export interface RefundItem { id: string; amount: number; status: 'requested' | 'processing' | 'refunded' | 'rejected' | 'cancelled'; reason: string | null; utr: string | null; exit: boolean; createdAt: number; refundedAt: number | null }
-export interface RefundInfo { enabled: boolean; windowDays?: number; refundable?: number; eligible?: number; requests: RefundItem[] }
+export interface RefundInfo { enabled: boolean; mode?: 'tokens'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
+/** Token mode: one entry per Google Play purchase that still has unused tokens (money in rupees, fractional). */
+export interface RefundLot { lotId: string; tokens: string; paid: number; refund: number; wholeOrder: boolean; boughtAt: number }
+export interface TokenExitInfo { mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number }
 
 export interface ExitInfo {
   gateEnabled: boolean;
+  mode?: 'tokens';
+  tokens?: TokenExitInfo;
   decision: 'delete' | 'exit';
   paidBalance: number; withdrawable: number; held: number; heldReleaseAt: number | null;
   refundable: number; manualRefund: number; forfeitRupees: number; bankOk: boolean; testCredits: number; testEarnings: number;
@@ -24,8 +29,8 @@ async function authed<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?:
 }
 
 export const fetchRefunds = (): Promise<RefundInfo> => authed<RefundInfo>('GET', '/api/hf/wallet/refunds');
-export const requestRefund = (amount?: number) =>
-  authed<{ ok: true; id: string; amount: number }>('POST', '/api/hf/wallet/refunds', amount ? { amount } : {}, { 'Idempotency-Key': crypto.randomUUID() });
+export const requestRefund = (amount?: number, lotId?: string) =>
+  authed<{ ok: true; id: string; amount: number }>('POST', '/api/hf/wallet/refunds', { ...(amount ? { amount } : {}), ...(lotId ? { lotId } : {}) }, { 'Idempotency-Key': crypto.randomUUID() });
 export const cancelRefund = (id: string) => authed<{ ok: true }>('POST', `/api/hf/wallet/refunds/${encodeURIComponent(id)}/cancel`, {});
 
 export const fetchExit = (): Promise<ExitInfo> => authed<ExitInfo>('GET', '/api/hf/account/exit');

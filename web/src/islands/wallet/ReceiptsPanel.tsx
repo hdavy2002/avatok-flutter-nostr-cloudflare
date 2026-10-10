@@ -34,7 +34,7 @@ export default function ReceiptsPanel({ reloadKey = 0 }: { reloadKey?: number })
           <li key={r.id}>
             <strong>{r.number}</strong>
             <span>{inr(r.amountRupees)}</span>
-            <small>{r.kind === 'tax_invoice' ? 'Tax invoice' : 'Payment receipt'} · {day(r.issuedAt)}</small>
+            <small>{r.kind === 'tax_invoice' ? 'Tax invoice' : r.source === 'play_purchase' ? 'Purchase record, paid via Google Play' : 'Payment receipt'} · {day(r.issuedAt)}</small>
             <button type="button" className="hfc-btn" style={{ minHeight: 44 }} disabled={busy === r.id} onClick={() => view(r.id)}>{busy === r.id ? 'Opening…' : 'View / print'}</button>
           </li>
         ))}

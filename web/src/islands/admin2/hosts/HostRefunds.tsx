@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
 import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
 
+const paiseRupees = (p: number) => rupees(p / 100);
 const T14 = { fontSize: 14 } as const;
 const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
 
@@ -14,6 +15,9 @@ interface Alloc { topupId: string | null; rupees: number; status: 'pending' | 's
 interface Item {
   id: string; uid: string; amount: number; status: Status | 'approved'; exit: boolean; utr: string | null; reason: string | null;
   allocations: Alloc[]; createdAt: number; refundedAt: number | null;
+  /* [HF-TOK-EXIT-1] Google Play refund of unused tokens: amountPaise is the unspent share owed; no gateway slices. */
+  kind?: 'play_refund'; amountPaise?: number; orderId?: string | null; lotId?: string | null; recordedPaise?: number | null;
+  lot?: { status: string; paidPaise: number; tokensBought: string; tokensLeft: string; wholeOrder: boolean; currentSharePaise: number } | null;
 }
 interface List { items: Item[]; counts: Record<string, { n: number; rupees: number }> }
 
@@ -28,7 +32,9 @@ const allocLabel: Record<Alloc['status'], string> = {
 };
 
 function Row({ it, onDone }: { it: Item; onDone: () => void }) {
-  const [dialog, setDialog] = useState<null | 'manual' | 'reject'>(null);
+  const [dialog, setDialog] = useState<null | 'manual' | 'reject' | 'playhand'>(null);
+  const [recorded, setRecorded] = useState('');
+  const [playNote, setPlayNote] = useState('');
   const [slice, setSlice] = useState<null | { topupId: string; mode: 'sent' | 'resend' }>(null);
   const [utr, setUtr] = useState('');
   const [reason, setReason] = useState('');
@@ -37,6 +43,10 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
   const [note, setNote] = useState<string | null>(null);
   const base = `/api/admin/hf/refunds/${encodeURIComponent(it.id)}`;
   const open = it.status === 'requested' || it.status === 'approved' || it.status === 'failed';
+  const play = it.kind === 'play_refund';
+  const owedPaise = it.amountPaise ?? 0;
+  const recordedPaise = Math.round(Number(recorded) * 100);
+  const recordedOk = Number.isFinite(recordedPaise) && recordedPaise >= 1 && recordedPaise <= owedPaise && (recordedPaise === owedPaise || playNote.trim().length >= 5);
   const utrOk = /^[A-Za-z0-9]{6,30}$/.test(utr.trim());
 
   const run = async (fn: () => Promise<{ status?: string } | unknown>, label: string) => {
@@ -54,19 +64,22 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
     <div className="card" style={{ background: '#fff', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <strong style={{ fontSize: 16 }}>
-          Refund
+          {play ? 'Refund through Google Play' : 'Refund'}
           {it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#f2ecfc', color: '#46113e' }} title="Account closure: the account is deleted once this is settled">Exit</span>}
         </strong>
-        <strong style={{ fontSize: 18 }}>{rupees(it.amount)}</strong>
+        <strong style={{ fontSize: 18 }}>{play ? paiseRupees(owedPaise) : rupees(it.amount)}</strong>
       </div>
       <div style={{ ...T14, display: 'grid', gap: 2 }}>
         <span>Asked {dateIST(it.createdAt)}</span>
         {it.status === 'refunded' && <span>Settled {dateIST(it.refundedAt)}{it.utr ? ` · paid by hand · UTR ${it.utr}` : ''}</span>}
         {it.status === 'rejected' && <span>Reason: {it.reason}</span>}
         {it.exit && open && <span><strong>Account closure:</strong> the account is deleted automatically after this is settled. Rejecting it also lets the closure finish.</span>}
+        {play && it.orderId && <span>Google Play order <span style={{ wordBreak: 'break-all' }}>{it.orderId}</span></span>}
+        {play && it.lot && <span>Bought {it.lot.tokensBought} tokens for {paiseRupees(it.lot.paidPaise)} · {it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
+        {play && it.status === 'refunded' && it.recordedPaise != null && <span>Recorded refund {paiseRupees(it.recordedPaise)}</span>}
         <span className="muted" style={{ wordBreak: 'break-all' }}>{it.uid}</span>
       </div>
-      <ul style={{ ...T14, margin: 0, paddingLeft: 18, display: 'grid', gap: 2 }}>
+      {!play && <ul style={{ ...T14, margin: 0, paddingLeft: 18, display: 'grid', gap: 2 }}>
         {it.allocations.map((a, i) => (
           <li key={`${a.topupId ?? 'manual'}-${i}`}>
             {rupees(a.rupees)} {a.topupId ? <>back to the payment <span className="muted" style={{ wordBreak: 'break-all' }}>{a.topupId}</span></> : <strong>no payment to return it to: pay by hand</strong>} · {allocLabel[a.status]}
@@ -79,9 +92,20 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
             )}
           </li>
         ))}
-      </ul>
+      </ul>}
 
-      {open && (
+      {open && play && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {it.lot?.wholeOrder && (
+            <button type="button" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={busy}
+              onClick={() => void run(() => post(`${base}/play-confirm`), 'hf_play_refund')}>{busy ? 'Working…' : 'Refund through Google Play'}</button>
+          )}
+          <button type="button" className={`btn small${it.lot?.wholeOrder ? ' ghost' : ''}`} style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setRecorded(String(owedPaise / 100)); setPlayNote(''); setDialog('playhand'); }}>I refunded it in the Play Console</button>
+          <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setReason(''); setDialog('reject'); }}>Reject</button>
+        </div>
+      )}
+
+      {open && !play && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={busy}
             onClick={() => void run(() => post(`${base}/${it.status === 'failed' ? 'retry' : 'approve'}`), 'hf_refund_approve')}>
@@ -94,6 +118,12 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       {note && <Banner tone="info">{note}</Banner>}
       {err && <Banner tone="error">{err}</Banner>}
 
+      <ConfirmDialog open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the tokens" busy={busy} error={err} disabled={!recordedOk}
+        body={`Only do this after you refunded the person in the Google Play Console. The unused tokens are then removed from their account. Owed: ${paiseRupees(owedPaise)}. If you refunded less, write a note.`}
+        onConfirm={() => void run(() => post(`${base}/play-confirm`, { manual: true, recordedPaise, note: playNote.trim() || undefined }), 'hf_play_refund_manual')} onCancel={() => setDialog(null)}>
+        <input aria-label="Rupees you refunded" style={field} value={recorded} inputMode="decimal" autoComplete="off" placeholder="Rupees you refunded" onChange={(e) => setRecorded(e.target.value.replace(/[^0-9.]/g, ''))} />
+        <input aria-label="Note" style={{ ...field, marginTop: 8 }} value={playNote} maxLength={200} placeholder="Note (needed if less than owed)" onChange={(e) => setPlayNote(e.target.value)} />
+      </ConfirmDialog>
       <ConfirmDialog open={slice?.mode === 'sent'} title="Record this part as already sent" confirmLabel="Yes, it was sent" busy={busy} error={err}
         body="Only do this after you looked in the payment gateway’s dashboard and saw this refund there. The rest of the refund then continues."
         onConfirm={() => void run(() => post(`${base}/mark-sent`, { topupId: slice!.topupId }), 'hf_refund_mark_sent').then(() => setSlice(null))} onCancel={() => setSlice(null)} />

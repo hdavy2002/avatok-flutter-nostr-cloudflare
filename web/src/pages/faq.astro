@@ -11,7 +11,7 @@ export const prerender = true;
 
 const identity = brandConfig.homepageIdentity;
 const title = `FAQs — safety, privacy, payments | ${identity.name}`;
-const description = `Answers about ${identity.name}: private numbers, AI call safety, spam and OTP-scam protection, the women-only space, host verification, wallet, UPI withdrawals and refunds.`;
+const description = `Answers about ${identity.name}: private numbers, AI call safety, spam and OTP-scam protection, the women-only space, host verification, tokens, host withdrawals and refunds.`;
 const canonical = `https://${identity.domain}/faq`;
 const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
 const jsonLd = {
@@ -22,7 +22,7 @@ const quickLinks = [
   { href: '/safety', title: 'Safety centre', text: 'How calls are kept safe', tone: 'peach' },
   { href: '/women-only', title: 'Women-only space', text: 'Verified women, both sides', tone: 'pink' },
   { href: '/hosts/join', title: 'Join & earn', text: 'Become a verified host', tone: 'cream' },
-  { href: '/refunds', title: 'Refund policy', text: 'Wallet, charges, UPI', tone: 'lilac' },
+  { href: '/refunds', title: 'Refund policy', text: 'Tokens, charges, refunds', tone: 'lilac' },
   { href: '/grievance', title: 'Grievance', text: 'Raise a complaint', tone: 'paper' },
   { href: '/terms', title: 'Terms', text: 'The full rules', tone: 'cream' },
 ];

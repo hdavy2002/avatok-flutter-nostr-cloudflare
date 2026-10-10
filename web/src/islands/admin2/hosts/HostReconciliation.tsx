@@ -17,7 +17,24 @@ interface Day {
   payouts: Gw; refunds: Gw | null;
 }
 interface Mismatch { kind: string; topupId: string; uid: string; topupRupees: number | null; creditRupees: number | null; detail: string; at: number }
+/* [HF-TOK-EXIT-1] Token-era section: present only while tokens are on. Money in paise, tokens in micro-tokens (1 token = 1,000,000). */
+interface TokDay {
+  date: string;
+  purchases: { count: number; paidPaise: number; tokensMicro: number };
+  spent: { calls: number; tokensMicro: number; consumedPaise: number; callCostPaise: number; hostPaise: number; platformPaise: number };
+  hostLedger: { earningsPaise: number; testEarningsPaise: number };
+  refunds: { revocations: number; revokedMicro: number; revokedValuePaise: number; playRefunds: number; playRefundPaise: number; debtsCreated: number; debtsCreatedPaise: number; debtsWrittenOffPaise: number };
+  testLots: { grantedLots: number; grantedMicro: number; spentMicro: number; spentValuePaise: number };
+}
+interface TokMismatch { kind: string; ref: string; uid: string | null; expected: number | null; actual: number | null; detail: string }
+interface TokReport {
+  days: TokDay[]; totals: Omit<TokDay, 'date'>;
+  openDebts: { count: number; valuePaise: number; tokensMicro: number };
+  outstanding: { purchaseTokensMicro: number; testTokensMicro: number; hostBalancePaise: number };
+  mismatches: TokMismatch[];
+}
 interface Report {
+  tokens?: TokReport;
   from: string; to: string; days: Day[]; totals: Omit<Day, 'date'>; mismatches: Mismatch[];
   payouts: { id: string; host_uid: string; amount_rupees: number; utr: string | null; paid_at: number }[];
   refundsAvailable: boolean; liabilities: { callerWalletsApprox: number; hostEarningsApprox: number; note: string } | null;
@@ -29,6 +46,13 @@ const KIND: Record<string, string> = {
   paid_without_credit: 'Paid, but no wallet credit', credit_without_paid_topup: 'Wallet credit without a paid top-up', amount_difference: 'Amounts differ',
 };
 const gw = (d: Omit<Day, 'date'>) => Object.entries(d.topups.byGateway).map(([g, v]) => `${g} ${v.count} (${rupees(v.rupees)})`).join(', ') || '—';
+const TOK_KIND: Record<string, string> = {
+  lot_balance: 'Token lot balance is wrong', call_split: 'Call value does not add up', host_earning_ledger: 'Host earning differs from the call',
+  host_payout_ledger: 'Host payout differs from the ledger', host_balance_negative: 'Host balance is below zero',
+  purchase_without_lot: 'Purchase without a token lot', lot_without_purchase: 'Token lot without a purchase',
+};
+const pr = (paise: number) => rupees(paise / 100);
+const tk = (micro: number) => (micro / 1_000_000).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const pair = (a: number, b: number) => `${rupees(a)} / ${rupees(b)}`;
 
 function Row({ label, d, strong }: { label: string; d: Omit<Day, 'date'>; strong?: boolean }) {
@@ -44,6 +68,44 @@ function Row({ label, d, strong }: { label: string; d: Omit<Day, 'date'>; strong
       <td>{d.payouts.count} · {rupees(d.payouts.rupees)}</td>
       <td>{d.refunds ? `${d.refunds.count} · ${rupees(d.refunds.rupees)}` : 'n/a'}</td>
     </tr>
+  );
+}
+
+function TokenSection({ t }: { t: TokReport }) {
+  const x = t.totals;
+  return (
+    <section className="card" style={{ background: '#fff', ...T14, display: 'grid', gap: 10 }}>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Tokens {t.mismatches.length === 0 ? '· everything matches' : `· ${t.mismatches.length} to look at`}</h2>
+      {t.mismatches.map((m) => (
+        <div key={m.kind + m.ref} style={{ borderTop: '1px solid #eadcee', paddingTop: 8, wordBreak: 'break-all' }}>
+          <strong>{TOK_KIND[m.kind] ?? m.kind}</strong>
+          <div>{m.detail}</div>
+          <div className="muted">{m.ref}{m.uid ? ` · ${m.uid}` : ''}</div>
+        </div>
+      ))}
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div>Google Play purchases: <strong>{x.purchases.count}</strong> · paid {pr(x.purchases.paidPaise)} · {tk(x.purchases.tokensMicro)} tokens granted</div>
+        <div>Tokens spent on {x.spent.calls} calls: <strong>{tk(x.spent.tokensMicro)}</strong> · value consumed {pr(x.spent.consumedPaise)} = call cost {pr(x.spent.callCostPaise)} + host {pr(x.spent.hostPaise)} + platform {pr(x.spent.platformPaise)}</div>
+        <div>Host earnings credited: {pr(x.hostLedger.earningsPaise)} (test {pr(x.hostLedger.testEarningsPaise)})</div>
+        <div>Refunds through Google Play: {x.refunds.playRefunds} · {pr(x.refunds.playRefundPaise)} · tokens removed {tk(x.refunds.revokedMicro)} ({pr(x.refunds.revokedValuePaise)})</div>
+        <div>Debts: created {x.refunds.debtsCreated} ({pr(x.refunds.debtsCreatedPaise)}) · written off {pr(x.refunds.debtsWrittenOffPaise)} · open now {t.openDebts.count} ({pr(t.openDebts.valuePaise)})</div>
+        <div>Test tokens (not real money): {x.testLots.grantedLots} lots · {tk(x.testLots.grantedMicro)} granted · {tk(x.testLots.spentMicro)} spent</div>
+        <div>Still held: purchased tokens {tk(t.outstanding.purchaseTokensMicro)} · test tokens {tk(t.outstanding.testTokensMicro)} · host balance {pr(t.outstanding.hostBalancePaise)}</div>
+      </div>
+      <div style={{ overflow: 'auto' }}>
+        <table className="t" style={T14}>
+          <thead><tr><th>Day</th><th>Purchases</th><th>Tokens spent</th><th>Value consumed</th><th>Host</th><th>Platform</th><th>Refunds</th></tr></thead>
+          <tbody>
+            {t.days.map((d) => (
+              <tr key={d.date}>
+                <td>{d.date}</td><td>{d.purchases.count} · {pr(d.purchases.paidPaise)}</td><td>{tk(d.spent.tokensMicro)}</td><td>{pr(d.spent.consumedPaise)}</td>
+                <td>{pr(d.spent.hostPaise)}</td><td>{pr(d.spent.platformPaise)}</td><td>{d.refunds.playRefunds} · {pr(d.refunds.playRefundPaise)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -113,6 +175,8 @@ export default function HostReconciliation() {
               <div className="muted">{rep.liabilities.note}{rep.refundsAvailable ? '' : ' Refunds are not included (no refunds record yet).'}</div>
             </section>
           )}
+
+          {rep.tokens && <TokenSection t={rep.tokens} />}
 
           <section className="card" style={{ background: '#fff', ...T14 }}>
             <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Payouts paid</h2>

@@ -1,6 +1,6 @@
 ---
 title: "How do I delete my account?"
-description: "Withdraw your wallet balance first, then follow the steps to delete your account. Learn what records we keep."
+description: "Get your unused tokens refunded first, then follow the steps to delete your account. Learn what records we keep."
 section: account-and-help
 order: 3
 updated: 2026-10-08
@@ -8,7 +8,7 @@ keywords: ["delete account", "account delete", "data deletion", "account band ka
 audience: both
 faq:
   - q: "What should I do before I delete my account?"
-    a: "Withdraw your wallet balance to your own UPI ID first. Unused balance is always yours."
+    a: "Close your account from the account page. Unused purchased tokens are refunded through Google Play first."
   - q: "Do you keep recordings of my calls?"
     a: "No. We do not record calls, so no audio or transcript exists."
   - q: "Do you sell my data?"
@@ -19,15 +19,15 @@ draft: false
 
 You can delete your {{brand.name}} account if you want to leave. Please do one important thing first: take out your money.
 
-## Step 1: Withdraw your wallet balance
+## Step 1: Get your unused tokens refunded
 
-Unused wallet balance is always yours. Before you delete, send it to your own UPI ID.
+Unused purchased tokens can be refunded on request through Google Play within 180 days. Closing your account from the account page does this for you first.
 
-1. Sign in to your dashboard.
-2. Open your wallet and withdraw your balance.
-3. Use a UPI ID in your own name.
+1. Sign in and open the close-account page.
+2. Start the closure. Your unused purchased tokens are sent back through Google Play after a person approves it.
+3. Your account is deleted once everything is settled.
 
-Doing this first keeps your money safe. Read [withdraw your balance](/help/wallet-and-payments/withdraw-your-balance) for the full steps.
+Doing this first keeps your money safe. Read [refund your unused tokens](/help/wallet-and-payments/withdraw-your-balance) for the full steps.
 
 If you are a host, withdraw your earnings too. See [getting paid](/help/hosts/getting-paid).
 
