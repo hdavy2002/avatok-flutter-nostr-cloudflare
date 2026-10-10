@@ -10101,5 +10101,28 @@
         "note": "On a phone with the native build and HF_GOOGLE_SERVICES_JSON set in the CI secrets: sign in, tap Allow on the sheet (hf_app_permission kind=push result=granted, hf_push_registered outcome=ok), then have the worker send a notify_me push. With the app closed, tap the notification: it opens that host profile and hf_push_opened arrives with kind=notify_me, followed by hf_app_deeplink_opened with source=push and launch=cold. Repeat with the app in the background (launch=warm) and open (banner, then Open). The other kinds (host_approved, host_changes, withdrawal_approved, withdrawal_paid, low_balance, review_request) arrive the same way."
       }
     ]
+  },
+  "HF-NATIVE-11": {
+    "description": "[HF-NATIVE-11 2026-10-10] Native Host dashboard (hf-flutter/lib/features/host_dashboard/): profile status banner (draft, generating, pending_host, sent for review, rejected or paused with the reviewer's reason and Fix and send again), big Go online / Go offline switch with a 5-minute heartbeat that runs only while the host is online AND the app is in the foreground (the server drops a host offline after 8 h without a beat), today (calls, minutes, rupees), recent calls tagged Paid or Test, earnings in rupees only (available, on hold with unlock dates, total), and withdrawals (request from Rs 500 with an Idempotency-Key, cancel while requested, history with status and UTR). Handles the token-mode host ledger and the legacy rupee shapes. Uses existing worker routes, no worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallsEnabled",
+      "hfPayoutsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_host_presence",
+        "property": "online",
+        "equals": "true",
+        "note": "On a phone with the native build, signed in as a live host: open the Host tab (hf_app_host_dashboard_viewed with status=live), tap Go online; hf_app_host_presence arrives with online=true and outcome=ok, and the host shows as Online now to a caller. Tap Go offline for online=false."
+      },
+      {
+        "event": "hf_app_payout_requested",
+        "property": "outcome",
+        "equals": "ok",
+        "note": "With at least Rs 500 withdrawable (earnings older than 7 days), request a withdrawal from the Host tab: hf_app_payout_requested arrives with amount_rupees and outcome=ok and the request shows as Requested in the withdrawal history."
+      }
+    ]
   }
 }

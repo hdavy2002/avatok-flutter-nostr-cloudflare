@@ -1155,3 +1155,17 @@ Errors (`captureException`, `handled`): `where: 'hf_push_permission' \| 'hf_push
 ### Ship manifest note
 
 Success for `HF-NATIVE-7`: `hf_push_opened` with `kind = notify_me`. It needs a phone with the native build, `HF_GOOGLE_SERVICES_JSON` in the repository secrets (the build is silent about push without it) and `hfPushEnabled` on.
+
+## Hello Fraands native app: Host dashboard (`[HF-NATIVE-11]`, 2026-10-10)
+
+Native Host tab (`hf-flutter/lib/features/host_dashboard/`), same super properties as the rest of the native app (`platform = android-app`, `service_name = hf-app`). Hosts see rupees only; no amount of tokens, bank detail, UTR, caller handle or id rides on any of these events.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_host_dashboard_viewed` | `status: 'none' \| 'draft' \| 'generating' \| 'pending_host' \| 'pending_review' \| 'submitted' \| 'live' \| 'rejected' \| 'paused'` | Once per opening of the Host tab, when `GET /api/hosts/me` answered. `none` = the person has no host profile yet (the Become a host panel shows). **Success value:** `status = live` from the owner's test host. |
+| `hf_app_host_presence` | `online: boolean`, `outcome: 'ok' \| 'error'`, `reason?`, `status?` | The big switch was tapped and `PUT /api/hosts/me/presence` answered. `online` is what the host asked for. On error `reason` is the worker code (`not_live`, `not_verified`, `account_closing`, `network`, ...) and `status` the HTTP status. The 5-minute heartbeat (`POST /api/hosts/me/presence/beat`, only while online AND the app is in the foreground) sends no event of its own. **Success value:** `online = true` with `outcome = ok`, then the host appears as Online now to a caller. |
+| `hf_app_payout_requested` | `amount_rupees: number`, `outcome: 'ok' \| 'error'`, `reason?`, `status?` | A withdrawal was requested (`POST /api/hosts/me/payouts`, whole rupees, minimum Rs 500). On error `reason` is the worker code (`below_minimum`, `weekly_limit`, `insufficient_withdrawable`, `kyc_required`, `bank_required`, `not_live`, `wallet_error`, `network`, ...). The server also sends its own `hf_payout_requested`. **Success value:** `outcome = ok` for the owner's first withdrawal. |
+
+### Ship manifest note
+
+`HF-NATIVE-11` is one-sided (one phone). Success: `hf_app_host_presence` with `online = true` and `outcome = ok`, and `hf_app_payout_requested` with `outcome = ok` once Rs 500 has cleared the 7-day hold.
