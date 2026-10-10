@@ -309,6 +309,7 @@ import { hfExitRoute } from "./routes/hf_exit"; // [HF-WALLET-EXIT-1] pay-out-fi
 import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
 import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
+import { hfPushRoute } from "./routes/hf_push"; // [HF-APP-4] push token register
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
 import { runConsultCron } from "./lib/consultants/cron"; // [AUMFE-CONSULT-FOUNDATION-1]
 import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
@@ -1113,6 +1114,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p.startsWith("/api/admin/hf/limits/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
+      if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
       if (p === "/api/hosts/me/payouts" || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]

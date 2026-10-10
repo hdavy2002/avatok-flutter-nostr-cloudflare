@@ -83,6 +83,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_kyc_otp", cols: ["uid"] },
     { table: "hf_lane_access", cols: OTHER_UID_COLS },
     { table: "hf_review_tokens", cols: OTHER_UID_COLS },
+    { table: "hf_push_tokens", cols: ["user_id"] }, // [HF-APP-4] device tokens
     { table: "hf_notify", cols: ["uid", "caller_uid", "host_uid", "recipient_uid"] },
     { table: "hf_reviews", cols: ["caller_uid", "host_uid", "reviewer_uid", "uid"] },
     { table: "hf_calls", cols: ["caller_uid", "host_uid"], safety: true },

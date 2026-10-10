@@ -83,6 +83,7 @@ async function resolveTokens(env: Env, uid: string): Promise<TokenResolution> {
 export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (msg.kind === "fanout") return handleFanout(msg, env);
   if (msg.kind === "app_update_broadcast") return handleAppUpdateBroadcast(msg, env);
+  if (msg.kind === "hf_push") return handleHfPush(msg, env); // [HF-APP-4]
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
   // A ring invitation is perishable. Queue retry/backlog must never turn an
@@ -642,6 +643,9 @@ export type PushPayload = {
   highPriority: boolean;
   ttlSeconds?: number;
   collapseKey?: string;
+  // [HF-APP-4] Visible notification block (HF app only). Every other push stays data-only.
+  notification?: { title: string; body: string };
+  channelId?: string;
 };
 
 export function ringInviteExpired(expiresAt: number | undefined, now = Date.now()): boolean {
@@ -999,7 +1003,7 @@ async function sendFcm(
   env: Env, token: string, payload: PushPayload, uid: string,
   // [CALL-TELEMETRY-1] optional send context — call_id + which store the token
   // came from — so prune/fail events are self-explanatory in PostHog.
-  ctx?: { callId?: string | null; source?: string },
+  ctx?: { callId?: string | null; source?: string; hf?: boolean },
 ): Promise<{ ok: boolean; messageId?: string; error?: string; pruned?: boolean }> {
   if (!env.FCM_SERVICE_ACCOUNT) {
     console.warn("FCM_SERVICE_ACCOUNT unset; cannot send");
@@ -1017,6 +1021,7 @@ async function sendFcm(
           priority: payload.highPriority ? "high" : "normal",
           ...(payload.ttlSeconds != null ? { ttl: `${payload.ttlSeconds}s` } : {}),
           ...(payload.collapseKey ? { collapse_key: payload.collapseKey } : {}),
+          ...(payload.notification ? { notification: { title: payload.notification.title, body: payload.notification.body, ...(payload.channelId ? { channel_id: payload.channelId } : {}) } } : {}),
         },
       },
     };
@@ -1039,8 +1044,11 @@ async function sendFcm(
     // that can be a payload/config issue and was wiping perfectly good tokens,
     // leaving devices unable to receive calls ("no registered devices").
     const dead = res.status === 404 || txt.includes("UNREGISTERED") ||
-      txt.includes("registration-token-not-registered") || txt.includes("NOT_FOUND");
+      txt.includes("registration-token-not-registered") || txt.includes("NOT_FOUND") ||
+      // [HF-APP-4] HF tokens only: a 400 INVALID_ARGUMENT that names the registration token is a dead token, not a payload problem.
+      (ctx?.hf === true && res.status === 400 && txt.includes("INVALID_ARGUMENT") && /registration token/i.test(txt));
     if (dead) {
+      await env.DB_META.prepare("DELETE FROM hf_push_tokens WHERE token=?1").bind(token).run().catch(() => null); // [HF-APP-4] no-op for other apps' tokens
       await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
       // [MULTIACCT-2] also drop the device-level row so the device-mapped join
       // stops resolving this dead token for EVERY account on that device.
@@ -1141,6 +1149,38 @@ async function sendFcm(
     messageId = (j?.name ?? "").split("/").pop() ?? "";
   } catch { /* body already consumed / not JSON — ok stays true */ }
   return { ok: true, messageId };
+}
+
+// ── [HF-APP-4] HF app push ───────────────────────────────────────────────────
+export const HF_PUSH_CHANNEL = "hf_default";
+
+/** Same-site relative path only (the worker validates too; this is the last line of defence before the phone). */
+export function hfSafePath(p: unknown): string {
+  return typeof p === "string" && p.length > 0 && p.length <= 300 && p[0] === "/" && p[1] !== "/" && p[1] !== "\\" && !/[\\\u0000-\u001f\u007f]/.test(p) ? p : "/";
+}
+
+export function buildHfPayload(msg: PushMsg): PushPayload {
+  const title = String(msg.title ?? "").slice(0, 60);
+  const body = String(msg.body ?? "").slice(0, 160);
+  const kind = String(msg.hfKind ?? "").replace(/[^a-z_]/g, "").slice(0, 30);
+  return {
+    highPriority: true,
+    ttlSeconds: 6 * 3600,
+    collapseKey: `hf_${kind}`,
+    notification: { title, body },
+    channelId: HF_PUSH_CHANNEL,
+    data: { type: "hf_push", kind, path: hfSafePath(msg.path), title, body },
+  };
+}
+
+async function handleHfPush(msg: PushMsg, env: Env): Promise<void> {
+  const uid = msg.to || msg.to_uid || "";
+  if (!uid || !msg.title || !msg.body) return;
+  const rs = await env.DB_META.prepare("SELECT token FROM hf_push_tokens WHERE user_id=?1 ORDER BY last_seen_at DESC LIMIT 5").bind(uid).all<{ token: string }>();
+  const payload = buildHfPayload(msg);
+  for (const r of rs.results ?? []) {
+    if (r.token) await sendFcm(env, r.token, payload, uid, { source: "hf", hf: true });
+  }
 }
 
 // --- OAuth: service-account JWT → access token (cached in KV ~55 min) ---

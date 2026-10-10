@@ -100,6 +100,7 @@ export function initAppMode(): void {
     registerSuperProps({ platform: 'android-app', shell_version: shell });
     sendOpenOnce(shell);
     document.addEventListener('click', onLinkClick, true);
+    void import('./appPush').then((m) => m.initAppPush()).catch((err: unknown) => captureException(err, { where: 'hf_app_init' })); // [HF-APP-4]
     const add = appPlugins().App?.addListener;
     if (add) {
       void Promise.resolve(appPlugins().App!.addListener!('backButton', onBackButton)).catch((err: unknown) => captureException(err, { where: 'hf_app_back_listener' }));

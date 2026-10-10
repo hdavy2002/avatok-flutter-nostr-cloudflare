@@ -10,6 +10,7 @@ import { BRAND, brandUrl } from "./brand";
 import { sendWhatsAppText } from "./whatsapp_send";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { hfCallsOn } from "./hf_reviews";
+import { pushNotifyMe } from "./hf_push";
 import { NOTIFY_WINDOW_MS, firstNameOf } from "./hf_reviews_pure";
 
 const APP = BRAND.slug;
@@ -42,6 +43,7 @@ export async function notifyHostOnline(env: Env, ctx: ExecutionContext | undefin
         const blocked = await env.DB_META.prepare(
           "SELECT 1 AS x FROM hf_blocks WHERE (blocker_uid=?1 AND blocked_uid=?2) OR (blocker_uid=?2 AND blocked_uid=?1)",
         ).bind(r.caller_uid, hostUid).first().catch(() => null);
+        if (!blocked) await pushNotifyMe(env, undefined, r.caller_uid, { display_name: host.display_name, slug: host.slug }); // [HF-APP-4] push on top of WhatsApp
         const e164 = blocked ? null : await verifiedWhatsAppNumber(env, r.caller_uid);
         if (!e164) { await drop(env, r.caller_uid, hostUid); continue; }
         const res = await sendWhatsAppText(env, e164, text);

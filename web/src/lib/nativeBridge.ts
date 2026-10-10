@@ -14,6 +14,14 @@ export interface CapPlugins {
     addListener?: (e: string, cb: (d: { url?: string; canGoBack?: boolean }) => void) => unknown;
     exitApp?: () => unknown;
   };
+  /** [HF-APP-4] @capacitor/push-notifications (FCM). All optional; callers guard every call. */
+  PushNotifications?: {
+    checkPermissions?: () => Promise<{ receive?: string }>;
+    requestPermissions?: () => Promise<{ receive?: string }>;
+    register?: () => Promise<unknown>;
+    createChannel?: (c: { id: string; name: string; description?: string; importance?: number; visibility?: number }) => Promise<unknown>;
+    addListener?: (e: string, cb: (d: any) => void) => unknown;
+  };
 }
 interface CapacitorGlobal { isNativePlatform?: () => boolean; Plugins?: CapPlugins }
 const cap = (): CapacitorGlobal | undefined => {

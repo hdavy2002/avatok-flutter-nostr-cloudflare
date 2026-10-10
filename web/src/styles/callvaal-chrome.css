@@ -93,4 +93,5 @@ html.hf-app.hf-host .hf-tabbar [data-hf-tab=calls]{display:none}
 .hf-exit-actions button{flex:1;min-height:52px;border:0;border-radius:30px;font:800 1.125rem/1 Nunito,sans-serif;cursor:pointer}
 .hf-exit-stay{background:#46113e;color:#fff}
 .hf-exit-yes{background:#fff;color:#46113e;border:2px solid #46113e!important}
+.hf-push-sheet p{margin:0 0 20px;font:400 1.125rem/1.5 Comfortaa,sans-serif;color:#46113e}
 .hf-exit-actions button:focus-visible{outline:3px solid #7b388c;outline-offset:3px}

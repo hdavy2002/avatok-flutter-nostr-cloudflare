@@ -16,7 +16,7 @@ const DAY_MS = 86_400_000;
 const YEAR_MS = 365 * DAY_MS;
 export const HF_RETENTION = {
   callsDays: 365, incidentsDays: 365, blocksDays: 365,
-  notifyDays: 90, kycOtpDays: 30,
+  notifyDays: 90, kycOtpDays: 30, pushTokenDays: 180,
   draftDays: 365, closedHostDays: 365, laneCallerDays: 365,
   rowBatch: 200, uidBatch: 50, maxRowBatchesPerRun: 5,
 } as const;
@@ -27,7 +27,7 @@ const DELETED_DONE = "SELECT uid FROM deletion_requests WHERE status='done'";
 
 export interface HfRetentionSummary {
   calls: number; incidents: number; blocks: number; review_tokens: number; notify: number; reviews: number;
-  kyc_otp: number; drafts: number; closed_hosts: number; lane_callers: number;
+  kyc_otp: number; push_tokens: number; drafts: number; closed_hosts: number; lane_callers: number;
   r2_objects: number; errors: number; more: boolean; ms: number;
 }
 
@@ -98,7 +98,7 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
   const errs = { n: 0 };
   const acc = { r2: 0, errs: 0 };
   let more = false;
-  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0 };
+  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, push_tokens: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0 };
   const rows = (r: { n: number; more: boolean }) => { if (r.more) more = true; return r.n; };
 
   // Call records (time, length, price, how it ended): 1 year.
@@ -136,6 +136,9 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
 
   // KYC OTP ledger: 30 days.
   s.kyc_otp = await runStep(env, ctx, "kyc_otp", errs, async () => rows(await purgeOld(env, cols, "hf_kyc_otp", ["created_at"], HF_RETENTION.kycOtpDays)), 0);
+
+  // [HF-APP-4] Push device tokens not seen for 180 days (the app re-registers on every sign-in, so a live device is never old).
+  s.push_tokens = await runStep(env, ctx, "push_tokens", errs, async () => rows(await purgeOld(env, cols, "hf_push_tokens", ["last_seen_at"], HF_RETENTION.pushTokenDays)), 0);
 
   // Abandoned host drafts: never went live and untouched for a year -> full HF purge (users row stays).
   s.drafts = await runStep(env, ctx, "drafts", errs, async () => {

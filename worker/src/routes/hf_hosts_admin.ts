@@ -19,6 +19,7 @@ import { tryDecryptPii } from "../lib/pii_crypto";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
+import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
 
 
@@ -305,6 +306,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
   }
   await audit(env, a.uid, decision, uid, { reason, from: h.status });
   const notified = await notifyHost(env, a.uid, uid, msg, "/api/admin/hf/hosts/decision");
+  await pushHostDecision(env, undefined, uid, decision as "approve" | "reject" | "pause"); // [HF-APP-4]
   return json({ ok: true, status: decision === "approve" ? "live" : decision === "reject" ? "rejected" : "paused", notified });
 }
 

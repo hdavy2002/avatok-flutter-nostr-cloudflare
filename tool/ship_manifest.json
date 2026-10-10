@@ -9764,5 +9764,21 @@
         "note": "A token-mode call was settled on lots: carries consumed_value_paise, host_earning_paise, billable_seconds, tokens_spent_micro and lots. Only emitted with hfTokensEnabled on, so absence is expected until the owner flips the flag and a test call is made."
       }
     ]
+  },
+  "HF-APP-4": {
+    "description": "[HF-APP-4 2026-10-10] Push notifications to the Android app. Web: lib/appPush.ts (app mode only: explainer sheet, Android permission, FCM register, tap opens the page). Worker: POST/DELETE /api/hf/push/register, D1 hf_push_tokens (migration 2026-10-10-hf-push-tokens.sql), lib/hf_push.ts sendHfPush queues kind hf_push to consumers/src/fcm.ts; hooks next to the WhatsApp sends for Notify-me, profile decision, withdrawal approved/paid and the post-call review request; notifyLowBalance is exported for the billing code. Dark behind hfPushEnabled. Needs the Firebase Android app + HF_GOOGLE_SERVICES_JSON secret in the build, and a worker + consumers deploy.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfPushEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_push_opened",
+        "property": "kind",
+        "equals": "notify_me",
+        "note": "On the caller's phone: asked Notify-me on a host, the host went online on a second phone, the push arrived and tapping it opened the host page."
+      }
+    ]
   }
 }

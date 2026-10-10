@@ -1010,3 +1010,19 @@ Errors (`captureException`, tagged `where`): `hf_app_init`, `hf_app_back_listene
 
 Success for `HF-APP-3`: `hf_app_open` with `platform = android-app` (only possible once the Android shell ships; the plain website is unchanged and emits none of these
 except `hf_token_web_blocked`). The `hf_app_offline_shown`, `hf_app_deeplink_opened`, `hf_app_permission` and push events of HF-APP-8 belong to the later phases.
+
+## Hello Fraands Android app — push notifications (`[HF-APP-4]`, 2026-10-10)
+
+Spec: the Hello Fraands Android app spec, HF-APP-4 / HF-APP-8. Tokens are stored in D1 `hf_push_tokens`; sends go through the push queue to `consumers/src/fcm.ts`
+(kind `hf_push`). The whole thing is behind flag `hfPushEnabled` (default `false`). Token registration works while the flag is off; nothing is sent until it is on.
+Push `kind` values: `notify_me`, `host_approved`, `host_changes`, `withdrawal_approved`, `withdrawal_paid`, `low_balance`, `review_request`.
+
+| Event | Where | Props | Note |
+|---|---|---|---|
+| `hf_app_permission` | web (`lib/appPush.ts`) | `kind: 'push'`, `result: 'granted' \| 'denied' \| 'dismissed'` | `granted`/`denied` = the Android permission prompt answer. `dismissed` = the person tapped "Not now" on our explainer sheet (Android prompt never shown). Camera and mic values for the same event belong to HF-APP-5. |
+| `hf_push_registered` | web (`lib/appPush.ts`) | `shell_version` | FCM gave the app a token and the worker accepted it (`POST /api/hf/push/register` answered ok). |
+| `hf_push_sent` | worker (`lib/hf_push.ts`, via `track`) | `kind` | A push job was queued for a user who has at least one registered device. Not sent when the flag is off, the user has no token, or the copy/path was unsafe. Queue acceptance, not phone receipt. |
+| `hf_push_opened` | web (`lib/appPush.ts`) | `kind` | The person tapped a notification and the app opened its page. **Success value:** arrives for each kind; for `HF-APP-4` the shipped proof is `kind = notify_me`. |
+
+Errors: web `captureException` tagged `where: 'hf_push_register' \| 'hf_push_registration_error' \| 'hf_push_permission' \| 'hf_push_open'`; worker `trackException` routes `hf_push.sendHfPush`,
+`/api/hf/push/register`. FCM send failures and dead-token prunes reuse the existing consumer events `push_send_failed`, `push_token_pruned`.

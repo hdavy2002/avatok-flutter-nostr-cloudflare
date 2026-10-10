@@ -15,6 +15,7 @@ import { readConfig } from "../routes/config";
 import { isAdminUid } from "./preview";
 import { sendWhatsAppText } from "./whatsapp_send";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
+import { pushReviewRequest } from "./hf_push"; // [HF-APP-4]
 import {
   validateReviewInput, tokenExpired, reviewWindowOpen, isRegular, buildAggregate, firstNameOf, callDateIst, toMs,
   REVIEW_WINDOW_MS, REGULAR_CALLS, EMPTY_AGG, type HostAggregate, type StarRow,
@@ -56,9 +57,10 @@ export async function onCallCompleted(env: Env, ctx: ExecutionContext | undefine
         .bind(token, call.id, now + REVIEW_WINDOW_MS, now).run();
       if (!ins.meta?.changes) return; // already minted (and sent) for this call
       const host = await env.DB_META.prepare("SELECT display_name FROM hf_hosts WHERE uid=?1").bind(call.host_uid).first<{ display_name: string | null }>().catch(() => null);
+      const name = firstNameOf(host?.display_name) === "A caller" ? "your host" : firstNameOf(host?.display_name);
+      await pushReviewRequest(env, undefined, call.caller_uid, name, token); // [HF-APP-4] push on top of WhatsApp
       const e164 = await verifiedWhatsAppNumber(env, call.caller_uid);
       if (!e164) return;
-      const name = firstNameOf(host?.display_name) === "A caller" ? "your host" : firstNameOf(host?.display_name);
       await sendWhatsAppText(env, e164, `How was your call with ${name}? ${brandUrl("/review/" + token)}`);
     } catch (e) {
       await trackException(env, e, { route: "hf_reviews.onCallCompleted", handled: true, app_name: APP, extra: { area: "hf_reviews", call: call?.id } });

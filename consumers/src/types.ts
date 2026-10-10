@@ -192,7 +192,9 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "call-prewarm" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear" | "thread_clear";
+  kind: "call" | "call-prewarm" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear" | "thread_clear" | "hf_push";
+  // [HF-APP-4] kind === "hf_push": a visible notification for the HF Android app. Tokens come from hf_push_tokens (not the avaTOK stores).
+  hfKind?: string; path?: string; // title/body are declared further down
   // Feed category copied by Worker notifyUser. Commercial event details remain
   // in data.type and the other allowlisted data keys for the FCM contract.
   type?: string;

@@ -2114,6 +2114,8 @@ export interface PlatformConfig {
   hfTopupConfirmAboveRupees: number;
   // [HF-TOK-MATH-1] Play-token pricing (spec 11.3). DECLARED ONLY: nothing reads these until HF-TOK-LEDGER/CALLS-1. Never sent raw to the browser.
   // hfCheckoutProvider: none|google_play|paytm|razorpay|cashfree. Numbers (paise per minute, basis points) go in numericKeys.
+  // [HF-APP-4] Android push notifications (worker/src/lib/hf_push.ts). Default OFF; never sent raw to the browser.
+  hfPushEnabled: boolean;
   hfTokensEnabled: boolean;
   hfCheckoutProvider: string;
   hfPricingVersion: string;
@@ -2893,6 +2895,7 @@ const DEFAULTS: PlatformConfig = {
   hfDailySpendLimitRupees: 2000, // [HF-WALLET-LIMITS-1]
   hfMonthlySpendLimitRupees: 15000,
   hfTopupConfirmAboveRupees: 1000,
+  hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
   hfPricingVersion: "gp-v1",
@@ -3048,6 +3051,7 @@ export async function getConfig(env: Env): Promise<Response> {
   merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
+  delete merged.hfPushEnabled; // [HF-APP-4] server-only
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
   });

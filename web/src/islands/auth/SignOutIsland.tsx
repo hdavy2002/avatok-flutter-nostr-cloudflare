@@ -110,6 +110,8 @@ function Inner() {
         }
       } catch { /* malformed referrer — the sign-out itself must still run */ }
       try {
+        // [HF-APP-4] Stop pushes for this person on this phone while the session still works (app mode only; never blocks sign-out).
+        try { const m = await import('../../lib/appPush'); await m.unregisterPush(); } catch { /* sign-out must still run */ }
         await clerk.signOut();
         capture('auth_signout', {});
       } catch {

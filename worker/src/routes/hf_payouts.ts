@@ -20,6 +20,7 @@ import { isAdminUid } from "../lib/preview";
 import { tryDecryptPii } from "../lib/pii_crypto";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
+import { pushWithdrawal } from "../lib/hf_push"; // [HF-APP-4]
 import { readConfig } from "./config";
 import { walletOp } from "./wallet";
 import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-CALLS-1]
@@ -256,6 +257,7 @@ async function adminApprove(req: Request, env: Env, id: string): Promise<Respons
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='approved', admin_uid=?2, approved_at=?3, updated_at=?3 WHERE id=?1 AND status='requested'").bind(id, a.uid, now).run();
   if (!up.meta?.changes) return err(409, "invalid_state", "This request changed. Refresh and try again.");
   await audit(env, a.uid, "approved", id, { host: row.host_uid, amount: row.amount_rupees });
+  await pushWithdrawal(env, undefined, row.host_uid, "approved", row.amount_rupees); // [HF-APP-4]
   return json({ ok: true, status: "approved" });
 }
 
@@ -284,6 +286,7 @@ async function adminPaid(req: Request, env: Env, ctx: ExecutionContext | undefin
   const now = Date.now();
   await env.DB_META.prepare("UPDATE hf_payout_requests SET status='paid', utr=?2, admin_uid=?3, paid_at=?4, updated_at=?4 WHERE id=?1 AND status='approved'").bind(id, utr, a.uid, now).run();
   await audit(env, a.uid, "paid", id, { host: row.host_uid, amount: row.amount_rupees, utr });
+  await pushWithdrawal(env, undefined, row.host_uid, "paid", row.amount_rupees); // [HF-APP-4]
   notifyHost(env, ctx, row.host_uid, `Your ${BRAND.name} withdrawal of ₹${row.amount_rupees} has been paid. Bank reference (UTR): ${utr}.`);
   return json({ ok: true, status: "paid" });
 }
