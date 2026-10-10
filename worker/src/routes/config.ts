@@ -2129,6 +2129,10 @@ export interface PlatformConfig {
   hfLegalAddress: string;
   hfStateCode: string; // two-digit GST state code, e.g. "27"
   hfInvoicePrefix: string; // document-number prefix, max 4 chars
+  // [HF-NATIVE-S7] Native Hello Fraands app update check. PUBLIC (the app reads them from /api/config). NUMERIC -> also in `numericKeys`.
+  // Installed build < hfAppLatestBuild = soft "new version" banner; < hfAppMinBuild = blocking update screen. 0 = never prompt.
+  hfAppLatestBuild: number;
+  hfAppMinBuild: number;
   hfPhoneOnlySignupEnabled: boolean; // [HF-AUTH-WA-1] a brand-new WhatsApp number can sign up with no email (routes/whatsapp_auth.ts). Server-only: not in the public config.
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
@@ -2885,6 +2889,8 @@ const DEFAULTS: PlatformConfig = {
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hfPhoneOnlySignupEnabled: false, // [HF-AUTH-WA-1] dark until the owner flips it
+  hfAppLatestBuild: 0, // [HF-NATIVE-S7] newest published native build; 0 = never prompt. Owner bumps in KV per release.
+  hfAppMinBuild: 0, // [HF-NATIVE-S7] oldest build still allowed; below it the app shows a blocking update screen. 0 = never block.
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
@@ -3096,7 +3102,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",
@@ -3312,6 +3318,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfStateCode" && v !== "" && !/^\d{2}$/.test(String(v))) {
       return json({ error: "hfStateCode must be empty or a two-digit GST state code" }, 400);
+    }
+    if ((k === "hfAppLatestBuild" || k === "hfAppMinBuild") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
+      return json({ error: `${k} must be a whole build number 0-100000000` }, 400); // [HF-NATIVE-S7]
     }
     if (k === "hfInvoicePrefix" && !/^[A-Za-z0-9]{1,4}$/.test(String(v))) {
       return json({ error: "hfInvoicePrefix must be 1-4 letters or digits" }, 400);
