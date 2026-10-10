@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -57,7 +59,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // [HF-NATIVE-FIX-1] A call that is still going when the app starts: go back into it (Home stays underneath).
     try {
       final callId = await ref.read(activeCallResumeProvider.future);
-      if (callId != null && mounted) context.push(Routes.callOf(callId));
+      if (callId != null && mounted) unawaited(context.push(Routes.callOf(callId)));
     } catch (_) {
       // never let a resume failure strand the person
     }

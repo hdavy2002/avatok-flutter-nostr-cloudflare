@@ -47,7 +47,7 @@ class EarningsCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(HostCopy.earningsTitle, style: HfText.subtitle),
+              const Text(HostCopy.earningsTitle, style: HfText.subtitle),
               const SizedBox(height: 12),
               _Line(label: HostCopy.earningsAvailable, value: e.available, keyName: 'earn-available', big: true),
               _Line(label: HostCopy.earningsPending, value: e.pending, keyName: 'earn-pending'),
@@ -66,7 +66,7 @@ class EarningsCard extends ConsumerWidget {
                 _Line(label: HostCopy.earningsTest, value: e.testEarnings!, keyName: 'earn-test'),
               const SizedBox(height: 8),
               Text(HostCopy.holdNote(holdDays), style: HfText.note),
-              if (e.testEarnings != null) Text(HostCopy.earningsTestNote, style: HfText.note),
+              if (e.testEarnings != null) const Text(HostCopy.earningsTestNote, style: HfText.note),
             ],
           ),
         );

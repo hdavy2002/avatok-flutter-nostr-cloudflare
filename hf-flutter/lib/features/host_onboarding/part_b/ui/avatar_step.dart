@@ -327,7 +327,7 @@ class _AvatarTile extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(color: HfColors.butter, borderRadius: BorderRadius.circular(HfRadius.pill)),
-                      child: Text(PartBCopy.avatarTaken, style: HfText.badge),
+                      child: const Text(PartBCopy.avatarTaken, style: HfText.badge),
                     ),
                   ),
                 if (selected)

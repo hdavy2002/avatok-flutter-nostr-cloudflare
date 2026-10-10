@@ -32,11 +32,11 @@ class SectionAsync<T> extends StatelessWidget {
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
       data: builder,
-      loading: () => HfCard(
+      loading: () => const HfCard(
         child: Row(
           children: [
-            const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
-            const SizedBox(width: 14),
+            SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
+            SizedBox(width: 14),
             Expanded(child: Text(Strings.loadingDefault, style: HfText.bodyText)),
           ],
         ),

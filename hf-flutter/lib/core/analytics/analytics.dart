@@ -132,14 +132,14 @@ class Analytics {
     if (phone != null && phone.isNotEmpty) {
       _phone = phone;
       await _persist(_phoneKey(uid), phone);
-    } else if (_phone == null) {
-      _phone = await _load(_phoneKey(uid));
+    } else {
+      _phone ??= await _load(_phoneKey(uid));
     }
     if (email != null && email.isNotEmpty) {
       _email = email;
       await _persist(_emailKey(uid), email);
-    } else if (_email == null) {
-      _email = await _load(_emailKey(uid));
+    } else {
+      _email ??= await _load(_emailKey(uid));
     }
     if (!_ready) return;
     try {

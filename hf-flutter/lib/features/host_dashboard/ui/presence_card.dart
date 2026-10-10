@@ -133,7 +133,7 @@ class _PresenceCardState extends ConsumerState<PresenceCard> with WidgetsBinding
         children: [
           Row(
             children: [
-              Expanded(child: Text(HostCopy.presenceTitle, style: HfText.subtitle)),
+              const Expanded(child: Text(HostCopy.presenceTitle, style: HfText.subtitle)),
               StatusPill(presence: pill),
             ],
           ),

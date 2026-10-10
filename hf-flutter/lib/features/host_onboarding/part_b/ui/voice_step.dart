@@ -258,11 +258,11 @@ class _IdeasCardState extends State<_IdeasCard> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: HfColors.blush, borderRadius: BorderRadius.circular(HfRadius.card)),
-              child: Text.rich(
+              child: const Text.rich(
                 TextSpan(
                   children: [
                     TextSpan(text: '${PartBCopy.voiceDontsTitle}: ', style: HfText.bodyStrong),
-                    const TextSpan(text: PartBCopy.voiceDonts, style: HfText.bodyText),
+                    TextSpan(text: PartBCopy.voiceDonts, style: HfText.bodyText),
                   ],
                 ),
               ),

@@ -40,9 +40,9 @@ class PayoutsSection extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+                const Text(HostCopy.payoutsTitle, style: HfText.subtitle),
                 const SizedBox(height: 8),
-                Text(HostCopy.payoutsSoon, style: HfText.bodyText, key: const ValueKey<String>('payouts-soon')),
+                const Text(HostCopy.payoutsSoon, style: HfText.bodyText, key: ValueKey<String>('payouts-soon')),
                 if (p.requests.isNotEmpty) ..._history(context, ref, p),
               ],
             ),
@@ -54,7 +54,7 @@ class PayoutsSection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+              const Text(HostCopy.payoutsTitle, style: HfText.subtitle),
               const SizedBox(height: 10),
               Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.bodyStrong, key: const ValueKey<String>('payout-upto')),
               const SizedBox(height: 4),
@@ -64,7 +64,7 @@ class PayoutsSection extends ConsumerWidget {
                 Text(HostCopy.bank(p.bankLast4!, p.bankIfsc), style: HfText.note, key: const ValueKey<String>('payout-bank')),
               ],
               const SizedBox(height: 4),
-              Text(HostCopy.manualNote, style: HfText.note),
+              const Text(HostCopy.manualNote, style: HfText.note),
               const SizedBox(height: 14),
               if (block != null) ...[
                 Text(_blockText(block, p), style: HfText.bodyText, key: const ValueKey<String>('payout-block')),
@@ -100,10 +100,10 @@ class PayoutsSection extends ConsumerWidget {
   List<Widget> _history(BuildContext context, WidgetRef ref, PayoutsData p) {
     return [
       const SizedBox(height: 18),
-      Text(HostCopy.historyTitle, style: HfText.bodyStrong),
+      const Text(HostCopy.historyTitle, style: HfText.bodyStrong),
       const SizedBox(height: 6),
       if (p.requests.isEmpty)
-        Text(HostCopy.historyEmpty, style: HfText.note, key: const ValueKey<String>('payout-history-empty'))
+        const Text(HostCopy.historyEmpty, style: HfText.note, key: ValueKey<String>('payout-history-empty'))
       else
         for (final r in p.requests) PayoutRow(request: r, onCancel: r.canCancel ? () => _confirmCancel(context, ref, r) : null),
     ];
@@ -305,7 +305,7 @@ class _PayoutSheetState extends ConsumerState<PayoutSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(HostCopy.requestTitle, style: HfText.title),
+            const Text(HostCopy.requestTitle, style: HfText.title),
             const SizedBox(height: 6),
             Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.note),
             Text(HostCopy.rules(Money.rupees(p.minRupees), p.maxPerWeek), style: HfText.note),

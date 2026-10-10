@@ -144,7 +144,7 @@ class _Rig {
 }
 
 /// Pumps the whole app at `/h/asha`. The picture builder, audio player and call confirm opener are faked.
-Future<_Rig> pumpProfile(
+Future<_Rig> _pumpProfile(
   WidgetTester tester, {
   required FakeApiClient api,
   SessionState? session,
@@ -207,7 +207,7 @@ void main() {
     testWidgets('loading shows plain text and a spinner, then the profile', (tester) async {
       final gate = Completer<Object?>();
       final api = FakeApiClient()..on('GET', _profilePath, (_) => gate.future);
-      await pumpProfile(tester, api: api, settle: false);
+      await _pumpProfile(tester, api: api, settle: false);
       expect(find.text('Loading profile…'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       gate.complete(profileJson());
@@ -216,7 +216,7 @@ void main() {
     });
 
     testWidgets('content: name, tagline, price, topics with labels, languages, about and quote', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(lgbtq: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(lgbtq: true)));
       expect(find.text('Asha'), findsOneWidget);
       expect(find.text('A warm listener'), findsOneWidget);
       expect(find.text('Online now'), findsOneWidget);
@@ -234,7 +234,7 @@ void main() {
     testWidgets('not found shows "This profile isn\'t available." and a way back', (tester) async {
       final api = FakeApiClient()
         ..onError('GET', _profilePath, const ApiError(status: 404, code: 'not_found', message: 'not_found'));
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       expect(find.text("This profile isn't available."), findsOneWidget);
       expect(find.text('Explore hosts'), findsOneWidget);
       expect(find.text('Call'), findsNothing);
@@ -248,7 +248,7 @@ void main() {
           if (attempts == 1) throw const ApiError(status: 500, code: 'http_500');
           return profileJson();
         });
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
@@ -261,14 +261,14 @@ void main() {
         hostProfileCacheKey('asha'): jsonEncode({'at': DateTime.now().toIso8601String(), 'data': profileJson()}),
       });
       final api = FakeApiClient()..onError('GET', _profilePath, ApiError.network());
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       expect(find.text('Showing saved profile'), findsOneWidget);
       expect(find.text('Asha'), findsOneWidget);
     });
 
     testWidgets('offline with nothing saved shows the no-internet panel', (tester) async {
       final api = FakeApiClient()..onError('GET', _profilePath, ApiError.network());
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
     });
@@ -276,7 +276,7 @@ void main() {
 
   group('AI labels', () {
     testWidgets('avatar, gallery section and every gallery picture are labelled at 14 sp or more', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true)));
       for (final label in ['AI avatar chosen by the host', 'AI images', 'AI image', 'Recorded by the host']) {
         final texts = tester.widgetList<Text>(find.text(label)).toList();
         expect(texts, isNotEmpty, reason: label);
@@ -288,7 +288,7 @@ void main() {
     });
 
     testWidgets('no text on the profile is smaller than 14 sp', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true, reviews: true, womenOnly: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true, reviews: true, womenOnly: true)));
       for (final t in tester.widgetList<Text>(find.byType(Text))) {
         final size = t.style?.fontSize;
         if (size != null) expect(size, greaterThanOrEqualTo(14), reason: '"${t.data}"');
@@ -298,7 +298,7 @@ void main() {
 
   group('action bar', () {
     testWidgets('online + signed in: Call opens the call confirm step for this host', (tester) async {
-      final rig = await pumpProfile(tester, api: apiWith(profileJson()), session: signedIn());
+      final rig = await _pumpProfile(tester, api: apiWith(profileJson()), session: signedIn());
       expect(find.text('Call'), findsOneWidget);
       expect(find.text('Notify me when online'), findsNothing);
       await tester.tap(find.text('Call'));
@@ -307,7 +307,7 @@ void main() {
     });
 
     testWidgets('online + signed out: Call asks for sign-in first', (tester) async {
-      final rig = await pumpProfile(tester, api: apiWith(profileJson()));
+      final rig = await _pumpProfile(tester, api: apiWith(profileJson()));
       await tester.tap(find.text('Call'));
       await tester.pumpAndSettle();
       expect(rig.opened, isEmpty);
@@ -316,7 +316,7 @@ void main() {
     });
 
     testWidgets('busy: "Notify me when free" and a note, no Call', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(status: 'busy')), session: signedIn());
+      await _pumpProfile(tester, api: apiWith(profileJson(status: 'busy')), session: signedIn());
       expect(find.text('On a call'), findsOneWidget);
       expect(find.text('Notify me when free'), findsOneWidget);
       expect(find.text('Asha is on a call right now.'), findsOneWidget);
@@ -324,7 +324,7 @@ void main() {
     });
 
     testWidgets('offline: "Notify me when online" and a note, no Call', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(status: 'offline')), session: signedIn());
+      await _pumpProfile(tester, api: apiWith(profileJson(status: 'offline')), session: signedIn());
       expect(find.text('Offline'), findsOneWidget);
       expect(find.text('Notify me when online'), findsOneWidget);
       expect(find.text('Asha is offline right now.'), findsOneWidget);
@@ -332,7 +332,7 @@ void main() {
     });
 
     testWidgets('women-only host, caller not in the lane: Verify to call explains the space and opens lanes', (tester) async {
-      final rig = await pumpProfile(
+      final rig = await _pumpProfile(
         tester,
         api: apiWith(profileJson(womenOnly: true)),
         session: signedIn(),
@@ -348,7 +348,7 @@ void main() {
     });
 
     testWidgets('women-only host, caller already in the lane: Call', (tester) async {
-      final rig = await pumpProfile(
+      final rig = await _pumpProfile(
         tester,
         api: apiWith(profileJson(womenOnly: true)),
         session: signedIn(womenLane: true),
@@ -362,7 +362,7 @@ void main() {
     testWidgets('calls flag off: a disabled "Calls open soon"', (tester) async {
       final api = apiWith(profileJson())
         ..onJson('GET', '/api/config', {'hostsPublicEnabled': true, 'hfCallsEnabled': false});
-      await pumpProfile(tester, api: api, session: signedIn());
+      await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('Calls open soon'), findsOneWidget);
       expect(find.text('Call'), findsNothing);
       final button = tester.widget<ElevatedButton>(
@@ -380,13 +380,13 @@ void main() {
           'aboutText': 'about 8 min 12 s',
           'canStart': true,
         });
-      await pumpProfile(tester, api: api, session: signedIn());
+      await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('about 8 min 12 s'), findsOneWidget);
     });
 
     testWidgets('no token estimate when signed out', (tester) async {
       final api = apiWith(profileJson());
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       expect(api.callsTo('GET', '/api/hf/wallet/estimate'), isEmpty);
       expect(find.textContaining('about 8 min'), findsNothing);
     });
@@ -395,7 +395,7 @@ void main() {
   group('notify me', () {
     testWidgets('signed out: asks for sign-in, sends nothing', (tester) async {
       final api = apiWith(profileJson(status: 'offline'));
-      await pumpProfile(tester, api: api);
+      await _pumpProfile(tester, api: api);
       await tester.tap(find.text('Notify me when online'));
       await tester.pumpAndSettle();
       expect(find.byType(SignInScreen), findsOneWidget);
@@ -405,7 +405,7 @@ void main() {
     testWidgets('success: POST and "We\'ll WhatsApp you when they\'re online."', (tester) async {
       final api = apiWith(profileJson(status: 'offline'))
         ..onJson('POST', _notifyPath, {'ok': true, 'subscribed': true});
-      await pumpProfile(tester, api: api, session: signedIn());
+      await _pumpProfile(tester, api: api, session: signedIn());
       await tester.tap(find.text('Notify me when online'));
       await tester.pumpAndSettle();
       expect(api.callsTo('POST', _notifyPath), hasLength(1));
@@ -420,7 +420,7 @@ void main() {
           _notifyPath,
           const ApiError(status: 403, code: 'not_verified', message: 'Verify your WhatsApp number first.'),
         );
-      await pumpProfile(tester, api: api, session: signedIn());
+      await _pumpProfile(tester, api: api, session: signedIn());
       await tester.tap(find.text('Notify me when free'));
       await tester.pumpAndSettle();
       expect(find.text('Verify your WhatsApp number first.'), findsOneWidget);
@@ -431,7 +431,7 @@ void main() {
     testWidgets('already subscribed: Stop notifying me sends DELETE', (tester) async {
       final api = apiWith(profileJson(status: 'offline'), notifySubscribed: true)
         ..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
-      await pumpProfile(tester, api: api, session: signedIn());
+      await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('Stop notifying me'), findsOneWidget);
       await tester.tap(find.text('Stop notifying me'));
       await tester.pumpAndSettle();
@@ -442,14 +442,14 @@ void main() {
 
   group('voice intro', () {
     testWidgets('hidden when the host has none', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson()));
+      await _pumpProfile(tester, api: apiWith(profileJson()));
       expect(find.text('Recorded by the host'), findsNothing);
       expect(find.byTooltip('Play introduction'), findsNothing);
     });
 
     testWidgets('play, progress and pause', (tester) async {
       final player = FakeIntroPlayer();
-      await pumpProfile(tester, api: apiWith(profileJson(intro: true)), player: player);
+      await _pumpProfile(tester, api: apiWith(profileJson(intro: true)), player: player);
       expect(find.text('Recorded by the host'), findsOneWidget);
       expect(find.text('00:00 / 00:30'), findsOneWidget);
       await tester.tap(find.byTooltip('Play introduction'));
@@ -468,7 +468,7 @@ void main() {
 
   group('reviews, gallery, report', () {
     testWidgets('reviews show first name, stars and text', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(reviews: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(reviews: true)));
       expect(find.text('Ravi'), findsOneWidget);
       expect(find.text('Very kind and patient.'), findsOneWidget);
       expect(find.text('4.6'), findsNWidgets(2)); // header and summary
@@ -477,7 +477,7 @@ void main() {
     });
 
     testWidgets('gallery swipes to the next picture and shows its caption', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson(gallery: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true)));
       await tester.ensureVisible(find.byType(PageView));
       await tester.pumpAndSettle();
       expect(find.text('Morning chai'), findsOneWidget);
@@ -487,7 +487,7 @@ void main() {
     });
 
     testWidgets('Report opens the web report page for this host', (tester) async {
-      await pumpProfile(tester, api: apiWith(profileJson()));
+      await _pumpProfile(tester, api: apiWith(profileJson()));
       await tester.ensureVisible(find.text('Report this profile'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Report this profile'));

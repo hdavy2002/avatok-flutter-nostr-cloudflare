@@ -27,7 +27,7 @@ class TodayCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(HostCopy.todayTitle, style: HfText.subtitle),
+            const Text(HostCopy.todayTitle, style: HfText.subtitle),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,10 +96,10 @@ class _CallsSectionState extends ConsumerState<CallsSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(HostCopy.callsTitle, style: HfText.subtitle),
+              const Text(HostCopy.callsTitle, style: HfText.subtitle),
               const SizedBox(height: 8),
               if (d.calls.isEmpty)
-                Text(HostCopy.callsEmpty, style: HfText.bodyText, key: const ValueKey<String>('calls-empty'))
+                const Text(HostCopy.callsEmpty, style: HfText.bodyText, key: ValueKey<String>('calls-empty'))
               else ...[
                 for (final c in shown) CallRow(call: c, earning: byCall[c.id]),
                 if (d.calls.length > _firstPage)
