@@ -97,7 +97,10 @@ void main() {
       await pumpWallet(tester, api: walletApi(wallet: w), billing: billing);
       expect(find.text('Paid via Google Play'), findsOneWidget);
       expect(find.textContaining('Order GPA.3300-1'), findsOneWidget);
-      expect(find.text('100 tokens'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey<String>('purchases')), matching: find.text('100 tokens')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the wallet is read live every time it opens: no cache', (tester) async {

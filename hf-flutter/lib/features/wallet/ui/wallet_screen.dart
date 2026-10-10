@@ -43,8 +43,6 @@ class WalletScreen extends ConsumerStatefulWidget {
 }
 
 class _WalletScreenState extends ConsumerState<WalletScreen> {
-  bool _viewed = false;
-
   @override
   void initState() {
     super.initState();
@@ -70,15 +68,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    ref.listen<AsyncValue<WalletData>>(walletProvider, (prev, next) {
-      final data = valueOf(next);
-      if (data == null || _viewed) return;
-      _viewed = true;
-      Analytics.capture('hf_app_wallet_viewed', {
-        'mode': data.tokenMode ? 'tokens' : 'legacy',
-        'has_debt': data.hasDebt,
-      });
-    });
 
     final Widget body;
     if (session.isLoading) {
@@ -100,13 +89,30 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   }
 }
 
-class _WalletBody extends ConsumerWidget {
+/// Only built for a signed-in person, so a guest never reads the wallet.
+class _WalletBody extends ConsumerStatefulWidget {
   const _WalletBody({required this.onRefresh});
 
   final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_WalletBody> createState() => _WalletBodyState();
+}
+
+class _WalletBodyState extends ConsumerState<_WalletBody> {
+  bool _viewed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<AsyncValue<WalletData>>(walletProvider, (prev, next) {
+      final data = valueOf(next);
+      if (data == null || _viewed) return;
+      _viewed = true;
+      Analytics.capture('hf_app_wallet_viewed', {
+        'mode': data.tokenMode ? 'tokens' : 'legacy',
+        'has_debt': data.hasDebt,
+      });
+    });
     final wallet = ref.watch(walletProvider);
     return wallet.when(
       skipLoadingOnReload: true,
@@ -116,7 +122,7 @@ class _WalletBody extends ConsumerWidget {
         if (e is ApiError && e.isNotEnabled) return const ComingSoonPanel();
         return ErrorPanel(error: e, onRetry: () => ref.invalidate(walletProvider));
       },
-      data: (data) => _WalletList(data: data, onRefresh: onRefresh),
+      data: (data) => _WalletList(data: data, onRefresh: widget.onRefresh),
     );
   }
 }

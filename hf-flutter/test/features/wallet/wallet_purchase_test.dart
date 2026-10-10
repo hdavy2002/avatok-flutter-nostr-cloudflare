@@ -63,8 +63,8 @@ void main() {
             productId: 'hf_tokens_1000', priceText: 'Rs 999.99 (from Play)', currencyCode: 'INR', priceMicros: 999990000),
       };
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.text('Rs 99.99 (from Play)'), findsOneWidget);
-      expect(find.text('Rs 999.99 (from Play)'), findsOneWidget);
+      expect(find.text('Buy for Rs 99.99 (from Play)'), findsOneWidget);
+      expect(find.text('Buy for Rs 999.99 (from Play)'), findsOneWidget);
       expect(find.text('Each token worth ₹0.82 of call time'), findsNWidgets(2));
     });
 
@@ -201,7 +201,9 @@ void main() {
   group('Are you sure?', () {
     Future<void> buy1000(WidgetTester tester) async {
       await tester.tap(buyButton('hf_tokens_1000'));
-      await tester.pumpAndSettle();
+      // Not pumpAndSettle: "Getting ready" shows a spinner while the question is open, and it never settles.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
     }
 
     testWidgets('a pack at or above the server threshold asks first; Yes buys', (tester) async {

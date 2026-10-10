@@ -153,29 +153,22 @@ class _PackCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final per = offer.pack.redemptionPaisePerToken;
-    final price = offer.priceText ?? BuyCopy.unavailable;
+    final price = offer.priceText;
     return HfCard(
       key: ValueKey<String>('pack-${offer.productId}'),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tokensPlain(offer.pack.tokens), style: HfText.subtitle),
-                if (per != null) ...[
-                  const SizedBox(height: 4),
-                  Text('Each token worth ${Money.paise(per)} of call time', style: HfText.note),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // The label is Play's own price string. No price is ever typed or taken from our server.
+          Text(tokensPlain(offer.pack.tokens), style: HfText.subtitle),
+          if (per != null) ...[
+            const SizedBox(height: 4),
+            Text('Each token worth ${Money.paise(per)} of call time', style: HfText.note),
+          ],
+          const SizedBox(height: 12),
+          // The label carries Play's own price string. No price is ever typed or taken from our server.
           HfButton(
             key: ValueKey<String>('buy-${offer.productId}'),
-            label: price,
-            expand: false,
+            label: price == null ? BuyCopy.unavailable : 'Buy for $price',
             onPressed: enabled ? () => _buy(context, ref) : null,
           ),
         ],
