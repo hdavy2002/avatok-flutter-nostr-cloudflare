@@ -10,11 +10,12 @@ import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
-import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/host_profile/data/host_profile.dart';
 import 'package:hf_app/features/host_profile/data/host_profile_providers.dart';
+import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/host_profile/data/intro_player.dart';
+import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
 import 'package:hf_app/features/host_profile/ui/widgets/net_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -140,7 +141,6 @@ class _Rig {
   /// Slugs the call confirm opener was asked to open.
   final List<String> opened;
 
-  String get location => container.read(appRouterProvider).routeInformationProvider.value.uri.toString();
 }
 
 /// Pumps the whole app at `/h/asha`. The picture builder, audio player and call confirm opener are faked.
@@ -311,8 +311,8 @@ void main() {
       await tester.tap(find.text('Call'));
       await tester.pumpAndSettle();
       expect(rig.opened, isEmpty);
-      expect(rig.location, startsWith('/sign-in'));
-      expect(rig.location, contains('next='));
+      expect(find.byType(SignInScreen), findsOneWidget);
+      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next, '/h/asha');
     });
 
     testWidgets('busy: "Notify me when free" and a note, no Call', (tester) async {
@@ -343,7 +343,8 @@ void main() {
       await tester.tap(find.text('Verify to call'));
       await tester.pumpAndSettle();
       expect(rig.opened, isEmpty);
-      expect(rig.location, '/lanes?lane=women');
+      expect(find.byType(LanesScreen), findsOneWidget);
+      expect(tester.widget<LanesScreen>(find.byType(LanesScreen)).lane, 'women');
     });
 
     testWidgets('women-only host, caller already in the lane: Call', (tester) async {
@@ -394,10 +395,10 @@ void main() {
   group('notify me', () {
     testWidgets('signed out: asks for sign-in, sends nothing', (tester) async {
       final api = apiWith(profileJson(status: 'offline'));
-      final rig = await pumpProfile(tester, api: api);
+      await pumpProfile(tester, api: api);
       await tester.tap(find.text('Notify me when online'));
       await tester.pumpAndSettle();
-      expect(rig.location, startsWith('/sign-in'));
+      expect(find.byType(SignInScreen), findsOneWidget);
       expect(api.callsTo('POST', _notifyPath), isEmpty);
     });
 
@@ -477,6 +478,8 @@ void main() {
 
     testWidgets('gallery swipes to the next picture and shows its caption', (tester) async {
       await pumpProfile(tester, api: apiWith(profileJson(gallery: true)));
+      await tester.ensureVisible(find.byType(PageView));
+      await tester.pumpAndSettle();
       expect(find.text('Morning chai'), findsOneWidget);
       await tester.drag(find.byType(PageView), const Offset(-500, 0));
       await tester.pumpAndSettle();

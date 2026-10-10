@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/tab_shell.dart';
 
@@ -56,7 +57,7 @@ void main() {
     final c = await pumpApp(tester);
     c.read(appRouterProvider).go('/h/asha');
     await tester.pumpAndSettle();
-    expect(find.text('slug: asha'), findsOneWidget);
+    expect(find.byType(HostProfileScreen), findsOneWidget); // no sign-in redirect
   });
 
   testWidgets('a call link for a guest goes to sign-in, then keeps the target', (tester) async {

@@ -43,7 +43,10 @@ final hostProfileProvider = FutureProvider.autoDispose.family<HostProfileResult,
     }
     rethrow;
   }
-});
+},
+    // No automatic retry (Riverpod 3 retries a failed provider by default): a 404 must show "not available"
+    // at once, and an offline phone must show its saved copy or "Try again", not a long spinner.
+    retry: (_, __) => null);
 
 Future<void> _remember(JsonCache cache, String slug, Map<String, dynamic> json) async {
   await cache.write(hostProfileCacheKey(slug), json);
