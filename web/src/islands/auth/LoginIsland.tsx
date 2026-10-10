@@ -41,7 +41,7 @@ import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, withTrace } from '../../lib/analytics';
 import { postLoginTarget, isFreeWatchTarget } from '../../lib/authRedirect';
 import {
-  Field, Button, Divider, GoogleButton, CodeStep,
+  Field, Button, CheckRow, Divider, GoogleButton, CodeStep,
   validateEmail, useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
   type FieldErrors,
 } from './AuthKit';
@@ -51,7 +51,7 @@ import {
 } from './passwordless';
 import {
   sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
-  storeWaProof, readWaProof, clearWaProof, claimWhatsAppProof,
+  storeWaProof, readWaProof, clearWaProof, claimWhatsAppProof, confirmAge18,
 } from './whatsappAuth';
 import { WhatsAppNumberInput } from './WhatsAppNumberInput';
 import { getActiveTokenWaited } from '../../lib/clerk';
@@ -100,7 +100,10 @@ function Inner() {
   // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default; a pending
   // WhatsApp proof (needs_email hand-off) reopens on email.
   const [method, setMethodState] = useState<'email' | 'whatsapp'>(() => (readWaProof() || isFreeWatchTarget(nextUrl()) ? 'email' : 'whatsapp'));
-  const [waStage, setWaStage] = useState<'number' | 'code' | 'needs_email'>('number');
+  const [waStage, setWaStage] = useState<'number' | 'code' | 'needs_email' | 'age'>('number');
+  // [HF-AUTH-WA-1] A brand-new phone-only account holds its ticket here until the 18+ tick is given.
+  const [waTicket, setWaTicket] = useState<string | null>(null);
+  const [waAgree, setWaAgree] = useState(false);
   const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
   const [waNational, setWaNational] = useState('');
   const [waCode, setWaCode] = useState('');
@@ -269,6 +272,12 @@ function Inner() {
     setFormError(null);
     try {
       const r = await verifyWhatsAppCode(waE164(), waCode.trim());
+      if (r.status === 'signed_in' && r.needs18Plus) {
+        // [HF-AUTH-WA-1] New phone-only account: ask for the 18+ tick before opening the session.
+        setWaTicket(r.ticket);
+        setWaStage('age');
+        return;
+      }
       if (r.status === 'signed_in') {
         finishingRef.current = true;
         await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, r.ticket);
@@ -285,6 +294,27 @@ function Inner() {
     } catch (err) {
       finishingRef.current = false;
       setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** [HF-AUTH-WA-1] The 18+ tick for a phone-only account: open the session, record the tick, go. */
+  async function confirmWaAge() {
+    if (submitting || !waTicket) return;
+    if (!waAgree) { setFormError('Please confirm that you are 18 or over to continue.'); return; }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      finishingRef.current = true;
+      await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, waTicket);
+      const token = await getActiveTokenWaited();
+      if (!token) throw new Error('no_token');
+      await confirmAge18(token);
+      location.href = afterSignInUrl();
+    } catch (err) {
+      finishingRef.current = false;
+      setFormError(waApiMessage(err, 'We couldn’t finish that. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -349,7 +379,7 @@ function Inner() {
 
   if (method === 'whatsapp') {
     return (
-      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : verifyWa()); }} noValidate>
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : waStage === 'age' ? confirmWaAge() : verifyWa()); }} noValidate>
         <div className="auth-desktop-head">
           <p className="auth-eyebrow"><UiText id="web-auth.6621249514b7887c" source="Welcome back" /></p>
           <h1 className="auth-h2">Good to see you</h1>
@@ -367,6 +397,14 @@ function Inner() {
             />
             <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to sign you in.</p>
             <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
+          </>
+        )}
+        {waStage === 'age' && (
+          <>
+            <CheckRow className="auth-terms" large checked={waAgree} onChange={setWaAgree}>
+              I’m 18 or over and I agree to the <a href="/terms">terms</a> and <a href="/community-guidelines">safety rules</a>.
+            </CheckRow>
+            <Button type="submit" loading={submitting}>Continue</Button>
           </>
         )}
         {waStage === 'code' && (

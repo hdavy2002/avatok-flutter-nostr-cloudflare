@@ -55,7 +55,7 @@ import { adminListings, adminListingAction, adminListingDetail, adminEditListing
 import { listingReview } from "./routes/listing_review";
 import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
 import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp"; // [WEB-PHONE-OTP-1]
-import { whatsappAuthSend, whatsappAuthVerify, accountPhoneClaim } from "./routes/whatsapp_auth"; // [WA-LOGIN-1]
+import { whatsappAuthSend, whatsappAuthVerify, accountPhoneClaim, hfAgeConfirm } from "./routes/whatsapp_auth"; // [WA-LOGIN-1]
 import { meDashboardRoute } from "./routes/me_dashboard"; // [DASH2-API]
 import { admin2Route } from "./routes/admin2"; // [ADMIN2-API]
 import { agentMemoryRoute } from "./routes/agent_memory"; // [AUMFE-AGENT-MEMORY-1]
@@ -1117,6 +1117,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
+      if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p.startsWith("/api/admin/hf/limits/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]

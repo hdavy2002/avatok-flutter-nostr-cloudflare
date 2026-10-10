@@ -9872,5 +9872,21 @@
         "note": "The owner's first real Play purchase of hf_tokens_100 (Rs 100) was verified and its lot created (tokens=100). Only possible once the Android app ships, the secrets are set and hfTokensEnabled is on, so absence is expected until then."
       }
     ]
+  },
+  "HF-AUTH-WA-1": {
+    "description": "[HF-AUTH-WA-1 2026-10-10] WhatsApp-only sign-up/sign-in (no email) for the native app and the web. POST /api/auth/whatsapp/verify: with hfPhoneOnlySignupEnabled ON, an unknown number gets a Clerk user made by the Worker (external_id hfwa_*, generated username, no email/phone/password), the app users row (phone hash, WhatsApp verified, handle) and answers signed_in + ticket + isNew + needs18Plus; racing verifies are serialised by D1 table hf_phone_signup (migration 2026-10-10-hf-auth-wa.sql, apply before flipping). `client` hint is telemetry only. 18+ confirmation: needs18Plus until POST /api/hf/account/age-confirm (hf_age_confirm) or age_confirmed:true in verify; web sign-in/sign-up show a tick step. Flag off = the old needs_email flow, unchanged. Needs the Clerk dashboard setting 'Require email address' OFF. Native contract: Specs/HF-NATIVE-AUTH.md. Worker + web.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhoneOnlySignupEnabled"
+    ],
+    "success": [
+      {
+        "event": "auth_whatsapp_signup",
+        "property": "is_new",
+        "equals": true,
+        "note": "A spare WhatsApp number that had no account signed up with no email (flag on) and landed signed in; the Clerk dashboard shows a user with username hf..., external id hfwa_..., no email."
+      }
+    ]
   }
 }

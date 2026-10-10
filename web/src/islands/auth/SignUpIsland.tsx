@@ -62,7 +62,7 @@ import {
 } from './passwordless';
 import {
   sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
-  storeWaProof, readWaProof, claimWhatsAppProof,
+  storeWaProof, readWaProof, claimWhatsAppProof, confirmAge18,
 } from './whatsappAuth';
 import { WhatsAppNumberInput } from './WhatsAppNumberInput';
 import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
@@ -184,7 +184,10 @@ function Inner() {
   // number of an account that already exists).
   // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default.
   const [method, setMethod] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
-  const [waStage, setWaStage] = useState<'number' | 'code'>('number');
+  const [waStage, setWaStage] = useState<'number' | 'code' | 'age'>('number');
+  // [HF-AUTH-WA-1] A brand-new phone-only account holds its ticket here until the 18+ tick is given.
+  const [waTicket, setWaTicket] = useState<string | null>(null);
+  const [waAgree, setWaAgree] = useState(false);
   const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
   const [waNational, setWaNational] = useState('');
   const [waCode, setWaCode] = useState('');
@@ -315,6 +318,12 @@ function Inner() {
     setFormError(null);
     try {
       const r = await verifyWhatsAppCode(waE164(), waCode.trim());
+      if (r.status === 'signed_in' && r.needs18Plus) {
+        // [HF-AUTH-WA-1] New phone-only account: ask for the 18+ tick before opening the session.
+        setWaTicket(r.ticket);
+        setWaStage('age');
+        return;
+      }
       if (r.status === 'signed_in') {
         await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, r.ticket);
         location.href = destination();
@@ -327,6 +336,25 @@ function Inner() {
       setMethod('email');
     } catch (err) {
       setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** [HF-AUTH-WA-1] The 18+ tick for a phone-only account: open the session, record the tick, go. */
+  async function confirmWaAge() {
+    if (submitting || !waTicket) return;
+    if (!waAgree) { setFormError('Please confirm that you are 18 or over to continue.'); return; }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, waTicket);
+      const token = await getActiveTokenWaited();
+      if (!token) throw new Error('no_token');
+      await confirmAge18(token);
+      location.href = destination();
+    } catch (err) {
+      setFormError(waApiMessage(err, 'We couldn’t finish that. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -645,7 +673,7 @@ function Inner() {
   // fresh sign-up, never in finish/resume mode.
   if (method === 'whatsapp') {
     return (
-      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : verifyWa()); }} noValidate>
+      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : waStage === 'age' ? confirmWaAge() : verifyWa()); }} noValidate>
         <div className="auth-desktop-head">
           <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
           <h1 className="auth-h2">Create my account</h1>
@@ -666,6 +694,14 @@ function Inner() {
             />
             <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to create your account.</p>
             <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
+          </>
+        )}
+        {waStage === 'age' && (
+          <>
+            <CheckRow className="auth-terms" large checked={waAgree} onChange={setWaAgree}>
+              I’m 18 or over and I agree to the <a href="/terms">terms</a> and <a href="/community-guidelines">safety rules</a>.
+            </CheckRow>
+            <Button type="submit" loading={submitting}>Continue</Button>
           </>
         )}
         {waStage === 'code' && (

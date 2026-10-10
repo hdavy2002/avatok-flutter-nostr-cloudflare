@@ -2129,6 +2129,7 @@ export interface PlatformConfig {
   hfLegalAddress: string;
   hfStateCode: string; // two-digit GST state code, e.g. "27"
   hfInvoicePrefix: string; // document-number prefix, max 4 chars
+  hfPhoneOnlySignupEnabled: boolean; // [HF-AUTH-WA-1] a brand-new WhatsApp number can sign up with no email (routes/whatsapp_auth.ts). Server-only: not in the public config.
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2883,6 +2884,7 @@ const DEFAULTS: PlatformConfig = {
   hfPayoutMaxPerWeek: 2,
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
   hostsPublicEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
+  hfPhoneOnlySignupEnabled: false, // [HF-AUTH-WA-1] dark until the owner flips it
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
@@ -3052,6 +3054,7 @@ export async function getConfig(env: Env): Promise<Response> {
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
+  delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",
   });

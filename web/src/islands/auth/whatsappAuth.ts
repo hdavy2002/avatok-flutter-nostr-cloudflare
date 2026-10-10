@@ -38,6 +38,10 @@ export interface WaVerifySignedIn {
   ok: boolean;
   status: 'signed_in';
   ticket: string;
+  /** [HF-AUTH-WA-1] Present only while the server's phone-only sign-up flag is on. */
+  isNew?: boolean;
+  /** [HF-AUTH-WA-1] true = a new phone-only account that has not yet confirmed 18+. */
+  needs18Plus?: boolean;
 }
 export interface WaVerifyNeedsEmail {
   ok: boolean;
@@ -77,7 +81,7 @@ export async function sendWhatsAppCode(phone: string): Promise<WaSendResult> {
 /** POST /api/auth/whatsapp/verify — no auth. */
 export async function verifyWhatsAppCode(phone: string, code: string): Promise<WaVerifyResult> {
   try {
-    const r = await request<WaVerifyResult>('/api/auth/whatsapp/verify', { method: 'POST', body: { phone, code } });
+    const r = await request<WaVerifyResult>('/api/auth/whatsapp/verify', { method: 'POST', body: { phone, code, client: 'web' } });
     capture('auth_whatsapp_verify', { status: r.status });
     return r;
   } catch (e) {
@@ -154,4 +158,14 @@ export async function claimWhatsAppProof(proof: string, auth: string): Promise<{
     if (!(e instanceof ApiError)) captureException(e, { where: 'phone_claim' });
     throw e;
   }
+}
+
+/**
+ * [HF-AUTH-WA-1] POST /api/hf/account/age-confirm (auth) — stores the "I'm 18 or over"
+ * tick for a phone-only account (the server asks for it with needs18Plus:true).
+ */
+export async function confirmAge18(auth: string): Promise<void> {
+  await request<{ ok: boolean }>('/api/hf/account/age-confirm', {
+    method: 'POST', auth, body: { confirmed: true, client: 'web' },
+  });
 }
