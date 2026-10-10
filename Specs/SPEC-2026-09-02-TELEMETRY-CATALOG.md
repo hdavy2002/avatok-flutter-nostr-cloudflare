@@ -1183,3 +1183,18 @@ the phone number, an amount of money or a token count.
 | `hf_app_update_prompt` | `kind: 'soft' \| 'forced'`, `action: 'shown' \| 'update_tapped' \| 'dismissed'`, `installed` | The update banner (`soft`, installed build below `hfAppLatestBuild`) or the blocking screen (`forced`, below `hfAppMinBuild`). `shown` once per process and kind, `update_tapped` = the Update button opened the Play Store, `dismissed` = Not now on the banner (the blocking screen has no such button). `installed` is the build number. **Success value:** after the owner sets `hfAppLatestBuild` above the installed build, `kind = soft`, `action = shown` arrives. |
 
 Success for `HF-NATIVE-12`: `hf_app_me_viewed` with `platform = android-app`.
+
+
+## Hello Fraands native app: host onboarding part B (`[HF-NATIVE-10]`, `hf-flutter/lib/features/host_onboarding/part_b/`, 2026-10-10)
+
+Avatar, about, languages, topics, price, hours, voice introduction, review, profile making, preview and submit. Same super properties as the rest of the native app (`platform = android-app`, `service_name = hf-app`). Nothing the host typed (name, about text, tagline, transcript) and no audio ever rides on these events.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_onboarding_step` | `step: 'avatar' \| 'about' \| 'languages' \| 'topics' \| 'price' \| 'hours' \| 'voice' \| 'review' \| 'generating' \| 'preview'`, `result: 'ok' \| 'saved' \| 'claimed' \| 'taken' \| 'started' \| 'done' \| 'failed' \| 'submitted' \| 'blocked' \| 'error'`, `reason?`, `status?` | One per finished step action. `ok` = Continue after the fields saved; `claimed` / `taken` = avatar claim; `saved` = voice upload accepted or a tagline / quote / about edit saved; `started` / `done` / `failed` = the profile job; `submitted` = sent for review; `blocked` = the phone refused a recording (`reason = too_short` or `too_long`) before uploading. On `error` and `failed`, `reason` is the worker code (`invalid_field`, `locked`, `profile_incomplete`, `attempts_exhausted`, `incomplete`, `network`, ...) and `status` the HTTP status. |
+| `hf_app_voice_recorded` | `seconds: number` | The worker accepted the voice introduction (`PUT /api/hosts/me/voice`, 30 to 300 seconds). Only the length. |
+| `hf_app_host_submitted` | none | `POST /api/hosts/submit` answered ok: the profile is now with the team. |
+
+### Ship manifest note
+
+`HF-NATIVE-10` is one-sided (one phone). Success: `hf_app_host_submitted` arrives, and `hf_app_voice_recorded` with `seconds` between 30 and 300.

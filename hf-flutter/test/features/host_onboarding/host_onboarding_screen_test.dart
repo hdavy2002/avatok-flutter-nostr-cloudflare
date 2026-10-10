@@ -156,7 +156,8 @@ void main() {
   group('part B plugs in', () {
     testWidgets('a step nobody registered shows the calm placeholder', (tester) async {
       api.onJson('GET', _me, hostsMe(host: draft, kyc: allIdentity));
-      await open(tester);
+      // Part B is registered for real now (HF-NATIVE-10); only part A is given here, as if nobody had registered.
+      await open(tester, overrides: [onboardingStepBuildersProvider.overrideWithValue(partAStepBuilders)]);
       expect(onStep('avatar'), isTrue);
       expect(find.text(OnboardingCopy.notBuiltTitle), findsOneWidget);
     });
@@ -267,6 +268,7 @@ void main() {
     testWidgets('the name matches: details are sent once, the result card shows, Continue moves on', (tester) async {
       var verified = false;
       api
+        ..onJson('GET', '/api/hosts/avatars', <Object?>[])
         ..on('GET', _me, (_) => hostsMe(host: draft, kyc: verified ? allIdentity : selfieSent))
         ..on('POST', _payout, (_) {
           verified = true;

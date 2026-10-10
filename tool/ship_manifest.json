@@ -10136,6 +10136,19 @@
         "property": "platform",
         "equals": "android-app",
         "note": "On a phone with the native build, signed in, open the Me tab: hf_app_me_viewed arrives with platform = android-app, service_name = hf-app and signed_in = true. Change the name: hf_app_name_updated {outcome: ok} (outcome = failed with reason = invalid_field when the worker refuses it). Open Delete my account and confirm on a throw-away account: hf_app_account_delete_started {decision} then hf_app_account_delete_result {outcome: ok}. Set hfAppLatestBuild above the installed build: hf_app_update_prompt {kind: soft, action: shown}; above hfAppMinBuild: kind = forced."
+  "HF-NATIVE-10": {
+    "description": "[HF-NATIVE-10 2026-10-10] Native host onboarding, part B (hf-flutter/lib/features/host_onboarding/part_b/): avatar from the catalogue (claim, taken handling), about (name + text with the contact-leak rules), languages and style, up to 6 topics, one price for all topics with the host's share, hours and comfort switches, all with debounced field saves and the worker's message under the field; voice introduction recorder (30 s to 5 min enforced on the phone, example scripts, playback, re-record, consent, upload with progress); review with edit links and the three agreements; profile making with three polled stages; preview with tagline, quote and about edits; submit and the Sent for review page; locked states while with the team or live. Uses existing worker routes, no worker change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostOnboardingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_host_submitted",
+        "property": "service_name",
+        "equals": "hf-app",
+        "note": "On a phone with the native build, finish a test host sign-up: record the voice introduction (hf_app_voice_recorded arrives with seconds between 30 and 300), wait for the three stages to finish, tap Send for review. hf_app_host_submitted arrives and the page says Sent for review. Needs a phone: microphone, the real recording and the generation wait."
       }
     ]
   }
