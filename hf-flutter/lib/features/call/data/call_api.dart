@@ -49,7 +49,9 @@ final callApiProvider = Provider<CallApi>((ref) => CallApi(ref.watch(apiClientPr
 
 /// A host's display name for the confirm page (`GET /api/hosts/public/:slug`, public). A host that cannot be
 /// read just gives an empty name: the confirm step still works, it says "your host".
-final callHostNameProvider = FutureProvider.autoDispose.family<String, String>((ref, slug) async {
+final callHostNameProvider = FutureProvider.autoDispose.family<String, String>(
+  retry: (_, __) => null,
+  (ref, slug) async {
   try {
     final json = await ref.watch(apiClientProvider).getJson('/api/hosts/public/${Uri.encodeComponent(slug)}', auth: false);
     return '${json['displayName'] ?? ''}'.trim();
@@ -63,6 +65,7 @@ final callClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// The estimate for a host, fetched when the confirm sheet opens (never cached: money is live).
 final callEstimateProvider = FutureProvider.autoDispose.family<CallEstimate, String>(
+  retry: (_, __) => null,
   (ref, slug) => ref.watch(callApiProvider).estimate(slug),
 );
 
@@ -114,13 +117,16 @@ final activeCallStoreProvider = Provider<ActiveCallStore>((ref) => const ActiveC
 /// The splash / home screen (or the app root) reads this once after sign-in is known and, when it
 /// returns an id, opens `Routes.callOf(id)`. A stored call that has ended, or that the server no longer
 /// knows, is cleared. When the server cannot be reached the id is kept: the call may still be live.
-final activeCallResumeProvider = FutureProvider.autoDispose<String?>((ref) async {
+final activeCallResumeProvider = FutureProvider.autoDispose<String?>(retry: (_, __) => null, (ref) async {
+  // Everything the provider needs is read before the first await: the ref may be disposed after it.
   final store = ref.read(activeCallStoreProvider);
+  final signedIn = ref.read(sessionProvider).isSignedIn;
+  final api = ref.read(callApiProvider);
   final id = await store.read();
   if (id == null) return null;
-  if (!ref.read(sessionProvider).isSignedIn) return null;
+  if (!signedIn) return null;
   try {
-    final info = await ref.read(callApiProvider).status(id);
+    final info = await api.status(id);
     if (info.status.isTerminal) {
       await store.clear(onlyIfId: id);
       return null;

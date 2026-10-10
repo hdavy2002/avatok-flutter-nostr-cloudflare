@@ -161,7 +161,9 @@ final reviewApiProvider =
 /// Which call is being reviewed: exactly one of the two is set. A record, so it works as a provider key.
 typedef ReviewKey = ({String? callId, String? token});
 
-final reviewTargetProvider = FutureProvider.autoDispose.family<ReviewTarget, ReviewKey>((ref, key) {
+final reviewTargetProvider = FutureProvider.autoDispose.family<ReviewTarget, ReviewKey>(
+  retry: (_, __) => null,
+  (ref, key) {
   final api = ref.watch(reviewApiProvider);
   final token = key.token;
   if (token != null) return api.tokenTarget(token);
@@ -170,7 +172,9 @@ final reviewTargetProvider = FutureProvider.autoDispose.family<ReviewTarget, Rev
 
 /// The topics a caller can pick for this host: the host's own topics, with their labels from `/api/hf/options`.
 /// A picker that cannot load is simply not shown (the topic is optional).
-final reviewTopicsProvider = FutureProvider.autoDispose.family<List<ReviewTopic>, String>((ref, hostSlug) async {
+final reviewTopicsProvider = FutureProvider.autoDispose.family<List<ReviewTopic>, String>(
+  retry: (_, __) => null,
+  (ref, hostSlug) async {
   final api = ref.watch(apiClientProvider);
   try {
     final host = await api.getJson('/api/hosts/public/${Uri.encodeComponent(hostSlug)}', auth: false);
