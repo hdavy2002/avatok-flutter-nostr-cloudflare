@@ -210,7 +210,7 @@ class _InlineLoading extends StatelessWidget {
           children: [
             SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
             SizedBox(width: 12),
-            Text(Strings.loadingPeople, style: HfText.bodyText),
+            Flexible(child: Text(Strings.loadingPeople, style: HfText.bodyText)),
           ],
         ),
       ),

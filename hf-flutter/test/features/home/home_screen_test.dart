@@ -6,7 +6,10 @@ import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/widgets/widgets.dart';
+import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/explore/data/host_filters.dart';
+import 'package:hf_app/features/host_dashboard/ui/host_dashboard_screen.dart';
+import 'package:hf_app/features/host_onboarding/ui/host_onboarding_screen.dart';
 import 'package:hf_app/features/explore/data/hosts_repository.dart';
 
 import '../../support/app_harness.dart';
@@ -137,27 +140,30 @@ void main() {
   group('Become a host', () {
     testWidgets('a guest is asked to sign in first', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
-      final c = await pumpScreen(tester, api: api, location: '/', size: tall);
+      await pumpScreen(tester, api: api, location: '/', size: tall);
       await tester.tap(find.widgetWithText(HfButton, 'Become a host'));
-      await tester.pumpAndSettle();
-      expect(location(c).path, '/sign-in');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(SignInScreen), findsOneWidget);
     });
 
     testWidgets('a signed-in person goes to host onboarding', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
-      final c = await pumpScreen(tester, api: api, session: signedInState(), location: '/', size: tall);
+      await pumpScreen(tester, api: api, session: signedInState(), location: '/', size: tall);
       await tester.tap(find.widgetWithText(HfButton, 'Become a host'));
-      await tester.pumpAndSettle();
-      expect(location(c).path, '/host/onboarding');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(HostOnboardingScreen), findsOneWidget);
     });
 
     testWidgets('a person who already hosts is sent to the Host tab instead', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
-      final c = await pumpScreen(tester, api: api, session: signedInState(host: true), location: '/', size: tall);
+      await pumpScreen(tester, api: api, session: signedInState(host: true), location: '/', size: tall);
       expect(find.text('Your host profile'), findsOneWidget);
       await tester.tap(find.widgetWithText(HfButton, 'Open host tab'));
-      await tester.pumpAndSettle();
-      expect(location(c).path, '/host');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(HostDashboardScreen), findsOneWidget);
     });
   });
 

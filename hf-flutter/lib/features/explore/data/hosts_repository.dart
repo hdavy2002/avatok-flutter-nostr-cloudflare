@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/analytics/analytics.dart';
@@ -50,6 +52,9 @@ class HostsRepository {
   static const Duration staleAfter = Duration(minutes: 10);
   static const int pageSize = 24;
 
+  /// A saved copy that cannot be read in this time counts as no saved copy (the phone's storage never blocks the list).
+  static const Duration cacheReadTimeout = Duration(seconds: 1);
+
   /// One page from the server. Throws [ApiError] (the network, `401` or `403 lane_required` for a lane, `404 not_enabled`).
   Future<HostsPage> fetch(HostFilters f, {int offset = 0, int limit = pageSize}) async {
     final json = await _api.request(
@@ -79,7 +84,7 @@ class HostsRepository {
     HostsPage? saved;
     var savedStale = true;
     if (useCache && cacheKey != null && f.lane == null) {
-      final entry = await _cache.read(cacheKey);
+      final entry = await _cache.read(cacheKey).timeout(cacheReadTimeout, onTimeout: () => null);
       final data = entry?.data;
       if (entry != null && data is Map && data['key'] == f.cacheKey) {
         saved = HostsPage.fromJson(data['page']);
@@ -90,7 +95,8 @@ class HostsRepository {
     try {
       final page = await fetch(f, limit: limit);
       if (cacheKey != null && f.lane == null) {
-        await _cache.write(cacheKey, <String, Object?>{'key': f.cacheKey, 'page': page.toJson()});
+        // Not awaited: the fresh page is shown without waiting for the disk.
+        unawaited(_cache.write(cacheKey, <String, Object?>{'key': f.cacheKey, 'page': page.toJson()}));
       }
       _report(screen, ok: true, count: page.items.length, fromCache: false, sw: sw);
       yield HostListUpdate(page: page);

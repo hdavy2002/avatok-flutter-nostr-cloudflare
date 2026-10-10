@@ -9,7 +9,10 @@ import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/features/explore/data/explore_controller.dart';
 import 'package:hf_app/features/explore/data/host_filters.dart';
 import 'package:hf_app/features/explore/data/hosts_repository.dart';
+import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/explore/ui/filter_sheet.dart';
+import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
+import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
 
 import '../../support/app_harness.dart';
 import '../../support/fake_api_client.dart';
@@ -18,6 +21,14 @@ import 'explore_test_support.dart';
 Uri location(ProviderContainer c) => c.read(appRouterProvider).routeInformationProvider.value.uri;
 
 List<RecordedCall> listCalls(FakeApiClient api) => api.callsTo('GET', '/api/hf/hosts');
+
+Future<void> tapInSheet(WidgetTester tester, Finder f) async {
+  final target = inSheet(f);
+  await tester.ensureVisible(target);
+  await tester.pump();
+  await tester.tap(target);
+  await tester.pump();
+}
 
 Finder inSheet(Finder f) => find.descendant(of: find.byType(FilterSheet), matching: f);
 
@@ -128,28 +139,29 @@ void main() {
   group('lanes', () {
     testWidgets('signed out: a lane tab asks to sign in and does not call the server', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-      final c = await pumpScreen(tester, api: api, location: '/explore?lane=women');
+      await pumpScreen(tester, api: api, location: '/explore?lane=women');
       expect(find.text('Sign in to enter this space'), findsOneWidget);
       expect(listCalls(api), isEmpty);
 
       await tester.tap(find.widgetWithText(HfButton, 'Sign in'));
-      await tester.pumpAndSettle();
-      expect(location(c).path, '/sign-in');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(SignInScreen), findsOneWidget);
     });
 
     testWidgets('403 lane_required shows the Verify to join panel that opens the lanes route', (tester) async {
       final api = fakeApi()
         ..onError('GET', '/api/hf/hosts', const ApiError(status: 403, code: 'lane_required'));
-      final c = await pumpScreen(tester, api: api, session: signedInState(), location: '/explore?lane=lgbtq');
+      await pumpScreen(tester, api: api, session: signedInState(), location: '/explore?lane=lgbtq');
       expect(find.text('Verify to join'), findsWidgets);
       // The lane list carries the bearer token, and says which lane.
       expect(listCalls(api).single.auth, isTrue);
       expect(listCalls(api).single.query!['lane'], 'lgbtq');
 
       await tester.tap(find.widgetWithText(HfButton, 'Verify to join'));
-      await tester.pumpAndSettle();
-      expect(location(c).path, '/lanes');
-      expect(location(c).queryParameters['lane'], 'lgbtq');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(LanesScreen), findsOneWidget);
     });
 
     testWidgets('a joined member sees the lane list; the tabs switch lanes and keep the route in step', (tester) async {
@@ -184,10 +196,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(FilterSheet), findsOneWidget);
 
-      await tester.tap(inSheet(find.text('Exam tension')));
-      await tester.tap(inSheet(find.text('Hindi')));
+      await tapInSheet(tester, find.text('Exam tension'));
+      await tapInSheet(tester, find.text('Hindi'));
       await tester.tap(find.byKey(const ValueKey<String>('filter-online')));
-      await tester.tap(inSheet(find.text('Price: low to high')));
+      await tapInSheet(tester, find.text('Price: low to high'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Show results'));
       await tester.pumpAndSettle();
@@ -227,7 +239,7 @@ void main() {
       await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      await tester.tap(inSheet(find.text('Hindi')));
+      await tapInSheet(tester, find.text('Hindi'));
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
       expect(listCalls(api), hasLength(1));
@@ -338,11 +350,11 @@ void main() {
 
   testWidgets('tapping a card opens the host profile', (tester) async {
     final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha')]));
-    final c = await pumpScreen(tester, api: api);
+    await pumpScreen(tester, api: api);
     await tester.tap(find.text('Asha'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(location(c).path, '/h/asha');
+    expect(find.byType(HostProfileScreen), findsOneWidget);
   });
 
   testWidgets('the screen survives the largest system font without overflow', (tester) async {

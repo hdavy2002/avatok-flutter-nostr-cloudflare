@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/session.dart';
+import 'hosts_repository.dart';
 
 /// `GET /api/hf/options` (public, cached 1 h by the server):
 /// `{topics:[{slug,label,group}], moodGroups:[{slug,label}], languages:[{code,label}], styles, priceMin, priceMax}`.
@@ -107,10 +110,10 @@ final hostOptionsProvider = FutureProvider<HostOptions>(retry: noAutoRetry, (ref
   try {
     final json = await api.getJson('/api/hf/options', auth: false);
     final opts = HostOptions.fromJson(json);
-    if (opts.topics.isNotEmpty) await cache.write(_optionsCacheKey, json);
+    if (opts.topics.isNotEmpty) unawaited(cache.write(_optionsCacheKey, json));
     return opts;
   } catch (e) {
-    final saved = await cache.read(_optionsCacheKey);
+    final saved = await cache.read(_optionsCacheKey).timeout(HostsRepository.cacheReadTimeout, onTimeout: () => null);
     if (saved != null) return HostOptions.fromJson(saved.data);
     rethrow;
   }

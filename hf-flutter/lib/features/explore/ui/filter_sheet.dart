@@ -82,8 +82,10 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     final hi = (_draft.maxPrice ?? o.priceMax).clamp(lo, o.priceMax).toInt();
     final range = o.priceMax - o.priceMin;
     final anyPrice = lo == o.priceMin && hi == o.priceMax;
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(HfSpacing.page, 8, HfSpacing.page, 16),
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionTitle(ExploreCopy.sort),
         Wrap(
@@ -170,6 +172,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
           ],
         ),
       ],
+      ),
     );
   }
 
