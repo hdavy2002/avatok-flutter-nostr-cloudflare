@@ -22,6 +22,8 @@ import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { readConfig } from "./config";
 import { walletOp } from "./wallet";
+import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-CALLS-1]
+import { hostSummary, reservePayout, cancelPayoutReserve, markPayoutPaid, hostLedgerRef, isHostLedgerRef, wholeRupees } from "../lib/hf_host_ledger";
 import {
   WALLET_APP, refFor, reserveOpId, payOpId, releaseOpId, cleanUtr, canApprove, canCancel, canPay, canReject, validatePayoutRequest,
   withdrawableFor, recentRequestCount, hostPayoutReadiness, payoutSums, sumMaturedCallRupees, parseSnapshot, STATUSES,
@@ -44,6 +46,8 @@ async function cfg(env: Env) {
     enabled: c.hfPayoutsEnabled === true,
     minRupees: Math.max(1, n(c.hfPayoutMinRupees, 500)),
     maxPerWeek: Math.max(1, n(c.hfPayoutMaxPerWeek, 2)),
+    // [HF-TOK-CALLS-1] hfTokensEnabled on: the host's INR ledger (paise) replaces the WalletDO for withdrawals. Payouts stay whole rupees, min Rs 500.
+    tokens: readHfTokenConfig(c).enabled,
   };
 }
 
@@ -91,8 +95,19 @@ async function hostGet(req: Request, env: Env): Promise<Response> {
   const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ status: string }>().catch(() => null);
   const ready = await hostPayoutReadiness(env, u.uid);
   const reqs = (await env.DB_META.prepare("SELECT * FROM hf_payout_requests WHERE host_uid=?1 ORDER BY created_at DESC LIMIT 50").bind(u.uid).all<PayoutRow>().catch(() => ({ results: [] as PayoutRow[] }))).results ?? [];
-  let w = { withdrawable: 0, held: 0, testEarnings: 0 };
-  if (c.enabled && host) {
+  let w: Record<string, number> = { withdrawable: 0, held: 0, testEarnings: 0 };
+  if (c.enabled && host && c.tokens) {
+    try {
+      const x = await hostSummary(env, u.uid);
+      w = {
+        withdrawable: wholeRupees(x.availablePaise), held: wholeRupees(x.pendingPaise), testEarnings: wholeRupees(x.testPaise),
+        withdrawablePaise: x.availablePaise, pendingPaise: x.pendingPaise, testEarningsPaise: x.testPaise, totalEarnedPaise: x.earnedPaise,
+      };
+    } catch (e) {
+      await trackException(env, e, { uid: u.uid, route: "/api/hosts/me/payouts", handled: true, app_name: APP, extra: { area: "hf_payout", step: "host_ledger" } });
+      return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
+    }
+  } else if (c.enabled && host) {
     try { const x = await withdrawableFor(env, u.uid); w = { withdrawable: x.withdrawable, held: x.held, testEarnings: x.testEarnings }; }
     catch (e) {
       await trackException(env, e, { uid: u.uid, route: "/api/hosts/me/payouts", handled: true, app_name: APP, extra: { area: "hf_payout", step: "withdrawable" } });
@@ -118,8 +133,8 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
   return withIdempotency(req, env, uid, async () => {
     const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>().catch(() => null);
     const ready = await hostPayoutReadiness(env, uid);
-    let w;
-    try { w = await withdrawableFor(env, uid); }
+    let w: { withdrawable: number };
+    try { w = c.tokens ? { withdrawable: wholeRupees((await hostSummary(env, uid)).availablePaise) } : await withdrawableFor(env, uid); }
     catch (e) {
       await trackException(env, e, { uid, route: "/api/hosts/me/payouts", handled: true, app_name: APP, extra: { area: "hf_payout", step: "withdrawable" } });
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
@@ -135,18 +150,25 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
     const name = await tryDecryptPii(env, bankRow?.name_at_bank_enc);
     const snapshot = JSON.stringify({ accountLast4: ready.accountLast4, ifsc: ready.ifsc, name });
     const id = crypto.randomUUID();
-    const ref = refFor(id);
+    const ref = c.tokens ? hostLedgerRef(id) : refFor(id);
     const now = Date.now();
     // Row first, THEN re-check the calls ceiling including it: two concurrent requests cannot both fit.
     await env.DB_META.prepare(
       `INSERT INTO hf_payout_requests (id, host_uid, amount_rupees, status, bank_snapshot, wallet_ref, withdrawable_at_request, created_at, updated_at)
        VALUES (?1,?2,?3,'requested',?4,?5,?6,?7,?7)`,
     ).bind(id, uid, amount, snapshot, ref, w.withdrawable, now).run();
-    const [matured, sums] = await Promise.all([sumMaturedCallRupees(env, uid, now), payoutSums(env, uid)]);
     const abort = async (code: string, status: number, message: string) => {
       await env.DB_META.prepare("UPDATE hf_payout_requests SET status='cancelled', reject_reason=?2, updated_at=?3 WHERE id=?1 AND status='requested'").bind(id, SYSTEM_PREFIX + code, Date.now()).run();
       return err(status, code, message, { withdrawable: w.withdrawable });
     };
+    if (c.tokens) {
+      // The balance check and the reserve are ONE statement in the host ledger, so two requests cannot both fit.
+      const rr = await reservePayout(env, uid, id, amount * 100, now);
+      if (!rr.ok) return abort("insufficient_withdrawable", 402, "That amount is not available yet. Earnings are held for 7 days.");
+      void track(env, uid, "hf_payout_requested", APP, { amount, mode: "inr_ledger" });
+      return json({ ok: true, id, status: "requested", amount });
+    }
+    const [matured, sums] = await Promise.all([sumMaturedCallRupees(env, uid, now), payoutSums(env, uid)]);
     if (sums.active > matured) return abort("insufficient_withdrawable", 402, `You can withdraw up to ₹${w.withdrawable} right now.`);
     const r = await walletOp(env, uid, { op: "reserve", uid, amount, ref, allow_free: false, op_id: reserveOpId(id), app_name: WALLET_APP });
     if (r.status !== 200 || r.body?.ok === false) {
@@ -167,7 +189,10 @@ async function hostCancel(req: Request, env: Env, id: string): Promise<Response>
   if (row.status === "cancelled") return json({ ok: true, status: "cancelled", replay: true });
   if (row.exit === 1) return err(409, "exit_request", "This withdrawal belongs to your account closure. Cancel the closure instead.");
   if (!canCancel(row.status)) return err(409, "not_cancellable", "This request can no longer be cancelled.");
-  const r = await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
+  // [HF-TOK-CALLS-1] which path holds the money is decided by the request itself (wallet_ref), so a flag flip never strands a payout.
+  const r = isHostLedgerRef(row.wallet_ref)
+    ? { status: (await cancelPayoutReserve(env, row.host_uid, id)).ok ? 200 : 502 }
+    : await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
   if (r.status !== 200) return err(502, "wallet_error", "We couldn't release that money. Please try again.");
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='cancelled', updated_at=?2 WHERE id=?1 AND status='requested'").bind(id, Date.now()).run();
   if (!up.meta?.changes) return err(409, "not_cancellable", "This request was just approved, so it can no longer be cancelled.");
@@ -245,12 +270,17 @@ async function adminPaid(req: Request, env: Env, ctx: ExecutionContext | undefin
   const dup = await env.DB_META.prepare("SELECT id FROM hf_payout_requests WHERE utr=?1 AND id<>?2 LIMIT 1").bind(utr, id).first();
   if (dup) return err(409, "duplicate_utr", "That UTR is already recorded on another payout.");
   const ref = refFor(id);
+  if (isHostLedgerRef(row.wallet_ref)) {
+    const mp = await markPayoutPaid(env, row.host_uid, id);
+    if (!mp.ok) return err(409, "needs_reconciliation", "The earnings reserve for this payout is missing or was cancelled. Nothing was marked paid.");
+  } else {
   const r = await walletOp(env, row.host_uid, {
     op: "consume_reserved", uid: row.host_uid, amount: row.amount_rupees, ref, allow_free: false, type: "payout", app_name: WALLET_APP, op_id: payOpId(id),
     ledger: { debit: `user:${row.host_uid}`, credit: "external:hf_payout", type: "payout", ref },
   });
   if (r.status !== 200) return err(r.status === 404 ? 409 : 502, r.status === 404 ? "needs_reconciliation" : "wallet_error", "The wallet could not take that money. Nothing was marked paid.");
   if (Number(r.body?.consumed ?? 0) !== row.amount_rupees) return err(409, "needs_reconciliation", "The wallet took a different amount. Nothing was marked paid; check the wallet before paying.");
+  }
   const now = Date.now();
   await env.DB_META.prepare("UPDATE hf_payout_requests SET status='paid', utr=?2, admin_uid=?3, paid_at=?4, updated_at=?4 WHERE id=?1 AND status='approved'").bind(id, utr, a.uid, now).run();
   await audit(env, a.uid, "paid", id, { host: row.host_uid, amount: row.amount_rupees, utr });
@@ -266,7 +296,10 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
   if (!row) return err(404, "not_found");
   if (row.status === "rejected") return json({ ok: true, status: "rejected", replay: true });
   if (!canReject(row.status)) return err(409, "invalid_state", `This request is ${row.status}.`);
-  const r = await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
+  // [HF-TOK-CALLS-1] which path holds the money is decided by the request itself (wallet_ref), so a flag flip never strands a payout.
+  const r = isHostLedgerRef(row.wallet_ref)
+    ? { status: (await cancelPayoutReserve(env, row.host_uid, id)).ok ? 200 : 502 }
+    : await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
   if (r.status !== 200) return err(502, "wallet_error", "The wallet could not release that money. Nothing changed.");
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='rejected', reject_reason=?2, admin_uid=?3, updated_at=?4 WHERE id=?1 AND status IN ('requested','approved')").bind(id, reason, a.uid, Date.now()).run();
   if (!up.meta?.changes) return err(409, "invalid_state", "This request changed. Refresh and try again.");

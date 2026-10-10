@@ -17,6 +17,7 @@ import {
   HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { settleTestCredits } from "../lib/hf_credits";
+import { settleTokenCall } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
 import {
   settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
@@ -34,7 +35,10 @@ interface Plan {
   billedMinutes: number; chargeRupees: number; hostEarningPaise: number; hostTokens: number; capped: boolean;
   testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
 }
+// [HF-TOK-CALLS-1] Token-mode call: the snapshot taken at start (never live config) + the call's own time limit in seconds.
+interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number }
 interface Bill {
+  tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
   testSettled?: boolean; testEarned?: boolean;
 }
@@ -48,6 +52,7 @@ interface S {
   inRoom: Record<Role, boolean>; member: Partial<Record<Role, string>>; anyEnter: boolean;
   connectedAt: number | null; endedAt: number | null; endReason: string | null; finalStatus: string | null; hashBy: Role | null;
   finalized: boolean; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess", number>>; bill: Bill;
+  tok?: TokenSnap; // present only for calls started with hfTokensEnabled on
 }
 
 const xmlRes = (x: string) => new Response(x, { headers: { "content-type": "application/xml" } });
@@ -78,7 +83,9 @@ export class HfCallDO {
     };
   }
   private room(s: S) { return `hf_${s.callId.replace(/-/g, "")}`; }
-  private backstopSec(s: S) { return s.maxMinutes * 60 + 90; }
+  /** The call's time limit in seconds: exact for token calls, whole minutes for the old path. */
+  private maxSec(s: S) { return s.tok ? s.tok.maxSeconds : s.maxMinutes * 60; }
+  private backstopSec(s: S) { return this.maxSec(s) + 90; }
 
   // ── HTTP entry (internal: only routes/hf_calls.ts and the cron call this) ───────────────────────────────────────
   async fetch(req: Request): Promise<Response> {
@@ -119,6 +126,14 @@ export class HfCallDO {
       connectedAt: null, endedAt: null, endReason: null, finalStatus: null, hashBy: null,
       finalized: false, tasks: { ring: now + HOST_PHASE_MS }, bill: { attempts: 0 },
     };
+    if (b.tokens && typeof b.tokens === "object") {
+      const t = b.tokens as Record<string, unknown>;
+      s.tok = {
+        ratePaise: Math.trunc(Number(t.ratePaise)), callCostPaisePerMin: Math.trunc(Number(t.callCostPaisePerMin)),
+        hostShareBps: Math.trunc(Number(t.hostShareBps)), maxSeconds: Math.max(0, Math.trunc(Number(t.maxSeconds))),
+      };
+      s.maxMinutes = Math.floor(s.tok.maxSeconds / 60);
+    }
     await this.save(s);
     try {
       const to = await verifiedWhatsAppNumber(this.env, s.hostUid);
@@ -223,7 +238,7 @@ export class HfCallDO {
   private async connect(s: S, guessed: boolean): Promise<void> {
     const now = Date.now();
     s.connectedAt = now; s.status = "connected"; delete s.tasks.ring; delete s.tasks.guess;
-    const limitMs = s.maxMinutes * 60_000;
+    const limitMs = this.maxSec(s) * 1000;
     s.tasks.limit = now + limitMs;
     if (limitMs > (WARN_BEFORE_LIMIT_SEC + 5) * 1000) s.tasks.warn = now + limitMs - WARN_BEFORE_LIMIT_SEC * 1000;
     await this.save(s);
@@ -256,7 +271,7 @@ export class HfCallDO {
     const now = Date.now();
     if (s.finalized) { if (!s.bill.post) await this.settleAndPost(s); return jsonRes({ ok: true, finalized: true }); }
     if (!s.connectedAt && now - s.createdAt > 3 * 60_000) await this.finish(s, s.status === "ringing_caller" ? "caller_no_answer" : "no_answer", null, { tellHost: s.status === "ringing_caller" });
-    else if (s.connectedAt && now > s.connectedAt + (s.maxMinutes + 2) * 60_000) await this.finish(s, "completed", s.limitReason);
+    else if (s.connectedAt && now > s.connectedAt + (this.maxSec(s) + 120) * 1000) await this.finish(s, "completed", s.limitReason);
     return jsonRes({ ok: true });
   }
 
@@ -344,7 +359,37 @@ export class HfCallDO {
     }
   }
 
+  // [HF-TOK-CALLS-1] Token calls: per-second billing over the caller's lots, split from the START snapshot, host paid in paise.
+  private async settleTokens(s: S): Promise<boolean> {
+    const b = s.bill, t = s.tok as TokenSnap;
+    try {
+      if (!b.tokSettled) {
+        const endedAt = s.endedAt ?? Date.now();
+        const seconds = s.connectedAt ? Math.floor((endedAt - s.connectedAt) / 1000) : 0;
+        const out = await settleTokenCall(this.env, {
+          callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
+          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt,
+        });
+        b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
+        b.tokSettled = true; b.saved = true;
+        await this.save(s);
+        this.emit(s.callerUid, "hf_call_settled", {
+          call_id: s.callId, consumed_value_paise: out.consumedValuePaise, host_earning_paise: out.hostPaise, lots: out.lots.length,
+          billable_seconds: out.billableSeconds, tokens_spent_micro: out.tokensSpentMicro,
+        });
+      }
+      return true;
+    } catch (e) {
+      b.attempts += 1;
+      await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "billing_tokens", attempt: b.attempts, call: s.callId } });
+      if (b.attempts < MAX_BILL_ATTEMPTS) s.tasks.retry = Date.now() + 20_000 * b.attempts;
+      await this.save(s);
+      return false;
+    }
+  }
+
   private async settle(s: S): Promise<boolean> {
+    if (s.tok) return this.settleTokens(s);
     const b = s.bill;
     try {
       if (!b.plan) {

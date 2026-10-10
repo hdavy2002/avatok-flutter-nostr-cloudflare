@@ -9747,5 +9747,22 @@
       "hfTokensEnabled"
     ],
     "no_telemetry": "Dark behind hfTokensEnabled=false and no caller path uses the lots yet (call start/settle is HF-TOK-CALLS-1). The only reachable change is the flag-on branch of the admin test-credit route, which keeps emitting the existing hf_test_credit_added / hf_admin_credit_added events, and an admin-only migration endpoint that writes an audit row. Success is worker/src/lib/hf_token_ledger.test.ts and hf_token_test_credits.test.ts passing and hfTokensEnabled still reading false in prod."
+  },
+  "HF-TOK-CALLS-1": {
+    "description": "[HF-TOK-CALLS-1 2026-10-10] Hello Fraands calls on token lots, dark behind hfTokensEnabled (default false; the old WalletDO/hf_credits path is untouched while off): start refuses on open debt or under 2 minutes (shortfall in tokens), reserves lots and sets max length = min(60 min, affordable seconds), per-second cumulative billing settled over lots oldest first with the pricing snapshot frozen on hf_calls at start, host share split by purchase-vs-test lot value into the new INR host ledger (paise, 7 day hold, test part never withdrawable), withdrawals read the host ledger (whole rupees, min Rs 500), purchase-time spend limits on rupees paid for tokens (checkPurchaseAllowed, for the Play verify route), token wallet API + per-host estimate, and token/rupee display on the wallet, call sheet and host dashboard. hf_calls snapshot migration is written, NOT applied.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfTokensEnabled",
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_settled",
+        "property": "area",
+        "equals": "hf_call",
+        "note": "A token-mode call was settled on lots: carries consumed_value_paise, host_earning_paise, billable_seconds, tokens_spent_micro and lots. Only emitted with hfTokensEnabled on, so absence is expected until the owner flips the flag and a test call is made."
+      }
+    ]
   }
 }

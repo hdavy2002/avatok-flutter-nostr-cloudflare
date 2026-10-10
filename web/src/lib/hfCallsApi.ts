@@ -12,6 +12,8 @@ export interface CallInfo {
   id: string; status: CallStatus; hostSlug?: string; hostName?: string; rate?: number;
   connectedAt?: number | string | null; endedAt?: number | string | null;
   billedMinutes?: number | null; chargedRupees?: number | null; endReason?: string | null; canReview?: boolean;
+  /** [HF-TOK-CALLS-1] token mode (caller only): seconds billed and tokens spent, 2 decimals. */
+  billableSeconds?: number; tokensSpent?: string;
 }
 
 export type HfResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string; body: Record<string, unknown> };
@@ -70,6 +72,8 @@ export const mmss = (sec: number): string => `${String(Math.floor(sec / 60)).pad
 /** Billed per started minute (never less than one once connected). */
 export const soFar = (sec: number, rate: number): number => Math.max(1, Math.ceil(sec / 60)) * rate;
 export const inr = (n: number): string => `₹${Math.round(n).toLocaleString('en-IN')}`;
+/** [HF-TOK-CALLS-1] rupees with paise, for host earnings in token mode (Rs 10.80 a minute must not show as Rs 11). */
+export const inr2 = (n: number): string => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const firstName = (n: string | null | undefined): string => (n || '').trim().split(/\s+/)[0] || 'the host';
 
 export function relDate(v: number | string | null | undefined): string {
@@ -85,10 +89,22 @@ export function relDate(v: number | string | null | undefined): string {
 
 /* [HF-WALLET-1] GET /api/hf/wallet. paidBalance is withdrawable money; testBalance is spend-only test credits (never withdrawable).
  * `host` is present only for hosts. `history` merges test-credit grants with completed calls (as caller and as host). */
-export interface WalletHistoryItem { at: number; kind: 'test_credit' | 'test_credit_removed' | 'call_spent' | 'call_earned' | string; rupees: number; label: string; callId?: string }
+export interface WalletHistoryItem { at: number; kind: 'test_credit' | 'test_credit_removed' | 'call_spent' | 'call_earned' | string; rupees?: number; tokens?: string; label: string; callId?: string }
+/** [HF-TOK-CALLS-1] Token mode (hfTokensEnabled): callers see tokens, hosts see rupees with paise. Absent in the old mode. */
+export interface TokenWallet {
+  balance: string; available: string; testTokens: string;
+  byValue: Array<{ valuePaisePerToken: number; valueRupees: string; tokens: string }>;
+  debt: { tokens: string; valuePaise: number; open: boolean };
+}
+export interface HostInrWallet {
+  currency: 'INR'; pendingPaise: number; availablePaise: number; totalEarnedPaise: number; testEarningsPaise: number;
+  perCall: Array<{ callId: string; at: number; earnedPaise: number; paidPaise: number; testPaise: number; availableAt: number | null }>;
+  payouts: Array<{ id: string; amountPaise: number; status: string; createdAt: number; paidAt: number | null }>;
+}
 export interface WalletInfo {
   paidBalance: number; testBalance: number; spendable: number;
-  host?: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number };
+  mode?: 'tokens'; tokens?: TokenWallet;
+  host?: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number } & Partial<HostInrWallet>;
   history: WalletHistoryItem[];
   balanceRupees?: number;
   /** [HF-WALLET-LIMITS-1] Real-money spend so far against the caller's limits (IST day / month). Absent on an older worker. */

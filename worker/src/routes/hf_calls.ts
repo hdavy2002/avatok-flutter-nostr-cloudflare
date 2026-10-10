@@ -25,13 +25,16 @@ import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
 import { readConfig } from "./config";
 import { readHfTokenConfig } from "../lib/hf_token_config";
-import { formatTokens } from "../lib/hf_token_math";
+import { formatTokens, formatDuration } from "../lib/hf_token_math";
+import { balanceSummary, availableLots, getLots, release as releaseTokenLots } from "../lib/hf_token_ledger";
+import { prepareTokenStart, estimateForHost, activeValuePaise } from "../lib/hf_token_calls";
+import { hostSummary, listCallEarnings } from "../lib/hf_host_ledger";
 import { grantTestLot, migrateTestCreditsToLots } from "../lib/hf_token_test_credits";
 import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance } from "../lib/hf_credits";
-import { limitSummary, decideStart, callLimitReason, limitMessage } from "../lib/hf_limits"; // [HF-WALLET-LIMITS-1]
+import { limitSummary, decideStart, callLimitReason, limitMessage, limitsFor, paidTodayPaise, paidMonthPaise, istNextDayStart } from "../lib/hf_limits"; // [HF-WALLET-LIMITS-1]
 import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -106,6 +109,9 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const rate = Math.trunc(Number(host.price_per_min));
   if (!(rate > 0)) return UNAVAILABLE();
   const callId = crypto.randomUUID();
+  // [HF-TOK-CALLS-1] hfTokensEnabled on: the whole call runs on token lots (reserve, per-second billing, host paid in paise). Flag off: old path below.
+  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk });
   const needed = rate * START_RESERVE_MINUTES;
   // [HF-WALLET-LIMITS-1] Real-money spend limits (HF-PAY-7): the paid funds a call may use are capped at what is left today / this month.
   const lim = await limitSummary(env, uid, (await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
@@ -176,7 +182,53 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes });
 }
 
+// [HF-TOK-CALLS-1] Token-mode start. Debt and balance gates + lot reservation happen in prepareTokenStart; the hf_calls row carries the
+// pricing snapshot (rate, call cost per minute, host share, versions) so a later config change never alters this call.
+async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig> }): Promise<Response> {
+  const { uid, hostUid, lane, rate, callId, tk } = a;
+  const ratePaise = rate * 100;
+  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk });
+  if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
+  const undo = async (claimed: boolean) => {
+    if (claimed) await releaseHost(env, hostUid).catch(() => undefined);
+    await releaseTokenLots(env, callId).catch(() => undefined);
+  };
+  if (!(await claimHost(env, hostUid))) { await undo(false); return UNAVAILABLE(); }
+  const maxMinutes = Math.floor(chk.maxSeconds / 60);
+  try {
+    await env.DB_META.prepare(
+      `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version)
+       VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11)`,
+    ).bind(callId, uid, hostUid, ratePaise, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion).run();
+  } catch (e) {
+    await undo(true);
+    await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert_tokens" } });
+    return err(500, "internal_error", "Something went wrong.");
+  }
+  try {
+    const r = await callStub(env, callId).fetch("https://hfcall/init", {
+      method: "POST",
+      body: JSON.stringify({
+        callId, callerUid: uid, hostUid, rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
+        tokens: { ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds },
+      }),
+    });
+    if (!r.ok) throw new Error(`init ${r.status}`);
+  } catch (e) {
+    await env.DB_META.prepare("UPDATE hf_calls SET status='failed', end_reason='error', ended_at=?1 WHERE id=?2 AND status='ringing_host'").bind(Date.now(), callId).run().catch(() => undefined);
+    await undo(true);
+    await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "init_tokens" } });
+    return err(502, "call_failed", "We couldn't place the call. Please try again.");
+  }
+  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens" }).catch(() => undefined);
+  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens" });
+}
+
 // ── GET /api/hf/calls/:id ────────────────────────────────────────────────────
+const tokCall = (c: HfCallRow): { micro: number; secs: number } | null => {
+  const x = c as unknown as { tokens_spent_micro?: number | null; billable_seconds?: number | null };
+  return x.tokens_spent_micro == null ? null : { micro: Number(x.tokens_spent_micro), secs: Number(x.billable_seconds ?? 0) };
+};
 async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
@@ -192,6 +244,12 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
+    // [HF-TOK-CALLS-1] token calls: seconds billed and tokens spent for the CALLER (the host never sees tokens; the host gets earningRupees).
+    ...(tokCall(c)
+      ? c.caller_uid === u.uid
+        ? { billableSeconds: tokCall(c)!.secs, tokensSpent: formatTokens(tokCall(c)!.micro, 2) }
+        : { billableSeconds: tokCall(c)!.secs, earningRupees: rupees(c.host_earning_paise) }
+      : {}),
   }, 200, { "cache-control": "private, no-store" });
 }
 
@@ -213,6 +271,9 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
+  // [HF-TOK-CALLS-1] token mode: callers see tokens (2 decimals) + the per-value breakdown + any amount owed; hosts see rupees only.
+  const tkCfg = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  if (tkCfg.enabled) return await walletGetTokens(env, u.uid, tkCfg);
   // [HF-WALLET-1] paid (withdrawable) money and spend-only test credits are reported separately; host block only for hosts.
   const snap = await walletOp(env, u.uid, { op: "balance", uid: u.uid });
   const paidBalance = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.balance ?? 0))) : 0;
@@ -260,6 +321,88 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
   return json({
     balanceRupees: paidBalance, testCredits: true, // legacy fields kept for older clients
     paidBalance, testBalance: test.balance, spendable: paidBalance + test.balance, ...(host ? { host } : {}), ...(limits ? { limits } : {}), history: hist.slice(0, 50),
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+const rs = (paise: number) => Math.round(paise) / 100;
+async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>): Promise<Response> {
+  const [sum, isHostRow, allLots] = await Promise.all([
+    balanceSummary(env, uid),
+    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first().catch(() => null),
+    getLots(env, uid),
+  ]);
+  // tokens in `test` lots (admin test credits): the plain web still lets people with these call (HF-APP-D11), so it reads testBalance.
+  const testMicro = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + l.leftMicro, 0);
+  type H = { at: number; kind: string; tokens?: string; label: string; callId?: string };
+  const hist: H[] = [];
+  const led = (await env.DB_META.prepare(
+    "SELECT kind, delta_micro, created_at FROM hf_token_ledger WHERE uid=?1 AND kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear') ORDER BY created_at DESC LIMIT 50",
+  ).bind(uid).all<{ kind: string; delta_micro: number; created_at: number }>().catch(() => ({ results: [] }))).results ?? [];
+  const lbl: Record<string, string> = { purchase: "Tokens added", admin_adjust: "Test tokens added", refund_revoke: "Tokens removed (refund)", debt_create: "Amount owed after a refund", debt_clear: "Amount owed paid from new tokens" };
+  for (const l of led) {
+    const d = Number(l.delta_micro);
+    hist.push({ at: Number(l.created_at), kind: l.kind, tokens: `${d < 0 ? "-" : l.kind === "debt_create" ? "" : "+"}${formatTokens(Math.abs(d), 2)}`, label: lbl[l.kind] ?? l.kind });
+  }
+  const calls = (await env.DB_META.prepare(
+    `SELECT c.id, c.created_at, c.ended_at, c.billable_seconds, c.tokens_spent_micro, (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name
+       FROM hf_calls c WHERE c.caller_uid=?1 AND c.status='completed' AND c.tokens_spent_micro IS NOT NULL AND c.billable_seconds>0 ORDER BY c.created_at DESC LIMIT 50`,
+  ).bind(uid).all<{ id: string; created_at: number; ended_at: number | null; billable_seconds: number; tokens_spent_micro: number; host_name: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+  for (const c of calls) {
+    hist.push({ at: Number(c.ended_at ?? c.created_at), kind: "call_spent", tokens: `-${formatTokens(Number(c.tokens_spent_micro), 2)}`, label: `Call with ${callerHandle(c.host_name)} (${formatDuration(Number(c.billable_seconds))})`, callId: c.id });
+  }
+  hist.sort((a, b) => b.at - a.at);
+
+  let host: Record<string, unknown> | undefined;
+  if (isHostRow) {
+    const [hs, per] = await Promise.all([hostSummary(env, uid), listCallEarnings(env, uid, 50)]);
+    const payouts = (await env.DB_META.prepare("SELECT id, amount_rupees, status, created_at, paid_at FROM hf_payout_requests WHERE host_uid=?1 AND NOT (status='cancelled' AND reject_reason LIKE 'system:%') ORDER BY created_at DESC LIMIT 50")
+      .bind(uid).all<{ id: string; amount_rupees: number; status: string; created_at: number; paid_at: number | null }>().catch(() => ({ results: [] }))).results ?? [];
+    host = {
+      currency: "INR",
+      pendingPaise: hs.pendingPaise, availablePaise: hs.availablePaise, totalEarnedPaise: hs.earnedPaise, testEarningsPaise: hs.testPaise,
+      openPayoutPaise: hs.openPayoutPaise, paidOutPaise: hs.paidOutPaise,
+      pendingRupees: rs(hs.pendingPaise), availableRupees: rs(hs.availablePaise), totalEarnedRupees: rs(hs.earnedPaise), testEarningsRupees: rs(hs.testPaise),
+      heldRupees: rs(hs.pendingPaise), lifetimePaidEarnings: rs(hs.earnedPaise), // same names the old host block used, now with paise
+      perCall: per.map((p) => ({ callId: p.callId, at: p.at, earnedPaise: p.paidPaise + p.testPaise, paidPaise: p.paidPaise, testPaise: p.testPaise, availableAt: p.availableAt })),
+      payouts: payouts.map((p) => ({ id: p.id, amountPaise: Number(p.amount_rupees) * 100, status: p.status, createdAt: Number(p.created_at), paidAt: p.paid_at == null ? null : Number(p.paid_at) })),
+    };
+  }
+  const cfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+  const now = Date.now();
+  const [lim, today, month] = await Promise.all([limitsFor(env, uid, cfg), paidTodayPaise(env, uid, now).catch(() => 0), paidMonthPaise(env, uid, now).catch(() => 0)]);
+  return json({
+    mode: "tokens",
+    tokens: {
+      balance: formatTokens(sum.totalMicro, 2), balanceMicro: sum.totalMicro, testTokens: formatTokens(testMicro, 2), available: formatTokens(sum.availableMicro, 2), availableMicro: sum.availableMicro,
+      byValue: sum.byValue.map((b) => ({ valuePaisePerToken: b.valuePaisePerToken, valueRupees: (b.valuePaisePerToken / 100).toFixed(2), tokens: formatTokens(b.micro, 2), micro: b.micro })),
+      debt: { tokens: formatTokens(sum.debtMicro, 2), micro: sum.debtMicro, valuePaise: sum.debtValuePaise, open: sum.debtValuePaise > 0 || sum.debtMicro > 0 },
+      activeValuePaisePerToken: await activeValuePaise(env, tk),
+    },
+    // legacy fields kept so an older client renders zeros instead of breaking
+    balanceRupees: 0, testCredits: true, paidBalance: 0, testBalance: Number(formatTokens(testMicro, 2)), spendable: 0,
+    ...(host ? { host } : {}),
+    limits: { daily: lim.daily, monthly: lim.monthly, spentToday: Math.floor(today / 100), spentThisMonth: Math.floor(month / 100), paidTodayPaise: today, paidThisMonthPaise: month, resetsAt: istNextDayStart(now), basis: "paid_for_tokens" },
+    history: hist.slice(0, 50),
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+// GET /api/hf/wallet/estimate?host=<slug>  -> what a call with this host costs THIS caller, in tokens (token mode) or rupees (old mode)
+async function walletEstimate(req: Request, env: Env): Promise<Response> {
+  if (!(await callsOn(env))) return NOT_ENABLED();
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error, u.error);
+  const slug = String(new URL(req.url).searchParams.get("host") ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9-]{3,40}$/.test(slug)) return err(404, "not_found", "Host not found.");
+  const h = await env.DB_META.prepare("SELECT price_per_min FROM hf_hosts WHERE slug=?1 AND status='live'").bind(slug).first<{ price_per_min: number }>().catch(() => null);
+  if (!h) return err(404, "not_found", "Host not found.");
+  const rate = Math.trunc(Number(h.price_per_min));
+  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  if (!tk.enabled) return json({ mode: "inr", ratePerMinRupees: rate }, 200, { "cache-control": "private, no-store" });
+  const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
+  const e = estimateForHost(lots, rate * 100, v);
+  return json({
+    mode: "tokens", ratePerMinRupees: rate, tokensPerMinute: e.tokensPerMinute, aboutText: e.aboutText, affordableSeconds: e.affordableSeconds, canStart: e.canStart,
+    hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0, balance: formatTokens(sum.totalMicro, 2),
   }, 200, { "cache-control": "private, no-store" });
 }
 
@@ -501,6 +644,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     const cancel = p.match(/^\/api\/hf\/calls\/([A-Za-z0-9_-]{8,64})\/cancel$/);
     if (cancel && m === "POST") return await cancelCall(req, env, cancel[1]);
     if (p === "/api/hf/wallet" && m === "GET") return await walletGet(req, env);
+    if (p === "/api/hf/wallet/estimate" && m === "GET") return await walletEstimate(req, env);
     if (p === "/api/hosts/me/presence" && (m === "PUT" || m === "GET")) return await presenceRoute(req, env, p, ctx);
     if (p === "/api/hosts/me/presence/beat" && m === "POST") return await presenceRoute(req, env, p, ctx);
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);

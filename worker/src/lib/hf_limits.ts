@@ -158,3 +158,37 @@ export async function setOverride(env: Env, uid: string, adminUid: string, daily
      ON CONFLICT(uid) DO UPDATE SET daily_rupees=excluded.daily_rupees, monthly_rupees=excluded.monthly_rupees, note=excluded.note, admin_uid=excluded.admin_uid, updated_at=excluded.updated_at`,
   ).bind(uid, daily, monthly, note.slice(0, 200), adminUid, Date.now()).run();
 }
+
+// ── [HF-TOK-LEDGER-1 / HF-TOK-D9] token mode: limits count RUPEES PAID FOR TOKENS, checked at purchase ─────────────────────────────────
+// With hfTokensEnabled on, calls are no longer limited by spend: the daily / monthly limits (Rs 2,000 / Rs 15,000, per-user overrides
+// kept) apply to what a buyer pays for token purchase lots (hf_token_lots.paid_paise, kind purchase) in the IST day / month. Refunded
+// (revoked) lots do not count. Test lots pay nothing. The Play verify route (HF-TOK-PLAY-1) calls checkPurchaseAllowed BEFORE opening the sheet.
+/** Paise paid for token purchases since `sinceMs`. */
+export async function paidPaiseSince(env: Env, uid: string, sinceMs: number): Promise<number> {
+  const r = await env.DB_META.prepare(
+    "SELECT COALESCE(SUM(paid_paise),0) AS s FROM hf_token_lots WHERE uid=?1 AND kind='purchase' AND status='active' AND created_at>=?2",
+  ).bind(uid, sinceMs).first<{ s: number }>();
+  return Math.max(0, Math.trunc(Number(r?.s ?? 0)));
+}
+export const paidTodayPaise = (env: Env, uid: string, now = Date.now()): Promise<number> => paidPaiseSince(env, uid, istDayStart(now));
+export const paidMonthPaise = (env: Env, uid: string, now = Date.now()): Promise<number> => paidPaiseSince(env, uid, istMonthStart(now));
+
+export type PurchaseCheck =
+  | { ok: true; dayRemainingPaise: number; monthRemainingPaise: number }
+  | { ok: false; binding: "day" | "month"; message: string; dayRemainingPaise: number; monthRemainingPaise: number; resetsAt: number };
+
+/** Pure: would paying `pricePaise` now stay inside both limits (rupee limits, compared in paise)? The tighter limit is the one named. */
+export function decidePurchase(limits: Limits, paidToday: number, paidMonth: number, pricePaise: number, now = Date.now()): PurchaseCheck {
+  const price = Math.max(0, Math.trunc(pricePaise));
+  const dayRemainingPaise = Math.max(0, limits.daily * 100 - Math.max(0, Math.trunc(paidToday)));
+  const monthRemainingPaise = Math.max(0, limits.monthly * 100 - Math.max(0, Math.trunc(paidMonth)));
+  if (price <= dayRemainingPaise && price <= monthRemainingPaise) return { ok: true, dayRemainingPaise, monthRemainingPaise };
+  const binding: "day" | "month" = price > dayRemainingPaise ? "day" : "month";
+  return { ok: false, binding, message: limitMessage(binding, limits), dayRemainingPaise, monthRemainingPaise, resetsAt: binding === "month" ? istNextMonthStart(now) : istNextDayStart(now) };
+}
+
+/** For the future Play verify route: may this user buy a pack costing `pricePaise` right now? */
+export async function checkPurchaseAllowed(env: Env, uid: string, pricePaise: number, cfg: LimitCfg, now = Date.now()): Promise<PurchaseCheck> {
+  const [limits, today, month] = await Promise.all([limitsFor(env, uid, cfg), paidTodayPaise(env, uid, now), paidMonthPaise(env, uid, now)]);
+  return decidePurchase(limits, today, month, pricePaise, now);
+}

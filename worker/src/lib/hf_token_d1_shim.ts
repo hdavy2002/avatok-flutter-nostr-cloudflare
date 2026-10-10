@@ -5,13 +5,16 @@ import { readFileSync } from "node:fs";
 const require_ = createRequire(import.meta.url);
 const { DatabaseSync } = require_("node:sqlite");
 
-/** In-memory SQLite with the given migration files applied (ALTER TABLE lines dropped: D1 migration trap #6). */
-export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"]) {
+/**
+ * In-memory SQLite with the given migration files applied. Pass `alters: true` to also run each ALTER TABLE line on its own
+ * (a duplicate column is ignored), for tests that need columns added by ALTER migrations (D1 migration trap #6 keeps them in separate files).
+ */
+export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"], o: { alters?: boolean } = {}) {
   const db = new DatabaseSync(":memory:");
   for (const m of migrations) {
-    const sql = readFileSync(new URL(`../../migrations/${m}`, import.meta.url), "utf8")
-      .split("\n").filter((l) => !l.trim().startsWith("ALTER TABLE")).join("\n");
-    db.exec(sql);
+    const lines = readFileSync(new URL(`../../migrations/${m}`, import.meta.url), "utf8").split("\n");
+    db.exec(lines.filter((l) => !l.trim().startsWith("ALTER TABLE")).join("\n"));
+    if (o.alters) for (const l of lines.filter((x) => x.trim().startsWith("ALTER TABLE"))) { try { db.exec(l.replace(/--.*$/, "")); } catch { /* column already there */ } }
   }
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),

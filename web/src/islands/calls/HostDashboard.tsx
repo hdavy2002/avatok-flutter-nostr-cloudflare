@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import SessionBridge from './SessionBridge';
 import WithdrawPanel from './WithdrawPanel'; // [HF-PAYOUT-1]
 import { API_BASE } from '../../lib/env';
-import { callsEnabled, fetchWallet, hfCall, inr, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
+import { callsEnabled, fetchWallet, hfCall, inr, inr2, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 
 const BEAT_MS = 5 * 60_000;
@@ -170,7 +170,7 @@ export default function HostDashboard() {
         <div className="hfc-stats">
           <div className="hfc-stat"><strong>{today.calls}</strong><span>calls</span></div>
           <div className="hfc-stat"><strong>{today.minutes}</strong><span>minutes</span></div>
-          <div className="hfc-stat"><strong>{inr(today.earned)}</strong><span>earned today</span></div>
+          <div className="hfc-stat"><strong>{(wallet?.mode === 'tokens' ? inr2 : inr)(today.earned)}</strong><span>earned today</span></div>
         </div>
       </section>
 
@@ -178,9 +178,9 @@ export default function HostDashboard() {
         <section className="hfc-card" aria-labelledby="hfc-earn">
           <h2 id="hfc-earn">Your earnings</h2>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{inr(wallet.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
-            <div className="hfc-stat"><strong>{inr(wallet.host.availableRupees)}</strong><span>available</span></div>
-            <div className="hfc-stat"><strong>{inr(wallet.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.availableRupees)}</strong><span>available</span></div>
+            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
           </div>
           <p className="hfc-sub" style={{ margin: 0 }}><a href="/wallet">See wallet and history</a></p>
         </section>

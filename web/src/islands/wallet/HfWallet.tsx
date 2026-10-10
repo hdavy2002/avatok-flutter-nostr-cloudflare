@@ -6,7 +6,7 @@ import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
 import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
 import { isAppMode } from '../../lib/nativeBridge';
-import { fetchWallet, inr, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
+import { fetchWallet, inr, inr2, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 
 const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
@@ -48,21 +48,47 @@ export default function HfWallet() {
     return <main className="hfc-page"><h1>Wallet</h1><p>We could not load your wallet. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
   }
 
+  const tokenMode = w.mode === 'tokens';
+  const hm = tokenMode ? inr2 : inr; // hosts see rupees; token mode shows the paise too (Rs 10.80 a minute)
   return (
     <main className="hfc-page">
       <SessionBridge on />
       <h1>Wallet</h1>
       <section className="hfc-card" aria-labelledby="hfw-bal">
         <h2 id="hfw-bal">Balance</h2>
-        <div className="hfc-stats">
-          <div className="hfc-stat"><strong>{inr(w.paidBalance)}</strong><span>Paid balance</span></div>
-          <div className="hfc-stat"><strong>{inr(w.testBalance)}</strong><span>Test credits: spend only, can’t be withdrawn</span></div>
-        </div>
-        <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
-        {w.limits && (
-          <p className="hfc-sub" style={{ margin: 0 }}>
-            Today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} used · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)} used. Limits count real money only, and today’s resets at midnight.
-          </p>
+        {tokenMode && w.tokens ? (
+          <>
+            <div className="hfc-stats">
+              <div className="hfc-stat"><strong>{w.tokens.balance}</strong><span>tokens</span></div>
+            </div>
+            {w.tokens.byValue.map(b => (
+              <p key={b.valuePaisePerToken} className="hfc-sub" style={{ margin: 0 }}>{b.tokens} tokens worth {inr2(Number(b.valueRupees))} each</p>
+            ))}
+            {Number(w.tokens.testTokens) > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{w.tokens.testTokens} of these are test tokens: spend only, can’t be withdrawn.</p>}
+            {w.tokens.debt.open && (
+              <p className="hfc-note hfc-warn" role="status">
+                You owe {inr2(w.tokens.debt.valuePaise / 100)} after a refund. It is cleared from your next token purchase. Please clear the amount owed before calling.
+              </p>
+            )}
+            {w.limits && (
+              <p className="hfc-sub" style={{ margin: 0 }}>
+                Bought today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)}. Limits count what you pay for tokens, and today’s resets at midnight.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="hfc-stats">
+              <div className="hfc-stat"><strong>{inr(w.paidBalance)}</strong><span>Paid balance</span></div>
+              <div className="hfc-stat"><strong>{inr(w.testBalance)}</strong><span>Test credits: spend only, can’t be withdrawn</span></div>
+            </div>
+            <p className="hfc-sub" style={{ margin: 0 }}>You can spend {inr(w.spendable)} on calls. Test credits are used first.</p>
+            {w.limits && (
+              <p className="hfc-sub" style={{ margin: 0 }}>
+                Today: {inr(w.limits.spentToday)} of {inr(w.limits.daily)} used · This month: {inr(w.limits.spentThisMonth)} of {inr(w.limits.monthly)} used. Limits count real money only, and today’s resets at midnight.
+              </p>
+            )}
+          </>
         )}
       </section>
 
@@ -75,11 +101,25 @@ export default function HfWallet() {
         <section className="hfc-card" aria-labelledby="hfw-earn">
           <h2 id="hfw-earn">Host earnings</h2>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{inr(w.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
-            <div className="hfc-stat"><strong>{inr(w.host.availableRupees)}</strong><span>available</span></div>
-            <div className="hfc-stat"><strong>{inr(w.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.availableRupees)}</strong><span>available</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
           </div>
-          <p className="hfc-sub" style={{ margin: 0 }}>Lifetime paid earnings: {inr(w.host.lifetimePaidEarnings)}</p>
+          <p className="hfc-sub" style={{ margin: 0 }}>Lifetime paid earnings: {hm(w.host.lifetimePaidEarnings)}</p>
+          {tokenMode && w.host.perCall && w.host.perCall.length > 0 && (
+            <ul className="hfc-calls">
+              {w.host.perCall.map(p => (
+                <li key={p.callId}><strong>Call earnings{p.testPaise > 0 ? ' (includes test credits, not withdrawable)' : ''}</strong><span>{inr2(p.earnedPaise / 100)}</span><small>{relDate(p.at)}</small></li>
+              ))}
+            </ul>
+          )}
+          {tokenMode && w.host.payouts && w.host.payouts.length > 0 && (
+            <ul className="hfc-calls">
+              {w.host.payouts.map(p => (
+                <li key={p.id}><strong>Withdrawal · {p.status}</strong><span>{inr2(p.amountPaise / 100)}</span><small>{relDate(p.paidAt ?? p.createdAt)}</small></li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
@@ -88,7 +128,7 @@ export default function HfWallet() {
         {w.history.length === 0 ? <p>Nothing here yet. Calls and credits will show up here.</p> : (
           <ul className="hfc-calls">
             {w.history.map((h, i) => (
-              <li key={`${h.at}-${h.callId ?? i}`}><strong>{h.label}</strong><span>{signed(h.rupees)}</span><small>{relDate(h.at)}</small></li>
+              <li key={`${h.at}-${h.callId ?? i}`}><strong>{h.label}</strong><span>{h.tokens !== undefined ? h.tokens : signed(h.rupees ?? 0)}</span><small>{relDate(h.at)}</small></li>
             ))}
           </ul>
         )}
