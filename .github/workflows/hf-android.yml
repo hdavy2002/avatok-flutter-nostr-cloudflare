@@ -76,6 +76,8 @@ jobs:
 
       - name: Android SDK (accepts licences so Gradle can fetch platform 36)
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       # The Gradle wrapper jar is git-ignored repo-wide, so use a pinned Gradle instead.
       # The version matches hf-app/android/gradle/wrapper/gradle-wrapper.properties.
