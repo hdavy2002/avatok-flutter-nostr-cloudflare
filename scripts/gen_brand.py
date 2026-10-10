@@ -8,6 +8,7 @@ script writes a read-only mirror of it for every surface that needs it:
     worker/src/lib/brand.ts     Cloudflare Worker (API, emails, WhatsApp text)
     consumers/src/brand.ts      queue consumers (email delivery etc.)
     app/lib/core/brand.dart     Flutter app
+    hf-flutter/lib/core/brand.dart   native Hello Fraands app (adds scheme, wwwHost, apiOrigin)
     worker/wrangler.toml        production [vars] + api route (targeted line edits only)
 
 Usage:
@@ -36,6 +37,8 @@ TS_TARGETS = [
 WEB_TARGET = TS_TARGETS[0]
 WEB_LEGACY_TARGET = ROOT / "web" / "src" / "lib" / "brandLegacy.ts"
 DART_TARGET = ROOT / "app" / "lib" / "core" / "brand.dart"
+# [HF-NATIVE-0] The native Hello Fraands app (hf-flutter/) gets its own mirror with a few extra values.
+HF_DART_TARGET = ROOT / "hf-flutter" / "lib" / "core" / "brand.dart"
 WRANGLER_TARGET = ROOT / "worker" / "wrangler.toml"
 CONSUMERS_WRANGLER = ROOT / "consumers" / "wrangler.toml"
 
@@ -179,7 +182,8 @@ def render_legacy_ts(b: dict) -> str:
     return "\n".join(lines)
 
 
-def render_dart(b: dict) -> str:
+def render_dart(b: dict, hf: bool = False) -> str:
+    """hf=True: the hf-flutter/ mirror, which adds the URL scheme, the www host and the origins."""
     h, e = b["hosts"], b["emails"]
     legacy = legacy_domains(b)
     lines = [f"// {l}" for l in HEADER.splitlines()] + [""]
@@ -213,6 +217,14 @@ def render_dart(b: dict) -> str:
         f"  static const String playPackageId = {dart(b['playPackageId'])};",
         "  /// PERMANENT — package id of the Android app wrapping the website (hf-app/).",
         f"  static const String hfPlayPackageId = {dart(b.get('hfPlayPackageId', b['playPackageId']))};",
+    ] + ([
+        "",
+        "  /// Custom URL scheme: the first label of the domain (the DigiLocker return fallback).",
+        f"  static const String scheme = {dart(b['domain'].split('.')[0])};",
+        "  /// The www host of the site (second App Links host).",
+        f"  static const String wwwHost = {dart('www.' + b['domain'])};",
+        f"  static const String apiOrigin = {dart('https://' + h['api'])};",
+    ] if hf else []) + [
         "",
         "  /// Absolute URL on the public website.",
         "  static String url([String path = '/']) =>",
@@ -306,6 +318,7 @@ def main() -> int:
     outputs = {p: render_ts(b, client=(p == WEB_TARGET)) for p in TS_TARGETS}
     outputs[WEB_LEGACY_TARGET] = render_legacy_ts(b)
     outputs[DART_TARGET] = render_dart(b)
+    outputs[HF_DART_TARGET] = render_dart(b, hf=True)
     if WRANGLER_TARGET.exists():
         outputs[WRANGLER_TARGET] = sync_wrangler(WRANGLER_TARGET.read_text(encoding="utf-8"), b)
     if CONSUMERS_WRANGLER.exists():

@@ -1,0 +1,64 @@
+name: hf_app
+description: Native Android app for the Hello Fraands calling platform (HF-NATIVE-*). Brand values come from Specs/brand.json through lib/core/brand.dart.
+publish_to: 'none'
+# CI overrides both with --build-name / --build-number (versionCode = 2000 + run number).
+version: 2.0.0+2000
+
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+
+# Seventeen runtime packages, on purpose (spec section 5.1). Left out: google_fonts (fonts are bundled),
+# flutter_local_notifications (the channel is made in Kotlin), dio, intl, image_picker, in_app_update,
+# any code generation. Upgrading a package is its own issue, with pubspec.lock regenerated in CI.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_riverpod: ^3.0.0           # state (no code generation)
+  go_router: ^16.0.0                 # routing + tab shell
+  http: ^1.2.0                       # API client (no dio)
+  flutter_secure_storage: ^9.2.2     # Clerk client token
+  shared_preferences: ^2.3.0         # caches, 18+ ack, pending call id
+  cached_network_image: ^3.4.0       # avatars and gallery
+  posthog_flutter: ^5.30.0           # analytics (EU project 139917)
+  firebase_core: ^4.1.1              # push (HF-NATIVE-7)
+  firebase_messaging: ^16.0.2        # push (HF-NATIVE-7)
+  in_app_purchase: ^3.2.0            # Google Play Billing (HF-NATIVE-6)
+  audioplayers: ^6.1.0               # host voice intro playback
+  record: 6.2.1                      # voice intro recorder (exact: the version proven in the avaTOK CI)
+  camera: ^0.11.0+2                  # selfie video for host KYC
+  permission_handler: ^12.0.1        # permission status, openAppSettings
+  url_launcher: ^6.3.0               # Custom Tabs, tel:, Play link
+  app_links: ^6.3.2                  # App Links + custom scheme
+  package_info_plus: ^9.0.1          # version for the update check
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Nunito-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Nunito-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Nunito-ExtraBold.ttf
+          weight: 800
+    - family: Comfortaa
+      fonts:
+        - asset: assets/fonts/Comfortaa-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Comfortaa-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Comfortaa-Bold.ttf
+          weight: 700

@@ -1,0 +1,275 @@
+name: HF Flutter (native app)
+
+# Builds and checks the NATIVE Android app under hf-flutter/ (Flutter, package from Specs/brand.json hfPlayPackageId).
+# Nothing is ever built on a local machine: there is no Flutter or Android SDK on the Mac. Started by hand only
+# (workflow_dispatch). Spec: the HF-NATIVE-* build spec (Projects doc hello-fraands-native-app-spec).
+#
+#   mode=check     analyze + tests + brand check (any branch). Fast, nothing signed.
+#   mode=apk       check + a signed release APK (arm64) as an artifact, for installing on a phone. main only.
+#   mode=aab       check + a signed release AAB as an artifact. main only.
+#   mode=internal  check + AAB + upload to the Play INTERNAL track. main only. Needs an explicit owner request.
+#   mode=scaffold  one-off helper: runs `flutter create` in a temp folder, runs `pub get` with hf-flutter/pubspec.yaml
+#                  and uploads the generated android/ skeleton plus pubspec.lock as an artifact to commit.
+#
+# Magic words "ship hf": gh workflow run hf-flutter.yml --ref main -f mode=internal
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to run (apk/aab/internal need main and the HF_UPLOAD_* secrets)'
+        required: true
+        default: check
+        type: choice
+        options: [check, apk, aab, internal, scaffold]
+
+permissions:
+  contents: read
+
+env:
+  MODE: ${{ inputs.mode }}
+  FLUTTER_VERSION: 3.41.x
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Secrets cannot be read inside an `if:`, but an env var derived from one can.
+      HAS_UPLOAD_KEYSTORE: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
+      HAS_GOOGLE_SERVICES: ${{ secrets.HF_GOOGLE_SERVICES_JSON != '' && 'true' || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard - main only for builds, secrets present
+        run: |
+          echo "ref=${GITHUB_REF}  mode=${MODE}"
+          case "${MODE}" in
+            apk|aab|internal)
+              if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+                echo "::error::mode=${MODE} runs from main only (got ${GITHUB_REF}). Re-run with --ref main."
+                exit 1
+              fi
+              if [ "${HAS_UPLOAD_KEYSTORE}" != "true" ]; then
+                echo "::error::HF_UPLOAD_KEYSTORE_BASE64 is not set. A release is never debug-signed."
+                exit 1
+              fi
+              ;;
+          esac
+          if [ "${MODE}" = "internal" ] && [ "${HAS_PLAY_SA}" != "true" ]; then
+            echo "::error::mode=internal but the PLAY_SERVICE_ACCOUNT_JSON secret is not set."
+            exit 1
+          fi
+
+      - name: Brand mirrors are current (Specs/brand.json)
+        run: python3 scripts/gen_brand.py --check
+
+      - name: Permission guard self-test (must reject a forbidden permission)
+        run: python3 hf-flutter/tool/check_permissions.py --self-test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      # ------------------------------------------------------------------ scaffold (one-off)
+      - name: Scaffold - flutter create + pub get in a temp folder
+        if: env.MODE == 'scaffold'
+        run: |
+          mkdir -p "$RUNNER_TEMP/scaffold"
+          cd "$RUNNER_TEMP/scaffold"
+          flutter create --org com.hellofraands --project-name hf_app --platforms android --empty .
+          # Resolve the real dependency set so the lockfile matches hf-flutter/pubspec.yaml.
+          cp "$GITHUB_WORKSPACE/hf-flutter/pubspec.yaml" pubspec.yaml
+          flutter pub get
+          mkdir -p "$RUNNER_TEMP/scaffold-out"
+          cp -R android "$RUNNER_TEMP/scaffold-out/android"
+          cp pubspec.lock .metadata "$RUNNER_TEMP/scaffold-out/"
+          find "$RUNNER_TEMP/scaffold-out" -type f | sort
+
+      - name: Scaffold - upload skeleton
+        if: env.MODE == 'scaffold'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-flutter-scaffold
+          path: ${{ runner.temp }}/scaffold-out
+          include-hidden-files: true
+          if-no-files-found: error
+
+      # ------------------------------------------------------------------ check and build
+      # android/ is committed, but the Gradle wrapper jar is git-ignored repo-wide and flutter create
+      # restores whatever is missing (it never overwrites files that exist). The template widget test is dropped.
+      - name: Restore missing platform files
+        if: env.MODE != 'scaffold'
+        working-directory: hf-flutter
+        run: |
+          flutter create --org com.hellofraands --project-name hf_app --platforms android .
+          rm -f test/widget_test.dart
+          git status --short . | head -20 || true
+
+      - name: Pub get
+        if: env.MODE != 'scaffold'
+        working-directory: hf-flutter
+        run: flutter pub get
+
+      - name: Format (informational)
+        if: env.MODE != 'scaffold'
+        working-directory: hf-flutter
+        continue-on-error: true
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        if: env.MODE != 'scaffold'
+        working-directory: hf-flutter
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        if: env.MODE != 'scaffold'
+        working-directory: hf-flutter
+        run: flutter test
+
+      - name: Guard - target API 36
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        working-directory: hf-flutter
+        run: |
+          if ! grep -Eq 'targetSdk[[:space:]]*=[[:space:]]*36' android/app/build.gradle.kts; then
+            echo "::error::android/app/build.gradle.kts does not target API 36."
+            grep -nE 'compileSdk|targetSdk|minSdk' android/app/build.gradle.kts || true
+            exit 1
+          fi
+
+      - name: Decode upload keystore
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        id: keystore
+        env:
+          HF_UPLOAD_KEYSTORE_BASE64: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          echo "$HF_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hf-upload.jks"
+          echo "path=$RUNNER_TEMP/hf-upload.jks" >> "$GITHUB_OUTPUT"
+
+      # Optional until push ships (HF-NATIVE-7): the build works without it.
+      - name: Write google-services.json (only if the secret is set)
+        if: (env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal') && env.HAS_GOOGLE_SERVICES == 'true'
+        env:
+          HF_GOOGLE_SERVICES_JSON: ${{ secrets.HF_GOOGLE_SERVICES_JSON }}
+        run: printf '%s' "$HF_GOOGLE_SERVICES_JSON" > hf-flutter/android/app/google-services.json
+
+      - name: Version numbers
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        run: |
+          # versionCode 2000 + run number: always above the Capacitor builds (1001...).
+          echo "HF_VERSION_CODE=$((2000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "HF_VERSION_NAME=2.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build APK (arm64)
+        if: env.MODE == 'apk'
+        working-directory: hf-flutter
+        env:
+          HF_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          HF_UPLOAD_STORE_PASSWORD: ${{ secrets.HF_UPLOAD_STORE_PASSWORD }}
+          HF_UPLOAD_KEY_ALIAS: ${{ secrets.HF_UPLOAD_KEY_ALIAS }}
+          HF_UPLOAD_KEY_PASSWORD: ${{ secrets.HF_UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release --target-platform android-arm64 \
+            --build-number="${HF_VERSION_CODE}" --build-name="${HF_VERSION_NAME}" \
+            --dart-define=GIT_SHA="${GITHUB_SHA}"
+
+      - name: Build AAB
+        if: env.MODE == 'aab' || env.MODE == 'internal'
+        working-directory: hf-flutter
+        env:
+          HF_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          HF_UPLOAD_STORE_PASSWORD: ${{ secrets.HF_UPLOAD_STORE_PASSWORD }}
+          HF_UPLOAD_KEY_ALIAS: ${{ secrets.HF_UPLOAD_KEY_ALIAS }}
+          HF_UPLOAD_KEY_PASSWORD: ${{ secrets.HF_UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release \
+            --build-number="${HF_VERSION_CODE}" --build-name="${HF_VERSION_NAME}" \
+            --dart-define=GIT_SHA="${GITHUB_SHA}"
+
+      # Fails the job when the merged manifest asks for anything beyond the allow-list in
+      # hf-flutter/tool/check_permissions.py (no phone, SMS, contacts, call log, location, media).
+      - name: Permission allow-list guard
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        working-directory: hf-flutter
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          if [ -f "$APK" ]; then
+            python3 tool/check_permissions.py --apk "$APK"
+          else
+            MANIFEST=$(find build/app/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*elease*' | head -1)
+            echo "merged manifest: ${MANIFEST}"
+            test -n "$MANIFEST" || { echo "::error::no merged release manifest found"; exit 1; }
+            python3 tool/check_permissions.py --manifest "$MANIFEST"
+          fi
+
+      - name: Verify signing and print the upload certificate
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        working-directory: hf-flutter
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          if [ "${MODE}" = "apk" ]; then
+            test -f "$APK" || { echo "::error::APK not produced (unsigned release?)"; exit 1; }
+            jarsigner -verify "$APK" | head -3
+            keytool -printcert -jarfile "$APK" | grep -E "SHA256|Owner" | head -3
+          else
+            test -f "$AAB" || { echo "::error::AAB not produced"; exit 1; }
+            jarsigner -verify "$AAB" | head -3
+            keytool -printcert -jarfile "$AAB" | grep -E "SHA256|Owner" | head -3
+          fi
+
+      - name: Upload APK
+        if: env.MODE == 'apk'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-flutter-apk
+          path: hf-flutter/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload AAB
+        if: env.MODE == 'aab' || env.MODE == 'internal'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-flutter-aab
+          path: hf-flutter/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Brand package id
+        if: env.MODE == 'internal'
+        id: brand
+        run: echo "app_id=$(python3 -c "import json;print(json.load(open('Specs/brand.json'))['hfPlayPackageId'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish AAB to Play (internal track)
+        if: env.MODE == 'internal'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ steps.brand.outputs.app_id }}
+          releaseFiles: hf-flutter/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## HF Flutter"
+            echo ""
+            echo "- mode: ${MODE}"
+            echo "- versionCode: ${HF_VERSION_CODE:-n/a}"
+            echo "- versionName: ${HF_VERSION_NAME:-n/a}"
+            echo "- google-services.json: ${HAS_GOOGLE_SERVICES} (push needs it)"
+            echo "- job status: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
