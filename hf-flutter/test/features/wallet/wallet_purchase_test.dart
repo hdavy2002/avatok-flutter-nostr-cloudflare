@@ -25,6 +25,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('the pack section says the price shown includes 18% GST (HF-PAY-19)', (tester) async {
+    await pumpWallet(tester, api: api, billing: billing);
+    expect(find.text('The price shown includes 18% GST.'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('gst-hf_tokens_100')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('gst-hf_tokens_1000')), findsOneWidget);
+    expect(find.text('All prices shown include 18% GST. You pay through Google Play.'), findsOneWidget);
+  });
+
   group('buying tokens', () {
     testWidgets('purchased -> verify -> "₹102 added to your wallet" and the balance is refreshed', (tester) async {
       var balanceReads = 0;

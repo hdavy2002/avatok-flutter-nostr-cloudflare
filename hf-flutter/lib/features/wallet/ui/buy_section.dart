@@ -23,7 +23,11 @@ abstract final class BuyCopy {
   static const String areYouSure = 'Are you sure?';
   static const String yesBuy = 'Yes, buy';
   static const String cancel = 'Cancel';
-  static const String paidViaPlay = 'You pay through Google Play.';
+  static const String paidViaPlay = 'All prices shown include 18% GST. You pay through Google Play.';
+
+  /// HF-GST-NOTE-1 / rulebook HF-PAY-19 (owner decision 2026-10-11): pack prices include 18% GST.
+  static const String gstSubtitle = 'The price shown includes 18% GST.';
+  static const String gstOnPack = 'Includes 18% GST';
 }
 
 /// The packs, with Google Play's own price on each button, and the whole buy flow.
@@ -38,6 +42,8 @@ class BuySection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(BuyCopy.title, style: HfText.title),
+        const SizedBox(height: 2),
+        const Text(BuyCopy.gstSubtitle, key: ValueKey<String>('gst-subtitle'), style: HfText.note),
         const SizedBox(height: HfSpacing.gap),
         offers.when(
           skipLoadingOnReload: true,
@@ -158,7 +164,10 @@ class _PackCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (price != null) Text(price, style: HfText.subtitle),
+          if (price != null) ...[
+            Text(price, style: HfText.subtitle),
+            Text(BuyCopy.gstOnPack, key: ValueKey<String>('gst-${offer.productId}'), style: HfText.note),
+          ],
           const SizedBox(height: 12),
           // The label carries Play's own price string. No price is ever typed or taken from our server.
           HfButton(
@@ -185,7 +194,7 @@ class _PackCard extends ConsumerWidget {
           builder: (ctx) => AlertDialog(
             title: const Text(BuyCopy.areYouSure),
             content: Text(
-              'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} through Google Play.',
+              'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
               style: HfText.bodyText,
             ),
             actions: [
