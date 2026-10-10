@@ -9924,6 +9924,34 @@
       }
     ]
   },
+  "HF-NATIVE-5": {
+    "description": "[HF-NATIVE-5 2026-10-10] Native Hello Fraands app: call confirm and call screen (hf-flutter/lib/features/call/), summary and post-call review (lib/features/review/). Confirm step (sheet and the /call/new?host=<slug> page the host profile opens): host, rupees per minute plus tokens per minute in token mode, 'about N min M s' estimate from GET /api/hf/wallet/estimate, the 2-minute minimum rule, the safety reminder (normal phone call, number stays private, # ends and blocks, crisis 14416) and Start call -> POST /api/hf/calls with every error code mapped (low_balance/debt_open -> Wallet, host_unavailable -> calm sentence + Notify me, lane_required -> lane verification, call_in_progress -> resume, not_verified -> sign in, spend_limit/account_closing/calls_not_ready -> the worker's words, wallet_busy/call_failed/429/network -> Try again). Call screen polls GET /api/hf/calls/:id every 2 s in the foreground (paused in the background, polled at once on resume, stopped on a terminal status), Cancel while ringing, connected clock, summary (time, rupees or tokens, why it ended, host_declined/blocked read the same calm sentence) and Rate your call. The call id is kept in account-scoped storage until the call ends so reopening the app resumes it (activeCallResumeProvider). Review: 1-5 stars, optional text (500, no phone/email/link) and topic, signed-in path POST /api/hf/calls/:id/review and the WhatsApp/push token path GET/POST /api/hf/review/:token with no sign-in. Client only; no server change.",
+    "shipped": "2026-10-10",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_call_ended",
+        "where": {
+          "status": "completed"
+        },
+        "property": "seconds",
+        "exists": true,
+        "min_events": 1,
+        "note": "A full native call: the caller's phone rang, was answered and the call ended normally (status completed, seconds talked on the event). Needs two phones on the build: the caller on the native app and a host on any build. status = failed, no_answer or caller_no_answer instead means the call never connected: look at hf_app_call_status for how far it got and at the worker's hf_call_* events."
+      },
+      {
+        "event": "hf_app_review_submitted",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "A review sent from the native app (via = call from the summary, via = token from the WhatsApp link). outcome = failed carries the worker code in reason (contact_details, already_reviewed, expired)."
+      }
+    ]
+  },
   "HF-NATIVE-S1": {
     "description": "[HF-NATIVE-S1 2026-10-10] Native Hello Fraands app, server side 1: GET /api/hf/me (signed in) answers {uid, displayName, phoneMasked (last 4 digits only), whatsappVerified, ackVersion, age18ConfirmedAt, isHost, host:{status,slug}|null, lanes:{women,lgbtq}, closing, tokensMode} from one joined D1 read plus the lane/ack/closing reads; PATCH /api/hf/me {displayName} saves a name (2-40 chars, no digits, no phone/link/handle). Worker only (routes/hf_me.ts); no flag, no migration (ackVersion reads hf_user_ack from HF-NATIVE-S4 and falls back to null if that table is not there yet). Cache-Control: private, no-store.",
     "two_sided": false,

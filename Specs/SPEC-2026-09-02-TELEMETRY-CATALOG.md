@@ -1077,3 +1077,23 @@ Errors (`captureException`): uncaught Flutter, platform and zone errors. Later i
 ### Ship manifest note
 
 `HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`. Success for `HF-NATIVE-2`: `hf_app_signin_success` with `platform = android-app` (and `hf_app_signin_code_sent` before it) from the owner's phone.
+
+## Hello Fraands native app: calls and reviews (`[HF-NATIVE-5]`, 2026-10-10)
+
+Native call confirm, call screen, summary and review (`hf-flutter/lib/features/call/`, `lib/features/review/`). Same super properties as the rest of the native app
+(`platform = android-app`, `service_name = hf-app`). No phone number, uid, call id or review token rides on any of these events.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_call_started` | `slug`, `outcome: 'ok' \| 'failed'`, `reason`, `status`, `ms`, `mode: 'tokens' \| 'inr'` | Start call was tapped and `POST /api/hf/calls` answered. `reason` is the worker code on failure (`low_balance`, `debt_open`, `host_unavailable`, `lane_required`, `spend_limit`, `call_in_progress`, `not_verified`, `network`, ...) and `status` the HTTP status. **Success value:** `outcome = ok` for the owner's test call. |
+| `hf_app_call_status` | `status: 'ringing_host' \| 'ringing_caller' \| 'connected' \| 'completed' \| 'host_declined' \| 'no_answer' \| 'caller_no_answer' \| 'failed' \| 'blocked'` | Once per distinct status the call screen sees while following a call (polling `GET /api/hf/calls/:id` every 2 s in the foreground). A good call shows `ringing_host`, `ringing_caller`, `connected`, `completed`. |
+| `hf_app_call_cancelled` | `outcome: 'ok' \| 'too_late' \| 'failed'`, `reason` | Cancel call was tapped before the call connected. `too_late` = `409 already_connected`. |
+| `hf_app_call_ended` | `seconds`, `end_reason`, `status`, `mode` | Once per call, when the status turns terminal. `seconds` is the talked time (exact for token calls, billed minutes x 60 otherwise). `end_reason` is `caller_hangup \| host_hangup \| hash_block \| time_limit \| balance \| error \| spend_limit`, or `none`. **Success value:** `status = completed` with `seconds > 0` on the owner's two-phone test. |
+| `hf_app_review_submitted` | `stars`, `via: 'call' \| 'token'`, `outcome: 'ok' \| 'failed'`, `reason`, `status`, `ms` | A review was sent. `via = call` from the call summary (signed in), `via = token` from a WhatsApp or push link. `reason` is the worker code on failure (`contact_details`, `already_reviewed`, `expired`, ...). **Success value:** `outcome = ok`. |
+
+The earlier `hf_app_call_tapped` (host profile, HF-NATIVE-4) comes first in the funnel; `api_error` covers every failed request.
+
+### Ship manifest note
+
+`HF-NATIVE-5` is two-sided (the host's phone has to ring and be answered): `min_devices_on_build` is 2. Success: `hf_app_call_ended` with `status = completed` and a `seconds`
+value, and `hf_app_review_submitted` with `outcome = ok`.
