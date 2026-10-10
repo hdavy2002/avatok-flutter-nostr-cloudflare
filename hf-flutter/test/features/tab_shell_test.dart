@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
+import 'package:hf_app/features/review/ui/review_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/tab_shell.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
@@ -80,7 +81,7 @@ void main() {
     final c = await pumpApp(tester);
     c.read(appRouterProvider).go('/review/tok123');
     await tester.pumpAndSettle();
-    expect(find.text('token: tok123'), findsOneWidget);
+    expect(find.byType(ReviewScreen), findsOneWidget); // no sign-in redirect
   });
 
   testWidgets('the tab bar survives the largest system font without overflow', (tester) async {

@@ -7,6 +7,7 @@ import '../../../core/brand.dart';
 import '../../../core/router/deep_link_handler.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_tokens.dart';
+import '../../call/data/call_api.dart';
 import '../../welcome/data/ack_service.dart';
 
 /// Cold start: shows the brand while the session and the flags load (capped at 6 s). Then: Welcome (18+ and
@@ -51,7 +52,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     ref.read(bootDoneProvider.notifier).markDone();
     final opened = await handler.flushPending();
     if (!mounted) return;
-    if (!opened) context.go(Routes.home);
+    if (opened) return;
+    context.go(Routes.home);
+    // [HF-NATIVE-FIX-1] A call that is still going when the app starts: go back into it (Home stays underneath).
+    try {
+      final callId = await ref.read(activeCallResumeProvider.future);
+      if (callId != null && mounted) context.push(Routes.callOf(callId));
+    } catch (_) {
+      // never let a resume failure strand the person
+    }
   }
 
   @override
