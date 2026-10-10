@@ -1,0 +1,190 @@
+name: HF Android build
+
+# Builds the Android app under hf-app/ (Capacitor shell around the live website).
+# All builds run here on GitHub Actions, never on a local machine. Started by hand only
+# (workflow_dispatch). Agents must NEVER trigger it without an explicit owner request.
+# Magic words "ship hf":
+#   gh workflow run hf-android.yml --ref main -f artifact=both -f play_track=internal
+# Spec: Specs/SPEC-2026-10-10-HF-ANDROID-APP.md (HF-APP-1).
+on:
+  workflow_dispatch:
+    inputs:
+      artifact:
+        description: 'Artifact format (Play needs the AAB; the APK is for side-loading)'
+        required: true
+        default: both
+        type: choice
+        options: [apk, aab, both]
+      play_track:
+        description: 'Publish the AAB to a Play track (internal = owner-only testing)'
+        required: true
+        default: none
+        type: choice
+        options: [none, internal]
+
+permissions:
+  contents: read
+
+env:
+  BUILD_APK: ${{ inputs.artifact == 'aab' && 'false' || 'true' }}
+  BUILD_AAB: ${{ inputs.artifact == 'apk' && 'false' || 'true' }}
+  PLAY_TRACK: ${{ inputs.play_track || 'none' }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Secrets cannot be read inside an `if:`, but an env var derived from one can.
+      HAS_UPLOAD_KEYSTORE: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
+      HAS_GOOGLE_SERVICES: ${{ secrets.HF_GOOGLE_SERVICES_JSON != '' && 'true' || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard - main only, and a valid combination
+        run: |
+          echo "ref=${GITHUB_REF}  artifact=${{ inputs.artifact }}  play_track=${PLAY_TRACK}"
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::HF app builds run from main only (got ${GITHUB_REF}). Re-run with --ref main."
+            exit 1
+          fi
+          if [ "${PLAY_TRACK}" != "none" ] && [ "${BUILD_AAB}" != "true" ]; then
+            echo "::error::play_track=${PLAY_TRACK} needs an AAB. Re-run with artifact=aab or artifact=both."
+            exit 1
+          fi
+          if [ "${PLAY_TRACK}" != "none" ] && [ "${HAS_PLAY_SA}" != "true" ]; then
+            echo "::error::play_track=${PLAY_TRACK} but the PLAY_SERVICE_ACCOUNT_JSON secret is not set."
+            exit 1
+          fi
+          if [ "${HAS_UPLOAD_KEYSTORE}" != "true" ]; then
+            echo "::error::HF_UPLOAD_KEYSTORE_BASE64 is not set. A release is never debug-signed. Set the four HF_UPLOAD_* secrets (see hf-app/README.md)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hf-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK (accepts licences so Gradle can fetch platform 36)
+        uses: android-actions/setup-android@v3
+
+      # The Gradle wrapper jar is git-ignored repo-wide, so use a pinned Gradle instead.
+      # The version matches hf-app/android/gradle/wrapper/gradle-wrapper.properties.
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
+      - name: Install JS dependencies
+        working-directory: hf-app
+        run: npm ci --include=dev
+
+      - name: Brand values (from Specs/brand.json)
+        id: brand
+        working-directory: hf-app
+        run: |
+          node scripts/brand.mjs print
+          echo "app_id=$(node -e "import('./scripts/brand.mjs').then(m => console.log(m.loadBrand().appId))")" >> "$GITHUB_OUTPUT"
+
+      - name: Capacitor sync
+        working-directory: hf-app
+        run: |
+          npx cap sync android
+          node scripts/brand.mjs offline
+
+      - name: Decode upload keystore
+        id: keystore
+        env:
+          HF_UPLOAD_KEYSTORE_BASE64: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          echo "$HF_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hf-upload.jks"
+          echo "path=$RUNNER_TEMP/hf-upload.jks" >> "$GITHUB_OUTPUT"
+
+      # Optional: push notifications need it (HF-APP-4). The build works without it.
+      - name: Write google-services.json (only if the secret is set)
+        if: env.HAS_GOOGLE_SERVICES == 'true'
+        env:
+          HF_GOOGLE_SERVICES_JSON: ${{ secrets.HF_GOOGLE_SERVICES_JSON }}
+        run: printf '%s' "$HF_GOOGLE_SERVICES_JSON" > hf-app/android/app/google-services.json
+
+      - name: Version numbers
+        run: |
+          echo "HF_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "HF_VERSION_NAME=1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: hf-app/android
+        env:
+          HF_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          HF_UPLOAD_STORE_PASSWORD: ${{ secrets.HF_UPLOAD_STORE_PASSWORD }}
+          HF_UPLOAD_KEY_ALIAS: ${{ secrets.HF_UPLOAD_KEY_ALIAS }}
+          HF_UPLOAD_KEY_PASSWORD: ${{ secrets.HF_UPLOAD_KEY_PASSWORD }}
+        run: |
+          TASKS=""
+          if [ "${BUILD_AAB}" = "true" ]; then TASKS="$TASKS bundleRelease"; fi
+          if [ "${BUILD_APK}" = "true" ]; then TASKS="$TASKS assembleRelease"; fi
+          echo "gradle $TASKS  (versionCode=${HF_VERSION_CODE} versionName=${HF_VERSION_NAME})"
+          gradle --no-daemon --stacktrace $TASKS
+
+      - name: Verify signing and print the upload certificate
+        run: |
+          AAB=hf-app/android/app/build/outputs/bundle/release/app-release.aab
+          APK=hf-app/android/app/build/outputs/apk/release/app-release.apk
+          if [ "${BUILD_AAB}" = "true" ]; then
+            test -f "$AAB" || { echo "::error::AAB not produced"; exit 1; }
+            jarsigner -verify "$AAB" | head -3
+            keytool -printcert -jarfile "$AAB" | grep -E "SHA256|Owner" | head -3
+          fi
+          if [ "${BUILD_APK}" = "true" ]; then
+            test -f "$APK" || { echo "::error::APK not produced (unsigned release?)"; exit 1; }
+            jarsigner -verify "$APK" | head -3
+          fi
+
+      - name: Upload AAB
+        if: env.BUILD_AAB == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-app-aab
+          path: hf-app/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Upload APK
+        if: env.BUILD_APK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-app-apk
+          path: hf-app/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Publish AAB to Play
+        if: env.PLAY_TRACK != 'none'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ steps.brand.outputs.app_id }}
+          releaseFiles: hf-app/android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ env.PLAY_TRACK }}
+          status: completed
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## HF Android build"
+            echo ""
+            echo "- versionCode: ${HF_VERSION_CODE:-n/a}"
+            echo "- versionName: ${HF_VERSION_NAME:-n/a}"
+            echo "- artifact: ${{ inputs.artifact }}"
+            echo "- Play track: ${PLAY_TRACK}"
+            echo "- google-services.json: ${HAS_GOOGLE_SERVICES} (push notifications need it)"
+            echo "- job status: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
