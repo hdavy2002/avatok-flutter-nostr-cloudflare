@@ -9701,5 +9701,19 @@
         "note": "A top-up was paid and credited; its receipt is issued at the same moment."
       }
     ]
+  },
+  "HF-APP-1": {
+    "description": "[HF-APP-1 2026-10-10] Android app shell (Capacitor wrapper of the live website) in hf-app/, built only by .github/workflows/hf-android.yml (started by hand, \"ship hf\"). Success = the app installs from Play internal testing and opens the live site. Telemetry for it (hf_app_open with platform=android-app) is added by HF-APP-8 in the web code.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_open",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "The installed app opened the live site once (event is added by HF-APP-8). Until then this is confirmed by hand on the owner's phone after installing from the Play internal testing link."
+      }
+    ]
   }
 }

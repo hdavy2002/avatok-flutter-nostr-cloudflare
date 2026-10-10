@@ -46,7 +46,7 @@ works; the backend must be built to match these rules before calls go live.
 |---|---|---|---|---|
 | HF-CALL-1 | We are a **switch**: the host's phone rings first with a private announcement (caller handle, past call count). Host presses 1 to accept, 2 to decline; 10 s silence = decline. Only then the caller is dialled, and the two calls are joined through a platform number. | ADOPTED | DONE | TODO (Vobiz PSTN) |
 | HF-CALL-2 | Neither person ever sees the other's real phone number. | ADOPTED | DONE | TODO |
-| HF-CALL-3 | No app needed: calls come to the normal phone number. Wallet, favourites and history live on the website. | ADOPTED | DONE | TODO |
+| HF-CALL-3 | No app needed for calls; the Android app is optional. Calls come to the normal phone number. Wallet, favourites and history live on the website. | ADOPTED | DONE | TODO |
 | HF-CALL-4 | Either person can hang up any time. **#** at any time ends the call, blocks the other person and reports the incident. | ADOPTED | DONE | TODO |
 | HF-CALL-5 | Both people hear a short **safety notice** before connecting (not a recording notice). Proposed wording: *"This is a friendly chat, not counselling. In crisis, dial 14416."* | ADOPTED (wording PROPOSED) | DONE (wording in terms) | TODO |
 | HF-CALL-6 | **Notify me, no queue** (owner decision 2026-10-09). When a host is busy or offline, the caller sees "Busy — Notify me" / "Offline — Notify me". We send one WhatsApp when the host goes online (at most one per 24 h per caller), then the subscription ends. Nobody waits in a line. If a host declines or misses a call, the caller is offered the same Notify me. | ADOPTED | DONE (HF-CALLS-1, behind hfCallsEnabled) | TODO (HF-CALLS-1) |
@@ -201,6 +201,26 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 
 ---
 
+## 14. Android app (added 2026-10-10)
+
+The app is the website inside an Android shell (Capacitor). Spec: `Specs/SPEC-2026-10-10-HF-ANDROID-APP.md`. Decisions D1 to D11 of that spec are adopted with the owner's approval of the spec (2026-10-10); each row below carries the spec's decision id.
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-APP-1 | **Wrap the website with Capacitor** (spec D1): no Flutter rebuild, no page rebuild. Project in `hf-app/`, built only in CI (`.github/workflows/hf-android.yml`, started by hand; magic words "ship hf"). | ADOPTED | N/A | TODO |
+| HF-APP-2 | **Package `com.hellofraands.app`** (spec D2), permanent. Never reuse `com.saathum.app`. Stored as `hfPlayPackageId` in `Specs/brand.json`. | ADOPTED | N/A | TODO |
+| HF-APP-3 | **First track is Play Internal testing**, tester `hdavy2005@gmail.com` only (spec D3). | ADOPTED | N/A | TODO |
+| HF-APP-4 | **Play Console work only in the `hdavy2005@gmail.com` account** (developer account AvaGlobal Inc, reached at `/console/u/1/`), checked every time (spec D4). Never act in another Google account. | ADOPTED | N/A | N/A |
+| HF-APP-5 | **The app loads the live site**, not a bundled copy (spec D5); a small bundled offline page shows when there is no network. | ADOPTED | N/A | TODO |
+| HF-APP-6 | **Calls stay normal phone calls.** The app adds no phone, SMS, contacts, call-log or location permissions (spec D6). Complete permission list: INTERNET, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS, POST_NOTIFICATIONS. | ADOPTED | N/A | TODO |
+| HF-APP-7 | **Admin pages stay web-only**; the app never links to `/admin/*` (spec D7). | ADOPTED | N/A | TODO |
+| HF-APP-8 | **Callers buy tokens with Google Play Billing inside the app** (spec D8, supersedes "top-up hidden in the app"). The website says "Download the app to add tokens". Full token model in spec section 11. | ADOPTED | N/A | TODO |
+| HF-APP-9 | **Push notifications are added**, with WhatsApp kept as the fallback for people on the website (spec D9). | ADOPTED | N/A | TODO |
+| HF-APP-10 | **A new upload key for this app only** (`hf-upload.jks`); Google Play App Signing holds the real app key (spec D10). The key and its passwords are never committed. | ADOPTED | N/A | N/A |
+| HF-APP-11 | **Calls paid with Play tokens start only in the app** (spec D11). On the website the Call button says "Open the app to call"; admin test credits still work on the web. | ADOPTED | N/A | TODO |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -272,6 +292,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-10 | HF-APP-1: Android app (Capacitor wrapper of the live website) approved and scaffolded in `hf-app/`; new section 14 (HF-APP-1 to HF-APP-11 = spec decisions D1 to D11); HF-CALL-3 reworded to "No app needed for calls; the Android app is optional". Spec: Specs/SPEC-2026-10-10-HF-ANDROID-APP.md. |
 | 2026-10-10 | HF-WALLET-EXIT-1: pay-out-first account closure (HF-PAY-14) and refunds of unused top-ups to the original payment (HF-PAY-15). New /account/close, /wallet refund section, admin Wallet refunds page, exit badge on host payouts. Refunds dark behind hfRefundsEnabled; the closure gate is on (hfExitGateEnabled) but acts only when real money exists. |
 | 2026-10-09 | HF-PRIV-6 backend DONE (HF-RETENTION-1): daily purge deletes call records and safety incidents after 1 year, KYC OTP ledger after 30 days, notifications after 90 days, abandoned host drafts and idle lane callers after 1 year; account deletion now removes all verification records, voice intro and profile media. |
 | 2026-10-09 | HF-TOPUP-1: gateway-agnostic wallet top-up built, dark (HF-PAY-9/10/11). Needs a gateway's keys + `hfTopupGateway` + `hfTopupEnabled`; see Specs/HF-WALLET-TOPUP.md. |
