@@ -1,4 +1,4 @@
-// [HF-TOK-MATH-1] Pure token + money maths for Hello Fraands (spec: hello-fraands-android-app-spec.md section 11.4). No I/O, no Env.
+// [HF-TOK-MATH-1] Pure token + money maths for HF (spec: Specs/SPEC-2026-10-10-HF-ANDROID-APP.md section 11.4). No I/O, no Env.
 // Units: rupees are PAISE (integers); tokens are MICRO-TOKENS (1 token = 1_000_000 micro). No floats touch money: every product that
 // could pass 2^53 is done in BigInt, and results are returned as plain numbers (they are small once divided).
 // NOTHING imports this yet: it is the tested base for HF-TOK-LEDGER-1 / HF-TOK-CALLS-1.
