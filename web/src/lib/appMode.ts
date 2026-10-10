@@ -91,6 +91,67 @@ function onLinkClick(e: MouseEvent): void {
   else openOutside(u.href);
 }
 
+/* ── [HF-APP-LINKS-1] Brand links open the app ──────────────────────────────
+ * The manifest claims every https link on the site host (apex + www), so a link in an email, WhatsApp or SMS lands
+ * here as App.appUrlOpen (app running) or App.getLaunchUrl() (cold start). The WebView then loads that page.
+ * Same-site only: other hosts, other schemes and the DigiLocker return (dl=return, handled in nativeBridge.ts, which
+ * closes the in-app browser) are ignored here, so nothing is handled twice. */
+const DEEPLINK_DYNAMIC_FIRST = new Set(['review', 'h', 'people', 'verify', 'book', 'watch', 'l', 'c', 'e', 'i', 'j']);
+
+/** Path safe to send to analytics: tokens, slugs and ids never leave the device (/review/<token> -> /review/:id). */
+export function deepLinkTelemetryPath(path: string): string {
+  const seg = path.split('?')[0].split('#')[0].split('/').filter(Boolean);
+  if (!seg.length) return '/';
+  if (DEEPLINK_DYNAMIC_FIRST.has(seg[0])) return seg.length > 1 ? `/${seg[0]}/:id` : `/${seg[0]}`;
+  return '/' + seg.slice(0, 2).join('/');
+}
+
+/** Path+query+hash to open for an incoming https link, or null when it is not ours to handle. www is folded onto
+ * the apex so the WebView keeps one origin (and its sign-in). */
+export function deepLinkTarget(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try { u = new URL(raw); } catch { return null; }
+  const host = u.hostname.toLowerCase();
+  if (u.protocol !== 'https:' || (host !== BRAND.domain && host !== `www.${BRAND.domain}`)) return null;
+  if (u.search.includes('dl=return')) return null; // DigiLocker return: nativeBridge.openAuthInApp owns it
+  if (/^\/hosts\/kyc\/return(\/|$)/.test(u.pathname)) return null; // same flow, https form
+  return u.pathname + u.search + u.hash;
+}
+
+function openDeepLink(raw: string | undefined | null, launch: 'cold' | 'warm'): void {
+  try {
+    const target = deepLinkTarget(raw);
+    if (!target) return;
+    const here = location.pathname + location.search + location.hash;
+    capture('hf_app_deeplink_opened', { path: deepLinkTelemetryPath(target), launch });
+    if (target === here || (launch === 'cold' && target === '/')) return;
+    location.href = BRAND.webOrigin + target;
+  } catch (err) {
+    captureException(err, { where: 'hf_app_deeplink' });
+  }
+}
+
+/** getLaunchUrl keeps returning the same URL on every page load of this app process; act on it only on the first
+ * load (sessionStorage lives as long as the WebView). Storage blocked: skip, a missed cold link beats a redirect loop. */
+function launchNotHandledYet(): boolean {
+  try {
+    if (sessionStorage.getItem('hf_launch_url_done') === '1') return false;
+    sessionStorage.setItem('hf_launch_url_done', '1');
+    return true;
+  } catch { return false; }
+}
+
+function wireDeepLinks(): void {
+  const app = appPlugins().App;
+  if (app?.addListener) {
+    void Promise.resolve(app.addListener('appUrlOpen', (d) => openDeepLink(d?.url, 'warm'))).catch((err: unknown) => captureException(err, { where: 'hf_app_deeplink_listener' }));
+  }
+  if (app?.getLaunchUrl && launchNotHandledYet()) {
+    void Promise.resolve(app.getLaunchUrl()).then((r) => openDeepLink(r?.url, 'cold')).catch(() => {});
+  }
+}
+
 /** Wire everything once. Safe to call on every page; does nothing outside the app. */
 export function initAppMode(): void {
   if (started || typeof window === 'undefined' || !isAppMode()) return;
@@ -101,6 +162,7 @@ export function initAppMode(): void {
     sendOpenOnce(shell);
     document.addEventListener('click', onLinkClick, true);
     void import('./appPush').then((m) => m.initAppPush()).catch((err: unknown) => captureException(err, { where: 'hf_app_init' })); // [HF-APP-4]
+    wireDeepLinks(); // [HF-APP-LINKS-1]
     const add = appPlugins().App?.addListener;
     if (add) {
       void Promise.resolve(appPlugins().App!.addListener!('backButton', onBackButton)).catch((err: unknown) => captureException(err, { where: 'hf_app_back_listener' }));

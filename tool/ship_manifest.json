@@ -9820,5 +9820,19 @@
         "note": "Vobiz's own CDR for a test-call leg was fetched and had a total cost (proves the CDR API + field names)."
       }
     ]
+  },
+  "HF-APP-LINKS-1": {
+    "description": "[HF-APP-LINKS-1 2026-10-10] Every link on the brand site opens the Hello Fraands app when installed. Fixes /.well-known/assetlinks.json 404 on the brand host (astro.config.mjs now keeps /.well-known/* out of the SSR Function in _routes.json), adds web/scripts/check-assetlinks.mjs to the release contracts and a post-deploy curl in web-deploy.yml. Interim Capacitor app (hf-app) now claims the whole site host (apex + www, any path) for App Links; web/src/lib/appMode.ts opens the incoming same-site path on appUrlOpen and getLaunchUrl (cold start). Specs/HF-APP-DEEPLINK.md gains the native Flutter app requirements and the path-to-screen table. Needs a new Android build to take effect; the assetlinks fix needs a web deploy.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_deeplink_opened",
+        "property": "path",
+        "equals": "/h/:id",
+        "note": "On a phone with the new build: send a host page link by WhatsApp or email, tap it, the app opens (no browser, no chooser) on that host page. path carries no slug or token."
+      }
+    ]
   }
 }

@@ -28,17 +28,17 @@
                 <data android:scheme="${hfScheme}" />
             </intent-filter>
 
-            <!-- Verified Android App Links for the site (needs assetlinks.json; see HF-APP-2). -->
+            <!-- [HF-APP-LINKS-1] Verified Android App Links for the WHOLE site: every https link on the brand host
+                 (apex and www), any path. Links in emails, WhatsApp and SMS open the app when it is installed; the site
+                 (appMode.ts) then loads the same path. Needs assetlinks.json on BOTH hosts (see Specs/HF-APP-DEEPLINK.md).
+                 ${hfHost} and ${hfWwwHost} come from Specs/brand.json via app/build.gradle. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="${hfHost}" />
-                <data android:pathPrefix="/hosts/kyc/return" />
-                <data android:pathPrefix="/h/" />
-                <data android:pathPrefix="/people/" />
-                <data android:pathPrefix="/wallet" />
-                <data android:pathPrefix="/verify/" />
+                <data android:scheme="https" />
+                <data android:host="${hfHost}" />
+                <data android:host="${hfWwwHost}" />
             </intent-filter>
         </activity>
 

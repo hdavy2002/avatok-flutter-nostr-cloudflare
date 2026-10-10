@@ -13,6 +13,8 @@ export interface CapPlugins {
   App?: {
     addListener?: (e: string, cb: (d: { url?: string; canGoBack?: boolean }) => void) => unknown;
     exitApp?: () => unknown;
+    /** [HF-APP-LINKS-1] URL that cold-started the app (an App Link tapped while the app was closed). */
+    getLaunchUrl?: () => Promise<{ url?: string } | undefined | null>;
   };
   /** [HF-APP-4] @capacitor/push-notifications (FCM). All optional; callers guard every call. */
   PushNotifications?: {

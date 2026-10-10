@@ -22,7 +22,7 @@ android {
         // CI sets HF_VERSION_CODE (1000 + run number) and HF_VERSION_NAME (1.0.<run number>).
         versionCode((System.getenv('HF_VERSION_CODE') ?: '1000') as int)
         versionName System.getenv('HF_VERSION_NAME') ?: '1.0.0'
-        manifestPlaceholders = [hfHost: hfDomain, hfScheme: hfScheme]
+        manifestPlaceholders = [hfHost: hfDomain, hfWwwHost: 'www.' + hfDomain, hfScheme: hfScheme]
         resValue 'string', 'app_name', hfBrand.name
         resValue 'string', 'title_activity_main', hfBrand.name
         resValue 'string', 'package_name', hfBrand.hfPlayPackageId
