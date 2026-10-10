@@ -9888,5 +9888,26 @@
         "note": "A spare WhatsApp number that had no account signed up with no email (flag on) and landed signed in; the Clerk dashboard shows a user with username hf..., external id hfwa_..., no email."
       }
     ]
+  },
+  "HF-NATIVE-0": {
+    "description": "[HF-NATIVE-0 2026-10-10] hf-flutter/ project skeleton and CI: .github/workflows/hf-flutter.yml (workflow_dispatch only; mode check|apk|aab|internal|scaffold; pinned Flutter 3.41.x, Java 17, signed builds from the HF_UPLOAD_* secrets, versionCode 2000+run, permission allow-list guard), Android skeleton (applicationId from Specs/brand.json, minSdk 24, target/compile 36, https App Links autoVerify for the apex and www hosts plus the custom scheme, singleTask, Flutter deep linking off, adaptive icon from hf-app), pubspec + pubspec.lock, gen_brand.py now also emits hf-flutter/lib/core/brand.dart. Nothing runs for a user until HF-NATIVE-1+ ships a build.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Build infrastructure only: a CI workflow, an Android project skeleton and a generated brand constants file. No user-visible behaviour and no code path that could emit an event; the first runnable screens (and telemetry) arrive in HF-NATIVE-1."
+  },
+  "HF-NATIVE-1": {
+    "description": "[HF-NATIVE-1 2026-10-10] Native app foundation (hf-flutter/): theme tokens + bundled Nunito/Comfortaa, shared widgets, ApiClient with typed ApiError, Clerk ticket sign-in client (signInWithTicket per Specs/HF-NATIVE-AUTH.md), account-scoped storage and cache, Analytics (PostHog EU, super props platform=android-app, service_name=hf-app, release, email, clerk_uid), /api/config flags reader, go_router with Home/Explore/Wallet/Me tabs (+ Host tab when GET /api/hf/me has a host) and a stub for every route, deep_links.dart for the whole path table (App Links + custom scheme), requireSignIn(). Stubs only: no feature screen yet. Signed APK from hf-flutter.yml mode=apk installs over the Capacitor app (same package + key).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_open",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "A phone with the native build opened the app: hf_app_open arrives with platform = android-app and service_name = hf-app (cold_ms and signed_in are on the event). Deep links show as hf_app_deeplink_opened {path, source: link|scheme|push, launch}."
+      }
+    ]
   }
 }

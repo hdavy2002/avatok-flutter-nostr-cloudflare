@@ -18,8 +18,8 @@ upload failed on a creator's phone and there was nothing to pull.
 
 | prop | value | note |
 |---|---|---|
-| `platform` | `web` · `android` · `ios` · `macos` · `windows` · `linux` · `worker` | |
-| `service_name` | `avatok-web` · `avatok-app` · `avatok-desktop` · `avatok-api` | |
+| `platform` | `web` · `android` · `ios` · `macos` · `windows` · `linux` · `worker` · `android-app` | `android-app` = the Hello Fraands app, both the old Capacitor shell (web events in app mode) and the native Flutter app (`hf-flutter/`, `[HF-NATIVE-1]`). |
+| `service_name` | `avatok-web` · `avatok-app` · `avatok-desktop` · `avatok-api` · `hf-app` | `hf-app` = the native Hello Fraands app (`hf-flutter/`). Its `app` super prop is the brand slug. |
 | `release` | git SHA of the build | filter any issue by deploy |
 | `app` | product area: `avaexplore` · `avatok` · `avaconsult` · `admin` · `site` | matches the Worker's `app_name` |
 | `email` / `phone` | when known | **the retrieval key** — support pulls by email |
@@ -1042,3 +1042,24 @@ Server only (`worker/src/lib/hf_play.ts`, `routes/hf_tokens_play.ts`), all throu
 | `hf_token_refund_applied` | `debt_paise`, `source: 'rtdn' \| 'voided_sweep' \| 'race' \| ...`, `removed_tokens` | A Google refund / void removed a purchase lot, once. `debt_paise > 0` = some of those tokens were already spent: an open debt blocks calls until the next purchase clears it. Host earnings are never touched. |
 
 Errors: worker `trackException` routes `/api/hf/tokens/play/*` and `hf_play` (`step: insert_purchase`).
+
+## Hello Fraands native app (`hf-flutter/`, `[HF-NATIVE-1]`, 2026-10-10)
+
+Spec: the Hello Fraands Android app spec, section 8 (project doc `hello-fraands-android-app-spec`). Project: PostHog EU 139917, through `posthog_flutter`
+(`lib/core/analytics/analytics.dart`). **Super properties on every event:** `platform: 'android-app'`, `service_name: 'hf-app'`, `app` (brand slug), `os`,
+`release` (git SHA, `--dart-define=GIT_SHA`), `app_version`, `app_build`, `environment`, `screen`, `account_id`, `email`, `phone`, `clerk_uid`, `session_seq`.
+`identify(clerk uid)` after sign-in, `reset()` on sign-out. Error tracking, native crash capture and masked session replay are on. No phone number or uid in event props.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_app_open` | `cold_ms`, `signed_in` | Once per process start, after the splash work (session restore + `/api/config`, capped at 6 s). **Success value:** `platform = android-app`. |
+| `hf_app_deeplink_opened` | `path`, `source: 'link' \| 'scheme' \| 'push'`, `launch: 'cold' \| 'warm'` | A link or push opened a screen. `path` is anonymised (`/h/:id`, `/review/:id`, `/review/call/:id`), the query is dropped. Same event name as the Capacitor app; filter by `service_name`. |
+| `screen_viewed` | `from` | Every route change, with the same templated path in `screen`. |
+| `api_error` | `endpoint`, `status`, `code`, `ms`, `latency_ms` | Emitted once by the API client for every non-2xx or network failure. A `404 not_enabled` (flag off) is not reported. |
+| `signup_step` | `provider: 'whatsapp_ticket'`, `step`, `reason`, `ms` | Steps `ticket_redeem_started` / `ticket_redeem_completed` / `ticket_redeem_failed`, `secure_storage_reset`, `fapi_timeout`, `jwt_guard_tripped`. |
+
+Errors (`captureException`): uncaught Flutter, platform and zone errors. Later issues add their own events to this section.
+
+### Ship manifest note
+
+`HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`.
