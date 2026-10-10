@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -59,7 +61,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
     final sw = Stopwatch()..start();
     try {
       await ref.read(walletApiProvider).requestRefund(lotId: lotId);
-      Analytics.capture('hf_app_refund_requested', {'outcome': 'ok', 'ms': sw.elapsedMilliseconds, 'kind': lotId == null ? 'money' : 'tokens'});
+      unawaited(Analytics.capture('hf_app_refund_requested', {'outcome': 'ok', 'ms': sw.elapsedMilliseconds, 'kind': lotId == null ? 'money' : 'tokens'}));
       if (!mounted) return;
       setState(() {
         _message = RefundCopy.asked;
@@ -68,14 +70,14 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
       ref.invalidate(refundsProvider);
       ref.invalidate(walletProvider);
     } on ApiError catch (e) {
-      Analytics.capture('hf_app_refund_requested', {'outcome': 'error', 'reason': e.code, 'status': e.status, 'ms': sw.elapsedMilliseconds});
+      unawaited(Analytics.capture('hf_app_refund_requested', {'outcome': 'error', 'reason': e.code, 'status': e.status, 'ms': sw.elapsedMilliseconds}));
       if (!mounted) return;
       setState(() {
         _message = e.userMessage;
         _messageIsError = true;
       });
     } catch (_) {
-      Analytics.capture('hf_app_refund_requested', {'outcome': 'error', 'reason': 'unknown', 'ms': sw.elapsedMilliseconds});
+      unawaited(Analytics.capture('hf_app_refund_requested', {'outcome': 'error', 'reason': 'unknown', 'ms': sw.elapsedMilliseconds}));
       if (!mounted) return;
       setState(() {
         _message = ApiError.fallbackMessageFor('bad_response', 0);

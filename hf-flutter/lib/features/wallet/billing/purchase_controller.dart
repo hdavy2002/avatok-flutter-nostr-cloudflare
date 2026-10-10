@@ -157,13 +157,13 @@ class PurchaseController extends Notifier<PurchaseState> {
   }
 
   void _result(String status, {String? productId, String? reason, bool recovery = false, Map<String, Object>? extra}) {
-    Analytics.capture('hf_app_purchase_result', {
+    unawaited(Analytics.capture('hf_app_purchase_result', {
       'status': status,
       if (productId != null && productId.isNotEmpty) 'product_id': productId,
       if (reason != null) 'reason': reason,
       'source': recovery ? 'recovery' : 'buy',
       ...?extra,
-    });
+    }));
   }
 
   /// The whole buy flow for one pack. [confirm] shows "Are you sure?" and answers yes or no; it is asked
@@ -207,7 +207,7 @@ class PurchaseController extends Notifier<PurchaseState> {
       return;
     }
 
-    Analytics.capture('hf_token_purchase_started', {'product_id': productId, 'tokens': offer.pack.tokens});
+    unawaited(Analytics.capture('hf_token_purchase_started', {'product_id': productId, 'tokens': offer.pack.tokens}));
     state = PurchaseState(phase: PurchasePhase.awaitingSheet, productId: productId, notice: state.notice);
     final bool opened;
     try {
@@ -344,7 +344,7 @@ class PurchaseController extends Notifier<PurchaseState> {
       if (mine) {
         _finish(_notice(
           NoticeKind.error,
-          code == 'account_mismatch' ? PurchaseCopy.otherAccount : (e?.userMessage ?? PurchaseCopy.playFailed),
+          code == 'account_mismatch' ? PurchaseCopy.otherAccount : e.userMessage,
         ));
       }
       return;

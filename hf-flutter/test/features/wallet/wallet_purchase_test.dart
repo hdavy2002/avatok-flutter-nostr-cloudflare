@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
+import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 import 'package:hf_app/features/wallet/wallet_providers.dart';
 

@@ -10,7 +10,6 @@ import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
-import '../billing/purchase_controller.dart';
 import '../data/wallet_models.dart';
 import '../wallet_providers.dart';
 import 'buy_section.dart';

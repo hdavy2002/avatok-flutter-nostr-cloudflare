@@ -138,7 +138,7 @@ class _Packs extends ConsumerWidget {
           _PackCard(offer: o, enabled: offers.storeAvailable && !purchase.busy && o.store != null),
           const SizedBox(height: HfSpacing.gap),
         ],
-        Text(BuyCopy.paidViaPlay, style: HfText.note),
+        const Text(BuyCopy.paidViaPlay, style: HfText.note),
       ],
     );
   }
