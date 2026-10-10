@@ -61,7 +61,7 @@ void main() {
       expect(find.text(PushStrings.notNow), findsOneWidget);
       expect(gw.promptCount, 0, reason: 'the Android prompt waits for Allow');
       for (final label in [PushStrings.allow, PushStrings.notNow]) {
-        final size = tester.getSize(find.ancestor(of: find.text(label), matching: find.byType(ButtonStyleButton)).first);
+        final size = tester.getSize(find.ancestor(of: find.text(label), matching: find.bySubtype<ButtonStyleButton>()).first);
         expect(size.height, greaterThanOrEqualTo(48), reason: label);
       }
     });
