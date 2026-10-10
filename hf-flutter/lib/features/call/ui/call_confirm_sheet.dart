@@ -338,12 +338,12 @@ class CallSafetyCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(HfRadius.card),
         border: Border.all(color: HfColors.butterDeep),
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.shield_outlined, size: 24, color: HfColors.plum),
-          const SizedBox(width: 12),
-          const Expanded(child: Text(CallStrings.safetyNotice, style: HfText.bodyText)),
+          Icon(Icons.shield_outlined, size: 24, color: HfColors.plum),
+          SizedBox(width: 12),
+          Expanded(child: Text(CallStrings.safetyNotice, style: HfText.bodyText)),
         ],
       ),
     );
