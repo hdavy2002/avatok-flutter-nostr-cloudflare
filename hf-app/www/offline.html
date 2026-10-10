@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fff8e8">
+  <title>__BRAND_NAME__</title>
+  <!-- Fonts load only when some connection exists; the system fallbacks keep the page readable offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;700&family=Nunito:wght@700;800&display=swap">
+  <style>
+    :root { --cream: #fff8e8; --ink: #46113e; --red: #b73226; --red-dark: #8f2519; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--cream); color: var(--ink); }
+    body {
+      font-family: 'Comfortaa', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 18px; line-height: 1.5;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+      text-align: center;
+    }
+    main { max-width: 22rem; width: 100%; }
+    .mark { width: 96px; height: 96px; margin: 0 auto 20px; display: block; }
+    .brand { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 22px; margin: 0 0 8px; color: var(--red); }
+    h1 { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 28px; line-height: 1.2; margin: 0 0 12px; }
+    p { margin: 0 0 28px; font-size: 18px; }
+    button {
+      font: inherit; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 20px;
+      min-height: 52px; min-width: 200px; padding: 0 32px; border: 0; border-radius: 26px;
+      background: var(--red); color: #fff; cursor: pointer;
+    }
+    button:active { background: var(--red-dark); }
+    button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <svg class="mark" viewBox="0 0 64 64" role="img" aria-label="__BRAND_NAME__">
+      <path fill="#b73226" d="M32 2a29 29 0 0 0-25 44L3 62l17-6A29 29 0 1 0 32 2Z"/>
+      <path d="m19 16 7 10-5 5c3 6 7 10 13 13l5-5 10 7-3 7c-2 4-9 2-16-1C17 45 10 35 9 24c0-5 3-8 10-8Z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round" transform="translate(7 0) scale(.84)"/>
+    </svg>
+    <p class="brand">__BRAND_NAME__</p>
+    <h1>No internet</h1>
+    <p id="msg">Check your connection.</p>
+    <button type="button" id="retry">Try again</button>
+  </main>
+  <script>
+    var SITE = '__SITE_URL__';
+    var msg = document.getElementById('msg');
+    function retry() {
+      msg.textContent = 'Checking\u2026';
+      var ctl = window.AbortController ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 8000);
+      fetch(SITE + '/favicon.ico', { mode: 'no-cors', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+        .then(function () { clearTimeout(timer); window.location.href = SITE; })
+        .catch(function () { clearTimeout(timer); msg.textContent = 'Still no connection. Check your connection.'; });
+    }
+    document.getElementById('retry').addEventListener('click', retry);
+    window.addEventListener('online', retry);
+  </script>
+</body>
+</html>
