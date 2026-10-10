@@ -43,7 +43,7 @@ Future<void> _tapStar(WidgetTester tester, int n) async {
 }
 
 Future<void> _send(WidgetTester tester) async {
-  await tester.ensureVisible(find.text('Send review'));
+  await tester.scrollUntilVisible(find.text('Send review'), 300, scrollable: find.byType(Scrollable).first);
   await tester.tap(find.text('Send review'));
   await tester.pump();
   await tester.pump();
