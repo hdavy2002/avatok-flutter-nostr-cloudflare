@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/api/api_client.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/config/flags.dart';
 

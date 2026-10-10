@@ -8,8 +8,8 @@ import '../../support/fake_api_client.dart';
 const _send = '/api/auth/whatsapp/send';
 const _verify = '/api/auth/whatsapp/verify';
 
-class _Env {
-  _Env({bool acked = true, FakeApiClient? api}) : api = api ?? FakeApiClient() {
+class SignInEnv {
+  SignInEnv({bool acked = true, FakeApiClient? api}) : api = api ?? FakeApiClient() {
     this.api
       ..onJson('POST', _send, {'ok': true, 'phone_masked': '+91 ******3210', 'resend_after_s': 30})
       ..onJson('POST', _verify, {'ok': true, 'status': 'signed_in', 'ticket': 't1', 'isNew': true});
@@ -38,8 +38,8 @@ class _Env {
   List<String> get names => events.map((e) => e.$1).toList();
 }
 
-Future<_Env> ready({bool acked = true, FakeApiClient? api}) async {
-  final env = _Env(acked: acked, api: api);
+Future<SignInEnv> ready({bool acked = true, FakeApiClient? api}) async {
+  final env = SignInEnv(acked: acked, api: api);
   addTearDown(env.controller.dispose);
   await env.controller.init();
   return env;
