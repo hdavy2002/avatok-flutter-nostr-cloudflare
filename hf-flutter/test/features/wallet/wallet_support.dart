@@ -35,16 +35,6 @@ Map<String, Object?> tokenWallet({
         'debt': debt ?? {'tokens': '0.00', 'micro': 0, 'valuePaise': 0, 'open': false},
         'activeValuePaisePerToken': 82,
       },
-      'limits': {
-        'daily': 2000,
-        'monthly': 15000,
-        'spentToday': 100,
-        'spentThisMonth': 300,
-        'paidTodayPaise': 10000,
-        'paidThisMonthPaise': 30000,
-        'resetsAt': 1760000000000,
-        'basis': 'paid_for_tokens',
-      },
       'history': history ??
           [
             {'at': 1760000000000, 'kind': 'purchase', 'tokens': '+100.00', 'label': 'Tokens added'},
@@ -59,7 +49,6 @@ Map<String, Object?> legacyWallet() => {
       'paidBalance': 250,
       'testBalance': 40,
       'spendable': 290,
-      'limits': {'daily': 2000, 'monthly': 15000, 'spentToday': 0, 'spentThisMonth': 0, 'resetsAt': 1},
       'history': [
         {'at': 1760000000000, 'kind': 'call_spent', 'rupees': -40, 'label': 'Call with Asha (4 min)', 'callId': 'c1'},
       ],
@@ -82,8 +71,6 @@ Map<String, Object?> prepareAnswer(String productId) => {
       'productId': productId,
       'tokens': productId == 'hf_tokens_1000' ? 1000 : 100,
       'confirmAbovePaise': 100000,
-      'dayRemainingPaise': 200000,
-      'monthRemainingPaise': 1500000,
     };
 
 Map<String, Object?> verifyAnswer({String status = 'consumed', bool duplicate = false, num tokens = 100}) => {

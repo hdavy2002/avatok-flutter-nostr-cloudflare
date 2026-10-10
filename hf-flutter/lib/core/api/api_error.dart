@@ -148,7 +148,6 @@ class ApiError implements Exception {
     'too_many_attempts': 'Too many wrong tries. Please ask for a new code.',
     'low_balance': 'Your balance is too low for this call. Please add tokens.',
     'debt_open': 'Please clear what you owe first. Your next purchase clears it.',
-    'spend_limit': 'You have reached your spending limit for now.',
     'lane_required': 'Please verify to enter this space.',
     'not_verified': 'Please sign in again with your WhatsApp number.',
     'account_closing': 'This account is being closed.',

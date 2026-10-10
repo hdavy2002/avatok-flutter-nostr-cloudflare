@@ -18,7 +18,6 @@ class PurchaseNoticeCard extends StatelessWidget {
       NoticeKind.success => (HfColors.lilac, HfColors.orchid, Icons.check_circle_outline_rounded),
       NoticeKind.pending => (HfColors.butter, HfColors.plum, Icons.hourglass_top_rounded),
       NoticeKind.cancelled => (HfColors.lilac, HfColors.mauve, Icons.info_outline_rounded),
-      NoticeKind.limit => (HfColors.blush, HfColors.accent, Icons.block_rounded),
       NoticeKind.error => (HfColors.blush, HfColors.accent, Icons.error_outline_rounded),
     };
     return Semantics(

@@ -28,15 +28,12 @@ void main() {
   setUp(() => billing = FakeBillingAdapter());
 
   group('token wallet', () {
-    testWidgets('shows the balance with 2 decimals, the value breakdown, test tokens, limits and history', (tester) async {
+    testWidgets('shows the balance with 2 decimals, the value breakdown, test tokens and history', (tester) async {
       await pumpWallet(tester, api: walletApi(), billing: billing);
       expect(find.text('Your balance'), findsOneWidget);
       expect(find.text('45.20 tokens'), findsOneWidget);
       expect(find.text('45.20 tokens worth ₹0.82 each'), findsOneWidget);
       expect(find.text('Test tokens (spend only): 5.00 tokens'), findsOneWidget);
-      expect(find.text('Today ₹100 of ₹2,000'), findsOneWidget);
-      expect(find.text('This month ₹300 of ₹15,000'), findsOneWidget);
-      expect(find.text('These count the rupees you pay for tokens.'), findsOneWidget);
       expect(find.text('Call with Asha (4 min)'), findsOneWidget);
       expect(find.text('-3.20 tokens'), findsOneWidget);
       expect(find.text('+100.00 tokens'), findsOneWidget);

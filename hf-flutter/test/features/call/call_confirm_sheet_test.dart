@@ -200,8 +200,6 @@ void main() {
           'Please verify to use this lane.', CallStrings.verifyToCall, CallSheetAction.lane),
       ('not_verified', 403, {'message': 'Please verify your WhatsApp number first.'},
           'Please verify your WhatsApp number first.', CallStrings.signInAgain, CallSheetAction.signIn),
-      ('spend_limit', 403, {'message': 'You have reached your daily limit.', 'period': 'day', 'resetsAt': 1},
-          'You have reached your daily limit.', null, null),
       ('account_closing', 409, {'message': 'Your account is being closed.'}, 'Your account is being closed.', null, null),
       ('calls_not_ready', 503, {'message': "Calls aren't ready yet. Please try again later."},
           "Calls aren't ready yet. Please try again later.", null, null),

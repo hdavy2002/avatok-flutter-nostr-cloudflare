@@ -130,23 +130,6 @@ void main() {
       expect(find.text('Google Play could not open. Please try again.'), findsOneWidget);
     });
 
-    testWidgets('limit: the server message is shown and Play is never opened', (tester) async {
-      api.onError(
-        'POST',
-        '/api/hf/tokens/play/prepare',
-        const ApiError(
-          status: 403,
-          code: 'limit',
-          message: "You've reached today's limit of Rs 2,000. It resets at midnight.",
-          extra: {'binding': 'day'},
-        ),
-      );
-      await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
-      expect(find.text("You've reached today's limit of Rs 2,000. It resets at midnight."), findsOneWidget);
-      expect(billing.boughtProductIds, isEmpty);
-    });
-
     testWidgets('prepare off (503 disabled): "not available right now"', (tester) async {
       api.onError('POST', '/api/hf/tokens/play/prepare', const ApiError(status: 503, code: 'disabled', message: 'Token purchases are not available right now.'));
       await pumpWallet(tester, api: api, billing: billing);

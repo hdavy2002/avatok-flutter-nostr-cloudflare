@@ -14,7 +14,7 @@ import 'billing_adapter.dart';
 enum PurchasePhase {
   idle,
 
-  /// Asking the server (limits, account id) before the Play sheet.
+  /// Asking the server (account id) before the Play sheet.
   preparing,
 
   /// The Play sheet is open.
@@ -24,7 +24,7 @@ enum PurchasePhase {
   verifying,
 }
 
-enum NoticeKind { success, pending, cancelled, limit, error }
+enum NoticeKind { success, pending, cancelled, error }
 
 /// A result the Wallet shows after a purchase. [id] changes for every new notice.
 class PurchaseNotice {
@@ -74,7 +74,7 @@ abstract final class PurchaseCopy {
 /// Buying tokens with Google Play Billing, and finishing purchases that were never finished.
 ///
 /// The contract (Specs/HF-PLAY-BILLING-RUNBOOK.md section 4):
-///  1. `prepare {productId}` -> `obfuscatedAccountId` (403 `limit` stops here, with the server's message).
+///  1. `prepare {productId}` -> `obfuscatedAccountId`.
 ///  2. "Are you sure?" when the pack price is at or above `confirmAbovePaise`.
 ///  3. Open the Play sheet with that account id.
 ///  4. On `purchased` (or pending) -> `verify {productId, purchaseToken}`. Idempotent: the same token again is
@@ -225,11 +225,6 @@ class PurchaseController extends Notifier<PurchaseState> {
   }
 
   void _prepareFailed(ApiError e, String productId) {
-    if (e.code == 'limit') {
-      _finish(_notice(NoticeKind.limit, e.userMessage));
-      _result('limit', productId: productId, extra: {'binding': '${e.extra['binding']}'});
-      return;
-    }
     final off = e.status == 503 && (e.code == 'disabled' || e.code == 'unconfigured') || e.isNotEnabled;
     _finish(_notice(NoticeKind.error, off ? PurchaseCopy.notAvailable : e.userMessage));
     _result('failed', productId: productId, reason: e.code);

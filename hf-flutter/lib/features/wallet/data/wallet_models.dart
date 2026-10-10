@@ -1,6 +1,6 @@
 import '../../../core/format/money.dart';
 
-// Typed views of the wallet routes (worker/src/routes/hf_calls.ts, hf_refunds.ts, hf_wallet_limits.ts,
+// Typed views of the wallet routes (worker/src/routes/hf_calls.ts, hf_refunds.ts, hf_wallet_limits.ts (receipts),
 // hf_tokens_play.ts). The server sends token amounts as 2-decimal strings plus integer micro-tokens, and
 // rupee amounts as integers or numbers it already computed. The phone only DISPLAYS them: no balance,
 // price or value is computed here.
@@ -73,37 +73,6 @@ class TokenDebt {
   }
 }
 
-class WalletLimits {
-  const WalletLimits({
-    required this.daily,
-    required this.monthly,
-    required this.spentToday,
-    required this.spentThisMonth,
-    this.paidTokensBasis = false,
-  });
-
-  final num daily;
-  final num monthly;
-  final num spentToday;
-  final num spentThisMonth;
-
-  /// True when the server counts rupees paid for tokens (`basis: paid_for_tokens`).
-  final bool paidTokensBasis;
-
-  static WalletLimits? fromJson(Object? v) {
-    if (v is! Map) return null;
-    final j = Map<String, dynamic>.from(v);
-    if (j['daily'] == null && j['monthly'] == null) return null;
-    return WalletLimits(
-      daily: _num(j['daily']) ?? 0,
-      monthly: _num(j['monthly']) ?? 0,
-      spentToday: _num(j['spentToday']) ?? 0,
-      spentThisMonth: _num(j['spentThisMonth']) ?? 0,
-      paidTokensBasis: j['basis'] == 'paid_for_tokens',
-    );
-  }
-}
-
 /// One history line. Token mode carries [tokens] (`+100.00`, `-3.20`); old money carries [rupees].
 class HistoryItem {
   const HistoryItem({required this.at, required this.kind, required this.label, this.tokens, this.rupees, this.callId});
@@ -165,7 +134,6 @@ class WalletData {
     required this.tokenMode,
     required this.history,
     required this.purchases,
-    this.limits,
     this.balanceText = '0.00',
     this.availableText = '0.00',
     this.availableMicro = 0,
@@ -194,7 +162,6 @@ class WalletData {
   final num testBalance;
   final num spendable;
 
-  final WalletLimits? limits;
   final List<HistoryItem> history;
   final List<PurchaseRecord> purchases;
 
@@ -211,7 +178,6 @@ class WalletData {
 
   factory WalletData.fromJson(Map<String, dynamic> j) {
     final history = [for (final m in _maps(j['history'])) HistoryItem.fromJson(m)];
-    final limits = WalletLimits.fromJson(j['limits']);
     var purchases = [for (final m in _maps(j['purchases'])) PurchaseRecord.fromJson(m)];
     if (purchases.isEmpty) {
       // Until the server sends purchases[] (order ids), the token history says which lines were purchases.
@@ -234,7 +200,6 @@ class WalletData {
         testTokensText: _str(t['testTokens']) ?? '0.00',
         byValue: [for (final m in _maps(t['byValue'])) ByValue.fromJson(m)],
         debt: TokenDebt.fromJson(t['debt']),
-        limits: limits,
         history: history,
         purchases: purchases,
       );
@@ -244,7 +209,6 @@ class WalletData {
       paidBalance: _num(j['paidBalance']) ?? 0,
       testBalance: _num(j['testBalance']) ?? 0,
       spendable: _num(j['spendable']) ?? 0,
-      limits: limits,
       history: history,
       purchases: const <PurchaseRecord>[],
     );

@@ -25,7 +25,6 @@ abstract final class WalletCopy {
   static const String historyEmpty = 'Nothing here yet.';
   static const String purchases = 'Purchases';
   static const String receipts = 'Receipts';
-  static const String limits = 'Your limits';
   static const String signIn = 'Sign in';
   static const String signInBody = 'Please sign in to see your wallet.';
 }
@@ -154,10 +153,6 @@ class _WalletList extends ConsumerWidget {
           ],
           gap,
           const BuySection(),
-          if (data.limits != null) ...[
-            gap,
-            _LimitsCard(limits: data.limits!),
-          ],
           gap,
           const RefundSection(),
           if (data.tokenMode) ...[
@@ -284,42 +279,6 @@ class _DebtBanner extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _LimitsCard extends StatelessWidget {
-  const _LimitsCard({required this.limits});
-
-  final WalletLimits limits;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(WalletCopy.limits, style: HfText.title),
-        const SizedBox(height: HfSpacing.gap),
-        HfCard(
-          key: const ValueKey<String>('limits'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Today ${Money.rupees(limits.spentToday)} of ${Money.rupees(limits.daily)}', style: HfText.bodyStrong),
-              const SizedBox(height: 4),
-              Text(
-                'This month ${Money.rupees(limits.spentThisMonth)} of ${Money.rupees(limits.monthly)}',
-                style: HfText.bodyStrong,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                limits.paidTokensBasis ? 'These count the rupees you pay for tokens.' : 'These count the money you spend.',
-                style: HfText.note,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

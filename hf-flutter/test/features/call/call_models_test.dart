@@ -96,7 +96,7 @@ void main() {
 
   group('end reasons in simple English', () {
     test('every reason the worker sends has a sentence', () {
-      for (final r in ['caller_hangup', 'host_hangup', 'hash_block', 'time_limit', 'balance', 'error', 'spend_limit']) {
+      for (final r in ['caller_hangup', 'host_hangup', 'hash_block', 'time_limit', 'balance', 'error']) {
         expect(CallStrings.endReasonText(r, 'Asha'), isNotNull, reason: r);
       }
       expect(CallStrings.endReasonText('host_hangup', 'Asha'), 'Asha ended the call.');
@@ -119,7 +119,6 @@ void main() {
       expect(map(403, 'lane_required', {'lane': 'lgbtq'}).kind, CallProblemKind.lane);
       expect(map(403, 'lane_required', {'lane': 'lgbtq'}).lane, 'lgbtq');
       expect(map(403, 'lane_required').lane, 'women');
-      expect(map(403, 'spend_limit', {'period': 'day'}).kind, CallProblemKind.message);
       expect(map(402, 'low_balance', {'needed': 24, 'balance': 5}).kind, CallProblemKind.wallet);
       expect(map(402, 'low_balance', {'shortfallTokens': '2.00', 'shortfallPaise': 200}).kind, CallProblemKind.wallet);
       expect(map(409, 'debt_open').kind, CallProblemKind.debt);

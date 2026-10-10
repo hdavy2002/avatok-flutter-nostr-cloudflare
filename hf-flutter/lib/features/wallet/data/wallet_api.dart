@@ -15,7 +15,7 @@ class WalletApi {
   Future<TokenCatalog> products() async =>
       TokenCatalog.fromJson(await _api.getJson('/api/hf/tokens/products', auth: false));
 
-  /// Limits, debt and the "Are you sure?" threshold are checked here. 403 `limit` carries the message.
+  /// Debt and the "Are you sure?" threshold are checked here.
   Future<PreparedPurchase> prepare(String productId) async => PreparedPurchase.fromJson(
         await _api.postJson('/api/hf/tokens/play/prepare', body: {'productId': productId}),
         productId,

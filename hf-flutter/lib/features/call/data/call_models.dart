@@ -83,7 +83,7 @@ class CallInfo {
   final int billedMinutes;
   final num chargedRupees;
 
-  /// `caller_hangup | host_hangup | hash_block | time_limit | balance | error | spend_limit`.
+  /// `caller_hangup | host_hangup | hash_block | time_limit | balance | error`.
   final String? endReason;
   final bool canReview;
 
@@ -213,7 +213,7 @@ enum CallProblemKind {
   /// A temporary failure: Try again.
   retry,
 
-  /// Just a message (spending limit, account closing, calls not ready, anything else).
+  /// Just a message (account closing, calls not ready, anything else).
   message,
 }
 
@@ -257,14 +257,13 @@ class CallStartProblem {
       case 'call_failed':
       case 'rate_limited':
         return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
-      case 'spend_limit':
       case 'account_closing':
       case 'calls_not_ready':
         // Trying again changes nothing: just the worker's own words.
         return CallStartProblem(CallProblemKind.message, e.userMessage, code: code);
     }
     if (e.status == 429 || e.status >= 500) return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
-    // spend_limit, account_closing, calls_not_ready, invalid_lane and anything unknown: the worker's own words.
+    // account_closing, calls_not_ready, invalid_lane and anything unknown: the worker's own words.
     return CallStartProblem(CallProblemKind.message, e.userMessage, code: code);
   }
 }
@@ -329,8 +328,6 @@ abstract final class CallStrings {
         return 'The call reached the 60-minute limit.';
       case 'balance':
         return 'Your balance ran out.';
-      case 'spend_limit':
-        return 'You reached your spending limit.';
       case 'error':
         return 'The call ended because of a problem.';
     }
