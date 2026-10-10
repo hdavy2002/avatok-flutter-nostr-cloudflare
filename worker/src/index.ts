@@ -300,6 +300,8 @@ import { hfLanesRoute } from "./routes/hf_lanes"; // [HF-LANE-VERIFY-1] protecte
 import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
 import { hfHostGenerateRoute } from "./routes/hf_host_generate"; // [HF-HOST-PLATFORM-1] media generation
 import { hfHostsAdminRoute } from "./routes/hf_hosts_admin"; // [HF-HOST-PLATFORM-1] admin host review + avatars
+import { hfVobizAdminRoute } from "./routes/hf_vobiz_admin"; // [HF-VOBIZ-SPEND-1] admin Phone costs API, PDF/CSV
+import { runVobizWatch } from "./lib/hf_vobiz_watch"; // [HF-VOBIZ-SPEND-1] every-minute Vobiz spend watcher
 import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
@@ -485,6 +487,11 @@ export default {
   // per-minute) on purpose: the qualification window is measured in days, and
   // each tick is bounded to QUALIFY_BATCH rows.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // [HF-VOBIZ-SPEND-1] The every-minute trigger runs ONLY the Vobiz spend watcher; every other job stays on */5.
+    if (_event.cron === "* * * * *") {
+      ctx.waitUntil(runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }));
+      return;
+    }
     ctx.waitUntil(
       Promise.all([
         gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
@@ -1116,6 +1123,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p.startsWith("/api/admin/hf/limits/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
       if (p === "/api/hosts/me/payouts" || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]
+      if (p.startsWith("/api/admin/hf/vobiz/")) { const r = await hfVobizAdminRoute(req, env, ctx); if (r) return r; } // [HF-VOBIZ-SPEND-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]
       if (p.startsWith("/api/hosts/")) { // [HF-HOST-PLATFORM-1]

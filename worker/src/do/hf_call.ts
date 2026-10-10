@@ -13,6 +13,7 @@ import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { track, trackException } from "../hooks";
 import { onCallCompleted } from "../lib/hf_reviews";
 import { speakIntoCall } from "../lib/hf_vobiz";
+import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger"; // [HF-VOBIZ-SPEND-1]
 import {
   HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
@@ -247,7 +248,13 @@ export class HfCallDO {
   }
 
   // ── hangup webhooks ───────────────────────────────────────────────────────────────────────────────────────────
-  private async hangup(s: S, role: Role, _f: Record<string, string>): Promise<Response> {
+  private async hangup(s: S, role: Role, f: Record<string, string>): Promise<Response> {
+    // [HF-VOBIZ-SPEND-1] Record this leg's hangup webhook in the spend ledger (both legs, even after finalize). Off the response path; never throws.
+    {
+      const rec = recordLegFromWebhook(this.env, { callId: s.callId, role, legUuid: role === "host" ? s.hostLeg : s.callerLeg, fields: f ?? {} }).catch(() => undefined);
+      const st = this.state as unknown as { waitUntil?: (p: Promise<unknown>) => void };
+      if (typeof st.waitUntil === "function") st.waitUntil(rec);
+    }
     if (s.finalized) return xmlRes(emptyXml());
     if (s.connectedAt) { await this.finish(s, "completed", role === "host" ? "host_hangup" : "caller_hangup"); return xmlRes(emptyXml()); }
     if (role === "host") {

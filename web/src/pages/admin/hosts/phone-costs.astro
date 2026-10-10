@@ -1,0 +1,10 @@
+---
+// [HF-VOBIZ-SPEND-1] Admin: every rupee Vobiz takes, live, with a PDF report.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import HostPhoneCosts from '../../../islands/admin2/hosts/HostPhoneCosts.tsx';
+---
+
+<Admin2 title="Phone costs" active="host-phone-costs" subtitle="Every rupee Vobiz takes, live — with a PDF you can keep as proof.">
+  <HostPhoneCosts client:load />
+</Admin2>

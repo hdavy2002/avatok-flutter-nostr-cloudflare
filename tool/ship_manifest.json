@@ -9800,5 +9800,25 @@
         "note": "result=granted for kind=mic: the voice intro step opened the microphone inside the Android app. Only the app sends it; confirmed by hand on the owner's phone during the test host sign-up."
       }
     ]
+  },
+  "HF-VOBIZ-SPEND-1": {
+    "description": "[HF-VOBIZ-SPEND-1 2026-10-10] Vobiz spend monitor: every Vobiz leg saved from the hangup webhook into a hash-chained ledger (hf_vobiz_legs) and re-checked against Vobiz's CDR; a second cron trigger (* * * * *) runs ONLY the watcher: balance snapshot, recent CDRs, money check, WhatsApp+email alerts (never pauses calls); admin /admin/hosts/phone-costs with per-user costs and PDF/CSV; nightly and monthly PDF+CSV+Vobiz CSV emailed to the owner. Worker + web; one-sided (admin only).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_vobiz_leg_recorded",
+        "property": "has_cost",
+        "equals": true,
+        "note": "The hangup webhook of a test call carried Vobiz's charge for the leg. If has_cost is false on every leg, the webhook does not send TotalCost and the CDR check is the only source — then check hf_vobiz_cdr_checked."
+      },
+      {
+        "event": "hf_vobiz_cdr_checked",
+        "property": "has_cost",
+        "equals": true,
+        "note": "Vobiz's own CDR for a test-call leg was fetched and had a total cost (proves the CDR API + field names)."
+      }
+    ]
   }
 }
