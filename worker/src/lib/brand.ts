@@ -41,6 +41,8 @@ export const BRAND = {
   emailFromName: "Aum Fe",
   /** PERMANENT — a Play package id can never change. */
   playPackageId: "com.saathum.app",
+  /** PERMANENT — package id of the Android app wrapping the website (hf-app/). */
+  hfPlayPackageId: "com.hellofraands.app",
 } as const;
 
 /** Absolute URL on the public website: brandUrl('/l/abc') -> https://<domain>/l/abc */

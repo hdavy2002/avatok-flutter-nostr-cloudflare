@@ -29,5 +29,6 @@
   },
   "emailFromName": "Aum Fe",
   "_permanent": "Values below are NOT rebrandable: Google Play never lets a package id change. Listed here only so code reads them from one place.",
-  "playPackageId": "com.saathum.app"
+  "playPackageId": "com.saathum.app",
+  "hfPlayPackageId": "com.hellofraands.app"
 }
