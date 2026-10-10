@@ -155,6 +155,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Lovely and calm person');
       await _send(tester);
       expect(find.textContaining('Please remove phone numbers, emails or links'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Send review'), 300, scrollable: find.byType(Scrollable).first);
       expect(find.text('Send review'), findsOneWidget);
       expect(find.text('Thank you!'), findsNothing);
       await closeApp(tester);
