@@ -1,7 +1,7 @@
 // [HF-VOBIZ-SPEND-1] Read-only Vobiz REST client for the spend monitor. Contract: Specs/HF-VOBIZ-SPEND-CONTRACT.md §2.
 // Never throws. 8 s timeout per request. Money: rupee decimals -> paise. Times -> epoch ms or null.
 // Docs: CDR GET /Account/{id}/cdr (page, per_page<=100, start_date, end_date YYYY-MM-DD), /cdr/{call_id},
-// /cdr/recent?limit=, /cdr/export (CSV). Balance GET /Account/{id}/balance/INR. Account GET /Account/{id}/.
+// /cdr/recent?limit=, /cdr/export (CSV). Balance GET /Account/{id}/balance/INR. Account GET /Account/{id} (no trailing slash; is_active, enabled, is_verified verified 2026-10-10).
 import type { Env } from "../types";
 
 const BASE = "https://api.vobiz.ai/api/v1";
@@ -140,7 +140,7 @@ export async function getBalance(env: Env, currency: "INR" = "INR"): Promise<Vob
 }
 
 export async function getAccount(env: Env): Promise<VobizAccount> {
-  const r = await req(env, `/Account/${acct(env)}/`);
+  const r = await req(env, `/Account/${acct(env)}`); // [HF-VOBIZ-SPEND-3] verified 2026-10-10: no trailing slash (with one the body is empty)
   if (!r.ok) return { ok: false, httpStatus: r.status, error: r.error, raw: r.json ?? undefined };
   const j = isObj(r.json) ? (isObj(r.json.data) ? r.json.data : isObj(r.json.account) ? r.json.account : r.json) : null;
   if (!j) return { ok: false, httpStatus: r.status, error: "bad_json" };
