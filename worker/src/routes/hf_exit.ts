@@ -9,7 +9,8 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { withIdempotency, rateLimit } from "../money";
 import { trackException } from "../hooks";
-import { exitFlags, exitSummary, decideDeletion, startExit, cancelExit } from "../lib/hf_exit";
+import { exitFlags, exitSummary, decideDeletion, startExit, cancelExit, getExitRow } from "../lib/hf_exit";
+import { refundIdsOf } from "../lib/hf_exit_tokens"; // [HF-TOK-EXIT-1]
 import { scheduleDeletion } from "./account";
 
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) => json({ error, message: message ?? error, ...extra }, status);
@@ -18,6 +19,20 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
   const t = await req.text().catch(() => "");
   if (!t || t.length > 2_000) return {};
   try { const v = JSON.parse(t); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; } catch { return {}; }
+}
+
+interface PlayRow { id: string; status: string; amount_paise: number | null; amount_rupees: number; reason: string | null }
+const REFUND_TERMINAL = ["refunded", "rejected", "cancelled"];
+async function aggregateTokenRefund(env: Env, ids: string[]): Promise<{ id: string; amount: number; status: string; reason: string | null; utr: string | null } | null> {
+  if (ids.length === 0) return null;
+  const rows = (await Promise.all(ids.map((id) => env.DB_META.prepare("SELECT id, status, amount_paise, amount_rupees, reason FROM hf_refund_requests WHERE id=?1").bind(id).first<PlayRow>().catch(() => null)))).filter((r): r is PlayRow => !!r);
+  if (rows.length === 0) return null;
+  const paise = rows.reduce((t, r) => t + Number(r.amount_paise ?? r.amount_rupees * 100), 0);
+  const all = (st: string) => rows.every((r) => r.status === st);
+  const status = all("refunded") ? "refunded" : all("rejected") ? "rejected" : all("cancelled") ? "cancelled"
+    : rows.some((r) => r.status === "requested") && !rows.some((r) => ["approved", "processing", "failed"].includes(r.status)) ? "requested"
+    : rows.every((r) => REFUND_TERMINAL.includes(r.status)) ? "refunded" : "processing";
+  return { id: rows[0].id, amount: paise / 100, status, reason: rows.find((r) => r.status === "rejected")?.reason ?? null, utr: null };
 }
 
 async function get(req: Request, env: Env): Promise<Response> {
@@ -33,7 +48,10 @@ async function get(req: Request, env: Env): Promise<Response> {
   const payout = s.exit?.payoutId
     ? await env.DB_META.prepare("SELECT id, amount_rupees, status, reject_reason, utr FROM hf_payout_requests WHERE id=?1").bind(s.exit.payoutId).first<{ id: string; amount_rupees: number; status: string; reject_reason: string | null; utr: string | null }>().catch(() => null)
     : null;
-  const refund = s.exit?.refundId
+  // [HF-TOK-EXIT-1] A token closure has one play_refund per purchase lot: the page shows them as ONE refund (sum, and the least finished status).
+  const exitRow = s.tokensInfo ? await getExitRow(env, u.uid) : null;
+  const tokenRefund = exitRow && exitRow.refund_ids != null ? await aggregateTokenRefund(env, refundIdsOf(exitRow.refund_ids)) : null;
+  const refund = tokenRefund ? null : s.exit?.refundId
     ? await env.DB_META.prepare("SELECT id, amount_rupees, status, reason, utr FROM hf_refund_requests WHERE id=?1").bind(s.exit.refundId).first<{ id: string; amount_rupees: number; status: string; reason: string | null; utr: string | null }>().catch(() => null)
     : null;
   const del = await env.DB_META.prepare("SELECT status, scheduled_at FROM deletion_requests WHERE uid=?1").bind(u.uid).first<{ status: string; scheduled_at: number }>().catch(() => null);
@@ -44,7 +62,8 @@ async function get(req: Request, env: Env): Promise<Response> {
     forfeitRupees: s.forfeitRupees, bankOk: s.bankOk, testCredits: s.testCredits, testEarnings: s.testEarnings,
     exit: s.exit,
     payout: payout ? { id: payout.id, amount: payout.amount_rupees, status: payout.status, reason: payout.status === "rejected" ? payout.reject_reason : null, utr: payout.status === "paid" ? payout.utr : null } : null,
-    refund: refund ? { id: refund.id, amount: refund.amount_rupees, status: refund.status === "failed" || refund.status === "approved" ? "processing" : refund.status, reason: refund.status === "rejected" ? refund.reason : null, utr: refund.status === "refunded" ? refund.utr : null } : null,
+    ...(s.tokensInfo ? { mode: "tokens", tokens: s.tokensInfo } : {}),
+    refund: tokenRefund ? tokenRefund : refund ? { id: refund.id, amount: refund.amount_rupees, status: refund.status === "failed" || refund.status === "approved" ? "processing" : refund.status, reason: refund.status === "rejected" ? refund.reason : null, utr: refund.status === "refunded" ? refund.utr : null } : null,
     deletion: del && del.status === "pending" ? { status: del.status, scheduledAt: del.scheduled_at } : null,
   });
 }

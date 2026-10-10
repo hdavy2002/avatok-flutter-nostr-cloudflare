@@ -9,7 +9,9 @@
 // the Clerk identity too (consumers/deletion.ts step 13), so the target cannot simply
 // log back in.
 //
-//   POST /api/admin/delete-user[/:secret]   body {uid} or ?uid=
+//   POST /api/admin/delete-user[/:secret]   body {uid, force?, note?} or ?uid=
+//     [HF-TOK-EXIT-1] With hfTokensEnabled on, a user who is on a call or still has money (unspent purchased tokens, host earnings, an open payout or
+//     refund) is NOT deleted: 409 money_remains with the summary. {force:true, note:"why (5+ characters)"} deletes anyway and is audit-logged.
 //     Auth: ADMIN_UIDS Clerk bearer (requireAdmin) on the bare path, OR the
 //     shared-secret trailing path segment (env.ADMIN_DELETE_SECRET — fails CLOSED
 //     when unset), mirroring routes/token_reset.ts so it can be driven from the host
@@ -25,6 +27,9 @@ import { track, trackException } from "../hooks";
 import { requireAdmin } from "./admin_money";
 import { enqueueMem0Purge } from "../sentinel/purge";
 import { enqueueDeletion } from "./account"; // [DYNW-FLOWS-1] shared queue/WF_DELETION dispatch (deletionWorkflowEnabled)
+import { exitSummary } from "../lib/hf_exit"; // [HF-TOK-EXIT-1]
+import { hfTokensOn } from "../lib/hf_exit_tokens";
+import { hasActiveCall } from "../lib/hf_play_refunds";
 
 function adminUids(env: Env): string[] {
   return (env.ADMIN_UIDS ?? "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -48,15 +53,43 @@ export async function adminDeleteUser(req: Request, env: Env, secret?: string): 
   // --- Resolve the target uid from JSON body {uid} or ?uid= (email NOT required). ---
   const url = new URL(req.url);
   let uid = (url.searchParams.get("uid") || "").trim();
-  if (!uid) {
-    const b = (await req.json().catch(() => ({}))) as { uid?: unknown };
-    uid = String(b?.uid ?? "").trim();
-  }
+  const body = (await req.json().catch(() => ({}))) as { uid?: unknown; force?: unknown; note?: unknown };
+  if (!uid) uid = String(body?.uid ?? "").trim();
+  const force = body?.force === true;
+  const note = String(body?.note ?? "").trim().slice(0, 300);
   if (!uid) return json({ error: "uid required (body {uid} or ?uid=)" }, 400);
 
   // --- HARD SAFETY GUARD: never delete an admin account through this endpoint. ---
   if (adminUids(env).includes(uid)) {
     return json({ error: "refused: target uid is an admin account (ADMIN_UIDS) — cannot be deleted via this endpoint", uid }, 403);
+  }
+
+  // [HF-TOK-EXIT-1] Pay-out-first for tokens: the same money rule as a person closing their own account (lib/hf_exit exitSummary).
+  if (await hfTokensOn(env)) {
+    let money = false, active = false, summary: Record<string, unknown> = {};
+    try {
+      active = await hasActiveCall(env, uid);
+      const s = await exitSummary(env, uid);
+      money = s.hasMoney;
+      summary = { refundableRupees: s.refundable, withdrawableRupees: s.withdrawable, heldRupees: s.held, openPayouts: s.openPayouts, openRefunds: s.openRefunds, testCreditsRupees: s.testCredits };
+    } catch (err) {
+      void trackException(env, err, { uid: actor, route: "/api/admin/delete-user", method: "POST", handled: true, app_name: "platform", extra: { target_uid: uid, step: "money_check" } });
+      return json({ ok: false, uid, error: "money_check_failed", message: "Could not check this user's money. Nothing was deleted." }, 503);
+    }
+    if (active || money) {
+      if (!(force && note.length >= 5)) {
+        return json({
+          ok: false, uid, error: "money_remains", activeCall: active, summary,
+          message: active ? "This user is on a call. Nothing was deleted." : "This user still has money to settle. Nothing was deleted.",
+          hint: "Ask them to close the account from /account/close so the money is paid out first, or send force:true with a note of at least 5 characters to delete anyway (audit-logged).",
+        }, 409);
+      }
+      try {
+        await env.DB_WALLET.prepare("INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
+          .bind(crypto.randomUUID(), actor, "admin_delete_user_force_money", uid, JSON.stringify({ note, activeCall: active, summary }), Date.now()).run();
+      } catch { /* the track event below is the second record */ }
+      track(env, actor, "admin_user_deleted_with_money", "platform", { target_uid: uid, note, active_call: active, ...summary });
+    }
   }
 
   try {

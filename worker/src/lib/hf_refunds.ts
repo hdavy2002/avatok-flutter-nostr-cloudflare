@@ -50,6 +50,8 @@ export const gatewayRefundOpId = (id: string, topupId: string) => `hfr_${id.repl
 export interface RefundRow {
   id: string; uid: string; amount_rupees: number; status: RefundStatus; reason: string | null; wallet_ref: string | null; allocations: string;
   utr: string | null; admin_uid: string | null; exit: number; created_at: number; updated_at: number; refunded_at: number | null;
+  /** [HF-TOK-EXIT-1] Present only after the tokens migration: 'play_refund' rows belong to lib/hf_play_refunds.ts, never to the WalletDO flow. */
+  kind?: string | null; amount_paise?: number | null; lot_id?: string | null; order_id?: string | null; recorded_paise?: number | null;
 }
 
 export function parseAllocations(s: string | null | undefined): Allocation[] {
@@ -124,7 +126,8 @@ async function paidTopups(env: Env, uid: string): Promise<TopupDbRow[]> {
 }
 
 async function openRefunds(env: Env, uid: string): Promise<RefundRow[]> {
-  return (await env.DB_META.prepare(`SELECT * FROM hf_refund_requests WHERE uid=?1 AND status IN (${OPEN_SQL})`).bind(uid).all<RefundRow>()).results ?? [];
+  const rows = (await env.DB_META.prepare(`SELECT * FROM hf_refund_requests WHERE uid=?1 AND status IN (${OPEN_SQL})`).bind(uid).all<RefundRow>()).results ?? [];
+  return rows.filter((r) => r.kind !== "play_refund"); // [HF-TOK-EXIT-1] filtered here, not in SQL, so the flag-off path never needs the new column
 }
 
 export interface Refundable {

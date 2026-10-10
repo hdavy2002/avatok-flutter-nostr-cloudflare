@@ -128,7 +128,31 @@ export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<To
             platform_paise=?7, tokens_spent_micro=?8, lots_used=?9 WHERE id=?10`,
   ).bind(billedMinutes, split.valuePaise, split.hostPaise, billable, split.valuePaise, split.callCostPaise, split.platformPaise, micro,
     JSON.stringify(lots.map((l) => ({ lotId: l.lotId, kind: l.kind, valuePaisePerToken: l.valuePaisePerToken, micro: l.micro, valuePaise: l.valuePaise }))), i.callId).run();
+  await maybeNotifyLowBalance(env, i.callerUid, i.callId, i.ratePaise, billable); // [HF-TOK-EXIT-1]
   return out;
+}
+
+/**
+ * [HF-TOK-EXIT-1] "Your balance is low" push, ONCE per call: when what the caller can still spend would not start another call with this host
+ * (less than 2 minutes at that host's rate). A marker row in the token ledger (op `hftlow:<callId>`) makes a settle retry send nothing twice.
+ * notifyLowBalance itself does nothing unless hfPushEnabled is on and the person has a registered device. Never throws, never touches money.
+ */
+export async function maybeNotifyLowBalance(env: Env, uid: string, callId: string, ratePaise: number, billableSeconds: number): Promise<boolean> {
+  try {
+    if (!(billableSeconds > 0) || !(ratePaise > 0)) return false;
+    if (canStart(await availableLots(env, uid), ratePaise)) return false;
+    const r = await env.DB_META.prepare(
+      `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
+       VALUES (?1,?2,'low_balance',NULL,0,0,?3,NULL,?4,NULL,?5)`,
+    ).bind(crypto.randomUUID(), uid, callId, `hftlow:${callId}`, Date.now()).run();
+    if (Number(r.meta?.changes ?? 0) !== 1) return false;
+    const { notifyLowBalance } = await import("./hf_push");
+    await notifyLowBalance(env, uid);
+    return true;
+  } catch (e) {
+    console.warn("[hf-tok] low balance notice failed", callId, String(e));
+    return false;
+  }
 }
 
 // ── estimates for the caller ────────────────────────────────────────────────

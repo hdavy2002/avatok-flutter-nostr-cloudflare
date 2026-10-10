@@ -204,8 +204,10 @@ export async function loadReconciliation(env: Env, fromMs: number, toMs: number,
   // Refunds are owned by another branch (hf_refund_requests). Query defensively: no table / different columns = "not available", never an error.
   let refunds: RefundRec[] | null = null;
   try {
-    refunds = (await m.prepare("SELECT id, uid, amount_rupees, COALESCE(refunded_at, updated_at) AS paid_at FROM hf_refund_requests WHERE status='refunded' AND COALESCE(refunded_at, updated_at)>=?1 AND COALESCE(refunded_at, updated_at)<?2 LIMIT 2000")
-      .bind(fromMs, toMs).all<RefundRec>()).results ?? [];
+    // [HF-TOK-EXIT-1] SELECT * and filter in JS: Google Play refunds (kind 'play_refund') are reported in the token section, not here, and the
+    // flag-off path must not need the new column.
+    refunds = ((await m.prepare("SELECT *, COALESCE(refunded_at, updated_at) AS paid_at FROM hf_refund_requests WHERE status='refunded' AND COALESCE(refunded_at, updated_at)>=?1 AND COALESCE(refunded_at, updated_at)<?2 LIMIT 2000")
+      .bind(fromMs, toMs).all<RefundRec & { kind?: string | null }>()).results ?? []).filter((r) => r.kind !== "play_refund");
   } catch { refunds = null; }
 
   let liabilities: Reconciliation["liabilities"] = null;
@@ -216,7 +218,10 @@ export async function loadReconciliation(env: Env, fromMs: number, toMs: number,
     const hostPaid = await one("SELECT COALESCE(SUM(host_paid_rupees),0) AS s FROM hf_calls WHERE status='completed' AND COALESCE(ended_at,created_at)<?1", toMs);
     const paidOut = await one("SELECT COALESCE(SUM(amount_rupees),0) AS s FROM hf_payout_requests WHERE status='paid' AND paid_at<?1", toMs);
     let refundedOut = 0;
-    try { refundedOut = await one("SELECT COALESCE(SUM(amount_rupees),0) AS s FROM hf_refund_requests WHERE status='refunded' AND COALESCE(refunded_at, updated_at)<?1", toMs); } catch { refundedOut = 0; }
+    try {
+      const rows = (await m.prepare("SELECT * FROM hf_refund_requests WHERE status='refunded' AND COALESCE(refunded_at, updated_at)<?1").bind(toMs).all<{ amount_rupees: number; kind?: string | null }>()).results ?? [];
+      refundedOut = rows.filter((r) => r.kind !== "play_refund").reduce((t, r) => t + n(r.amount_rupees), 0); // [HF-TOK-EXIT-1] same reason as above
+    } catch { refundedOut = 0; }
     liabilities = {
       callerWalletsApprox: topupsIn - callPaid - refundedOut,
       hostEarningsApprox: hostPaid - paidOut,

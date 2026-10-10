@@ -18,6 +18,7 @@ export const HF_RETENTION = {
   callsDays: 365, incidentsDays: 365, blocksDays: 365,
   notifyDays: 90, kycOtpDays: 30, pushTokenDays: 180,
   draftDays: 365, closedHostDays: 365, laneCallerDays: 365,
+  moneyDays: 8 * 365, // [HF-TOK-EXIT-1] token money records (uid already hashed) are kept 8 years
   rowBatch: 200, uidBatch: 50, maxRowBatchesPerRun: 5,
 } as const;
 
@@ -29,6 +30,8 @@ export interface HfRetentionSummary {
   calls: number; incidents: number; blocks: number; review_tokens: number; notify: number; reviews: number;
   kyc_otp: number; push_tokens: number; drafts: number; closed_hosts: number; lane_callers: number;
   r2_objects: number; errors: number; more: boolean; ms: number;
+  /** [HF-TOK-EXIT-1] hashed token money records past 8 years. */
+  money_records: number;
 }
 
 type Cols = Map<string, string[]>;
@@ -98,7 +101,7 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
   const errs = { n: 0 };
   const acc = { r2: 0, errs: 0 };
   let more = false;
-  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, push_tokens: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0 };
+  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, push_tokens: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0, money_records: 0 };
   const rows = (r: { n: number; more: boolean }) => { if (r.more) more = true; return r.n; };
 
   // Call records (time, length, price, how it ended): 1 year.
@@ -185,6 +188,15 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
     const uids = (r.results ?? []).map((x) => x.uid);
     if (uids.length > HF_RETENTION.uidBatch) more = true;
     return purgeUids(env, cols, uids.slice(0, HF_RETENTION.uidBatch), "lane_caller", acc);
+  }, 0);
+
+  // [HF-TOK-EXIT-1] Token money records of DELETED accounts (uid already a "del:<hash>") are kept 8 years, then dropped. Live accounts' rows are never touched.
+  s.money_records = await runStep(env, ctx, "money_records", errs, async () => {
+    let total = 0;
+    for (const [table, uidCol] of [["hf_token_ledger", "uid"], ["hf_token_lots", "uid"], ["hf_token_debts", "uid"], ["hf_play_purchases", "uid"], ["hf_host_ledger", "host_uid"]] as const) {
+      total += rows(await purgeOld(env, cols, table, ["created_at"], HF_RETENTION.moneyDays, (c) => (c.includes(uidCol) ? `${uidCol} LIKE 'del:%'` : null)));
+    }
+    return total;
   }, 0);
 
   s.r2_objects = acc.r2;

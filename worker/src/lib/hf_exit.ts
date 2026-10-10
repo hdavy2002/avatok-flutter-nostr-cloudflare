@@ -16,6 +16,9 @@ import {
 } from "./hf_payouts";
 import { createRefundRequest, cancelRefund, refundableFor, DEFAULT_REFUND_WINDOW_DAYS, OPEN_REFUND_STATUSES, type RefundRow } from "./hf_refunds";
 import { getTestBalance } from "./hf_credits";
+import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, type TokenExitExtra } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
+import { requestPlayRefunds, cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
+import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
 
 export type ExitStatus = "waiting_hold" | "waiting_payouts" | "ready" | "done" | "cancelled";
 export const ACTIVE_EXIT: ExitStatus[] = ["waiting_hold", "waiting_payouts", "ready"];
@@ -70,7 +73,7 @@ export function nextExitStep(i: { status: ExitStatus; held: number; hasPayout: b
 
 // ── summary ──────────────────────────────────────────────────────────────────
 const tsMs = (col: string) => `(CASE WHEN ${col} < 100000000000 THEN ${col} * 1000 ELSE ${col} END)`;
-export interface ExitRow { uid: string; status: ExitStatus; requested_at: number; updated_at: number; payout_id: string | null; refund_id: string | null; note: string | null }
+export interface ExitRow { uid: string; status: ExitStatus; requested_at: number; updated_at: number; payout_id: string | null; refund_id: string | null; note: string | null; /** [HF-TOK-EXIT-1] JSON array of play_refund ids; NULL = a closure made without tokens. */ refund_ids?: string | null }
 
 export interface ExitSummary {
   isHfUser: boolean;
@@ -89,6 +92,8 @@ export interface ExitSummary {
   testEarnings: number;
   openPayouts: number;
   openRefunds: number;
+  /** [HF-TOK-EXIT-1] Present only when tokens are on: the token view of the same money. */
+  tokensInfo?: TokenExitExtra;
   exit: { status: ExitStatus; payoutId: string | null; refundId: string | null; note: string | null; requestedAt: number } | null;
 }
 
@@ -122,6 +127,7 @@ export async function exitSummary(env: Env, uid: string, now = Date.now()): Prom
     bankOk: false, testCredits: 0, testEarnings: 0, openPayouts: 0, openRefunds: 0,
     exit: exitRow ? { status: exitRow.status, payoutId: exitRow.payout_id, refundId: exitRow.refund_id, note: exitRow.note, requestedAt: exitRow.requested_at } : null,
   };
+  if (await hfTokensOn(env)) return tokenExitSummary(env, uid, now, empty, isHf); // [HF-TOK-EXIT-1] lots + host ledger instead of the WalletDO
   if (!isHf) return empty;
   const [w, r, ready, tc, op, orf, lastEnd] = await Promise.all([
     withdrawableFor(env, uid, now),
@@ -217,8 +223,15 @@ export type StartResult =
   | { ok: true; status: ExitStatus; payoutId: string | null; refundId: string | null; replay?: boolean }
   | { ok: false; status: number; error: string; message: string; forfeitRupees?: number };
 
-async function upsertExit(env: Env, uid: string, status: ExitStatus, payoutId: string | null, refundId: string | null, note: string | null): Promise<void> {
+async function upsertExit(env: Env, uid: string, status: ExitStatus, payoutId: string | null, refundId: string | null, note: string | null, refundIds?: string[]): Promise<void> {
   const now = Date.now();
+  if (refundIds) { // [HF-TOK-EXIT-1] token closure: the exit row remembers every play_refund (one per purchase lot)
+    await env.DB_META.prepare(
+      `INSERT INTO hf_exit_requests (uid, status, requested_at, updated_at, payout_id, refund_id, note, refund_ids) VALUES (?1,?2,?3,?3,?4,?5,?6,?7)
+       ON CONFLICT(uid) DO UPDATE SET status=?2, requested_at=?3, updated_at=?3, payout_id=?4, refund_id=?5, note=?6, refund_ids=?7`,
+    ).bind(uid, status, now, payoutId, refundId, note, JSON.stringify(refundIds)).run();
+    return;
+  }
   await env.DB_META.prepare(
     `INSERT INTO hf_exit_requests (uid, status, requested_at, updated_at, payout_id, refund_id, note) VALUES (?1,?2,?3,?3,?4,?5,?6)
      ON CONFLICT(uid) DO UPDATE SET status=?2, requested_at=?3, updated_at=?3, payout_id=?4, refund_id=?5, note=?6`,
@@ -230,6 +243,7 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
   const existing = await getExitRow(env, uid);
   if (existing && isActiveExit(existing.status)) return { ok: true, status: existing.status, payoutId: existing.payout_id, refundId: existing.refund_id, replay: true };
   const flags = await exitFlags(env);
+  if (await hfTokensOn(env)) return startTokenExit(env, uid, o, flags); // [HF-TOK-EXIT-1]
   let s: ExitSummary;
   try { s = await exitSummary(env, uid); } catch (e) {
     await trackException(env, e, { uid, route: "hf_exit.start", handled: true, app_name: PAYOUT_APP, extra: { area: "hf_exit", step: "summary" } });
@@ -263,9 +277,73 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
   return { ok: true, status, payoutId, refundId };
 }
 
+/**
+ * [HF-TOK-EXIT-1] Closing with tokens on. No WalletDO: unspent PURCHASE lots become one play_refund request each (admin confirms, Google refunds),
+ * earnings come out of the host ledger as a closure payout after the 7-day hold. A person on a call (caller or host) cannot start.
+ * Test lots are removed and open debts written off when everything is settled (finishTokenExit, run just before the deletion).
+ */
+async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trigger: Trigger }, flags: ExitFlags): Promise<StartResult> {
+  const no = (status: number, error: string, message: string, extra: { forfeitRupees?: number } = {}): StartResult => ({ ok: false, status, error, message, ...extra });
+  if (await hasActiveCall(env, uid)) return no(409, "active_call", "You have a call in progress. Please finish it before closing your account.");
+  let s: ExitSummary;
+  try { s = await exitSummary(env, uid); } catch (e) {
+    await trackException(env, e, { uid, route: "hf_exit.start", handled: true, app_name: PAYOUT_APP, extra: { area: "hf_exit", step: "summary", mode: "tokens" } });
+    return no(502, "wallet_error", "We couldn't check your balance. Please try again.");
+  }
+  if (!s.hasMoney) return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
+  if (s.forfeitRupees > 0 && !o.forfeit) {
+    return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
+  }
+  const ti = s.tokensInfo;
+  let refundIds: string[] = [], payoutId: string | null = null;
+  if (ti && ti.refundPaise > 0) {
+    const r = await requestPlayRefunds(env, uid, { exit: true, windowDays: flags.windowDays });
+    if (!r.ok) return no(r.status, r.error, r.message);
+    refundIds = r.ids;
+  }
+  // Earnings still in the 7-day hold: ONE closure payout is made for everything once the hold ends (cron).
+  if (s.bankOk && s.withdrawable > 0 && s.held === 0) {
+    const p = await createExitPayoutTokens(env, uid);
+    if (!p.ok) {
+      for (const id of refundIds) await cancelPlayRefund(env, id, uid, true);
+      return no(p.status, p.error, p.message);
+    }
+    payoutId = p.id;
+  }
+  const status: ExitStatus = s.held > 0 ? "waiting_hold" : payoutId || refundIds.length ? "waiting_payouts" : "ready";
+  await upsertExit(env, uid, status, payoutId, refundIds[0] ?? null, s.forfeitRupees > 0 ? `forfeit:${s.forfeitRupees}` : null, refundIds);
+  await forceHostOffline(env, uid);
+  void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, refund: refundIds.length, forfeit: s.forfeitRupees, mode: "tokens" });
+  if (status === "ready") await advanceExit(env, (await getExitRow(env, uid))!, o.trigger);
+  return { ok: true, status, payoutId, refundId: refundIds[0] ?? null };
+}
+
+/** [HF-TOK-EXIT-1] Cancel a token closure: allowed only while no play_refund / payout has been picked up by an admin. */
+async function cancelTokenExit(env: Env, uid: string, row: ExitRow): Promise<{ ok: true } | { ok: false; status: number; error: string; message: string }> {
+  const OPEN_OK = ["requested", "rejected", "cancelled"];
+  const ids = refundIdsOf(row.refund_ids);
+  const refunds = await Promise.all(ids.map((id) => env.DB_META.prepare("SELECT id, status FROM hf_refund_requests WHERE id=?1").bind(id).first<{ id: string; status: string }>().catch(() => null)));
+  const p = row.payout_id ? await env.DB_META.prepare("SELECT status, wallet_ref FROM hf_payout_requests WHERE id=?1").bind(row.payout_id).first<{ status: string; wallet_ref: string | null }>().catch(() => null) : null;
+  if ((p && !OPEN_OK.includes(p.status)) || refunds.some((r) => r && !OPEN_OK.includes(r.status))) {
+    return { ok: false, status: 409, error: "cannot_cancel", message: "Your money is already being paid out, so this can no longer be cancelled." };
+  }
+  if (p?.status === "requested" && row.payout_id) {
+    const ok = isHostLedgerRef(p.wallet_ref) ? await cancelExitPayoutTokens(env, uid, row.payout_id) : await cancelExitPayout(env, uid, row.payout_id);
+    if (!ok) return { ok: false, status: 502, error: "wallet_error", message: "We couldn't release that money. Please try again." };
+  }
+  for (const r of refunds) {
+    if (r?.status !== "requested") continue;
+    const c = await cancelPlayRefund(env, r.id, uid, true);
+    if (!c.ok) return { ok: false, status: c.status, error: c.error, message: c.message };
+  }
+  await env.DB_META.prepare("UPDATE hf_exit_requests SET status='cancelled', updated_at=?2 WHERE uid=?1").bind(uid, Date.now()).run();
+  return { ok: true };
+}
+
 export async function cancelExit(env: Env, uid: string): Promise<{ ok: true } | { ok: false; status: number; error: string; message: string }> {
   const row = await getExitRow(env, uid);
   if (!row || !isActiveExit(row.status)) return { ok: false, status: 404, error: "no_exit", message: "There is nothing to cancel." };
+  if (row.refund_ids != null) return cancelTokenExit(env, uid, row); // [HF-TOK-EXIT-1] decided by the row itself, so a flag flip never strands a closure
   const p = row.payout_id ? await env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(row.payout_id).first<{ status: string }>().catch(() => null) : null;
   const rf = row.refund_id ? await env.DB_META.prepare("SELECT status FROM hf_refund_requests WHERE id=?1").bind(row.refund_id).first<{ status: string }>().catch(() => null) : null;
   const blocked = (p && !["requested", "rejected", "cancelled"].includes(p.status)) || (rf && !["requested", "rejected", "cancelled"].includes(rf.status));
@@ -285,27 +363,35 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
   let status = row.status, payoutId = row.payout_id, note = row.note;
   await forceHostOffline(env, row.uid); // the calls cron can put a "busy" host back online; keep them off while closing
   try {
+    const tokenMode = row.refund_ids != null; // [HF-TOK-EXIT-1] the closure itself says which path owns its money
     const [pay, ref] = await Promise.all([
       payoutId ? env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(payoutId).first<{ status: string }>().catch(() => null) : null,
-      row.refund_id ? env.DB_META.prepare("SELECT status FROM hf_refund_requests WHERE id=?1").bind(row.refund_id).first<RefundRow>().catch(() => null) : null,
+      !tokenMode && row.refund_id ? env.DB_META.prepare("SELECT status FROM hf_refund_requests WHERE id=?1").bind(row.refund_id).first<RefundRow>().catch(() => null) : null,
     ]);
+    let refundStatus: string | null = ref?.status ?? null;
+    if (tokenMode) {
+      const ids = refundIdsOf(row.refund_ids);
+      const rows = await Promise.all(ids.map((id) => env.DB_META.prepare("SELECT status FROM hf_refund_requests WHERE id=?1").bind(id).first<{ status: string }>().catch(() => null)));
+      refundStatus = ids.length === 0 ? null : rows.every((r) => !r || TERMINAL_REFUND.includes(r.status)) ? "refunded" : "requested";
+    }
     let held = 0;
-    if (status === "waiting_hold") held = (await withdrawableFor(env, row.uid, now)).held;
-    let step = nextExitStep({ status, held, hasPayout: !!payoutId, payoutStatus: pay?.status ?? null, refundStatus: ref?.status ?? null });
+    if (status === "waiting_hold") held = tokenMode ? wholeRupees((await hostSummary(env, row.uid, now)).pendingPaise) : (await withdrawableFor(env, row.uid, now)).held;
+    let step = nextExitStep({ status, held, hasPayout: !!payoutId, payoutStatus: pay?.status ?? null, refundStatus });
     if (step === "make_payout") {
       const ready = await hostPayoutReadiness(env, row.uid);
-      const w = await withdrawableFor(env, row.uid, now);
+      const w = tokenMode ? { withdrawable: wholeRupees((await hostSummary(env, row.uid, now)).availablePaise) } : await withdrawableFor(env, row.uid, now);
       if (w.withdrawable > 0 && ready.bankOk) {
-        const p = await createExitPayout(env, row.uid, now);
+        const p = tokenMode ? await createExitPayoutTokens(env, row.uid, now) : await createExitPayout(env, row.uid, now);
         if (!p.ok) { console.warn("[hf-exit] payout not created", row.uid, p.error); return status; }
         payoutId = p.id;
       } else if (w.withdrawable > 0) note = `forfeit:${w.withdrawable}`; // bank missing: the user already agreed to give these earnings up
       const p2 = payoutId ? await env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(payoutId).first<{ status: string }>().catch(() => null) : null;
-      step = nextExitStep({ status: "waiting_payouts", held: 0, hasPayout: !!payoutId, payoutStatus: p2?.status ?? null, refundStatus: ref?.status ?? null });
+      step = nextExitStep({ status: "waiting_payouts", held: 0, hasPayout: !!payoutId, payoutStatus: p2?.status ?? null, refundStatus });
       status = "waiting_payouts";
     }
     if (step === "wait_hold") return status;
     if (step === "trigger_deletion") {
+      if (tokenMode) await finishTokenExit(env, row.uid); // [HF-TOK-EXIT-1] test lots removed, open debts written off (recorded) just before deleting
       await trigger(env, row.uid);
       status = "done";
     } else status = "waiting_payouts";

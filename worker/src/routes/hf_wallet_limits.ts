@@ -13,8 +13,10 @@ import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
 import { HF_CALL_APP } from "../lib/hf_calls_store";
 import { getOverride, limitDefaults, limitSummary, setOverride, MAX_LIMIT_RUPEES } from "../lib/hf_limits";
-import { backfillTopupReceipts, getReceipt, listReceipts, renderReceiptHtml, supplierFrom, invoicingOn } from "../lib/hf_receipts";
+import { backfillTopupReceipts, backfillPurchaseRecords, getReceipt, listReceipts, renderReceiptHtml, supplierFrom, invoicingOn } from "../lib/hf_receipts";
 import { loadReconciliation, parseRange, reconciliationCsv } from "../lib/hf_reconcile";
+import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-EXIT-1]
+import { loadTokenReconciliation, tokenReconciliationCsv } from "../lib/hf_reconcile_tokens";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -46,6 +48,7 @@ async function receiptList(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error, u.error);
   const cfg = await cfgOf(env);
   await backfillTopupReceipts(env, cfg, u.uid);
+  if (readHfTokenConfig(cfg).enabled) await backfillPurchaseRecords(env, cfg, u.uid); // [HF-TOK-EXIT-1] "Purchase record, paid via Google Play" per purchase lot
   const rows = await listReceipts(env, u.uid);
   return json({
     ok: true, invoicing: invoicingOn(supplierFrom(cfg)),
@@ -109,13 +112,15 @@ async function reconciliation(req: Request, env: Env): Promise<Response> {
   const range = parseRange(url.searchParams.get("from"), url.searchParams.get("to"));
   if ("error" in range) return err(400, "invalid_range", range.error);
   const rep = await loadReconciliation(env, range.fromMs, range.toMs);
-  await audit(env, a.uid, "reconciliation_viewed", `${rep.from}..${rep.to}`, { mismatches: rep.mismatches.length, csv: url.searchParams.get("format") === "csv" });
+  // [HF-TOK-EXIT-1] token-era sections (purchases, tokens spent, host earnings, refunds, debts, test lots, invariants) only while tokens are on.
+  const tokens = readHfTokenConfig(await cfgOf(env)).enabled ? await loadTokenReconciliation(env, range.fromMs, range.toMs).catch(() => null) : null;
+  await audit(env, a.uid, "reconciliation_viewed", `${rep.from}..${rep.to}`, { mismatches: rep.mismatches.length, tokenMismatches: tokens?.mismatches.length ?? null, csv: url.searchParams.get("format") === "csv" });
   if (url.searchParams.get("format") === "csv") {
-    return new Response(reconciliationCsv(rep), {
+    return new Response(reconciliationCsv(rep) + (tokens ? tokenReconciliationCsv(tokens) : ""), {
       status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="hf-reconciliation-${rep.from}-to-${rep.to}.csv"`, "cache-control": "private, no-store" },
     });
   }
-  return json({ ok: true, ...rep }, 200, NO_STORE);
+  return json({ ok: true, ...rep, ...(tokens ? { tokens } : {}) }, 200, NO_STORE);
 }
 
 /** Returns null when the path is not ours so index.ts can fall through. */

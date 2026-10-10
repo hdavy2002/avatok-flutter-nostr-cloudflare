@@ -11,6 +11,8 @@
 // hf_retention.ts): hf_calls, hf_incidents, hf_blocks -- safety/legal records (includeSafetyRecords=false).
 // hf/avatars/ is the shared catalogue and is never touched; the avatar is only released (taken_by_uid=NULL).
 //
+// [HF-TOK-EXIT-1] Token money tables are kept 8 years with the uid hashed (step 6 below); lib/hf_retention.ts deletes them after that.
+//
 // Tables owned by other in-flight work (hf_lane_access, hf_calls, ...) may not exist yet and their column
 // names are not fixed, so every statement is built from the columns that actually exist (pragma_table_info).
 
@@ -207,6 +209,38 @@ export async function purgeHfUser(env: HfPurgeEnv, uid: string, opts: HfPurgeOpt
       if (esql) { const e = await env.DB_META.prepare(esql).bind(uid).run(); res.counts["hf_exit_requests"] = Number(e.meta?.changes ?? 0); }
       else res.skipped.push("hf_exit_requests_absent");
     } catch (e) { res.errors.push(`hf_refund_requests:${String(e).slice(0, 120)}`); }
+  }
+  // 6. [HF-TOK-EXIT-1] Token money records (hf_token_lots, hf_token_ledger, hf_play_purchases, hf_token_debts, hf_host_ledger). Same rule as paid
+  //    payouts: money records are kept 8 years (hf_retention.ts deletes them then) with the user id replaced by a one-way hash, and carry nothing
+  //    that names the person (the trimmed Play response, which holds the account id we set at purchase, is blanked). What was never money is deleted:
+  //    test lots with their ledger rows, and host earnings made from test credits. Idempotent: after the first run nothing carries the old uid.
+  if (scope === "full") {
+    try {
+      const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hftok:${uid}`)))).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+      const hashed = `del:${hash}`;
+      const has = async (table: string, col: string) => (await tableColumns(env.DB_META, table, opts.colsCache)).includes(col);
+      const count = (table: string, r: { meta?: { changes?: number } }) => { res.counts[table] = (res.counts[table] ?? 0) + Number(r.meta?.changes ?? 0); };
+      if (await has("hf_token_lots", "uid")) {
+        if (await has("hf_token_ledger", "lot_id")) {
+          const d = await env.DB_META.prepare("DELETE FROM hf_token_ledger WHERE uid=?1 AND lot_id IN (SELECT id FROM hf_token_lots WHERE uid=?1 AND kind='test')").bind(uid).run();
+          count("hf_token_ledger", d);
+        }
+        count("hf_token_lots", await env.DB_META.prepare("DELETE FROM hf_token_lots WHERE uid=?1 AND kind='test'").bind(uid).run());
+        count("hf_token_lots", await env.DB_META.prepare("UPDATE hf_token_lots SET uid=?2 WHERE uid=?1").bind(uid, hashed).run());
+      } else res.skipped.push("hf_token_lots_absent");
+      if (await has("hf_token_ledger", "uid")) count("hf_token_ledger", await env.DB_META.prepare("UPDATE hf_token_ledger SET uid=?2 WHERE uid=?1").bind(uid, hashed).run());
+      else res.skipped.push("hf_token_ledger_absent");
+      if (await has("hf_token_debts", "uid")) count("hf_token_debts", await env.DB_META.prepare("UPDATE hf_token_debts SET uid=?2 WHERE uid=?1").bind(uid, hashed).run());
+      else res.skipped.push("hf_token_debts_absent");
+      if (await has("hf_play_purchases", "uid")) {
+        const sql = (await has("hf_play_purchases", "raw")) ? "UPDATE hf_play_purchases SET uid=?2, raw=NULL WHERE uid=?1" : "UPDATE hf_play_purchases SET uid=?2 WHERE uid=?1";
+        count("hf_play_purchases", await env.DB_META.prepare(sql).bind(uid, hashed).run());
+      } else res.skipped.push("hf_play_purchases_absent");
+      if (await has("hf_host_ledger", "host_uid")) {
+        count("hf_host_ledger", await env.DB_META.prepare("DELETE FROM hf_host_ledger WHERE host_uid=?1 AND kind='call_earning_test'").bind(uid).run());
+        count("hf_host_ledger", await env.DB_META.prepare("UPDATE hf_host_ledger SET host_uid=?2 WHERE host_uid=?1").bind(uid, hashed).run());
+      } else res.skipped.push("hf_host_ledger_absent");
+    } catch (e) { res.errors.push(`hf_token_records:${String(e).slice(0, 120)}`); }
   }
   return res;
 }
