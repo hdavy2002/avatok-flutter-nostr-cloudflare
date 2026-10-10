@@ -1057,6 +1057,11 @@ Spec: the Hello Fraands Android app spec, section 8 (project doc `hello-fraands-
 | `screen_viewed` | `from` | Every route change, with the same templated path in `screen`. |
 | `api_error` | `endpoint`, `status`, `code`, `ms`, `latency_ms` | Emitted once by the API client for every non-2xx or network failure. A `404 not_enabled` (flag off) is not reported. |
 | `signup_step` | `provider: 'whatsapp_ticket'`, `step`, `reason`, `ms` | Steps `ticket_redeem_started` / `ticket_redeem_completed` / `ticket_redeem_failed`, `secure_storage_reset`, `fapi_timeout`, `jwt_guard_tripped`. |
+| `hf_app_welcome_accepted` | `outcome`, `version`, `signed_in` | `[HF-NATIVE-2]` The person ticked the 18+ and safety box on Welcome and tapped Continue. `version` is the `hfAckVersion` accepted (or `hf-ack-v1` when the config could not be read). The device keeps it and `POST /api/hf/me/ack` sends it once signed in. |
+| `hf_app_signin_started` | `from` | `[HF-NATIVE-2]` The sign-in screen opened. `from` is the anonymised path that needed an account (`/wallet`, `/call/:id`, ...), or `direct`. Never a slug, id or token. |
+| `hf_app_signin_code_sent` | `outcome: 'ok'`, `ms`, `resend` | `[HF-NATIVE-2]` `POST /api/auth/whatsapp/send` answered 200 and the code step opened. `resend` is true for "Send a new code". A refused send is `hf_app_signin_failed` with `step: 'send'`. |
+| `hf_app_signin_success` | `outcome: 'ok'`, `is_new`, `ms` | `[HF-NATIVE-2]` The code was right, Clerk accepted the ticket and a session is active. `is_new` is true for an account made by this sign-in (only present while the worker's phone-only sign-up flag is on, else false). **Success value:** `is_new = true` for a first-time number on the owner's test phone. |
+| `hf_app_signin_failed` | `outcome: 'failed'`, `reason`, `status`, `step: 'send' \| 'verify' \| 'ticket'`, `ms`, `clerk_error` (ticket step only, scrubbed) | `[HF-NATIVE-2]` Any refusal in the flow. `reason` is the worker's stable code (`invalid_phone`, `not_on_whatsapp`, `rate_limited`, `otp_unavailable`, `provider_error`, `wrong_code`, `code_expired`, `too_many_attempts`, `no_code`, `invalid_code`, `verify_failed`, `signin_failed`, `signup_failed`, `signup_in_progress`) or `network`, `timeout`, `needs_email` (phone-only sign-up not open yet), `bad_response`, `ticket_redeem` (Clerk refused the ticket: check the Clerk native-API toggle), `unexpected`. Never carries the number or the code. |
 
 Errors (`captureException`): uncaught Flutter, platform and zone errors. Later issues add their own events to this section.
 
@@ -1071,4 +1076,4 @@ Errors (`captureException`): uncaught Flutter, platform and zone errors. Later i
 
 ### Ship manifest note
 
-`HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`.
+`HF-NATIVE-0` is build infrastructure (`no_telemetry`). Success for `HF-NATIVE-1`: `hf_app_open` with `platform = android-app` and `service_name = hf-app`. Success for `HF-NATIVE-2`: `hf_app_signin_success` with `platform = android-app` (and `hf_app_signin_code_sent` before it) from the owner's phone.

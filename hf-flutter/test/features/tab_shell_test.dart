@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/tab_shell.dart';
+import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 
 import '../support/app_harness.dart';
 
@@ -41,9 +42,10 @@ void main() {
     final c = await pumpApp(tester);
     await tester.tap(find.byKey(const ValueKey<String>('tab-wallet')));
     await tester.pumpAndSettle();
-    expect(find.text('This screen is built in HF-NATIVE-2.'), findsOneWidget);
-    expect(find.text('next: /wallet'), findsOneWidget);
-    expect(c.read(appRouterProvider).routeInformationProvider.value.uri.path, '/sign-in');
+    expect(find.text(SignInCopy.numberHint), findsOneWidget);
+    final uri = c.read(appRouterProvider).routeInformationProvider.value.uri;
+    expect(uri.path, '/sign-in');
+    expect(uri.queryParameters['next'], '/wallet');
   });
 
   testWidgets('Wallet opens for a signed-in person', (tester) async {
@@ -64,7 +66,8 @@ void main() {
     final c = await pumpApp(tester);
     c.read(appRouterProvider).go('/call/abc');
     await tester.pumpAndSettle();
-    expect(find.text('next: /call/abc'), findsOneWidget);
+    expect(find.text(SignInCopy.numberHint), findsOneWidget);
+    expect(c.read(appRouterProvider).routeInformationProvider.value.uri.queryParameters['next'], '/call/abc');
   });
 
   testWidgets('a review token link needs no account', (tester) async {

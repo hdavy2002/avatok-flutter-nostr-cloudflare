@@ -7,9 +7,11 @@ import '../../../core/brand.dart';
 import '../../../core/router/deep_link_handler.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_tokens.dart';
+import '../../welcome/data/ack_service.dart';
 
-/// Cold start: shows the brand while the session and the flags load (capped at 6 s), then opens a link that
-/// arrived during start, else Home. (The Welcome screen decision is added by HF-NATIVE-2.)
+/// Cold start: shows the brand while the session and the flags load (capped at 6 s). Then: Welcome (18+ and
+/// safety rules) when this device and account have not accepted the current version; else a link that arrived
+/// during start; else Home.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -31,6 +33,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       // boot never throws, and a failure must not strand the person here
     }
     if (!mounted) return;
+    // 18+ and safety rules first (spec 2.1): this device or this account must have accepted the current
+    // version. A link that arrived during start stays pending: Welcome releases it after Continue.
+    var welcomeFirst = false;
+    try {
+      welcomeFirst = await ref.read(ackServiceProvider).needsWelcomeNow();
+    } catch (_) {
+      // An unreadable ack must not trap the person on the splash: ask them again, which is safe.
+      welcomeFirst = true;
+    }
+    if (!mounted) return;
+    if (welcomeFirst) {
+      context.go(Routes.welcome);
+      return;
+    }
     final handler = ref.read(deepLinkHandlerProvider);
     ref.read(bootDoneProvider.notifier).markDone();
     final opened = await handler.flushPending();

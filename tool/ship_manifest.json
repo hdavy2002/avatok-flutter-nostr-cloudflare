@@ -9910,6 +9910,20 @@
       }
     ]
   },
+  "HF-NATIVE-2": {
+    "description": "[HF-NATIVE-2 2026-10-10] Native app Welcome, 18+ and WhatsApp sign-in (hf-flutter/): Splash now routes to Welcome when neither this device nor this account has accepted the current hfAckVersion (the device copy is kept and sent with POST /api/hf/me/ack once signed in; browse-before-sign-in stays). Welcome: three simple rules, Tele-MANAS 14416 / 112, the rulebook Appendix B tick, links to terms, privacy, community guidelines and safety in a Custom Tab. Sign-in (opened by requireSignIn or the router rule): +91 number (10 digits, ^[6-9]\\d{9}$), POST /api/auth/whatsapp/send, six-box code with a resend timer that follows resend_after_s / retry_after_s, POST /api/auth/whatsapp/verify (client android, age_confirmed when ticked), ticket redeemed through ClerkClient.signInWithTicket, then the acceptance is sent; every worker error code has a friendly line; needs_email shows a message and never starts the email flow. HfFlags reads hfAckVersion. Widget tests with FakeApiClient / FakeClerk for each step and each error code.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_signin_success",
+        "property": "platform",
+        "equals": "android-app",
+        "note": "Sign in with a WhatsApp number on the phone with the native build: hf_app_signin_started, hf_app_signin_code_sent and hf_app_signin_success arrive with platform = android-app and service_name = hf-app (is_new is true for a first-time number). A refusal arrives as hf_app_signin_failed {reason, step}. Welcome shows as hf_app_welcome_accepted on a fresh install, and GET /api/hf/me then shows ackVersion."
+      }
+    ]
+  },
   "HF-NATIVE-S1": {
     "description": "[HF-NATIVE-S1 2026-10-10] Native Hello Fraands app, server side 1: GET /api/hf/me (signed in) answers {uid, displayName, phoneMasked (last 4 digits only), whatsappVerified, ackVersion, age18ConfirmedAt, isHost, host:{status,slug}|null, lanes:{women,lgbtq}, closing, tokensMode} from one joined D1 read plus the lane/ack/closing reads; PATCH /api/hf/me {displayName} saves a name (2-40 chars, no digits, no phone/link/handle). Worker only (routes/hf_me.ts); no flag, no migration (ackVersion reads hf_user_ack from HF-NATIVE-S4 and falls back to null if that table is not there yet). Cache-Control: private, no-store.",
     "two_sided": false,

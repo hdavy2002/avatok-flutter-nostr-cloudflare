@@ -22,7 +22,12 @@ class HfFlags {
     required this.hfPushEnabled,
     required this.hfAppMinBuild,
     required this.hfAppLatestBuild,
+    this.hfAckVersion,
   });
+
+  /// The current terms/safety acknowledgement version (`hfAckVersion`, HF-NATIVE-S4), or null when the config
+  /// could not be read. The Welcome screen is shown again when the accepted version differs.
+  final String? hfAckVersion;
 
   final bool hostsPublicEnabled;
   final bool hfCallsEnabled;
@@ -84,6 +89,9 @@ class HfFlags {
       hfPushEnabled: b('hfPushEnabled'),
       hfAppMinBuild: n('hfAppMinBuild'),
       hfAppLatestBuild: n('hfAppLatestBuild'),
+      hfAckVersion: (j['hfAckVersion'] is String && (j['hfAckVersion'] as String).trim().isNotEmpty)
+          ? (j['hfAckVersion'] as String).trim()
+          : null,
     );
   }
 }
