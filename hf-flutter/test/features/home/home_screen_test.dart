@@ -173,11 +173,8 @@ void main() {
     final api = fakeApi()
       ..onJson('GET', '/api/hf/hosts',
           pageJson([hostJson('asha', name: 'Asha with a long name', intro: 'https://x/a.m4a')]));
-    final seen = <String>[];
-    final previous = FlutterError.onError;
-    FlutterError.onError = (d) => seen.add(d.toString().split('The relevant error-causing widget')[0]);
-    addTearDown(() => FlutterError.onError = previous);
     await pumpScreen(tester, api: api, location: '/', size: const Size(360, 4000));
-    expect(seen, isEmpty, reason: seen.join('\n---\n'));
+    final e = tester.takeException();
+    expect(e, isNull, reason: '$e');
   });
 }
