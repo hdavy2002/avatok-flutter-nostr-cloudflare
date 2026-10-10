@@ -79,7 +79,7 @@ SessionState signedIn({bool womenLane = false}) => SessionState(
       me: HfMe(uid: 'user_test', womenLane: womenLane),
     );
 
-class _FakeIntroPlayer implements IntroPlayer {
+class FakeIntroPlayer implements IntroPlayer {
   final List<String> played = <String>[];
   int paused = 0;
   int resumed = 0;
@@ -148,7 +148,7 @@ Future<_Rig> pumpProfile(
   WidgetTester tester, {
   required FakeApiClient api,
   SessionState? session,
-  _FakeIntroPlayer? player,
+  FakeIntroPlayer? player,
   bool settle = true,
 }) async {
   usePhoneScreen(tester);
@@ -164,7 +164,7 @@ Future<_Rig> pumpProfile(
     hostImageBuilderProvider.overrideWithValue(
       (context, url, {BoxFit fit = BoxFit.cover}) => const ColoredBox(color: Colors.white),
     ),
-    introPlayerFactoryProvider.overrideWithValue(() => player ?? _FakeIntroPlayer()),
+    introPlayerFactoryProvider.overrideWithValue(() => player ?? FakeIntroPlayer()),
     callConfirmOpenerProvider.overrideWithValue((context, slug) async => opened.add(slug)),
   ]);
   addTearDown(container.dispose);
@@ -447,7 +447,7 @@ void main() {
     });
 
     testWidgets('play, progress and pause', (tester) async {
-      final player = _FakeIntroPlayer();
+      final player = FakeIntroPlayer();
       await pumpProfile(tester, api: apiWith(profileJson(intro: true)), player: player);
       expect(find.text('Recorded by the host'), findsOneWidget);
       expect(find.text('00:00 / 00:30'), findsOneWidget);

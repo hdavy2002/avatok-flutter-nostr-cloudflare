@@ -62,8 +62,8 @@ class ReviewsSection extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(rating!.toStringAsFixed(1), style: HfText.hero),
-                    StarRow(stars: rating!.round()),
+                    Text(rating.toStringAsFixed(1), style: HfText.hero),
+                    StarRow(stars: rating.round()),
                     const SizedBox(height: 4),
                     Text('$total ${total == 1 ? 'review' : 'reviews'}', style: HfText.note),
                   ],
